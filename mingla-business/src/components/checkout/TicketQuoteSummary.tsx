@@ -12,11 +12,18 @@ import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type { BuyerDiscountSurface } from "./DiscountCodeField";
 import { formatQuoteMoney } from "./quoteMoney";
 
+import { color } from "../../constants/designSystem";
 export interface TicketQuoteSummaryProps {
   quote: TicketQuote;
   compact?: boolean;
   totalLabel?: string;
   totalValue?: string;
+  /**
+   * #4420 journey — the summary sits on the dark checkout card everywhere
+   * except inside the "Your total changed" review, which is a light paper
+   * panel. `onPaper` switches the text to the paper inks there.
+   */
+  onPaper?: boolean;
 }
 
 /** W-SUMMARY — display-only rendering of the server quote. */
@@ -25,13 +32,18 @@ export const TicketQuoteSummary: React.FC<TicketQuoteSummaryProps> = ({
   compact = false,
   totalLabel = "Total",
   totalValue,
+  onPaper = false,
 }) => {
   const feesAndTaxCents = ticketQuoteFeesAndTaxCents(quote);
+  const labelStyle = onPaper ? [styles.label, styles.labelPaper] : styles.label;
+  const valueStyle = onPaper ? [styles.value, styles.valuePaper] : styles.value;
+  const discountLabelStyle = onPaper ? [styles.discountLabel, styles.discountPaper] : styles.discountLabel;
+  const discountValueStyle = onPaper ? [styles.discountValue, styles.discountPaper] : styles.discountValue;
   return (
     <View style={[styles.summary, compact && styles.summaryCompact]}>
       {quote.lines.map((line) => (
         <View key={line.ticketTypeId} style={styles.row}>
-          <Text style={styles.label}>
+          <Text style={labelStyle}>
             {line.quantity} × {line.ticketName}
           </Text>
           <View style={styles.moneyPair}>
@@ -40,7 +52,7 @@ export const TicketQuoteSummary: React.FC<TicketQuoteSummaryProps> = ({
                 {formatQuoteMoney(line.lineListCents, quote.currency)}
               </Text>
             ) : null}
-            <Text style={styles.value}>
+            <Text style={valueStyle}>
               {formatQuoteMoney(line.lineNetCents, quote.currency)}
             </Text>
           </View>
@@ -49,39 +61,39 @@ export const TicketQuoteSummary: React.FC<TicketQuoteSummaryProps> = ({
       {/* issue #3281 — each extra the server priced, under the tickets. */}
       {(quote.extras ?? []).map((extra) => (
         <View key={extra.addOnId} style={styles.row} testID="issue-3281-quote-extra">
-          <Text style={styles.label}>
+          <Text style={labelStyle}>
             {extra.quantity} × {extra.addOnName}
           </Text>
-          <Text style={styles.value}>
+          <Text style={valueStyle}>
             {formatQuoteMoney(extra.totalCents, quote.currency)}
           </Text>
         </View>
       ))}
       {quote.discounts.map((discount) => (
         <View key={discount.discountId} style={styles.row}>
-          <Text style={styles.discountLabel}>{discount.name}</Text>
-          <Text style={styles.discountValue}>
+          <Text style={discountLabelStyle}>{discount.name}</Text>
+          <Text style={discountValueStyle}>
             −{formatQuoteMoney(discount.amountMinor, quote.currency)}
           </Text>
         </View>
       ))}
       {quote.dueTodayNetCents !== quote.netSubtotalCents ? (
         <View style={styles.row}>
-          <Text style={styles.label}>Due today</Text>
-          <Text style={styles.value}>
+          <Text style={labelStyle}>Due today</Text>
+          <Text style={valueStyle}>
             {formatQuoteMoney(quote.dueTodayNetCents, quote.currency)}
           </Text>
         </View>
       ) : null}
       <View style={styles.row}>
-        <Text style={styles.label}>Fees &amp; tax</Text>
-        <Text style={styles.value}>
+        <Text style={labelStyle}>Fees &amp; tax</Text>
+        <Text style={valueStyle}>
           {formatQuoteMoney(feesAndTaxCents, quote.currency)}
         </Text>
       </View>
-      <View style={[styles.row, styles.totalRow]}>
-        <Text style={styles.totalLabel}>{totalLabel}</Text>
-        <Text style={styles.totalValue}>
+      <View style={[styles.row, styles.totalRow, onPaper && styles.totalRowPaper]}>
+        <Text style={[styles.totalLabel, onPaper && styles.inkPaper]}>{totalLabel}</Text>
+        <Text style={[styles.totalValue, onPaper && styles.inkPaper]}>
           {totalValue ??
             formatQuoteMoney(quote.buyerTotalCents, quote.currency)}
         </Text>
@@ -144,7 +156,7 @@ export const TicketCheckoutReviewPanel: React.FC<
       <Text style={styles.reviewReason}>
         {checkoutReviewReasonCopy(review.detail)}
       </Text>
-      <TicketQuoteSummary quote={quote} compact />
+      <TicketQuoteSummary quote={quote} compact onPaper />
       <Pressable
         style={[styles.primaryButton, accepting && styles.buttonDisabled]}
         disabled={accepting}
@@ -179,25 +191,32 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  label: { flex: 1, color: "#5f6572", fontSize: 14 },
-  value: { color: "#252936", fontSize: 14, fontVariant: ["tabular-nums"] },
+  // #4420 journey: every caller renders this on the dark checkout card, where
+  // the surface tokens (card / card3) made the amounts and total invisible.
+  label: { flex: 1, color: color.text2, fontSize: 14 },
+  value: { color: color.text1, fontSize: 14, fontVariant: ["tabular-nums"] },
+  labelPaper: { color: color.onPaper.text2 },
+  valuePaper: { color: color.ink },
+  discountPaper: { color: color.onPaper.success },
+  totalRowPaper: { borderTopColor: color.onPaper.warningLine },
+  inkPaper: { color: color.ink },
   moneyPair: { flexDirection: "row", alignItems: "center", gap: 8 },
   struckMoney: {
-    color: "#8a909d",
+    color: color.text3,
     textDecorationLine: "line-through",
     fontVariant: ["tabular-nums"],
   },
-  discountLabel: { flex: 1, color: "#28724a", fontSize: 14 },
-  discountValue: { color: "#28724a", fontSize: 14, fontWeight: "600" },
+  discountLabel: { flex: 1, color: color.successText, fontSize: 14 },
+  discountValue: { color: color.successText, fontSize: 14, fontWeight: "600" },
   totalRow: {
     marginTop: 4,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#dfe2e8",
+    borderTopColor: color.lineStrong,
   },
-  totalLabel: { color: "#15181f", fontSize: 16, fontWeight: "700" },
+  totalLabel: { color: color.text1, fontSize: 16, fontWeight: "700" },
   totalValue: {
-    color: "#15181f",
+    color: color.text1,
     fontSize: 17,
     fontWeight: "800",
     fontVariant: ["tabular-nums"],
@@ -206,27 +225,27 @@ const styles = StyleSheet.create({
     gap: 14,
     padding: 18,
     borderRadius: 14,
-    backgroundColor: "#fff8ed",
+    backgroundColor: color.onPaper.warningFill,
     borderWidth: 1,
-    borderColor: "#f3c98b",
+    borderColor: color.onPaper.warningLine,
   },
-  reviewTitle: { color: "#6d3908", fontSize: 21, fontWeight: "800" },
+  reviewTitle: { color: color.onPaper.warningTitle, fontSize: 21, fontWeight: "800" },
   reviewTotals: { flexDirection: "row", alignItems: "baseline", gap: 10 },
-  reviewNewTotal: { color: "#15181f", fontSize: 24, fontWeight: "800" },
-  reviewReason: { color: "#6d4b2a", lineHeight: 20 },
+  reviewNewTotal: { color: color.ink, fontSize: 24, fontWeight: "800" },
+  reviewReason: { color: color.onPaper.warningText, lineHeight: 20 },
   primaryButton: {
     minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 12,
-    backgroundColor: "#eb7825",
+    backgroundColor: color.accent,
   },
-  primaryButtonText: { color: "#ffffff", fontSize: 16, fontWeight: "800" },
+  primaryButtonText: { color: color.textStrong, fontSize: 16, fontWeight: "800" },
   secondaryButton: {
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryButtonText: { color: "#7a3a11", fontWeight: "700" },
+  secondaryButtonText: { color: color.onPaper.warningAction, fontWeight: "700" },
   buttonDisabled: { opacity: 0.55 },
 });

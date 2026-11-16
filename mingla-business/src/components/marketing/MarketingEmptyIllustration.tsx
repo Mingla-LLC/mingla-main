@@ -19,8 +19,12 @@
 import React from "react";
 import Svg, { Circle, G, Line, Path, Rect } from "react-native-svg";
 
-const ACCENT_WARM = "#eb7825";
-const SUBDUED = "rgba(255,255,255,0.32)";
+import { color } from "../../constants/designSystem";
+
+// #4420: the illustration's warm stroke is the paper ink now (orange is kept
+// for Create, nav, progress and steppers); the quiet strokes are the pager wash.
+const ACCENT_WARM = color.text2;
+const SUBDUED = color.fill.pager;
 
 export type MarketingIllustrationKey =
   | "marketing-audiences"

@@ -83,6 +83,7 @@ import {
   type ThemePalette,
 } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
+import { OfferingFactRows } from "./OfferingFactRows";
 import {
   PresentedByFollowerCount,
   type FollowerCountLabels,
@@ -381,6 +382,17 @@ export interface RsvpOfferingBodyProps {
    * source for the canonical-order gate.
    */
   hideDecisionBox?: boolean;
+  /**
+   * issue #4420 — true when the surface prints the title on its cover (the
+   * premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
+   */
+  identityOnCover?: boolean;
+  /**
+   * issue #4420 — the "when" fact's Add to calendar action. The surface
+   * passes it ONLY when the public data carries a real start AND end
+   * (offeringCalendarEntry); absent ⇒ no action.
+   */
+  onAddToCalendar?: () => void;
   // ORCH-1291 [rsvp-chip-in] — the surface's payment hand-off for a voluntary
   // gift. Absent → the chip-in panel never renders (feature dark on that
   // surface). Present + config.rsvp_contribution_enabled + a going guest → the
@@ -1688,50 +1700,66 @@ export const useRsvpOfferingState = (
       style={[styles.guestBlock, surface.card]}
       testID="orch-1163-rsvp-guests"
     >
+      {/* issue #4420 — "Bringing anyone?" (design file → P.rsvp): the title
+          and the cap on the left, the shared stepper look on the right
+          (outlined minus, ink plus). Each added guest still opens its own
+          name / email / phone form below, exactly as before. */}
       <View style={styles.guestHeaderRow}>
-        <Text style={[styles.guestHeaderLabel, surface.secondaryText]}>
-          Bringing extras?
-        </Text>
+        <View style={styles.guestHeaderText}>
+          <Text style={[styles.guestHeaderTitle, surface.primaryText, boldFace]}>
+            Bringing anyone?
+          </Text>
+          <Text style={[styles.guestHeaderLabel, surface.secondaryText]}>
+            {config.plusOnesMax === 1
+              ? "Up to 1 guest"
+              : `Up to ${config.plusOnesMax} guests`}
+          </Text>
+        </View>
         <View style={styles.stepperRow}>
           <Pressable
             onPress={removeGuest}
             disabled={submitting || guests.length <= 0}
             accessibilityRole="button"
             accessibilityLabel="Remove one extra guest"
+            hitSlop={6}
             style={[
               styles.stepBtn,
               {
                 borderColor: palette.panelBorder,
-                opacity: guests.length <= 0 ? 0.4 : 1,
+                opacity: guests.length <= 0 ? 0.35 : 1,
               },
             ]}
             testID="orch-1157-rsvp-plus-minus"
           >
-            <Minus size={18} {...accentIcon(palette)} />
+            <Minus size={17} color={palette.primaryText} />
           </Pressable>
           <Text
             style={[
               styles.stepCount,
               { color: palette.primaryText, ...boldFace },
             ]}
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={`${guests.length} extra ${guests.length === 1 ? "guest" : "guests"}`}
           >
-            +{guests.length}
+            {guests.length}
           </Text>
           <Pressable
             onPress={addGuest}
             disabled={submitting || guests.length >= config.plusOnesMax}
             accessibilityRole="button"
             accessibilityLabel="Add one extra guest"
+            hitSlop={6}
             style={[
               styles.stepBtn,
               {
-                borderColor: palette.panelBorder,
-                opacity: guests.length >= config.plusOnesMax ? 0.4 : 1,
+                backgroundColor: palette.primaryText,
+                borderColor: palette.primaryText,
+                opacity: guests.length >= config.plusOnesMax ? 0.35 : 1,
               },
             ]}
             testID="orch-1157-rsvp-plus-plus"
           >
-            <Plus size={18} {...accentIcon(palette)} />
+            <Plus size={17} color={palette.page} />
           </Pressable>
         </View>
       </View>
@@ -2305,6 +2333,8 @@ export const RsvpOfferingBody: React.FC<
     onCopyAddress,
     staticMapUrl = null,
     hideDecisionBox = false,
+    identityOnCover = false,
+    onAddToCalendar,
     testID,
     state,
   } = props;
@@ -2415,91 +2445,63 @@ export const RsvpOfferingBody: React.FC<
       {acquisitionClosed ? null : state.successPopup}
       {acquisitionClosed ? null : state.detailsModal}
 
-      {/* (2) Event name lead block. */}
-      <View style={styles.leadBlock}>
-        <Text
-          style={[
-            styles.title,
-            surface.primaryText,
-            boldFace,
-          ]}
-        >
-          {event.name.length > 0 ? event.name : "Untitled event"}
-        </Text>
-      </View>
-
-      {/* (3) Date & time — FULL-WIDTH solid-fill row (orch-1167-date-row parity). */}
-      {event.dateLine.length > 0 ||
-      (event.dateSubline !== null && event.dateSubline.length > 0) ? (
-        <View
-          style={[
-            styles.dateRow,
-            {
-              backgroundColor: palette.accentWash,
-              borderColor: palette.panelBorder,
-            },
-          ]}
-          testID="orch-1167-date-row"
-        >
-          <Calendar size={18} {...accentIcon(palette)} />
-          <View style={styles.dateTextCol}>
-            {event.dateLine.length > 0 ? (
-              <Text
-                style={[
-                  styles.dateLine,
-                  { color: palette.primaryText, ...boldFace },
-                ]}
-                testID="orch-1167-date-line"
-              >
-                {event.dateLine}
-              </Text>
-            ) : null}
-            {event.dateSubline !== null && event.dateSubline.length > 0 ? (
-              <Text
-                style={[
-                  styles.dateSubline,
-                  { color: palette.secondaryText, ...boldFace },
-                ]}
-              >
-                {event.dateSubline}
-              </Text>
-            ) : null}
-            {doorsLine !== null ? (
-              <Text
-                style={[
-                  styles.dateSubline,
-                  { color: palette.secondaryText, ...boldFace },
-                ]}
-                testID="orch-1157-rsvp-doors"
-              >
-                {doorsLine}
-              </Text>
-            ) : null}
-          </View>
+      {/* (2) Event name lead block. issue #4420 — on the cover in the premium
+          frame (identityOnCover), so the body does not print it twice. */}
+      {identityOnCover ? null : (
+        <View style={styles.leadBlock}>
+          <Text
+            style={[
+              styles.title,
+              surface.primaryText,
+              boldFace,
+            ]}
+          >
+            {event.name.length > 0 ? event.name : "Untitled event"}
+          </Text>
         </View>
-      ) : null}
+      )}
 
-      {/* (4) Pills row — format → vibes → party-types → music-genres. NO tickets-left. */}
-      <View style={styles.pillsRow} testID="orch-1167-pills-row">
-        <Pill palette={palette} font={boldFamily}>
-          {formatLabel}
-        </Pill>
-        {vibeTags.map((tag, i) => (
-          <Pill key={`vibe-${i}`} palette={palette} font={boldFamily}>
-            {taxonomyLabel(tag)}
-          </Pill>
-        ))}
-        {partyTypes.map((tag, i) => (
-          <Pill key={`party-${i}`} palette={palette} font={boldFamily}>
-            {taxonomyLabel(tag)}
-          </Pill>
-        ))}
-        {musicGenres.map((tag, i) => (
-          <Pill key={`music-${i}`} palette={palette} font={boldFamily}>
-            {taxonomyLabel(tag)}
-          </Pill>
-        ))}
-      </View>
+      {/* (3)+(4) issue #4420 — the fact rows (when, with the doors line;
+          where, with the address privacy caption) and the quiet tag line
+          (format → vibes → party types → music; NO tickets-left) replace the
+          date band and the pills row. */}
+      <OfferingFactRows
+        palette={palette}
+        theme={theme}
+        testID="orch-1167-facts"
+        facts={[
+          {
+            key: "when",
+            icon: "calendar",
+            value: event.dateLine.length > 0 ? event.dateLine : null,
+            detail: event.dateSubline,
+            caption: doorsLine,
+            action:
+              onAddToCalendar !== undefined
+                ? { label: "Add to calendar", onPress: onAddToCalendar }
+                : null,
+          },
+          event.format === "online"
+            ? { key: "where", icon: "globe", value: "Online", detail: "Link shared once you RSVP" }
+            : {
+                key: "where",
+                icon: "pin",
+                value: event.venueName ?? cityCountry,
+                detail: venueAddressLabel,
+                caption: addressUnlockCaption,
+                action: canOpenVenueMaps
+                  ? { label: "Map", onPress: mapsActions.requestOpenMaps }
+                  : null,
+              },
+        ]}
+        tags={[
+          formatLabel,
+          ...vibeTags.map((tag: string) => taxonomyLabel(tag)),
+          ...partyTypes.map((tag: string) => taxonomyLabel(tag)),
+          ...musicGenres.map((tag: string) => taxonomyLabel(tag)),
+        ]}
+      />
+      {doorsLine !== null ? <View testID="orch-1157-rsvp-doors" /> : null}
 
       {/* (5) DECISION BOX — INLINE single-owner <RsvpDecisionBox> (parallel to
           EventTicketBox): contact form (anon) + per-guest mini-forms + the shared
@@ -2887,14 +2889,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   pillText: { fontSize: 13, fontWeight: "700" },
-  section: { marginTop: 24 },
+  // issue #4420 — the premium rhythm: sections 34pt apart, headings in the
+  // host's display face at 26pt (OfferingSectionTitle's metrics).
+  section: { marginTop: 34 },
   secTitle: {
-    fontSize: 20,
-    fontWeight: "900",
+    fontSize: 26,
+    fontWeight: "700",
     letterSpacing: -0.3,
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  about: { fontSize: 16, lineHeight: 23 },
+  about: { fontSize: 15.5, lineHeight: 25 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // contact + per-guest forms
@@ -2906,8 +2910,8 @@ const styles = StyleSheet.create({
   },
   formMicro: { fontSize: 12, marginBottom: 10 },
   guestBlock: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 18,
+    padding: 18,
     marginBottom: 14,
     overflow: "hidden",
   },
@@ -2915,9 +2919,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 12,
     marginBottom: 4,
   },
-  guestHeaderLabel: { fontSize: 14, fontWeight: "700" },
+  guestHeaderText: { flex: 1, minWidth: 0 },
+  guestHeaderTitle: { fontSize: 16, fontWeight: "700" },
+  guestHeaderLabel: { fontSize: 13, fontWeight: "500", marginTop: 3 },
   guestRow: { marginTop: 10 },
   guestRowTitle: {
     fontSize: 12,
@@ -2926,11 +2933,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 6,
   },
-  stepperRow: { flexDirection: "row", alignItems: "center" },
+  stepperRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   stepBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -2938,9 +2945,10 @@ const styles = StyleSheet.create({
   stepGlyph: { fontSize: 20, fontWeight: "800", lineHeight: 22 },
   stepCount: {
     fontSize: 16,
-    fontWeight: "800",
-    minWidth: 40,
+    fontWeight: "700",
+    minWidth: 30,
     textAlign: "center",
+    fontVariant: ["tabular-nums"],
   },
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, fontWeight: "700", marginBottom: 5 },

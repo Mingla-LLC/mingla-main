@@ -12,10 +12,7 @@ import React from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { space, color } from "../../constants/designSystem";
 
 import { IconChrome } from "../ui/IconChrome";
 import { Pill } from "../ui/Pill";
@@ -50,7 +47,7 @@ export const CheckoutHeader: React.FC<CheckoutHeaderProps> = ({
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top + spacing.sm },
+        { paddingTop: insets.top + space[2] },
       ]}
     >
       <View style={styles.row}>
@@ -76,9 +73,9 @@ export const CheckoutHeader: React.FC<CheckoutHeaderProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    backgroundColor: "#0c0e12",
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
+    backgroundColor: color.canvas,
     ...(Platform.OS === "web"
       ? {
           position: "sticky" as unknown as "absolute",
@@ -91,13 +88,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   title: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
     letterSpacing: -0.2,
   },
@@ -106,9 +103,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   divider: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
 });
 

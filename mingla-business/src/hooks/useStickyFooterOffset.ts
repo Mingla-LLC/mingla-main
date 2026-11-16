@@ -20,13 +20,13 @@
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { MOBILE_BOTTOM_NAV_RESERVE } from "../components/ui/bottomNavMetrics";
 import { useResponsiveLayout } from "./useResponsiveLayout";
 
-/**
- * Mobile bottom-nav capsule clearance. ~72pt visible capsule + 24pt
- * breathing room so the FAB never feels cramped against the nav.
- */
-const MOBILE_BOTTOM_NAV_RESERVE = 96;
+// #4420: MOBILE_BOTTOM_NAV_RESERVE is now measured from the Graphite tab bar
+// (capsule + its wrap padding + breathing room) in ui/bottomNavMetrics.ts, the
+// one constant the tab bar itself is laid out from.
+export { MOBILE_BOTTOM_NAV_RESERVE };
 
 /**
  * Wide-desktop canvas-bottom padding (matches `spacing.lg` semantic;

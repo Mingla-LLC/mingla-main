@@ -23,7 +23,11 @@ jest.mock("react-native", () => ({
   View: "View",
   Platform: { OS: "ios", select: (o: Record<string, unknown>) => o.ios ?? o.default },
 }));
-jest.mock("../../../constants/designSystem", () => ({ radius: { lg: 16 } }));
+// [TEST-MOD-APPROVED #4420] — the QR paper and ink now come from colour tokens.
+jest.mock("../../../constants/designSystem", () => ({
+  radius: { lg: 16 },
+  color: { paper: "#ffffff", ink: "#0a0a0a" },
+}));
 jest.mock("react-native-qrcode-svg", () => ({ __esModule: true, default: () => null }));
 
 import { DoorPayQr } from "../DoorPayQr";

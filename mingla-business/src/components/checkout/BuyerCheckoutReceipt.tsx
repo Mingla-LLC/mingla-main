@@ -1,11 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { space, color } from "../../constants/designSystem";
 import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 import { formatCurrency } from "../../utils/currency";
 import type { BuyerConfirmationReceipt } from "./CartContext";
@@ -40,7 +36,7 @@ export function BuyerCheckoutReceipt({
     <GlassCard
       variant="base"
       radius="lg"
-      padding={spacing.md}
+      padding={space[4]}
       style={styles.card}
       testID="buyer-checkout-receipt"
     >
@@ -108,37 +104,37 @@ export function BuyerCheckoutReceipt({
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: spacing.lg },
-  header: { gap: spacing.xs },
+  card: { marginBottom: space[6] },
+  header: { gap: space[1] },
   eventName: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 18,
     fontWeight: "700",
   },
-  context: { color: textTokens.secondary, fontSize: 14 },
+  context: { color: color.text2, fontSize: 14 },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileElevated,
-    marginVertical: spacing.md,
+    backgroundColor: color.lineStrong,
+    marginVertical: space[4],
   },
   line: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
-  qty: { width: 36, color: textTokens.secondary, fontSize: 14 },
-  name: { flex: 1, color: textTokens.primary, fontSize: 14 },
-  amount: { color: textTokens.primary, fontSize: 14, fontWeight: "600" },
+  qty: { width: 36, color: color.text2, fontSize: 14 },
+  name: { flex: 1, color: color.text1, fontSize: 14 },
+  amount: { color: color.text1, fontSize: 14, fontWeight: "600" },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
-  totalLabel: { color: textTokens.secondary, fontSize: 14 },
-  totalValue: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
+  totalLabel: { color: color.text2, fontSize: 14 },
+  totalValue: { color: color.text1, fontSize: 14, fontWeight: "700" },
   orderRef: {
-    marginTop: spacing.sm,
-    color: textTokens.tertiary,
+    marginTop: space[2],
+    color: color.text3,
     fontSize: 12,
     letterSpacing: 0.4,
   },

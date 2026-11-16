@@ -36,12 +36,13 @@ import { BlastCustomersCta } from "../../../src/components/marketing/BlastCustom
 import { BuyerRow } from "../../../src/components/marketing/BuyerRow";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { Button } from "../../../src/components/ui/Button";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { useBrandCustomers } from "../../../src/hooks/marketing/useBrandCustomers";
 import { useBrand } from "../../../src/hooks/useBrands";
@@ -52,6 +53,7 @@ import type {
 export default function BrandBlastsRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandId =
@@ -98,7 +100,7 @@ export default function BrandBlastsRoute(): React.ReactElement {
           />
         </View>
         <View style={styles.centerHost}>
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       </View>
     );
@@ -157,24 +159,39 @@ export default function BrandBlastsRoute(): React.ReactElement {
           leftKind="back"
           title={brand?.displayName ?? "Blasts"}
           onBack={handleBack}
-          rightSlot={null}
+          rightSlot={
+            // #4420 — desktop puts the send action in the header (mockup);
+            // phones keep the sticky bar below.
+            isWideDesktop && customers !== undefined ? (
+              <Button
+                label={`Send blast (${customers.reach.reachable_email})`}
+                variant="primary"
+                size="sm"
+                leadingIcon="send"
+                disabled={customers.reach.reachable_email === 0}
+                onPress={() => handleBlast("brand", brandId ?? "")}
+                accessibilityLabel={`Send blast (${customers.reach.reachable_email})`}
+              />
+            ) : null
+          }
         />
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isWideDesktop && styles.scrollContentDesktop,
+        ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* #4420 — the section label and counts sit above the pane. */}
+        {headerCounts !== null ? (
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardHeaderLabel}>BUYERS</Text>
+            <Text style={styles.cardHeaderCounts}>{headerCounts}</Text>
+          </View>
+        ) : null}
         <GlassCard variant="base" padding={0}>
-          {headerCounts !== null ? (
-            <>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardHeaderLabel}>BUYERS</Text>
-                <Text style={styles.cardHeaderCounts}>{headerCounts}</Text>
-              </View>
-              <View style={styles.cardDivider} />
-            </>
-          ) : null}
           {customers !== undefined
             ? customers.rows.map((buyer) => (
                 <BuyerRow key={buyer.contact_key} buyer={buyer} />
@@ -183,7 +200,7 @@ export default function BrandBlastsRoute(): React.ReactElement {
         </GlassCard>
       </ScrollView>
 
-      {customers !== undefined ? (
+      {customers !== undefined && !isWideDesktop ? (
         <View style={styles.ctaWrap}>
           <BlastCustomersCta
             audienceKind="brand"
@@ -201,49 +218,53 @@ export default function BrandBlastsRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   // Matches the home/events/account barWrap pattern so the TopBar glass
   // capsule sits inset from screen edges with breathing space above + below
   // (NOT flush — flush reads as "zoomed-in" per operator visual review).
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   centerHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   // Card header inside the GlassCard wrapping the buyer list. Replaces
   // the old "bare bodyLg text floating on canvas" pattern that read as
   // orphaned per operator visual review 2026-05-12.
   cardHeader: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[1],
+    paddingBottom: space[2],
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   cardHeaderLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   cardHeaderCounts: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md, // page margin around the GlassCard
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4], // page margin around the GlassCard
+    paddingTop: space[2],
     paddingBottom: 140, // breathe room for sticky CTA (60pt + 8pt + safe-area + buffer)
+  },
+  scrollContentDesktop: {
+    paddingHorizontal: space[6],
+    paddingBottom: space[8],
   },
   ctaWrap: {
     // CTA is glass — DO NOT set an opaque backgroundColor here. The glass

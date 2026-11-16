@@ -21,6 +21,7 @@ import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { Button } from "../../../src/components/ui/Button";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 
+import { color } from "../../../src/constants/designSystem";
 function errorCopy(value: unknown): string {
   const message = value instanceof Error ? value.message : "";
   if (message.includes("expired"))
@@ -96,7 +97,7 @@ export default function StayStaffPaymentLinkRoute(): React.ReactElement {
         <View style={styles.card}>
           {loading ? (
             <View style={styles.center}>
-              <ActivityIndicator color="#eb7825" />
+              <ActivityIndicator color={color.accentText} />
               <Text style={styles.helper}>
                 Opening your secure reservation…
               </Text>
@@ -140,7 +141,7 @@ export default function StayStaffPaymentLinkRoute(): React.ReactElement {
                 <StayStripePayment
                   session={session}
                   groupId={details.groupId}
-                  accent="#eb7825"
+                  accent={color.accent}
                   returnUrl={returnUrl}
                   onComplete={() => {
                     setSession(null);
@@ -190,7 +191,7 @@ export default function StayStaffPaymentLinkRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+  host: { flex: 1, backgroundColor: color.canvas },
   content: {
     width: "100%",
     maxWidth: 720,
@@ -200,45 +201,45 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   eyebrow: {
-    color: "#eb7825",
+    color: color.accentText,
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 1.4,
   },
   card: {
-    backgroundColor: "#171a21",
+    backgroundColor: color.card,
     borderRadius: 24,
     padding: 24,
     gap: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: color.lineStrong,
   },
   center: { alignItems: "center", gap: 12, paddingVertical: 28 },
-  title: { color: "#fff", fontSize: 26, fontWeight: "800" },
-  helper: { color: "#aeb4c0", fontSize: 14, lineHeight: 20 },
+  title: { color: color.textStrong, fontSize: 26, fontWeight: "800" },
+  helper: { color: color.text2, fontSize: 14, lineHeight: 20 },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: color.fill.step,
   },
   line: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
   flexOne: { flex: 1, minWidth: 0 },
-  lineTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  amount: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  lineTitle: { color: color.textStrong, fontSize: 15, fontWeight: "700" },
+  amount: { color: color.textStrong, fontSize: 14, fontWeight: "700" },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingTop: 8,
   },
-  totalLabel: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  total: { color: "#fff", fontSize: 22, fontWeight: "900" },
+  totalLabel: { color: color.textStrong, fontSize: 17, fontWeight: "700" },
+  total: { color: color.textStrong, fontSize: 22, fontWeight: "900" },
   success: {
     padding: 16,
     borderRadius: 16,
-    backgroundColor: "rgba(34,197,94,0.12)",
+    backgroundColor: color.successTint,
     gap: 4,
   },
-  successTitle: { color: "#4ade80", fontSize: 16, fontWeight: "800" },
-  expiry: { color: "#7f8795", fontSize: 12, textAlign: "center" },
-  error: { color: "#fb7185", fontSize: 13, lineHeight: 18 },
+  successTitle: { color: color.successText, fontSize: 16, fontWeight: "800" },
+  expiry: { color: color.text3, fontSize: 12, textAlign: "center" },
+  error: { color: color.errorText, fontSize: 13, lineHeight: 18 },
 });

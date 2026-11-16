@@ -94,20 +94,19 @@ Deno.test("ORCH-1175 adversarial — over-time split deposit is the qty-scaled s
 // ── (B) SOURCE — the FLOATING pill renders the live price (Fix 1a) ──
 Deno.test("ORCH-1175 §1a — the floating reserve pill renders the live cta.price", async () => {
   const bar = strip(await read("../TripReserveBar.tsx"));
-  // A `floatPrice` style exists next to floatCta.
-  assertStringIncludes(bar, "floatPrice:");
-  // The floating button (floatBody) gates a price Text on `price.length > 0` and
-  // renders {price} — the SAME live value the docked bar reads.
+  // issue #4420 — the floating pill is the shared glass bar: its bold line is
+  // the SAME live `cta.price` the docked bar reads (unless the page passes its
+  // own summary), and the button still reads `cta.label`.
+  assertStringIncludes(bar, "<OfferingGlassBar");
   assert(
-    /floatBody[\s\S]*?price\.length > 0 \?[\s\S]*?styles\.floatPrice[\s\S]*?\{price\}/.test(
+    /floatBody[\s\S]*?title=\{glassTitle \?\? \(price\.length > 0 \? price : cta\.label\)\}/.test(
       bar,
     ),
-    "the floating pill must render a floatPrice Text with {price} when price.length > 0",
+    "the floating glass bar must show the live {price} when price.length > 0",
   );
-  // The label still renders after it (the pill reads "$X · Reserve my spot →").
   assert(
-    /styles\.floatPrice[\s\S]*?\{cta\.label\} →/.test(bar),
-    "the floating pill must still render the {cta.label} → after the price",
+    /floatBody[\s\S]*?ctaLabel=\{cta\.label\}/.test(bar),
+    "the floating glass bar must still name the {cta.label} next step",
   );
 });
 

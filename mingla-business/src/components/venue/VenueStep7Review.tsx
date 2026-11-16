@@ -12,9 +12,9 @@ import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { VenueCategory } from "../../types/brand";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
@@ -169,24 +169,24 @@ function Row({ k, v }: { k: string; v: string }): React.ReactElement {
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   card: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   row: {
     gap: 2,
@@ -194,29 +194,29 @@ const styles = StyleSheet.create({
   coverRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   coverText: {
     flex: 1,
     gap: 2,
   },
   k: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   v: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
   },
   mutedV: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    color: color.text2,
   },
   err: {
-    fontSize: typography.caption.fontSize,
-    color: "#EF4444",
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
   },
 });
 

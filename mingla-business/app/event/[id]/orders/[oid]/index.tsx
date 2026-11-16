@@ -23,12 +23,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  accent,
-  canvas,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../../src/constants/designSystem";
 import type {
   OrderRecord,
@@ -104,14 +101,6 @@ const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   tap_to_pay: `${TAP_TO_PAY_SHORT} (door)`,
 };
 
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
-};
-
 const getInitials = (name: string): string => {
   const parts = name
     .trim()
@@ -138,10 +127,10 @@ const statusBannerSpec = (
   switch (status) {
     case "paid":
       return {
-        bgColor: "rgba(34, 197, 94, 0.12)",
-        borderColor: "rgba(34, 197, 94, 0.32)",
+        bgColor: color.successTint,
+        borderColor: color.successText,
         iconName: "check",
-        iconColor: "#34c759",
+        iconColor: color.successText,
         copy:
           currency === null
             ? "Free order · confirmed"
@@ -149,26 +138,26 @@ const statusBannerSpec = (
       };
     case "refunded_full":
       return {
-        bgColor: "rgba(239, 68, 68, 0.12)",
-        borderColor: "rgba(239, 68, 68, 0.32)",
+        bgColor: color.errorTint,
+        borderColor: color.errorLine,
         iconName: "refund",
-        iconColor: semantic.error,
+        iconColor: color.danger,
         copy: `Refunded ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)} · buyer will see in 3–5 days`,
       };
     case "refunded_partial":
       return {
-        bgColor: accent.tint,
-        borderColor: accent.border,
+        bgColor: color.fill.tabOn,
+        borderColor: color.lineStrong,
         iconName: "refund",
-        iconColor: accent.warm,
+        iconColor: color.text1,
         copy: `Partially refunded ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)}`,
       };
     case "cancelled":
       return {
-        bgColor: "rgba(120, 120, 120, 0.12)",
-        borderColor: "rgba(120, 120, 120, 0.32)",
+        bgColor: color.fill.tile,
+        borderColor: color.lineStrong,
         iconName: "close",
-        iconColor: textTokens.tertiary,
+        iconColor: color.text3,
         copy: "Cancelled · buyer's ticket is no longer valid",
       };
     default: {
@@ -381,7 +370,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.emptyHost} accessibilityRole="progressbar">
@@ -398,7 +387,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -423,7 +412,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -448,7 +437,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -485,7 +474,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -526,7 +515,6 @@ export default function OrderDetailRoute(): React.ReactElement {
     payoutBannerCopy === null
       ? baseBanner
       : { ...baseBanner, copy: payoutBannerCopy };
-  const hue = hashStringToHue(order.id);
   const initials = getInitials(order.buyer.name);
 
   // ---- Primary action button derivation (ORCH-0787) ----
@@ -550,7 +538,7 @@ export default function OrderDetailRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -573,13 +561,10 @@ export default function OrderDetailRoute(): React.ReactElement {
         showsVerticalScrollIndicator={false}
       >
         {/* Hero card — buyer + status banner */}
-        <GlassCard variant="elevated" padding={spacing.lg} style={styles.hero}>
+        <GlassCard variant="elevated" padding={space[6]} style={styles.hero}>
           <View style={styles.heroRow}>
             <View
-              style={[
-                styles.avatar,
-                { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-              ]}
+              style={styles.avatar}
             >
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
@@ -630,7 +615,7 @@ export default function OrderDetailRoute(): React.ReactElement {
         </GlassCard>
 
         {/* Lines table */}
-        <GlassCard variant="base" padding={spacing.md} style={styles.lines}>
+        <GlassCard variant="base" padding={space[4]} style={styles.lines}>
           <DetailRow label="Order" value={order.id} mono />
           {order.bookedStartAt !== undefined &&
           order.bookedStartAt !== null &&
@@ -751,7 +736,7 @@ export default function OrderDetailRoute(): React.ReactElement {
             accessibilityRole="button"
             accessibilityLabel="Open payout money breakdown"
           >
-            <GlassCard variant="base" padding={spacing.md} style={styles.lines}>
+            <GlassCard variant="base" padding={space[4]} style={styles.lines}>
               <Text style={styles.sectionLabel}>Money</Text>
               <DetailRow
                 label="Buyers paid"
@@ -785,7 +770,7 @@ export default function OrderDetailRoute(): React.ReactElement {
         {order.refunds.length > 0 ? (
           <GlassCard
             variant="base"
-            padding={spacing.md}
+            padding={space[4]}
             style={styles.refundLedger}
           >
             <Text style={styles.sectionLabel}>Refund history</Text>
@@ -803,7 +788,7 @@ export default function OrderDetailRoute(): React.ReactElement {
         {order.status === "cancelled" && order.cancelledAt !== null ? (
           <GlassCard
             variant="base"
-            padding={spacing.md}
+            padding={space[4]}
             style={styles.cancelLedger}
           >
             <Text style={styles.sectionLabel}>Cancelled</Text>
@@ -1011,16 +996,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -1031,9 +1016,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md + 4,
-    paddingTop: spacing.sm,
-    gap: spacing.sm + 4,
+    paddingHorizontal: space[4] + 4,
+    paddingTop: space[2],
+    gap: space[2] + 4,
   },
   hero: {
     marginBottom: 0,
@@ -1041,10 +1026,11 @@ const styles = StyleSheet.create({
   heroRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 4,
-    marginBottom: spacing.md,
+    gap: space[2] + 4,
+    marginBottom: space[4],
   },
   avatar: {
+    backgroundColor: color.fill.step,
     width: 56,
     height: 56,
     borderRadius: 999,
@@ -1054,7 +1040,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   heroCol: {
     flex: 1,
@@ -1063,25 +1049,25 @@ const styles = StyleSheet.create({
   heroName: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   heroEmail: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 2,
   },
   statusBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.sm + 4,
+    gap: space[2] + 2,
+    padding: space[2] + 4,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
   },
   statusCopy: {
     flex: 1,
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     lineHeight: 18,
   },
   lines: {
@@ -1092,21 +1078,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.04)",
+    borderBottomColor: color.line,
   },
   detailRowLast: {
     borderBottomWidth: 0,
   },
   detailLabel: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: space[2],
   },
   detailValue: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "right",
   },
   detailValueGroup: {
@@ -1114,20 +1100,20 @@ const styles = StyleSheet.create({
   },
   detailPreviousValue: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     textDecorationLine: "line-through",
   },
   discountError: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   discountErrorText: {
-    color: semantic.error,
+    color: color.danger,
     fontSize: 12,
   },
   discountRetry: {
-    color: accent.warm,
+    color: color.text1,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1145,7 +1131,7 @@ const styles = StyleSheet.create({
   },
   cancelLedgerCopy: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 4,
   },
   sectionLabel: {
@@ -1153,13 +1139,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   refundLedgerRow: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.04)",
+    borderBottomColor: color.line,
   },
   refundLedgerHeader: {
     flexDirection: "row",
@@ -1169,41 +1155,41 @@ const styles = StyleSheet.create({
   refundLedgerAmount: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   refundLedgerDate: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   refundLedgerReason: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 4,
     lineHeight: 18,
     fontStyle: "italic",
   },
   actionsCol: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   partialLink: {
     alignSelf: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
   },
   partialLinkText: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
     textDecorationLine: "underline",
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
 });

@@ -5,12 +5,7 @@
 import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import type { AdCreditLedgerRow as LedgerRow } from "../../services/adCreditService";
 import { formatCurrency } from "../../utils/currency";
 import { hostAdLedgerLabel } from "./ads/hostAdCopy";
@@ -97,31 +92,31 @@ const styles = StyleSheet.create({
     minHeight: 72,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.chrome,
+    borderBottomColor: color.lineStrong,
   },
   main: {
     flex: 1,
-    paddingRight: spacing.sm,
+    paddingRight: space[2],
   },
   title: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   meta: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     marginTop: 2,
   },
   amount: {
-    ...typography.body,
+    ...type.body,
   },
   amountIn: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   amountOut: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
 });

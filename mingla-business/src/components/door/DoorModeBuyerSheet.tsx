@@ -12,7 +12,11 @@ import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 // ORCH-0892-B v2: keyboard-aware body scroll via the SmartScrollView wrapper.
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 
-import { glass, radius as radiusTokens, semantic, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  radius as radiusTokens,
+  color,
+  space,
+} from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { IconChrome } from "../ui/IconChrome";
 import { PhoneField, type PhoneEntry } from "../ui/PhoneField";
@@ -91,7 +95,7 @@ export const DoorModeBuyerSheet = ({
               onChangeText={onChangeName}
               maxLength={NAME_MAX}
               placeholder="Walk-up"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               style={styles.input}
               accessibilityLabel="Buyer name"
             />
@@ -111,7 +115,7 @@ export const DoorModeBuyerSheet = ({
               onChangeText={onChangeEmail}
               maxLength={EMAIL_MAX}
               placeholder="optional"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -127,29 +131,29 @@ export const DoorModeBuyerSheet = ({
 };
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingTop: spacing.md },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
-  title: { flex: 1, fontSize: 20, fontWeight: "700", color: textTokens.primary },
-  scrollContent: { paddingBottom: spacing.lg, gap: spacing.xs },
-  sub: { fontSize: 14, lineHeight: 20, color: textTokens.secondary, marginBottom: spacing.sm },
-  label: { fontSize: 13, fontWeight: "600", color: textTokens.secondary, marginTop: spacing.sm },
+  body: { flex: 1, paddingTop: space[4] },
+  header: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  title: { flex: 1, fontSize: 20, fontWeight: "700", color: color.text1 },
+  scrollContent: { paddingBottom: space[6], gap: space[1] },
+  sub: { fontSize: 14, lineHeight: 20, color: color.text2, marginBottom: space[2] },
+  label: { fontSize: 13, fontWeight: "600", color: color.text2, marginTop: space[2] },
   inputWrap: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: space[2] + 2,
     paddingVertical: 4,
   },
-  inputError: { borderColor: semantic.error },
+  inputError: { borderColor: color.danger },
   input: {
     fontSize: 15,
-    color: textTokens.primary,
+    color: color.text1,
     minHeight: 40,
     paddingVertical: 6,
     ...(Platform.OS === "web" ? ({ outlineWidth: 0 } as Record<string, number>) : null),
   },
-  error: { fontSize: 12, color: semantic.errorText },
-  actions: { gap: spacing.xs },
+  error: { fontSize: 12, color: color.errorText },
+  actions: { gap: space[1] },
 });

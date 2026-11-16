@@ -38,7 +38,7 @@ import {
   SummaryLine,
 } from "../programs/ProgramKit";
 import { ProgramSheet } from "../programs/ProgramSheet";
-import { spacing } from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
 import { randomUuid } from "../../utils/randomId";
 import { hireTerms } from "./hireTerms";
 
@@ -353,6 +353,6 @@ function HireSheetBody({
 }
 
 const styles = StyleSheet.create({
-  terms: { gap: spacing.xs },
-  footer: { gap: spacing.sm, alignSelf: "stretch" },
+  terms: { gap: space[1] },
+  footer: { gap: space[2], alignSelf: "stretch" },
 });

@@ -27,12 +27,11 @@ import {
 import type { LayoutChangeEvent } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  materials,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { VENUE_MODULES } from "./venueModules";
 import type { VenueModule } from "../../types/venueReservation";
@@ -68,7 +67,7 @@ function hasFocusCapability(value: unknown): value is FocusCapable {
  * Pure, unit-tested.
  */
 export function pillRevealOffset(pillX: number): number {
-  return Math.max(0, pillX - spacing.lg);
+  return Math.max(0, pillX - space[6]);
 }
 
 export function VenueModulePillRow({
@@ -186,53 +185,56 @@ export function VenueModulePillRow({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   content: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    minHeight: 36,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
   },
   pillDirtyPad: {
     // 6pt dot + 7pt gap ≈ 13pt growth on the right only.
-    paddingRight: spacing.lg + 13,
+    paddingRight: space[6] + 13,
   },
+  // #4420 — the selected module uses the kit's selected material (as the
+  // shared Chip does), not an orange fill: orange is for primary actions.
   pillActive: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: materials.selected.solidFill,
+    borderColor: materials.selected.rim.edge,
+    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
   },
   pillInactive: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.tile,
+    borderColor: color.line,
   },
   pillLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
   },
   pillLabelActive: {
-    color: "#0c0e12",
+    color: color.textStrong,
   },
   pillLabelInactive: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   dirtyDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   dirtyDotOnActive: {
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.accent,
   },
 });
 

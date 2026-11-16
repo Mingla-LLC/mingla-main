@@ -2,8 +2,13 @@ import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
 
+
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 /*
  * #2829 W9a / #2830 — "Build your pages", before it starts: one press creates
  * the website draft (its address first, if it has none) and every page the plan
@@ -65,13 +70,13 @@ export function SiteBuildView(props: SiteBuildViewProps): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  page: { gap: spacing.md },
-  centered: { alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
-  title: { ...typography.h2, color: textTokens.primary },
-  heading: { ...typography.h3, color: textTokens.primary },
-  body: { ...typography.body, color: textTokens.secondary },
-  value: { ...typography.monoMd, color: textTokens.primary },
-  caption: { ...typography.caption, color: textTokens.tertiary },
-  error: { ...typography.bodySm, color: semantic.errorText },
-  card: { padding: spacing.md, gap: spacing.sm },
+  page: { gap: space[4] },
+  centered: { alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
+  title: { ...type.h1, color: color.text1 },
+  heading: { ...type.h1, color: color.text1 },
+  body: { ...type.body, color: color.text2 },
+  value: { ...type.mono, color: color.text1 },
+  caption: { ...type.caption, color: color.text3 },
+  error: { ...type.small, color: color.errorText },
+  card: { padding: space[4], gap: space[2] },
 });

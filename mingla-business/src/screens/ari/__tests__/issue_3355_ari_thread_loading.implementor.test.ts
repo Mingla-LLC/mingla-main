@@ -80,7 +80,9 @@ describe("#3355 Ari thread loading transition", () => {
     const empty = screen.indexOf(") : noMessages ? (");
     const messages = screen.indexOf("<MessageList", empty);
     expect(loading).toBeGreaterThan(-1);
-    expect(screen).toContain("<AriThreadLoadingState />");
+    // [TEST-MOD-APPROVED #4420] device round 2: the loading state now also
+    // takes its failed / retry props (it never spins forever).
+    expect(screen).toContain("<AriThreadLoadingState");
     expect(loading).toBeLessThan(empty);
     expect(empty).toBeLessThan(messages);
   });

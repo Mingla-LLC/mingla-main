@@ -7,7 +7,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { Input } from "../../ui/Input";
-import { text as textTokens } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import { platformName } from "./hostAdCopy";
 import { HOST_AD_APP_BADGES, hostAdStyles as s } from "./hostAdBuilderStyles";
 import {
@@ -93,7 +93,7 @@ export function HostAdInterestsEditor(
           testID="host-ad-interest-search"
         >
           {searching ? (
-            <ActivityIndicator size="small" color={textTokens.primary} />
+            <ActivityIndicator size="small" color={color.text1} />
           ) : (
             <Text style={s.searchButtonLabel}>Search</Text>
           )}

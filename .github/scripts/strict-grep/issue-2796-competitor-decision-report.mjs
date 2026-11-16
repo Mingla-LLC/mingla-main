@@ -23,11 +23,13 @@ assert.ok(brief.includes("Evidence ·"));
 for (const forbidden of ["SOURCE EVIDENCE", "Open source evidence", "View evidence"]) assert.ok(!brief.includes(forbidden), forbidden);
 for (const forbidden of ["legacyUntypedFixture", "as unknown as View", "{ paddingHorizontal: inset }"]) assert.ok(!brief.includes(forbidden), forbidden);
 assert.ok(brief.includes("const data = normalizeBriefSchema(query.data);"));
-assert.ok(brief.includes("androidOpaque.rowBorder"));
+// #4420 — androidOpaque retired: the Android border is the opaque Graphite card2.
+assert.ok(brief.includes('Platform.OS === "android" ? color.card2'));
 assert.ok(!add.includes('label="Cancel"'));
 assert.ok(add.includes("Enter details manually"));
 assert.ok(!add.includes("{ paddingHorizontal: contentInset }"));
-assert.ok(add.includes("panelBackground={competition.surface}"));
+// #4420 — the competition palette retired; the sheet panel is the opaque pane material.
+assert.ok(add.includes("panelBackground={materials.pane.solidFill}"));
 for (const forbidden of ["sort((left: Record<string, any>", "event: Record<string, any>"]) assert.ok(!worker.includes(forbidden), forbidden);
 for (const expected of ["competitor-signal-f1-evidence", "competitor-brief-primary-action-a1", "competitor-brief-secondary-action-a2"]) assert.ok(legacyJourney.includes(expected), expected);
 for (const expected of ["CURRENT PUBLIC SIGNALS", "competitor-signal-f1-evidence"]) assert.ok(legacyHappy.includes(expected), expected);

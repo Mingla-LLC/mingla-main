@@ -7,13 +7,12 @@ import {
   View,
 } from "react-native";
 import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import type { VenueOrganicInsights } from "../../services/venueOrganicInsightsService";
 import { GlassCard } from "../ui/GlassCard";
+import { venueTimezoneLabel } from "./venueTimezoneLabel";
 
 interface Props {
   data: VenueOrganicInsights | null;
@@ -52,9 +51,9 @@ export function VenueOrganicEngagementSection({
     return (
       <View accessibilityLabel="Loading organic engagement">
         {[0, 1, 2].map((key) => (
-          <GlassCard key={key} variant="base" padding={spacing.lg}>
+          <GlassCard key={key} variant="base" padding={space[6]}>
             <View style={styles.skeleton}>
-              <ActivityIndicator color={accent.warm} />
+              <ActivityIndicator color={color.accent} />
             </View>
           </GlassCard>
         ))}
@@ -63,7 +62,7 @@ export function VenueOrganicEngagementSection({
   }
   if (data?.authorized === false) {
     return (
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.title}>Organic engagement unavailable</Text>
         <Text style={styles.body}>
           You don&apos;t have permission to view engagement for this venue.
@@ -73,7 +72,7 @@ export function VenueOrganicEngagementSection({
   }
   if ((isError && data === null) || data === null) {
     return (
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.title}>Couldn&apos;t load organic engagement</Text>
         <Text style={styles.body}>Check your connection and try again.</Text>
         <Pressable
@@ -107,7 +106,7 @@ export function VenueOrganicEngagementSection({
         </View>
         {isFetching ? (
           <ActivityIndicator
-            color={accent.warm}
+            color={color.accent}
             accessibilityLabel="Updating organic engagement"
           />
         ) : null}
@@ -133,7 +132,7 @@ export function VenueOrganicEngagementSection({
         </Text>
       )}
 
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.title}>Venue page activity</Text>
         <Text style={styles.window}>LAST 30 DAYS</Text>
         <Text style={styles.body}>
@@ -166,10 +165,10 @@ export function VenueOrganicEngagementSection({
         </View>
       </GlassCard>
 
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.title}>When people browse online</Text>
         <Text style={styles.window}>
-          {`LAST 30 DAYS · TIMES IN ${data.resolvedTimezone}`}
+          {`LAST 30 DAYS · TIMES IN ${venueTimezoneLabel(data.resolvedTimezone).toUpperCase()}`}
         </Text>
         <Text style={styles.body}>
           Online venue-page views by time of day — not physical visits.
@@ -207,7 +206,7 @@ export function VenueOrganicEngagementSection({
         ) : null}
       </GlassCard>
 
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.title}>Organic reservation journey</Text>
         <Text style={styles.window}>LAST 30 DAYS</Text>
         <Text style={styles.body}>
@@ -245,36 +244,36 @@ export function VenueOrganicEngagementSection({
 }
 
 const styles = StyleSheet.create({
-  section: { gap: spacing.md },
+  section: { gap: space[4] },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  sectionTitle: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  title: { color: textTokens.primary, fontSize: 17, fontWeight: "800" },
-  body: { color: textTokens.secondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
-  window: { color: accent.warm, fontSize: 11, fontWeight: "800", marginTop: 4 },
-  tracking: { color: textTokens.secondary, fontSize: 12 },
-  updated: { color: textTokens.tertiary, fontSize: 12 },
-  stale: { color: semantic.warning, fontSize: 12, flex: 1 },
-  staleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  sectionTitle: { color: color.text1, fontSize: 18, fontWeight: "800" },
+  title: { color: color.text1, fontSize: 17, fontWeight: "800" },
+  body: { color: color.text2, fontSize: 14, lineHeight: 20, marginTop: 4 },
+  window: { color: color.accent, fontSize: 11, fontWeight: "800", marginTop: 4 },
+  tracking: { color: color.text2, fontSize: 12 },
+  updated: { color: color.text3, fontSize: 12 },
+  stale: { color: color.warning, fontSize: 12, flex: 1 },
+  staleRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   skeleton: { minHeight: 132, alignItems: "center", justifyContent: "center" },
-  metrics: { gap: spacing.md, marginTop: spacing.md },
-  metric: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  metricLabel: { color: textTokens.secondary, fontSize: 14, flexShrink: 1 },
-  metricValue: { color: textTokens.primary, fontSize: 14, fontWeight: "800", textAlign: "right" },
-  emptyTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "700", marginTop: spacing.md },
-  dayparts: { gap: spacing.sm, marginTop: spacing.md },
-  daypart: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  caveat: { color: textTokens.secondary, fontSize: 12, lineHeight: 17, marginTop: spacing.md },
+  metrics: { gap: space[4], marginTop: space[4] },
+  metric: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
+  metricLabel: { color: color.text2, fontSize: 14, flexShrink: 1 },
+  metricValue: { color: color.text1, fontSize: 14, fontWeight: "800", textAlign: "right" },
+  emptyTitle: { color: color.text1, fontSize: 15, fontWeight: "700", marginTop: space[4] },
+  dayparts: { gap: space[2], marginTop: space[4] },
+  daypart: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
+  caveat: { color: color.text2, fontSize: 12, lineHeight: 17, marginTop: space[4] },
   retry: {
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    paddingHorizontal: space[4],
+    marginTop: space[2],
     alignSelf: "flex-start",
   },
-  retryText: { color: accent.warm, fontSize: 14, fontWeight: "800" },
+  retryText: { color: color.accent, fontSize: 14, fontWeight: "800" },
 });

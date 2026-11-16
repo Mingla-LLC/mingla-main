@@ -11,9 +11,9 @@ import { Image, StyleSheet, Text, View } from "react-native";
 
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { HomeTapCardMode } from "../../utils/homeTakePayment";
 import { trackBrandSetup } from "../brand/brandSetupAnalytics";
@@ -139,31 +139,32 @@ export const HomeTapToPayCard: React.FC<HomeTapToPayCardProps> = ({
 
 const styles = StyleSheet.create({
   hero: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: "#FFFFFF",
+    // #4420: Apple's light Tap to Pay hero (white paper, near-black ink, grey) on the nearest tokens.
+    backgroundColor: color.paper,
   },
   visual: { width: "100%", aspectRatio: 720 / 559 },
-  heroText: { padding: spacing.md, gap: spacing.sm },
-  heroTitle: { ...typography.h3, color: "#000000" },
-  heroBody: { ...typography.body, color: "#3C3C43" },
-  ownerLine: { ...typography.bodySm, color: "#3C3C43" },
-  legal: { ...typography.caption, color: "#6E6E73" },
-  ctaRow: { flexDirection: "row", gap: spacing.sm },
+  heroText: { padding: space[4], gap: space[2] },
+  heroTitle: { ...type.h1, color: color.ink },
+  heroBody: { ...type.body, color: color.text4 },
+  ownerLine: { ...type.small, color: color.text4 },
+  legal: { ...type.caption, color: color.text4 },
+  ctaRow: { flexDirection: "row", gap: space[2] },
   cta: { flex: 1 },
   plain: {
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    gap: spacing.sm,
+    marginBottom: space[4],
+    padding: space[4],
+    gap: space[2],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: color.lineStrong,
   },
-  plainHead: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
+  plainHead: { flexDirection: "row", gap: space[2], alignItems: "center" },
   plainCopy: { flex: 1, gap: 2 },
-  plainTitle: { ...typography.bodyLg, color: textTokens.primary, fontWeight: "600" },
-  plainBody: { ...typography.bodySm, color: textTokens.secondary },
-  ownerLineDark: { ...typography.bodySm, color: textTokens.secondary },
+  plainTitle: { ...type.row, color: color.text1, fontWeight: "600" },
+  plainBody: { ...type.small, color: color.text2 },
+  ownerLineDark: { ...type.small, color: color.text2 },
 });

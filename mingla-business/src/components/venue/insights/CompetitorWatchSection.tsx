@@ -9,12 +9,11 @@ import {
 } from "react-native";
 import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
 import {
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../../constants/designSystem";
 import {
   useCompetitorWatch,
@@ -100,7 +99,7 @@ export function CompetitorWatchSection({
         >
           {[0, 1, 2].map((v) => (
             <GlassCard key={v} variant="base" contentStyle={styles.skeleton}>
-              <ActivityIndicator color={textTokens.tertiary} />
+              <ActivityIndicator color={color.text3} />
             </GlassCard>
           ))}
         </View>
@@ -268,7 +267,7 @@ function CompetitionEmptyIcon(): React.ReactElement {
         <CompetitionEmptyIconAsset
           name="eye"
           size={20}
-          color={textTokens.primary}
+          color={color.text1}
         />
       </React.Suspense>
     </View>
@@ -605,22 +604,22 @@ export function formatCalendarTime(iso: string, nowMs = Date.now()): string {
   return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 const styles = StyleSheet.create({
-  section: { gap: spacing.md, maxWidth: 760 },
+  section: { gap: space[4], maxWidth: 760 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.md,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    gap: space[4],
+    marginTop: space[6],
+    marginBottom: space[2],
   },
-  headerCopy: { flex: 1, gap: spacing.sm },
-  pageTitle: { ...typography.h2, color: textTokens.primary },
-  cap: { ...typography.labelCap, color: textTokens.tertiary },
-  support: { ...typography.bodySm, color: textTokens.secondary },
-  count: { ...typography.caption, color: textTokens.tertiary },
-  banner: { ...typography.bodySm, color: semantic.info },
-  error: { ...typography.bodySm, color: semantic.error },
+  headerCopy: { flex: 1, gap: space[2] },
+  pageTitle: { ...type.h1, color: color.text1 },
+  cap: { ...type.label, color: color.text3 },
+  support: { ...type.small, color: color.text2 },
+  count: { ...type.caption, color: color.text3 },
+  banner: { ...type.small, color: color.info },
+  error: { ...type.small, color: color.danger },
   skeleton: { height: 176, justifyContent: "center", alignItems: "center" },
   emptyIcon: {
     width: 44,
@@ -628,13 +627,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,
-    backgroundColor: glass.tint.badge.idle,
+    backgroundColor: materials.onPhoto.solidFill,
   },
-  card: { gap: spacing.md, padding: spacing.md + spacing.xs },
+  card: { gap: space[4], padding: space[4] + space[1] },
   rowHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + spacing.xs,
+    gap: space[2] + space[1],
   },
   avatar: {
     width: 40,
@@ -642,22 +641,22 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.badge.idle,
+    backgroundColor: materials.onPhoto.solidFill,
   },
   avatarText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
-  rowName: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
+  rowName: { ...type.body, color: color.text1, fontWeight: "600" },
   badge: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.badge,
+    borderColor: color.lineStrong,
     borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
   },
   menuButton: {
     width: 44,
@@ -665,21 +664,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  menuText: { ...typography.body, color: textTokens.primary },
-  menu: { alignSelf: "flex-end", gap: spacing.xs },
+  menuText: { ...type.body, color: color.text1 },
+  menu: { alignSelf: "flex-end", gap: space[1] },
   menuHidden: { display: "none" },
-  summary: { gap: spacing.sm, minHeight: 44 },
-  changed: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
-  sources: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  summary: { gap: space[2], minHeight: 44 },
+  changed: { ...type.body, color: color.text1, fontWeight: "600" },
+  sources: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   chip: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.badge,
+    borderColor: color.lineStrong,
     borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
   },
-  chipText: { ...typography.caption, color: textTokens.secondary },
-  actions: { gap: spacing.sm, alignItems: "stretch" },
-  add: { gap: spacing.xs, marginTop: spacing.sm },
+  chipText: { ...type.caption, color: color.text2 },
+  actions: { gap: space[2], alignItems: "stretch" },
+  add: { gap: space[1], marginTop: space[2] },
 });
 export default CompetitorWatchSection;

@@ -5,14 +5,10 @@
 import React, { useCallback } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+
 import { Icon } from "../ui/Icon";
 
+import { color, space, type } from "../../constants/designSystem";
 export interface VenueLocationPreviewProps {
   address: string | null;
   city: string | null;
@@ -76,7 +72,7 @@ export const VenueLocationPreview: React.FC<VenueLocationPreviewProps> = ({
           accessibilityLabel="Open map in OpenStreetMap"
           style={styles.mapLink}
         >
-          <Icon name="location" size={16} color={accent.warm} />
+          <Icon name="location" size={16} color={color.text1} />
           <Text style={styles.mapLabel}>View on map</Text>
         </Pressable>
       ) : null}
@@ -86,30 +82,30 @@ export const VenueLocationPreview: React.FC<VenueLocationPreviewProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xs,
+    gap: space[1],
     width: "100%",
   },
   title: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   address: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     lineHeight: 20,
   },
   mapLink: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   mapLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 });
 

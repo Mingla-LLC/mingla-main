@@ -34,9 +34,9 @@ import { postHogService } from "../../../src/services/postHogService";
 
 import {
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  space,
+  color,
+  materials,
 } from "../../../src/constants/designSystem";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
@@ -511,9 +511,9 @@ function CheckoutConfirmScreenInner({
     if (terminalFailure !== null) {
       return (
         <View style={styles.host}>
-          <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+          <View style={[styles.hero, { paddingTop: insets.top + space[7] }]}>
             <View style={styles.checkBadge}>
-              <Icon name="flag" size={36} color={textTokens.primary} />
+              <Icon name="flag" size={36} color={color.text1} />
             </View>
             <Text style={styles.heroTitle}>Payment not completed</Text>
             <Text style={styles.heroEmail} numberOfLines={6}>
@@ -543,10 +543,10 @@ function CheckoutConfirmScreenInner({
         return (
           <View style={styles.host}>
             <View
-              style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}
+              style={[styles.hero, { paddingTop: insets.top + space[7] }]}
             >
               <View style={styles.checkBadge}>
-                <Icon name="check" size={36} color={textTokens.primary} />
+                <Icon name="check" size={36} color={color.text1} />
               </View>
               <Text style={styles.heroTitle}>Confirming your tickets…</Text>
               <Text style={styles.heroEmail} numberOfLines={3}>
@@ -564,9 +564,9 @@ function CheckoutConfirmScreenInner({
   if (event === null) {
     return (
       <View style={styles.host}>
-        <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+        <View style={[styles.hero, { paddingTop: insets.top + space[7] }]}>
           <View style={styles.checkBadge}>
-            <Icon name="check" size={36} color={textTokens.primary} />
+            <Icon name="check" size={36} color={color.text1} />
           </View>
           <Text style={styles.heroTitle}>Confirming your tickets…</Text>
           <Text style={styles.heroEmail} numberOfLines={3}>
@@ -594,15 +594,15 @@ function CheckoutConfirmScreenInner({
         contentContainerStyle={[
           styles.scrollContent,
           {
-            paddingTop: insets.top + spacing.xl,
-            paddingBottom: insets.bottom + spacing.xl,
+            paddingTop: insets.top + space[7],
+            paddingBottom: insets.bottom + space[7],
           },
         ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
           <View style={styles.checkBadge}>
-            <Icon name="check" size={36} color={textTokens.primary} />
+            <Icon name="check" size={36} color={color.text1} />
           </View>
           <Text style={styles.heroTitle}>{BUYER_CLAIM_COPY.youreIn}</Text>
         </View>
@@ -646,85 +646,85 @@ function CheckoutConfirmScreenInner({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   hero: {
     alignItems: "center",
-    marginBottom: spacing.xl,
-    gap: spacing.sm,
+    marginBottom: space[7],
+    gap: space[2],
   },
   checkBadge: {
     width: 72,
     height: 72,
     borderRadius: radiusTokens.full,
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   heroTitle: {
     fontSize: 28,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.6,
   },
   heroEmail: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     lineHeight: 20,
     maxWidth: 360,
   },
   summary: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   summaryHeader: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   summaryEventName: {
     fontSize: 17,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
   summaryEventSubline: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   summaryLine: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 4,
-    gap: spacing.sm,
+    gap: space[2],
   },
   summaryQty: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
     minWidth: 28,
   },
   summaryName: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   summaryTotal: {
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   summaryDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   summaryTotalRow: {
     flexDirection: "row",
@@ -733,19 +733,19 @@ const styles = StyleSheet.create({
   },
   summaryTotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   summaryTotalValue: {
     fontSize: 18,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },
   orderId: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 11,
-    color: textTokens.quaternary,
+    color: color.text4,
     fontFamily: Platform.select({
       ios: "Menlo",
       android: "monospace",
@@ -754,17 +754,17 @@ const styles = StyleSheet.create({
     }),
   },
   qrCard: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   bottomBar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.chrome.glassFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
 });

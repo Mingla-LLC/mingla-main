@@ -7,11 +7,9 @@ import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import type { IconName } from "../ui/Icon";
@@ -150,7 +148,7 @@ export function SaveCommitBar({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   captionRow: {
     minHeight: 16,
@@ -163,25 +161,25 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   caption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
     textAlign: "center",
   },
   captionClean: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   captionDirty: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   captionOk: {
-    color: "#4ade80",
+    color: color.successText,
   },
   captionBad: {
-    color: semantic.errorText,
+    color: color.errorText,
   },
 });
 

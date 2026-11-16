@@ -17,14 +17,11 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
-  androidOpaque,
-  competition,
   competitorSheet,
-  glass,
-  spacing,
-  semantic,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../../constants/designSystem";
 import {
   BUTTON_MAX_FONT_SCALE,
@@ -295,7 +292,7 @@ export function CompetitorAddSheet({
       snapPoint="full"
       verticalAlign="top"
       presentation="competition"
-      panelBackground={competition.surface}
+      panelBackground={materials.pane.solidFill}
       style={styles.sheet}
       testID={testID}
     >
@@ -389,7 +386,7 @@ export function CompetitorAddSheet({
                   >
                     {[0, 1, 2].map((item) => (
                       <View key={item} style={styles.skeletonRow}>
-                        <ActivityIndicator color={textTokens.secondary} />
+                        <ActivityIndicator color={color.text2} />
                         <Text style={styles.help}>Finding nearby venue…</Text>
                       </View>
                     ))}
@@ -625,32 +622,32 @@ function SourceField({
     </View>
   );
 }
-const competitionCardSurface = Platform.OS === "android" ? androidOpaque.rowFill : competition.surfaceRaised;
-const competitionBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileElevated;
-const competitionSubtleBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase;
+const competitionCardSurface = Platform.OS === "android" ? materials.pane.solidFill : color.card;
+const competitionBorder = Platform.OS === "android" ? color.card2 : color.lineStrong;
+const competitionSubtleBorder = Platform.OS === "android" ? color.card2 : color.line;
 const styles = StyleSheet.create({
   sheet: {
     width: "100%",
     maxWidth: competitorSheet.addMaxWidth,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     ...Platform.select({
       android: { elevation: 0, shadowOpacity: 0 },
       default: {
-        shadowColor: "#000000",
+        shadowColor: color.mask,
         shadowOpacity: 0.32,
         shadowRadius: 24,
         shadowOffset: { width: 0, height: -8 },
       },
     }),
   },
-  body: { flex: 1, gap: spacing.lg },
+  body: { flex: 1, gap: space[6] },
   insetCompact: { paddingHorizontal: competitorSheet.contentInsetCompact },
   insetRegular: { paddingHorizontal: competitorSheet.contentInsetRegular },
   insetWide: { paddingHorizontal: competitorSheet.contentInsetWide },
   sheetHeader: {
-    gap: spacing.sm,
-    paddingBottom: spacing.md,
+    gap: space[2],
+    paddingBottom: space[4],
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: competitionBorder,
   },
@@ -658,13 +655,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   headerTopAccessible: {
     flexDirection: "column",
     alignItems: "stretch",
     justifyContent: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   closeAccessible: {
     alignSelf: "flex-end",
@@ -672,26 +669,26 @@ const styles = StyleSheet.create({
     minHeight: 44,
     flexShrink: 0,
   },
-  scroll: { gap: spacing.md, paddingBottom: spacing.xl },
+  scroll: { gap: space[4], paddingBottom: space[7] },
   footer: {
     minHeight: competitorSheet.stickyFooterMinHeight,
-    gap: spacing.sm,
-    paddingTop: spacing.md,
+    gap: space[2],
+    paddingTop: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: competitionBorder,
-    backgroundColor: competition.surface,
+    backgroundColor: materials.pane.solidFill,
   },
-  title: { ...typography.h3, color: textTokens.primary },
+  title: { ...type.h1, color: color.text1 },
   cap: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[2],
   },
-  label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
-  help: { ...typography.bodySm, color: textTokens.secondary },
+  label: { ...type.small, color: color.text1, fontWeight: "600" },
+  help: { ...type.small, color: color.text2 },
   source: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: competitionBorder,
@@ -704,35 +701,35 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   badge: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: competitionBorder,
     borderRadius: 12,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
   },
-  preview: { ...typography.caption, color: textTokens.secondary },
-  error: { ...typography.bodySm, color: semantic.error },
-  searchResults: { minHeight: 160, maxHeight: 360, gap: spacing.md },
-  skeletons: { gap: spacing.sm },
+  preview: { ...type.caption, color: color.text2 },
+  error: { ...type.small, color: color.danger },
+  searchResults: { minHeight: 160, maxHeight: 360, gap: space[4] },
+  skeletons: { gap: space[2] },
   skeletonRow: {
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: space[4],
+    padding: space[4],
     borderRadius: 16,
     backgroundColor: competitionCardSurface,
   },
-  searchMessage: { minHeight: 56, justifyContent: "center", gap: spacing.sm },
+  searchMessage: { minHeight: 56, justifyContent: "center", gap: space[2] },
   result: {
     minHeight: 56,
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: competitionSubtleBorder,
   },

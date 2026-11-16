@@ -24,13 +24,10 @@ import { useRouter } from "expo-router";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
 import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
@@ -330,10 +327,10 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
       style={
         intelPriceHighlight || intelCapacityHighlight
           ? {
-              borderColor: accent.warm,
+              borderColor: color.lineStrong,
               borderWidth: 2,
               borderRadius: radiusTokens.md,
-              padding: spacing.xs,
+              padding: space[1],
             }
           : undefined
       }
@@ -416,14 +413,14 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         accessibilityLabel="Add ticket type"
         style={styles.addCta}
       >
-        <Icon name="plus" size={16} color={accent.warm} />
+        <Icon name="plus" size={16} color={color.text1} />
         <Text style={styles.addCtaLabel}>Add ticket type</Text>
       </Pressable>
 
       {draft.tickets.length > 0 ? (
         <GlassCard
           variant="base"
-          padding={spacing.md}
+          padding={space[4]}
           style={styles.summaryCard}
         >
           <View style={styles.summaryRow}>
@@ -554,43 +551,43 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
 
 const styles = StyleSheet.create({
   ticketsCol: {
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    gap: space[2],
+    marginBottom: space[2],
   },
   dayCaution: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: accent.warm,
-    marginTop: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text1,
+    marginTop: space[2],
   },
   helperError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
+    marginBottom: space[2],
   },
   addCta: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderStyle: "dashed",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   addCtaLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   summaryCard: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   summaryRow: {
     flexDirection: "row",
@@ -598,12 +595,12 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   summaryLabel: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   summaryValue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });

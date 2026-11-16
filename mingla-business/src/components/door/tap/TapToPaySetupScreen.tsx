@@ -24,14 +24,11 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  size,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import { loadHasDoorSaleEvent, openDoorSaleFromTapSetup } from "./tapSetupTakePayment";
@@ -52,6 +49,7 @@ import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { useBrand } from "../../../hooks/useBrands";
 import { useCurrentBrandRole } from "../../../hooks/useCurrentBrandRole";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import {
   currentTapToPayDevice,
   isIosBelowTapFloor,
@@ -63,6 +61,8 @@ import { markTapToPayWarmHint } from "../../../services/terminal/tapToPaySetupSt
 import { encodeTapToPayDraft, parseTapToPayDraft } from "../../../services/terminal/tapToPayDraft";
 import { runTapToPaySetup, TAP_ADDRESS_MISSING_COPY, tapAddressRoute } from "../../../services/terminal/tapToPaySetup";
 import { Button } from "../../ui/Button";
+import { DESKTOP_TEMPLATE_MAX_WIDTH } from "../../ui/DesktopCanvas";
+import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
 import { IconChrome } from "../../ui/IconChrome";
 import { doorPayCodeCreateErrorCopy } from "../doorPaymentOptions";
@@ -113,6 +113,8 @@ export const TapToPaySetupScreen = ({
   rawDraft,
 }: TapToPaySetupScreenProps): React.ReactElement => {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
+  const wideWeb = Platform.OS === "web" && isWideDesktop;
   const router = useRouter();
   const route = useManagedEventRoute(eventId);
   const draft = useMemo(() => parseTapToPayDraft(rawDraft), [rawDraft]);
@@ -525,7 +527,7 @@ export const TapToPaySetupScreen = ({
           {/* Apple allows no art of the feature on iPhone. */}
           {Platform.OS === "android" ? (
             <View style={styles.heroIcon}>
-              <Icon name="tap" size={28} color={accent.warm} />
+              <Icon name="tap" size={28} color={color.text1} />
             </View>
           ) : null}
           <Text style={styles.setupTitle} accessibilityRole="header">
@@ -560,15 +562,35 @@ export const TapToPaySetupScreen = ({
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.md, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, paddingBottom: insets.bottom + space[4], backgroundColor: color.canvas },
       ]}
     >
-      {chrome}
-      {body}
-      {deviceBlocked && error ? <Text style={styles.error}>{error}</Text> : null}
+      {wideWeb ? (
+        // #4420: on wide web, setup sits in the same 1040 status column as the
+        // sale (chrome on the column, the step in one status card with a
+        // readable 560 body) instead of full-bleed buttons.
+        <View style={styles.wideBody} testID="tap-setup-status-template">
+          <View style={styles.wideColumn}>
+            {chrome}
+            <GlassCard padding={space[6]} style={styles.wideCard} contentStyle={styles.wideCardContent}>
+              <View style={styles.wideStep}>{body}</View>
+            </GlassCard>
+            {deviceBlocked && error ? <Text style={styles.error}>{error}</Text> : null}
+          </View>
+        </View>
+      ) : (
+        <>
+          {chrome}
+          {body}
+          {deviceBlocked && error ? <Text style={styles.error}>{error}</Text> : null}
+        </>
+      )}
     </View>
   );
 };
+
+/** Kit `.tpl-status`: the status card's minimum height. */
+const WIDE_STATUS_MIN_HEIGHT = 380;
 
 /** The setup list's own "Get help" once setup failed (the status screens carry theirs). */
 const HelpLink = ({ onPress }: { onPress: () => void }): React.ReactElement => (
@@ -586,16 +608,21 @@ const HelpLink = ({ onPress }: { onPress: () => void }): React.ReactElement => (
 const styles = StyleSheet.create({
   host: { flex: 1 },
   flex: { flex: 1 },
+  wideBody: { flex: 1, alignItems: "center", paddingHorizontal: space[6], paddingBottom: space[9] },
+  wideColumn: { flex: 1, width: "100%", maxWidth: DESKTOP_TEMPLATE_MAX_WIDTH.status, gap: space[4] },
+  wideCard: { flex: 1, minHeight: WIDE_STATUS_MIN_HEIGHT },
+  wideCardContent: { flex: 1, alignItems: "center" },
+  wideStep: { flex: 1, width: "100%", maxWidth: size.modal },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
-  chromeTitle: { ...typography.h3, color: textTokens.primary },
+  chromeTitle: { ...type.h1, color: color.text1 },
   chromeRightSlot: { width: 36 },
-  scrollContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm },
+  scrollContent: { paddingHorizontal: space[4], paddingBottom: space[6], gap: space[2] },
   heroIcon: {
     width: 54,
     height: 54,
@@ -603,37 +630,37 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
-    marginTop: spacing.sm,
+    backgroundColor: color.fill.tabOn,
+    marginTop: space[2],
   },
-  heroTitle: { ...typography.h3, color: textTokens.primary, textAlign: "center" },
+  heroTitle: { ...type.h1, color: color.text1, textAlign: "center" },
   setupTitle: {
-    ...typography.h2,
+    ...type.h1,
     lineHeight: 32,
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "left",
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
   bar: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   error: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     textAlign: "center",
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    paddingHorizontal: space[4],
+    marginTop: space[2],
   },
   helpLink: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   helpLinkText: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textDecorationLine: "underline",
   },
 });

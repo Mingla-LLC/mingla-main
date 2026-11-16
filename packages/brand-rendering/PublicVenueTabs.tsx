@@ -30,7 +30,10 @@ import {
   reconcileInitialVenueTab,
   type PublicVenueTab,
 } from "./publicVenueTabState";
-import { accentFillWithBorder, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+// issue #4420 — the tab strip is a glass pill that stays under the header.
+import { OfferingGlassBackdrop } from "@mingla/offering-rendering/OfferingGlassContext";
+import { hexToRgba } from "@mingla/offering-rendering/themePalette";
 
 // This package is source-linked into both apps. Their isolated typecheck
 // sandboxes resolve React peers from the app root, while files under packages/
@@ -63,6 +66,8 @@ export interface PublicVenueTabsProps {
 
 export interface PublicVenueTabsHandle {
   focusTab: (tab: PublicVenueTab) => void;
+  /** issue #4420 — select a tab from the pinned copy of the strip (native). */
+  selectTab: (tab: PublicVenueTab) => void;
 }
 
 interface VenueTabKeyboardEvent {
@@ -264,6 +269,9 @@ export const PublicVenueTabs = forwardRef<
       focusTab: (tab: PublicVenueTab): void => {
         revealAndFocus(tab);
       },
+      selectTab: (tab: PublicVenueTab): void => {
+        selectRef.current(tab);
+      },
     }),
     [],
   );
@@ -315,6 +323,9 @@ export const PublicVenueTabs = forwardRef<
     onTabChange?.(tab);
     onTabViewed?.(tab);
   };
+  // The imperative handle is created once; it reads the latest `select`.
+  const selectRef = useRef(select);
+  selectRef.current = select;
 
   const handleWebKeyDown = (
     event: VenueTabKeyboardEvent,
@@ -386,8 +397,33 @@ export const PublicVenueTabs = forwardRef<
     reservations,
   };
 
+  // issue #4420 — the segmented glass pill (design file → .tabs): one
+  // rounded frosted strip, the chosen tab in ink. On web it sticks under the
+  // glass header so moving between Overview, Menu and Reservations never
+  // means scrolling back up; native keeps it in the flow.
+  const pillFill = palette.card.startsWith("#")
+    ? hexToRgba(palette.card, 0.82)
+    : palette.page.startsWith("#")
+      ? hexToRgba(palette.page, Platform.OS === "android" ? 1 : 0.9)
+      : palette.page;
   return (
     <View>
+      <View
+        style={[
+          styles.pillWrap,
+          { backgroundColor: pillFill, borderColor: palette.panelBorder },
+          Platform.OS === "web"
+            ? ({
+                position: "sticky",
+                top: 72,
+                zIndex: 3,
+                backdropFilter: "blur(18px)",
+              } as unknown as ViewStyle)
+            : null,
+        ]}
+        testID="issue-4420-venue-tab-pill"
+      >
+      <OfferingGlassBackdrop radius={999} tint={palette.glassTint} />
       <WebVenueTabList
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -461,9 +497,8 @@ export const PublicVenueTabs = forwardRef<
               {...webTabProps}
               style={[
                 styles.chip,
-                surface.card,
                 active && {
-                  ...accentFillWithBorder(palette),
+                  backgroundColor: palette.primaryText,
                 },
                 focusOutline,
               ]}
@@ -473,9 +508,10 @@ export const PublicVenueTabs = forwardRef<
                   styles.label,
                   themeBoldFace(theme),
                   {
-                    color: active ? palette.accentText : palette.secondaryText,
+                    color: active ? palette.page : palette.secondaryText,
                   },
                 ]}
+                numberOfLines={1}
               >
                 {LABELS[tab]}
               </Text>
@@ -483,6 +519,7 @@ export const PublicVenueTabs = forwardRef<
           );
         })}
       </WebVenueTabList>
+      </View>
       {Platform.OS === "web" ? (
         tabs.map((tab: PublicVenueTab) => {
           const active = tab === activeTab;
@@ -513,26 +550,105 @@ export const PublicVenueTabs = forwardRef<
   );
 });
 
+/**
+ * issue #4420 — the pinned copy of the tab pill. Native has no CSS sticky,
+ * so the venue screen shows this copy under the glass header once the
+ * in-flow strip has scrolled under it; a tap selects through the in-flow
+ * strip's own handler (same state, same analytics).
+ */
+export interface PublicVenueTabPillProps {
+  hasMenu: boolean;
+  activeTab: PublicVenueTab;
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  onSelect: (tab: PublicVenueTab) => void;
+  testID?: string;
+}
+export const PublicVenueTabPill = ({
+  hasMenu,
+  activeTab,
+  palette,
+  theme,
+  onSelect,
+  testID = "issue-4420-venue-tab-pill-pinned",
+}: PublicVenueTabPillProps) => {
+  const tabs: PublicVenueTab[] = hasMenu
+    ? ["overview", "menu", "reservations"]
+    : ["overview", "reservations"];
+  const fill = palette.card.startsWith("#")
+    ? hexToRgba(palette.card, Platform.OS === "android" ? 1 : 0.96)
+    : palette.page;
+  return (
+    <View
+      style={[styles.pillWrap, styles.pinnedShadow, { backgroundColor: fill, borderColor: palette.panelBorder }]}
+      accessibilityRole="tablist"
+      testID={testID}
+    >
+      <OfferingGlassBackdrop radius={999} tint={palette.glassTint} />
+      <View style={styles.tabs}>
+        {tabs.map((tab) => {
+          const active = tab === activeTab;
+          return (
+            <Pressable
+              key={tab}
+              onPress={() => onSelect(tab)}
+              accessibilityRole="tab"
+              accessibilityLabel={LABELS[tab]}
+              accessibilityState={{ selected: active }}
+              style={[styles.chip, active && { backgroundColor: palette.primaryText }]}
+            >
+              <Text
+                style={[
+                  styles.label,
+                  themeBoldFace(theme),
+                  { color: active ? palette.page : palette.secondaryText },
+                ]}
+                numberOfLines={1}
+              >
+                {LABELS[tab]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
+  pinnedShadow: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  pillWrap: {
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 4,
+    overflow: "hidden",
+  },
   tabs: {
+    flexGrow: 1,
     flexDirection: "row",
-    gap: 6,
-    paddingVertical: 2,
-    paddingRight: 6,
+    gap: 4,
   },
   chip: {
-    minHeight: 44,
-    flexGrow: 0,
+    minHeight: 40,
+    flexGrow: 1,
     flexShrink: 0,
+    flexBasis: "auto",
+    alignItems: "center",
     justifyContent: "center",
     borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     overflow: "hidden",
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
   },
   pane: {
     marginTop: 20,

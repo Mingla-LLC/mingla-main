@@ -16,13 +16,12 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 import {
-  accent,
   durations,
   radius,
-  spacing,
-  text as textTokens,
   trafficAnalytics,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatCurrencyRound } from "../../utils/currency";
 import type { BrandTrafficRollup } from "../../services/trafficAnalyticsService";
@@ -144,15 +143,15 @@ const CompactSparkline: React.FC<{
       <Svg width="100%" height={64} viewBox="0 0 300 64">
         <Defs>
           <SvgLinearGradient id="homeTraffic" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={accent.warm} stopOpacity="0.32" />
-            <Stop offset="1" stopColor={accent.warm} stopOpacity="0.02" />
+            <Stop offset="0" stopColor={color.accent} stopOpacity="0.32" />
+            <Stop offset="1" stopColor={color.accent} stopOpacity="0.02" />
           </SvgLinearGradient>
         </Defs>
         <Path d={geometry.area} fill="url(#homeTraffic)" />
         <Path
           d={geometry.line}
           fill="none"
-          stroke={accent.warm}
+          stroke={color.accent}
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -161,8 +160,8 @@ const CompactSparkline: React.FC<{
           cx={geometry.last.x}
           cy={geometry.last.y}
           r="4"
-          fill={accent.warm}
-          stroke={textTokens.primary}
+          fill={color.accent}
+          stroke={color.text1}
           strokeWidth="2"
         />
       </Svg>
@@ -239,7 +238,7 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
         >
           <View style={styles.header}>
             <View style={styles.iconWrap} accessible={false}>
-              <Icon name="chart" size={20} color={accent.warm} />
+              <Icon name="chart" size={20} color={color.text1} />
             </View>
             <Text style={styles.headerEyebrow}>ANALYTICS</Text>
           </View>
@@ -382,7 +381,7 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
             accessible={false}
             pointerEvents="none"
           >
-            <Icon name="chevD" size={18} color={textTokens.secondary} />
+            <Icon name="chevD" size={18} color={color.text2} />
           </View>
         )}
       </Pressable>
@@ -397,7 +396,7 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
           style={styles.chevronSlot}
           testID="analytics-home-tile-chevron"
         >
-          <Icon name="chevU" size={18} color={textTokens.secondary} />
+          <Icon name="chevU" size={18} color={color.text2} />
         </Pressable>
       ) : null}
     </View>
@@ -412,15 +411,15 @@ const styles = StyleSheet.create({
   cardExpanded: { minHeight: 420 },
   chevronSlot: {
     position: "absolute",
-    top: spacing.md,
-    right: spacing.md,
+    top: space[4],
+    right: space[4],
     width: 24,
     height: 24,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1,
   },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  header: { flexDirection: "row", alignItems: "center", gap: space[2] },
   iconWrap: {
     width: 24,
     height: 24,
@@ -428,61 +427,61 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerEyebrow: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
   },
   title: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "700",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   summary: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.xs,
-    paddingRight: spacing.lg,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[1],
+    paddingRight: space[6],
     fontVariant: ["tabular-nums"],
   },
-  collapsedSkeleton: { marginTop: spacing.sm },
-  skeletons: { gap: spacing.md, marginTop: spacing.lg },
-  expandedBody: { marginTop: spacing.lg },
+  collapsedSkeleton: { marginTop: space[2] },
+  skeletons: { gap: space[4], marginTop: space[6] },
+  expandedBody: { marginTop: space[6] },
   eyebrow: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
   },
   valueRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   bigValue: {
-    color: textTokens.primary,
-    fontSize: typography.display.fontSize,
-    lineHeight: typography.display.lineHeight,
-    fontWeight: typography.display.fontWeight,
+    color: color.text1,
+    fontSize: type.display.fontSize,
+    lineHeight: type.display.lineHeight,
+    fontWeight: type.display.fontWeight,
     fontVariant: ["tabular-nums"],
   },
   deltaPill: {
     borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     backgroundColor: trafficAnalytics.positiveDeltaTint,
   },
   deltaText: {
     color: trafficAnalytics.positiveDelta,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
   },
   deltaPillNeutral: {
@@ -492,77 +491,77 @@ const styles = StyleSheet.create({
     color: trafficAnalytics.neutralDelta,
   },
   sentence: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    marginTop: spacing.sm,
+    color: color.text2,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    marginTop: space[2],
   },
-  sentenceStrong: { color: textTokens.primary, fontWeight: "700" },
-  sparkline: { height: 64, marginTop: spacing.md },
+  sentenceStrong: { color: color.text1, fontWeight: "700" },
+  sparkline: { height: 64, marginTop: space[4] },
   collecting: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.md,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[4],
   },
   miniRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   miniStat: { flex: 1, minWidth: 90 },
   miniValue: {
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   miniLabel: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
   footer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: space[2],
+    marginTop: space[6],
   },
   topPage: {
     flex: 1,
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   open: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.text1,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
   error: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
-  errorWrap: { alignItems: "flex-start", gap: spacing.sm, marginTop: spacing.md },
+  errorWrap: { alignItems: "flex-start", gap: space[2], marginTop: space[4] },
   retry: {
     minHeight: 44,
     minWidth: 72,
     justifyContent: "center",
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: accent.border,
-    paddingHorizontal: spacing.md,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[4],
   },
   retryText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.text1,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
 });
 

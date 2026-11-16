@@ -108,8 +108,9 @@ describe("ORCH-1342 — GateQr platform split (bundle-budget posture)", () => {
   });
   test("the native stub renders null; the web QR mirrors the /download props", () => {
     expect(qrNative).toContain("=> null;");
-    expect(qrWeb).toContain('fgColor="#0E0E10"');
-    expect(qrWeb).toContain('bgColor="#FFFFFF"');
+    // [TEST-MOD-APPROVED #4420] — dark ink on white paper, from tokens.
+    expect(qrWeb).toContain("fgColor={color.ink}");
+    expect(qrWeb).toContain("bgColor={color.paper}");
     expect(qrWeb).toContain('level="M"');
     expect(qrWeb).toContain('role="img"');
     expect(qrWeb).toContain("QR code — scan to get the Mingla app");
@@ -135,7 +136,8 @@ describe("ORCH-1342 — DESIGN §4 copy (byte-exact) + variant split", () => {
     expect(gate).toContain('"phone_panel"');
   });
   test("the ONE sanctioned non-palette fill is the white QR card", () => {
-    expect(gate).toContain('backgroundColor: "#ffffff"');
+    // [TEST-MOD-APPROVED #4420] — the white card is the paper token (#ffffff).
+    expect(gate).toMatch(/qrCard: \{[\s\S]{0,80}backgroundColor: color\.paper,/);
   });
 });
 

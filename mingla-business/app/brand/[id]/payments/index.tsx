@@ -23,7 +23,7 @@ import { BrandPaymentsView } from "../../../../src/components/brand/BrandPayment
 // #1863 [error-toast-covers-bank-field] — role gate at the ROUTE, above the
 // view's Paystack fork, so both rails are covered by one decision.
 import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
-import { canvas } from "../../../../src/constants/designSystem";
+import { color } from "../../../../src/constants/designSystem";
 import { useBrand } from "../../../../src/hooks/useBrands";
 
 export default function BrandPaymentsRoute(): React.ReactElement {
@@ -84,7 +84,7 @@ export default function BrandPaymentsRoute(): React.ReactElement {
       style={{
         flex: 1,
         paddingTop: insets.top,
-        backgroundColor: canvas.discover, // I-12
+        backgroundColor: color.canvas, // I-12
       }}
     >
       <BrandPaymentsPermissionGate

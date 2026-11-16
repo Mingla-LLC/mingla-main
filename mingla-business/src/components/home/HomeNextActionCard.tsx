@@ -16,10 +16,9 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -36,7 +35,7 @@ export const HomeNextActionCard: React.FC<HomeNextActionCardProps> = ({
 }) => {
   return (
     <View style={styles.wrap}>
-      <GlassCard variant="elevated" padding={spacing.lg}>
+      <GlassCard variant="elevated" padding={space[6]}>
         <Text style={styles.title}>{action.title}</Text>
         <Text style={styles.body}>{action.body}</Text>
         <Pressable
@@ -46,7 +45,7 @@ export const HomeNextActionCard: React.FC<HomeNextActionCardProps> = ({
           style={styles.action}
           testID={`home-next-action-rung-${action.rung}`}
         >
-          <Icon name="chevR" size={16} color={accent.warm} />
+          <Icon name="chevR" size={16} color={color.text1} />
           <Text style={styles.actionText}>{action.ctaLabel}</Text>
         </Pressable>
       </GlassCard>
@@ -56,32 +55,32 @@ export const HomeNextActionCard: React.FC<HomeNextActionCardProps> = ({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
+    marginBottom: space[1],
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   action: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     alignSelf: "flex-start",
   },
   actionText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 });
 

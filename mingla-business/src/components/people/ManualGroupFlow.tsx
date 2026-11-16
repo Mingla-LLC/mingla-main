@@ -12,7 +12,12 @@ import { useManualGroupBookPicker, useManualGroupMutations, useManualGroups } fr
 import type { ContactImportCounts, ContactImportResult } from "../../services/contactImportService";
 import type { ManualGroupDetail, ManualGroupMember, ManualGroupSummary } from "../../types/marketing";
 import { randomId } from "../../utils/randomId";
-import { accent, canvas, glass, radius, semantic, spacing, text, typography } from "../../constants/designSystem";
+import {
+  radius,
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 
 const loadContactImportFlow = async () => {
   const module = await import("../../features/contact-import/ContactImportFlow");
@@ -228,7 +233,7 @@ export function ManualGroupFlow({
         <View style={styles.header}>
           {step !== (editing ? "sources" : "name") ? (
             <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => setStep(step === "review" ? "sources" : step === "upload" || step === "book" ? "sources" : "name")} style={styles.iconButton}>
-              <Icon name="chevL" size={20} color={text.primary} />
+              <Icon name="chevL" size={20} color={color.text1} />
             </Pressable>
           ) : null}
           <View style={styles.headerCopy}>
@@ -242,24 +247,24 @@ export function ManualGroupFlow({
           <Text style={styles.inputLabel}>Group name</Text>
           <Input value={name} onChangeText={(value) => { setName(value); setError(null); }} maxLength={80} accessibilityLabel="Group name" />
           {(error || (name.length > 0 && nameError)) ? <Text accessibilityLiveRegion="assertive" style={styles.error}>{error ?? nameError}</Text> : null}
-          <Button label="Continue" size="lg" fullWidth accentColor={accent.warm} disabled={!!nameError || existingGroups.isLoading || !online} onPress={() => { capturePeople("manual_group_source_selected", { surface: "groups_sheet", source: "empty" }); setStep("sources"); }} />
+          <Button label="Continue" size="lg" fullWidth accentColor={color.accent} disabled={!!nameError || existingGroups.isLoading || !online} onPress={() => { capturePeople("manual_group_source_selected", { surface: "groups_sheet", source: "empty" }); setStep("sources"); }} />
         </View> : null}
 
         {step === "sources" ? <View style={styles.body}>
           <Text style={styles.helper}>Choose one or both ways. Everyone uploaded is saved to Your Book first.</Text>
           <View style={styles.sourceRow}>
             <Pressable accessibilityRole="button" accessibilityLabel="Select from Book" onPress={() => { capturePeople("manual_group_source_selected", { surface: editing ? "detail" : "groups_sheet", source: "book_picker" }); setStep("book"); }} style={styles.sourceCard}>
-              <Icon name="users" size={24} color={accent.warm} /><Text style={styles.sourceTitle}>Select from Book</Text><Text style={styles.helper}>Search and choose people already saved.</Text>
+              <Icon name="users" size={24} color={color.accent} /><Text style={styles.sourceTitle}>Select from Book</Text><Text style={styles.helper}>Search and choose people already saved.</Text>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Upload contacts" disabled={!online} onPress={() => { capturePeople("manual_group_source_selected", { surface: editing ? "detail" : "groups_sheet", source: "import" }); setStep("upload"); }} style={styles.sourceCard}>
-              <Icon name="upload" size={24} color={accent.warm} /><Text style={styles.sourceTitle}>Upload contacts</Text><Text style={styles.helper}>Use the existing CSV import flow.</Text>
+              <Icon name="upload" size={24} color={color.accent} /><Text style={styles.sourceTitle}>Upload contacts</Text><Text style={styles.helper}>Use the existing CSV import flow.</Text>
             </Pressable>
           </View>
           <Text accessibilityLiveRegion="polite" style={styles.selection}>{selected.size} selected · {imports.length} completed {imports.length === 1 ? "upload" : "uploads"}</Text>
           {importHydration === "loading" ? <Text accessibilityLiveRegion="polite" style={styles.helper}>Preparing exact group counts…</Text> : null}
           {importHydration === "error" ? <Button label="Retry group review" variant="secondary" fullWidth onPress={() => { if (importRetry.current) void hydrateImport(importRetry.current); }} /> : null}
           {error ? <Text accessibilityLiveRegion="assertive" style={styles.error}>{error}</Text> : null}
-          <Button label={reviewLoading ? "Preparing review…" : editing ? "Review additions" : "Review group"} accentColor={accent.warm} loading={reviewLoading} disabled={importHydration !== "idle" || reviewLoading} fullWidth onPress={() => void openReview()} />
+          <Button label={reviewLoading ? "Preparing review…" : editing ? "Review additions" : "Review group"} accentColor={color.accent} loading={reviewLoading} disabled={importHydration !== "idle" || reviewLoading} fullWidth onPress={() => void openReview()} />
           {!editing ? <Button label="Create empty group" variant="ghost" fullWidth disabled={!online || pending} onPress={submit} /> : null}
         </View> : null}
 
@@ -268,7 +273,7 @@ export function ManualGroupFlow({
           <Text accessibilityLiveRegion="polite" style={styles.selection}>{selected.size} selected</Text>
           {picker.isLoading ? <View style={styles.skeletons}>{[0, 1, 2].map((item) => <Skeleton key={item} width="100%" height={58} radius="lg" />)}</View>
             : picker.isError ? <EmptyState title="Couldn’t load Your Book." cta={{ label: "Try again", onPress: () => void picker.refetch(), variant: "secondary" }} />
-            : (picker.data?.rows.length ?? 0) === 0 ? <View style={styles.emptyRecovery}><EmptyState title={search ? "No people match this search." : "No one is in Your Book yet."} description={search ? "Your selections are still saved." : undefined} />{search ? <Button label="Clear search" variant="secondary" fullWidth onPress={() => setSearch("")} /> : <Button label="Upload contacts" accentColor={accent.warm} fullWidth onPress={() => setStep("upload")} />}{!search && (editing || onAddPerson) ? <Button label="Add person" variant="secondary" fullWidth onPress={() => { if (editing) setNestedAddPersonOpen(true); else onAddPerson?.(); }} /> : null}</View>
+            : (picker.data?.rows.length ?? 0) === 0 ? <View style={styles.emptyRecovery}><EmptyState title={search ? "No people match this search." : "No one is in Your Book yet."} description={search ? "Your selections are still saved." : undefined} />{search ? <Button label="Clear search" variant="secondary" fullWidth onPress={() => setSearch("")} /> : <Button label="Upload contacts" accentColor={color.accent} fullWidth onPress={() => setStep("upload")} />}{!search && (editing || onAddPerson) ? <Button label="Add person" variant="secondary" fullWidth onPress={() => { if (editing) setNestedAddPersonOpen(true); else onAddPerson?.(); }} /> : null}</View>
             : <FlatList data={picker.data?.rows ?? []} keyExtractor={(person) => person.personId} onEndReached={() => { if (picker.hasNextPage && !picker.isFetchingNextPage) void picker.fetchNextPage(); }} onEndReachedThreshold={0.4} ListFooterComponent={picker.isFetchingNextPage ? <Skeleton width="100%" height={58} radius="lg" /> : null} renderItem={({ item }) => {
               const checked = item.isMember === true || selected.has(item.personId);
               return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked, disabled: item.isMember === true }} accessibilityLabel={`${item.displayName}, ${memberSummary(item)}`} onPress={() => toggle(item)} style={styles.personRow}>
@@ -277,7 +282,7 @@ export function ManualGroupFlow({
                 {item.isMember ? <Text style={styles.already}>Already added</Text> : null}
               </Pressable>;
             }} />}
-          <View style={styles.sticky}><Button label={`Keep ${selected.size} selected`} accentColor={accent.warm} fullWidth onPress={() => setStep("sources")} /></View>
+          <View style={styles.sticky}><Button label={`Keep ${selected.size} selected`} accentColor={color.accent} fullWidth onPress={() => setStep("sources")} /></View>
         </View> : null}
 
         {step === "upload" ? <View style={styles.flex}><RetryableLazyErrorBoundary loader={loadContactImportFlow} accessibilityLiveRegion="polite" loadingLabel="Opening contact import…" componentProps={{ brandId, context: "manual_group" as const, onCompleted: importCompleted, onViewBook: () => setStep("sources") }} /></View> : null}
@@ -293,7 +298,7 @@ export function ManualGroupFlow({
           <Text style={styles.helper}>Nothing is sent now. You can change this group anytime.</Text>
           {error ? <Text accessibilityLiveRegion="assertive" style={styles.error}>{imports.length > 0 && !editing ? "Your contacts are safe in Your Book, but we couldn’t create this group." : error}</Text> : null}
           {!online ? <Text style={styles.warning}>Offline — showing saved data. Connect to make changes.</Text> : null}
-          <Button label={pending ? (editing ? "Adding…" : "Creating…") : editing ? "Add people" : "Create group"} accentColor={accent.warm} loading={pending} disabled={!online || pending || importHydration !== "idle" || (editing && stagedIds.size === 0)} fullWidth size="lg" onPress={submit} />
+          <Button label={pending ? (editing ? "Adding…" : "Creating…") : editing ? "Add people" : "Create group"} accentColor={color.accent} loading={pending} disabled={!online || pending || importHydration !== "idle" || (editing && stagedIds.size === 0)} fullWidth size="lg" onPress={submit} />
         </View> : null}
       </View>
       <Sheet visible={discardOpen} onClose={() => setDiscardOpen(false)} snapPoint="half" testID="manual-group-discard-confirm"><View style={styles.discard}><Text accessibilityRole="header" style={styles.title}>Discard this group setup?</Text><Text style={styles.helper}>Your selections will be cleared. Contacts already imported remain in Your Book.</Text><Button label="Keep editing" variant="secondary" fullWidth onPress={() => setDiscardOpen(false)} /><Button label="Discard setup" variant="destructive" fullWidth onPress={() => { requestIntent.current = null; setDiscardOpen(false); onClose(); }} /></View></Sheet>
@@ -303,14 +308,14 @@ export function ManualGroupFlow({
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover, paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
-  flex: { flex: 1, gap: spacing.sm }, body: { gap: spacing.md }, header: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" }, headerCopy: { flex: 1 }, title: { ...typography.h3, color: text.primary }, step: { ...typography.caption, color: text.tertiary },
-  helper: { ...typography.bodySm, color: text.secondary }, error: { ...typography.bodySm, color: "#ff8e96" }, warning: { ...typography.bodySm, color: semantic.warning },
-  inputLabel: { ...typography.caption, fontWeight: "600", color: text.secondary },
-  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, sourceCard: { flex: 1, flexBasis: 142, minHeight: 142, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileBase, gap: spacing.sm },
-  sourceTitle: { ...typography.body, fontWeight: "600", color: text.primary }, selection: { ...typography.bodySm, color: text.primary }, skeletons: { gap: spacing.sm },
-  personRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: glass.border.profileBase }, checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: text.tertiary, alignItems: "center", justifyContent: "center" }, checkboxOn: { backgroundColor: accent.warm, borderColor: accent.warm }, checkmark: { color: canvas.discover, fontWeight: "700" }, personCopy: { flex: 1 }, personName: { ...typography.body, fontWeight: "600", color: text.primary }, already: { ...typography.caption, color: text.tertiary },
-  sticky: { minHeight: 68, justifyContent: "center", paddingTop: spacing.sm }, reviewCard: { padding: spacing.md, gap: spacing.sm }, stat: { ...typography.statValue, color: text.primary },
-  emptyRecovery: { gap: spacing.sm }, discard: { padding: spacing.md, gap: spacing.md },
+  host: { flex: 1, backgroundColor: color.canvas, paddingHorizontal: space[4], paddingBottom: space[4], gap: space[4] },
+  flex: { flex: 1, gap: space[2] }, body: { gap: space[4] }, header: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[2] },
+  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" }, headerCopy: { flex: 1 }, title: { ...type.h1, color: color.text1 }, step: { ...type.caption, color: color.text3 },
+  helper: { ...type.small, color: color.text2 }, error: { ...type.small, color: color.errorText }, warning: { ...type.small, color: color.warning },
+  inputLabel: { ...type.caption, fontWeight: "600", color: color.text2 },
+  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] }, sourceCard: { flex: 1, flexBasis: 142, minHeight: 142, padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.inset, gap: space[2] },
+  sourceTitle: { ...type.body, fontWeight: "600", color: color.text1 }, selection: { ...type.small, color: color.text1 }, skeletons: { gap: space[2] },
+  personRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: space[2], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line }, checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: color.text3, alignItems: "center", justifyContent: "center" }, checkboxOn: { backgroundColor: color.accent, borderColor: color.accent }, checkmark: { color: color.canvas, fontWeight: "700" }, personCopy: { flex: 1 }, personName: { ...type.body, fontWeight: "600", color: color.text1 }, already: { ...type.caption, color: color.text3 },
+  sticky: { minHeight: 68, justifyContent: "center", paddingTop: space[2] }, reviewCard: { padding: space[4], gap: space[2] }, stat: { ...type.stat, color: color.text1 },
+  emptyRecovery: { gap: space[2] }, discard: { padding: space[4], gap: space[4] },
 });

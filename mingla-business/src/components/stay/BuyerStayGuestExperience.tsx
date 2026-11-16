@@ -27,6 +27,7 @@ import { captureWeb } from "../../analytics/webAnalytics";
 import { stayGuestService } from "../../services/stayGuestService";
 import { supabase } from "../../services/supabase";
 
+import { color } from "../../constants/designSystem";
 // Payment Element and Stripe.js are needed only after an instant reservation
 // group has been created. This second lazy boundary keeps both SDKs out of the
 // shared boot chunk and out of Request-to-book sessions entirely.
@@ -91,14 +92,14 @@ export function BuyerStayGuestExperience({
     textTertiary: palette.tertiaryText,
     borderDefault: palette.panelBorder,
     borderFocused: palette.accent,
-    borderError: "#ef4444",
+    borderError: color.danger,
     searchBackground: palette.card,
     rowPressedBackground: palette.accentWash,
     divider: palette.panelBorder,
     accessoryBackground: palette.page,
     accessoryBorder: palette.panelBorder,
     accent: palette.accent,
-    errorText: theme.foregroundColor === "#ffffff" ? "#f87171" : "#b91c1c",
+    errorText: theme.foregroundColor === color.textStrong ? color.onPaper.dangerSoft : color.onPaper.danger,
   }), [palette, theme.foregroundColor]);
   const renderPhoneField = React.useCallback<StayPhoneRenderer>((args) => (
     <View style={styles.phoneField}>

@@ -135,7 +135,9 @@ Deno.test("ORCH-1159 ADV/C: the hidden-X placeholder does NOT steal pointer even
   // for the body underneath.
   const elseRegion = src.slice(elseIdx, rightGroupIdx);
   assert(
-    /<View\s+pointerEvents="none"\s*\/>/.test(elseRegion),
+    // issue #4420 — the placeholder may also carry a width style (it keeps the
+    // header title centred); it must still be a pointer-inert empty View.
+    /<View\s+pointerEvents="none"(\s+style=\{[^}]*\})?\s*\/>/.test(elseRegion),
     'hidden-X placeholder must be `<View pointerEvents="none" />`',
   );
 });

@@ -59,7 +59,7 @@ function parseHubTabRoutes(): Record<string, string> {
 
 const HUB_TAB_ROUTES = parseHubTabRoutes();
 // Every value the nav-lock redirect can resolve to is a HubTabName — exactly the
-// keys of HUB_TAB_ROUTES (getstarted/events/trips/experiences/venue).
+// keys of HUB_TAB_ROUTES (events/trips/experiences/venue).
 const ALL_HUB_TAB_NAMES = Object.keys(HUB_TAB_ROUTES);
 
 /** Map a HUB_TAB_ROUTES value (e.g. "/(tabs)/hub/listing") to its route FILE. */
@@ -70,8 +70,11 @@ function routeFileFor(tabName: string): string {
 
 describe("ORCH-1145 nav-away — every HubTabName redirect target is a real route file", () => {
   test("the route map was parsed and is non-empty (incl. venue)", () => {
-    expect(ALL_HUB_TAB_NAMES.length).toBeGreaterThanOrEqual(5);
+    // [TEST-MOD-APPROVED #4420] — wave 6 deletes the retired getstarted route,
+    // so the map holds the four offering tabs and never the retired one.
+    expect(ALL_HUB_TAB_NAMES.length).toBeGreaterThanOrEqual(4);
     expect(ALL_HUB_TAB_NAMES).toContain("venue");
+    expect(ALL_HUB_TAB_NAMES).not.toContain("getstarted");
   });
 
   test.each(ALL_HUB_TAB_NAMES)(

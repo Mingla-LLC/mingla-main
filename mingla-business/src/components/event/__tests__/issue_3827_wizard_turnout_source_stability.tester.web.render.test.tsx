@@ -211,6 +211,8 @@ jest.mock("../../ui/IconChrome", () => ({
 }));
 jest.mock("../../ui/Stepper", () => ({
   Stepper: mockLeaf("mock-stepper"),
+  // [TEST-MOD-APPROVED #4420] the Event wizard also imports the shared StepperFooter.
+  StepperFooter: mockLeaf("mock-stepper-footer"),
 }));
 jest.mock("../../ui/TopBar", () => ({ TopBar: mockLeaf("mock-topbar") }));
 jest.mock("../../ui/Toast", () => ({ Toast: mockLeaf("mock-toast") }));

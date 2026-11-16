@@ -14,28 +14,27 @@
  */
 
 import React, { Suspense, useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
 import { AppVersionFooter } from "../../src/components/ui/AppVersionFooter";
 import { GlassCard } from "../../src/components/ui/GlassCard";
-import { Icon } from "../../src/components/ui/Icon";
 import type { IconName } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
+import { ListRow } from "../../src/components/ui/ListRow";
+import { DesktopColumns } from "../../src/components/ui/DesktopCanvas";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import { HELP_AND_SUPPORT_ROUTE } from "../../src/constants/supportHostFacing";
 import { useBrandFollowerCounts } from "../../src/hooks/useBrandFollowerCount";
@@ -86,6 +85,7 @@ const formatBrandEventCount = (count: number): string =>
 export default function AccountTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const { user, signOut, lastRecoveryEvent, clearLastRecoveryEvent } = useAuth();
   const brandList = useBrandListState();
   const brands = brandList.brands;
@@ -293,187 +293,203 @@ export default function AccountTab(): React.ReactElement {
           leftKind="brand"
           onBrandTap={handleOpenSwitcher}
           extraRightSlot={
-            <IconChrome
-              icon="plus"
-              size={36}
-              onPress={() => setIsUniversalCreatorOpen(true)}
-              accessibilityLabel="Create event, experience, or trip"
-              testID="account-universal-creator-button"
-            />
+            // #4420 B5 — phone: Create is the centre BottomNav button, so the
+            // tab-root trailing slot is only chat, bell and profile. Desktop
+            // web keeps the top-bar Create (I-DESKTOP-GATE-VIA-HOOK).
+            isWideDesktop ? (
+              <IconChrome
+                icon="plus"
+                size={36}
+                onPress={() => setIsUniversalCreatorOpen(true)}
+                accessibilityLabel="Create event, experience, or trip"
+                testID="account-universal-creator-button"
+              />
+            ) : undefined
           }
         />
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* ORCH-1136 F-4 defense-in-depth: render the brands list whenever it
-           is populated, even if the status machine is transiently in a loading
-           state during a background refetch. */}
-        {brandList.status === "ready" || brands.length > 0 ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.title}>Your brands</Text>
-            <Text style={styles.body}>Tap a brand to open its profile.</Text>
-            <View style={styles.brandRowsCol}>
-              {brands.map((brand) => (
-                <Pressable
-                  key={brand.id}
-                  onPress={() => handleOpenBrandProfile(brand.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${brand.displayName} profile`}
-                  style={styles.brandRow}
-                >
-                  <View style={styles.brandAvatar}>
-                    <Text style={styles.brandInitial}>
-                      {brand.displayName.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.brandTextCol}>
-                    <Text style={styles.brandName} numberOfLines={1}>
-                      {brand.displayName}
-                    </Text>
-                    <Text style={styles.brandEventCount} numberOfLines={1}>
-                      {formatBrandEventCount(brand.stats.events)}
-                      {typeof followerCounts.data?.[brand.id] === "number"
-                        ? ` · ${formatExactFollowers(followerCounts.data[brand.id])}`
-                        : ""}
-                    </Text>
-                  </View>
-                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
-                </Pressable>
-              ))}
+        {/* #4420 — Account & settings: section labels outside, one grouped
+            pane of rows per section. Desktop (T5) puts brands in the 8 column
+            and settings in the 4 column. */}
+        <Text
+          style={[styles.pageTitle, isWideDesktop && styles.pageTitleDesktop]}
+          accessibilityRole="header"
+        >
+          Account & settings
+        </Text>
+        <DesktopColumns
+          main={
+            <View style={styles.section}>
+              <AccountSectionHead title="Your brands" sub="Tap a brand to open its profile." />
+              {/* ORCH-1136 F-4 defense-in-depth: render the brands list whenever it
+                 is populated, even if the status machine is transiently in a loading
+                 state during a background refetch. */}
+              {brandList.status === "ready" || brands.length > 0 ? (
+                <GlassCard variant="base" padding={0}>
+                  {brands.map((brand, index) => (
+                    <ListRow
+                      key={brand.id}
+                      divider={index > 0}
+                      onPress={() => handleOpenBrandProfile(brand.id)}
+                      accessibilityLabel={`Open ${brand.displayName} profile`}
+                      title={brand.displayName}
+                      subtitle={`${formatBrandEventCount(brand.stats.events)}${
+                        typeof followerCounts.data?.[brand.id] === "number"
+                          ? ` · ${formatExactFollowers(followerCounts.data[brand.id])}`
+                          : ""
+                      }`}
+                      leading={
+                        <View style={styles.brandAvatar}>
+                          <Text style={styles.brandInitial}>
+                            {brand.displayName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      }
+                    />
+                  ))}
+                </GlassCard>
+              ) : brandList.status === "auth_loading" ||
+                brandList.status === "query_loading" ||
+                isAuthWarming ? (
+                <GlassCard variant="base" padding={space[4]}>
+                  <Text style={styles.body}>Loading your brands…</Text>
+                </GlassCard>
+              ) : brandList.status === "error" ? (
+                <GlassCard variant="base" padding={space[4]}>
+                  <Text style={styles.body}>
+                    Couldn&apos;t load your brands. Pull down or reopen Account to retry.
+                  </Text>
+                </GlassCard>
+              ) : brandList.status === "empty" ? (
+                <GlassCard variant="base" padding={space[4]}>
+                  <Text style={styles.body}>
+                    Create your first brand from the brand switcher.
+                  </Text>
+                </GlassCard>
+              ) : null}
             </View>
-          </GlassCard>
-        ) : brandList.status === "auth_loading" ||
-          brandList.status === "query_loading" ||
-          isAuthWarming ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.title}>Your brands</Text>
-            <Text style={styles.body}>Loading your brands…</Text>
-          </GlassCard>
-        ) : brandList.status === "error" ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.title}>Your brands</Text>
-            <Text style={styles.body}>
-              Couldn&apos;t load your brands. Pull down or reopen Account to retry.
-            </Text>
-          </GlassCard>
-        ) : brandList.status === "empty" ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.title}>Your brands</Text>
-            <Text style={styles.body}>
-              Create your first brand from the brand switcher.
-            </Text>
-          </GlassCard>
-        ) : null}
+          }
+          aside={
+            <View style={styles.asideCol}>
+              {/* ORCH-1052 hotfix — Mingla Partner section. Visible only when
+                  creator_accounts.partner_enabled=true (account-level flag flipped
+                  by a Mingla admin via mingla-admin User Management). Surfaces
+                  within seconds of the toggle thanks to usePartnerStripeStatus
+                  staleTime:0 + refetchOnWindowFocus:true. */}
+              {isPartner ? (
+                <View style={styles.section}>
+                  <AccountSectionHead
+                    title="Mingla Partner"
+                    sub="You earn 0.15% of every ticket sold on brands you manage as a brand admin."
+                  />
+                  <GlassCard variant="base" padding={0}>
+                    <SettingsNavRow
+                      icon="trending"
+                      label="Partner earnings"
+                      onPress={handlePartnerEarnings}
+                    />
+                    {/* ORCH-1081 — Partner brands row. Meta count rendered inline.
+                        Shows on every partner's account; the empty-list-state
+                        inside the screen handles the no-brands case. */}
+                    <SettingsNavRow
+                      divider
+                      icon="tag"
+                      label={
+                        partnerActiveCount === 0 && partnerPendingCount === 0
+                          ? "Partner brands"
+                          : `Partner brands · ${partnerActiveCount} active · ${partnerPendingCount} pending`
+                      }
+                      onPress={handlePartnerBrands}
+                    />
+                  </GlassCard>
+                </View>
+              ) : null}
 
-        {/* ORCH-1052 hotfix — Mingla Partner section. Visible only when
-            creator_accounts.partner_enabled=true (account-level flag flipped
-            by a Mingla admin via mingla-admin User Management). Surfaces
-            within seconds of the toggle thanks to usePartnerStripeStatus
-            staleTime:0 + refetchOnWindowFocus:true. */}
-        {isPartner ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.title}>Mingla Partner</Text>
-            <Text style={styles.body}>
-              You earn 0.15% of every ticket sold on brands you manage as a brand admin.
-            </Text>
-            <View style={styles.navRowsCol}>
-              <SettingsNavRow
-                icon="trending"
-                label="Partner earnings"
-                onPress={handlePartnerEarnings}
-              />
-              {/* ORCH-1081 — Partner brands row. Meta count rendered inline.
-                  Shows on every partner's account; the empty-list-state
-                  inside the screen handles the no-brands case. */}
-              <SettingsNavRow
-                icon="tag"
-                label={
-                  partnerActiveCount === 0 && partnerPendingCount === 0
-                    ? "Partner brands"
-                    : `Partner brands · ${partnerActiveCount} active · ${partnerPendingCount} pending`
-                }
-                onPress={handlePartnerBrands}
-              />
+              {/* META-ORCH-1104 Phase 3 — Support staff console. Brand-DECOUPLED:
+                  rendered ONLY when useSupportStaff().isStaff (an admin-granted,
+                  enabled support_staff row keyed on user.id — NOT brand membership).
+                  A non-staff user never sees this card; a forced /support/inbox still
+                  reads zero rows via is_support_staff() RLS (SPEC §3.3 / §7.1, CF-C3:
+                  a sub-page card, never a bottom tab). */}
+              {supportStaff.isStaff ? (
+                <View style={styles.section}>
+                  <AccountSectionHead
+                    title="Support — Live Chats"
+                    sub="You're a Mingla support staffer. Answer live chats, set your availability, and claim tickets here."
+                  />
+                  <GlassCard variant="base" padding={0}>
+                    <SettingsNavRow
+                      icon="inbox"
+                      label="Open support inbox"
+                      onPress={handleOpenSupportInbox}
+                    />
+                  </GlassCard>
+                </View>
+              ) : null}
+
+              {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
+              <View style={styles.section}>
+                <AccountSectionHead
+                  title="Settings"
+                  sub="Manage your profile, notifications, and session."
+                />
+                <GlassCard variant="base" padding={0}>
+                  <SettingsNavRow
+                    icon="user"
+                    label="Edit profile"
+                    onPress={handleEditProfile}
+                  />
+                  <SettingsNavRow
+                    divider
+                    icon="bell"
+                    label="Notifications"
+                    onPress={handleNotifications}
+                  />
+                  <SettingsNavRow
+                    divider
+                    icon="chat"
+                    label="Help & Support"
+                    badgeCount={communityUnread}
+                    onPress={handleSupport}
+                  />
+                  <SettingsNavRow
+                    divider
+                    icon="logout"
+                    label="Sign out"
+                    onPress={() => setSignOutLocalOpen(true)}
+                  />
+                  <SettingsNavRow
+                    divider
+                    icon="shield"
+                    label="Sign out everywhere"
+                    onPress={() => setSignOutEverywhereOpen(true)}
+                  />
+                  <SettingsNavRow
+                    divider
+                    icon="trash"
+                    label="Delete account"
+                    destructive
+                    onPress={handleDeleteAccount}
+                  />
+                  {isFeatureEnabled("accountSideToggle") ? (
+                    <SettingsNavRow
+                      divider
+                      icon="repeat"
+                      label="Switch to Explorer"
+                      onPress={() =>
+                        setToast({
+                          visible: true,
+                          message: "Coming soon — same login, consumer app (preview only).",
+                        })
+                      }
+                    />
+                  ) : null}
+                </GlassCard>
+              </View>
             </View>
-          </GlassCard>
-        ) : null}
-
-        {/* META-ORCH-1104 Phase 3 — Support staff console. Brand-DECOUPLED:
-            rendered ONLY when useSupportStaff().isStaff (an admin-granted,
-            enabled support_staff row keyed on user.id — NOT brand membership).
-            A non-staff user never sees this card; a forced /support/inbox still
-            reads zero rows via is_support_staff() RLS (SPEC §3.3 / §7.1, CF-C3:
-            a sub-page card, never a bottom tab). */}
-        {supportStaff.isStaff ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.title}>Support — Live Chats</Text>
-            <Text style={styles.body}>
-              You&apos;re a Mingla support staffer. Answer live chats, set your
-              availability, and claim tickets here.
-            </Text>
-            <View style={styles.navRowsCol}>
-              <SettingsNavRow
-                icon="inbox"
-                label="Open support inbox"
-                onPress={handleOpenSupportInbox}
-              />
-            </View>
-          </GlassCard>
-        ) : null}
-
-        {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.title}>Settings</Text>
-          <Text style={styles.body}>
-            Manage your profile, notifications, and session.
-          </Text>
-          <View style={styles.navRowsCol}>
-            <SettingsNavRow
-              icon="user"
-              label="Edit profile"
-              onPress={handleEditProfile}
-            />
-            <SettingsNavRow
-              icon="bell"
-              label="Notifications"
-              onPress={handleNotifications}
-            />
-            <SettingsNavRow
-              icon="chat"
-              label="Help & Support"
-              badgeCount={communityUnread}
-              onPress={handleSupport}
-            />
-            <SettingsNavRow
-              icon="logout"
-              label="Sign out"
-              onPress={() => setSignOutLocalOpen(true)}
-            />
-            <View style={styles.settingsDivider} />
-            <SettingsNavRow
-              icon="shield"
-              label="Sign out everywhere"
-              onPress={() => setSignOutEverywhereOpen(true)}
-            />
-            <SettingsNavRow
-              icon="trash"
-              label="Delete account"
-              destructive
-              onPress={handleDeleteAccount}
-            />
-            {isFeatureEnabled("accountSideToggle") ? (
-              <SettingsNavRow
-                icon="repeat"
-                label="Switch to Explorer"
-                onPress={() =>
-                  setToast({
-                    visible: true,
-                    message: "Coming soon — same login, consumer app (preview only).",
-                  })
-                }
-              />
-            ) : null}
-          </View>
-        </GlassCard>
+          }
+        />
 
         <AppVersionFooter appName="Mingla Host" />
 
@@ -561,15 +577,16 @@ export default function AccountTab(): React.ReactElement {
 }
 
 // Cycle 14 — SettingsNavRow inline component per SPEC §4.7.1.
-// Mirrors brandRow visual rhythm but with optional destructive variant.
+// #4420 — now the shared ListRow inside one grouped pane (hairline dividers),
+// with the destructive variant and the unread badge kept.
 interface SettingsNavRowProps {
   icon: IconName;
   label: string;
   destructive?: boolean;
   /** Unread count badge (e.g. community announcements on Help & Support). */
   badgeCount?: number;
-  /** Replaces the icon glyph inside the badge (e.g. Apple's Tap to Pay symbol). */
-  leading?: React.ReactNode;
+  /** Hairline above this row (every row after the first in its pane). */
+  divider?: boolean;
   onPress: () => void;
 }
 
@@ -578,7 +595,7 @@ const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
   label,
   destructive = false,
   badgeCount = 0,
-  leading,
+  divider = false,
   onPress,
 }) => {
   const showBadge = badgeCount > 0;
@@ -586,191 +603,117 @@ const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
     ? `${label}, ${badgeCount} unread`
     : label;
   return (
-    <Pressable
+    <ListRow
+      icon={icon}
+      title={label}
+      danger={destructive}
+      divider={divider}
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel={a11yLabel}
-      style={({ pressed }) => [
-        styles.navRow,
-        pressed && styles.navRowPressed,
-      ]}
-    >
-      <View
-        style={[
-          styles.navIconBadge,
-          destructive && styles.navIconBadgeDestructive,
-        ]}
-      >
-        {leading ?? (
-          <Icon
-            name={icon}
-            size={18}
-            color={destructive ? semantic.error : textTokens.primary}
-          />
-        )}
-      </View>
-      <Text
-        style={[
-          styles.navLabel,
-          destructive && styles.navLabelDestructive,
-        ]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-      {showBadge ? (
-        <View style={styles.navUnreadBadge} accessibilityElementsHidden>
-          <Text style={styles.navUnreadBadgeText}>
-            {badgeCount > 9 ? "9+" : String(badgeCount)}
-          </Text>
-        </View>
-      ) : null}
-      <Icon name="chevR" size={16} color={textTokens.tertiary} />
-    </Pressable>
+      chevron
+      trailing={
+        showBadge ? (
+          <View style={styles.navUnreadBadge} accessibilityElementsHidden>
+            <Text style={styles.navUnreadBadgeText}>
+              {badgeCount > 9 ? "9+" : String(badgeCount)}
+            </Text>
+          </View>
+        ) : undefined
+      }
+    />
   );
 };
+
+const AccountSectionHead: React.FC<{ title: string; sub?: string }> = ({ title, sub }) => (
+  <View style={styles.sectionHead}>
+    <Text style={styles.sectionTitle} accessibilityRole="header">
+      {title}
+    </Text>
+    {sub !== undefined ? <Text style={styles.sectionSub}>{sub}</Text> : null}
+  </View>
+);
 
 const styles = StyleSheet.create({
   host: {
     flex: 1,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingBottom: spacing.xl * 4,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[7] * 4,
+    gap: space[6],
   },
-  title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+  pageTitle: {
+    ...type.display,
+    color: color.text1,
+  },
+  pageTitleDesktop: {
+    ...type.h1,
+  },
+  section: {
+    gap: space[2],
+  },
+  asideCol: {
+    gap: space[6],
+  },
+  sectionHead: {
+    gap: 2,
+    paddingHorizontal: space[1],
+  },
+  sectionTitle: {
+    ...type.h2,
+    color: color.text1,
+  },
+  sectionSub: {
+    ...type.caption,
+    color: color.text3,
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
-  },
-  // Cycle 14 — Settings nav rows
-  navRowsCol: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  settingsDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.xs,
-  },
-  navRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  navRowPressed: {
-    opacity: 0.7,
-  },
-  navIconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: radiusTokens.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-  navIconBadgeDestructive: {
-    backgroundColor: "rgba(239, 68, 68, 0.12)",
-  },
-  navLabel: {
-    flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  navLabelDestructive: {
-    color: semantic.error,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
+    color: color.text2,
   },
   navUnreadBadge: {
     minWidth: 20,
     height: 20,
     borderRadius: 10,
     paddingHorizontal: 6,
-    backgroundColor: accent.warm,
+    backgroundColor: color.badge,
     alignItems: "center",
     justifyContent: "center",
   },
   navUnreadBadgeText: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#ffffff",
+    color: color.textStrong,
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    bottom: space[7],
+    paddingHorizontal: space[4],
   },
 
   // Your brands rows ----------------------------------------------------
-  brandRowsCol: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
   brandAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: radiusTokens.md,
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   brandInitial: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: accent.warm,
-  },
-  brandTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  brandName: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  brandEventCount: {
-    marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    color: textTokens.secondary,
+    color: color.text1,
   },
 });

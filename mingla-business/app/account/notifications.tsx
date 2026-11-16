@@ -33,7 +33,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from "react-native";
@@ -42,10 +41,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../src/constants/designSystem";
 import {
   useCreatorAccount,
@@ -74,6 +71,7 @@ import {
 
 import { teamChatKey } from "../../src/hooks/useBusinessNotifications";
 import { GlassCard } from "../../src/components/ui/GlassCard";
+import { Switch } from "../../src/components/ui/Switch";
 import { Icon } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
@@ -306,7 +304,7 @@ export default function NotificationsRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -324,7 +322,7 @@ export default function NotificationsRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -379,7 +377,7 @@ export default function NotificationsRoute(): React.ReactElement {
           preferencesDisabled={typePrefsUnavailable}
         />
 
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Brand group messages"
             description="When anyone posts in your brand's group"
@@ -406,7 +404,7 @@ export default function NotificationsRoute(): React.ReactElement {
         />
 
         {/* Scanner activity (existing, no v1 children) */}
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Scanner activity"
             description="When scanners check in guests at the door"
@@ -416,7 +414,7 @@ export default function NotificationsRoute(): React.ReactElement {
         </GlassCard>
 
         {/* Marketing (existing, creator_accounts-backed) */}
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Marketing"
             description="Newsletter and product updates from Mingla"
@@ -427,7 +425,7 @@ export default function NotificationsRoute(): React.ReactElement {
 
         {/* META-ORCH-1187 [Growth Analytics Hub] — Privacy: analytics opt-out.
             Toggle ON = sharing anonymous usage data (analyticsOptOut=false). */}
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Analytics"
             description="Help improve Mingla by sharing anonymous usage data. You can turn this off any time."
@@ -480,7 +478,7 @@ const MasterCard: React.FC<MasterCardProps> = ({
   onChild,
   preferencesDisabled,
 }) => (
-  <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+  <GlassCard variant="elevated" radius="md" padding={space[4]}>
     <View style={styles.masterRow}>
       <Pressable
         onPress={onToggleExpand}
@@ -502,17 +500,14 @@ const MasterCard: React.FC<MasterCardProps> = ({
         <Icon
           name={expanded ? "chevU" : "chevD"}
           size={16}
-          color={textTokens.tertiary}
+          color={color.text3}
         />
       </Pressable>
       <Switch
         value={masterOn}
         onValueChange={onToggleMaster}
-        trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-        thumbColor="#ffffff"
         accessibilityLabel={`${label} master toggle`}
         disabled={preferencesDisabled}
-        accessibilityState={{ checked: masterOn, disabled: preferencesDisabled }}
       />
     </View>
 
@@ -581,10 +576,7 @@ const ChannelToggle: React.FC<ChannelToggleProps> = ({
       value={value}
       onValueChange={onToggle}
       disabled={disabled}
-      trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-      thumbColor="#ffffff"
       accessibilityLabel={a11y}
-      accessibilityState={{ checked: value, disabled }}
     />
   </View>
 );
@@ -610,7 +602,6 @@ const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
     onPress={() => onToggle(!value)}
     disabled={disabled}
     accessibilityRole="switch"
-    accessibilityState={{ checked: value, disabled }}
     accessibilityLabel={label}
     style={styles.toggleRow}
   >
@@ -624,8 +615,7 @@ const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
       value={value}
       onValueChange={onToggle}
       disabled={disabled}
-      trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-      thumbColor="#ffffff"
+      accessibilityLabel={label}
     />
   </Pressable>
 );
@@ -637,16 +627,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -657,17 +647,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
 
   // Master row
   masterRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[4],
+    paddingVertical: space[2],
   },
   masterText: {
     flex: 1,
@@ -676,20 +666,20 @@ const styles = StyleSheet.create({
   masterOffNote: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
+    color: color.text3,
+    paddingTop: space[1],
+    paddingBottom: space[2],
   },
 
   // Child rows
   childRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.lg,
+    gap: space[4],
+    paddingVertical: space[2],
+    paddingLeft: space[6],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
+    borderTopColor: color.line,
   },
   childDisabled: {
     opacity: 0.4,
@@ -701,18 +691,18 @@ const styles = StyleSheet.create({
   childLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   childDescription: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   childToggles: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   channelCol: {
     alignItems: "center",
@@ -723,15 +713,15 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontWeight: "600",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 
   // Simple toggle rows
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[4],
+    paddingVertical: space[2],
   },
   toggleCol: {
     flex: 1,
@@ -740,13 +730,13 @@ const styles = StyleSheet.create({
   toggleLabel: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   toggleDescription: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
   toastWrap: {

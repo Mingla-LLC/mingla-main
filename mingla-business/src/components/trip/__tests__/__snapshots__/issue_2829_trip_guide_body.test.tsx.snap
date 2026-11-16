@@ -57,200 +57,125 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     testID="trip-body-route-pills"
   >
+    <OfferingFactRows
+      testID="trip-body-facts"
+    />
     <View
       ref={null}
       style={
         [
           {
-            "alignItems": "center",
-            "alignSelf": "stretch",
-            "borderRadius": 16,
-            "borderWidth": 1,
             "flexDirection": "row",
-            "gap": 10,
+            "flexWrap": "wrap",
+            "gap": 6,
             "marginTop": 12,
-            "paddingHorizontal": 14,
-            "paddingVertical": 12,
-            "width": "100%",
           },
           {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
+            "marginTop": 14,
           },
         ]
       }
+      testID="trip-body-meta-pills"
     >
-      <Icon.Calendar />
-      <Text
-        ellipsizeMode="tail"
-        numberOfLines={1}
+      <View
         ref={null}
         style={
           [
             {
-              "flex": 1,
-              "fontSize": 15,
-              "fontWeight": "800",
-              "letterSpacing": -0.2,
-              "minWidth": 0,
+              "borderRadius": 999,
+              "borderWidth": 1,
+              "paddingHorizontal": 10,
+              "paddingVertical": 6,
             },
             {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
+              "backgroundColor": "rgba(255,255,255,0.10)",
+              "borderColor": "rgba(174,89,28,0.38)",
             },
           ]
         }
       >
-        Jun 28 – Jul 2, 2026
-      </Text>
-    </View>
-    <View
-      ref={null}
-      style={
-        [
-          {
-            "alignItems": "center",
-            "alignSelf": "stretch",
-            "borderRadius": 16,
-            "borderWidth": 1,
-            "flexDirection": "row",
-            "gap": 10,
-            "marginTop": 12,
-            "paddingHorizontal": 14,
-            "paddingVertical": 12,
-            "width": "100%",
-          },
-          {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
-          },
-        ]
-      }
-      testID="trip-body-route-pill"
-    >
-      <Icon.Plane />
-      <Text
-        ellipsizeMode="tail"
-        numberOfLines={1}
+        <Text
+          ellipsizeMode="tail"
+          numberOfLines={1}
+          ref={null}
+          style={
+            [
+              {
+                "fontSize": 13.5,
+                "fontWeight": "700",
+              },
+              {
+                "color": "#ffffff",
+              },
+            ]
+          }
+        >
+          Tirana, Albania
+        </Text>
+      </View>
+      <View
         ref={null}
         style={
           [
             {
-              "flex": 1,
-              "fontSize": 15,
-              "fontWeight": "800",
-              "letterSpacing": -0.2,
-              "minWidth": 0,
+              "alignSelf": "center",
+              "height": 1,
+              "width": 14,
             },
             {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
+              "backgroundColor": "rgba(255,255,255,0.58)",
             },
           ]
         }
+      />
+      <View
+        ref={null}
+        testID="trip-body-route-pill"
       >
-        From Tirana, Albania → Sarandë, Albania
-      </Text>
+        <View
+          ref={null}
+          style={
+            [
+              {
+                "borderRadius": 999,
+                "borderWidth": 1,
+                "paddingHorizontal": 10,
+                "paddingVertical": 6,
+              },
+              {
+                "backgroundColor": "rgba(255,255,255,0.10)",
+                "borderColor": "rgba(174,89,28,0.38)",
+              },
+            ]
+          }
+        >
+          <Text
+            ellipsizeMode="tail"
+            numberOfLines={1}
+            ref={null}
+            style={
+              [
+                {
+                  "fontSize": 13.5,
+                  "fontWeight": "700",
+                },
+                {
+                  "color": "#ffffff",
+                },
+              ]
+            }
+          >
+            Sarandë, Albania
+          </Text>
+        </View>
+      </View>
     </View>
   </View>
   <View
     ref={null}
     style={
       {
-        "flexDirection": "row",
-        "flexWrap": "wrap",
-        "gap": 6,
-        "marginTop": 12,
-      }
-    }
-    testID="trip-body-meta-pills"
-  >
-    <View
-      ref={null}
-      style={
-        [
-          {
-            "alignItems": "center",
-            "borderRadius": 999,
-            "borderWidth": 1,
-            "flexDirection": "row",
-            "gap": 5,
-            "paddingHorizontal": 10,
-            "paddingVertical": 5,
-          },
-          {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
-          },
-        ]
-      }
-    >
-      <Icon.Moon />
-      <Text
-        numberOfLines={1}
-        ref={null}
-        style={
-          [
-            {
-              "fontSize": 12,
-              "fontWeight": "700",
-            },
-            {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
-            },
-          ]
-        }
-      >
-        5 days · 4 nights
-      </Text>
-    </View>
-    <View
-      ref={null}
-      style={
-        [
-          {
-            "alignItems": "center",
-            "borderRadius": 999,
-            "borderWidth": 1,
-            "flexDirection": "row",
-            "gap": 5,
-            "paddingHorizontal": 10,
-            "paddingVertical": 5,
-          },
-          {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
-          },
-        ]
-      }
-    >
-      <Icon.Users />
-      <Text
-        numberOfLines={1}
-        ref={null}
-        style={
-          [
-            {
-              "fontSize": 12,
-              "fontWeight": "700",
-            },
-            {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
-            },
-          ]
-        }
-      >
-        4 seats left · 16 max
-      </Text>
-    </View>
-  </View>
-  <View
-    ref={null}
-    style={
-      {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-presented-by"
@@ -400,7 +325,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     style={
       {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-about"
@@ -410,10 +335,10 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 20,
-            "fontWeight": "900",
+            "fontSize": 26,
+            "fontWeight": "700",
             "letterSpacing": -0.3,
-            "marginBottom": 12,
+            "marginBottom": 14,
           },
           {
             "color": "#ffffff",
@@ -432,8 +357,8 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 16,
-            "lineHeight": 23,
+            "fontSize": 15.5,
+            "lineHeight": 25,
           },
           {
             "color": "rgba(255,255,255,0.78)",
@@ -448,7 +373,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     style={
       {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-itinerary"
@@ -458,10 +383,10 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 20,
-            "fontWeight": "900",
+            "fontSize": 26,
+            "fontWeight": "700",
             "letterSpacing": -0.3,
-            "marginBottom": 12,
+            "marginBottom": 14,
           },
           {
             "color": "#ffffff",
@@ -479,66 +404,47 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
   <View
     ref={null}
     style={
-      {
-        "marginTop": 24,
-      }
+      [
+        {
+          "marginTop": 34,
+        },
+        {
+          "flexDirection": "row",
+          "gap": 18,
+        },
+      ]
     }
-    testID="trip-body-included"
   >
-    <Text
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 20,
-            "fontWeight": "900",
-            "letterSpacing": -0.3,
-            "marginBottom": 12,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-included"
     >
-      What’s included
-    </Text>
-    <ChipGroup />
-  </View>
-  <View
-    ref={null}
-    style={
-      {
-        "marginTop": 24,
-      }
-    }
-    testID="trip-body-excluded"
-  >
-    <Text
+      <OfferingSubLabel>
+        Included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 20,
-            "fontWeight": "900",
-            "letterSpacing": -0.3,
-            "marginBottom": 12,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-excluded"
     >
-      What’s not included
-    </Text>
-    <ChipGroup />
+      <OfferingSubLabel>
+        Not included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
   </View>
   <View
     ref={null}
@@ -550,7 +456,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     style={
       {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-pay-box"
@@ -560,10 +466,10 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 20,
-            "fontWeight": "900",
+            "fontSize": 26,
+            "fontWeight": "700",
             "letterSpacing": -0.3,
-            "marginBottom": 12,
+            "marginBottom": 14,
           },
           {
             "color": "#ffffff",
@@ -582,8 +488,8 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
         [
           {
             "borderRadius": 18,
-            "marginTop": 12,
-            "padding": 14,
+            "marginTop": 4,
+            "padding": 18,
           },
           {
             "backgroundColor": "rgba(255,255,255,0.10)",
@@ -780,200 +686,125 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     testID="trip-body-route-pills"
   >
+    <OfferingFactRows
+      testID="trip-body-facts"
+    />
     <View
       ref={null}
       style={
         [
           {
-            "alignItems": "center",
-            "alignSelf": "stretch",
-            "borderRadius": 16,
-            "borderWidth": 1,
             "flexDirection": "row",
-            "gap": 10,
+            "flexWrap": "wrap",
+            "gap": 6,
             "marginTop": 12,
-            "paddingHorizontal": 14,
-            "paddingVertical": 12,
-            "width": "100%",
           },
           {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
+            "marginTop": 14,
           },
         ]
       }
+      testID="trip-body-meta-pills"
     >
-      <Icon.Calendar />
-      <Text
-        ellipsizeMode="tail"
-        numberOfLines={1}
+      <View
         ref={null}
         style={
           [
             {
-              "flex": 1,
-              "fontSize": 15,
-              "fontWeight": "800",
-              "letterSpacing": -0.2,
-              "minWidth": 0,
+              "borderRadius": 999,
+              "borderWidth": 1,
+              "paddingHorizontal": 10,
+              "paddingVertical": 6,
             },
             {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
+              "backgroundColor": "rgba(255,255,255,0.10)",
+              "borderColor": "rgba(174,89,28,0.38)",
             },
           ]
         }
       >
-        Jun 28 – Jul 2, 2026
-      </Text>
-    </View>
-    <View
-      ref={null}
-      style={
-        [
-          {
-            "alignItems": "center",
-            "alignSelf": "stretch",
-            "borderRadius": 16,
-            "borderWidth": 1,
-            "flexDirection": "row",
-            "gap": 10,
-            "marginTop": 12,
-            "paddingHorizontal": 14,
-            "paddingVertical": 12,
-            "width": "100%",
-          },
-          {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
-          },
-        ]
-      }
-      testID="trip-body-route-pill"
-    >
-      <Icon.Plane />
-      <Text
-        ellipsizeMode="tail"
-        numberOfLines={1}
+        <Text
+          ellipsizeMode="tail"
+          numberOfLines={1}
+          ref={null}
+          style={
+            [
+              {
+                "fontSize": 13.5,
+                "fontWeight": "700",
+              },
+              {
+                "color": "#ffffff",
+              },
+            ]
+          }
+        >
+          Tirana, Albania
+        </Text>
+      </View>
+      <View
         ref={null}
         style={
           [
             {
-              "flex": 1,
-              "fontSize": 15,
-              "fontWeight": "800",
-              "letterSpacing": -0.2,
-              "minWidth": 0,
+              "alignSelf": "center",
+              "height": 1,
+              "width": 14,
             },
             {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
+              "backgroundColor": "rgba(255,255,255,0.58)",
             },
           ]
         }
+      />
+      <View
+        ref={null}
+        testID="trip-body-route-pill"
       >
-        From Tirana, Albania → Sarandë, Albania
-      </Text>
+        <View
+          ref={null}
+          style={
+            [
+              {
+                "borderRadius": 999,
+                "borderWidth": 1,
+                "paddingHorizontal": 10,
+                "paddingVertical": 6,
+              },
+              {
+                "backgroundColor": "rgba(255,255,255,0.10)",
+                "borderColor": "rgba(174,89,28,0.38)",
+              },
+            ]
+          }
+        >
+          <Text
+            ellipsizeMode="tail"
+            numberOfLines={1}
+            ref={null}
+            style={
+              [
+                {
+                  "fontSize": 13.5,
+                  "fontWeight": "700",
+                },
+                {
+                  "color": "#ffffff",
+                },
+              ]
+            }
+          >
+            Sarandë, Albania
+          </Text>
+        </View>
+      </View>
     </View>
   </View>
   <View
     ref={null}
     style={
       {
-        "flexDirection": "row",
-        "flexWrap": "wrap",
-        "gap": 6,
-        "marginTop": 12,
-      }
-    }
-    testID="trip-body-meta-pills"
-  >
-    <View
-      ref={null}
-      style={
-        [
-          {
-            "alignItems": "center",
-            "borderRadius": 999,
-            "borderWidth": 1,
-            "flexDirection": "row",
-            "gap": 5,
-            "paddingHorizontal": 10,
-            "paddingVertical": 5,
-          },
-          {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
-          },
-        ]
-      }
-    >
-      <Icon.Moon />
-      <Text
-        numberOfLines={1}
-        ref={null}
-        style={
-          [
-            {
-              "fontSize": 12,
-              "fontWeight": "700",
-            },
-            {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
-            },
-          ]
-        }
-      >
-        5 days · 4 nights
-      </Text>
-    </View>
-    <View
-      ref={null}
-      style={
-        [
-          {
-            "alignItems": "center",
-            "borderRadius": 999,
-            "borderWidth": 1,
-            "flexDirection": "row",
-            "gap": 5,
-            "paddingHorizontal": 10,
-            "paddingVertical": 5,
-          },
-          {
-            "backgroundColor": "rgba(174,89,28,0.24)",
-            "borderColor": "rgba(174,89,28,0.38)",
-          },
-        ]
-      }
-    >
-      <Icon.Users />
-      <Text
-        numberOfLines={1}
-        ref={null}
-        style={
-          [
-            {
-              "fontSize": 12,
-              "fontWeight": "700",
-            },
-            {
-              "color": "#ffffff",
-              "fontFamily": "Inter_700Bold",
-            },
-          ]
-        }
-      >
-        4 seats left · 16 max
-      </Text>
-    </View>
-  </View>
-  <View
-    ref={null}
-    style={
-      {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-presented-by"
@@ -1123,7 +954,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     style={
       {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-about"
@@ -1133,10 +964,10 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 20,
-            "fontWeight": "900",
+            "fontSize": 26,
+            "fontWeight": "700",
             "letterSpacing": -0.3,
-            "marginBottom": 12,
+            "marginBottom": 14,
           },
           {
             "color": "#ffffff",
@@ -1155,8 +986,8 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 16,
-            "lineHeight": 23,
+            "fontSize": 15.5,
+            "lineHeight": 25,
           },
           {
             "color": "rgba(255,255,255,0.78)",
@@ -1171,7 +1002,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     style={
       {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-itinerary"
@@ -1181,10 +1012,10 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 20,
-            "fontWeight": "900",
+            "fontSize": 26,
+            "fontWeight": "700",
             "letterSpacing": -0.3,
-            "marginBottom": 12,
+            "marginBottom": 14,
           },
           {
             "color": "#ffffff",
@@ -1202,66 +1033,47 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
   <View
     ref={null}
     style={
-      {
-        "marginTop": 24,
-      }
+      [
+        {
+          "marginTop": 34,
+        },
+        {
+          "flexDirection": "row",
+          "gap": 18,
+        },
+      ]
     }
-    testID="trip-body-included"
   >
-    <Text
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 20,
-            "fontWeight": "900",
-            "letterSpacing": -0.3,
-            "marginBottom": 12,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-included"
     >
-      What’s included
-    </Text>
-    <ChipGroup />
-  </View>
-  <View
-    ref={null}
-    style={
-      {
-        "marginTop": 24,
-      }
-    }
-    testID="trip-body-excluded"
-  >
-    <Text
+      <OfferingSubLabel>
+        Included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
+    <View
       ref={null}
       style={
-        [
-          {
-            "fontSize": 20,
-            "fontWeight": "900",
-            "letterSpacing": -0.3,
-            "marginBottom": 12,
-          },
-          {
-            "color": "#ffffff",
-          },
-          {
-            "fontFamily": "Inter_700Bold",
-          },
-        ]
+        {
+          "flex": 1,
+          "minWidth": 0,
+        }
       }
+      testID="trip-body-excluded"
     >
-      What’s not included
-    </Text>
-    <ChipGroup />
+      <OfferingSubLabel>
+        Not included
+      </OfferingSubLabel>
+      <OfferingDotList />
+    </View>
   </View>
   <View
     ref={null}
@@ -1273,7 +1085,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
     ref={null}
     style={
       {
-        "marginTop": 24,
+        "marginTop": 34,
       }
     }
     testID="trip-body-pay-box"
@@ -1283,10 +1095,10 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
       style={
         [
           {
-            "fontSize": 20,
-            "fontWeight": "900",
+            "fontSize": 26,
+            "fontWeight": "700",
             "letterSpacing": -0.3,
-            "marginBottom": 12,
+            "marginBottom": 14,
           },
           {
             "color": "#ffffff",
@@ -1305,8 +1117,8 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
         [
           {
             "borderRadius": 18,
-            "marginTop": 12,
-            "padding": 14,
+            "marginTop": 4,
+            "padding": 18,
           },
           {
             "backgroundColor": "rgba(255,255,255,0.10)",

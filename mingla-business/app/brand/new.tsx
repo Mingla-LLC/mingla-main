@@ -21,7 +21,7 @@ import {
   LazyDraftInProgress,
   LazyPartnerClientBrandCreationFlow,
 } from "../../src/components/brand/LazyBrandCreationFlow";
-import { canvas, spacing } from "../../src/constants/designSystem";
+
 import { BRAND_NEW_COPY } from "../../src/components/brand/brandNewCopy";
 import { Toast } from "../../src/components/ui/Toast";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
@@ -30,6 +30,7 @@ import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 import { decideBrandNewEntry } from "../../src/components/brand/brandNewEntry";
 import { setupFlowHop } from "../../src/services/brandSetupCore";
 
+import { color, space } from "../../src/constants/designSystem";
 const first = (v: string | string[] | undefined): string | null => {
   const x = Array.isArray(v) ? v[0] : v;
   return typeof x === "string" && x.length > 0 ? x : null;
@@ -117,10 +118,10 @@ export default function BrandNewRoute(): React.ReactElement {
   // The web bank-setup return (`resume_brand`) is a hop inside the setup.
   if (resume !== null) return <Redirect href={setupFlowHop(`/brand/${resume}/setup`) as never} />;
   return (
-    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: color.canvas }}>
       <Suspense fallback={null}>{body}</Suspense>
       {discardedName !== null ? (
-        <View style={{ position: "absolute", left: 0, right: 0, top: insets.top + spacing.sm }} pointerEvents="box-none">
+        <View style={{ position: "absolute", left: 0, right: 0, top: insets.top + space[2] }} pointerEvents="box-none">
           <Toast
             visible
             kind="success"

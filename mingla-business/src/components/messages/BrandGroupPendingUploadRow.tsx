@@ -8,7 +8,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { accent, spacing } from "../../constants/designSystem";
+import { color, scrim, space } from "../../constants/designSystem";
 import { BrandGroupCachedImage } from "../media/BrandGroupCachedImage";
 import { Icon } from "../ui/Icon";
 import {
@@ -41,7 +41,7 @@ export function BrandGroupPendingUploadRow({
             {visual ? <BrandGroupCachedImage source={visual} fit="cover" style={StyleSheet.absoluteFill} testID="brand-group-pending-upload-preview" /> : (
               <View style={styles.placeholder}><Icon name={upload.kind === "video" ? "play" : "eye"} size={24} color={brandGroupChat.textSoft} /></View>
             )}
-            {upload.kind === "video" ? <View style={styles.play}><Icon name="play" size={18} color="#fff" /></View> : null}
+            {upload.kind === "video" ? <View style={styles.play}><Icon name="play" size={18} color={color.textStrong} /></View> : null}
             {!failed && upload.state !== "complete" ? <View style={styles.dim} /> : null}
           </View>
         ) : (
@@ -73,21 +73,21 @@ export function BrandGroupPendingUploadRow({
 const styles = StyleSheet.create({
   row: { alignItems: "flex-end", marginVertical: 3 },
   bubble: { width: 210, borderRadius: 16, overflow: "hidden", backgroundColor: brandGroupChat.mineBubble },
-  bubbleFailed: { backgroundColor: brandGroupChat.surfaceRaised, borderWidth: 1, borderColor: "#ff8b8b" },
+  bubbleFailed: { backgroundColor: brandGroupChat.surfaceRaised, borderWidth: 1, borderColor: color.errorText },
   thumb: { width: 210, height: 160, overflow: "hidden", backgroundColor: brandGroupChat.surface },
   placeholder: { flex: 1, alignItems: "center", justifyContent: "center" },
-  play: { position: "absolute", left: "50%", top: "50%", width: 40, height: 40, marginLeft: -20, marginTop: -20, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.55)" },
-  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
-  fileLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 12, paddingTop: 10 },
-  fileIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(16,18,22,0.12)" },
+  play: { position: "absolute", left: "50%", top: "50%", width: 40, height: 40, marginLeft: -20, marginTop: -20, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: scrim.modal },
+  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: scrim.modal },
+  fileLine: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 12, paddingTop: 10 },
+  fileIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.spinnerTrackOnPaper },
   fileName: { flex: 1, color: brandGroupChat.mineText, fontSize: 14, lineHeight: 18, fontWeight: "800" },
   footer: { paddingHorizontal: 10, paddingVertical: 7, gap: 5 },
   status: { color: brandGroupChat.mineText, fontSize: 11 },
-  statusFailed: { color: "#ff8b8b" },
-  progressTrack: { height: 3, borderRadius: 2, overflow: "hidden", backgroundColor: "rgba(16,18,22,0.18)" },
+  statusFailed: { color: color.errorText },
+  progressTrack: { height: 3, borderRadius: 2, overflow: "hidden", backgroundColor: color.spinnerTrackOnPaper },
   progressFill: { height: 3, backgroundColor: brandGroupChat.mineText },
-  actions: { flexDirection: "row", gap: spacing.sm },
+  actions: { flexDirection: "row", gap: space[2] },
   action: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
-  actionText: { color: accent.warm, fontSize: 13, fontWeight: "800" },
+  actionText: { color: color.text1, fontSize: 13, fontWeight: "800" },
   actionTextQuiet: { color: brandGroupChat.textSoft, fontSize: 13, fontWeight: "700" },
 });

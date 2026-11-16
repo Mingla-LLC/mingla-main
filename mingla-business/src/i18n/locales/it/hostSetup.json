@@ -171,6 +171,10 @@
       "readyBank": "Conto bancario in {{country}}",
       "readyBankAny": "Conto bancario nel tuo paese",
       "readyTax": "Codice fiscale (solo società registrate)"
+    },
+    "stepper": {
+      "saved": "Salvato",
+      "steps": "Passaggi"
     }
   },
   "doorMode": {

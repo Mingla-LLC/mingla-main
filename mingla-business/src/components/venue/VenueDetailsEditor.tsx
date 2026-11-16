@@ -34,12 +34,10 @@ import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesServ
 import type { LocationSelectionState } from "@mingla/location-input";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   useSubmitVenueDetailsChangeRequest,
@@ -385,7 +383,7 @@ export function VenueDetailsEditor({
   if (venue === null) {
     return (
       <View style={styles.loading} testID="venue-details-loading">
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.accent} />
       </View>
     );
   }
@@ -736,80 +734,80 @@ export function VenueDetailsEditor({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   loading: {
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
     alignItems: "center",
   },
   summary: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   rowTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   rowSub: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   cardTitle: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   proposedLine: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   pendingCard: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: semantic.infoTint,
-    gap: spacing.xs,
+    backgroundColor: color.infoTint,
+    gap: space[1],
   },
   rejectedCard: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: semantic.warningTint,
-    gap: spacing.xs,
+    backgroundColor: color.warningTint,
+    gap: space[1],
   },
   form: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   fieldLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[1],
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   buttonRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   fallback: {
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   inlineBtn: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     alignSelf: "flex-start",
   },
   error: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
   },
   notice: {
-    ...typography.bodySm,
-    color: semantic.success,
+    ...type.small,
+    color: color.success,
   },
 });
 

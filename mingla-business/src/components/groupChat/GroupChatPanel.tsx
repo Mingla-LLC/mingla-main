@@ -43,7 +43,7 @@ import { liftedBottomSpacer } from "../../wrappers/keyboardClearance";
 import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 import { useRouter } from "expo-router";
 
-import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, materials, radius, scrim, size, space } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { useEventGroupChat } from "../../hooks/useEventGroupChat";
 import { useEventGroupChatModeration } from "../../hooks/useEventGroupChatModeration";
@@ -176,7 +176,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
           onPress={() => router.back()}
           style={styles.iconButton}
         >
-          <Icon name="arrowL" size={18} color={textTokens.primary} />
+          <Icon name="arrowL" size={18} color={color.text1} />
         </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.title} numberOfLines={1}>
@@ -192,13 +192,13 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
           onPress={() => setModerationOpen(true)}
           style={styles.iconButton}
         >
-          <Icon name="moreH" size={18} color={textTokens.primary} />
+          <Icon name="moreH" size={18} color={color.text1} />
         </Pressable>
       </View>
 
       {chat.loading ? (
         <View style={styles.state}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text2} />
         </View>
       ) : chat.error ? (
         <View style={styles.state}>
@@ -260,7 +260,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                       accessibilityLabel="Delete message"
                       onPress={() => void handleDeleteMessage(message.id)}
                     >
-                      <Icon name="trash" size={13} color={mine ? textTokens.inverse : textTokens.tertiary} />
+                      <Icon name="trash" size={13} color={mine ? color.textStrong : color.text3} />
                     </Pressable>
                   </View>
                 </View>
@@ -305,7 +305,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                   onPress={handleClearAttachment}
                   style={styles.attachmentRemove}
                 >
-                  <Icon name="close" size={14} color={textTokens.primary} />
+                  <Icon name="close" size={14} color={color.text1} />
                 </Pressable>
               </View>
             ) : null}
@@ -327,11 +327,15 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                   // gap and nothing else.
                   paddingBottom: liftedBottomSpacer(
                     keyboardHeight > 0,
-                    Math.max(insets.bottom, 0) + spacing.lg,
+                    Math.max(insets.bottom, 0) + space[6],
                   ),
                 },
               ]}
             >
+              {/* #4420 round 3 (6, 24): floating composer. Attach sits inside
+                  the field; send is an icon-only Paper circle, dimmed until
+                  there is a message or a photo to send. */}
+              <View style={styles.field}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Attach image"
@@ -339,23 +343,38 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                 style={styles.attachButton}
                 disabled={sending}
               >
-                <Icon name="plus" size={20} color={textTokens.primary} />
+                <Icon name="plus" size={20} color={color.text1} />
               </Pressable>
               <TextInput
                 value={composer}
                 onChangeText={setComposer}
                 placeholder={attachment ? "Add a caption (optional)" : "Write a reply"}
-                placeholderTextColor={textTokens.tertiary}
+                placeholderTextColor={color.text3}
                 style={styles.input}
                 multiline
               />
-              <Button
-                label="Send"
-                leadingIcon="send"
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send"
+                accessibilityState={{ disabled: (composer.trim().length === 0 && attachment === null) || sending, busy: sending }}
                 onPress={handleSend}
-                loading={sending}
                 disabled={(composer.trim().length === 0 && attachment === null) || sending}
-              />
+                style={[
+                  styles.send,
+                  ((composer.trim().length === 0 && attachment === null) || sending) && styles.sendIdle,
+                ]}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color={color.ink} />
+                ) : (
+                  <Icon
+                    name="send"
+                    size={20}
+                    color={composer.trim().length === 0 && attachment === null ? color.text4 : color.ink}
+                  />
+                )}
+              </Pressable>
             </View>
           </KeyboardAvoidingView>
         </>
@@ -377,16 +396,16 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#111318",
+    backgroundColor: color.card,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   iconButton: {
     width: 40,
@@ -395,9 +414,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   headerCopy: {
     flex: 1,
@@ -405,104 +424,121 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   subtitle: {
     marginTop: 2,
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   state: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
   },
   errorText: {
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   messages: {
     flex: 1,
   },
   messagesContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   messageRow: {
     maxWidth: "84%",
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
   },
   messageRowMine: {
     alignSelf: "flex-end",
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.card3,
+    borderColor: color.lineStrong,
   },
   messageRowOther: {
     alignSelf: "flex-start",
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   messageRowBlast: {
     alignSelf: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
   },
   messageText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 14,
     lineHeight: 20,
   },
   messageTextMine: {
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
   messageTextWithImage: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   messageMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   messageMeta: {
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   composer: {
     // Floats over the chat list (no top border / backdrop) — bottom inset + extra
     // breathing room is applied inline via insets in the JSX above.
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+  },
+  field: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    minHeight: size.btn.phone,
+    paddingLeft: space[1],
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
+    backgroundColor: materials.sheet.solidFill,
   },
   attachButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    overflow: "hidden",
+    width: 40,
+    height: size.btn.phone,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+  },
+  send: {
+    width: size.btn.phone,
+    height: size.btn.phone,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.paper,
+  },
+  sendIdle: {
+    backgroundColor: color.card2,
   },
   attachmentPreview: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    marginHorizontal: space[4],
+    marginTop: space[2],
     width: 120,
     height: 120,
     borderRadius: radius.md,
     overflow: "hidden",
     position: "relative",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   attachmentPreviewImage: {
     width: "100%",
@@ -515,22 +551,18 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
   input: {
     flex: 1,
-    minHeight: 44,
+    minHeight: size.btn.phone,
     maxHeight: 120,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    paddingHorizontal: space[2],
+    paddingTop: 14,
+    paddingBottom: 14,
+    color: color.text1,
   },
 });
 

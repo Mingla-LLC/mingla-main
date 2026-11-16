@@ -114,6 +114,9 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     // [TEST-MOD-APPROVED #1023] Harness registration only: hosts import the
     // on-intent wrapper, which exports the same ThemeSheet name.
     if (exportName === "ThemeSheetLazy") return { ThemeSheet: leaf("ThemeSheet") };
+    // #4420 — the editor imports the review sheet through its on-intent
+    // wrapper, which exports the same ChangeSummaryModal name.
+    if (exportName === "LazyChangeSummaryModal") return { ChangeSummaryModal: leaf("ChangeSummaryModal") };
     throw new Error(`Unclassified host boundary: ${name}`);
   };
   const module = { exports: {} as Record<string, React.ComponentType<any>> };

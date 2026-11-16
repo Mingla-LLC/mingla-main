@@ -48,13 +48,10 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
@@ -110,7 +107,7 @@ export const IntakeQuestionShell: React.FC<IntakeQuestionShellProps> = ({
           <Icon
             name="bell"
             size={14}
-            color={semantic.error}
+            color={color.danger}
             strokeWidth={2}
           />
           <Text style={styles.errorText}>{error}</Text>
@@ -152,10 +149,10 @@ export const IntakeQuestionShortText: React.FC<IntakeQuestionShortTextProps> = (
   const len = value.length;
   const counterColor =
     len >= SHORT_TEXT_MAX
-      ? semantic.error
+      ? color.danger
       : len >= SHORT_TEXT_MAX - 20
-        ? semantic.warning
-        : textTokens.tertiary;
+        ? color.warning
+        : color.text3;
   return (
     <IntakeQuestionShell
       question={question}
@@ -170,7 +167,7 @@ export const IntakeQuestionShortText: React.FC<IntakeQuestionShortTextProps> = (
         value={value}
         onChangeText={(t) => onChange(t.slice(0, SHORT_TEXT_MAX))}
         placeholder={question.placeholder ?? "Type your answer…"}
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         editable={!disabled}
         maxLength={SHORT_TEXT_MAX}
         autoCapitalize="sentences"
@@ -207,10 +204,10 @@ export const IntakeQuestionLongText: React.FC<IntakeQuestionLongTextProps> = ({
   const len = value.length;
   const counterColor =
     len >= LONG_TEXT_MAX
-      ? semantic.error
+      ? color.danger
       : len >= LONG_TEXT_MAX - 200
-        ? semantic.warning
-        : textTokens.tertiary;
+        ? color.warning
+        : color.text3;
   return (
     <IntakeQuestionShell
       question={question}
@@ -225,7 +222,7 @@ export const IntakeQuestionLongText: React.FC<IntakeQuestionLongTextProps> = ({
         value={value}
         onChangeText={(t) => onChange(t.slice(0, LONG_TEXT_MAX))}
         placeholder={question.placeholder ?? "Type your answer…"}
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         editable={!disabled}
         maxLength={LONG_TEXT_MAX}
         multiline
@@ -353,7 +350,7 @@ export const IntakeQuestionMultiChoice: React.FC<
                   <Icon
                     name="check"
                     size={12}
-                    color={textTokens.primary}
+                    color={color.text1}
                     strokeWidth={3}
                   />
                 ) : null}
@@ -498,7 +495,7 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionDateProps> = ({
           <Icon
             name="calendar"
             size={18}
-            color={textTokens.secondary}
+            color={color.text2}
             strokeWidth={2}
           />
         </Pressable>
@@ -511,7 +508,7 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionDateProps> = ({
             display="spinner"
             onChange={handlePickerChange}
             themeVariant="dark"
-            textColor={textTokens.primary}
+            textColor={color.text1}
             style={styles.iosPicker}
           />
           <View style={styles.iosPickerActions}>
@@ -596,7 +593,7 @@ export const IntakeQuestionNumber: React.FC<IntakeQuestionNumberProps> = ({
         value={value}
         onChangeText={handleChange}
         placeholder={question.placeholder ?? "Enter a number"}
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         editable={!disabled}
         keyboardType={
           question.integer_only === true ? "number-pad" : "numeric"
@@ -785,13 +782,13 @@ export const IntakeQuestionFileUpload: React.FC<
   return (
     <IntakeQuestionShell question={question} error={error ?? removeError ?? undefined}>
       {totalCount === 0 ? (
-        <GlassCard variant="base" padding={spacing.lg} radius="lg">
+        <GlassCard variant="base" padding={space[6]} radius="lg">
           <View style={styles.uploadEmpty}>
             <View style={styles.uploadIconCircle}>
               <Icon
                 name="upload"
                 size={28}
-                color={accent.warm}
+                color={color.accent}
                 strokeWidth={2}
               />
             </View>
@@ -824,7 +821,7 @@ export const IntakeQuestionFileUpload: React.FC<
               <GlassCard
                 key={claimId}
                 variant="base"
-                padding={spacing.sm}
+                padding={space[2]}
                 radius="md"
               >
                 <View style={styles.fileRow}>
@@ -832,7 +829,7 @@ export const IntakeQuestionFileUpload: React.FC<
                     <Icon
                       name="check"
                       size={20}
-                      color={semantic.success}
+                      color={color.success}
                       strokeWidth={2.5}
                     />
                   </View>
@@ -866,7 +863,7 @@ export const IntakeQuestionFileUpload: React.FC<
                       name="close"
                       size={16}
                       color={
-                        armed ? textTokens.primary : textTokens.tertiary
+                        armed ? color.text1 : color.text3
                       }
                       strokeWidth={2}
                     />
@@ -879,7 +876,7 @@ export const IntakeQuestionFileUpload: React.FC<
             <GlassCard
               key={u.tempId}
               variant="base"
-              padding={spacing.sm}
+              padding={space[2]}
               radius="md"
             >
               <View
@@ -894,8 +891,8 @@ export const IntakeQuestionFileUpload: React.FC<
                     size={20}
                     color={
                       u.status === "failed"
-                        ? semantic.error
-                        : textTokens.tertiary
+                        ? color.danger
+                        : color.text3
                     }
                     strokeWidth={2}
                   />
@@ -1125,97 +1122,97 @@ void _useEffectMarker;
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing.lg,
+    gap: space[6],
   },
   shellWrap: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   labelRow: {
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
+    gap: space[1],
+    marginBottom: space[1],
   },
   label: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     fontWeight: "500",
   },
   requiredAsterisk: {
-    color: accent.warm,
-    fontSize: typography.body.fontSize,
+    color: color.accent,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
   },
   optionalNote: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   textInput: {
     minHeight: 48,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   textInputMulti: {
     minHeight: 96,
     paddingTop: 10,
   },
   textInputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   textInputDisabled: {
     opacity: 0.5,
   },
   helperText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: 2,
   },
   helperBelowWrap: {
-    marginTop: spacing.xxs,
+    marginTop: 2,
   },
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   errorText: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
   },
   choicesWrap: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   choiceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     minHeight: 56,
   },
   choiceRowSelected: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   choiceRowPressed: {
     opacity: 0.7,
@@ -1228,65 +1225,65 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
   radioOuterSelected: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   radioDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   checkboxOuter: {
     width: 20,
     height: 20,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxOuterSelected: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   choiceLabel: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   dateInput: {
     flexDirection: "row",
     alignItems: "center",
     minHeight: 48,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   dateInputText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   placeholderText: {
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   iosPickerWrap: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   iosPicker: {
@@ -1294,81 +1291,81 @@ const styles = StyleSheet.create({
   },
   iosPickerActions: {
     flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   iosPickerCancel: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44,
   },
   iosPickerCancelLabel: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     fontWeight: "500",
   },
   iosPickerSet: {
     flex: 2,
     paddingVertical: 10,
     borderRadius: radius.md,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44,
   },
   iosPickerSetLabel: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.inverse,
+    fontSize: type.small.fontSize,
+    color: color.textStrong,
     fontWeight: "600",
   },
   uploadEmpty: {
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
   },
   uploadIconCircle: {
     width: 48,
     height: 48,
     borderRadius: radius.full,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
   },
   uploadButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: space[2],
+    paddingHorizontal: space[6],
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44,
   },
   uploadButtonLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
   uploadHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
   uploadFilled: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   fileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   fileRowFailed: {
     opacity: 0.85,
@@ -1377,7 +1374,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radius.sm,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1385,31 +1382,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   fileName: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   fileMeta: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
   fileRemove: {
     width: 32,
     height: 32,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
   fileRemoveArmed: {
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   retryLink: {
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "600",
   },
 });

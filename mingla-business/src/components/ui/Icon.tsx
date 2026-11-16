@@ -12,9 +12,12 @@ import React from "react";
 import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { text as textTokens } from "../../constants/designSystem";
+import { color as dsColor, brandMarks } from "../../constants/designSystem";
+import { HomeAriOrb } from "../home/HomeAriOrb";
 
 export type IconName =
+  // #4420 (c_6876753693 item 4): Ari is drawn as the Ari orb, never a glyph.
+  | "ari"
   | "home"
   | "calendar"
   | "chat"
@@ -121,6 +124,8 @@ export interface IconProps {
 type Renderer = (color: string) => React.ReactNode;
 
 const RENDERERS: Record<IconName, Renderer> = {
+  // Never drawn as SVG: Icon returns the still Ari orb for "ari" (below).
+  ari: () => null,
   home: () => <Path d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2v-9z" />,
   calendar: () => (
     <>
@@ -180,10 +185,10 @@ const RENDERERS: Record<IconName, Renderer> = {
   // we leave the stroke colour caller-controlled.
   google: () => (
     <>
-      <Path d="M21.8 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.5c-.2 1.3-1 2.4-2 3.1v2.6h3.3c2-1.8 3-4.5 3-7.5z" fill="#4285F4" stroke="none" />
-      <Path d="M12 22c2.7 0 5-1 6.7-2.4l-3.3-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.7-5.6-4.1H3v2.6A10 10 0 0 0 12 22z" fill="#34A853" stroke="none" />
-      <Path d="M6.4 14a6 6 0 0 1 0-3.8V7.6H3a10 10 0 0 0 0 8.8L6.4 14z" fill="#FBBC04" stroke="none" />
-      <Path d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9C17 2.9 14.7 2 12 2A10 10 0 0 0 3 7.6L6.4 10c.8-2.4 3-4.1 5.6-4.1z" fill="#EA4335" stroke="none" />
+      <Path d="M21.8 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.5c-.2 1.3-1 2.4-2 3.1v2.6h3.3c2-1.8 3-4.5 3-7.5z" fill={brandMarks.google.blue} stroke="none" />
+      <Path d="M12 22c2.7 0 5-1 6.7-2.4l-3.3-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.7-5.6-4.1H3v2.6A10 10 0 0 0 12 22z" fill={brandMarks.google.green} stroke="none" />
+      <Path d="M6.4 14a6 6 0 0 1 0-3.8V7.6H3a10 10 0 0 0 0 8.8L6.4 14z" fill={brandMarks.google.yellow} stroke="none" />
+      <Path d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9C17 2.9 14.7 2 12 2A10 10 0 0 0 3 7.6L6.4 10c.8-2.4 3-4.1 5.6-4.1z" fill={brandMarks.google.red} stroke="none" />
     </>
   ),
   apple: (color) => (
@@ -473,7 +478,13 @@ export const Icon: React.FC<IconProps> = ({
   testID,
   style,
 }) => {
-  const resolvedColor = color ?? textTokens.primary;
+  // #4420 (c_6876753693 item 4): Ari's icon is the Ari orb everywhere. The
+  // orb is Ari's identity art, so it stays orange whatever `color` asks for;
+  // callers show active state with the label colour and the pill.
+  if (name === "ari") {
+    return <HomeAriOrb size={size} still testID={testID} style={style} />;
+  }
+  const resolvedColor = color ?? dsColor.text1;
   const renderer = RENDERERS[name];
 
   if (!renderer && __DEV__) {

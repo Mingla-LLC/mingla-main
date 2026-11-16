@@ -41,13 +41,8 @@ import {
   programErrorMessage,
   shortDate,
 } from "../../utils/creatorProgramFormat";
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface CreatorsHomeViewProps {
   brandId: string;
@@ -114,6 +109,7 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
     [],
   );
   useMarketingActionRegistration(hireAction);
+  const { isWideDesktop } = useResponsiveLayout();
 
   return (
     <ProgramScreen
@@ -185,12 +181,25 @@ export const CreatorsHomeView: React.FC<CreatorsHomeViewProps> = ({
                   contract.due_at,
                 );
                 return (
+                  // #4420 kit (marketing-creators__home): the step is a
+                  // quiet secondary button, full width on the phone and
+                  // beside the copy on desktop; Paper stays the page action.
                   <Card key={contract.id}>
-                    <Text style={programStyles.title}>{copy.title}</Text>
-                    <Muted>
-                      {[contract.title, copy.body].filter(Boolean).join(" · ")}
-                    </Muted>
-                    <Button label={copy.cta} size="sm" onPress={() => openContract(contract.id)} />
+                    <View style={isWideDesktop ? styles.needsRowWide : styles.needsRow}>
+                      <View style={styles.needsCopy}>
+                        <Text style={programStyles.title}>{copy.title}</Text>
+                        <Muted>
+                          {[contract.title, copy.body].filter(Boolean).join(" · ")}
+                        </Muted>
+                      </View>
+                      <Button
+                        label={copy.cta}
+                        size="sm"
+                        variant="secondary"
+                        fullWidth={!isWideDesktop}
+                        onPress={() => openContract(contract.id)}
+                      />
+                    </View>
                   </Card>
                 );
               })}
@@ -271,14 +280,17 @@ export function LinkChip({
       accessibilityLabel={label}
       style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
     >
-      <Icon name={icon} size={14} color={accent.warm} />
+      <Icon name={icon} size={14} color={color.text1} />
       <Text style={styles.chipText}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  needsRow: { gap: space[3] },
+  needsRowWide: { flexDirection: "row", alignItems: "center", gap: space[4] },
+  needsCopy: { flex: 1, minWidth: 0, gap: space[1] },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -287,9 +299,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   chipPressed: { opacity: 0.85 },
-  chipText: { color: textTokens.primary, fontSize: 14, fontWeight: "600" },
+  chipText: { color: color.text1, fontSize: 14, fontWeight: "600" },
 });

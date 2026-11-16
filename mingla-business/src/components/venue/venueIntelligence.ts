@@ -1,3 +1,4 @@
+import { color } from "../../constants/designSystem";
 /**
  * ORCH-1186-B — pure, testable helpers for the venue intelligence dashboard.
  *
@@ -15,8 +16,8 @@
 export const INTELLIGENCE_MIN_ORDERS_FOR_TIME_BUCKETS = 14 as const;
 
 /** Bar-color tokens (verbatim from the established sparkline convention). */
-export const BAR_INACTIVE = "rgba(255,255,255,0.16)" as const;
-export const BAR_CONTEXT = "rgba(255,255,255,0.28)" as const;
+export const BAR_INACTIVE: string = color.fill.step;
+export const BAR_CONTEXT: string = color.text4;
 
 /** Floor percentages so an empty bucket still shows a visible stub. */
 export const SPARKLINE_FLOOR_PCT = 4 as const;

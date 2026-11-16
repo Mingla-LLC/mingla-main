@@ -299,7 +299,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4435 CI fix: skip 20280708054435 (group lifecycle; re-emits the plan RPCs over chat_plans, chat_plan_place_options and chat_plan_place_votes, which only the skipped #4261 migrations create) by exact filename in the #1931 filtered replay; re-sealed.
 // #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4238 W4c: listed the three W2/W3/W4b migrations after 20280709004435 in the #1857, #1931 and #2117 lanes and registered their three pg17 proofs with sidecars in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "1664acb6f822c2dc15ec42578cf596b8a852e3502eec10268f264187873ec7c8";
+// #4238 W6a: merged origin/4420-host-graphite-glass (its MANIFEST row change kept beside the #4238 W2/W3/W4b rows); re-sealed.
+export const BOOTSTRAP_SHA256 = "2582c27b7ec9cf3e73657826f27706c31b010ba3fe4e46f970ef912ab71e13ca";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

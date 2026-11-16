@@ -16,12 +16,7 @@ import {
   type PhoneInputIconName,
 } from "@mingla/phone-input";
 
-import {
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
+import { color, radius, space, type } from "../../../constants/designSystem";
 import { BUSINESS_SHEET_PHONE_THEME } from "../../ui/PhoneField";
 import { Icon } from "../../ui/Icon";
 import { countryLabel, countryName } from "./hostAdCountries";
@@ -131,31 +126,31 @@ export function HostAdCountryPicker({
 }
 
 const styles = StyleSheet.create({
-  root: { gap: spacing.xs },
+  root: { gap: space[1] },
   label: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text2,
+    marginTop: space[1],
   },
   helper: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     lineHeight: 18,
   },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   chip: {
     minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: 999,
+    gap: space[1],
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
-  chipLabel: { ...typography.caption, color: textTokens.primary },
-  remove: { ...typography.bodySm, color: textTokens.secondary },
+  chipLabel: { ...type.caption, color: color.text1 },
+  remove: { ...type.small, color: color.text2 },
   addChip: { borderStyle: "dashed" },
-  addLabel: { ...typography.caption, color: "#FF7A18", fontWeight: "700" },
+  addLabel: { ...type.caption, color: color.text1, fontWeight: "700" },
 });

@@ -34,12 +34,7 @@ import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, color } from "../../../src/constants/designSystem";
 import {
   decodeCartSeed,
   eventPublicPath,
@@ -658,7 +653,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: wide ? spacing.xl : insets.bottom + 140 },
+            { paddingBottom: wide ? space[7] : insets.bottom + 140 },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -916,82 +911,82 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 
 const styles = StyleSheet.create({
   extrasRefusal: {
-    color: semantic.error,
+    color: color.danger,
     fontSize: 14,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
   },
   miniCard: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   miniCover: {
     height: 64,
     borderRadius: radiusTokens.md,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   miniTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.3,
   },
   miniSubtitle: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   sameTicketsRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.md,
-    paddingVertical: spacing.xs,
+    marginBottom: space[4],
+    paddingVertical: space[1],
   },
   sameTicketsLabel: {
     flex: 1,
-    paddingRight: spacing.md,
+    paddingRight: space[4],
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   perDateBlock: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   perDateHeading: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   perDateHint: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginBottom: 4,
   },
   emptyWrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   emptyTitle: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     textAlign: "center",
   },
@@ -999,33 +994,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   // ORCH-1147R2 — quiet combined "Fees & tax" line above the prominent Total.
   feesTaxRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   feesTaxLabel: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   feesTaxValue: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "600",
   },
   subtotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   subtotalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },

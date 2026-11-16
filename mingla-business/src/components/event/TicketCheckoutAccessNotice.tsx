@@ -23,11 +23,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { usePublicTicketCheckoutRouteAccess } from "../../hooks/usePublicTicketCheckoutRouteAccess";
 
@@ -122,33 +121,33 @@ const styles = StyleSheet.create({
   host: {
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: accent.warm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     gap: 4,
   },
   title: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "800",
-    color: textTokens.primary,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   retry: {
     alignSelf: "flex-start",
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    marginTop: space[1],
+    paddingHorizontal: space[2],
     paddingVertical: 6,
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
-    borderColor: accent.warm,
+    borderColor: color.lineStrong,
   },
   retryText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
   },
 });

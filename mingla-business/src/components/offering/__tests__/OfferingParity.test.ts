@@ -220,13 +220,15 @@ describe("META-ORCH-1059 ITEM 1 — bottom safe-area inset on dashboards", () =>
   test("trip dashboard pads its scroll by insets.bottom", () => {
     const src = readApp("trip/[id]/index.tsx");
     expect(src).toMatch(/useSafeAreaInsets/);
-    expect(src).toMatch(/paddingBottom:\s*insets\.bottom\s*\+\s*spacing\.xl/);
+    // [TEST-MOD-APPROVED #4420] spacing.xl (32) is now space[7] (32).
+    expect(src).toMatch(/paddingBottom:\s*insets\.bottom\s*\+\s*space\[7\]/);
   });
 
   test("experience dashboard pads its scroll by insets.bottom", () => {
     const src = readApp("experience/[id]/index.tsx");
     expect(src).toMatch(/useSafeAreaInsets/);
-    expect(src).toMatch(/paddingBottom:\s*insets\.bottom\s*\+\s*spacing\.xl/);
+    // [TEST-MOD-APPROVED #4420] spacing.xl (32) is now space[7] (32).
+    expect(src).toMatch(/paddingBottom:\s*insets\.bottom\s*\+\s*space\[7\]/);
   });
 });
 

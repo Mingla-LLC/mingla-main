@@ -30,18 +30,18 @@ import {
   type PublicTicketExtra,
 } from "@mingla/offering-rendering/ticketExtrasCart";
 
-import { accent, glass, text as textTokens } from "../../constants/designSystem";
+import { color } from "../../constants/designSystem";
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency } from "../../utils/currency";
 import { useCart, type CartLine } from "./CartContext";
 
 const THEME: TicketExtrasPickerTheme = {
-  accent: accent.warm,
-  textPrimary: textTokens.primary,
-  textSecondary: textTokens.secondary,
-  textTertiary: textTokens.tertiary,
-  border: glass.border.chrome,
+  accent: color.accent,
+  textPrimary: color.text1,
+  textSecondary: color.text2,
+  textTertiary: color.text3,
+  border: color.lineStrong,
 };
 
 export interface CartTicketExtrasProps {

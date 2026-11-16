@@ -204,11 +204,12 @@ describe("ORCH-1101 REWORK · #3 — thinking signal shows while sending", () =>
 
 describe("ORCH-1101 REWORK · #4 — composer is OPAQUE, nothing bleeds through", () => {
   it("adds an opaque composerSurface token (solid hex, no rgba/hsla)", () => {
-    expect(designSystem).toMatch(/composerSurface:\s*["']#[0-9a-fA-F]{6}["']/);
-    const tokenLine = designSystem
-      .split("\n")
-      .find((l) => l.includes("composerSurface:")) as string;
-    expect(tokenLine).not.toMatch(/rgba|hsla/);
+    // [TEST-MOD-APPROVED #4420] wave 6 deleted the composerSurface alias; the
+    // opaque surface is the Graphite card (color.card → palette.graphite[910]),
+    // still a 6-digit hex.
+    expect(designSystem).not.toMatch(/composerSurface:/);
+    expect(designSystem).toMatch(/\bcard:\s*palette\.graphite\[910\]/);
+    expect(designSystem).toMatch(/\b910:\s*["']#[0-9a-fA-F]{6}["']/);
   });
 
   it("InputBar host fills with the opaque surface, NOT the translucent glass tint", () => {
@@ -216,12 +217,14 @@ describe("ORCH-1101 REWORK · #4 — composer is OPAQUE, nothing bleeds through"
       inputBar.indexOf("host: {"),
       inputBar.indexOf("input: {"),
     );
-    expect(hostBlock).toMatch(/backgroundColor:\s*ariThread\.composerSurface/);
+    // [TEST-MOD-APPROVED #4420] the floating field is filled with the OPAQUE solid sheet
+    // material (alpha 1 on every platform), never a translucent wash.
+    expect(hostBlock).toMatch(/backgroundColor:\s*materials\.sheet\.solidFill/);
     expect(hostBlock).not.toMatch(
       /backgroundColor:\s*glass\.tint\.profileBase/,
     );
     // Border + radius preserved (still reads as a glass-edged field).
-    expect(hostBlock).toMatch(/borderColor:\s*glass\.border\.profileBase/);
+    expect(hostBlock).toMatch(/borderColor:\s*color\.lineStrong/); // [TEST-MOD-APPROVED #4420]
     expect(hostBlock).toMatch(/borderRadius:\s*radius\.xl/);
   });
 

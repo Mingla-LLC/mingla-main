@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { ariPalette, radius, spacing } from "../../../constants/designSystem";
+import { ariPalette, color, materials, radius, space } from "../../../constants/designSystem";
 
 export type AriRenditionGraphicVariant =
   "event" | "media" | "site" | "research" | "social";
@@ -58,12 +58,12 @@ export const AriRenditionGraphic: React.FC<Props> = ({
   };
   const colors: [string, string, string] =
     variant === "site"
-      ? ["#162d39", "#264b55", "#b35f2e"]
+      ? [color.card, color.card3, ariPalette.ember]
       : variant === "research"
-        ? ["#1d223b", "#493667", "#bc6b38"]
+        ? [color.card, color.card2, ariPalette.flame]
         : variant === "social"
-          ? ["#30203d", "#713f64", "#da7b43"]
-          : ["#3a2119", "#8e4826", "#d88955"];
+          ? [color.card2, color.card3, ariPalette.flame]
+          : [color.card, color.card3, ariPalette.gold];
 
   return (
     <LinearGradient
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     minHeight: 142,
     borderRadius: radius.lg,
     overflow: "hidden",
-    padding: spacing.md,
+    padding: space[4],
     justifyContent: "flex-end",
   },
   orbGlow: {
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     height: 1,
     width: "130%",
     left: -20,
-    backgroundColor: "rgba(255,255,255,0.36)",
+    backgroundColor: color.status.muted,
     transform: [{ rotate: "-12deg" }],
   },
   gridLineOne: { top: 34 },
@@ -127,32 +127,32 @@ const styles = StyleSheet.create({
   gridLineThree: { top: 118 },
   copy: { gap: 2 },
   eyebrow: {
-    color: "rgba(255,255,255,0.72)",
+    color: color.textOnPhoto2,
     fontSize: 11,
     lineHeight: 15,
     fontWeight: "700",
     letterSpacing: 1.1,
   },
   title: {
-    color: "#ffffff",
+    color: color.textOnPhoto,
     fontSize: 22,
     lineHeight: 28,
     fontWeight: "700",
   },
   meta: {
-    color: "rgba(255,255,255,0.78)",
+    color: color.textOnPhoto2,
     fontSize: 12,
     lineHeight: 17,
   },
   badge: {
     position: "absolute",
-    top: spacing.sm,
-    left: spacing.sm,
+    top: space[2],
+    left: space[2],
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
     borderRadius: radius.full,
-    backgroundColor: "rgba(8,9,12,0.66)",
+    backgroundColor: materials.onPhoto.solidFill,
     paddingHorizontal: 8,
     paddingVertical: 5,
   },
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     backgroundColor: ariPalette.flame,
   },
   badgeText: {
-    color: "#ffffff",
+    color: color.textOnPhoto,
     fontSize: 10,
     lineHeight: 13,
     fontWeight: "700",

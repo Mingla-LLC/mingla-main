@@ -16,13 +16,7 @@ import {
   View,
 } from "react-native";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type {
   AudienceListEntry,
@@ -109,11 +103,11 @@ export const AudienceCard: React.FC<AudienceCardProps> = ({
       ]}
     >
       <View style={styles.headerRow}>
-        {showAutomaticKind ? <View style={styles.automaticTitle}><Icon name="flash" size={16} color={textTokens.secondary} /><Text style={styles.title} numberOfLines={1}>{entry.display_name}</Text><View style={styles.automaticBadge}><Text style={styles.automaticBadgeText}>Automatic</Text></View></View> : <Text style={styles.title} numberOfLines={1}>{entry.display_name}</Text>}
+        {showAutomaticKind ? <View style={styles.automaticTitle}><Icon name="flash" size={16} color={color.text2} /><Text style={styles.title} numberOfLines={1}>{entry.display_name}</Text><View style={styles.automaticBadge}><Text style={styles.automaticBadgeText}>Automatic</Text></View></View> : <Text style={styles.title} numberOfLines={1}>{entry.display_name}</Text>}
         {isCreating === true ? (
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         ) : (
-          <Icon name="chevR" size={16} color={textTokens.tertiary} />
+          <Icon name="chevR" size={16} color={color.text3} />
         )}
       </View>
       <Text style={styles.reach} numberOfLines={1}>
@@ -142,26 +136,26 @@ export function ManualGroupCard({
     style={({ pressed }) => [styles.host, styles.manualHost, pressed ? styles.hostPressed : null]}
   >
     <View style={styles.manualRow}>
-      <View style={styles.manualGlyph}><Icon name="users" size={20} color="#ffb47d" /></View>
+      <View style={styles.manualGlyph}><Icon name="users" size={20} color={color.text1} /></View>
       <View style={styles.manualCopy}>
         <View style={styles.headerRow}><Text style={styles.title} numberOfLines={1}>{group.name}</Text><View style={styles.manualBadge}><Text style={styles.manualBadgeText}>Manual</Text></View></View>
         <Text style={styles.reach}>{people}</Text>
         {group.pendingReviewCount > 0 ? <Text style={styles.lastSent}>{group.pendingReviewCount} need review</Text> : null}
       </View>
-      <Icon name="chevR" size={16} color={textTokens.tertiary} />
+      <Icon name="chevR" size={16} color={color.text3} />
     </View>
   </Pressable>;
 }
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     gap: 2,
     minHeight: 76,
   },
@@ -172,32 +166,32 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   manualHost: { minHeight: 80, paddingVertical: 12 },
-  manualRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  manualGlyph: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,.12)", borderWidth: 1, borderColor: "rgba(235,120,37,.32)" },
+  manualRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  manualGlyph: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile, borderWidth: 1, borderColor: color.lineStrong },
   manualCopy: { flex: 1, gap: 2 },
-  manualBadge: { borderRadius: 8, paddingHorizontal: 8, minHeight: 22, justifyContent: "center", borderWidth: 1, borderColor: "rgba(235,120,37,.32)" },
-  manualBadgeText: { ...typography.caption, fontWeight: "600", color: "#ffb47d" },
-  automaticTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  automaticBadge: { borderRadius: 12, paddingHorizontal: 8, minHeight: 22, justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileElevated },
-  automaticBadgeText: { ...typography.caption, fontWeight: "600", color: textTokens.secondary },
+  manualBadge: { borderRadius: 8, paddingHorizontal: 8, minHeight: 22, justifyContent: "center", borderWidth: 1, borderColor: color.lineStrong },
+  manualBadgeText: { ...type.caption, fontWeight: "600", color: color.text1 },
+  automaticTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: space[1] },
+  automaticBadge: { borderRadius: 12, paddingHorizontal: 8, minHeight: 22, justifyContent: "center", borderWidth: 1, borderColor: color.lineStrong },
+  automaticBadgeText: { ...type.caption, fontWeight: "600", color: color.text2 },
   headerRow: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    gap: spacing.xs,
+    gap: space[1],
   },
   title: {
-    ...typography.body,
+    ...type.body,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     flex: 1,
   },
   reach: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   lastSent: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
 });

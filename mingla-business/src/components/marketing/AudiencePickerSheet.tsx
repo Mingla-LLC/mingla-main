@@ -51,14 +51,7 @@ import {
   sourceKeyForOption,
   type PickerCountState,
 } from "../../features/marketing/blastSendModel";
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 
 export type AudienceOptionKind =
   | "brand_buyers"
@@ -537,7 +530,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         ? { checked: isSelected, disabled: option.disabled === true }
         : { selected: isSelected, disabled: option.disabled === true }} style={({ pressed }) => [styles.row, isSelected ? styles.rowSelected : null, option.disabled ? styles.rowDisabled : null, pressed ? styles.rowPressed : null]}>
       {isMulti ? <TickBox on={isSelected} /> : null}
-      <View style={styles.rowIcon}><Icon size={20} color={isSelected ? accent.warm : textTokens.secondary} strokeWidth={2} /></View>
+      <View style={styles.rowIcon}><Icon size={20} color={color.text1} strokeWidth={2} /></View>
       <View style={styles.rowCopy}>
         <View style={styles.rowTitleLine}>
           <Text style={styles.rowName} numberOfLines={1}>{option.name}</Text>
@@ -548,7 +541,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         ) : null}
         {option.status_label ? <Text style={styles.rowStatus}>{option.status_label}</Text> : null}
       </View>
-      {isSelected && !isMulti ? <Check size={20} color={accent.warm} strokeWidth={2.5} /> : null}
+      {isSelected && !isMulti ? <Check size={20} color={color.text1} strokeWidth={2.5} /> : null}
     </Pressable>;
   };
 
@@ -726,7 +719,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
 
 const TickBox: React.FC<{ on: boolean }> = ({ on }) => (
   <View style={[styles.tickBox, on ? styles.tickBoxOn : null]}>
-    {on ? <Check size={14} color="#1A0C02" strokeWidth={3} /> : null}
+    {on ? <Check size={14} color={color.ink} strokeWidth={3} /> : null}
   </View>
 );
 
@@ -736,85 +729,85 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.34)",
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
-  tickBoxOn: { borderColor: accent.warm, backgroundColor: accent.warm },
+  tickBoxOn: { borderColor: color.paper, backgroundColor: color.paper },
   doneButton: {
     minHeight: 52,
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   doneButtonDisabled: {
-    backgroundColor: Platform.OS === "android" ? "#16181B" : glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? color.card : color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
-  doneLabel: { ...typography.body, color: "#1A0C02", fontWeight: "700" },
-  doneLabelDisabled: { color: textTokens.tertiary },
+  doneLabel: { ...type.body, color: color.ink, fontWeight: "700" },
+  doneLabelDisabled: { color: color.text3 },
   host: {
     flex: 1,
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
-  skeletonList: { flex: 1, gap: spacing.sm, paddingTop: spacing.md },
+  skeletonList: { flex: 1, gap: space[2], paddingTop: space[4] },
   emptyHost: {
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[6],
+    paddingHorizontal: space[4],
     borderRadius: radius.lg,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   emptyText: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
   errorText: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    paddingVertical: spacing.md,
+    ...type.small,
+    color: color.text2,
+    paddingVertical: space[4],
   },
   list: {
     flex: 1,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   listContent: {
-    gap: spacing.xs,
-    paddingBottom: spacing.lg,
+    gap: space[1],
+    paddingBottom: space[6],
   },
-  section: { gap: spacing.sm, marginBottom: spacing.lg },
-  sectionTitle: { ...typography.labelCap, color: textTokens.secondary },
-  sectionEmpty: { ...typography.bodySm, color: textTokens.tertiary, paddingVertical: spacing.xs },
+  section: { gap: space[2], marginBottom: space[6] },
+  sectionTitle: { ...type.label, color: color.text2 },
+  sectionEmpty: { ...type.small, color: color.text3, paddingVertical: space[1] },
   row: {
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Platform.OS === "android" ? "#1F2125" : glass.border.profileBase,
-    backgroundColor: Platform.OS === "android" ? "#16181B" : glass.tint.profileBase,
-    gap: spacing.sm,
+    borderColor: Platform.OS === "android" ? color.lineStrong : color.line,
+    backgroundColor: Platform.OS === "android" ? color.card : color.fill.inset,
+    gap: space[2],
   },
   rowSelected: {
-    borderColor: accent.border,
-    backgroundColor: Platform.OS === "android" ? "#2B1D15" : "rgba(235, 120, 37, 0.12)",
+    borderColor: color.paper,
+    backgroundColor: Platform.OS === "android" ? color.card : color.fill.tabOn,
   },
   rowPressed: {
     opacity: 0.85,
@@ -826,46 +819,46 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: Platform.OS === "android" ? "#1F2125" : "rgba(255,255,255,0.06)",
+    backgroundColor: Platform.OS === "android" ? color.card : color.fill.tile,
   },
   rowCopy: { flex: 1, gap: 3 },
-  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: space[1] },
   rowName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   rowMeta: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   rowStatus: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   privacyPill: {
-    ...typography.labelCap,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
     borderRadius: radius.full,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     paddingVertical: 2,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   privacyNote: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.xs,
-    paddingBottom: spacing.sm,
+    ...type.small,
+    color: color.text3,
+    paddingHorizontal: space[1],
+    paddingBottom: space[2],
   },
   retryButton: {
     minHeight: 44,
     alignSelf: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
-  retryLabel: { ...typography.bodySm, color: accent.warm, fontWeight: "700" },
+  retryLabel: { ...type.small, color: color.text1, fontWeight: "700" },
 });

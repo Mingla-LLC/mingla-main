@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 
+import { color } from "../../src/constants/designSystem";
 const TicketLinkLanding = React.lazy(
   () => import("../../src/components/ticketLinks/TicketLinkLanding"),
 );
@@ -13,7 +14,7 @@ export default function TicketLinkRoute(): React.ReactElement {
       <Suspense
         fallback={
           <View style={styles.loading}>
-            <ActivityIndicator color="#ff7a45" />
+            <ActivityIndicator color={color.accentText} />
           </View>
         }
       >
@@ -25,12 +26,12 @@ export default function TicketLinkRoute(): React.ReactElement {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   loading: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
 });

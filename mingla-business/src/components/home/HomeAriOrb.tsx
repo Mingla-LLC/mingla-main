@@ -17,15 +17,35 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, View } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
+
+import { ariPalette } from "../../constants/designSystem";
 
 const ORB_GEOMETRY = { sm: { orb: 24, halo: 3 }, md: { orb: 32, halo: 4 } } as const;
-export type HomeAriOrbSize = keyof typeof ORB_GEOMETRY;
+/** A named Home size, or (#4420) an icon box in px: the orb plus its halo fill it. */
+export type HomeAriOrbSize = keyof typeof ORB_GEOMETRY | number;
 
-function StaticAriMark({ size = "sm" }: { size?: HomeAriOrbSize }): React.ReactElement {
-  const { orb, halo } = ORB_GEOMETRY[size];
+const geometry = (size: HomeAriOrbSize): { orb: number; halo: number } => {
+  if (typeof size !== "number") return ORB_GEOMETRY[size];
+  const halo = Math.max(1, Math.round(size / 11));
+  return { orb: size - halo * 2, halo };
+};
+
+function StaticAriMark({
+  size = "sm",
+  testID,
+  style,
+}: {
+  size?: HomeAriOrbSize;
+  testID?: string;
+  style?: StyleProp<ViewStyle>;
+}): React.ReactElement {
+  const { orb, halo } = geometry(size);
   return (
     <View
-      style={[mark.host, { width: orb, height: orb }]}
+      testID={testID}
+      // A numeric (icon box) size: the halo's margin makes the footprint the box.
+      style={[mark.host, { width: orb, height: orb }, typeof size === "number" ? { margin: halo } : null, style]}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
@@ -49,7 +69,7 @@ const IDLE = { outerOpacity: 0.28, outerScale: 0.95, middleOpacity: 0.7, middleS
 const REDUCED = { outerOpacity: 0.39, outerScale: 0.975, middleOpacity: 0.61, middleScale: 0.985, coreScale: 0.985 } as const;
 
 function AnimatedAriMark({ size, reduceMotion }: { size: HomeAriOrbSize; reduceMotion: boolean }): React.ReactElement {
-  const { orb, halo } = ORB_GEOMETRY[size];
+  const { orb, halo } = geometry(size);
   const rest = reduceMotion ? REDUCED : IDLE;
   const scale = useRef(new Animated.Value(reduceMotion ? 1 : 0.7)).current;
   const opacity = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
@@ -95,9 +115,21 @@ function AnimatedAriMark({ size, reduceMotion }: { size: HomeAriOrbSize; reduceM
 }
 
 /** #4304 — the still mark on first paint, then AriOrb's entrance. */
-export function HomeAriOrb({ size = "sm" }: { size?: HomeAriOrbSize }): React.ReactElement {
+export function HomeAriOrb({
+  size = "sm",
+  still = false,
+  testID,
+  style,
+}: {
+  size?: HomeAriOrbSize;
+  /** #4420: the still mark only (nav, menus, rows): no entrance on every mount. */
+  still?: boolean;
+  testID?: string;
+  style?: StyleProp<ViewStyle>;
+}): React.ReactElement {
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   useEffect(() => {
+    if (still) return undefined;
     let alive = true;
     AccessibilityInfo.isReduceMotionEnabled()
       .then((enabled) => {
@@ -110,13 +142,19 @@ export function HomeAriOrb({ size = "sm" }: { size?: HomeAriOrbSize }): React.Re
     return () => {
       alive = false;
     };
-  }, []);
-  return reduceMotion === null ? <StaticAriMark size={size} /> : <AnimatedAriMark size={size} reduceMotion={reduceMotion} />;
+  }, [still]);
+  if (still || reduceMotion === null) return <StaticAriMark size={size} testID={testID} style={style} />;
+  return <AnimatedAriMark size={size} reduceMotion={reduceMotion} />;
 }
+
+// #4420 content colours: the Ari orb mark is Ari's identity art (the same
+// tokens as components/ari/AriOrb.tsx), not chrome.
+const ARI_ORB = ariPalette.orb;
+const ARI_ORB_CORE = ariPalette.orbCore;
 
 const mark = StyleSheet.create({
   host: { alignItems: "center", justifyContent: "center" },
-  outer: { position: "absolute", borderWidth: 1.5, borderColor: "#f07a3d" },
-  middle: { position: "absolute", borderWidth: 2, borderColor: "#f07a3d" },
-  core: { position: "absolute", borderWidth: 1, borderColor: "#ffb07c", backgroundColor: "#f07a3d" },
+  outer: { position: "absolute", borderWidth: 1.5, borderColor: ARI_ORB },
+  middle: { position: "absolute", borderWidth: 2, borderColor: ARI_ORB },
+  core: { position: "absolute", borderWidth: 1, borderColor: ARI_ORB_CORE, backgroundColor: ARI_ORB },
 });

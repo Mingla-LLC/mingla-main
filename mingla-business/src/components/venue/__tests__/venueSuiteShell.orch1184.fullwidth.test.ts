@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 /**
  * ORCH-1184 — reservations command-center desktop: bare rail + full-width
  * workspace. Implementor-owned happy-path regression test.
@@ -22,7 +23,7 @@
  *   - `desktopCentered` still has NO `maxWidth` (the ORCH-1184 1200 cap stays
  *     deleted) — now asserted on the shared shell, where the style lives.
  *   - `desktopCentered` still KEEPS `alignSelf: "flex-start"` and
- *     `paddingHorizontal: spacing.md`.
+ *     `paddingHorizontal: space[4]`.
  *   - `railSection` captions stay removed.
  *   - `venueSuiteMaxWidth` stays un-imported.
  *   - the seven-item rail derive order is untouched.
@@ -169,7 +170,7 @@ describe("ORCH-1184 — bare rail + full-width workspace", () => {
     it("`desktopCentered` KEEPS the left anchor and the edge gutters", () => {
       const block = stripLineComments(desktopCenteredBlock(SHARED_SHELL_SRC));
       expect(block).toMatch(/alignSelf:\s*"flex-start"/);
-      expect(block).toMatch(/paddingHorizontal:\s*spacing\.md/);
+      expect(block).toMatch(/paddingHorizontal:\s*space\[4\]/);
     });
   });
 });

@@ -639,8 +639,16 @@ const checkEventLevers = () => {
     fail("A7.2", "the named lever purchaseBlockedByAccess is absent");
   }
   const submittingBindings = (src.match(/submitting=\{purchaseBlockedByAccess\}/g) ?? []).length;
-  if (submittingBindings !== 3) {
-    fail("A7.2", `the submitting lever is bound on ${submittingBindings} renderers, expected 3 (desktop box, floating bar, FoundationEventPreview)`);
+  // #4420 — the premium frame has no desktop sticky ticket box (stickyPanel
+  // is explicitly null): the in-flow FoundationEventPreview box serves every
+  // width. Every purchase renderer that exists must still carry the lever.
+  const hasDesktopBox = src.includes("orch-1167-event-desktop-ticket-box");
+  if (!hasDesktopBox && !/const stickyPanel = null;/.test(src)) {
+    fail("A7.2", "the desktop purchase renderer is neither present nor explicitly absent");
+  }
+  const expectedBindings = hasDesktopBox ? 3 : 2;
+  if (submittingBindings !== expectedBindings) {
+    fail("A7.2", `the submitting lever is bound on ${submittingBindings} renderers, expected ${expectedBindings} (${hasDesktopBox ? "desktop box, " : ""}floating bar, FoundationEventPreview)`);
   }
   if (/submitting=\{false\}/.test(src)) {
     fail("A7.2", "a foundation renderer still receives the literal submitting={false}");

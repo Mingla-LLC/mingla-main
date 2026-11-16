@@ -9,15 +9,10 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, motion, radius, space, type } from "../../constants/designSystem";
+import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 
@@ -25,87 +20,105 @@ export interface ActionTileProps {
   icon: IconName;
   label: string;
   sub?: string;
+  /** Kept for source compatibility. #4420: the tile page has no orange lead tile. */
   primary?: boolean;
-  /** #3872 round 2 — full-width tile (Scan tickets heads the event grid). */
+  /** #3872 round 2 — full-width tile. */
   wide?: boolean;
+  /** #4420 — fill an equal-width cell of a row (the event tile page lays rows of 3). */
+  fill?: boolean;
   accessibilityLabel?: string;
+  testID?: string;
   onPress: () => void;
 }
 
+/**
+ * #4420 (round-3 item 10, TILE_MATRIX) — one tile on the shared event / RSVP /
+ * trip / experience home: a pane tile, the icon in a small inset square, the
+ * label at the bottom and an optional one-line count under it. Three per row.
+ */
 export const ActionTile: React.FC<ActionTileProps> = ({
   icon,
   label,
   sub,
-  primary = false,
   wide = false,
+  fill = false,
   accessibilityLabel,
+  testID,
   onPress,
 }) => (
   <Pressable
     onPress={onPress}
     accessibilityRole="button"
     accessibilityLabel={accessibilityLabel ?? label}
+    testID={testID}
     style={({ pressed }) => [
       styles.host,
-      primary && styles.hostPrimary,
       wide && styles.hostWide,
+      fill && styles.hostFill,
       pressed && styles.hostPressed,
     ]}
   >
-    <Icon
-      name={icon}
-      size={20}
-      color={primary ? accent.warm : textTokens.primary}
-    />
-    <Text style={styles.label} numberOfLines={1}>
-      {label}
-    </Text>
-    {sub !== undefined ? (
-      <Text style={styles.sub} numberOfLines={1}>
-        {sub}
-      </Text>
-    ) : null}
+    <GlassCard variant="base" radius="lg" padding={space[3]} fillHeight contentStyle={styles.content}>
+      <View style={styles.iconWell}>
+        <Icon name={icon} size={20} color={color.text1} />
+      </View>
+      <View style={styles.copy}>
+        {/* Two lines before truncating: no clipped labels on a narrow phone. */}
+        <Text style={styles.label} numberOfLines={2}>
+          {label}
+        </Text>
+        {sub !== undefined ? (
+          <Text style={styles.sub} numberOfLines={1}>
+            {sub}
+          </Text>
+        ) : null}
+      </View>
+    </GlassCard>
   </Pressable>
 );
 
 const styles = StyleSheet.create({
   host: {
-    flexBasis: "48%",
-    flexGrow: 0,
-    minHeight: 76,
-    padding: spacing.md - 2,
-    backgroundColor: glass.tint.profileBase,
-    borderRadius: radiusTokens.md,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: 4,
+    flexBasis: "31%",
+    flexGrow: 1,
+    maxWidth: "34%",
+    minHeight: 112,
   },
   hostWide: {
     flexBasis: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    gap: spacing.sm,
-    minHeight: 56,
+    maxWidth: "100%",
   },
-  hostPrimary: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+  hostFill: {
+    flexBasis: 0,
+    flexGrow: 1,
+    maxWidth: "100%",
   },
   hostPressed: {
-    opacity: 0.7,
+    transform: [{ scale: motion.pressScale }],
+  },
+  content: {
+    flex: 1,
+    justifyContent: "space-between",
+    gap: space[3],
+  },
+  iconWell: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.fill.tile,
+  },
+  copy: {
+    gap: 2,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   sub: {
-    fontSize: 11,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
 });
 

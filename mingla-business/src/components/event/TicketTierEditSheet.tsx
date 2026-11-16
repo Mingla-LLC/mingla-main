@@ -26,13 +26,10 @@ import DateTimePicker, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type {
   TicketAvailableAt,
@@ -226,7 +223,7 @@ const VisibilitySheet: React.FC<VisibilitySheetProps> = ({
                 <Text style={styles.visRowSub}>{opt.sub}</Text>
               </View>
               {active ? (
-                <Icon name="check" size={18} color={accent.warm} />
+                <Icon name="check" size={18} color={color.text1} />
               ) : null}
             </Pressable>
           );
@@ -300,7 +297,7 @@ const AvailableAtSheet: React.FC<AvailableAtSheetProps> = ({
                 <Text style={styles.visRowSub}>{opt.sub}</Text>
               </View>
               {active ? (
-                <Icon name="check" size={18} color={accent.warm} />
+                <Icon name="check" size={18} color={color.text1} />
               ) : null}
             </Pressable>
           );
@@ -1169,7 +1166,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           style={styles.scroll}
           contentContainerStyle={[
             styles.sheetContent,
-            { paddingBottom: insets.bottom + spacing.md },
+            { paddingBottom: insets.bottom + space[4] },
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -1182,7 +1179,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           {/* ORCH-0704 v2 — refund-first lock banner shown when this tier has sales */}
           {isPriceLocked ? (
             <View style={styles.lockBanner}>
-              <Icon name="flag" size={16} color={accent.warm} />
+              <Icon name="flag" size={16} color={color.text1} />
               <View style={styles.lockBannerTextCol}>
                 <Text style={styles.lockBannerTitle}>
                   {soldCount} ticket{soldCount === 1 ? "" : "s"} sold
@@ -1206,7 +1203,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 onChangeText={setName}
                 onBlur={() => setTouched((t) => ({ ...t, name: true }))}
                 placeholder="e.g. General Admission"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 style={styles.textInput}
                 accessibilityLabel="Ticket name"
               />
@@ -1226,7 +1223,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 value={description}
                 onChangeText={setDescription}
                 placeholder="What this ticket includes (e.g. dinner, early entry, meet-and-greet)"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
@@ -1276,7 +1273,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 style={[styles.pickerRow, dayScopeOrphaned && styles.inputWrapError]}
               >
                 <Text style={styles.pickerValue}>{validDayLabel}</Text>
-                <Icon name="chevD" size={16} color={textTokens.tertiary} />
+                <Icon name="chevD" size={16} color={color.text3} />
               </Pressable>
               <Text style={dayScopeOrphaned ? styles.helperError : styles.helperHint}>
                 {dayScopeHelper(
@@ -1308,7 +1305,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                     if (isValidPriceInput(value)) setPriceText(value);
                   }}
                   placeholder="35"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   keyboardType="decimal-pad"
                   selectTextOnFocus
                   onPressIn={(event) =>
@@ -1419,7 +1416,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                     if (isValidCapacityInput(value)) setCapacityText(value);
                   }}
                   placeholder="200"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   keyboardType="number-pad"
                   selectTextOnFocus
                   onPressIn={(event) =>
@@ -1494,7 +1491,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               style={styles.pickerRow}
             >
               <Text style={styles.pickerValue}>{visibilityLabel}</Text>
-              <Icon name="chevD" size={16} color={textTokens.tertiary} />
+              <Icon name="chevD" size={16} color={color.text3} />
             </Pressable>
           </View>
 
@@ -1514,7 +1511,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   Create, copy, reset or revoke access to this hidden ticket.
                 </Text>
               </View>
-              <Icon name="chevR" size={16} color={textTokens.tertiary} />
+              <Icon name="chevR" size={16} color={color.text3} />
             </Pressable>
           ) : null}
 
@@ -1528,7 +1525,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               style={styles.pickerRow}
             >
               <Text style={styles.pickerValue}>{availableAtLabel}</Text>
-              <Icon name="chevD" size={16} color={textTokens.tertiary} />
+              <Icon name="chevD" size={16} color={color.text3} />
             </Pressable>
           </View>
 
@@ -1595,7 +1592,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   value={minQtyText}
                   onChangeText={setMinQtyText}
                   placeholder="1"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   keyboardType="number-pad"
                   style={styles.textInput}
                   accessibilityLabel="Minimum tickets per buyer"
@@ -1614,7 +1611,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   value={maxQtyText}
                   onChangeText={setMaxQtyText}
                   placeholder="No cap"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   keyboardType="number-pad"
                   style={styles.textInput}
                   accessibilityLabel="Maximum tickets per buyer"
@@ -1668,7 +1665,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   hitSlop={6}
                   style={styles.clearBtn}
                 >
-                  <Icon name="close" size={14} color={textTokens.tertiary} />
+                  <Icon name="close" size={14} color={color.text3} />
                 </Pressable>
               ) : null}
             </View>
@@ -1706,7 +1703,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   hitSlop={6}
                   style={styles.clearBtn}
                 >
-                  <Icon name="close" size={14} color={textTokens.tertiary} />
+                  <Icon name="close" size={14} color={color.text3} />
                 </Pressable>
               ) : null}
             </View>
@@ -1817,7 +1814,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             <GlassCard
               variant="elevated"
               radius="xl"
-              padding={spacing.md}
+              padding={space[4]}
               style={styles.salePickerDockCard}
             >
               <View style={styles.salePickerDockRow}>
@@ -1838,7 +1835,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   display="spinner"
                   onChange={handleSalePickerChange}
                   is24Hour
-                  textColor="#FFFFFF"
+                  textColor={color.textStrong}
                   themeVariant="dark"
                   style={styles.salePicker}
                 />
@@ -1985,107 +1982,108 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
+  // #4420 (native run): no side padding here. Sheet's body already pads by
+  // SHEET_SIDE_GUTTER, so a second gutter pushed the content to 44pt.
   sheetContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   sheetTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[2],
   },
   sectionHeader: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginTop: space[6],
+    marginBottom: space[2],
   },
 
   // Field + helpers
   field: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   helperError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
+    marginBottom: space[2],
   },
-  // issue #2590 — a caution, deliberately NOT `semantic.error`. It does not
+  // issue #2590 — a caution, deliberately NOT `color.danger`. It does not
   // block the save, and colouring it like a failure would teach organisers to
   // ignore the colour that does mean failure.
   helperHintWarn: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: accent.warm,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text1,
+    marginTop: space[1],
+    marginBottom: space[2],
   },
   // issue #2590 — the blocking problems, restated at the button.
   saveBlockerBox: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: semantic.errorTint,
-    gap: spacing.xxs,
-    marginBottom: spacing.md,
+    borderColor: color.errorTint,
+    gap: space[1],
+    marginBottom: space[4],
   },
   saveBlockerTitle: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.danger,
   },
   saveBlockerItem: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
   },
   // issue #3350 — the same list before the organiser has left a field with a
   // problem: a neutral to-do, not a failure.
   saveBlockerBoxPending: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   saveBlockerPendingText: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   helperHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
   },
 
   // Inputs
   inputWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     height: 44,
     flexDirection: "row",
     alignItems: "center",
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   inputWrapError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   inputWrapDisabled: {
     opacity: 0.5,
@@ -2095,34 +2093,34 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     padding: 0,
     margin: 0,
   },
   passwordRevealBtn: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
     borderRadius: radiusTokens.sm,
   },
   passwordRevealLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 
   // Lock banner
   lockBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
-    marginBottom: spacing.lg,
+    borderColor: color.lineStrong,
+    marginBottom: space[6],
   },
   lockBannerTextCol: {
     flex: 1,
@@ -2131,64 +2129,64 @@ const styles = StyleSheet.create({
   lockBannerTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   lockBannerBody: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   waitlistPanel: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    marginTop: space[1],
+    marginBottom: space[4],
+    gap: space[2],
   },
   waitlistPanelHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   waitlistPanelTitle: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   waitlistSeeAll: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
   },
   waitlistEntryRow: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   waitlistEntryTextCol: {
     gap: 2,
   },
   waitlistEntryName: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   waitlistEntryMeta: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   waitlistSheetBody: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.sm,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[6],
+    gap: space[2],
   },
 
   // Picker rows
@@ -2196,28 +2194,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   pickerValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   pickerTextWrap: {
     flex: 1,
     gap: 2,
-    paddingRight: spacing.sm,
+    paddingRight: space[2],
   },
   pickerPlaceholder: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text3,
   },
 
   // Toggle row (Free / Unlimited / new modifiers)
@@ -2225,56 +2223,58 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
   },
   toggleLabelCol: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: space[2],
   },
   toggleLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   toggleSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   toggleTrack: {
     width: 44,
     height: 26,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: color.fill.step,
     padding: 3,
   },
   toggleTrackOn: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   toggleThumb: {
     width: 20,
     height: 20,
     borderRadius: 999,
-    backgroundColor: "#fff",
+    backgroundColor: color.text1,
   },
   toggleThumbOff: {
+    backgroundColor: color.text1,
     transform: [{ translateX: 0 }],
   },
   toggleThumbOn: {
+    backgroundColor: color.ink,
     transform: [{ translateX: 18 }],
   },
 
   // Min/max qty row
   qtyRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   qtyCell: {
     flex: 1,
@@ -2282,7 +2282,7 @@ const styles = StyleSheet.create({
 
   // Action dock
   sheetActionDock: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
@@ -2297,19 +2297,19 @@ const styles = StyleSheet.create({
 
   // Description
   descriptionWrap: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 80,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   textInputMultiline: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     padding: 0,
     margin: 0,
     minHeight: 64,
@@ -2319,17 +2319,17 @@ const styles = StyleSheet.create({
   saleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   salePickerRow: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   clearBtn: {
     width: 32,
@@ -2338,14 +2338,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
   salePickerDockWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[4],
+    paddingTop: space[2],
   },
   salePickerDockCard: {
     // GlassCard provides surface; no extra styling.
@@ -2354,12 +2354,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   salePickerDockTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   salePicker: {
     width: "100%",
@@ -2370,28 +2370,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   visRowActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
   },
   visRowTextCol: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: space[2],
   },
   visRowLabel: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
   },
   visRowLabelActive: {
     fontWeight: "600",
   },
   visRowSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
 });

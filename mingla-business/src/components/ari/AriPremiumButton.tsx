@@ -26,7 +26,7 @@ import {
   type ButtonSize,
   type ButtonVariant,
 } from "../ui/Button";
-import { radius } from "../../constants/designSystem";
+import { ariPalette, color, radius } from "../../constants/designSystem";
 
 export interface AriPremiumButtonProps extends ButtonProps {
   edgeEffect?: "animatedGradient";
@@ -39,12 +39,14 @@ const EDGE_GRADIENTS: Record<
   ButtonVariant,
   readonly [string, string, string, string, string, string, string]
 > = {
-  primary: ["#a74317", "#eb7825", "#fff7ef", "#ffb27b", "#54210e", "#eb7825", "#a74317"],
-  secondary: ["#4b5058", "#f7f7f8", "#eb7825", "#777e88", "#15171b", "#f7f7f8", "#4b5058"],
-  ghost: ["#55230e", "#eb7825", "#fff7ef", "#ffb27b", "#55230e", "#eb7825", "#55230e"],
-  destructive: ["#7f1d1d", "#ef4444", "#fff1f2", "#fb7185", "#450a0a", "#ef4444", "#7f1d1d"],
-  step: ["#111318", "#eb7825", "#ffffff", "#8b929c", "#111318", "#eb7825", "#111318"],
-  destructiveOutline: ["#7f1d1d", "#ef4444", "#fff1f2", "#fb7185", "#450a0a", "#ef4444", "#7f1d1d"],
+  // #4420: Ari's own identity palette (ariPalette, content) on the warm rims;
+  // Graphite tokens everywhere else. No literal colours here.
+  primary: [ariPalette.ember, ariPalette.flame, ariPalette.gold, ariPalette.flame, ariPalette.ember, ariPalette.flame, ariPalette.ember],
+  secondary: [color.text4, color.text1, ariPalette.flame, color.text3, color.card, color.text1, color.text4],
+  ghost: [ariPalette.ember, ariPalette.flame, ariPalette.gold, ariPalette.flame, ariPalette.ember, ariPalette.flame, ariPalette.ember],
+  destructive: [color.dangerPressed, color.errorText, color.textStrong, color.errorText, color.dangerPressed, color.errorText, color.dangerPressed],
+  step: [color.card, ariPalette.flame, color.textStrong, color.text3, color.card, ariPalette.flame, color.card],
+  destructiveOutline: [color.dangerPressed, color.errorText, color.textStrong, color.errorText, color.dangerPressed, color.errorText, color.dangerPressed],
 };
 
 export const AriPremiumButton: React.FC<AriPremiumButtonProps> = ({
@@ -178,7 +180,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: EDGE_WIDTH,
     overflow: "hidden",
-    backgroundColor: "#24272d",
+    backgroundColor: color.card3,
   },
   gradientTrack: {
     position: "absolute",

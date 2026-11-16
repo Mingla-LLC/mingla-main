@@ -29,10 +29,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { Button } from "../../../src/components/ui/Button";
@@ -453,15 +452,17 @@ export default function ExperienceEditRoute(): React.ReactElement {
           a draft has no sale to restrict. Web-only by filename resolution (the
           .native.tsx sibling is a typed null renderer), so no native Business
           screen gains a configuration control. */}
-      {isLive && Platform.OS === "web" ? (
-        <View style={styles.accessCardWrap}>
-          <React.Suspense fallback={null}>
-            <EventTicketCheckoutAccessCard eventId={experience.id} />
-          </React.Suspense>
-        </View>
-      ) : null}
+      {/* #4420 — the card now sits at the top of the Identity step's scroll
+          (it used to sit above the wizard header and push the stepper down). */}
       <React.Suspense fallback={<ActivityIndicator />}>
         <LazyExperienceCreatorWizard
+          identityTopSlot={
+            isLive && Platform.OS === "web" ? (
+              <React.Suspense fallback={null}>
+                <EventTicketCheckoutAccessCard eventId={experience.id} />
+              </React.Suspense>
+            ) : null
+          }
           brandId={experience.brandId}
           existingExperienceId={experience.id}
           initialDraft={initialDraft}
@@ -497,18 +498,12 @@ export default function ExperienceEditRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  // issue #2101 — inset for the owner-only Eligible-buyers card above the
-  // creator wizard on a LIVE experience.
-  accessCardWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
   // #2211 — all five early-return branches share this root. It was `flex: 1` +
   // `justifyContent: "center"` with no scroll container, and the
   // ended/cancelled branch carries the only CTA ("Back to experience").
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   hostScroll: { flex: 1, overflow: "hidden" },
   hostContent: {
@@ -516,24 +511,24 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
+    padding: space[7],
+    gap: space[4],
   },
   editHost: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
 });

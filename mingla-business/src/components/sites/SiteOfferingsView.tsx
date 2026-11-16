@@ -2,7 +2,12 @@ import React from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { accent, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 import {
   PLAN_OFFERING_OPTIONS,
   VENUE_DESCRIPTOR_CHIPS,
@@ -135,21 +140,21 @@ export function SiteOfferingsView(props: SiteOfferingsViewProps): React.ReactEle
 }
 
 const styles = StyleSheet.create({
-  page: { padding: spacing.md, gap: spacing.md },
-  centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
-  title: { ...typography.h2, color: textTokens.primary },
-  heading: { ...typography.h3, color: textTokens.primary },
-  body: { ...typography.body, color: textTokens.secondary },
-  caption: { ...typography.caption, color: textTokens.tertiary },
-  error: { ...typography.bodySm, color: semantic.errorText },
-  preview: { ...typography.bodySm, color: textTokens.primary },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  tile: { width: "47%", minHeight: 72, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: textTokens.quaternary, gap: 2 },
-  tileOn: { borderColor: accent.warm, backgroundColor: accent.tint },
-  tileLabel: { ...typography.body, color: textTokens.primary, fontWeight: "700" },
-  card: { padding: spacing.md, gap: spacing.sm },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  chip: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: 999, borderWidth: 1, borderColor: textTokens.quaternary },
-  chipOn: { borderColor: accent.warm, backgroundColor: accent.tint },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  page: { padding: space[4], gap: space[4] },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
+  title: { ...type.h1, color: color.text1 },
+  heading: { ...type.h1, color: color.text1 },
+  body: { ...type.body, color: color.text2 },
+  caption: { ...type.caption, color: color.text3 },
+  error: { ...type.small, color: color.errorText },
+  preview: { ...type.small, color: color.text1 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  tile: { width: "47%", minHeight: 72, padding: space[2], borderRadius: radius.sm, borderWidth: 1, borderColor: color.text4, gap: 2 },
+  tileOn: { borderColor: color.paper, backgroundColor: color.fill.tabOn },
+  tileLabel: { ...type.body, color: color.text1, fontWeight: "700" },
+  card: { padding: space[4], gap: space[2] },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
+  chip: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[2], borderRadius: 999, borderWidth: 1, borderColor: color.text4 },
+  chipOn: { borderColor: color.paper, backgroundColor: color.fill.tabOn },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });

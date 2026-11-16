@@ -162,7 +162,9 @@ describe("ORCH-1121 — SECTION A hero (Direction 1) + preserved fallback", () =
   test("required bottom scrim is present on the cover", () => {
     const src = viewSource();
     expect(src).toContain("heroCoverScrim");
-    expect(src).toContain('"rgba(0,0,0,0.55)"');
+    // [TEST-MOD-APPROVED #4420] — the scrim now comes from the photo scrim
+    // tokens (transparent → 55% black), not a literal.
+    expect(src).toContain("colors={[scrim.photo.colors[1], scrim.photo.colors[3]]}");
   });
 
   test("96px ring avatar half-overlaps the seam (marginTop -48), no Avatar fork", () => {

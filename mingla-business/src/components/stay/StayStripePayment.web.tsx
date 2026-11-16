@@ -8,6 +8,7 @@ import {
 
 import type { StayPaymentSession } from "@mingla/brand-rendering/stayGuest";
 
+import { color } from "../../constants/designSystem";
 interface Props {
   session: Extract<StayPaymentSession, { provider: "stripe" }>;
   groupId: string;
@@ -129,14 +130,14 @@ export function StayStripePayment({
 
 const styles: Record<string, React.CSSProperties> = {
   host: { display: "grid", gap: 16 },
-  error: { color: "#ef4444", fontSize: 13, lineHeight: "18px", margin: 0 },
+  error: { color: color.errorText, fontSize: 13, lineHeight: "18px", margin: 0 },
   button: {
     minHeight: 52,
     borderRadius: 999,
     border: 0,
-    backgroundColor: "#eb7825",
+    backgroundColor: color.accent,
     cursor: "pointer",
-    color: "#ffffff",
+    color: color.textStrong,
     fontSize: 15,
     fontWeight: 900,
     padding: "0 24px",

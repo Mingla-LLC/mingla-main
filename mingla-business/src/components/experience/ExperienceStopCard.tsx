@@ -21,13 +21,10 @@ import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesServ
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -186,7 +183,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
       : undefined;
 
   return (
-    <GlassCard variant="elevated" padding={spacing.md}>
+    <GlassCard variant="elevated" padding={space[4]}>
       <View style={styles.stopCardInner}>
         {/* Header: badge + label + controls */}
         <View style={styles.header}>
@@ -205,7 +202,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               onPress={() => onRemove(cid)}
               disabled={n <= 1}
               label="Remove stop"
-              tint={semantic.error}
+              tint={color.danger}
             />
           </View>
         </View>
@@ -228,7 +225,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
           value={stop.description}
           onChangeText={(v) => onPatch(cid, { description: v.slice(0, MAX_STOP_DESCRIPTION) })}
           placeholder="What happens at this stop? Sets the scene for buyers."
-          placeholderTextColor={textTokens.quaternary}
+          placeholderTextColor={color.text4}
           accessibilityLabel={`Stop ${i + 1} description`}
           multiline
           style={[styles.descArea, descError !== undefined && styles.descAreaError]}
@@ -343,7 +340,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                 style={styles.thumbRemove}
                 hitSlop={6}
               >
-                <Icon name="close" size={12} color={textTokens.inverse} />
+                <Icon name="close" size={12} color={color.textStrong} />
               </Pressable>
               <Image
                 source={{ uri }}
@@ -359,7 +356,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               accessibilityLabel={`Add photo to stop ${i + 1}`}
               style={[styles.thumb, styles.addThumb]}
             >
-              <Icon name="plus" size={20} color={accent.warm} />
+              <Icon name="plus" size={20} color={color.accent} />
             </Pressable>
           ) : null}
         </View>
@@ -469,39 +466,39 @@ const IconBtn: React.FC<IconBtnProps> = ({ icon, onPress, disabled, label, tint 
       disabled && styles.iconBtnDisabled,
     ]}
   >
-    <Icon name={icon} size={18} color={tint ?? textTokens.secondary} />
+    <Icon name={icon} size={18} color={tint ?? color.text2} />
   </Pressable>
 );
 
 const styles = StyleSheet.create({
-  stopCardInner: { gap: spacing.sm },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  stopCardInner: { gap: space[2] },
+  header: { flexDirection: "row", alignItems: "center", gap: space[2] },
   badge: {
     width: 44,
     height: 44,
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.inverse,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.textStrong,
   },
   labelCol: { flex: 1 },
   stopLabel: {
-    fontSize: typography.labelCap.fontSize,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: accent.warm,
+    fontSize: type.label.fontSize,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.accent,
   },
   stopHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
-  controls: { flexDirection: "row", gap: spacing.xs },
+  controls: { flexDirection: "row", gap: space[1] },
   iconBtn: {
     width: 44,
     height: 44,
@@ -510,45 +507,45 @@ const styles = StyleSheet.create({
   },
   iconBtnDisabled: { opacity: 0.32 },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    color: color.text2,
+    marginTop: space[1],
   },
   inheritHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     fontStyle: "italic",
   },
   descArea: {
     minHeight: 72,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
   },
-  descAreaError: { borderColor: semantic.error },
-  thumbStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  descAreaError: { borderColor: color.danger },
+  thumbStrip: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   thumbWrap: { position: "relative" },
   thumb: {
     width: STOP_THUMB,
     height: STOP_THUMB,
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
   addThumb: {
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   thumbRemove: {
     position: "absolute",
@@ -558,20 +555,20 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: radius.full,
-    backgroundColor: semantic.error,
+    backgroundColor: color.danger,
     alignItems: "center",
     justifyContent: "center",
   },
   helper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   inlineError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: 2,
   },
   pressed: { opacity: 0.7 },
 });

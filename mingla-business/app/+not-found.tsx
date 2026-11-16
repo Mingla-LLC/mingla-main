@@ -34,11 +34,10 @@ import { SignedInNotFoundNotice } from "../src/components/auth/SignedInNotFoundN
 // this" screen. Owns the await-before-navigate ordering and the auth-ready gate.
 import { useSwitchAccount } from "../src/hooks/useSwitchAccount";
 import {
-  backgroundWarmGlow,
-  colors,
   fontWeights,
-  spacing,
-  typography,
+  type,
+  color,
+  space,
 } from "../src/constants/designSystem";
 import { HapticFeedback } from "../src/utils/hapticFeedback";
 import { BUYER_CLAIM_COPY } from "../src/constants/buyerClaimCopy";
@@ -93,8 +92,8 @@ export function ctaLabelStyle(fontScale: number): {
   // `base * fontScale` again: 50 / 71.4 pt at AX5, inside a 44 pt pill.
   if (scale > CTA_MAX_FONT_SCALE) ratio = CTA_MAX_FONT_SCALE / scale;
   return {
-    fontSize: typography.buttonMd.fontSize * ratio,
-    lineHeight: typography.buttonMd.lineHeight * ratio,
+    fontSize: type.btnSm.fontSize * ratio,
+    lineHeight: type.btnSm.lineHeight * ratio,
   };
 }
 
@@ -144,7 +143,7 @@ export default function NotFoundScreen(): React.ReactElement {
     <>
       <Stack.Screen options={{ headerShown: false, title: "Not found" }} />
       <LinearGradient
-        colors={[colors.background.primary, backgroundWarmGlow]}
+        colors={[color.paper, color.paper]}
         style={styles.gradient}
       >
         <SafeAreaView
@@ -258,9 +257,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: space[7],
+    paddingVertical: space[6],
+    gap: space[4],
   },
   logo: {
     // #2180 — explicit width AND height. The brand masters are up to 2000x2000
@@ -278,7 +277,7 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     flexShrink: 0,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   logoCompact: {
     // #2180 P2-1 — at accessibility type sizes the heading and the subtext need
@@ -292,23 +291,23 @@ const styles = StyleSheet.create({
     // #2180 — never allowed to shrink, and never inside the centred region.
     flexShrink: 0,
     alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[7],
+    paddingBottom: space[6],
   },
   heading: {
     fontSize: 22,
     lineHeight: 30,
     fontWeight: fontWeights.bold,
-    color: colors.text.primary,
+    color: color.ink,
     textAlign: "center",
   },
   subtext: {
     fontSize: 15,
     lineHeight: 22,
     fontWeight: fontWeights.regular,
-    color: colors.text.secondary,
+    color: color.text4,
     textAlign: "center",
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   cta: {
     width: "100%",

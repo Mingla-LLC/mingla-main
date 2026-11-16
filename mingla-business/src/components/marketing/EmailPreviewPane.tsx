@@ -21,11 +21,7 @@
 import React from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { previewSpans } from "../../services/marketing/previewInline";
 import {
   previewBlocks,
@@ -319,29 +315,29 @@ const styles = StyleSheet.create({
     backgroundColor: INBOX_CANVAS,
   },
   scrollContent: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[4],
+    paddingHorizontal: space[2],
+    gap: space[2],
   },
   emailHeader: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     backgroundColor: "rgba(0,0,0,0.04)",
     borderRadius: 12,
     gap: 4,
   },
   emailHeaderLabel: {
-    ...typography.labelCap,
+    ...type.label,
     color: MUTED,
     fontSize: 10,
   },
   emailHeaderValue: {
-    ...typography.bodySm,
+    ...type.small,
     color: INK,
     fontWeight: "600",
   },
   emailHeaderSubject: {
-    ...typography.body,
+    ...type.body,
     color: INK,
     fontWeight: "700",
   },
@@ -380,7 +376,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   paragraph: {
-    ...typography.body,
+    ...type.body,
     color: INK,
     fontSize: 15,
     lineHeight: 23,
@@ -391,7 +387,7 @@ const styles = StyleSheet.create({
   spanItalic: { fontStyle: "italic" },
   spanLink: { color: "#FF6B2C", textDecorationLine: "underline" },
   placeholder: {
-    ...typography.body,
+    ...type.body,
     color: MUTED,
     fontStyle: "italic",
   },
@@ -409,14 +405,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   followTitle: {
-    ...typography.body,
+    ...type.body,
     fontWeight: "700",
     color: INK_DEEP,
     fontSize: 16,
     textAlign: "center",
   },
   followBody: {
-    ...typography.bodySm,
+    ...type.small,
     color: MUTED,
     textAlign: "center",
     marginBottom: 4,
@@ -425,11 +421,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingVertical: 12,
     paddingHorizontal: 22,
-    borderRadius: 999,
+    borderRadius: radius.full,
     backgroundColor: INK_DEEP,
   },
   followCtaLabel: {
-    ...typography.body,
+    ...type.body,
     fontWeight: "700",
     color: "#FFFFFF",
     fontSize: 15,
@@ -442,7 +438,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   footerLine: {
-    ...typography.bodySm,
+    ...type.small,
     color: MUTED,
     fontSize: 12,
     lineHeight: 17,
@@ -456,12 +452,12 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
   previewNote: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
     textAlign: "center",
     fontStyle: "italic",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingTop: space[1],
   },
 });
 
@@ -494,7 +490,7 @@ const cardStyles = StyleSheet.create({
   kickerBar: {
     width: 36,
     height: 4,
-    borderRadius: 999,
+    borderRadius: radius.full,
     backgroundColor: ORANGE,
   },
   kickerLabel: {
@@ -511,7 +507,7 @@ const cardStyles = StyleSheet.create({
   dateChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: radius.full,
     backgroundColor: INK_DEEP,
     color: CREAM,
     fontSize: 12,
@@ -521,7 +517,7 @@ const cardStyles = StyleSheet.create({
   locationChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: radius.full,
     backgroundColor: ORANGE_TINT,
     color: ORANGE_MUTED,
     fontSize: 12,
@@ -549,7 +545,7 @@ const cardStyles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: 22,
     paddingVertical: 11,
-    borderRadius: 999,
+    borderRadius: radius.full,
     backgroundColor: ORANGE,
   },
   ctaLabel: {

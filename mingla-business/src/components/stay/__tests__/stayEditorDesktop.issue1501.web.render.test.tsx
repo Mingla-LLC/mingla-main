@@ -200,12 +200,12 @@ jest.mock("../../../hooks/useBrandDiscoveryCurrency", () => ({
 import { View } from "react-native";
 
 import {
-  spacing,
   stayEditorFormMaxWidth,
   stayEditorSummaryMinWidth,
   stayEditorSummaryWidth,
   stayProseMaxWidth,
   suiteFormMaxWidth,
+  space,
 } from "../../../constants/designSystem";
 import { stayEditorLayout } from "../StayInventoryManager";
 
@@ -358,7 +358,7 @@ describe("#1501 — the desktop form column + summary rail, in real CSS", () => 
     const body = classesFor(html, "probe-body");
     expect(declaration(css, body, "flex-direction")).toBe("row");
     expect(declaration(css, body, "align-items")).toBe("flex-start");
-    expect(declaration(css, body, "column-gap")).toBe(`${spacing.xl}px`);
+    expect(declaration(css, body, "column-gap")).toBe(`${space[7]}px`);
   });
 
   it("R-5 — the threshold ARITHMETIC actually holds", () => {
@@ -366,13 +366,13 @@ describe("#1501 — the desktop form column + summary rail, in real CSS", () => 
     // whatever is left. That remainder must still be a READABLE measure —
     // splitting into a rail is only worth it if the form stays legible.
     const remainderAtThreshold =
-      stayEditorSummaryMinWidth - spacing.xl - stayEditorSummaryWidth;
+      stayEditorSummaryMinWidth - space[7] - stayEditorSummaryWidth;
     expect(remainderAtThreshold).toBeGreaterThanOrEqual(stayProseMaxWidth);
 
     // At a 1440 viewport the column reaches its FULL measure with room spare:
     // 760 + 32 + 320 = 1112 inside ~1164 of workspace.
     expect(WIDE).toBeGreaterThanOrEqual(
-      stayEditorFormMaxWidth + spacing.xl + stayEditorSummaryWidth,
+      stayEditorFormMaxWidth + space[7] + stayEditorSummaryWidth,
     );
     // A 1440 viewport clears the threshold; a 1280 viewport does not. Those are
     // the two real monitors this decision was made for.

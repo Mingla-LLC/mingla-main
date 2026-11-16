@@ -15,15 +15,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Check } from "lucide-react-native";
 
-import {
-  ariPalette,
-  ariThread,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { ariPalette, ariThread, color, radius, space, type } from "../../constants/designSystem";
 import { GlassChrome } from "../ui/GlassChrome";
 
 export type ClarifyingState =
@@ -65,7 +57,7 @@ export const ClarifyingCard: React.FC<ClarifyingCardProps> = ({
         accessibilityRole="text"
         accessibilityLabel={`Answered: ${value}`}
       >
-        <Check size={13} color={semantic.success} strokeWidth={2.5} />
+        <Check size={13} color={color.success} strokeWidth={2.5} />
         <Text style={styles.answeredText} numberOfLines={1}>
           Answered: {value}
         </Text>
@@ -81,8 +73,8 @@ export const ClarifyingCard: React.FC<ClarifyingCardProps> = ({
   return (
     <GlassChrome
       intensity="cardBase"
-      tintColor={glass.tint.profileBase}
-      borderColor={glass.border.profileBase}
+      tintColor={color.fill.inset}
+      borderColor={color.line}
       radius="lg"
       style={[styles.card, isDisabled && styles.cardDisabled]}
     >
@@ -98,7 +90,7 @@ export const ClarifyingCard: React.FC<ClarifyingCardProps> = ({
           onChangeText={fieldEditable ? onChange : undefined}
           editable={fieldEditable}
           placeholder="Type your answer"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           style={styles.field}
           accessibilityLabel={`Answer: ${question}`}
         />
@@ -149,31 +141,31 @@ const styles = StyleSheet.create({
     padding: ariThread.cardPad,
   },
   eyebrow: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
     letterSpacing: 1.1,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   question: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: ariThread.cardTitleFont,
     lineHeight: ariThread.cardTitleLine,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   field: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     fontSize: 13,
     lineHeight: 17,
-    color: textTokens.primary,
+    color: color.text1,
     paddingVertical: ariThread.inputPadV,
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.pending,
+    borderBottomColor: color.fill.pager,
   },
   actions: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 6,
@@ -181,21 +173,21 @@ const styles = StyleSheet.create({
   ghostBtn: {
     minHeight: 44,
     borderRadius: 10,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     alignItems: "center",
     justifyContent: "center",
   },
   ghostText: {
     fontSize: 13,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: -0.1,
   },
   primaryBtn: {
     minHeight: 44,
     minWidth: 88,
     borderRadius: 10,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: ariPalette.userBubble,
@@ -204,7 +196,7 @@ const styles = StyleSheet.create({
   primaryText: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: color.textStrong,
     letterSpacing: -0.1,
   },
   btnPressed: {
@@ -219,19 +211,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginVertical: 6,
-    backgroundColor: semantic.successTint,
+    backgroundColor: color.successTint,
     borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.4)",
-    borderRadius: 999,
+    borderColor: color.success,
+    borderRadius: radius.full,
     overflow: "hidden",
     paddingHorizontal: ariThread.ribbonPadH,
     paddingVertical: ariThread.ribbonPadV,
     maxWidth: "100%",
   },
   answeredText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: semantic.success,
+    color: color.success,
     flexShrink: 1,
   },
 });

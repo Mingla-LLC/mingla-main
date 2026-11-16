@@ -72,14 +72,10 @@ import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { useCart, useCartQuoteTotals } from "../../../src/components/checkout/CartContext";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
@@ -489,7 +485,7 @@ export default function TripIntakeScreen(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top + spacing.sm, backgroundColor: canvas.depth },
+          { paddingTop: insets.top + space[2], backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.loadingWrap}>
@@ -504,7 +500,7 @@ export default function TripIntakeScreen(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top + spacing.sm, backgroundColor: canvas.depth },
+          { paddingTop: insets.top + space[2], backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.loadingWrap}>
@@ -532,7 +528,7 @@ export default function TripIntakeScreen(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top + spacing.sm, backgroundColor: canvas.depth },
+        { paddingTop: insets.top + space[2], backgroundColor: color.canvas },
       ]}
     >
       {/* Inline header — mirrors CheckoutHeader visual exactly but supports
@@ -600,7 +596,7 @@ export default function TripIntakeScreen(): React.ReactElement {
         {showValidationBanner && missingCount > 0 ? (
           <GlassCard
             variant="base"
-            padding={spacing.md}
+            padding={space[4]}
             radius="lg"
             style={styles.validationBanner}
           >
@@ -611,7 +607,7 @@ export default function TripIntakeScreen(): React.ReactElement {
               <Icon
                 name="bell"
                 size={20}
-                color={semantic.error}
+                color={color.danger}
                 strokeWidth={2}
               />
               <Text style={styles.validationText}>
@@ -682,7 +678,7 @@ export default function TripIntakeScreen(): React.ReactElement {
           radius="xxl"
           style={[
             styles.dock,
-            { marginBottom: insets.bottom + spacing.md },
+            { marginBottom: insets.bottom + space[4] },
           ]}
         >
           {totalTiers > 1 && tierIdx > 0 ? (
@@ -732,7 +728,7 @@ export default function TripIntakeScreen(): React.ReactElement {
       <View
         style={[
           styles.toastWrap,
-          { paddingTop: insets.top + spacing.md },
+          { paddingTop: insets.top + space[4] },
         ]}
         pointerEvents="box-none"
       >
@@ -760,108 +756,108 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingText: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    color: color.text3,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   headerCenter: {
     flex: 1,
     alignItems: "center",
   },
   headerTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   headerSubtitle: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
   headerDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
   },
   body: {
     flex: 1,
   },
   bodyContent: {
-    paddingHorizontal: spacing.md + 8,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4] + 8,
+    paddingTop: space[4],
   },
   validationBanner: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderWidth: 1,
-    backgroundColor: semantic.errorTint,
-    marginBottom: spacing.lg,
+    backgroundColor: color.errorTint,
+    marginBottom: space[6],
   },
   // ORCH-0882 — wrap so the schedule card sits with consistent vertical
   // breathing room above the validation banner / tier eyebrow.
   planDisclosureWrap: {
     width: "100%",
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   validationRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   validationText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   tierEyebrowWrap: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   // ORCH-0949 — one-line context just above the form.
   upfrontContext: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   tierEyebrow: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: accent.warm,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.accent,
     textTransform: "uppercase",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   tierProgressRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   tierProgressDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     backgroundColor: "transparent",
   },
   tierProgressDotActive: {
-    backgroundColor: accent.warm,
-    borderColor: accent.border,
+    backgroundColor: color.accent,
+    borderColor: color.accentLine,
   },
   tierProgressDotCompleted: {
-    backgroundColor: accent.warm,
-    borderColor: accent.border,
+    backgroundColor: color.accent,
+    borderColor: color.accentLine,
     opacity: 0.6,
   },
   dock: {
-    marginHorizontal: spacing.md,
+    marginHorizontal: space[4],
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
@@ -881,23 +877,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     zIndex: 100,
   },
   stepPill: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   stepPillLabel: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
     textTransform: "uppercase",
-    color: textTokens.secondary,
+    color: color.text2,
   },
 });

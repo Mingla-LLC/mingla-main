@@ -10,11 +10,10 @@ import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import { TripDayEditor, type TripDayDraft } from "./TripDayEditor";
@@ -143,7 +142,7 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
 
       {days.length === 0 ? (
         <View style={styles.emptyState}>
-          <Icon name="calendar" size={32} color={textTokens.tertiary} />
+          <Icon name="calendar" size={32} color={color.text3} />
           <Text style={styles.emptyText}>No days yet. Add your first day below.</Text>
         </View>
       ) : (
@@ -189,7 +188,7 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
         style={[styles.addBtn, disabled === true && styles.addBtnDisabled]}
         testID="trip-step2-add-day"
       >
-        <Icon name="plus" size={16} color={accent.warm} />
+        <Icon name="plus" size={16} color={color.accent} />
         <Text style={styles.addBtnText}>Add a day</Text>
       </Pressable>
 
@@ -216,52 +215,52 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
 
 const styles = StyleSheet.create({
   host: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-    gap: spacing.md,
+    paddingTop: space[2],
+    paddingBottom: space[6],
+    gap: space[4],
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   emptyState: {
-    padding: spacing.lg,
+    padding: space[6],
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    backgroundColor: color.fill.tableHead,
     borderStyle: "dashed",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.line,
   },
   emptyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
   daysList: {
-    gap: spacing.md,
+    gap: space[4],
   },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
+    gap: space[1],
+    paddingVertical: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    backgroundColor: color.accentTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.4)",
+    borderColor: color.accentLine,
     borderStyle: "dashed",
   },
   addBtnDisabled: {
     opacity: 0.4,
   },
   addBtnText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
 });
 

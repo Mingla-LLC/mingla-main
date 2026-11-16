@@ -25,7 +25,7 @@ import {
 } from "../referrals/ReferralHomeView";
 import { fetchCreatorGigsAccess } from "../../services/creatorGigsService";
 import { fetchReferralAccess } from "../../services/referralService";
-import { spacing } from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
 
 // The tab itself is reached only through the program's lazy owner
 // (programs/creatorProgramOwner.ts), so the homes and services are static
@@ -155,7 +155,7 @@ export function BlastProgramTab({
 const styles = StyleSheet.create({
   creatorHost: { flex: 1, minHeight: 0 },
   creatorTabs: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
 });

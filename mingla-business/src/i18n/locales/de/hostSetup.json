@@ -171,6 +171,10 @@
       "readyBank": "Bankkonto in {{country}}",
       "readyBankAny": "Bankkonto in deinem Land",
       "readyTax": "Steuernummer (nur eingetragene Unternehmen)"
+    },
+    "stepper": {
+      "saved": "Gespeichert",
+      "steps": "Schritte"
     }
   },
   "doorMode": {

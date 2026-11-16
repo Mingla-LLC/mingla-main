@@ -25,7 +25,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { accent, radius, spacing } from "../../constants/designSystem";
+import {
+  radius,
+  color,
+  space,
+} from "../../constants/designSystem";
 import { DefaultFallback } from "../ui/ErrorBoundary";
 import type { RefundPolicyEditorProps } from "./RefundPolicyEditor";
 
@@ -103,19 +107,19 @@ export const LazyRefundPolicyEditor: React.FC<RefundPolicyEditorProps> = (props)
 // Mirrors RefundPolicyEditor's container, eyebrow and chip-row geometry, so the
 // editor replaces this in place.
 const styles = StyleSheet.create({
-  container: { paddingVertical: spacing.sm },
+  container: { paddingVertical: space[2] },
   eyebrow: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: accent.warm,
-    marginBottom: spacing.sm,
+    color: color.accent,
+    marginBottom: space[2],
   },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginBottom: space[4] },
   chip: {
     width: 84,
     minHeight: 34,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
 });

@@ -8,7 +8,8 @@
  *   - CTA moved OUT of the ScrollView into a fixed footer. The previous
  *     ScrollView-wrapped Pressable swallowed taps when the content fit
  *     without scrolling.
- *   - Sheet wrapped in BlurView for true liquid-glass feel.
+ *   - #4420: the sheet surface is `<Material kind="sheet">` (the one glass
+ *     owner): iOS blur, solid graphite on Android and phone web.
  *   - Compact three-ring Ari identity and one decision-first trust promise.
  *   - One boundary and one action: no nested cards or competing choices.
  */
@@ -25,7 +26,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from "expo-blur";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -33,14 +33,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
-import { shouldUseRealBlur } from "../../utils/glassBlur";
+import { color, radius, scrim, size, space, type } from "../../constants/designSystem";
+import { Icon } from "../ui/Icon";
+import { Material } from "../ui/Material";
 import { resolveSheetMaxHeight } from "./aiDisclosureSheetLayout";
 import { AriPremiumButton as Button } from "./AriPremiumButton";
 import { AriOrb } from "./AriOrb";
@@ -50,36 +45,18 @@ export interface AiDisclosureModalProps {
   onAccept: () => void;
 }
 
-// META-ORCH-1002 Sub-D / ORCH-1100: on Android expo-blur renders a thin
-// near-transparent view, and on phone web (< 768px) the blur-kill media rule
-// strips `backdrop-filter` — both leak busy content through the 0.78 tint. Route
-// those cases to a solid opaque frosted surface; iOS + wide desktop web keep the
-// real blur. The width-aware decision lives in `shouldUseRealBlur(windowWidth)`.
+// #4420 (was META-ORCH-1002 Sub-D / ORCH-1100): the sheet surface is drawn by
+// `<Material kind="sheet">`, which owns the platform decision (iOS blur;
+// Android, Reduce Transparency and phone web < 768 get the solid sheet fill via
+// `shouldUseRealBlur`), so busy content never bleeds through.
 //
-// ORCH-1248 (Apple 2.1a): the blur/opaque surface is now a PURELY VISUAL
-// BACKGROUND layer with `pointerEvents="none"`. It sits BEHIND the interactive
-// content (which is a sibling overlay), so a real iOS UIVisualEffectView can
-// never sit in the touch path of the CTA or the close (X) button and swallow
-// their taps — the iOS-26 hit-testing hazard that trapped the reviewer.
-const SheetBackdropSurface: React.FC = () => {
-  const { width: windowWidth } = useWindowDimensions();
-  if (!shouldUseRealBlur(windowWidth)) {
-    return (
-      <View
-        pointerEvents="none"
-        style={[styles.surfaceFill, styles.opaqueSheet]}
-      />
-    );
-  }
-  return (
-    <BlurView
-      pointerEvents="none"
-      intensity={40}
-      tint="dark"
-      style={[styles.surfaceFill, styles.blur]}
-    />
-  );
-};
+// ORCH-1248 (Apple 2.1a): the surface is a PURELY VISUAL BACKGROUND layer with
+// `pointerEvents="none"`. It sits BEHIND the interactive content (a sibling
+// overlay), so a real iOS UIVisualEffectView can never sit in the touch path of
+// the CTA or the close (X) button and swallow their taps.
+const SheetBackdropSurface: React.FC = () => (
+  <Material kind="sheet" pointerEvents="none" style={styles.surfaceFill} />
+);
 
 export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
   visible,
@@ -156,7 +133,9 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
               accessibilityLabel="Close"
               hitSlop={12}
             >
-              <Text style={styles.closeGlyph}>✕</Text>
+              <Text style={styles.closeGlyph}>
+                <Icon name="close" size={18} color={color.text1} />
+              </Text>
             </Pressable>
 
             <ScrollView
@@ -188,7 +167,7 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
             <View
               style={[
                 styles.footer,
-                { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+                { paddingBottom: Math.max(insets.bottom, space[6]) },
               ]}
             >
               <Button
@@ -211,7 +190,7 @@ export const AiDisclosureModal: React.FC<AiDisclosureModalProps> = ({
 const styles = StyleSheet.create({
   scrim: {
     flex: 1,
-    backgroundColor: "rgba(8, 9, 12, 0.65)",
+    backgroundColor: scrim.modal,
     justifyContent: "flex-end",
   },
   webScrimVisible: {
@@ -228,96 +207,75 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     width: "100%",
     alignSelf: "center",
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
+    borderTopLeftRadius: radius.xxxl,
+    borderTopRightRadius: radius.xxxl,
     overflow: "hidden",
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: glass.border.profileElevated,
   },
   // ORCH-1248: the visual surface is an absolutely-positioned background layer
   // filling the sheetWrap, behind the interactive content overlay.
   surfaceFill: {
     ...StyleSheet.absoluteFillObject,
   },
-  blur: {
-    backgroundColor: "rgba(20, 17, 19, 0.78)",
-  },
-  // META-ORCH-1002 Sub-D: opaque Android sheet surface (≥0.92 policy). Warm
-  // dark frosted fill matching the iOS blur's intent, fully opaque so busy
-  // content never bleeds through.
-  opaqueSheet: {
-    backgroundColor: "#1a1416",
-  },
   sheet: {
     flexShrink: 1,
   },
   grabber: {
-    width: 38,
-    height: 4,
+    width: size.handle.width,
+    height: size.handle.height,
     alignSelf: "center",
     borderRadius: radius.full,
-    backgroundColor: "#51565c",
-    marginTop: spacing.sm,
+    backgroundColor: color.fill.handle,
+    marginTop: space[2],
   },
   // ORCH-1248 (Apple 2.1a): always-visible close affordance, top-right, above
   // the blur layer. ≥44pt effective target via size + hitSlop.
   closeButton: {
     position: "absolute",
-    top: spacing.sm,
-    right: spacing.sm,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    top: space[2],
+    right: space[2],
+    width: size.iconBtn.sm,
+    height: size.iconBtn.sm,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#3b4248",
-    backgroundColor: "#20242a",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
     zIndex: 2,
   },
   closeGlyph: {
-    fontSize: 18,
-    lineHeight: 20,
-    fontWeight: "600",
-    color: textTokens.primary,
+    lineHeight: 18,
   },
   content: {
-    padding: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    gap: spacing.md,
+    padding: space[7],
+    paddingTop: space[6],
+    paddingBottom: space[4],
+    gap: space[4],
   },
+  // #4420 COPY_RULES 4: a paragraph reads left-aligned under the orb + title.
   hero: {
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   orbWrap: {
-    alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[3],
   },
   title: {
-    fontSize: typography.h1.fontSize,
-    fontWeight: typography.h1.fontWeight,
-    color: textTokens.primary,
-    textAlign: "center",
-    marginBottom: spacing.sm,
-    letterSpacing: -0.45,
+    ...type.title,
+    color: color.text1,
+    marginBottom: space[2],
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
-    textAlign: "center",
-    maxWidth: 420,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   footer: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[7],
+    paddingTop: space[4],
     // paddingBottom is applied inline as Math.max(insets.bottom, spacing.lg)
     // — see render (ORCH-1246): keeps the CTA above the home-indicator on iPad.
-    borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
   },
 });
 

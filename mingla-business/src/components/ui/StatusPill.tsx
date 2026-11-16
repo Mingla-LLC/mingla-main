@@ -18,7 +18,15 @@ export type StatusPillStatus =
   | "ENDED"
   | "PENDING"
   | "PREVIEW"
-  | "SOLD_OUT";
+  | "SOLD_OUT"
+  // #4420 Graphite Glass kit states (additive).
+  | "NOW"
+  | "PAID"
+  | "REFUNDED"
+  | "PARTIAL"
+  | "ATTENTION"
+  | "CANCELLED"
+  | "PAUSED";
 
 export interface StatusPillProps {
   status: StatusPillStatus;
@@ -41,11 +49,19 @@ interface StatusEntry {
 const STATUS_DICT: Record<StatusPillStatus, StatusEntry> = {
   LIVE: { variant: "live", label: "LIVE", livePulse: true },
   DRAFT: { variant: "draft", label: "DRAFT" },
-  UPCOMING: { variant: "info", label: "UPCOMING" },
+  // #4420: upcoming = the orange dot (one of the places orange is allowed).
+  UPCOMING: { variant: "accent", label: "UPCOMING" },
   ENDED: { variant: "draft", label: "ENDED" },
   PENDING: { variant: "warn", label: "PENDING" },
   PREVIEW: { variant: "info", label: "PREVIEW" },
   SOLD_OUT: { variant: "error", label: "SOLD OUT" },
+  NOW: { variant: "live", label: "NOW", livePulse: true },
+  PAID: { variant: "ok", label: "PAID" },
+  REFUNDED: { variant: "draft", label: "REFUNDED" },
+  PARTIAL: { variant: "muted", label: "PARTIAL" },
+  ATTENTION: { variant: "warn", label: "NEEDS ATTENTION" },
+  CANCELLED: { variant: "muted", label: "CANCELLED" },
+  PAUSED: { variant: "muted", label: "PAUSED" },
 };
 
 export const StatusPill: React.FC<StatusPillProps> = ({

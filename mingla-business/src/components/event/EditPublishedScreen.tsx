@@ -66,12 +66,10 @@ import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  materials,
 } from "../../constants/designSystem";
 import {
   useLiveEventStore,
@@ -116,7 +114,8 @@ import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
 
-import { ChangeSummaryModal } from "./ChangeSummaryModal";
+// #4420 — lazy: the sheet is mounted hidden and opens on intent.
+import { ChangeSummaryModal } from "./LazyChangeSummaryModal";
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
@@ -513,6 +512,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   }, [freshPricingMode]);
 
   // Currently expanded section (accordion — only one at a time)
+  // #4420: the Eligible buyers section card's own open state (web only).
+  const [buyersOpen, setBuyersOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<SectionKey | null>(() =>
     initialSection !== null &&
     sectionsForMode(rsvpMode).some((sec) => sec.key === initialSection)
@@ -1942,7 +1943,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -2015,7 +2016,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 <Icon
                   name={isOpen ? "chevU" : "chevD"}
                   size={16}
-                  color={textTokens.tertiary}
+                  color={color.text3}
                 />
               </Pressable>
               {isOpen ? (
@@ -2033,10 +2034,35 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             .native.tsx sibling is a typed null renderer, so no native Business
             screen gains a configuration control. */}
         {!rsvpMode && Platform.OS === "web" ? (
+          // #4420: the same collapsible section card as the sections above
+          // (it read as a raw form under them).
           <View style={styles.sectionCard}>
-            <React.Suspense fallback={null}>
-              <EventTicketCheckoutAccessCard eventId={liveEvent.id} />
-            </React.Suspense>
+            <Pressable
+              onPress={() => setBuyersOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityLabel={`Eligible buyers section${buyersOpen ? " (expanded)" : " (collapsed)"}`}
+              style={({ pressed }) => [
+                styles.sectionHeader,
+                pressed && styles.sectionHeaderPressed,
+              ]}
+              testID="eligible-buyers-section-header"
+            >
+              <View style={styles.sectionHeaderLeft}>
+                <Text style={styles.sectionLabel}>Eligible buyers</Text>
+              </View>
+              <Icon
+                name={buyersOpen ? "chevU" : "chevD"}
+                size={16}
+                color={color.text3}
+              />
+            </Pressable>
+            {buyersOpen ? (
+              <View style={styles.sectionBody}>
+                <React.Suspense fallback={null}>
+                  <EventTicketCheckoutAccessCard eventId={liveEvent.id} embedded />
+                </React.Suspense>
+              </View>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>
@@ -2044,7 +2070,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       {/* Sticky bottom Save dock — hidden when keyboard up */}
       {!keyboardVisible ? (
         <View
-          style={[styles.dock, { paddingBottom: insets.bottom + spacing.md }]}
+          style={[styles.dock, { paddingBottom: insets.bottom + space[4] }]}
         >
           {!rsvpMode && serverOrdersRead.status === "error" ? (
             <Text style={styles.ordersReadMessage}>
@@ -2171,16 +2197,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -2191,31 +2217,31 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md + 8,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4] + 8,
+    paddingTop: space[4],
   },
   sectionCard: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   // ORCH-1150 — RSVP "they'll be notified" notice. Opaque fill (Android glass
   // policy: ANDROID_GLASS_USES_OPAQUE_FALLBACK) — solid card, no translucent tint.
   rsvpNotice: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: canvas.profile,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    borderColor: color.line,
+    backgroundColor: color.canvas,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     overflow: "hidden",
   },
   rsvpNoticeText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
     lineHeight: 18,
   },
@@ -2223,37 +2249,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     minHeight: 56,
   },
   sectionHeaderPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   sectionHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     flex: 1,
   },
   sectionLabel: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   editedBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radiusTokens.full,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   editedBadgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
     letterSpacing: 1.0,
     textTransform: "uppercase",
   },
@@ -2261,37 +2287,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(255, 59, 48, 0.18)",
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: "rgba(255, 59, 48, 0.45)",
+    borderColor: color.errorLine,
   },
   errorBadgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#ff3b30",
+    color: color.errorText,
     letterSpacing: 1.0,
     textTransform: "uppercase",
   },
   sectionBody: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingTop: 0,
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   dock: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.sheet.solidFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   ordersReadMessage: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     textAlign: "center",
   },
 });

@@ -8,7 +8,7 @@
  */
 
 export { PhoneInput } from "./PhoneInput";
-export type { PhoneInputProps } from "./PhoneInput";
+export type { PhoneInputMetrics, PhoneInputProps } from "./PhoneInput";
 export {
   CountryPickerModal,
   CountryPickerOverlay,

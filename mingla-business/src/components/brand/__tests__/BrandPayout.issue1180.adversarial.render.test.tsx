@@ -343,12 +343,21 @@ describe("#1180 CANCELLED status pill is GREY, not red", () => {
     expect(tree).toContain("rgba(255, 255, 255, 0.06)");
     // …and the error-red variant tokens ABSENT (would signal a false alarm).
     expect(tree).not.toContain("rgba(239, 68, 68");
+    // [TEST-MOD-APPROVED #4420] Graphite pills carry status as a dot; the
+    // danger dot must be absent on a cancelled payout too.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { color } = require("../../../constants/designSystem") as typeof import("../../../constants/designSystem");
+    expect(tree).not.toContain(color.danger);
   });
 
   it("failed → red 'NEEDS ATTENTION'; released → green 'RELEASED'", () => {
     render(<BrandPayoutStatusPill status="failed" testID="p-failed" />);
     expect(screen.getByText("NEEDS ATTENTION")).toBeTruthy();
-    expect(JSON.stringify(screen.toJSON())).toContain("rgba(239, 68, 68");
+    // [TEST-MOD-APPROVED #4420] Graphite Glass pills are neutral with a
+    // status dot; "failed" paints the danger dot (was the red tint fill).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { color } = require("../../../constants/designSystem") as typeof import("../../../constants/designSystem");
+    expect(JSON.stringify(screen.toJSON())).toContain(`"backgroundColor":"${color.danger}"`);
   });
 });
 

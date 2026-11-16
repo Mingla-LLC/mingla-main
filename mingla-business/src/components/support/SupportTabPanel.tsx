@@ -16,8 +16,8 @@ import {
 import { useRouter } from "expo-router";
 
 import {
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
 import { useSupportIsOnline } from "../../hooks/useCommunity";
@@ -131,7 +131,7 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
               onToast={onToast}
             />
           ) : (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <GlassCard variant="elevated" radius="md" padding={space[6]}>
               <Text style={styles.cardTitle}>{supportCopy("panel.new_request")}</Text>
               <Text style={styles.cardBody}>
                 {supportCopy("panel.new_request_hint", { agent: SUPPORT_HOST_FACING_AGENT })}
@@ -152,14 +152,14 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
         >
           <Text style={styles.sectionLabel}>{supportCopy("panel.my_requests")}</Text>
           {isLoading ? (
-            <View style={styles.listState}><ActivityIndicator color={textTokens.secondary} /></View>
+            <View style={styles.listState}><ActivityIndicator color={color.text2} /></View>
           ) : isError ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <GlassCard variant="elevated" radius="md" padding={space[6]}>
               <Text style={styles.cardBody}>{supportCopy("panel.load_error")}</Text>
               <Button label={supportCopy("panel.try_again")} variant="secondary" onPress={() => void refetch()} />
             </GlassCard>
           ) : tickets.length === 0 ? (
-            <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <GlassCard variant="elevated" radius="md" padding={space[6]}>
               <Text style={styles.emptyTitle}>{supportCopy("panel.empty_title")}</Text>
               <Text style={styles.cardBody}>{supportCopy("panel.empty_body")}</Text>
             </GlassCard>
@@ -178,11 +178,11 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
                     })}
                     style={({ pressed }) => [pressed && styles.rowPressed]}
                   >
-                    <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+                    <GlassCard variant="elevated" radius="md" padding={space[4]}>
                       <View style={styles.rowTop}><Text style={styles.rowSubject} numberOfLines={1}>{ticket.subject}</Text><Pill variant={pill.variant}>{pill.label}</Pill></View>
                       <View style={styles.rowBottom}>
                         <Text style={styles.rowMeta} numberOfLines={1}>{rowMeta(ticket)}</Text>
-                        <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                        <Icon name="chevR" size={16} color={color.text3} />
                       </View>
                     </GlassCard>
                   </Pressable>
@@ -199,30 +199,30 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
 
 const styles = StyleSheet.create({
   col: {
-    gap: spacing.md,
+    gap: space[4],
   },
-  workspace: { gap: spacing.lg },
+  workspace: { gap: space[6] },
   workspaceWide: { flexDirection: "row", alignItems: "flex-start" },
-  primaryColumn: { minWidth: 0, gap: spacing.md },
+  primaryColumn: { minWidth: 0, gap: space[4] },
   primaryColumnWide: { flexBasis: 0, flexGrow: 5 },
-  supportColumn: { minWidth: 0, gap: spacing.md },
+  supportColumn: { minWidth: 0, gap: space[4] },
   supportColumnWide: { flexBasis: 0, flexGrow: 3 },
   banner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: 12,
     borderWidth: 1,
   },
   bannerOnline: {
-    backgroundColor: "rgba(52, 199, 89, 0.12)",
-    borderColor: "rgba(52, 199, 89, 0.35)",
+    backgroundColor: color.successTint,
+    borderColor: color.line,
   },
   bannerAway: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: color.fill.inset,
+    borderColor: color.lineStrong,
   },
   bannerDot: {
     width: 8,
@@ -230,48 +230,48 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   bannerDotOnline: {
-    backgroundColor: "#34c759",
+    backgroundColor: color.success,
   },
   bannerDotAway: {
-    backgroundColor: textTokens.tertiary,
+    backgroundColor: color.text3,
   },
   bannerText: {
     flex: 1,
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   cardBody: {
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    color: color.text2,
+    marginBottom: space[4],
   },
   sectionLabel: {
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 0.4,
-    color: textTokens.tertiary,
-    paddingTop: spacing.xs,
+    color: color.text3,
+    paddingTop: space[1],
   },
   listState: {
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
     alignItems: "center",
   },
   emptyTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowPressed: {
     opacity: 0.7,
@@ -280,29 +280,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowSubject: {
     flex: 1,
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowBottom: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   listNote: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
-    paddingTop: spacing.xs,
+    paddingTop: space[1],
   },
   rowMeta: {
     flex: 1,
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });

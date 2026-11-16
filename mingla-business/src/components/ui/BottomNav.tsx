@@ -1,21 +1,19 @@
 /**
- * BottomNav — 3-tab capsule navigation per DEC-073.
+ * BottomNav — the phone tab bar (#4420 Graphite Glass, spec §3.4 / B5).
  *
- * Wrapper: `GlassChrome` with `radius="full"`, intensity `chrome`, tint
- * `glass.tint.chrome.idle`. Each tab is a Pressable with vertical-stack
- * `<Icon>` + `<Text>` label.
+ * A floating liquid-glass capsule (iOS `materials.liquid`; Android the SOLID
+ * liquid fill with the same rim). Tabs: Home, Hub, [Create], Ari, Blast.
+ *   - A tab whose id is `create` is not a destination: it renders as the
+ *     centred orange ember (54) and calls `onCreate` (the shell opens the
+ *     UniversalCreatorSheet through hubCreatorStore).
+ *   - Active tab: orange icon (one of the places orange is allowed), text1
+ *     label, and a soft `fill.tabOn` spotlight behind it.
  *
- * Spotlight: an absolutely-positioned `Animated.View` behind the active
- * tab — background `accent.tint`, border `accent.border`, shadow
- * `shadows.glassChromeActive`, radius `full`. Animates `left` and
- * `width` via spring (damping 18, stiffness 260, mass 0.9) on `active`
- * change. Reduce-motion: 200ms timing.
- *
- * Active tab: white icon, weight-600 label. Inactive: 55%-alpha white
- * icon, weight-500 label.
- *
- * Per DEC-073, the `tabs` prop accepts arbitrary length so Cycle 12 can
- * swap to 4-tab when Marketing ships, but Cycle 0a default is 3.
+ * ORCH-1320 (biz Account-tab Apple crash): the spotlight animation MUST NOT
+ * use a Reanimated worklet. A worklet here races the Fabric mount-commit on
+ * the New Architecture → EXC_BAD_ACCESS use-after-free. It stays RN-core
+ * `Animated` (JS driver, `useNativeDriver: false`) and its `.start()` is
+ * deferred a frame. I-PROPOSED-1320-NO-WORKLET-ON-TAB-COMMIT-PATH.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -30,20 +28,17 @@ import {
 } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 
-import {
-  accent,
-  glass,
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, shadow as shadowTokens, space, type } from "../../constants/designSystem";
 import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 
 import { GlassChrome } from "./GlassChrome";
+import { BOTTOM_NAV_CAPSULE_HEIGHT, BOTTOM_NAV_EMBER_SIZE } from "./bottomNavMetrics";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
+
+/** The tab id that renders as the centred Create ember (not a route). */
+export const CREATE_TAB_ID = "create";
 
 export interface BottomNavTab {
   id: string;
@@ -55,13 +50,15 @@ export interface BottomNavProps {
   tabs: BottomNavTab[];
   active: string;
   onChange: (id: string) => void;
+  /** #4420: the centred Create ember was pressed. */
+  onCreate?: () => void;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
 
-const NAV_HEIGHT = 64;
-const NAV_PADDING_X = spacing.sm;
-const NAV_PADDING_Y = spacing.sm;
+const NAV_HEIGHT = BOTTOM_NAV_CAPSULE_HEIGHT;
+const NAV_PADDING_X = space[2];
+const NAV_PADDING_Y = space[2];
 const SPOTLIGHT_HEIGHT = 48;
 // ORCH-1320: layout props (`left`/`width`) require the JS driver
 // (`useNativeDriver: false`). The JS-driven RN-core Animated loop runs through
@@ -79,7 +76,7 @@ const REDUCE_TIMING = {
   easing: Easing.out(Easing.cubic),
   useNativeDriver: false,
 } as const;
-const INACTIVE_ICON = "rgba(255, 255, 255, 0.55)";
+const INACTIVE_ICON = color.text3;
 
 interface TabLayout {
   x: number;
@@ -90,6 +87,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   tabs,
   active,
   onChange,
+  onCreate,
   testID,
   style,
 }) => {
@@ -162,6 +160,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         if (Platform.OS !== "web") {
           HapticFeedback.buttonPress();
         }
+        if (id === CREATE_TAB_ID) {
+          onCreate?.();
+          return;
+        }
         onChange(id);
       },
     [onChange],
@@ -169,19 +171,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <View testID={testID} style={[styles.host, style]}>
-      <GlassChrome
-        intensity="cardElevated"
-        tintColor="rgba(12, 14, 18, 0.55)"
-        borderColor={glass.border.chrome}
-        radius="full"
-        style={styles.bar}
-      >
+      <GlassChrome material="liquid" shadow={shadowTokens.liquid} radius="full" style={styles.bar}>
         <View style={styles.tabsRow}>
           <Animated.View
             pointerEvents="none"
-            style={[styles.spotlight, shadows.glassChromeActive, { left, width }]}
+            style={[styles.spotlight, { left, width, opacity: activeLayout === undefined ? 0 : 1 }]}
           />
           {tabs.map((tab) => {
+            if (tab.id === CREATE_TAB_ID) {
+              return (
+                <View key={tab.id} style={styles.tab}>
+                  <Pressable
+                    onPress={handlePress(tab.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={tab.label}
+                    testID="bottom-nav-create"
+                    style={[styles.ember, shadowTokens.ember]}
+                  >
+                    <Icon name="plus" size={24} color={color.onAccent} />
+                  </Pressable>
+                </View>
+              );
+            }
             const isActive = tab.id === active;
             return (
               <Pressable
@@ -193,16 +204,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                 accessibilityLabel={tab.label}
                 style={styles.tab}
               >
-                <Icon
-                  name={tab.icon}
-                  size={22}
-                  color={isActive ? textTokens.inverse : INACTIVE_ICON}
-                />
+                <Icon name={tab.icon} size={22} color={isActive ? color.accent : INACTIVE_ICON} />
                 <Text
                   style={[
                     styles.label,
                     {
-                      color: isActive ? textTokens.inverse : INACTIVE_ICON,
+                      color: isActive ? color.text1 : INACTIVE_ICON,
                       fontWeight: isActive ? "600" : "500",
                     },
                   ]}
@@ -221,7 +228,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   bar: {
     height: NAV_HEIGHT,
@@ -237,9 +244,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: NAV_PADDING_Y,
     height: SPOTLIGHT_HEIGHT,
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
-    borderWidth: 1,
+    backgroundColor: color.fill.tabOn,
     borderRadius: SPOTLIGHT_HEIGHT / 2,
   },
   tab: {
@@ -248,10 +253,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
+  ember: {
+    width: BOTTOM_NAV_EMBER_SIZE,
+    height: BOTTOM_NAV_EMBER_SIZE - 8,
+    borderRadius: (BOTTOM_NAV_EMBER_SIZE - 8) / 2,
+    backgroundColor: color.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   label: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    letterSpacing: typography.micro.letterSpacing,
+    fontSize: type.nav.fontSize,
+    lineHeight: type.nav.lineHeight,
+    letterSpacing: type.nav.letterSpacing,
   },
 });
 

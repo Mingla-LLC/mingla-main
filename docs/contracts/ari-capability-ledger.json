@@ -5530,7 +5530,7 @@
       },
       "owners": {
         "ui": [
-          "mingla-business/app/(tabs)/marketing/audiences/index.tsx"
+          "mingla-business/app/(tabs)/marketing/people/index.tsx"
         ],
         "source": [
           {

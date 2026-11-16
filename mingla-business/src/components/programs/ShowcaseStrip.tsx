@@ -26,14 +26,10 @@ import {
   CREATOR_VIDEO_ERROR,
   creatorVideoSurface,
 } from "../../utils/creatorProgramFormat";
-import {
-  accent,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, scrim, space } from "../../constants/designSystem";
 
-const TILE_TONES = ["#5b3a22", "#2c4b55", "#4a2f45"];
+// #4420: placeholder tiles (no poster yet) step through the Graphite card tones.
+const TILE_TONES = [color.card2, color.card3, color.card];
 
 export function ShowcaseStrip({
   items,
@@ -84,12 +80,12 @@ export function ShowcaseStrip({
               />
             ) : null}
             {loadingId === item.media_id ? (
-              <ActivityIndicator color={textTokens.primary} />
+              <ActivityIndicator color={color.text1} />
             ) : (
               <Icon
                 name="play"
                 size={size === "large" ? 26 : 18}
-                color={textTokens.primary}
+                color={color.text1}
               />
             )}
           </Pressable>
@@ -143,7 +139,7 @@ export function CreatorVideoPlayer({
               referrerPolicy: "strict-origin-when-cross-origin",
               onLoad: () => setLoading(false),
               onError: () => setFailed(true),
-              style: { border: 0, width: "100%", height: "100%", background: "#000" },
+              style: { border: 0, width: "100%", height: "100%", background: color.camera },
             })
           : null}
         {url !== null && !showError && surface === "webview" ? (
@@ -167,12 +163,12 @@ export function CreatorVideoPlayer({
         ) : null}
         {showError ? (
           <View style={styles.playerMessage} accessibilityRole="alert">
-            <Icon name="flag" size={24} color={textTokens.primary} />
+            <Icon name="flag" size={24} color={color.text1} />
             <Text style={styles.playerError}>{CREATOR_VIDEO_ERROR}</Text>
           </View>
         ) : loading ? (
           <View pointerEvents="none" style={styles.playerMessage}>
-            <ActivityIndicator size="large" color={accent.warm} />
+            <ActivityIndicator size="large" color={color.text2} />
           </View>
         ) : null}
         <Pressable
@@ -182,7 +178,7 @@ export function CreatorVideoPlayer({
           onPress={onClose}
           style={styles.playerClose}
         >
-          <Icon name="close" size={22} color="#ffffff" />
+          <Icon name="close" size={22} color={color.textStrong} />
         </Pressable>
       </View>
     </Modal>
@@ -190,30 +186,30 @@ export function CreatorVideoPlayer({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", gap: spacing.sm },
+  row: { flexDirection: "row", gap: space[2] },
   tile: {
     overflow: "hidden",
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: accent.tint,
+    borderColor: color.lineStrong,
   },
   // #4402 (H29) — 9:16 tiles, never smaller than 96 x 170.
   tileRow: { width: 96, minWidth: 96, aspectRatio: 9 / 16, minHeight: 170 },
   tileLarge: { flex: 1, minWidth: 96, aspectRatio: 9 / 16, minHeight: 170 },
   tileThumb: { ...StyleSheet.absoluteFillObject, borderRadius: radius.md },
-  failed: { color: textTokens.tertiary, fontSize: 12, marginTop: spacing.xs },
-  playerRoot: { flex: 1, backgroundColor: "#000000" },
-  player: { flex: 1, backgroundColor: "#000000" },
+  failed: { color: color.text3, fontSize: 12, marginTop: space[1] },
+  playerRoot: { flex: 1, backgroundColor: color.camera },
+  player: { flex: 1, backgroundColor: color.camera },
   playerMessage: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    padding: spacing.lg,
+    gap: space[2],
+    padding: space[6],
   },
-  playerError: { color: textTokens.primary, fontSize: 15, textAlign: "center" },
+  playerError: { color: color.text1, fontSize: 15, textAlign: "center" },
   playerClose: {
     position: "absolute",
     top: 48,
@@ -223,6 +219,6 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.62)",
+    backgroundColor: scrim.modal,
   },
 });

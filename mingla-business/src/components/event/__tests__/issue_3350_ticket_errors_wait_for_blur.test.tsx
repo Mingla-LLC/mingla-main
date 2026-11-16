@@ -55,7 +55,7 @@ import { TicketTierEditSheet } from "../TicketTierEditSheet";
 // eslint-disable-next-line import/first
 import type { TicketStub } from "../../../store/draftEventStore";
 // eslint-disable-next-line import/first
-import { semantic } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 
 type HostNode = {
   type: unknown;
@@ -178,13 +178,13 @@ describe("#3350 — a new ticket sheet is not red before the organiser has done 
     expect(textOf(box as HostNode)).toContain("3 things to fix before saving");
     // …but nothing in it is painted as a failure yet.
     expect(flatStyle((box as HostNode).props.style).backgroundColor).not.toBe(
-      semantic.errorTint,
+      color.errorTint,
     );
     const boxTexts = (box as HostNode).children.filter(
       (c): c is HostNode => typeof c !== "string",
     );
     for (const t of boxTexts) {
-      expect(flatStyle(t.props.style).color).not.toBe(semantic.error);
+      expect(flatStyle(t.props.style).color).not.toBe(color.danger);
     }
 
     await TestRenderer.act(() => tree.unmount());
@@ -204,7 +204,7 @@ describe("#3350 — a new ticket sheet is not red before the organiser has done 
     expect(texts(tree)).not.toContain(CAPACITY_ERROR); // capacity not left yet
     // Once an error is revealed the list at Save turns red.
     expect(flatStyle((blockerBox(tree) as HostNode).props.style).backgroundColor).toBe(
-      semantic.errorTint,
+      color.errorTint,
     );
 
     // Fixing the value clears the error straight away.

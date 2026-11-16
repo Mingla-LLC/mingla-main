@@ -88,7 +88,8 @@ export function audit(base) {
   }
   const sharedFabMarkers = [
     'position: "absolute"',
-    "right: spacing.md",
+    // #4420 wave 6: the retired `spacing.md` alias became `space[4]` (same 16).
+    "right: space[4]",
     "minHeight: 48",
     'testID={floating ? "marketing-floating-action" : "marketing-tab-action"}',
   ];

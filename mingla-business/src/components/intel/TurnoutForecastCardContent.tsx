@@ -9,12 +9,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { TurnoutSurface } from "../../hooks/useTurnoutForecast";
 import { Button } from "../ui/Button";
@@ -108,7 +106,7 @@ export const TurnoutForecastCardContent: React.FC<
         accessibilityLabel={accessibilityLabel}
       >
         <View style={styles.header}>
-          <Icon name="sparkle" size={20} color={accent.warm} />
+          <Icon name="sparkle" size={20} color={color.accent} />
           <Text style={styles.title}>TURNOUT FORECAST</Text>
           <View style={styles.headerPill}>
             <Text style={styles.headerPillText}>
@@ -241,38 +239,38 @@ export const TurnoutForecastCardContent: React.FC<
 };
 
 const styles = StyleSheet.create({
-  card: { marginTop: spacing.md },
+  card: { marginTop: space[4] },
   header: {
     height: 24,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  title: { ...typography.labelCap, color: text.secondary, flex: 1 },
+  title: { ...type.label, color: color.text2, flex: 1 },
   headerPill: {
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.badge,
-    paddingHorizontal: spacing.sm,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
   },
-  headerPillText: { ...typography.micro, color: text.tertiary },
-  resultBody: { minHeight: INTEL_RESULT_MIN_HEIGHT, gap: spacing.sm },
+  headerPillText: { ...type.label, color: color.text3 },
+  resultBody: { minHeight: INTEL_RESULT_MIN_HEIGHT, gap: space[2] },
   bandPressable: { minHeight: 56, justifyContent: "center" },
-  driverWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  expandedCopy: { ...typography.bodySm, color: text.secondary },
-  reco: { ...typography.bodySm, color: text.primary, fontWeight: "600" },
-  footer: { ...typography.caption, color: text.tertiary },
+  driverWrap: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  expandedCopy: { ...type.small, color: color.text2 },
+  reco: { ...type.small, color: color.text1, fontWeight: "600" },
+  footer: { ...type.caption, color: color.text3 },
   stale: { opacity: 0.5 },
-  updateRow: { gap: spacing.sm },
-  changed: { ...typography.caption, color: text.secondary },
+  updateRow: { gap: space[2] },
+  changed: { ...type.caption, color: color.text2 },
   stateBody: {
     minHeight: INTEL_RESULT_MIN_HEIGHT,
-    gap: spacing.sm,
+    gap: space[2],
     justifyContent: "center",
   },
-  stateTitle: { ...typography.body, color: text.primary, fontWeight: "700" },
-  stateCopy: { ...typography.caption, color: text.tertiary },
+  stateTitle: { ...type.body, color: color.text1, fontWeight: "700" },
+  stateCopy: { ...type.caption, color: color.text3 },
 });
 
 export default TurnoutForecastCardContent;

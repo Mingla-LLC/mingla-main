@@ -16378,7 +16378,6 @@
         ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs",
         ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs",
         "mingla-business/app/(tabs)/marketing/_layout.tsx",
-        "mingla-business/app/(tabs)/marketing/audiences/**",
         "mingla-business/app/(tabs)/marketing/people/**",
         "mingla-business/app/(tabs)/people/**",
         "mingla-business/src/components/marketing/MarketingSubNav.tsx",
@@ -35142,7 +35141,6 @@
           ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs",
           ".github/workflows/issue-1774-people-page-tests.yml",
           "mingla-business/app/(tabs)/marketing/_layout.tsx",
-          "mingla-business/app/(tabs)/marketing/audiences/**",
           "mingla-business/app/(tabs)/marketing/people/**",
           "mingla-business/app/(tabs)/people/**",
           "mingla-business/src/components/marketing/MarketingSubNav.tsx",
@@ -54092,5 +54090,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "56ca0ccfa3c13168709eb4583e594996d99f4d170baaf3a32f5ec65f8a329a34"
+  "phase3eContractSha256": "f19f1dacf61990a6f4cb122b2ddf6440367007b016e90e507a0bb8261451b175"
 }

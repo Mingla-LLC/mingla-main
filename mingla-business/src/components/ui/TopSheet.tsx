@@ -56,7 +56,6 @@ import {
   View,
 } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
-import { BlurView } from "expo-blur";
 import { Gesture } from "react-native-gesture-handler";
 import type { GestureType } from "react-native-gesture-handler";
 import Animated, {
@@ -71,16 +70,17 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  blurIntensity as blurIntensityTokens,
-  glass,
+  color,
   radius as radiusTokens,
-  shadows,
-  spacing,
+  scrim,
+  shadow as shadowTokens,
+  size,
+  space,
 } from "../../constants/designSystem";
 
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
+import { Material } from "./Material";
 import { useEscapeLayer } from "./escapeLayerStack";
-import { shouldUseRealBlur } from "../../utils/glassBlur";
 
 // ORCH-1136 R3: prefers-reduced-motion read for the WEB variant. On web,
 // `react-native-reanimated`'s `useReducedMotion` is itself a JSReanimated hook;
@@ -108,18 +108,10 @@ const useWebReducedMotion = (): boolean => {
   return reduced;
 };
 
-// Inline glass-stack — mirrors GlassChrome's L1-L4 visual layers but with
-// each layer absolute-filled at the panel level so heights are
-// panel-driven, not content-driven (GlassChrome's content-driven sizing
-// breaks when used as a background-only layer — see D-IMPL-44).
-//
-// ORCH-1173 R2: FULLY OPAQUE (alpha 1.0). This is the L1 base used ONLY on the
-// non-blur fallback path (`shouldUseRealBlur` false → Android + unsupported
-// mobile-web). When real blur is unavailable there is nothing behind the panel
-// to blur, so the base MUST be solid — at 0.92 the home screen bled through on
-// Android (ANDROID_GLASS_USES_OPAQUE_FALLBACK). iOS blur path (blurOk true)
-// renders a `BlurView` instead and is unaffected by this constant.
-const FALLBACK_BACKGROUND = "rgb(20, 22, 26)";
+// #4420 Graphite Glass: the panel is `<Material kind="sheet">` drawn absolutely
+// behind the body (panel-driven height, D-IMPL-44). Android, Reduce
+// Transparency and phone web get the sheet material's SOLID fill (alpha 1),
+// which keeps the ORCH-1173 R2 rule: nothing bleeds through on Android.
 
 export type TopSheetHeightMode = "fixed-70" | "compact";
 
@@ -149,11 +141,11 @@ export interface TopSheetProps {
 const ENTRY_DURATION = 280;
 const EXIT_DURATION = 240;
 const SCRIM_DURATION = 220;
-const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
+const SCRIM_COLOR = scrim.modal;
 const UNMOUNT_DELAY_MS = 280;
 const PANEL_HEIGHT_RATIO = 0.7;
 const TOPBAR_OFFSET = 76; // insets.top + this = anchor (topbar bottom + small gap)
-const PANEL_HORIZONTAL_INSET = spacing.md; // matches topbar's barWrap padding
+const PANEL_HORIZONTAL_INSET = space[4]; // matches topbar's barWrap padding
 const CLOSE_THRESHOLD_PX = 80;
 const CLOSE_VELOCITY = 600;
 
@@ -206,7 +198,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
   // bottom with zero scrim. Clamp the panel to the viewport minus a spacing.xl
   // breathing floor, and (below) scroll the content ONLY when clamped.
   // `fixed-70` behavior untouched.
-  const compactMaxHeight = Math.max(0, screenHeight - panelTop - spacing.xl);
+  const compactMaxHeight = Math.max(0, screenHeight - panelTop - space[7]);
   const compactClamped =
     heightMode === "compact" &&
     measuredCompactHeight !== null &&
@@ -386,8 +378,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
 
   const handleAreaHeight = HANDLE_AREA_HEIGHT;
   const bodyHeight = panelHeight - handleAreaHeight;
-  const blurOk = shouldUseRealBlur(windowWidth);
-  const blurIntensity = blurIntensityTokens.cardElevated;
+  void windowWidth;
 
   // ORCH-1136 R2: the overlay root is bare `StyleSheet.absoluteFill`
   // (position:absolute) on ALL platforms. The round-1 web `position:'fixed'`
@@ -403,7 +394,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
   return (
     <View
       pointerEvents={visible ? "auto" : "none"}
-      style={StyleSheet.absoluteFill}
+      style={styles.nativeRoot}
       testID={testID}
     >
       <Animated.View
@@ -445,7 +436,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
                 ? { opacity: 0 }
                 : { height: panelHeight, opacity: 1 }
               : { height: panelHeight },
-            shadows.glassCardElevated,
+            shadowTokens.sheet,
             panelStyle,
             style,
           ]}
@@ -457,8 +448,6 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
               panel still owns the `translateY` transform; the handle gesture
               drives the shared value directly (no parent-child wrap needed). */}
           <TopSheetPanelInner
-            blurOk={blurOk}
-            blurIntensity={blurIntensity}
             heightMode={heightMode}
             bodyHeight={bodyHeight}
             handleAreaHeight={handleAreaHeight}
@@ -481,8 +470,6 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
  * L1-L4 stack + body + handle across both variants.
  */
 interface TopSheetPanelInnerProps {
-  blurOk: boolean;
-  blurIntensity: number;
   heightMode: TopSheetHeightMode;
   bodyHeight: number;
   handleAreaHeight: number;
@@ -508,8 +495,6 @@ interface TopSheetPanelInnerProps {
 }
 
 const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
-  blurOk,
-  blurIntensity,
   heightMode,
   bodyHeight,
   handleAreaHeight,
@@ -519,47 +504,7 @@ const TopSheetPanelInner: React.FC<TopSheetPanelInnerProps> = ({
   children,
 }) => (
   <>
-    {/* L1 — Blur base */}
-    {blurOk ? (
-      <BlurView
-        intensity={blurIntensity}
-        tint="dark"
-        style={StyleSheet.absoluteFill}
-      />
-    ) : (
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          { backgroundColor: FALLBACK_BACKGROUND },
-        ]}
-      />
-    )}
-    {/* L2 — Tint floor */}
-    <View
-      style={[
-        StyleSheet.absoluteFill,
-        { backgroundColor: glass.tint.profileElevated },
-      ]}
-    />
-    {/* L3 — Top edge highlight */}
-    <View
-      style={[
-        styles.topHighlight,
-        { backgroundColor: glass.highlight.profileElevated },
-      ]}
-    />
-    {/* L4 — Hairline border */}
-    <View
-      style={[
-        StyleSheet.absoluteFill,
-        {
-          borderRadius: radiusTokens.xl,
-          borderColor: glass.border.profileElevated,
-          borderWidth: StyleSheet.hairlineWidth,
-        },
-      ]}
-      pointerEvents="none"
-    />
+    <Material kind="sheet" radius={TOPSHEET_RADIUS} style={StyleSheet.absoluteFill} pointerEvents="none" />
     {/* Content layer.
         - fixed-70 mode: explicit body height (panelHeight - handle).
         - compact mode, unclamped: content-driven; onLayout measures children
@@ -673,7 +618,7 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
   const panelTop = insets.top + TOPBAR_OFFSET;
   // META-ORCH-1255 (DESIGN §2.2) — compact viewport clamp, mirroring the
   // native variant (short phone-web visual viewports were the worst case).
-  const compactMaxHeight = Math.max(0, screenHeight - panelTop - spacing.xl);
+  const compactMaxHeight = Math.max(0, screenHeight - panelTop - space[7]);
   const compactClamped =
     heightMode === "compact" &&
     measuredCompactHeight !== null &&
@@ -902,8 +847,7 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
 
   const handleAreaHeight = HANDLE_AREA_HEIGHT;
   const bodyHeight = panelHeight - handleAreaHeight;
-  const blurOk = shouldUseRealBlur(windowWidth);
-  const blurIntensity = blurIntensityTokens.cardElevated;
+  void windowWidth;
 
   // Compact pre-measurement: render at opacity 0 with NO transition fired yet
   // (matches native's compactInvisible) so children lay out and onLayout
@@ -978,7 +922,7 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
                 ? { opacity: 0 }
                 : { height: panelHeight, opacity: 1 }
               : { height: panelHeight },
-            shadows.glassCardElevated,
+            shadowTokens.sheet,
             // compactInvisible: no transition fired yet — keep it parked off
             // screen at opacity 0 until measured, then the next-frame flip
             // slides it in from the measured off-screen position.
@@ -987,8 +931,6 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
           ]}
         >
           <TopSheetPanelInner
-            blurOk={blurOk}
-            blurIntensity={blurIntensity}
             heightMode={heightMode}
             bodyHeight={bodyHeight}
             handleAreaHeight={handleAreaHeight}
@@ -1023,8 +965,19 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
 };
 
 const HANDLE_AREA_HEIGHT = 24;
+/** #4420: the floating top sheet uses the phone card / dialog radius (28). */
+const TOPSHEET_RADIUS = radiusTokens.xxl;
 
 const styles = StyleSheet.create({
+  // #4420 (native run): Fabric flattens layout-only ancestors, so a screen's
+  // floating chrome (the Blast "Send a campaign" button, zIndex 30) ended up a
+  // sibling of this overlay and painted ABOVE the scrim. The overlay outranks
+  // in-screen chrome explicitly, at the Sheet.web overlay layer (100).
+  nativeRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    elevation: 100,
+  },
   scrimPress: {
     flex: 1,
   },
@@ -1035,7 +988,7 @@ const styles = StyleSheet.create({
   },
   panel: {
     width: "100%",
-    borderRadius: radiusTokens.xl,
+    borderRadius: TOPSHEET_RADIUS,
     // Clip child content + visual layers to the rounded panel shape.
     overflow: "hidden",
   },
@@ -1055,10 +1008,10 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: glass.border.pending,
+    width: size.handle.width,
+    height: size.handle.height,
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.fill.handle,
   },
   // ORCH-1210 (WEB) — transparent drag-catch band pinned to the BOTTOM of the top
   // sheet panel, over the handle (the top sheet renders its handle LAST, at the

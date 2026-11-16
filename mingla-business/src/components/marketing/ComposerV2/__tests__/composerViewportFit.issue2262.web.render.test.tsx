@@ -247,9 +247,13 @@ describe("#2262 T2 — the composer contract through the RNW resolver", () => {
     // co-equal buttons that read as one undifferentiated strip.
     const grow = declaration(css, primary, "flex-grow") ?? declaration(css, primary, "flex");
     expect(grow).toMatch(/^1\b/);
+    // [TEST-MOD-APPROVED #4420] Graphite Glass: the one primary is Paper
+    // (white fill, ink label) — orange is reserved for Create, the active nav
+    // icon and progress. Still exactly one filled primary in the frame.
     expect(declaration(css, primary, "background-color")).toMatch(
-      /#eb7825|235,\s*120,\s*37/i,
+      /#fff(?:fff)?\b|255,\s*255,\s*255,\s*1(?:\.0+)?\)/i,
     );
+    expect(declaration(css, primary, "background-color")).not.toMatch(/235,\s*120,\s*37/);
   });
 
   it("T2-c: nothing on the path to the bar emits a fixed pixel height", () => {
@@ -320,7 +324,10 @@ describe("#2262 T2 — the composer contract through the RNW resolver", () => {
     const onFill = declaration(on.css, onClasses, "background-color");
 
     expect(offFill).not.toBe(onFill);
-    expect(onFill).toMatch(/235,\s*120,\s*37/);
+    // [TEST-MOD-APPROVED #4420] the "on" state is the neutral selected wash
+    // (color.fill.tabOn, white at 10%) with the focus rim, never orange.
+    expect(onFill).toMatch(/255,\s*255,\s*255,\s*0\.10?\)/);
+    expect(onFill).not.toMatch(/235,\s*120,\s*37/);
   });
 
   it("T2-h2: with NO formatState the glyph emits the neutral fill — web and native agree on 'unknown means nothing'", () => {

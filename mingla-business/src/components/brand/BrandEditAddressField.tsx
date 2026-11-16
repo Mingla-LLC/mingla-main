@@ -22,11 +22,7 @@ import React, { Suspense, useCallback, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { LocationSelectionState } from "@mingla/location-input";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+
 import type { PlaceDetails } from "../../services/placesService";
 import {
   brandAddressPatchFromLocation,
@@ -44,6 +40,11 @@ import {
 import { LazyAddressMapPreview } from "../location/LazyAddressMapPreview";
 import { AddressInput } from "../location/AddressInput";
 
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 export interface BrandEditAddressFieldProps {
   address: string | null | undefined;
   city: string | undefined;
@@ -182,12 +183,12 @@ export const BrandEditAddressField: React.FC<BrandEditAddressFieldProps> = ({
 
 const styles = StyleSheet.create({
   mapGap: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   cityCountry: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    marginTop: space[1],
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
 });
 

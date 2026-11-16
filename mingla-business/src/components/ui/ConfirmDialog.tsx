@@ -34,13 +34,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import {
-  accent,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius as radiusTokens, size, space, type } from "../../constants/designSystem";
 
 import { Button } from "./Button";
 import { Input } from "./Input";
@@ -259,8 +253,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     <Modal
       visible={visible}
       onClose={handleClose}
+      maxWidth={size.dialog}
       testID={testID}
-      style={style}
+      style={[styles.dialog, style]}
     >
       <View style={styles.body}>
         <Text style={styles.title}>{title}</Text>
@@ -402,81 +397,89 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 };
 
 const styles = StyleSheet.create({
+  /** #4420: kit `size.dialog` 400 on every platform (phones are narrower). */
+  dialog: {
+    maxWidth: size.dialog,
+  },
   body: {
-    gap: spacing.md,
+    gap: space[3],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
   },
   description: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: typography.body.fontWeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    fontWeight: type.body.fontWeight,
+    color: color.text2,
   },
   errorText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.errorText,
   },
   inputWrap: {
-    gap: spacing.sm,
+    gap: space[2],
+    marginTop: space[1],
   },
   hint: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
   },
   hintEmph: {
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
+  // Cancel and Confirm sit side by side at equal width; a footer too narrow
+  // for both wraps them into a stack instead of squeezing (no bleed-outs).
   actions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[3],
   },
   leaveActions: {
     flexDirection: "column",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[3],
   },
-  // Each action button takes equal flex space — Cancel and Confirm sit
-  // side-by-side at 50/50 width, gap between, naturally centered as a
-  // pair across the dialog. Matches iOS native alert layout.
   actionFlex: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 140,
   },
   holdButton: {
-    height: 44,
-    paddingHorizontal: spacing.md,
+    height: size.btn.md,
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
-    borderWidth: 1,
-    borderColor: accent.border,
+    backgroundColor: color.card2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
+  // Hold progress is a progress meter: one of the places orange is allowed.
   holdFill: {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: accent.warm,
-    opacity: 0.8,
+    backgroundColor: color.accent,
+    opacity: 0.85,
   },
   holdLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-    color: textTokens.inverse,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
+    letterSpacing: type.btnSm.letterSpacing,
+    color: color.text1,
   },
 });
 

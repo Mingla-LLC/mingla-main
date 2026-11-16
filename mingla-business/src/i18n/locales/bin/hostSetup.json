@@ -171,6 +171,10 @@
       "readyBank": "Akauntu banki vbe {{country}}",
       "readyBankAny": "Akauntu banki vbe ẹvbo ruẹ",
       "readyTax": "Nọmba ẹto (ẹsọ ne a gbẹn ẹre ọkpa)"
+    },
+    "stepper": {
+      "saved": "A sẹ ẹre",
+      "steps": "Emwi ne a ru"
     }
   },
   "doorMode": {

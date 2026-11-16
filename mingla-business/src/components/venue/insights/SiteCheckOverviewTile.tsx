@@ -15,9 +15,9 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { useIntelSubjectLatest } from "../../../hooks/useGrowthToolsReads";
 import { GlassCard } from "../../ui/GlassCard";
@@ -60,7 +60,7 @@ export function SiteCheckOverviewTile({
   const checkedDate = formatCheckedDate(data.latest.createdAt);
 
   return (
-    <GlassCard variant="base" padding={spacing.lg} testID="overview-site-check-tile">
+    <GlassCard variant="base" padding={space[6]} testID="overview-site-check-tile">
       <Pressable
         onPress={() => router.push(`/venue/${venueId}?module=insights` as never)}
         accessibilityRole="button"
@@ -91,28 +91,28 @@ export function SiteCheckOverviewTile({
 
 const styles = StyleSheet.create({
   press: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   tileTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   textWrap: {
     flex: 1,
     gap: 2,
   },
   verdictLine: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   checked: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
 });
 

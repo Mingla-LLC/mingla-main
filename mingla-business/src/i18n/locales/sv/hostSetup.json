@@ -171,6 +171,10 @@
       "readyBank": "Bankkonto i {{country}}",
       "readyBankAny": "Bankkonto i ditt land",
       "readyTax": "Skattenummer (endast registrerade företag)"
+    },
+    "stepper": {
+      "saved": "Sparat",
+      "steps": "Steg"
     }
   },
   "doorMode": {

@@ -13,7 +13,12 @@ import React, { useEffect, useState } from "react";
 import { Image, Platform, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
-import { radius, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import {
+  radius,
+  color,
+  space,
+  type,
+} from "../../../constants/designSystem";
 import { useTapToPayOnForBrand } from "../../../hooks/useTapToPayAvailability";
 import { useTapToPaySettingsEntry } from "../../../hooks/useTapToPaySettingsEntry";
 import { tapToPayBrandEligible } from "../../../utils/tapToPayBrandEligible";
@@ -110,12 +115,12 @@ export const F4TapToPayCard: React.FC<F4TapToPayCardProps> = ({ brandId, provide
 };
 
 const styles = StyleSheet.create({
-  card: { marginTop: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: "rgba(255,255,255,0.06)", overflow: "hidden" },
+  card: { marginTop: space[4], padding: space[4], gap: space[2], borderRadius: radius.lg, backgroundColor: color.fill.tile, overflow: "hidden" },
   band: { height: TTP_BAND_HEIGHT, overflow: "hidden", borderRadius: radius.md },
   visual: { position: "absolute", right: -26, top: -6, width: TTP_ART_WIDTH, height: TTP_ART_WIDTH * (559 / 720) },
-  title: { ...typography.h3, color: textTokens.primary },
-  body: { ...typography.body, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.tertiary },
+  title: { ...type.h1, color: color.text1 },
+  body: { ...type.body, color: color.text1 },
+  helper: { ...type.small, color: color.text3 },
 });
 
 export default F4TapToPayCard;

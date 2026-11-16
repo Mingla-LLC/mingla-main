@@ -224,6 +224,17 @@
  * lays out) the box draws no image, so the map node changes shape. Regenerated
  * with the same command. Nothing else changed: no copy, anchor, ordering, case
  * or assertion is removed or weakened.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #4420] — THE VENUE PAGE JOINS THE PREMIUM FRAME
+ * ---------------------------------------------------------------------------
+ * The approved public-pages redesign puts the venue on the premium frame: the
+ * name moves onto the cover (the shell's coverIdentity, with the live "Open
+ * now" pill only when the venue clock says so), the tab strip becomes one
+ * glass pill with the chosen tab in ink, and the phone reserve bar becomes
+ * the shared glass bar carrying the same category action. Regenerated with
+ * the same command. The category and place chips, the answer bar, every
+ * section, copy anchor, case and assertion stay; the name is printed once.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -171,6 +171,10 @@
       "readyBank": "{{country}} içinde banka hesabı",
       "readyBankAny": "Ülkende bir banka hesabı",
       "readyTax": "Vergi numarası (yalnızca kayıtlı şirketler)"
+    },
+    "stepper": {
+      "saved": "Kaydedildi",
+      "steps": "Adımlar"
     }
   },
   "doorMode": {

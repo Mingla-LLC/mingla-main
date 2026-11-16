@@ -5,11 +5,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { FileText, Image as ImageIcon } from "lucide-react-native";
 
 import { Sheet } from "../ui/Sheet";
-import {
-  ariThread,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { ariThread, color, space } from "../../constants/designSystem";
 import { deferAfterDismiss } from "../../utils/deferAfterDismiss";
 import type { AriAttachmentSource } from "./ariAttachmentPickerShared";
 
@@ -40,7 +36,7 @@ export const AriAttachmentSourceSheet: React.FC<{
             deferAfterDismiss(() => onSelect("photos"));
           }}
         >
-          <ImageIcon size={22} color={textTokens.primary} />
+          <ImageIcon size={22} color={color.text1} />
           <View>
             <Text style={styles.label}>Photos & videos</Text>
             <Text style={styles.detail}>Images, MP4, MOV or WebM</Text>
@@ -55,7 +51,7 @@ export const AriAttachmentSourceSheet: React.FC<{
             deferAfterDismiss(() => onSelect("documents"));
           }}
         >
-          <FileText size={22} color={textTokens.primary} />
+          <FileText size={22} color={color.text1} />
           <View>
             <Text style={styles.label}>Files & voice notes</Text>
             <Text style={styles.detail}>
@@ -70,12 +66,12 @@ export const AriAttachmentSourceSheet: React.FC<{
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[6],
+    gap: space[2],
   },
   title: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 20,
     lineHeight: 32,
     fontWeight: "600",
@@ -84,19 +80,19 @@ const styles = StyleSheet.create({
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    backgroundColor: ariThread.composerSurface,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    backgroundColor: color.card,
     borderRadius: 16,
     overflow: "hidden",
   },
   label: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: ariThread.labelFont,
     lineHeight: ariThread.labelLine,
     fontWeight: "600",
   },
-  detail: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  detail: { color: color.text2, fontSize: 14, lineHeight: 20 },
 });
 
 export default AriAttachmentSourceSheet;

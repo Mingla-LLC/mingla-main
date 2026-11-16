@@ -2,12 +2,7 @@ import React, { useEffect, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, space, color } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import { exportCsvText } from "../../utils/guestCsvExport";
 import { Button } from "../ui/Button";
@@ -152,44 +147,44 @@ const Metric: React.FC<{ label: string; value: string }> = ({
   </View>
 );
 const styles = StyleSheet.create({
-  wrap: { padding: spacing.md, gap: spacing.md },
-  caption: { color: textTokens.secondary, fontSize: 12, lineHeight: 18 },
-  totals: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  wrap: { padding: space[4], gap: space[4] },
+  caption: { color: color.text2, fontSize: 12, lineHeight: 18 },
+  totals: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   metric: {
     minWidth: 130,
     flexGrow: 1,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
-  metricValue: { color: textTokens.primary, fontSize: 22, fontWeight: "800" },
+  metricValue: { color: color.text1, fontSize: 22, fontWeight: "800" },
   table: {
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    gap: spacing.xs,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    gap: space[1],
   },
   heading: {
     fontSize: 15,
     fontWeight: "800",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   rowCopy: { flex: 1 },
-  name: { color: textTokens.primary, fontWeight: "700" },
-  sub: { color: textTokens.secondary, fontSize: 12, marginTop: 2 },
-  amount: { color: textTokens.primary, fontWeight: "800" },
+  name: { color: color.text1, fontWeight: "700" },
+  sub: { color: color.text2, fontSize: 12, marginTop: 2 },
+  amount: { color: color.text1, fontWeight: "800" },
   state: {
-    padding: spacing.lg,
-    color: textTokens.secondary,
+    padding: space[6],
+    color: color.text2,
     textAlign: "center",
   },
-  stateBox: { padding: spacing.lg, gap: spacing.sm, alignItems: "center" },
+  stateBox: { padding: space[6], gap: space[2], alignItems: "center" },
 });

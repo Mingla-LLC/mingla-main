@@ -18,13 +18,7 @@ import {
   type QuantityRowTheme,
 } from "@mingla/offering-rendering";
 
-import {
-  accent,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, materials, space } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency } from "../../utils/currency";
 
@@ -54,19 +48,19 @@ export interface QuantityRowProps {
 }
 
 const MINGLA_BUSINESS_THEME: QuantityRowTheme = {
-  accent: accent.warm,
-  textPrimary: textTokens.primary,
-  textSecondary: textTokens.secondary,
-  textTertiary: textTokens.tertiary,
-  textQuaternary: textTokens.quaternary,
-  stepperBg: glass.tint.chrome.idle,
-  stepperBorder: glass.border.chrome,
-  semanticWarning: semantic.warning,
-  semanticError: semantic.error,
-  saleBannerBg: "rgba(245, 158, 11, 0.12)",
-  saleBannerBorder: "rgba(245, 158, 11, 0.32)",
-  soldOutBg: "rgba(239, 68, 68, 0.16)",
-  soldOutBorder: "rgba(239, 68, 68, 0.32)",
+  accent: color.accent,
+  textPrimary: color.text1,
+  textSecondary: color.text2,
+  textTertiary: color.text3,
+  textQuaternary: color.text4,
+  stepperBg: materials.chrome.glassFill,
+  stepperBorder: color.lineStrong,
+  semanticWarning: color.warning,
+  semanticError: color.danger,
+  saleBannerBg: color.warningTint,
+  saleBannerBorder: color.warning,
+  soldOutBg: color.errorTint,
+  soldOutBorder: color.errorLine,
 };
 
 interface BusinessCardWrapProps {
@@ -78,7 +72,7 @@ const BusinessCardWrap: React.FC<BusinessCardWrapProps> = ({
   children,
   style,
 }) => (
-  <GlassCard variant="base" radius="lg" padding={spacing.md} style={style}>
+  <GlassCard variant="base" radius="lg" padding={space[4]} style={style}>
     {children}
   </GlassCard>
 );

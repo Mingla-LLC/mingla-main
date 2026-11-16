@@ -11,18 +11,11 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { ThemePalette } from "@mingla/offering-rendering";
 
-import {
-  accent,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, color, space } from "../../constants/designSystem";
 import {
   PURCHASE_PRIVACY_URL,
   PURCHASE_TERMS_URL,
-} from "../../constants/consentDisclosure";
+} from "../../constants/purchaseTermsDisclosure";
 import { checkoutPublicPathWithSeed } from "../../constants/publicUrls";
 import { formatCurrency } from "../../utils/currency";
 import { randomUuid } from "../../utils/randomId";
@@ -51,20 +44,20 @@ const MultiDateDayChooser = React.lazy(() => import("../event/MultiDateDayChoose
 
 // The link page's own dark surface, expressed as the chooser's palette.
 const LINK_PALETTE: ThemePalette = {
-  page: "#0c0e12",
-  accent: accent.warm,
-  accentText: accent.warm,
-  primaryText: textTokens.primary,
-  secondaryText: textTokens.secondary,
-  tertiaryText: textTokens.tertiary,
-  panel: glass.tint.profileBase,
-  panelStrong: glass.tint.profileBase,
-  panelBorder: glass.border.profileBase,
-  card: glass.tint.profileBase,
-  cutoutBorder: glass.border.profileBase,
-  glass: glass.tint.profileBase,
+  page: color.canvas,
+  accent: color.accent,
+  accentText: color.accent,
+  primaryText: color.text1,
+  secondaryText: color.text2,
+  tertiaryText: color.text3,
+  panel: color.fill.inset,
+  panelStrong: color.fill.inset,
+  panelBorder: color.line,
+  card: color.fill.inset,
+  cutoutBorder: color.line,
+  glass: color.fill.inset,
   glassTint: "dark",
-  accentWash: "rgba(235,120,37,0.10)",
+  accentWash: color.accentTint,
 };
 
 type PersonDraft = { id: string; name: string; email: string; phone: string };
@@ -162,7 +155,7 @@ function PersonFields({
             accessibilityLabel={`Remove ${label}`}
             hitSlop={8}
           >
-            <Icon name="close" size={18} color={textTokens.tertiary} />
+            <Icon name="close" size={18} color={color.text3} />
           </Pressable>
         ) : null}
       </View>
@@ -324,13 +317,13 @@ export default function TicketLinkLanding(): React.ReactElement {
   }, [guests, lead, resolved, selectedDateIds, submitting, token, valid]);
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={accent.warm} /></View>;
+    return <View style={styles.center}><ActivityIndicator color={color.accent} /></View>;
   }
   if (!resolved || resolved.state !== "active" || !resolved.event || !resolved.tier) {
     const copy = stateCopy(resolved?.state ?? "not_found");
     return (
       <View style={styles.center}>
-        <View style={styles.stateIcon}><Icon name="ticket" size={28} color={accent.warm} /></View>
+        <View style={styles.stateIcon}><Icon name="ticket" size={28} color={color.accent} /></View>
         <Text style={styles.stateTitle}>{copy.title}</Text>
         <Text style={styles.stateBody}>{copy.body}</Text>
       </View>
@@ -365,7 +358,7 @@ export default function TicketLinkLanding(): React.ReactElement {
     return (
       <View style={styles.center}>
         <View style={styles.stateIcon}>
-          <Icon name="clock" size={28} color={accent.warm} />
+          <Icon name="clock" size={28} color={color.accent} />
         </View>
         <Text style={styles.stateTitle}>{BUYER_CLAIM_COPY.guestList.pending}</Text>
         <Text style={styles.stateBody}>
@@ -378,7 +371,7 @@ export default function TicketLinkLanding(): React.ReactElement {
   const { event, tier } = resolved;
   const dateChooser = (isPaid: boolean): React.ReactElement | null => needsDateChoice ? (
     <View style={styles.dates}>
-      <React.Suspense fallback={<ActivityIndicator color={accent.warm} />}>
+      <React.Suspense fallback={<ActivityIndicator color={color.accent} />}>
         <MultiDateDayChooser
           timezone={event.timezone}
           palette={LINK_PALETTE}
@@ -519,27 +512,27 @@ function Legal(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: "#0c0e12" },
-  content: { width: "100%", maxWidth: 640, alignSelf: "center", padding: spacing.lg, paddingBottom: 64, gap: spacing.md },
-  eventCard: { overflow: "hidden", borderRadius: radius.lg, backgroundColor: glass.tint.profileBase, borderWidth: 1, borderColor: glass.border.profileBase },
-  eventText: { padding: spacing.lg, gap: 4 },
-  eyebrow: { color: accent.warm, fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
-  eventTitle: { color: textTokens.primary, fontSize: 28, fontWeight: "800", letterSpacing: -0.6 },
-  eventMeta: { color: textTokens.secondary, fontSize: 14 },
-  heading: { color: textTokens.primary, fontSize: 24, fontWeight: "800" },
-  body: { color: textTokens.secondary, fontSize: 15, lineHeight: 22 },
-  personCard: { padding: spacing.md, gap: spacing.sm, borderRadius: radius.md, backgroundColor: glass.tint.profileBase, borderWidth: 1, borderColor: glass.border.profileBase },
+  host: { flex: 1, backgroundColor: color.canvas },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: color.canvas },
+  content: { width: "100%", maxWidth: 640, alignSelf: "center", padding: space[6], paddingBottom: 64, gap: space[4] },
+  eventCard: { overflow: "hidden", borderRadius: radius.lg, backgroundColor: color.fill.inset, borderWidth: 1, borderColor: color.line },
+  eventText: { padding: space[6], gap: 4 },
+  eyebrow: { color: color.accent, fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
+  eventTitle: { color: color.text1, fontSize: 28, fontWeight: "800", letterSpacing: -0.6 },
+  eventMeta: { color: color.text2, fontSize: 14 },
+  heading: { color: color.text1, fontSize: 24, fontWeight: "800" },
+  body: { color: color.text2, fontSize: 15, lineHeight: 22 },
+  personCard: { padding: space[4], gap: space[2], borderRadius: radius.md, backgroundColor: color.fill.inset, borderWidth: 1, borderColor: color.line },
   personHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  personLabel: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
-  dates: { gap: spacing.xs },
-  ticketCard: { padding: spacing.lg, gap: spacing.xs, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase, borderWidth: 1, borderColor: glass.border.profileBase },
-  ticketName: { color: textTokens.primary, fontSize: 22, fontWeight: "800" },
-  price: { color: textTokens.primary, fontSize: 28, fontWeight: "800", marginTop: spacing.sm },
-  error: { color: semantic.error, fontSize: 13, lineHeight: 18 },
-  legal: { color: textTokens.tertiary, textAlign: "center", fontSize: 12, lineHeight: 18, marginTop: spacing.sm },
-  link: { color: textTokens.secondary, textDecorationLine: "underline" },
-  stateIcon: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,122,69,0.12)", marginBottom: spacing.md },
-  stateTitle: { color: textTokens.primary, fontSize: 25, fontWeight: "800", textAlign: "center" },
-  stateBody: { color: textTokens.secondary, fontSize: 15, lineHeight: 22, textAlign: "center", marginTop: spacing.sm, maxWidth: 420 },
+  personLabel: { color: color.text1, fontSize: 14, fontWeight: "700" },
+  dates: { gap: space[1] },
+  ticketCard: { padding: space[6], gap: space[1], borderRadius: radius.lg, backgroundColor: color.fill.inset, borderWidth: 1, borderColor: color.line },
+  ticketName: { color: color.text1, fontSize: 22, fontWeight: "800" },
+  price: { color: color.text1, fontSize: 28, fontWeight: "800", marginTop: space[2] },
+  error: { color: color.danger, fontSize: 13, lineHeight: 18 },
+  legal: { color: color.text3, textAlign: "center", fontSize: 12, lineHeight: 18, marginTop: space[2] },
+  link: { color: color.text2, textDecorationLine: "underline" },
+  stateIcon: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: color.accentTint, marginBottom: space[4] },
+  stateTitle: { color: color.text1, fontSize: 25, fontWeight: "800", textAlign: "center" },
+  stateBody: { color: color.text2, fontSize: 15, lineHeight: 22, textAlign: "center", marginTop: space[2], maxWidth: 420 },
 });

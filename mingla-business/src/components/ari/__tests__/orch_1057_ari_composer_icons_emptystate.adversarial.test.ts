@@ -84,7 +84,8 @@ describe("ORCH-1057 adversarial · Item A — Ember Send invariants", () => {
       inputBar.indexOf("sendBtn:"),
       inputBar.indexOf("suggestBtn:"),
     );
-    expect(sendBtnBlock).toMatch(/backgroundColor:\s*ariPalette\.userBubble/);
+    // [TEST-MOD-APPROVED #4420] the opaque send fill is the Paper token now.
+    expect(sendBtnBlock).toMatch(/backgroundColor:\s*color\.paper/);
     expect(sendBtnBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/);
   });
 

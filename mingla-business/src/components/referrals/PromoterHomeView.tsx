@@ -8,12 +8,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  accent,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import {
   fetchMyPayoutAccount,
   fetchPromoterEarnings,
@@ -186,7 +181,7 @@ export const PromoterHomeView: React.FC = () => {
             {qrSlug === offer.linkSlug ? (
               <View style={styles.qr}>
                 <React.Suspense
-                  fallback={<ActivityIndicator color={accent.warm} />}
+                  fallback={<ActivityIndicator color={color.text2} />}
                 >
                   <QRCode value={url} size={176} />
                 </React.Suspense>
@@ -236,12 +231,12 @@ export const PromoterHomeView: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  link: { color: accent.warm, fontWeight: "600" },
+  link: { color: color.text1, fontWeight: "600" },
   qr: {
     alignItems: "center",
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: color.paper,
   },
-  muted: { color: textTokens.secondary },
+  muted: { color: color.text2 },
 });

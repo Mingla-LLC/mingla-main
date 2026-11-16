@@ -29,8 +29,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../../src/constants/designSystem";
 import {
   useLiveEventStore,
@@ -51,11 +52,11 @@ import { eventPublicUrl } from "../../../src/constants/publicUrls";
 // Cycle 17d Stage 2 §F.4 — ActivityEvent type + activityRowKey + helpers
 // extracted to ../../../src/components/event/EventDetailActivityRow.tsx.
 
-import { Button } from "../../../src/components/ui/Button";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { ListRow } from "../../../src/components/ui/ListRow";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal, offeringShareability } from "../../../src/components/ui/ShareModal";
 import type { ShareEntityKind } from "@mingla/sharing";
@@ -63,6 +64,8 @@ import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
 import { ActionTile } from "../../../src/components/event/ActionTile";
+import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
 import {
   EventDetailActivityRow,
@@ -72,10 +75,10 @@ import {
 import { EventDetailHeroStatusPill } from "../../../src/components/event/EventDetailHeroStatusPill";
 import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDetailTicketTypeRow";
-import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
+import type { EventManageMenuProps } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
 import {
-  eventGridTiles,
+  eventGridSections,
   type EventGridTileKey,
 } from "../../../src/components/event/eventGridTiles";
 import { useCurrentBrandStore } from "../../../src/store/currentBrandStore";
@@ -116,6 +119,23 @@ import {
   unpublishBusinessEventToDraft,
 } from "../../../src/services/businessEvents";
 
+// #4420 — the manage menu opens on intent. The Hub events list already loads it
+// with import(); a static import here made it reachable from two chunks, so
+// Metro hoisted it into the eager `__common` boot chunk. The screen preloads it
+// on mount so the first tap does not wait on the chunk.
+const loadEventManageMenu = () =>
+  import("../../../src/components/event/EventManageMenu");
+const DeferredEventManageMenu = React.lazy(async () => ({
+  default: (await loadEventManageMenu()).EventManageMenu,
+}));
+function EventManageMenu(props: EventManageMenuProps): React.ReactElement {
+  return (
+    <React.Suspense fallback={null}>
+      <DeferredEventManageMenu {...props} />
+    </React.Suspense>
+  );
+}
+
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -138,10 +158,15 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
 
 export default function EventDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === "string" ? params.id : null;
+  // #4420 — warm the manage menu's chunk so the first tap opens it at once.
+  useEffect(() => {
+    void loadEventManageMenu().catch(() => undefined);
+  }, []);
 
   // ----- Resolve event -------------------------------------------
   const routeEvent = useManagedEventRoute(id);
@@ -843,7 +868,7 @@ export default function EventDetailScreen(): React.ReactElement {
             styles.headerWrap,
             {
               paddingTop:
-                insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+                insets.top + (Platform.OS === "web" ? space[2] : 0),
             },
           ]}
         >
@@ -898,7 +923,7 @@ export default function EventDetailScreen(): React.ReactElement {
           styles.headerWrap,
           {
             paddingTop:
-              insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+              insets.top + (Platform.OS === "web" ? space[2] : 0),
           },
         ]}
       >
@@ -929,294 +954,401 @@ export default function EventDetailScreen(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* issue #3237 — publish confirmation. Share and View public page are
-            this screen's own handlers, so they open exactly what the header
-            Share and the Public page tile open. */}
-        {publishedArrival.justPublished ? (
-          <LazyPublishedBanner
-            kind={publishedEventBannerKind(event.tickets)}
-            onShare={shareability.shareable ? handleShareOpen : undefined}
-            onViewPublic={
-              shareability.shareable ? handleViewPublic : undefined
-            }
-            onDismiss={publishedArrival.dismiss}
-            onGetSeen={promoteEnabled ? handleGetSeen : undefined}
-            testID="event-published-banner"
-          />
-        ) : null}
-        {/* #3872 round 2 — compact header: thumb, status, name, date, city. */}
-        <GlassCard variant="base" radius="lg" padding={10} contentStyle={styles.headerCard}>
-          <View style={styles.headerThumb}>
-            <EventCoverMedia
-              hue={event.coverHue}
-              mediaUrl={event.coverMediaUrl}
-              mediaType={event.coverMediaType}
-              radius={12}
-              label=""
-              height={56}
-            />
-          </View>
-          <View style={styles.headerText}>
-            <View style={styles.heroPillRow}>
-              <EventDetailHeroStatusPill
-                status={status}
-                cancelled={event.status === "cancelled"}
-              />
-            </View>
-            <Text style={styles.headerTitle} numberOfLines={2}>
-              {event.name.trim().length > 0 ? event.name : "Untitled event"}
-            </Text>
-            <Text style={styles.headerSubline} numberOfLines={1}>
-              {[
-                dateLine,
-                event.city != null && event.city.length > 0
-                  ? event.city
-                  : event.venueName,
-              ]
-                .filter((part) => typeof part === "string" && part.length > 0)
-                .join(" · ")}
-            </Text>
-          </View>
-        </GlassCard>
-
-        {/* Action grid (#3872 round 2): Scan tickets full width, then compact
-            tiles two per row. No Blasts tile — Promote leads to Blast. */}
-        <View style={styles.actionGrid}>
-          {eventGridTiles({
-            promote: promoteEnabled,
-            insights: canShowListingInsights,
-            dates: event.whenMode === "multi_date",
-            doorSales: event.inPersonPaymentsEnabled === true,
-            brandPage: brand !== null,
-          }).map((key: EventGridTileKey) => {
-            switch (key) {
-              case "scan":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="qr"
-                    label="Scan tickets"
-                    primary
-                    wide
-                    onPress={handleScanTickets}
-                  />
-                );
-              case "scanners":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="users"
-                    label="Scanners"
-                    onPress={handleScanners}
-                  />
-                );
-              case "orders":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="ticket"
-                    label="Orders"
-                    sub={ordersReady ? `${totalSoldCount} sold` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
-                    onPress={handleOrders}
-                  />
-                );
-              case "guests":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="user"
-                    label="Guests"
-                    sub={ordersReady ? `${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
-                    onPress={handleGuests}
-                  />
-                );
-              case "promote":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="megaphone"
-                    label="Promote"
-                    sub={promoteStatus}
-                    accessibilityLabel={`Promote ${event.name}`}
-                    onPress={handleGetSeen}
-                  />
-                );
-              case "insights":
-                // #1403 — the tile itself still consumes the fail-closed role
-                // gate, not only the grid order.
-                return (
-                  <React.Fragment key={key}>
-                    {canShowListingInsights ? (
-                      <ActionTile
-                        icon="chart"
-                        label="Insights"
-                        sub="Visits, actions and bookings"
-                        accessibilityLabel={`Open Insights for ${event.name}`}
-                        onPress={() =>
-                          router.push(`/insights/${event.id}?entry=detail_action` as never)
-                        }
-                      />
-                    ) : null}
-                  </React.Fragment>
-                );
-              case "groupChat":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="chat"
-                    label="Group chat"
-                    sub="Read, reply, moderate"
-                    onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
-                  />
-                );
-              case "dates":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="calendar"
-                    label="Dates"
-                    sub="Titles and places per date"
-                    onPress={() => router.push(`/event/${event.id}/dates` as never)}
-                  />
-                );
-              case "doorSales":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="cash"
-                    label="Door sales"
-                    sub={`${doorSoldCount} sold${
-                      displayCurrency !== null
-                        ? ` · ${formatCurrency(doorRevenue, displayCurrency)}`
-                        : ""
-                    }`}
-                    onPress={handleDoorSales}
-                  />
-                );
-              case "reconciliation":
-                // Permission-gated inside (finance_manager+).
-                return (
-                  <ReconciliationCtaTile
-                    key={key}
-                    brandId={brand?.id ?? null}
-                    onPress={handleReconciliation}
-                  />
-                );
-              case "publicPage":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="eye"
-                    label="Public page"
-                    onPress={handleViewPublic}
-                  />
-                );
-              case "brandPage":
-                return (
-                  <ActionTile
-                    key={key}
-                    icon="home"
-                    label="Brand page"
-                    onPress={handleBrandPage}
-                  />
-                );
-              default:
-                return null;
-            }
-          })}
-        </View>
-
-        {/* Revenue card */}
-        <EventDetailKpiCard
-          revenueGbp={revenueGbp}
-          payoutGbp={payoutGbp}
-          paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
-          onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
-          onOpenPayouts={() => event.brandId != null && router.push(`/brand/${event.brandId}/payments` as never)}
-          coveredGbp={coveredGbp}
-          currency={displayCurrency}
-          readStatus={eventOrdersQuery.status}
-          onRetry={() => { void eventOrdersQuery.refetch(); }}
-        />
-
-        {moneySummary.mismatches.length > 0 ? (
-          <GlassCard variant="base" radius="md" padding={spacing.md}>
-            <Text style={styles.currencyWarningTitle}>Currency review needed</Text>
-            <Text style={styles.currencyWarningBody}>
-              {`${moneySummary.mismatches.length} stale row(s) in ${moneySummary.currenciesPresent.join(", ")} were excluded from ${moneySummary.expectedCurrency} totals.`}
-            </Text>
-          </GlassCard>
-        ) : null}
-
-        {/* Ticket types section */}
-        <Text style={styles.sectionLabel}>TICKET TYPES</Text>
-        {event.tickets.length === 0 ? (
-          <GlassCard variant="base" radius="md" padding={spacing.md}>
-            <Text style={styles.emptySectionText}>No ticket types yet.</Text>
-          </GlassCard>
-        ) : (
-          <View style={styles.ticketTypesList}>
-            {event.tickets
-              .filter((t) => t.visibility !== "hidden")
-              .sort((a, b) => a.displayOrder - b.displayOrder)
-              .map((ticket) => (
-                <EventDetailTicketTypeRow
-                  key={ticket.id}
-                  ticket={ticket}
-                  soldCount={
-                    !ordersReady
-                      ? null
-                      : capacityPerNight || ticket.validDayIds != null
-                        ? busiestNightSoldByTier[ticket.id] ?? 0
-                        : soldCountByTier[ticket.id] ?? 0
+        {/* #4420 — desktop uses the 8/4 template: the event and its tiles in
+            the main column, money, ticket types and activity in the aside.
+            Phone keeps one column with the money card above the tiles. */}
+        <DesktopColumns
+          main={
+            <View style={styles.colStack}>
+              {/* issue #3237 — publish confirmation. Share and View public page are
+                  this screen's own handlers, so they open exactly what the header
+                  Share and the Public page tile open. */}
+              {publishedArrival.justPublished ? (
+                <LazyPublishedBanner
+                  kind={publishedEventBannerKind(event.tickets)}
+                  onShare={shareability.shareable ? handleShareOpen : undefined}
+                  onViewPublic={
+                    shareability.shareable ? handleViewPublic : undefined
                   }
-                  capacityPerNight={capacityPerNight || ticket.validDayIds != null}
-                  busiestLabel={capacityPerNight ? "busiest night" : "busiest date"}
+                  onDismiss={publishedArrival.dismiss}
+                  onGetSeen={promoteEnabled ? handleGetSeen : undefined}
+                  testID="event-published-banner"
                 />
-              ))}
-          </View>
-        )}
+              ) : null}
+              {/* #3872 round 2 — compact header: thumb, status, name, date, city. */}
+              <GlassCard variant="base" radius="lg" padding={10} contentStyle={styles.headerCard}>
+                <View style={styles.headerThumb}>
+                  <EventCoverMedia
+                    hue={event.coverHue}
+                    mediaUrl={event.coverMediaUrl}
+                    mediaType={event.coverMediaType}
+                    radius={12}
+                    label=""
+                    height={56}
+                  />
+                </View>
+                <View style={styles.headerText}>
+                  <View style={styles.heroPillRow}>
+                    <EventDetailHeroStatusPill
+                      status={status}
+                      cancelled={event.status === "cancelled"}
+                    />
+                  </View>
+                  <Text style={styles.headerTitle} numberOfLines={2}>
+                    {event.name.trim().length > 0 ? event.name : "Untitled event"}
+                  </Text>
+                  <Text style={styles.headerSubline} numberOfLines={1}>
+                    {[
+                      dateLine,
+                      event.city != null && event.city.length > 0
+                        ? event.city
+                        : event.venueName,
+                    ]
+                      .filter((part) => typeof part === "string" && part.length > 0)
+                      .join(" · ")}
+                  </Text>
+                </View>
+              </GlassCard>
 
-        {/* Recent activity section — Cycle 9c rework v3 live wire */}
-        <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
-          {!ordersReady ? (
-            <Text style={styles.emptySectionText}>
-              {eventOrdersQuery.status === "error" ? "Unable to load activity." : "Loading activity…"}
-            </Text>
-          ) : recentActivity.length === 0 ? (
-            <Text style={styles.emptySectionText}>No activity yet.</Text>
-          ) : (
-            <View style={styles.activityList}>
-              {recentActivity.map((a) => (
-                <EventDetailActivityRow
-                  key={activityRowKey(a)}
-                  event={a}
+              {isWideDesktop ? null : (
+                <>
+                {/* Revenue card */}
+                <EventDetailKpiCard
+                  revenueGbp={revenueGbp}
+                  payoutGbp={payoutGbp}
+                  paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
+                  onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
+                  onOpenPayouts={() => event.brandId != null && router.push(`/brand/${event.brandId}/payments` as never)}
+                  coveredGbp={coveredGbp}
+                  currency={displayCurrency}
+                  readStatus={eventOrdersQuery.status}
+                  onRetry={() => { void eventOrdersQuery.refetch(); }}
                 />
-              ))}
+
+                </>
+              )}
+              {/* #4420 (round-3 item 10, TILE_MATRIX) — the shared tile page: the
+                  core tiles, then "More for this event"; the old editing CTA is gone. */}
+              {(() => {
+                const sections = eventGridSections({
+                  edit: canEditEvent,
+                  promote: promoteEnabled,
+                  insights: canShowListingInsights,
+                  dates: event.whenMode === "multi_date",
+                  doorSales: event.inPersonPaymentsEnabled === true,
+                  brandPage: brand !== null,
+                });
+                const ordersSub = ordersReady
+                  ? null
+                  : eventOrdersQuery.status === "error"
+                    ? "Unable to load"
+                    : "Loading…";
+                const renderTile = (key: EventGridTileKey): React.ReactElement | null => {
+                  switch (key) {
+                    case "edit":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="edit"
+                          label={status === "past" ? "Details" : "Edit"}
+                          accessibilityLabel={`${status === "past" ? "View details of" : "Edit"} ${event.name}`}
+                          onPress={handleEdit}
+                          testID="event-tile-edit"
+                        />
+                      );
+                    case "scan":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="qr"
+                          label="Scan tickets"
+                          onPress={handleScanTickets}
+                        />
+                      );
+                    case "scanners":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="users"
+                          label="Scanners"
+                          onPress={handleScanners}
+                        />
+                      );
+                    case "groupChat":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="chat"
+                          label="Group chat"
+                          onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
+                        />
+                      );
+                    case "blast":
+                      // Restored on Seth's ask (TILE_MATRIX); #3872 had removed it.
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="send"
+                          label="Blast"
+                          accessibilityLabel={`Blast guests of ${event.name}`}
+                          onPress={() => router.push(`/event/${event.id}/blasts` as never)}
+                          testID="event-tile-blast"
+                        />
+                      );
+                    case "promote":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="megaphone"
+                          label="Promote"
+                          sub={promoteStatus}
+                          accessibilityLabel={`Promote ${event.name}`}
+                          onPress={handleGetSeen}
+                        />
+                      );
+                    case "guests":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="user"
+                          label="Guests"
+                          sub={ordersSub ?? `${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
+                          onPress={handleGuests}
+                        />
+                      );
+                    case "orders":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="ticket"
+                          label="Orders"
+                          sub={ordersSub ?? `${totalSoldCount} sold`}
+                          onPress={handleOrders}
+                        />
+                      );
+                    case "insights":
+                      // #1403 — the tile itself still consumes the fail-closed role
+                      // gate, not only the grid order.
+                      return (
+                        <React.Fragment key={key}>
+                          {canShowListingInsights ? (
+                            <ActionTile
+                    fill
+                              icon="chart"
+                              label="Insights"
+                              sub="Visits, actions and bookings"
+                              accessibilityLabel={`Open Insights for ${event.name}`}
+                              onPress={() =>
+                                router.push(`/insights/${event.id}?entry=detail_action` as never)
+                              }
+                            />
+                          ) : null}
+                        </React.Fragment>
+                      );
+                    case "dates":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="calendar"
+                          label="Dates"
+                          onPress={() => router.push(`/event/${event.id}/dates` as never)}
+                        />
+                      );
+                    case "doorSales":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="cash"
+                          label="Door sales"
+                          sub={`${doorSoldCount} sold${
+                            displayCurrency !== null
+                              ? ` · ${formatCurrency(doorRevenue, displayCurrency)}`
+                              : ""
+                          }`}
+                          onPress={handleDoorSales}
+                        />
+                      );
+                    case "reconciliation":
+                      // Permission-gated inside (finance_manager+).
+                      return (
+                        <ReconciliationCtaTile
+                          fill
+                          key={key}
+                          brandId={brand?.id ?? null}
+                          onPress={handleReconciliation}
+                        />
+                      );
+                    case "publicPage":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="eye"
+                          label="Public page"
+                          onPress={handleViewPublic}
+                        />
+                      );
+                    case "brandPage":
+                      return (
+                        <ActionTile
+                    fill
+                          key={key}
+                          icon="home"
+                          label="Brand page"
+                          onPress={handleBrandPage}
+                        />
+                      );
+                    default:
+                      return null;
+                  }
+                };
+                // #4420 — rows of three equal cells, so every tile edge lines
+                // up with the header card; a short last row keeps its cells.
+                const renderRows = (keys: EventGridTileKey[]): React.ReactElement => (
+                  <View style={styles.tileRows}>
+                    {Array.from({ length: Math.ceil(keys.length / 3) }, (_, row) => {
+                      const cells = keys.slice(row * 3, row * 3 + 3);
+                      return (
+                        <View key={cells.join("-")} style={styles.actionGrid}>
+                          {cells.map(renderTile)}
+                          {Array.from({ length: 3 - cells.length }, (_, pad) => (
+                            <View key={`pad-${pad}`} style={styles.tilePad} />
+                          ))}
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+                return (
+                  <>
+                    {renderRows(sections.core)}
+                    {sections.more.length > 0 ? (
+                      <>
+                        <Text style={styles.sectionLabel}>MORE FOR THIS EVENT</Text>
+                        {renderRows(sections.more)}
+                      </>
+                    ) : null}
+                  </>
+                );
+              })()}
             </View>
-          )}
-        </GlassCard>
+          }
+          aside={
+            <View style={styles.colStack}>
+              {isWideDesktop ? (
+                <>
+                {/* Revenue card */}
+                <EventDetailKpiCard
+                  revenueGbp={revenueGbp}
+                  payoutGbp={payoutGbp}
+                  paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
+                  onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
+                  onOpenPayouts={() => event.brandId != null && router.push(`/brand/${event.brandId}/payments` as never)}
+                  coveredGbp={coveredGbp}
+                  currency={displayCurrency}
+                  readStatus={eventOrdersQuery.status}
+                  onRetry={() => { void eventOrdersQuery.refetch(); }}
+                />
 
-        {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm.
-            Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users. */}
-        {(status === "live" || status === "upcoming") &&
-        canEditEvent ? (
-          <View style={styles.cancelCtaWrap}>
-            <Button
-              label="Cancel event"
-              variant="ghost"
-              size="md"
-              fullWidth
-              onPress={handleCancelDialogOpen}
-              accessibilityLabel="Cancel event"
-            />
-          </View>
-        ) : null}
+                </>
+              ) : null}
+              {moneySummary.mismatches.length > 0 ? (
+                <GlassCard variant="base" radius="md" padding={space[4]}>
+                  <Text style={styles.currencyWarningTitle}>Currency review needed</Text>
+                  <Text style={styles.currencyWarningBody}>
+                    {`${moneySummary.mismatches.length} stale row(s) in ${moneySummary.currenciesPresent.join(", ")} were excluded from ${moneySummary.expectedCurrency} totals.`}
+                  </Text>
+                </GlassCard>
+              ) : null}
+
+              {/* Ticket types section */}
+              <Text style={styles.sectionLabel}>TICKET TYPES</Text>
+              {event.tickets.length === 0 ? (
+                <GlassCard variant="base" radius="md" padding={space[4]}>
+                  <Text style={styles.emptySectionText}>No ticket types yet.</Text>
+                </GlassCard>
+              ) : (
+                <View style={styles.ticketTypesList}>
+                  {event.tickets
+                    .filter((t) => t.visibility !== "hidden")
+                    .sort((a, b) => a.displayOrder - b.displayOrder)
+                    .map((ticket) => (
+                      <EventDetailTicketTypeRow
+                        key={ticket.id}
+                        ticket={ticket}
+                        soldCount={
+                          !ordersReady
+                            ? null
+                            : capacityPerNight || ticket.validDayIds != null
+                              ? busiestNightSoldByTier[ticket.id] ?? 0
+                              : soldCountByTier[ticket.id] ?? 0
+                        }
+                        capacityPerNight={capacityPerNight || ticket.validDayIds != null}
+                        busiestLabel={capacityPerNight ? "busiest night" : "busiest date"}
+                      />
+                    ))}
+                </View>
+              )}
+
+              {/* Recent activity section — Cycle 9c rework v3 live wire */}
+              <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
+              <GlassCard variant="base" radius="md" padding={space[4]}>
+                {!ordersReady ? (
+                  <Text style={styles.emptySectionText}>
+                    {eventOrdersQuery.status === "error" ? "Unable to load activity." : "Loading activity…"}
+                  </Text>
+                ) : recentActivity.length === 0 ? (
+                  <Text style={styles.emptySectionText}>No activity yet.</Text>
+                ) : (
+                  <View style={styles.activityList}>
+                    {recentActivity.map((a) => (
+                      <EventDetailActivityRow
+                        key={activityRowKey(a)}
+                        event={a}
+                      />
+                    ))}
+                  </View>
+                )}
+              </GlassCard>
+
+              {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm.
+                  Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users.
+                  #4420: a destructive row in the column's own card pattern
+                  (the floating ghost label read as orphaned under Recent
+                  activity). Kept beside the manage menu's entry: the menu also
+                  needs lifecycle actions, so this row is not a duplicate for
+                  every host. */}
+              {(status === "live" || status === "upcoming") &&
+              canEditEvent ? (
+                <GlassCard variant="base" radius="md" padding={0} style={styles.cancelCtaWrap} contentStyle={styles.cancelCtaContent}>
+                  <ListRow
+                    title="Cancel event"
+                    icon="trash"
+                    danger
+                    chevron={false}
+                    onPress={handleCancelDialogOpen}
+                    accessibilityLabel="Cancel event"
+                    testID="event-detail-cancel-event"
+                  />
+                </GlassCard>
+              ) : null}
+            </View>
+          }
+        />
       </ScrollView>
 
       {/* Share modal — Cycle 7 reuse.
@@ -1294,6 +1426,7 @@ export default function EventDetailScreen(): React.ReactElement {
           }}
           onTransitionalToast={showToast}
           canEditEvent={canEditEvent}
+          showEdit={false}
           onPromote={promoteEnabled ? () => {
             setManageMenuVisible(false);
             handleGetSeen();
@@ -1357,28 +1490,31 @@ export default function EventDetailScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   headerWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   headerRightRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
     alignItems: "center",
   },
   scroll: {
     flex: 1,
   },
+  colStack: {
+    gap: space[4],
+  },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   emptyWrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   headerCard: {
     flexDirection: "row",
@@ -1402,60 +1538,70 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 16,
     fontWeight: "800",
-    color: textTokens.primary,
+    color: color.text1,
   },
   headerSubline: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 2,
+  },
+  tileRows: {
+    gap: space[3],
   },
   actionGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 8,
+    gap: space[3],
+  },
+  tilePad: {
+    flexBasis: 0,
+    flexGrow: 1,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
   sectionLabelSpacer: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   ticketTypesList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   activityList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   emptySectionText: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   currencyWarningTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   currencyWarningBody: {
     fontSize: 12,
     lineHeight: 17,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 4,
   },
   cancelCtaWrap: {
-    marginTop: spacing.xl,
+    marginTop: space[6],
+  },
+  // The row's hover / press wash keeps the card's rounded corners.
+  cancelCtaContent: {
+    borderRadius: radius.md,
+    overflow: "hidden",
   },
   toastWrap: {
     position: "absolute",

@@ -133,13 +133,7 @@ import {
 // F.9: InsertionBar + TemplatePreviewDrawer are now mounted INSIDE
 // ComposerV2Editor (merged toolbar position requires adjacency to
 // subject + body). compose.tsx no longer imports them directly.
-import {
-  canvas,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../src/constants/designSystem";
+import { color, radius, space, type } from "../../../../src/constants/designSystem";
 import {
   parseAudienceParam,
   useResolveAudience,
@@ -2319,7 +2313,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           saveDraftDisabled
         />
         <View style={styles.centerHost}>
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       </View>
     );
@@ -2450,7 +2444,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       value={subject}
                       onChangeText={onSubjectChange}
                       placeholder="Title"
-                      placeholderTextColor={textTokens.tertiary}
+                      placeholderTextColor={color.text3}
                       accessibilityLabel="Title"
                       style={styles.plainTitle}
                     />
@@ -2458,7 +2452,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       value={body}
                       onChangeText={onBodyChange}
                       placeholder="Write to your people…"
-                      placeholderTextColor={textTokens.tertiary}
+                      placeholderTextColor={color.text3}
                       accessibilityLabel="Message"
                       multiline
                       style={styles.plainBody}
@@ -2817,16 +2811,16 @@ function stripHtml(input: string): string {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   desktopHost: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
+    marginHorizontal: space[4],
+    marginTop: space[2],
+    marginBottom: space[2],
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.09)",
-    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   kavHost: {
@@ -2864,34 +2858,34 @@ const styles = StyleSheet.create({
   // In flow the editor needs a height of its own, or the page scroller lends it none.
   editorSlotInFlow: { flexShrink: 0, height: 400 },
   plainMessage: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    marginHorizontal: space[4],
+    marginTop: space[2],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.09)",
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   plainTitle: {
-    ...typography.body,
+    ...type.body,
     minHeight: 44,
-    paddingHorizontal: spacing.md,
-    color: textTokens.primary,
+    paddingHorizontal: space[4],
+    color: color.text1,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.09)",
+    borderBottomColor: color.lineStrong,
   },
   plainBody: {
-    ...typography.body,
+    ...type.body,
     minHeight: 96,
-    padding: spacing.md,
-    color: textTokens.primary,
+    padding: space[4],
+    color: color.text1,
     textAlignVertical: "top",
   },
   /** bpShort step 2: audience + channel merge onto one row (~62pt recovered). */
   topRowsShort: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
   },
   whoRowShort: {
     flex: 1,
@@ -2912,45 +2906,45 @@ const styles = StyleSheet.create({
   },
   // F.9b: even-rhythm spacing — every section gets paddingV: spacing.xs.
   whoRow: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    gap: spacing.xxs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
+    gap: space[1],
   },
   desktopWhoRow: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingTop: space[2],
+    paddingBottom: space[1],
   },
   // META-ORCH-1161 Sub-B — channel selector row, same rhythm as whoRow.
   channelRow: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
   },
   // F.10b: Preview modal chrome — light "inbox" canvas behind the sheet,
   // white header with title + orange Done button. EmailPreviewPane fills
   // the rest.
   previewModal: {
     flex: 1,
-    backgroundColor: "#F5F5F7",
+    backgroundColor: color.paper,
   },
   previewHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: "#FFFFFF",
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    backgroundColor: color.paper,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#ECECEE",
+    borderBottomColor: color.paperPressed,
   },
   previewTitle: {
-    ...typography.bodyLg,
-    color: "#0F1115",
+    ...type.row,
+    color: color.ink,
     fontWeight: "700",
   },
   previewDone: {
     minHeight: 36,
-    paddingHorizontal: spacing.md,
-    borderRadius: 999,
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2958,8 +2952,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   previewDoneLabel: {
-    ...typography.body,
-    color: "#F47C20",
+    ...type.body,
+    color: color.ink,
     fontWeight: "700",
   },
 });

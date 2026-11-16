@@ -1,19 +1,16 @@
 import React, { Suspense } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Icon } from "../../../src/components/ui/Icon";
-import {
-  canvas,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { TopBar } from "../../../src/components/ui/TopBar";
+
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { useAuth } from "../../../src/context/AuthContext";
 import { createDiscountBlastDraft } from "../../../src/services/discountBlastService";
 
+import { color, space } from "../../../src/constants/designSystem";
 const LazyDiscountList = React.lazy(async () => {
   const mod =
     await import("../../../src/components/discounts/DiscountListView");
@@ -69,20 +66,18 @@ export default function DiscountsRoute(): React.ReactElement {
   );
   return (
     <View style={[styles.page, { paddingTop: insets.top }]}>
+      {/* #4420 — the shared pushed-screen bar (centred title on phones). */}
       <View style={styles.header}>
-        <Pressable
-          onPress={() =>
+        <TopBar
+          leftKind="back"
+          title="Discounts"
+          onBack={() =>
             router.canGoBack()
               ? router.back()
               : router.replace("/(tabs)/account" as never)
           }
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          style={styles.back}
-        >
-          <Icon name="chevL" size={22} color={textTokens.primary} />
-        </Pressable>
-        <Text style={styles.title}>Discounts</Text>
+          rightSlot={<View />}
+        />
       </View>
       {brandId ? (
         <Suspense fallback={null}>
@@ -104,18 +99,9 @@ export default function DiscountsRoute(): React.ReactElement {
   );
 }
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: canvas.profile },
+  page: { flex: 1, backgroundColor: color.canvas },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
-  back: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
 });

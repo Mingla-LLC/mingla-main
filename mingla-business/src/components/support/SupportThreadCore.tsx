@@ -34,12 +34,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  accent,
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { HELP_AND_SUPPORT_ROUTE, SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
@@ -57,8 +55,10 @@ import {
 } from "../../services/supportService";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
+import { KeyValue } from "../ui/KeyValue";
 import { SafeScreen } from "../ui/SafeScreen";
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { SupportImageStrip, SupportImageViewer } from "./SupportMedia";
 import { pickSupportImages, SupportPhotoAccessError } from "./supportImagePicker";
 import {
@@ -70,6 +70,7 @@ import {
   supportProductBannerKeys,
   supportStatusBanner,
   supportSystemLine,
+  supportTicketDetails,
   type SupportPickedImage,
   type SupportProductStage,
 } from "./supportRequestModel";
@@ -131,6 +132,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const queryClient = useQueryClient();
   const threadKey = supportTicketKeys.thread(ticketId);
 
@@ -273,14 +275,20 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
   const banner = ticket ? supportStatusBanner(ticket) : null;
   const composerMode = supportComposerMode(ticket?.status);
+  const canSend = composer.trim().length > 0 || images.length > 0;
   const header = ticket
     ? [formatTicketNumber(ticket.ticket_number), ticket.topic ? supportCopy(`topic.${ticket.topic}`) : null]
         .filter(Boolean)
         .join(" · ")
     : "";
 
-  return (
-    <SafeScreen style={styles.screen}>
+  // #4420 — on wide desktop the thread sits in its own pane with the
+  // "Ticket" details pane beside it (mockup support-ticket__thread). Phone
+  // and narrow web keep the single column.
+  const showDetailsPane = isWideDesktop && ticket !== null && !isLoading && !isError;
+  const details = ticket !== null ? supportTicketDetails(ticket, { staffMode }) : [];
+  const threadColumn = (
+    <>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -288,7 +296,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
           onPress={handleBack}
           style={styles.iconButton}
         >
-          <Icon name="arrowL" size={18} color={textTokens.primary} />
+          <Icon name="chevL" size={20} color={color.text1} />
         </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.title} numberOfLines={1}>
@@ -306,7 +314,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
       {isLoading ? (
         <View style={styles.state}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text1} />
         </View>
       ) : isError ? (
         <View style={styles.state}>
@@ -419,7 +427,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                               {url !== null ? (
                                 <Image source={{ uri: url }} style={styles.messageImageFill} resizeMode="cover" />
                               ) : (
-                                <Icon name="eye" size={16} color={textTokens.tertiary} />
+                                <Icon name="eye" size={16} color={color.text3} />
                               )}
                             </Pressable>
                           );
@@ -436,7 +444,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
           </ScrollView>
 
           {composerMode === "start_new" ? (
-            <View style={[styles.closedBox, { paddingBottom: Math.max(insets.bottom, 0) + spacing.lg }]}>
+            <View style={[styles.closedBox, { paddingBottom: Math.max(insets.bottom, 0) + space[6] }]}>
               {!staffMode ? (
                 <Button label={supportCopy("thread.start_new")} leadingIcon="plus" onPress={handleStartNew} />
               ) : (
@@ -445,7 +453,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
             </View>
           ) : (
             <KeyboardWrap>
-              <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 0) + spacing.lg }]}>
+              <View style={[styles.composerWrap, { paddingBottom: Math.max(insets.bottom, 0) + space[6] }]}>
                 {staffMode && !isInternalTicket ? (
                   <View style={styles.modeRow} accessibilityRole="radiogroup">
                     {([false, true] as const).map((note) => (
@@ -472,7 +480,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                     disabled={sending}
                   />
                 ) : null}
-                <View style={styles.composer}>
+                <View style={[styles.composer, sendingNote && styles.composerNote]}>
                   <Pressable
                     onPress={() => void handleAddImages()}
                     disabled={sending || images.length >= MAX_SUPPORT_IMAGES}
@@ -480,49 +488,120 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                     accessibilityLabel={supportCopy("thread.attach")}
                     style={styles.attachButton}
                   >
-                    <Icon name="plus" size={18} color={textTokens.primary} />
+                    <Icon name="plus" size={18} color={color.text1} />
                   </Pressable>
                   <TextInput
                     value={composer}
                     onChangeText={setComposer}
                     placeholder={sendingNote ? supportCopy("thread.note_placeholder") : supportCopy("thread.composer_placeholder")}
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     style={[styles.input, sendingNote && styles.inputNote]}
                     multiline
                     editable={!sending}
                     accessibilityLabel={sendingNote ? supportCopy("thread.mode_note") : supportCopy("thread.composer_placeholder")}
                   />
-                  <Button
-                    label={supportCopy("thread.send")}
-                    leadingIcon="send"
-                    onPress={handleSend}
-                    loading={sending}
-                    disabled={(composer.trim().length === 0 && images.length === 0) || sending}
-                  />
+                  {/* #4420 round-3 item 6 — icon-only send inside the floating
+                      field; dimmed until there is something to send. */}
+                  <Pressable
+                    onPress={() => void handleSend()}
+                    disabled={!canSend || sending}
+                    accessibilityRole="button"
+                    accessibilityLabel={supportCopy("thread.send")}
+                    accessibilityState={{ disabled: !canSend || sending, busy: sending }}
+                    style={[styles.sendButton, !canSend && styles.sendButtonOff]}
+                  >
+                    {sending ? (
+                      <ActivityIndicator size="small" color={color.ink} />
+                    ) : (
+                      <Icon name="send" size={18} color={canSend ? color.ink : color.text4} />
+                    )}
+                  </Pressable>
                 </View>
               </View>
             </KeyboardWrap>
           )}
         </>
       )}
+    </>
+  );
+
+  return (
+    <SafeScreen style={[styles.screen, showDetailsPane && styles.screenDesktop]}>
+      {showDetailsPane ? (
+        <View style={styles.desktopRow}>
+          <View style={styles.threadPane}>{threadColumn}</View>
+          <View
+            style={styles.detailsPane}
+            accessibilityRole="summary"
+            accessibilityLabel={supportCopy("details.title")}
+            testID="support-ticket-details"
+          >
+            <Text style={styles.detailsTitle}>{supportCopy("details.title")}</Text>
+            <KeyValue items={details} style={styles.detailsBody} />
+          </View>
+        </View>
+      ) : (
+        threadColumn
+      )}
       <SupportImageViewer url={viewerUrl} onClose={() => setViewerUrl(null)} />
     </SafeScreen>
   );
 };
 
+const DETAILS_PANE_WIDTH = 340;
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#111318",
+    backgroundColor: color.card,
+  },
+  screenDesktop: {
+    backgroundColor: color.canvas,
+  },
+  desktopRow: {
+    flex: 1,
+    flexDirection: "row",
+    gap: space[4],
+    padding: space[4],
+  },
+  threadPane: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+  },
+  detailsPane: {
+    width: DETAILS_PANE_WIDTH,
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    overflow: "hidden",
+  },
+  detailsTitle: {
+    ...type.row,
+    color: color.text1,
+    paddingHorizontal: space[5],
+    paddingVertical: space[4],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: color.line,
+  },
+  detailsBody: {
+    paddingHorizontal: space[5],
+    paddingVertical: space[4],
+    gap: space[3],
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   iconButton: {
     width: 40,
@@ -531,9 +610,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   iconButtonSpacer: {
     width: 40,
@@ -545,209 +624,223 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   subtitle: {
     marginTop: 2,
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   state: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
   },
   stateText: {
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
     lineHeight: 20,
   },
   banner: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
+    marginHorizontal: space[4],
+    marginTop: space[2],
+    padding: space[4],
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   bannerResolved: {
-    borderColor: "rgba(34, 197, 94, 0.45)",
-    backgroundColor: semantic.successTint,
+    borderColor: color.line,
+    backgroundColor: color.successTint,
   },
   bannerClosed: {
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   systemLine: {
     alignSelf: "center",
     fontSize: 12,
     fontStyle: "italic",
-    color: textTokens.secondary,
-    paddingVertical: spacing.xs,
+    color: color.text2,
+    paddingVertical: space[1],
   },
   bannerProduct: {
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   bannerTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   bannerBody: {
     marginTop: 2,
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   messages: {
     flex: 1,
   },
   messagesContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   threadEmpty: {
-    padding: spacing.lg,
+    padding: space[6],
   },
   threadEmptyText: {
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     lineHeight: 20,
   },
   messageRow: {
     maxWidth: "84%",
-    padding: spacing.md,
-    borderRadius: radius.md,
+    padding: space[4],
+    borderRadius: radius.sm,
     borderWidth: 1,
   },
   messageRowMine: {
     alignSelf: "flex-end",
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.paper,
+    borderColor: color.paper,
   },
   messageRowOther: {
     alignSelf: "flex-start",
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   messageRowNote: {
     alignSelf: "stretch",
     maxWidth: "100%",
-    backgroundColor: semantic.warningTint,
-    borderColor: semantic.warning,
+    backgroundColor: color.warningTint,
+    borderColor: color.warning,
     borderStyle: "dashed",
   },
   noteLabel: {
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
     fontSize: 11,
     fontWeight: "700",
-    color: semantic.warning,
+    color: color.warning,
   },
   agentLabel: {
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
     fontSize: 12,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   messageText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 14,
     lineHeight: 20,
   },
   messageTextMine: {
-    color: textTokens.inverse,
+    color: color.ink,
   },
   messageImages: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    gap: space[1],
+    marginTop: space[2],
   },
   messageImage: {
     width: 72,
     height: 72,
-    borderRadius: radius.sm,
+    borderRadius: radius.xs,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.25)",
+    backgroundColor: color.fill.inset,
   },
   messageImageFill: {
     width: "100%",
     height: "100%",
   },
   messageMeta: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   closedBox: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   composerWrap: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   modeRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   modeChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   modeChipReply: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   modeChipNote: {
-    backgroundColor: semantic.warningTint,
-    borderColor: semantic.warning,
+    backgroundColor: color.warningTint,
+    borderColor: color.warning,
   },
   modeText: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
+  // #4420 round-3 item 6 — a floating pill field: no bar behind it, attach
+  // and send sit INSIDE the field.
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.sm,
+    gap: space[1],
+    padding: space[1],
+    borderRadius: radius.xxl,
+    backgroundColor: color.card2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
   },
   attachButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.paper,
+  },
+  sendButtonOff: {
+    backgroundColor: color.card3,
   },
   input: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 40,
     maxHeight: 120,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    paddingHorizontal: space[2],
+    paddingVertical: space[2] + 2,
+    color: color.text1,
+    backgroundColor: color.transparent,
   },
-  inputNote: {
-    borderColor: semantic.warning,
+  inputNote: {},
+  // Staff internal note: the pill itself carries the dashed amber edge.
+  composerNote: {
+    borderColor: color.warning,
     borderStyle: "dashed",
+    borderWidth: 1,
   },
 });
 

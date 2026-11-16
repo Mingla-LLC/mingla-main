@@ -15,11 +15,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import { TripGuideEditor } from "./TripGuideEditor";
@@ -51,8 +50,8 @@ export interface TripCreatorStep3InclusionsProps {
   onShowToast?: (message: string) => void;
 }
 
-const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
-const INPUT_BG = "rgba(255, 255, 255, 0.04)";
+const INPUT_BORDER = color.lineStrong;
+const INPUT_BG = color.fill.inset;
 
 export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProps> = ({
   items,
@@ -97,7 +96,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
           <View style={styles.itemsList}>
             {included.map((i) => (
               <View key={`inc-${i.ordinal}`} style={styles.itemRow}>
-                <Icon name="check" size={14} color={accent.warm} />
+                <Icon name="check" size={14} color={color.accent} />
                 <Text style={styles.itemText}>{i.item}</Text>
                 <Pressable
                   onPress={() => deleteAt("included", i.ordinal)}
@@ -107,7 +106,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
                   hitSlop={8}
                   style={styles.deleteBtn}
                 >
-                  <Icon name="trash" size={14} color={textTokens.tertiary} />
+                  <Icon name="trash" size={14} color={color.text3} />
                 </Pressable>
               </View>
             ))}
@@ -119,7 +118,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
             onChangeText={setIncludedDraft}
             onSubmitEditing={() => addItem("included", includedDraft)}
             placeholder="e.g. Lodging, all meals, daily yoga"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             editable={!disabled}
             accessibilityLabel="Add included item"
             style={styles.addInput}
@@ -141,7 +140,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
             ]}
             testID="trip-step3-included-add"
           >
-            <Icon name="plus" size={16} color={accent.warm} />
+            <Icon name="plus" size={16} color={color.accent} />
           </Pressable>
         </View>
       </View>
@@ -155,7 +154,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
           <View style={styles.itemsList}>
             {excluded.map((i) => (
               <View key={`exc-${i.ordinal}`} style={styles.itemRow}>
-                <Icon name="close" size={14} color={textTokens.tertiary} />
+                <Icon name="close" size={14} color={color.text3} />
                 <Text style={styles.itemText}>{i.item}</Text>
                 <Pressable
                   onPress={() => deleteAt("excluded", i.ordinal)}
@@ -165,7 +164,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
                   hitSlop={8}
                   style={styles.deleteBtn}
                 >
-                  <Icon name="trash" size={14} color={textTokens.tertiary} />
+                  <Icon name="trash" size={14} color={color.text3} />
                 </Pressable>
               </View>
             ))}
@@ -177,7 +176,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
             onChangeText={setExcludedDraft}
             onSubmitEditing={() => addItem("excluded", excludedDraft)}
             placeholder="e.g. Flights, alcohol, optional excursions"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             editable={!disabled}
             accessibilityLabel="Add excluded item"
             style={styles.addInput}
@@ -199,7 +198,7 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
             ]}
             testID="trip-step3-excluded-add"
           >
-            <Icon name="plus" size={16} color={accent.warm} />
+            <Icon name="plus" size={16} color={color.accent} />
           </Pressable>
         </View>
       </View>
@@ -216,44 +215,44 @@ export const TripCreatorStep3Inclusions: React.FC<TripCreatorStep3InclusionsProp
 
 const styles = StyleSheet.create({
   host: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-    gap: spacing.lg,
+    paddingTop: space[2],
+    paddingBottom: space[6],
+    gap: space[6],
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   section: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: textTokens.secondary,
+    color: color.text2,
     textTransform: "uppercase",
   },
   emptyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
     fontStyle: "italic",
   },
   itemsList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
+    gap: space[1],
+    paddingVertical: space[1],
   },
   itemText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
   },
   deleteBtn: {
     width: 28,
@@ -263,7 +262,7 @@ const styles = StyleSheet.create({
   },
   addRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   addInput: {
     flex: 1,
@@ -274,8 +273,8 @@ const styles = StyleSheet.create({
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   addBtn: {
     width: 44,
@@ -283,9 +282,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    backgroundColor: color.accentTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.4)",
+    borderColor: color.accentLine,
   },
   addBtnDisabled: {
     opacity: 0.4,

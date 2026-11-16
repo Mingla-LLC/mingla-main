@@ -13,7 +13,9 @@ describe("desktop web layout contracts", () => {
     expect(source).toContain("DESKTOP_RAIL_WIDTH");
     expect(source).toContain("DESKTOP_BEZEL_MARGIN");
     expect(source).toContain("DESKTOP_TOP_INSET");
-    expect(source).toContain("paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN");
+    // [TEST-MOD-APPROVED #4420] the canvas pads by the sidebar's live width
+    // (248, or the 80 rail) plus the same compact bezel.
+    expect(source).toContain("paddingLeft: sidebarInset + DESKTOP_BEZEL_MARGIN");
     expect(source).toContain("paddingRight: DESKTOP_BEZEL_MARGIN");
     expect(source).not.toContain("DESKTOP_CONTENT_MAX_WIDTH");
     expect(source).not.toContain("DESKTOP_CONTENT_PADDING_X");

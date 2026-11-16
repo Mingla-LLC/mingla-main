@@ -14,25 +14,24 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 
 import {
   radius,
-  semantic,
-  text as textTokens,
-  typography,
+  color,
+  type,
 } from "../../../constants/designSystem";
 import {
-  INSIGHTS_ANDROID_OPAQUE,
   gradeBand,
   type GradeBand,
 } from "./insightsInstruments";
 
 const BADGE_FILL_IOS: Record<GradeBand, string> = {
-  good: semantic.successTint,
-  mid: semantic.warningTint,
-  poor: semantic.errorTint,
+  good: color.successTint,
+  mid: color.warningTint,
+  poor: color.errorTint,
 };
+// #4420 — the opaque composites of the tints over the canvas (token file).
 const BADGE_FILL_ANDROID: Record<GradeBand, string> = {
-  good: INSIGHTS_ANDROID_OPAQUE.successFill,
-  mid: INSIGHTS_ANDROID_OPAQUE.warningFill,
-  poor: INSIGHTS_ANDROID_OPAQUE.errorFill,
+  good: color.solidTint.success,
+  mid: color.solidTint.warning,
+  poor: color.solidTint.error,
 };
 
 export function GradeBadge({
@@ -66,8 +65,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   gradeBadgeLetter: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
 });
 

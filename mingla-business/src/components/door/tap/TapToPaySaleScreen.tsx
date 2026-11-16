@@ -20,12 +20,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  canvas,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
 import {
@@ -43,6 +40,7 @@ import {
   tapReaderProblemTitle,
 } from "../../../constants/tapToPayCopy";
 import { useManagedEventRoute } from "../../../hooks/useManagedEventRoute";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import { doorSaleKeys } from "../../../hooks/useEventDoorSales";
 import {
   currentTapToPayDevice,
@@ -76,6 +74,7 @@ import { consumeDoorTapPress } from "../../../services/terminal/tapTiming";
 import { formatCurrency, majorFromMinor } from "../../../utils/currency";
 import { HapticFeedback } from "../../../utils/hapticFeedback";
 import { randomUuid } from "../../../utils/randomId";
+import { DESKTOP_TEMPLATE_MAX_WIDTH } from "../../ui/DesktopCanvas";
 import { GlassCard } from "../../ui/GlassCard";
 import { IconChrome } from "../../ui/IconChrome";
 import { Spinner } from "../../ui/Spinner";
@@ -106,6 +105,10 @@ export const TapToPaySaleScreen = ({
 }: TapToPaySaleScreenProps): React.ReactElement => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // #4420: on wide web the sale sits in the Public status column (status card
+  // left, the sale in a 380 summary on the right) instead of full-bleed buttons.
+  const { isWideDesktop } = useResponsiveLayout();
+  const wideWeb = Platform.OS === "web" && isWideDesktop;
   const queryClient = useQueryClient();
   const route = useManagedEventRoute(eventId);
   const draft = useMemo<TapToPayDraft | null>(
@@ -453,7 +456,7 @@ export const TapToPaySaleScreen = ({
             link={receiptLink("approved", state.amount, state.cardLabel)}
             testID="tap-state-approved"
           >
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               {/* Only a name the host typed. Never a made-up "Walk-up". */}
               {draft.buyerName != null ? (
                 <View style={styles.kv} testID="tap-guest-row">
@@ -631,50 +634,89 @@ export const TapToPaySaleScreen = ({
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.md, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, paddingBottom: insets.bottom + space[4], backgroundColor: color.canvas },
       ]}
     >
-      {chrome}
-      {renderBody()}
-      {payCodeError ? <Text style={styles.inlineError}>{payCodeError}</Text> : null}
+      {wideWeb ? (
+        <View style={styles.wideBody} testID="tap-sale-status-template">
+          <View style={styles.wideColumn}>
+            {chrome}
+            <View style={styles.wideGrid}>
+              <View style={styles.wideMain}>
+                <GlassCard padding={space[8]} contentStyle={styles.wideStatusCard}>
+                  {renderBody()}
+                </GlassCard>
+                {payCodeError ? <Text style={styles.inlineError}>{payCodeError}</Text> : null}
+              </View>
+              {draft !== null ? (
+                <View style={styles.wideAside}>
+                  <GlassCard padding={space[6]} contentStyle={styles.wideSummary} testID="tap-sale-summary">
+                    <Text style={styles.wideSummaryTitle}>{route.event?.name ?? tapToPayName(Platform.OS)}</Text>
+                    {lineSummary.length > 0 ? <Text style={styles.wideSummaryLines}>{lineSummary}</Text> : null}
+                  </GlassCard>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      ) : (
+        <>
+          {chrome}
+          {renderBody()}
+          {payCodeError ? <Text style={styles.inlineError}>{payCodeError}</Text> : null}
+        </>
+      )}
     </View>
   );
 };
 
+/** Kit `.tpl-status`: status card min height and the summary column. */
+const WIDE_STATUS_MIN_HEIGHT = 380;
+const WIDE_SUMMARY_WIDTH = 380;
+
 const styles = StyleSheet.create({
   host: { flex: 1 },
+  wideBody: { flex: 1, alignItems: "center", paddingHorizontal: space[6], paddingBottom: space[9] },
+  wideColumn: { width: "100%", maxWidth: DESKTOP_TEMPLATE_MAX_WIDTH.status, gap: space[4] },
+  wideGrid: { flexDirection: "row", alignItems: "flex-start", gap: space[6] },
+  wideMain: { flex: 1, minWidth: 0, gap: space[2] },
+  wideAside: { width: WIDE_SUMMARY_WIDTH, flexShrink: 0 },
+  wideStatusCard: { minHeight: WIDE_STATUS_MIN_HEIGHT, justifyContent: "center" },
+  wideSummary: { gap: space[2] },
+  wideSummaryTitle: { ...type.h2, color: color.text1 },
+  wideSummaryLines: { ...type.small, color: color.text2 },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
-  chromeTitle: { ...typography.h3, color: textTokens.primary, flexShrink: 1, textAlign: "center" },
+  chromeTitle: { ...type.h1, color: color.text1, flexShrink: 1, textAlign: "center" },
   chromeRightSlot: { width: 44 },
-  waitHost: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  amountHost: { flex: 1, alignItems: "center", paddingTop: spacing.xxl, gap: spacing.xs },
-  amount: { ...typography.display, fontSize: 44, lineHeight: 56, color: textTokens.primary },
-  lines: { ...typography.body, color: textTokens.secondary, textAlign: "center", paddingHorizontal: spacing.lg },
-  statusRow: { marginTop: spacing.lg, paddingHorizontal: spacing.lg },
-  paidLine: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary, textAlign: "center" },
+  waitHost: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[2] },
+  amountHost: { flex: 1, alignItems: "center", paddingTop: space[9], gap: space[1] },
+  amount: { ...type.display, fontSize: 44, lineHeight: 56, color: color.text1 },
+  lines: { ...type.body, color: color.text2, textAlign: "center", paddingHorizontal: space[6] },
+  statusRow: { marginTop: space[6], paddingHorizontal: space[6] },
+  paidLine: { ...type.small, fontWeight: "600", color: color.text1, textAlign: "center" },
   kv: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   kvLast: { borderBottomWidth: 0 },
-  kvLabel: { ...typography.bodySm, color: textTokens.secondary },
-  kvValue: { ...typography.bodySm, color: textTokens.primary, flexShrink: 1, textAlign: "right" },
-  kvValueOk: { ...typography.bodySm, color: semantic.success },
+  kvLabel: { ...type.small, color: color.text2 },
+  kvValue: { ...type.small, color: color.text1, flexShrink: 1, textAlign: "right" },
+  kvValueOk: { ...type.small, color: color.success },
   inlineError: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     textAlign: "center",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingBottom: space[2],
   },
 });

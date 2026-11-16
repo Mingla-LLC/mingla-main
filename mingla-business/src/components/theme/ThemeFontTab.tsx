@@ -12,13 +12,7 @@ import {
 
 import { canonicalThemeFont } from "@mingla/offering-rendering/themeResolver";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, color, space } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import {
   FONT_CHIPS,
@@ -192,7 +186,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
             </Text>
             <Text style={styles.rowCaption}>{fontRowCaption(item)}</Text>
           </View>
-          {selected ? <Icon name="check" size={16} color={accent.warm} /> : null}
+          {selected ? <Icon name="check" size={16} color={color.accent} /> : null}
         </Pressable>
       );
     },
@@ -235,7 +229,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
         accessibilityLabel={inheritAccessibilityLabel}
       >
         <Text style={styles.inheritLabel}>{inheritLabel}</Text>
-        {inherited ? <Icon name="check" size={16} color={accent.warm} /> : null}
+        {inherited ? <Icon name="check" size={16} color={color.accent} /> : null}
       </Pressable>
       <TextInput
         value={query}
@@ -243,7 +237,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
         placeholder={fontSearchPlaceholder(
           catalog.status === "ready" ? catalog.rows.length : null,
         )}
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         autoCorrect={false}
         autoCapitalize="none"
         spellCheck={false}
@@ -277,7 +271,7 @@ export const ThemeFontTab: React.FC<ThemeFontTabProps> = ({
         {header}
         {catalog.status === "loading" ? (
           <View style={styles.stateRow}>
-            <ActivityIndicator color={textTokens.tertiary} />
+            <ActivityIndicator color={color.text3} />
             <Text style={styles.stateText}>Loading fonts…</Text>
           </View>
         ) : (
@@ -331,30 +325,30 @@ const styles = StyleSheet.create({
   // The tab body is NOT inside the sheet's ScrollView (a FlatList nested in a
   // same-direction ScrollView loses virtualisation and warns): it fills the
   // panel and the list scrolls on its own.
-  wrap: { flex: 1, gap: spacing.sm, paddingTop: spacing.md },
-  header: { gap: spacing.sm },
+  wrap: { flex: 1, gap: space[2], paddingTop: space[4] },
+  header: { gap: space[2] },
   list: { flex: 1 },
   row: {
     height: FONT_ROW_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radius.md,
   },
-  rowSelected: { backgroundColor: accent.tint },
+  rowSelected: { backgroundColor: color.accentLine },
   rowText: { flex: 1, minWidth: 0 },
-  rowName: { fontSize: 17, color: textTokens.primary },
-  rowCaption: { fontSize: 11, color: textTokens.quaternary },
-  inheritLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: textTokens.primary },
+  rowName: { fontSize: 17, color: color.text1 },
+  rowCaption: { fontSize: 11, color: color.text4 },
+  inheritLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: color.text1 },
   search: {
     height: 44,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    paddingHorizontal: space[2],
     fontSize: 14,
   },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -363,13 +357,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: radius.full,
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
-  chipActive: { backgroundColor: accent.tint, borderColor: accent.border, borderWidth: 1 },
-  chipLabel: { fontSize: 13, fontWeight: "600", color: textTokens.tertiary },
-  chipLabelActive: { color: textTokens.primary },
-  stateRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },
-  stateText: { fontSize: 13, color: textTokens.tertiary },
+  chipActive: { backgroundColor: color.accentLine, borderColor: color.accentLine, borderWidth: 1 },
+  chipLabel: { fontSize: 13, fontWeight: "600", color: color.text3 },
+  chipLabelActive: { color: color.text1 },
+  stateRow: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 44 },
+  stateText: { fontSize: 13, color: color.text3 },
   retry: { minHeight: 44, justifyContent: "center" },
-  retryLabel: { fontSize: 13, fontWeight: "700", color: accent.warm },
+  retryLabel: { fontSize: 13, fontWeight: "700", color: color.accent },
 });

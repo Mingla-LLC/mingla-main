@@ -11,15 +11,12 @@ import type { PressableProps, ViewStyle } from "react-native";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react-native";
 
 import {
-  accent,
-  androidOpaque,
-  canvas,
-  glass,
   radius,
   reservationCalendarLayout,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import type {
   ReservationCalendarMode,
@@ -101,7 +98,7 @@ const KeyboardPressable = Pressable as React.ComponentType<
 
 const webFocusOutline = Platform.select<ViewStyle>({
   web: {
-    outlineColor: accent.warm,
+    outlineColor: color.accent,
     outlineOffset: 2,
     outlineStyle: "solid",
     outlineWidth: 2,
@@ -189,7 +186,7 @@ export function ReservationCalendarToolbar({
                   ]}
                   testID={`reservation-calendar-mode-${item.id}`}
                 >
-                  {selected ? <Check size={14} color={accent.warm} /> : null}
+                  {selected ? <Check size={14} color={color.textStrong} /> : null}
                   <Text style={[styles.tabText, selected ? styles.tabTextSelected : null]}>
                     {item.label}
                   </Text>
@@ -207,7 +204,7 @@ export function ReservationCalendarToolbar({
             style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
             testID="reservation-calendar-previous"
           >
-            <ChevronLeft size={18} color={textTokens.primary} />
+            <ChevronLeft size={18} color={color.text1} />
           </Pressable>
           <Text style={styles.periodLabel} accessibilityRole="header">
             {periodLabel}
@@ -219,7 +216,7 @@ export function ReservationCalendarToolbar({
             style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
             testID="reservation-calendar-next"
           >
-            <ChevronRight size={18} color={textTokens.primary} />
+            <ChevronRight size={18} color={color.text1} />
           </Pressable>
           <Pressable
             onPress={onToday}
@@ -327,7 +324,7 @@ export function ReservationCalendarToolbar({
               ]}
               testID={`reservation-calendar-scope-${item.id}`}
             >
-              {selected ? <Check size={14} color={accent.warm} /> : null}
+              {selected ? <Check size={14} color={color.textStrong} /> : null}
               <Text style={[styles.scopeText, selected ? styles.scopeTextSelected : null]}>
                 {item.label}
               </Text>
@@ -342,28 +339,30 @@ export function ReservationCalendarToolbar({
   );
 }
 
-const selectedFill =
-  Platform.OS === "android" ? androidOpaque.accentFill : accent.tint;
+// #4420 — selected tabs and chips use the kit's selected material (as the
+// shared Chip does); the selected day is the Paper cell from the mockup.
+// Orange stays for primary actions.
+const selectedFill = materials.selected.solidFill;
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   controlBand: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   controlBandWide: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   periodControls: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   iconButton: {
     width: reservationCalendarLayout.entryMinTarget,
@@ -372,12 +371,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.line,
+    backgroundColor: color.fill.tile,
   },
   periodLabel: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
     textAlign: "center",
     minWidth: 150,
@@ -385,120 +384,120 @@ const styles = StyleSheet.create({
   },
   todayButton: {
     minHeight: reservationCalendarLayout.entryMinTarget,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
   todayText: {
-    ...typography.buttonMd,
-    color: textTokens.primary,
+    ...type.btnSm,
+    color: color.text1,
   },
   tabList: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   tab: {
     minHeight: reservationCalendarLayout.entryMinTarget,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   tabSelected: {
-    borderColor: accent.border,
+    borderColor: materials.selected.rim.edge,
     backgroundColor: selectedFill,
   },
   tabText: {
-    ...typography.buttonMd,
-    color: textTokens.secondary,
+    ...type.btnSm,
+    color: color.text2,
   },
   tabTextSelected: {
-    color: accent.warm,
+    color: color.textStrong,
   },
   dateStrip: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   dateCell: {
     minWidth: reservationCalendarLayout.dateCellMinWidth,
     minHeight: reservationCalendarLayout.dateCellMinHeight,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[1],
+    paddingVertical: space[1],
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   dateCellToday: {
-    borderWidth: spacing.xxs,
-    borderColor: accent.warm,
+    borderWidth: 2,
+    borderColor: color.text3,
   },
   dateCellSelected: {
-    borderColor: accent.warm,
-    backgroundColor: accent.warm,
+    borderColor: color.paper,
+    backgroundColor: color.paper,
   },
   weekday: {
-    ...typography.micro,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
   dayNumber: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   dateCount: {
-    ...typography.micro,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
     position: "absolute",
-    top: spacing.xs,
-    right: spacing.xs,
+    top: space[1],
+    right: space[1],
   },
   dateSelectedText: {
-    color: canvas.discover,
+    color: color.ink,
   },
   scopeList: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   scopeChip: {
     minHeight: reservationCalendarLayout.entryMinTarget,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   scopeChipSelected: {
-    borderColor: accent.border,
+    borderColor: materials.selected.rim.edge,
     backgroundColor: selectedFill,
   },
   scopeText: {
-    ...typography.buttonMd,
-    color: textTokens.secondary,
+    ...type.btnSm,
+    color: color.text2,
   },
   scopeCount: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   scopeTextSelected: {
-    color: accent.warm,
+    color: color.textStrong,
   },
   pressed: {
     opacity: 0.72,

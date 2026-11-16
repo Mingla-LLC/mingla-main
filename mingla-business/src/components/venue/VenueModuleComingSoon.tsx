@@ -16,10 +16,9 @@ import { StyleSheet, Text, View } from "react-native";
 
 import {
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Calendar, Clock, LayoutGrid, List } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
@@ -61,7 +60,7 @@ export function VenueModuleComingSoon({
     <View style={styles.host} testID={testID ?? `venue-coming-soon-${module}`}>
       <GlassCard variant="elevated" style={styles.card}>
         <View style={styles.iconWrap}>
-          <ModuleIcon size={28} color={textTokens.primary} />
+          <ModuleIcon size={28} color={color.text1} />
         </View>
         <Text style={styles.title}>{meta.label}</Text>
         <Text style={styles.summary}>{meta.summary}</Text>
@@ -92,45 +91,45 @@ export function VenueModuleComingSoon({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
   },
   card: {
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconWrap: {
-    paddingBottom: spacing.xs,
+    paddingBottom: space[1],
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   summary: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
   badge: {
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    marginTop: space[1],
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: semantic.infoTint,
+    backgroundColor: color.infoTint,
   },
   badgeLabel: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
   },
   ctaWrap: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
+    marginTop: space[4],
+    gap: space[2],
     alignSelf: "stretch",
   },
   ctaHint: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     textAlign: "center",
   },
 });

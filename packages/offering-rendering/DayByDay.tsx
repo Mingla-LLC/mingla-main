@@ -12,12 +12,13 @@
  */
 
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { CountAwareGallery } from "./CountAwareGallery";
+import { Plus } from "./LucideIcons";
 import type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 import type { TripOfferingDay } from "./tripOfferingTypes";
-import { accentFill } from "./themeAccentStyle";
+import { useReduceMotionPreference } from "./useReduceMotionPreference";
 
 const LONG_ITINERARY_THRESHOLD = 5;
 const COLLAPSED_DAY_COUNT = 2;
@@ -32,6 +33,10 @@ export interface DayByDayProps {
   testID?: string;
 }
 
+// issue #4420 — the days read as an accordion (design file → P.trip "Day by
+// day"): each day is one row (DAY N · title · +), the first opens on its own,
+// and a tap opens the date, the story and the day's photos. Long itineraries
+// still show their first days with "Show all N days" (unchanged rule).
 export const DayByDay: React.FC<DayByDayProps> = ({
   days,
   palette,
@@ -42,48 +47,80 @@ export const DayByDay: React.FC<DayByDayProps> = ({
 }) => {
   const isLong = days.length >= LONG_ITINERARY_THRESHOLD;
   const [expanded, setExpanded] = useState<boolean>(false);
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(
+    () => new Set(days.length > 0 ? [days[0].id] : []),
+  );
+  const reduceMotion = useReduceMotionPreference();
   const visibleDays =
     isLong && !expanded ? days.slice(0, COLLAPSED_DAY_COUNT) : days;
   const titleStyle = fontFamily !== undefined ? { fontFamily } : null;
 
+  const toggle = (id: string): void => {
+    if (!reduceMotion) {
+      LayoutAnimation.configureNext(
+        LayoutAnimation.create(200, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
+      );
+    }
+    setOpenIds((prev: ReadonlySet<string>) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
-    <View style={styles.itin} testID={testID}>
-      <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
-      {visibleDays.map((day) => (
-        <View key={day.id} style={styles.day}>
-          <View style={[styles.dayDot, accentFill(palette)]}>
-            <Text style={[styles.dayDotText, { color: palette.accentText }]}>
-              {day.ordinal}
-            </Text>
-          </View>
-          <View style={[styles.dayCard, surface.card]}>
-            <View style={styles.dayHead}>
+    <View style={[styles.itin, { borderTopColor: palette.panelBorder }]} testID={testID}>
+      {visibleDays.map((day) => {
+        const open = openIds.has(day.id);
+        const hasNarrative = day.narrative !== null && day.narrative.trim().length > 0;
+        const hasDate = day.date !== null && day.date.length > 0;
+        return (
+          <View
+            key={day.id}
+            style={[styles.day, { borderBottomColor: palette.panelBorder }]}
+            testID={testID !== undefined ? `${testID}-day-${day.ordinal}` : undefined}
+          >
+            <Pressable
+              onPress={() => toggle(day.id)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open }}
+              accessibilityLabel={`Day ${day.ordinal}, ${day.title}`}
+              style={styles.dayHead}
+            >
               <Text style={[styles.dayOrd, { color: palette.accent }]}>
                 Day {day.ordinal}
               </Text>
-              {day.date !== null && day.date.length > 0 ? (
-                <Text style={[styles.dayDate, surface.tertiaryText]}>
-                  {day.date}
-                </Text>
-              ) : null}
-            </View>
-            <Text style={[styles.dayTitle, surface.primaryText, titleStyle]}>
-              {day.title}
-            </Text>
-            {day.narrative !== null && day.narrative.trim().length > 0 ? (
-              <Text style={[styles.dayNarr, surface.secondaryText]}>
-                {day.narrative}
+              <Text style={[styles.dayTitle, surface.primaryText, titleStyle]}>
+                {day.title}
               </Text>
+              <View style={open ? styles.plusOpen : null}>
+                <Plus size={16} color={palette.secondaryText} />
+              </View>
+            </Pressable>
+            {open ? (
+              <View style={styles.dayBody}>
+                {hasDate || hasNarrative ? (
+                  <Text style={[styles.dayNarr, surface.secondaryText]}>
+                    {hasDate ? (
+                      <Text style={[styles.dayDate, surface.tertiaryText]}>
+                        {hasNarrative ? `${day.date} · ` : day.date}
+                      </Text>
+                    ) : null}
+                    {hasNarrative ? day.narrative : null}
+                  </Text>
+                ) : null}
+                <CountAwareGallery
+                  items={day.media.map((m) => ({ url: m.url, type: m.type }))}
+                  palette={palette}
+                  variant={variant}
+                  accessibilityLabelPrefix={`Day ${day.ordinal} media`}
+                />
+              </View>
             ) : null}
-            <CountAwareGallery
-              items={day.media.map((m) => ({ url: m.url, type: m.type }))}
-              palette={palette}
-              variant={variant}
-              accessibilityLabelPrefix={`Day ${day.ordinal} media`}
-            />
           </View>
-        </View>
-      ))}
+        );
+      })}
       {isLong ? (
         <Pressable
           onPress={() => setExpanded((v) => !v)}
@@ -103,32 +140,28 @@ export const DayByDay: React.FC<DayByDayProps> = ({
 };
 
 const styles = StyleSheet.create({
-  itin: { position: "relative", paddingLeft: 30, marginTop: 4 },
-  itinSpine: { position: "absolute", left: 9, top: 6, bottom: 6, width: 2 },
-  day: { position: "relative", paddingBottom: 18 },
-  dayDot: {
-    position: "absolute",
-    left: -30,
-    top: 2,
-    width: 20,
-    height: 20,
-    borderRadius: 999,
+  itin: { marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth },
+  day: { borderBottomWidth: StyleSheet.hairlineWidth },
+  dayHead: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 12,
+    minHeight: 52,
+    paddingVertical: 14,
   },
-  dayDotText: { fontSize: 10, fontWeight: "900" },
-  dayCard: { borderRadius: 14, padding: 14 },
-  dayHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   dayOrd: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1,
+    width: 54,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.1,
     textTransform: "uppercase",
   },
-  dayDate: { fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
-  dayTitle: { fontSize: 15, fontWeight: "800", marginTop: 4 },
-  dayNarr: { fontSize: 13, lineHeight: 20, marginTop: 6 },
-  showAllRow: { paddingVertical: 8 },
+  dayTitle: { flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: "700" },
+  plusOpen: { transform: [{ rotate: "45deg" }] },
+  dayBody: { paddingLeft: 66, paddingBottom: 16, gap: 12 },
+  dayDate: { fontSize: 14, fontWeight: "600" },
+  dayNarr: { fontSize: 14, lineHeight: 21 },
+  showAllRow: { paddingVertical: 12 },
   showAllText: { fontSize: 14, fontWeight: "800" },
 });
 

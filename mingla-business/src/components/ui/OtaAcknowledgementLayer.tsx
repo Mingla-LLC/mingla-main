@@ -28,7 +28,7 @@ import {
   findNodeHandle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { backgroundWarmGlow, colors, spacing } from "../../constants/designSystem";
+import { space, color } from "../../constants/designSystem";
 import { createOtaGateCoordinator } from "../../services/otaUpdateRuntime";
 
 export function OtaAcknowledgementLayer({
@@ -90,11 +90,11 @@ function CriticalUpdateScreen(): React.ReactElement {
       importantForAccessibility="yes"
       style={[
         styles.page,
-        { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.lg },
+        { paddingTop: insets.top + space[6], paddingBottom: insets.bottom + space[6] },
       ]}
       testID="critical-update-layer"
     >
-      <StatusBar barStyle="dark-content" backgroundColor={backgroundWarmGlow} />
+      <StatusBar barStyle="dark-content" backgroundColor={color.paper} />
       <Image
         source={MINGLA_WORDMARK}
         resizeMode="contain"
@@ -111,7 +111,7 @@ function CriticalUpdateScreen(): React.ReactElement {
           a moment.
         </Text>
         <View style={styles.progress} accessibilityLabel="Installing update">
-          <ActivityIndicator color={colors.accent} />
+          <ActivityIndicator color={color.accent} />
         </View>
       </View>
     </View>
@@ -122,26 +122,26 @@ const styles = StyleSheet.create({
   page: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10_000,
-    backgroundColor: backgroundWarmGlow,
+    backgroundColor: color.paper,
     width: "100%",
     maxWidth: 440,
     alignSelf: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   logo: { width: 88, height: 31, flexShrink: 0 },
   messageGroup: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "flex-start",
-    paddingVertical: spacing.xl,
+    paddingVertical: space[7],
   },
   title: {
     fontSize: 32,
     lineHeight: 40,
     fontWeight: "700",
-    color: colors.text.primary,
-    marginBottom: spacing.sm + 4,
+    color: color.ink,
+    marginBottom: space[2] + 4,
   },
-  body: { fontSize: 16, lineHeight: 24, color: colors.text.secondary },
-  progress: { marginTop: spacing.lg, minHeight: 54, justifyContent: "center" },
+  body: { fontSize: 16, lineHeight: 24, color: color.text4 },
+  progress: { marginTop: space[6], minHeight: 54, justifyContent: "center" },
 });

@@ -23,9 +23,9 @@ import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { ThemePalette } from "@mingla/offering-rendering";
 import type { Trip } from "../../services/tripsService";
@@ -197,8 +197,8 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: space[6],
+    gap: space[4],
   },
   // ORCH-1130 — no-plan quiet price recap (replaces the tier card + passive
   // projection + helper for single-payment trips).
@@ -206,27 +206,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   recapTierName: {
     flexShrink: 1,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   recapPrice: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   recapHelper: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     textAlign: "center",
   },
   errorText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
 });

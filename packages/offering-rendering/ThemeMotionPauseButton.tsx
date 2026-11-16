@@ -17,6 +17,13 @@ import { useThemeMotionSlug } from "./useThemeMotionSlug";
 export interface ThemeMotionPauseButtonProps {
   theme: ResolvedTheme;
   style?: StyleProp<ViewStyle>;
+  /**
+   * issue #4420 — "chrome": a 40pt frosted circle matching the header's close
+   * and share buttons; "plain": no circle, glyph in `glyphColor` (the solid
+   * glass header). Absent ⇒ the original 32pt disc, unchanged.
+   */
+  tone?: "default" | "chrome" | "plain";
+  glyphColor?: string;
   testID?: string;
 }
 
@@ -26,8 +33,10 @@ export const useMotionPaused = (): boolean =>
 export const ThemeMotionPauseButton: React.FC<ThemeMotionPauseButtonProps> = ({
   theme,
   style,
+  tone = "default",
+  glyphColor = "#ffffff",
   testID,
-}) => {
+}: ThemeMotionPauseButtonProps) => {
   const slug = useThemeMotionSlug(theme.animation);
   const reduceMotion = useReduceMotionPreference();
   const paused = useMotionPaused();
@@ -42,16 +51,24 @@ export const ThemeMotionPauseButton: React.FC<ThemeMotionPauseButtonProps> = ({
       accessibilityLabel={paused ? "Play animation" : "Pause animation"}
       accessibilityState={{ selected: paused }}
       hitSlop={6}
-      style={[styles.hit, style]}
+      style={[tone === "default" ? styles.hit : styles.hitChrome, style]}
       testID={testID ?? "theme-motion-pause"}
     >
-      <View style={styles.disc}>
+      <View
+        style={
+          tone === "default"
+            ? styles.disc
+            : tone === "chrome"
+              ? styles.discChrome
+              : styles.discPlain
+        }
+      >
         {paused ? (
-          <View style={styles.play} />
+          <View style={[styles.play, { borderLeftColor: glyphColor }]} />
         ) : (
           <View style={styles.bars}>
-            <View style={styles.bar} />
-            <View style={styles.bar} />
+            <View style={[styles.bar, { backgroundColor: glyphColor }]} />
+            <View style={[styles.bar, { backgroundColor: glyphColor }]} />
           </View>
         )}
       </View>
@@ -74,6 +91,24 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(12,14,18,0.55)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // issue #4420 — header tones.
+  hitChrome: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  discChrome: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.48)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  discPlain: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },

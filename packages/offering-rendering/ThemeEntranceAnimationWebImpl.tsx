@@ -55,6 +55,9 @@ export interface ThemeEntranceAnimationProps {
    * ThemeEntranceAnimation stub both halves.
    */
   part?: "layer" | "pauseButton";
+  /** issue #4420 — forwarded to the pause control (`part="pauseButton"`). */
+  pauseTone?: "default" | "chrome" | "plain";
+  pauseGlyphColor?: string;
   /** A still frame of the loop and no button (picker tiles). */
   still?: boolean;
   /** Native only (the sheet's top edge as an Animated value). Ignored here. */
@@ -122,15 +125,20 @@ export const ThemeEntranceAnimation: React.FC<ThemeEntranceAnimationProps> = ({
   pauseButton = "inline",
   pauseButtonTop = 64,
   part = "layer",
+  pauseTone,
+  pauseGlyphColor,
   still = false,
-}) => {
+}: ThemeEntranceAnimationProps) => {
   const themed = useThemeMotionSlug(theme.animation);
   // a picker tile shows ITS slug, never the dev preview override
   const slug = still ? theme.animation : themed;
   const reduceMotion = useReduceMotionPreference() || still;
   const replayKey = useThemeMotionReplayKey();
   if (slug === "none") return null;
-  if (part === "pauseButton") return <ThemeMotionPauseButton theme={theme} />;
+  if (part === "pauseButton")
+    return (
+      <ThemeMotionPauseButton theme={theme} tone={pauseTone} glyphColor={pauseGlyphColor} />
+    );
   return (
     <View pointerEvents="box-none" style={styles.wrap} testID="theme-entrance-animation">
       <WebMotion

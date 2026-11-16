@@ -8,12 +8,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
-import {
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../constants/designSystem";
+import { color, space, type } from "../../../../constants/designSystem";
 import { hostAdCharts } from "./hostAdChartColors";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 import { hostAdCostPerLabel, hostAdNoResultsLine, hostAdResultLabel } from "../hostAdCopy";
@@ -88,7 +83,7 @@ export function AdResultsChart(props: {
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <Line x1="0" x2={width} y1={height} y2={height} stroke={glass.border.profileElevated} />
+          <Line x1="0" x2={width} y1={height} y2={height} stroke={color.lineStrong} />
           {points.map((point, index) => {
             const h = (point.results / maxResults) * (height - 8);
             return (
@@ -107,7 +102,7 @@ export function AdResultsChart(props: {
             <Path d={costD} fill="none" stroke={hostAdCharts.costPerResult} strokeWidth="2" />
           ) : null}
           {costPoints.length > 0 ? (
-            <SvgText x={width + 4} y={12} fill={textTokens.tertiary} fontSize="11">
+            <SvgText x={width + 4} y={12} fill={color.text3} fontSize="11">
               {compactAxisAmount(maxCost)}
             </SvgText>
           ) : null}
@@ -132,9 +127,9 @@ export function AdResultsChart(props: {
 }
 
 const styles = StyleSheet.create({
-  empty: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.md },
-  axisRow: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },
-  axisText: { ...typography.caption, color: textTokens.tertiary },
-  legend: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.xs },
-  legendText: { ...typography.caption, color: textTokens.secondary },
+  empty: { ...type.small, color: color.text2, marginTop: space[4] },
+  axisRow: { flexDirection: "row", justifyContent: "space-between", marginTop: space[1] },
+  axisText: { ...type.caption, color: color.text3 },
+  legend: { flexDirection: "row", flexWrap: "wrap", gap: space[4], marginTop: space[1] },
+  legendText: { ...type.caption, color: color.text2 },
 });

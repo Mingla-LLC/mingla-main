@@ -202,7 +202,8 @@ jest.mock("../../intel/useTurnoutFocusTarget", () => ({
 }));
 jest.mock("../../ui/Sheet", () => ({ __esModule: true, Sheet: (): null => null }));
 jest.mock("../../ui/TopBar", () => ({ __esModule: true, TopBar: (): null => null }));
-jest.mock("../../ui/Stepper", () => ({ __esModule: true, Stepper: (): null => null }));
+// [TEST-MOD-APPROVED #4420] the Event wizard also imports the shared StepperFooter.
+jest.mock("../../ui/Stepper", () => ({ __esModule: true, Stepper: (): null => null, StepperFooter: (): null => null }));
 jest.mock("../../ui/ConfirmDialog", () => ({
   __esModule: true,
   ConfirmDialog: (): null => null,

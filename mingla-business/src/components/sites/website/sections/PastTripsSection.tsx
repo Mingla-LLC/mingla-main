@@ -8,6 +8,7 @@ import { BrandSiteContentConflict, usePastTrips, useSetPastTripHidden, type Past
 import { formatTripDates } from "../../../../sites/websiteCopy";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 
+import { color } from "../../../../constants/designSystem";
 /**
  * #2829 W9r (DESIGN_SPEC §1.6 Past trips, §37 answer 3) — the brand's ended
  * Mingla trips. Trip details are Mingla's (read-only here); owners and admins
@@ -105,7 +106,7 @@ const styles = StyleSheet.create({
   center: { textAlign: "center" },
   empty: { alignItems: "center", paddingVertical: 40, paddingHorizontal: 24, gap: 10 },
   emptyBody: { textAlign: "center", maxWidth: 440 },
-  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.06)" },
+  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: color.fill.tile },
   title: { fontSize: 14, fontWeight: "600", color: ui.t1 },
   sub: { fontSize: 12.5, lineHeight: 17, color: ui.t3 },
   ask: { flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 10 },

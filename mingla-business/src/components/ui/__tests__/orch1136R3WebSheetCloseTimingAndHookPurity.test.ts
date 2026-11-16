@@ -54,7 +54,9 @@ const CLOSE_TIMING: Record<string, string> = {
   "TopSheet.tsx": "EXIT_DURATION", // 240
   "SheetMobile.tsx": "SHEET_CLOSE_DURATION", // 240
   "Modal.tsx": "EXIT_DURATION", // 160
-  "Toast.tsx": "EXIT_DURATION", // 160
+  // [TEST-MOD-APPROVED #4420] Toast left this list: it no longer lazy-unmounts
+  // a native <Modal> (B4, non-modal ToastHost), so there is no unmount delay to
+  // race its close. Its web variant stays pinned for hook purity below.
   "Sheet.web.tsx": "CLOSE_DURATION_MS", // 180
 };
 

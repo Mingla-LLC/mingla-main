@@ -43,11 +43,7 @@
 import React from "react";
 import { type LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import {
   AriOrb,
   type AriOrbSize,
@@ -75,7 +71,7 @@ export interface AriEmptyStateLayout {
 export const AriEmptyStateLayoutContext =
   React.createContext<AriEmptyStateLayout>({ viewportBottomClampPx: 0 });
 
-const HOST_PADDING_BOTTOM = spacing.xxl;
+const HOST_PADDING_BOTTOM = space[9];
 
 /**
  * How far each AriOrb size PAINTS below the top of its own layout box.
@@ -257,7 +253,7 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     alignItems: "center",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: space[7],
     paddingBottom: HOST_PADDING_BOTTOM,
   },
   // One frame only, before the three measurements land: centre the group the
@@ -283,21 +279,21 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   orbWrap: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   headline: {
     fontSize: 28,
     lineHeight: 34,
     fontWeight: "700",
     letterSpacing: -0.7,
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    marginTop: spacing.md,
-    fontSize: typography.body.fontSize,
+    marginTop: space[4],
+    fontSize: type.body.fontSize,
     lineHeight: 24,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     maxWidth: 360,
   },

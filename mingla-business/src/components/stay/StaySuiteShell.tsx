@@ -42,18 +42,14 @@ import { useRouter } from "expo-router";
 
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  semantic,
-  spacing,
   stayOverviewGridBasis,
   stayOverviewRowMinWidth,
   stayPageMaxWidth,
   suiteFormMaxWidth,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useMyVenueAccess } from "../../hooks/useMyVenueAccess";
@@ -230,7 +226,7 @@ function ChecklistRow({
       testID={testID}
     >
       <View style={styles.rowIcon}>
-        <Icon name={icon} size={18} color={textTokens.secondary} />
+        <Icon name={icon} size={18} color={color.text2} />
       </View>
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{title}</Text>
@@ -239,14 +235,14 @@ function ChecklistRow({
       {optional ? (
         <Text style={styles.optional}>Optional</Text>
       ) : complete ? (
-        <Icon name="check" size={19} color={semantic.success} />
+        <Icon name="check" size={19} color={color.success} />
       ) : (
         // The incomplete marker is a plain outline ring. `Icon` has no bare
         // circle and registering a lucide `Circle` for it would put an eager
         // glyph back in `__common` for one decorative dot.
         <View style={styles.pendingDot} accessibilityElementsHidden />
       )}
-      <Icon name="chevR" size={18} color={textTokens.tertiary} />
+      <Icon name="chevR" size={18} color={color.text3} />
     </Pressable>
   );
 }
@@ -281,13 +277,13 @@ function ManagementRow({
       testID={testID}
     >
       <View style={styles.rowIcon}>
-        <Icon name={icon} size={18} color={textTokens.secondary} />
+        <Icon name={icon} size={18} color={color.text2} />
       </View>
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowDetail}>{detail}</Text>
       </View>
-      <Icon name="chevR" size={18} color={textTokens.tertiary} />
+      <Icon name="chevR" size={18} color={color.text3} />
     </Pressable>
   );
 }
@@ -298,6 +294,8 @@ interface StayOverviewProps {
   venueName: string;
   venueApproved: boolean;
   onSelect: (module: StayModule) => void;
+  /** #4420 B8 — the page's Local reviews panel, scrolling with Overview. */
+  header?: React.ReactNode;
 }
 
 function StayOverview({
@@ -306,6 +304,7 @@ function StayOverview({
   venueName,
   venueApproved,
   onSelect,
+  header = null,
 }: StayOverviewProps): React.ReactElement {
   const router = useRouter();
   // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
@@ -408,7 +407,7 @@ function StayOverview({
   if (inventory.isLoading || currency.isLoading) {
     return (
       <View style={styles.centerState}>
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.accent} />
         <Text style={styles.helper}>Checking Stay readiness…</Text>
       </View>
     );
@@ -586,6 +585,7 @@ function StayOverview({
           </Text>
         </View>
       </View>
+      {header}
 
       {isActive ? (
         <GlassCard
@@ -796,7 +796,7 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
   if (inventory.isLoading) {
     return (
       <View style={styles.centerState}>
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.accent} />
         <Text style={styles.helper}>Loading Stay settings…</Text>
       </View>
     );
@@ -1030,7 +1030,7 @@ function Field({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         multiline={multiline}
         accessibilityLabel={label}
         accessibilityHint={helper}
@@ -1046,6 +1046,11 @@ export interface StaySuiteShellProps {
   venueId: string;
   venueName: string;
   venueApproved: boolean;
+  /**
+   * #4420 B8 — content that scrolls with the Overview module (the venue page's
+   * Local reviews panel). Never pinned above the suite's scroll.
+   */
+  overviewHeader?: React.ReactNode;
 }
 
 export function StaySuiteShell({
@@ -1053,6 +1058,7 @@ export function StaySuiteShell({
   venueId,
   venueName,
   venueApproved,
+  overviewHeader = null,
 }: StaySuiteShellProps): React.ReactElement {
   const [activeModule, setActiveModule] = useState<StayModule>("overview");
   // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
@@ -1112,6 +1118,7 @@ export function StaySuiteShell({
           venueName={venueName}
           venueApproved={venueApproved}
           onSelect={setActiveModule}
+          header={overviewHeader}
         />
       );
     }
@@ -1153,7 +1160,7 @@ export function StaySuiteShell({
   if (!venueAccessQuery.isFetched) {
     return (
       <View style={styles.accessState} testID="stay-access-loading">
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.accent} />
         <Text style={styles.helper}>Checking your Stay access…</Text>
       </View>
     );
@@ -1259,7 +1266,7 @@ export function StaySuiteShell({
                 <Icon
                   name={module.icon}
                   size={16}
-                  color={selected ? "#0c0e12" : textTokens.secondary}
+                  color={selected ? color.canvas : color.text2}
                 />
                 <Text
                   style={[
@@ -1284,8 +1291,8 @@ export function StaySuiteShell({
  * so each measure below can be a COMPLETE object (see the note on `page`).
  */
 const PAGE_BASE = {
-  padding: spacing.md,
-  // #1532 §4 — was `spacing.xxl * 3` (144pt) of dead scroll sized for a bottom
+  padding: space[4],
+  // #1532 §4 — was `space[9] * 3` (144pt) of dead scroll sized for a bottom
   // nav that `/venue/[venueId]` does not render (it lives OUTSIDE `app/(tabs)/`).
   // Now exactly what the PINNED action bar occupies, plus one gutter.
   paddingBottom: STAY_PAGE_BOTTOM_PAD,
@@ -1300,10 +1307,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.sm,
+    padding: space[7],
+    gap: space[2],
   },
-  root: { flex: 1, backgroundColor: canvas.discover },
+  root: { flex: 1, backgroundColor: color.canvas },
   workspace: { flex: 1 },
   // #1532 D5 — a module is a scroller PLUS a pinned bar, so it needs a
   // positioning host. `flex: 1` so the scroller still fills the workspace.
@@ -1315,7 +1322,7 @@ const styles = StyleSheet.create({
     // all, so no keyboard spacer can be injected into it.
     flexShrink: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   // ROW-ONLY (I-AXIS-SCOPED-FLEX): declares its own `flexDirection`, so every
   // other key here is read against that one axis. `alignItems: "flex-start"` is
@@ -1325,32 +1332,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "flex-start",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    columnGap: spacing.sm,
-    rowGap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    columnGap: space[2],
+    rowGap: space[2],
   },
   modulePill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   modulePillActive: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
   moduleLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
-  moduleLabelActive: { color: "#0c0e12" },
+  moduleLabelActive: { color: color.ink },
   // #1484 — the three page measures are COMPLETE, MUTUALLY EXCLUSIVE objects
   // and exactly ONE is selected (`isWideDesktop ? … : …`). They are NEVER
   // layered as `[page, <override setting maxWidth to undefined>]`: on
@@ -1386,28 +1393,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   titleCopy: { flex: 1 },
-  pageTitle: { ...typography.h2, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.secondary },
+  pageTitle: { ...type.h1, color: color.text1 },
+  helper: { ...type.small, color: color.text2 },
   statePill: {
     borderRadius: radius.full,
-    backgroundColor: semantic.warningTint,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    backgroundColor: color.warningTint,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
   },
-  statePillLive: { backgroundColor: semantic.successTint },
+  statePillLive: { backgroundColor: color.successTint },
   statePillText: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     fontWeight: "700",
   },
-  statePillTextLive: { color: semantic.success },
+  statePillTextLive: { color: color.success },
   // CONTENT-node measures (#1532 §4). These are passed as `contentStyle`, so
   // they land on the View that actually parents the children. On `style` they
   // reached `GlassChrome`'s outer node — one in-flow child — and rendered 0.
-  readinessCard: { gap: spacing.sm },
+  readinessCard: { gap: space[2] },
   // #1484 P1-2 — WIDE DESKTOP ONLY, applied to the wrapper that DIRECTLY
   // parents the readiness rows (see the comment at the call site). Because this
   // element is the rows' real flex parent, `checkRowDesktop`'s `flexBasis`
@@ -1417,40 +1424,40 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "flex-start",
-    columnGap: spacing.lg,
+    columnGap: space[6],
   },
   readinessHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
-  cardTitle: { ...typography.h3, color: textTokens.primary },
+  cardTitle: { ...type.h1, color: color.text1 },
   readinessCount: {
-    ...typography.h3,
-    color: accent.warm,
+    ...type.h1,
+    color: color.accent,
     fontWeight: "700",
   },
   progressTrack: {
     height: 6,
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
-    marginVertical: spacing.sm,
+    backgroundColor: color.fill.inset,
+    marginVertical: space[2],
   },
   progressFill: {
     height: "100%",
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   checkRow: {
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   // #1484 — WIDE DESKTOP ONLY grid cell. The PERCENTAGE basis caps the grid at
   // a MAXIMUM OF 3 COLUMNS at every width (the approved design says "2–3
@@ -1470,42 +1477,42 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   rowCopy: { flex: 1, minWidth: 0 },
   rowTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
-  rowDetail: { ...typography.caption, color: textTokens.secondary },
-  optional: { ...typography.caption, color: textTokens.tertiary },
+  rowDetail: { ...type.caption, color: color.text2 },
+  optional: { ...type.caption, color: color.text3 },
   blocker: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: semantic.warning,
-    backgroundColor: semantic.warningTint,
-    padding: spacing.md,
-    gap: spacing.xs,
+    borderColor: color.warning,
+    backgroundColor: color.warningTint,
+    padding: space[4],
+    gap: space[1],
   },
   blockerTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
-  blockerBody: { ...typography.bodySm, color: textTokens.secondary },
-  error: { ...typography.bodySm, color: semantic.error },
+  blockerBody: { ...type.small, color: color.text2 },
+  error: { ...type.small, color: color.danger },
   centerState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
   },
-  stateTitle: { ...typography.h3, color: textTokens.primary },
+  stateTitle: { ...type.h1, color: color.text1 },
   formCard: { gap: STAY_SPACING.fieldToFieldStacked },
   // STACK measure (I-AXIS-SCOPED-FLEX): no flex-axis key at all. The
-  // `marginTop: spacing.md` this used to carry was a WORKAROUND for the dead
+  // `marginTop: space[4]` this used to carry was a WORKAROUND for the dead
   // card gap — with `contentStyle` live, the card owns field-to-field spacing
   // and the field owns only its own internals.
   field: { gap: STAY_SPACING.helperToInput },
@@ -1519,40 +1526,40 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: radius.full,
     borderWidth: 1.75,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
   },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
-  fieldHint: { ...typography.caption, color: textTokens.tertiary },
+  fieldHint: { ...type.caption, color: color.text3 },
   input: {
     minHeight: 46,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    color: textTokens.primary,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    ...type.body,
+    color: color.text1,
   },
   inputMultiline: { minHeight: 96, textAlignVertical: "top" },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   choiceChip: {
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.line,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   choiceChipActive: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
-  choiceText: { ...typography.bodySm, color: textTokens.secondary },
-  choiceTextActive: { color: "#0c0e12", fontWeight: "700" },
+  choiceText: { ...type.small, color: color.text2 },
+  choiceTextActive: { color: color.ink, fontWeight: "700" },
   // ROW-ONLY (I-AXIS-SCOPED-FLEX). 16pt is the side-by-side field boundary.
   twoCol: {
     flexDirection: "row",
@@ -1566,27 +1573,27 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    padding: spacing.md,
-    gap: spacing.xs,
+    borderColor: color.line,
+    padding: space[4],
+    gap: space[1],
   },
   modeCardActive: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235,120,37,0.10)",
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
   },
   placeholderCard: {
     minHeight: 220,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
     top: 0,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingTop: space[6],
+    paddingHorizontal: space[4],
   },
 });
 

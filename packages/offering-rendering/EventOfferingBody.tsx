@@ -75,7 +75,10 @@ import {
   type ThemePalette,
 } from "./themePalette";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
-import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
+import { Globe, Minus, Plus } from "./LucideIcons";
+import { OfferingFactRows, type OfferingFact } from "./OfferingFactRows";
+import { OfferingGlassBar } from "./OfferingGlassBar";
+import { OfferingSectionTitle } from "./OfferingSectionTitle";
 import {
   PresentedByFollowerCount,
   type FollowerCountLabels,
@@ -139,7 +142,7 @@ import {
   LazySaleAvailabilityText,
 } from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
-import { accentFill, accentIcon, themeBoldFace, themeFontFace } from "./themeAccentStyle";
+import { accentFill, accentOutline, themeBoldFace, themeFontFace } from "./themeAccentStyle";
 import { StaticMapImage } from "./StaticMapFrame";
 
 // Re-export the pure totals so a single import surface stays one place.
@@ -398,6 +401,20 @@ export interface EventOfferingBodyProps {
    * Absent → the brand's display name; null or blank → "the organizer".
    */
   refundHostName?: string | null;
+  /**
+   * issue #4420 — true when the surface prints the title on its cover (the
+   * premium ParallaxCoverShell frame), so the body does not print it twice.
+   * Absent ⇒ false (Explorer's sheet keeps the in-body title).
+   */
+  identityOnCover?: boolean;
+  /**
+   * issue #4420 — false when the surface pins the glass bottom bar, which is
+   * then the ONE place to continue: the box drops its own total + Proceed.
+   * Absent ⇒ true (unchanged for every other caller).
+   */
+  inlineProceed?: boolean;
+  /** issue #4420 — the "when" fact's Add to calendar action. Absent ⇒ no action. */
+  onAddToCalendar?: () => void;
   testID?: string;
 }
 
@@ -443,6 +460,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   onSeeWhosGoing,
   refundPolicyState,
   refundHostName,
+  identityOnCover = false,
+  inlineProceed = true,
+  onAddToCalendar,
   testID,
 }: EventOfferingBodyProps) => {
   const surface = offeringSurfaceStyles(palette);
@@ -567,125 +587,86 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   // panel — one owner). `visibleTickets` + `ticketsLeftLabel` stay (pills + the
   // sold-out chip read them).
 
+  // issue #4420 — the three facts under the title (when / where / who's going)
+  // replace the old date band and chip row. The tag line keeps every chip the
+  // row carried (format, vibes, party types, music, tickets left).
+  const whereFact: OfferingFact | null =
+    event.format === "online"
+      ? {
+          key: "where",
+          icon: "globe",
+          value: "Online",
+          detail: "Conferencing link shared with ticketed guests.",
+        }
+      : event.venueName !== null
+        ? {
+            key: "where",
+            icon: "pin",
+            value: event.venueName,
+            detail: venueAddressLabel,
+            caption: addressUnlockCaption,
+            action: canOpenVenueMaps
+              ? {
+                  label: "Map",
+                  onPress: mapsActions.requestOpenMaps,
+                  accessibilityLabel: `Open ${event.venueName} in maps`,
+                }
+              : null,
+          }
+        : null;
+  const facts: OfferingFact[] = [
+    {
+      key: "when",
+      icon: "calendar",
+      value: event.dateLine.length > 0 ? event.dateLine : null,
+      detail: event.dateSubline,
+      action:
+        onAddToCalendar !== undefined && !offeringClosed
+          ? { label: "Add to calendar", onPress: onAddToCalendar }
+          : null,
+    },
+    ...(whereFact !== null ? [whereFact] : []),
+  ];
+  const tagLine: string[] = [
+    formatLabel,
+    // ORCH-1292 — every tag resolves through the canonical label map.
+    ...vibeTags.map((tag: string) => taxonomyLabel(tag)),
+    ...partyTypes.map((tag: string) => taxonomyLabel(tag)),
+    ...musicGenres.map((tag: string) => taxonomyLabel(tag)),
+    ...(!acquisitionClosed && ticketsLeftLabel !== null ? [ticketsLeftLabel] : []),
+  ];
+
   return (
     <View testID={testID}>
-      {/* (2) Event name lead block — bold title only.
-          ORCH-1167-R2 (change 1): the date/time eyebrow ABOVE the title was
-          REMOVED (it duplicated the date that already renders as a chip/pill in
-          section 3). Date/time now appears ONCE, as the meta chip below. */}
-      <View style={styles.leadBlock}>
-        <Text
-          style={[
-            styles.title,
-            surface.primaryText,
-            boldFace,
-          ]}
-        >
-          {event.name.length > 0 ? event.name : "Untitled event"}
-        </Text>
-      </View>
-
-      {/* (3) Date & time meta chips.
-          ORCH-1167-R3 (change 1): the date/time is its OWN FULL-WIDTH ROW that
-          spans the content column on BOTH mobile and desktop — no longer a small
-          chip squeezed into the compact pill band. It is styled CONSISTENTLY with
-          the solid-fill pills below (change 2): the same theme-aware solid accent
-          fill (palette.accentWash), just full width. The date + time subline read
-          as ONE bold full-width band; the other pills live in the compact band
-          below. ORCH-1167-R2 (change 2): NO venue/city pill (venue stays in §8). */}
-      {event.dateLine.length > 0 ||
-      (event.dateSubline !== null && event.dateSubline.length > 0) ? (
-        <View
-          style={[
-            styles.dateRow,
-            {
-              backgroundColor: palette.accentWash,
-              borderColor: palette.panelBorder,
-            },
-          ]}
-          testID="orch-1167-date-row"
-        >
-          <Calendar size={18} {...accentIcon(palette)} />
-          <View style={styles.dateTextCol}>
-            {event.dateLine.length > 0 ? (
-              <Text
-                style={[
-                  styles.dateLine,
-                  { color: palette.primaryText, ...boldFace },
-                ]}
-                testID="orch-1167-date-line"
-              >
-                {event.dateLine}
-              </Text>
-            ) : null}
-            {event.dateSubline !== null && event.dateSubline.length > 0 ? (
-              <Text
-                style={[
-                  styles.dateSubline,
-                  { color: palette.secondaryText, ...boldFace },
-                ]}
-              >
-                {event.dateSubline}
-              </Text>
-            ) : null}
-          </View>
+      {/* (2) Event name — on the cover in the premium frame (#4420), so the
+          body only prints it where the surface has no cover identity
+          (Explorer's sheet). */}
+      {identityOnCover ? null : (
+        <View style={styles.leadBlock}>
+          <Text
+            style={[
+              styles.title,
+              surface.primaryText,
+              boldFace,
+            ]}
+          >
+            {event.name.length > 0 ? event.name : "Untitled event"}
+          </Text>
         </View>
-      ) : null}
+      )}
 
-      {/* (4) Pills row — format → vibes → party-types → music-genres →
-          tickets-left. Each group omits entirely when empty (rule 9).
-          ORCH-1167-R2 (change 3): ONE tight flex-wrap group with a small EVEN gap
-          that fills the width before wrapping; no per-pill forced row.
-          ORCH-1167-R3 (change 2): EVERY pill now carries the SOLID accent fill
-          (palette.accentWash) — matching the prior tickets-left chip — instead of
-          the old outlined/translucent card style. Theme-aware + Android opaque-
-          glass-policy intact (accentWash is an opaque-ish accent tint, not the
-          translucent glass card). NO venue pill (change 2). */}
-      <View style={styles.pillsRow} testID="orch-1167-pills-row">
-        <Pill palette={palette} surface={surface} font={boldFamily}>
-          {formatLabel}
-        </Pill>
-        {vibeTags.map((tag, i) => (
-          <Pill
-            key={`vibe-${i}`}
-            palette={palette}
-            surface={surface}
-            font={boldFamily}
-          >
-            {taxonomyLabel(tag)}
-          </Pill>
-        ))}
-        {partyTypes.map((tag, i) => (
-          <Pill
-            key={`party-${i}`}
-            palette={palette}
-            surface={surface}
-            font={boldFamily}
-          >
-            {taxonomyLabel(tag)}
-          </Pill>
-        ))}
-        {musicGenres.map((tag, i) => (
-          <Pill
-            key={`music-${i}`}
-            palette={palette}
-            surface={surface}
-            font={boldFamily}
-          >
-            {taxonomyLabel(tag)}
-          </Pill>
-        ))}
-        {!acquisitionClosed && ticketsLeftLabel !== null ? (
-          <Pill palette={palette} surface={surface} font={boldFamily}>
-            {ticketsLeftLabel}
-          </Pill>
-        ) : null}
-      </View>
+      {/* (3) Date & time — the "when" fact row; (4) Pills row — the quiet tag
+          line under the fact rows (#4420: the chips became rows + a tag line). */}
+      <OfferingFactRows
+        facts={facts}
+        palette={palette}
+        theme={theme}
+        tags={tagLine}
+        testID="orch-1167-facts"
+      />
 
-      {/* ORCH-1339 — cross-entity social proof; gates are SERVER-authoritative
-          (D2); cluster is GLYPH-only until ORCH-1340. Mounts BETWEEN §4 pills
-          and the §5 ticket box (social proof feeds the decision; the decision
-          stays the hero). null payload → nothing renders (honest absence). */}
+      {/* ORCH-1339 — cross-entity social proof (the "who's going" row).
+          null payload → nothing renders (honest absence). */}
       {socialProof ? (
         <OfferingMomentum
           palette={palette}
@@ -696,19 +677,12 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
         />
       ) : null}
 
-      {/* (5) TICKET BOX — per-tier steppers + live Σ-all-in + in-box Proceed.
-          ORCH-1167-R2 (change 4): wrapped in an onLayout View so the host can
-          float→dock the floating bar against the BOX (not the body top) — the bar
-          stays pinned through the cover + scroll and ducks away only when the box
-          is actually in view.
-          ORCH-1167-R2 (change 5): on desktop web (hideTicketBox=true) the box is
-          relocated to the sticky right panel by the host (<EventTicketBox>), so it
-          does not paint a second time inline. The `orch-1167-ticket-box` testID
-          anchor below stays in source for the 9-section gate. */}
+      {/* (5) TICKET BOX — one card per tier with a stepper (#4420). The box
+          anchor feeds the host's float→dock measurement. */}
       {ticketBoxHidden && acquisitionClosed ? null : (
         <>
           {hideTicketBox ? null : (
-            <View style={styles.section} onLayout={onTicketBoxLayout}>
+            <View style={styles.sectionLg} onLayout={onTicketBoxLayout}>
               <EventTicketBox
                 event={event}
                 bookable={bookable}
@@ -720,6 +694,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 variant={variant}
                 submitting={submitting}
                 showHeading
+                inlineProceed={inlineProceed}
                 pricingNote={pricingNote}
                 leadingPurchaseSection={leadingPurchaseSection}
                 priceMultiplier={priceMultiplier}
@@ -732,8 +707,139 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
       )}
       {/* testID="orch-1167-ticket-box" — gate anchor (rendered by EventTicketBox). */}
 
-      {/* (6) Presented By — identity Pressable + optional sibling Follow (#3682 A). */}
-      <View style={styles.section} testID="presented-by-card">
+      {/* (6) About — collapsible. */}
+      {aboutText.length > 0 ? (
+        <View style={styles.sectionLg}>
+          <OfferingSectionTitle palette={palette} fontFamily={boldFamily}>
+            About
+          </OfferingSectionTitle>
+          <Text
+            style={[styles.about, surface.secondaryText]}
+            numberOfLines={aboutCollapsedNow ? 3 : undefined}
+            ellipsizeMode="tail"
+          >
+            {aboutText}
+          </Text>
+          {canCollapseAbout ? (
+            <Pressable
+              onPress={toggleAbout}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: !aboutCollapsedNow }}
+              accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
+              style={styles.aboutToggleRow}
+            >
+              <Text style={[styles.aboutToggle, { color: themeTextAccent(palette) }]}>
+                {aboutCollapsedNow ? "Read more" : "Show less"}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* (7) Where you'll be — static map (city-level when hidden) + place line. */}
+      {event.format === "online" ? (
+        <View style={styles.sectionLg}>
+          <OfferingSectionTitle palette={palette} fontFamily={boldFamily}>
+            Where you&rsquo;ll be
+          </OfferingSectionTitle>
+          <View style={[styles.venueCard, surface.card]}>
+            <View
+              style={[styles.venueDisk, accentFill(palette)]}
+            >
+              <Globe size={18} color={palette.accentText} />
+            </View>
+            <View style={styles.venueTextCol}>
+              <Text
+                style={[
+                  styles.venueName,
+                  surface.primaryText,
+                  boldFace,
+                ]}
+              >
+                Online
+              </Text>
+              <Text style={[styles.venueAddr, surface.secondaryText]}>
+                Conferencing link shared with ticketed guests.
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : event.venueName !== null ? (
+        <View style={styles.sectionLg}>
+          <OfferingSectionTitle palette={palette} fontFamily={boldFamily}>
+            Where you&rsquo;ll be
+          </OfferingSectionTitle>
+          {staticMapUrl !== null ? (
+            <StaticMapImage
+              uri={staticMapUrl}
+              style={[styles.whereMap, { borderColor: palette.panelBorder }]}
+              accessibilityLabel={`Map showing ${event.venueName}`}
+              testID="orch-1167-where-map"
+            />
+          ) : null}
+          <Pressable
+            onPress={mapsActions.requestOpenMaps}
+            disabled={!canOpenVenueMaps}
+            accessibilityRole={canOpenVenueMaps ? "button" : undefined}
+            accessibilityLabel={
+              canOpenVenueMaps
+                ? `Open ${event.venueName} in maps`
+                : event.venueName
+            }
+            style={styles.placeRow}
+          >
+            <View style={styles.venueTextCol}>
+              <Text
+                style={[
+                  styles.venueName,
+                  surface.primaryText,
+                  boldFace,
+                ]}
+              >
+                {event.venueName}
+              </Text>
+              <Text style={[styles.venueAddr, surface.secondaryText]}>
+                {venueAddressLabel}
+              </Text>
+              {addressUnlockCaption !== null ? (
+                <Text
+                  style={[styles.venueUnlockCaption, surface.tertiaryText]}
+                  testID="orch-1167-address-unlock-caption"
+                >
+                  {addressUnlockCaption}
+                </Text>
+              ) : null}
+            </View>
+            {canOpenVenueMaps ? (
+              <Text
+                style={[styles.placeLink, { color: themeTextAccent(palette) }]}
+              >
+                Open in Maps
+              </Text>
+            ) : null}
+          </Pressable>
+          {/* issue #2508 — SIBLING of the card, never a child: nesting a
+              Pressable inside a Pressable flattens the a11y subtree. */}
+          <VenueCopyAddressButton
+            actions={mapsActions}
+            palette={palette}
+            font={boldFamily}
+          />
+          <MapsAppChooserDialog
+            actions={mapsActions}
+            palette={palette}
+            placeLabel={event.venueName}
+            font={boldFamily}
+          />
+        </View>
+      ) : null}
+
+      {/* (8) Presented By — identity Pressable + sibling Follow / Message
+          (#3682 A, #4111). */}
+      <View style={styles.sectionLg} testID="presented-by-card">
+        <OfferingSectionTitle palette={palette} fontFamily={boldFamily}>
+          Presented by
+        </OfferingSectionTitle>
         <View style={[styles.brandCard, surface.card]}>
           <Pressable
             onPress={() => {
@@ -778,11 +884,6 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             </View>
             <View style={styles.brandTextCol}>
               <Text
-                style={[styles.brandKicker, { color: palette.secondaryText }]}
-              >
-                Presented by
-              </Text>
-              <Text
                 style={[
                   styles.brandName,
                   surface.primaryText,
@@ -801,7 +902,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               />
             </View>
             {presentedByFollow === undefined && onOpenBrand !== undefined ? (
-              <Text style={[styles.brandCta, { color: palette.accent }]}>
+              <Text style={[styles.brandCta, { color: themeTextAccent(palette) }]}>
                 View
               </Text>
             ) : null}
@@ -811,160 +912,6 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           ) : null}
         </View>
       </View>
-
-      {/* (7) About — collapsible. */}
-      {aboutText.length > 0 ? (
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.secTitle,
-              surface.primaryText,
-              boldFace,
-            ]}
-          >
-            About
-          </Text>
-          <Text
-            style={[styles.about, surface.secondaryText]}
-            numberOfLines={aboutCollapsedNow ? 3 : undefined}
-            ellipsizeMode="tail"
-          >
-            {aboutText}
-          </Text>
-          {canCollapseAbout ? (
-            <Pressable
-              onPress={toggleAbout}
-              accessibilityRole="button"
-              accessibilityState={{ expanded: !aboutCollapsedNow }}
-              accessibilityLabel={aboutCollapsedNow ? "Read more" : "Show less"}
-              style={styles.aboutToggleRow}
-            >
-              <Text style={[styles.aboutToggle, { color: palette.accent }]}>
-                {aboutCollapsedNow ? "Read more" : "Show less"}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
-
-      {/* (8) Where you'll be — static map (city-level when hidden) + venue card. */}
-      {event.format === "online" ? (
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.secTitle,
-              surface.primaryText,
-              boldFace,
-            ]}
-          >
-            Where you&rsquo;ll be
-          </Text>
-          <View style={[styles.venueCard, surface.card]}>
-            <View
-              style={[styles.venueDisk, accentFill(palette)]}
-            >
-              <Globe size={18} color={palette.accentText} />
-            </View>
-            <View style={styles.venueTextCol}>
-              <Text
-                style={[
-                  styles.venueName,
-                  surface.primaryText,
-                  boldFace,
-                ]}
-              >
-                Online
-              </Text>
-              <Text style={[styles.venueAddr, surface.secondaryText]}>
-                Conferencing link shared with ticketed guests.
-              </Text>
-            </View>
-          </View>
-        </View>
-      ) : event.venueName !== null ? (
-        <View style={styles.section}>
-          <Text
-            style={[
-              styles.secTitle,
-              surface.primaryText,
-              boldFace,
-            ]}
-          >
-            Where you&rsquo;ll be
-          </Text>
-          {staticMapUrl !== null ? (
-            <StaticMapImage
-              uri={staticMapUrl}
-              style={[styles.whereMap, { borderColor: palette.panelBorder }]}
-              accessibilityLabel={`Map showing ${event.venueName}`}
-              testID="orch-1167-where-map"
-            />
-          ) : null}
-          <Pressable
-            onPress={mapsActions.requestOpenMaps}
-            disabled={!canOpenVenueMaps}
-            accessibilityRole={canOpenVenueMaps ? "button" : undefined}
-            accessibilityLabel={
-              canOpenVenueMaps
-                ? `Open ${event.venueName} in maps`
-                : event.venueName
-            }
-            style={[styles.venueCard, surface.card]}
-          >
-            <View
-              style={[styles.venueDisk, accentFill(palette)]}
-            >
-              <MapPin size={18} color={palette.accentText} />
-            </View>
-            <View style={styles.venueTextCol}>
-              <Text
-                style={[
-                  styles.venueName,
-                  surface.primaryText,
-                  boldFace,
-                ]}
-              >
-                {event.venueName}
-              </Text>
-              <Text style={[styles.venueAddr, surface.secondaryText]}>
-                {venueAddressLabel}
-              </Text>
-              {addressUnlockCaption !== null ? (
-                <Text
-                  style={[styles.venueUnlockCaption, surface.tertiaryText]}
-                  testID="orch-1167-address-unlock-caption"
-                >
-                  {addressUnlockCaption}
-                </Text>
-              ) : null}
-            </View>
-            {canOpenVenueMaps ? (
-              <View
-                style={[styles.venuePill, accentFill(palette)]}
-              >
-                <Text
-                  style={[styles.venuePillText, { color: palette.accentText }]}
-                >
-                  Open maps
-                </Text>
-              </View>
-            ) : null}
-          </Pressable>
-          {/* issue #2508 — SIBLING of the card, never a child: nesting a
-              Pressable inside a Pressable flattens the a11y subtree. */}
-          <VenueCopyAddressButton
-            actions={mapsActions}
-            palette={palette}
-            font={boldFamily}
-          />
-          <MapsAppChooserDialog
-            actions={mapsActions}
-            palette={palette}
-            placeLabel={event.venueName}
-            font={boldFamily}
-          />
-        </View>
-      ) : null}
 
       {/* (9) Cancellation policy — shared OfferingRefundLadder (renders its own
           heading). #3284: the LAST body section. The wrapper always mounts as the
@@ -1029,6 +976,8 @@ export interface EventTicketBoxProps {
   /** issue #2399 — false renders an unknown total and recovery CTA copy. */
   purchaseReady?: boolean;
   purchaseBlockedLabel?: string | null;
+  /** issue #4420 — false drops the in-box total + Proceed (the glass bar owns them). */
+  inlineProceed?: boolean;
   testID?: string;
 }
 
@@ -1048,8 +997,9 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   purchaseReady = true,
   purchaseBlockedLabel = null,
   showHeading = true,
+  inlineProceed = true,
   testID,
-}) => {
+}: EventTicketBoxProps) => {
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
   const boldFace = themeFontFace(boldFamily);
@@ -1107,15 +1057,9 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   return (
     <View testID={testID}>
       {showHeading ? (
-        <Text
-          style={[
-            styles.secTitle,
-            surface.primaryText,
-            boldFace,
-          ]}
-        >
+        <OfferingSectionTitle palette={palette} fontFamily={boldFamily}>
           Tickets
-        </Text>
+        </OfferingSectionTitle>
       ) : null}
       {visibleTickets.length === 0 ? (
         <View style={[styles.venueCard, surface.card]}>
@@ -1124,11 +1068,12 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
           </Text>
         </View>
       ) : (
-        <View
-          style={[styles.ticketBox, surface.card]}
-          testID="orch-1167-ticket-box"
-        >
-          {leadingPurchaseSection}
+        <View style={styles.ticketBox} testID="orch-1167-ticket-box">
+          {leadingPurchaseSection !== null ? (
+            <View style={[styles.leadingCard, surface.card]}>
+              {leadingPurchaseSection}
+            </View>
+          ) : null}
           {visibleTickets.map((t) => (
             <TicketStepperRow
               key={t.id}
@@ -1145,6 +1090,8 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
             />
           ))}
 
+          {inlineProceed ? (
+          <View style={[styles.proceedCard, surface.card]}>
           {/* live running total = Σ all-in (WYSIWYP) */}
           <View
             style={[styles.totalRow, { borderTopColor: palette.panelBorder }]}
@@ -1195,6 +1142,8 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               {proceedLabel}
             </Text>
           </Pressable>
+          </View>
+          ) : null}
 
           <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
             All-in price. Taxes and fees included.
@@ -1246,8 +1195,6 @@ export const EventOfferingFloatingBar: React.FC<
   purchaseBlockedLabel = null,
   testID,
 }) => {
-  const boldFamily = boldFontFamily(theme);
-  const boldFace = themeFontFace(boldFamily);
   const visibleTickets = useMemo(
     () => event.tickets.filter((t) => t.visibility !== "hidden"),
     [event.tickets],
@@ -1292,37 +1239,50 @@ export const EventOfferingFloatingBar: React.FC<
             ? cta.label
             : cta.title;
 
+  // issue #4420 — the glass bar names the next step and updates live:
+  // nothing chosen → "From ₦5,000" · the date · Buy ticket; tiers chosen →
+  // "₦10,000" · "2 tickets · all-in" · Continue. Every tap still calls the
+  // same onProceedToCart; the unavailable states show their words, no button.
+  const barTitle =
+    cta.kind === "unavailable"
+      ? cta.title
+      : totalLabel !== null
+        ? totalLabel
+        : cta.kind === "buy"
+          ? cta.price
+          : cta.kind === "free"
+            ? "Free"
+            : "Sold out";
+  const barSubtitle =
+    cta.kind === "unavailable"
+      ? cta.subline
+      : !purchaseReady && purchaseBlockedLabel !== null
+        ? null
+        : totalLabel !== null
+          ? `${selectedQty} ticket${selectedQty === 1 ? "" : "s"} · all-in`
+          : event.dateLine.length > 0
+            ? event.dateLine
+            : null;
+  const barCta =
+    cta.kind === "unavailable"
+      ? null
+      : !purchaseReady && purchaseBlockedLabel !== null
+        ? purchaseBlockedLabel
+        : totalLabel !== null
+          ? "Continue"
+          : cta.label;
   return (
-    <Pressable
-      onPress={enabled ? onProceedToCart : undefined}
-      disabled={!enabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: !enabled }}
-      accessibilityLabel={label}
-      style={[
-        styles.floatBar,
-        enabled
-          ? accentFill(palette)
-          : {
-              backgroundColor: palette.panelStrong,
-              borderColor: palette.panelBorder,
-              borderWidth: 1,
-            },
-      ]}
+    <OfferingGlassBar
+      palette={palette}
+      theme={theme}
+      title={barTitle}
+      subtitle={barSubtitle}
+      ctaLabel={barCta}
+      onPress={onProceedToCart}
+      enabled={enabled}
+      ctaAccessibilityLabel={label}
       testID={testID}
-    >
-      <Text
-        style={[
-          styles.floatBarText,
-          {
-            color: enabled ? palette.accentText : palette.tertiaryText,
-          },
-          totalLabel === null ? boldFace : styles.moneyText,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
+    />
   );
 };
 
@@ -1334,35 +1294,8 @@ export const EventOfferingFloatingBar: React.FC<
 // compact date chip; date/time now renders as the FULL-WIDTH solid-fill `dateRow`
 // inline above the pills band (section 3). No other consumer remained.
 
-// ORCH-1167-R3 (change 2) — EVERY pill carries the SOLID accent fill
-// (palette.accentWash + a border), matching the prior tickets-left chip. The old
-// outlined/translucent `surface.card` variant is gone; `surface` is retained in
-// the signature only for call-site parity (no behavioral use now). Theme-aware
-// (accentWash is derived from the page palette) and Android opaque-glass safe
-// (accentWash is an opaque-ish accent tint, NOT the translucent glass card).
-const Pill: React.FC<{
-  palette: ThemePalette;
-  surface: ReturnType<typeof offeringSurfaceStyles>;
-  font: string;
-  accent?: boolean;
-  children: React.ReactNode;
-}> = ({ palette, font, children }) => (
-  <View
-    style={[
-      styles.pill,
-      { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
-    ]}
-  >
-    <Text
-      style={[
-        styles.pillText,
-        { color: palette.primaryText, ...themeFontFace(font) },
-      ]}
-    >
-      {children}
-    </Text>
-  </View>
-);
+// issue #4420 — the pills row became the fact rows + the quiet tag line
+// (OfferingFactRows), so the solid-fill Pill component is gone.
 
 const TicketStepperRow: React.FC<{
   ticket: PublicTicketProps;
@@ -1420,142 +1353,172 @@ const TicketStepperRow: React.FC<{
   const canDecrement = quantity > 0;
 
   const capacityLabel = ticketAvailabilityCaption(ticket, hideRemainingCount);
+  const selected = quantity > 0;
+  // issue #4420 — one card per tier: name, details and price on top; how many
+  // underneath with the stepper. A chosen tier lifts to the accent edge; a
+  // tier that cannot be bought stays visible, faded, with its state word.
   return (
     <View
       style={[
-        styles.stepperRow,
-        { borderBottomColor: palette.panelBorder },
+        styles.tierCard,
+        surface.card,
+        selected
+          ? accentOutline(palette, {
+              background: palette.accentWash,
+              opaqueBackground: palette.page,
+            })
+          : null,
         !sellable && !offChosenDays ? styles.stepperRowMuted : null,
       ]}
+      testID={`issue-4420-tier-${ticket.id}`}
     >
-      <View style={styles.stepperTextCol}>
-        <Text
-          style={[
-            styles.tierName,
-            surface.primaryText,
-            themeFontFace(boldFamily),
-          ]}
-        >
-          {ticket.name}
-        </Text>
-        {ticket.dayScopeLabel != null ? (
+      <View style={styles.tierTop}>
+        <View style={styles.stepperTextCol}>
           <Text
-            style={[styles.tierDayScope, surface.secondaryText]}
-            testID={`issue-3281-scope-line-${ticket.id}`}
+            style={[
+              styles.tierName,
+              surface.primaryText,
+              themeFontFace(boldFamily),
+            ]}
           >
-            {`For ${ticket.dayScopeLabel}`}
+            {ticket.name}
           </Text>
-        ) : null}
-        {ticket.description !== null && ticket.description.length > 0 ? (
-          <Text style={[styles.tierDesc, surface.secondaryText]}>
-            {ticket.description}
+          {ticket.dayScopeLabel != null ? (
+            <Text
+              style={[styles.tierDayScope, surface.secondaryText]}
+              testID={`issue-3281-scope-line-${ticket.id}`}
+            >
+              {`For ${ticket.dayScopeLabel}`}
+            </Text>
+          ) : null}
+          {ticket.description !== null && ticket.description.length > 0 ? (
+            <Text style={[styles.tierDesc, surface.secondaryText]}>
+              {ticket.description}
+            </Text>
+          ) : null}
+          <Text
+            style={[
+              styles.tierCap,
+              stateWord === null && sellable
+                ? { color: themeTextAccent(palette) }
+                : surface.tertiaryText,
+            ]}
+          >
+            {stateWord ?? capacityLabel}
           </Text>
-        ) : null}
-        <Text style={[styles.tierCap, surface.tertiaryText]}>
-          {stateWord ?? capacityLabel}
-        </Text>
-        <LazySaleAvailabilityText
-          active={listPriceLabel !== null}
-          remaining={ticket.saleRemaining}
-          endsAt={ticket.saleEndsAt}
-          style={[styles.saleAvailability, { color: themeTextAccent(palette) }]}
-        />
+          <LazySaleAvailabilityText
+            active={listPriceLabel !== null}
+            remaining={ticket.saleRemaining}
+            endsAt={ticket.saleEndsAt}
+            style={[styles.saleAvailability, { color: themeTextAccent(palette) }]}
+          />
+        </View>
+
+        <View style={styles.stepperRight}>
+          {listPriceLabel !== null ? (
+            <Text
+              style={[
+                styles.tierListPrice,
+                surface.tertiaryText,
+                styles.moneyText,
+              ]}
+            >
+              {listPriceLabel}
+            </Text>
+          ) : null}
+          <Text style={[styles.tierPrice, surface.primaryText, styles.moneyText]}>
+            {ticket.isFree ? "Free" : priceLabel}
+          </Text>
+          {/* issue #2160 — the multiplier, said in words, next to the number it
+              multiplies. Omitted entirely when null. NO `.length` on the prop
+              (issue-1403-typecheck-delta): `pricingNoteText` is a typed local. */}
+          {pricingNoteText !== "" && !ticket.isFree ? (
+            <Text
+              style={[styles.tierPricingNote, surface.tertiaryText]}
+              testID={`issue-2160-pricing-note-${ticket.id}`}
+            >
+              {pricingNoteText}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
-      <View style={styles.stepperRight}>
-        {listPriceLabel !== null ? (
-          <Text
-            style={[
-              styles.tierListPrice,
-              surface.tertiaryText,
-              styles.moneyText,
-            ]}
-          >
-            {listPriceLabel}
-          </Text>
-        ) : null}
-        <Text style={[styles.tierPrice, surface.primaryText, styles.moneyText]}>
-          {ticket.isFree ? "Free" : priceLabel}
-        </Text>
-        {/* issue #2160 — the multiplier, said in words, next to the number it
-            multiplies. Omitted entirely when null, which is every pre-#2160
-            caller and every free ticket, so the tree is byte-identical there. */}
-        {/* NO `.length` HERE, DELIBERATELY. This package has no local `react`
-            types, so in the full-graph tsc run that
-            issue-1403-typecheck-delta performs the prop resolves to `never`,
-            and ANY property access on it — `.length`, even behind a `typeof`
-            narrow — is a NEW diagnostic. `pricingNoteText` below is an
-            explicitly typed local, so the comparison needs no inference. */}
-        {pricingNoteText !== "" && !ticket.isFree ? (
-          <Text
-            style={[styles.tierPricingNote, surface.tertiaryText]}
-            testID={`issue-2160-pricing-note-${ticket.id}`}
-          >
-            {pricingNoteText}
-          </Text>
-        ) : null}
+      <View style={[styles.tierQtyRow, { borderTopColor: palette.panelBorder }]}>
         {sellable ? (
-          <View style={styles.stepper}>
-            <Pressable
-              onPress={canDecrement ? () => onChange(quantity - 1) : undefined}
-              disabled={!canDecrement}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove one ${ticket.name}`}
-              style={[
-                styles.stepBtn,
-                { borderColor: palette.panelBorder },
-                !canDecrement ? styles.stepBtnDisabled : null,
-              ]}
-            >
-              <Minus size={18} color={palette.primaryText} />
-            </Pressable>
-            <Text
-              style={[
-                styles.stepQty,
-                surface.primaryText,
-                themeFontFace(boldFamily),
-              ]}
-              accessibilityLabel={`${quantity} selected`}
-            >
-              {quantity}
+          <>
+            <Text style={[styles.tierQtyHint, surface.secondaryText, styles.moneyText]}>
+              {selected ? `${quantity} × ${ticket.isFree ? "Free" : priceLabel}` : "Choose how many"}
             </Text>
-            <Pressable
-              onPress={canIncrement ? () => onChange(quantity + 1) : undefined}
-              disabled={!canIncrement}
-              accessibilityRole="button"
-              accessibilityLabel={`Add one ${ticket.name}`}
-              style={[
-                styles.stepBtn,
-                { borderColor: palette.panelBorder },
-                !canIncrement ? styles.stepBtnDisabled : null,
-              ]}
-            >
-              <Plus size={18} color={palette.primaryText} />
-            </Pressable>
-          </View>
+            <View style={styles.stepper}>
+              <Pressable
+                onPress={canDecrement ? () => onChange(quantity - 1) : undefined}
+                disabled={!canDecrement}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove one ${ticket.name}`}
+                hitSlop={4}
+                style={[
+                  styles.stepBtn,
+                  { borderColor: palette.panelBorder },
+                  !canDecrement ? styles.stepBtnDisabled : null,
+                ]}
+              >
+                <Minus size={18} color={palette.primaryText} />
+              </Pressable>
+              <Text
+                style={[
+                  styles.stepQty,
+                  surface.primaryText,
+                  themeFontFace(boldFamily),
+                ]}
+                accessibilityLabel={`${quantity} selected`}
+              >
+                {quantity}
+              </Text>
+              <Pressable
+                onPress={canIncrement ? () => onChange(quantity + 1) : undefined}
+                disabled={!canIncrement}
+                accessibilityRole="button"
+                accessibilityLabel={`Add one ${ticket.name}`}
+                hitSlop={4}
+                style={[
+                  styles.stepBtn,
+                  styles.stepBtnPlus,
+                  { backgroundColor: palette.primaryText, borderColor: palette.primaryText },
+                  !canIncrement ? styles.stepBtnDisabled : null,
+                ]}
+              >
+                <Plus size={18} color={palette.page} />
+              </Pressable>
+            </View>
+          </>
         ) : (
-          <View
-            style={[
-              styles.tierStatePill,
-              {
-                backgroundColor: palette.card,
-                borderColor: palette.panelBorder,
-              },
-            ]}
-          >
-            <Text
+          <>
+            <Text style={[styles.tierQtyHint, surface.tertiaryText]}>
+              {offChosenDays ? "Pick another day to add this" : "Not available to buy"}
+            </Text>
+            <View
               style={[
-                styles.tierStateText,
+                styles.tierStatePill,
                 {
-                  color: offChosenDays
-                    ? palette.secondaryText
-                    : palette.tertiaryText,
+                  backgroundColor: palette.card,
+                  borderColor: palette.panelBorder,
                 },
               ]}
             >
-              {stateWord ?? "Unavailable"}
-            </Text>
-          </View>
+              <Text
+                style={[
+                  styles.tierStateText,
+                  {
+                    color: offChosenDays
+                      ? palette.secondaryText
+                      : palette.tertiaryText,
+                  },
+                ]}
+              >
+                {stateWord ?? "Unavailable"}
+              </Text>
+            </View>
+          </>
         )}
       </View>
     </View>
@@ -1594,49 +1557,31 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -0.5,
   },
-  // ORCH-1167-R3 (change 1) — date/time is its OWN FULL-WIDTH ROW (`dateRow`),
-  // spanning the content column on mobile + desktop, styled like the solid-fill
-  // pills (palette.accentWash + border) — just full width. The legacy compact
-  // date `metaChip`/`metaGlyph`/`metaText` chip styles were removed with the chip.
-  // `metaRow` (flex-wrap) is retained as the row-wrapper token the R2 regression
-  // asserts; it is no longer applied to the date chips (those moved to dateRow).
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
-  dateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "stretch",
-    width: "100%",
-    gap: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginTop: 12,
-  },
-  dateGlyph: { fontSize: 18, fontWeight: "900" },
-  dateTextCol: { flex: 1, minWidth: 0 },
-  dateLine: { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
-  dateSubline: { fontSize: 13, fontWeight: "700", marginTop: 2 },
-  pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
-  pill: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  pillText: { fontSize: 13, fontWeight: "700" },
+  // issue #4420 — the date band, chip row and pill styles went with the
+  // fact rows (OfferingFactRows owns their layout).
   section: { marginTop: 24 },
-  secTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: -0.3,
-    marginBottom: 12,
-  },
-  about: { fontSize: 16, lineHeight: 23 },
+  // issue #4420 — the premium rhythm: sections breathe 34pt apart.
+  sectionLg: { marginTop: 34 },
+  about: { fontSize: 15.5, lineHeight: 25 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // ---- ticket box ----
-  ticketBox: { borderRadius: 18, padding: 14 },
+  ticketBox: { gap: 12 },
+  leadingCard: { borderRadius: 18, padding: 14 },
+  proceedCard: { borderRadius: 18, padding: 16 },
+  tierCard: { borderRadius: 18, padding: 18 },
+  tierTop: { flexDirection: "row", alignItems: "flex-start", gap: 14 },
+  tierQtyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    marginTop: 14,
+  },
+  tierQtyHint: { fontSize: 12.5, flexShrink: 1 },
+  stepBtnPlus: { borderWidth: 0 },
   stepperRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1647,7 +1592,7 @@ const styles = StyleSheet.create({
   stepperRowMuted: { opacity: 0.7 },
   stepperTextCol: { flex: 1, minWidth: 0 },
   stepperRight: { alignItems: "flex-end", gap: 8 },
-  tierName: { fontSize: 15, fontWeight: "800" },
+  tierName: { fontSize: 16, fontWeight: "700" },
   tierDayScope: { fontSize: 12, fontWeight: "700", marginTop: 4 },
   tierDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   tierCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
@@ -1656,7 +1601,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textDecorationLine: "line-through",
   },
-  tierPrice: { fontSize: 15, fontWeight: "900" },
+  tierPrice: { fontSize: 16, fontWeight: "800" },
   // #3859 — money must not inherit a host display face. Anton does not contain
   // U+20A6, so CoreText mixed a fallback naira glyph into the condensed run and
   // let the mark collide with the amount. System digits + tabular spacing keep
@@ -1664,7 +1609,7 @@ const styles = StyleSheet.create({
   moneyText: { fontVariant: ["tabular-nums"] },
   // issue #2160 — the price qualifier line, directly under the price.
   tierPricingNote: { fontSize: 11, fontWeight: "700", marginTop: 1 },
-  stepper: { flexDirection: "row", alignItems: "center", gap: 12 },
+  stepper: { flexDirection: "row", alignItems: "center", gap: 10 },
   stepBtn: {
     width: 34,
     height: 34,
@@ -1692,9 +1637,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    borderTopWidth: 1,
-    paddingTop: 14,
-    marginTop: 4,
+    borderTopWidth: 0,
   },
   totalLabel: { fontSize: 14, fontWeight: "700" },
   totalValue: { fontSize: 22, fontWeight: "900", letterSpacing: -0.4 },
@@ -1715,22 +1658,22 @@ const styles = StyleSheet.create({
   },
   // ---- brand ----
   brandCard: {
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: "hidden",
-    padding: 14,
+    padding: 18,
   },
   brandFollowSlot: {
-    marginTop: 12,
+    marginTop: 16,
   },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
   },
-  brandTile: { width: 42, height: 42, borderRadius: 999, overflow: "hidden" },
+  brandTile: { width: 52, height: 52, borderRadius: 999, overflow: "hidden" },
   brandPhoto: { width: "100%", height: "100%" },
   brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  brandInitial: { fontSize: 18, fontWeight: "900" },
+  brandInitial: { fontSize: 22, fontWeight: "700" },
   brandTextCol: { flexShrink: 1, flexGrow: 1 },
   brandKicker: {
     fontSize: 10,
@@ -1738,13 +1681,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: "uppercase",
   },
-  brandName: { fontSize: 15, fontWeight: "800", marginTop: 1 },
+  brandName: { fontSize: 20, fontWeight: "700" },
   brandCta: { fontSize: 13, fontWeight: "800" },
   // ---- where ----
   whereMap: {
     width: "100%",
     height: 180,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     backgroundColor: "#000",
     marginBottom: 12,
@@ -1768,6 +1711,14 @@ const styles = StyleSheet.create({
   venueName: { fontSize: 15, fontWeight: "800" },
   venueAddr: { fontSize: 13, marginTop: 2 },
   venueUnlockCaption: { fontSize: 12, marginTop: 4 },
+  placeRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    minHeight: 44,
+  },
+  placeLink: { fontSize: 13.5, fontWeight: "700", paddingTop: 2 },
   venuePill: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   venuePillText: { fontSize: 12, fontWeight: "800" },
   // ---- floating bar ----

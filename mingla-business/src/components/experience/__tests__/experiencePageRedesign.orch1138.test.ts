@@ -141,7 +141,12 @@ describe("ORCH-1138 Leg 3 — experience page redesign", () => {
     expect(pickerSrc).toMatch(/mode === "open-daily"/);
     expect(pickerSrc).toMatch(/timeChoices/);
     // #3281 centralises the zone-correct window calculation inside this helper.
-    expect(pickerSrc).toMatch(/experienceTimeChoices/); // time bound to the occurrence window
+    // [TEST-MOD-APPROVED #4420] the time grid moved into the shared
+    // useExperienceReserveState (sheet + inline picker); the sheet reads it.
+    expect(pickerSrc).toMatch(/useExperienceReserveState\(/);
+    expect(
+      read("../packages/offering-rendering/useExperienceReserveState.ts"),
+    ).toMatch(/experienceTimeChoices/); // time bound to the occurrence window
     expect(pickerSrc).toMatch(/party/);
     // party-size maps to cart quantity (the route passes quantity to the checkout path).
     expect(routeSrc).toMatch(/routeParams\.quantity = String\(selection\.quantity\)/);

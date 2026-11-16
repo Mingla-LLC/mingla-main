@@ -11,7 +11,9 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
-import { radius as radiusTokens } from "../../constants/designSystem";
+import { radius as radiusTokens,
+  color,
+} from "../../constants/designSystem";
 import { assertDoorPayUrl, type DoorPayUrl } from "./doorPayUrl";
 
 // Loaded on demand (same as PromoterHomeView) so the QR encoder stays out of
@@ -34,7 +36,7 @@ export const DoorPayQr: React.FC<DoorPayQrProps> = ({ url, size, testID }) => {
       accessibilityLabel="Pay code. The guest scans it with their phone camera."
     >
       <React.Suspense fallback={<View style={{ width: size, height: size }} />}>
-        <QRCode value={value} size={size} ecl="M" backgroundColor="#ffffff" color="#000000" />
+        <QRCode value={value} size={size} ecl="M" backgroundColor={color.paper} color={color.ink} />
       </React.Suspense>
     </View>
   );
@@ -44,7 +46,7 @@ const styles = StyleSheet.create({
   frame: {
     padding: 14,
     borderRadius: radiusTokens.lg,
-    backgroundColor: "#ffffff",
+    backgroundColor: color.paper,
     alignSelf: "center",
   },
 });

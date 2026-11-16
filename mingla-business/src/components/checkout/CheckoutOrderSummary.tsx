@@ -22,8 +22,9 @@ import { StyleSheet, Text, View, type ViewStyle } from "react-native";
 
 import {
   radius,
-  spacing,
-  text as textTokens,
+  space,
+  color,
+  materials,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCurrency } from "../../utils/currency";
@@ -31,8 +32,8 @@ import { useCart } from "./CartContext";
 
 const SUMMARY_WIDTH = 380;
 const CONTENT_MAX_WIDTH = 1180;
-const SURFACE = "#14171c";
-const HAIRLINE = "rgba(255, 255, 255, 0.10)";
+const SURFACE = color.card;
+const HAIRLINE = color.lineStrong;
 
 /** True when the checkout uses the two-column desktop layout. */
 export function useCheckoutWideLayout(): boolean {
@@ -135,7 +136,7 @@ export const CheckoutOrderSummary: React.FC<CheckoutOrderSummaryProps> = ({
   children,
 }) => {
   if (!wide) {
-    const pad: ViewStyle = { paddingBottom: bottomInset + spacing.md };
+    const pad: ViewStyle = { paddingBottom: bottomInset + space[4] };
     return (
       <View style={[styles.bottomBar, pad]} testID="checkout-bottom-bar">
         {children}
@@ -163,57 +164,57 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: CONTENT_MAX_WIDTH,
-    gap: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    gap: space[7],
+    paddingHorizontal: space[6],
   },
   bottomBar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.chrome.glassFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   summary: {
     width: SUMMARY_WIDTH,
     flexShrink: 0,
-    marginTop: spacing.md,
-    padding: spacing.lg,
+    marginTop: space[4],
+    padding: space[6],
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: HAIRLINE,
     backgroundColor: SURFACE,
-    gap: spacing.sm,
+    gap: space[2],
   },
   heading: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
-  lines: { gap: spacing.sm },
+  lines: { gap: space[2] },
   lineRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  lineName: { flex: 1, fontSize: 14, color: textTokens.secondary },
-  lineAmount: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
-  emptyLine: { fontSize: 14, color: textTokens.tertiary },
-  subtotalLabel: { fontSize: 13, color: textTokens.tertiary },
-  subtotalValues: { flexDirection: "row", gap: spacing.sm },
+  lineName: { flex: 1, fontSize: 14, color: color.text2 },
+  lineAmount: { fontSize: 14, fontWeight: "600", color: color.text1 },
+  emptyLine: { fontSize: 14, color: color.text3 },
+  subtotalLabel: { fontSize: 13, color: color.text3 },
+  subtotalValues: { flexDirection: "row", gap: space[2] },
   struck: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     textDecorationLine: "line-through",
   },
   divider: {
     height: 1,
     backgroundColor: HAIRLINE,
-    marginVertical: spacing.xs,
+    marginVertical: space[1],
   },
 });

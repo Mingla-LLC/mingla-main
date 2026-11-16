@@ -27,12 +27,10 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type as typeToken,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -121,13 +119,13 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
               ]}
               testID={`intake-type-picker-${card.type}`}
             >
-              <GlassCard variant="base" padding={spacing.md} radius="lg">
+              <GlassCard variant="base" padding={space[4]} radius="lg">
                 <View style={styles.cardContent}>
                   <View style={styles.iconWrap}>
                     <Icon
                       name={card.icon}
                       size={20}
-                      color={accent.warm}
+                      color={color.accent}
                       strokeWidth={2}
                     />
                   </View>
@@ -147,22 +145,22 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: spacing.xs,
+    paddingTop: space[1],
   },
   eyebrow: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: accent.warm,
+    fontSize: typeToken.label.fontSize,
+    lineHeight: typeToken.label.lineHeight,
+    fontWeight: typeToken.label.fontWeight,
+    letterSpacing: typeToken.label.letterSpacing,
+    color: color.accent,
     textTransform: "uppercase",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.md,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
+    color: color.text3,
+    marginBottom: space[4],
   },
   gridScroll: {
     // ORCH-0884: ScrollView wrapper for defense in depth on small devices.
@@ -173,10 +171,10 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
     // ORCH-0884: padding at bottom so the last card row never butts against
     // the Sheet's body padding when scrolled all the way down.
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   cellPress: {
     minHeight: 88,
@@ -193,31 +191,28 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     minHeight: 72,
-    gap: spacing.xxs,
+    gap: 2,
   },
   iconWrap: {
     width: 32,
     height: 32,
     borderRadius: radius.full,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   label: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: typeToken.body.fontSize,
+    lineHeight: typeToken.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   description: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
+    color: color.text3,
   },
 });
-
-// Suppress unused-glass-import on platforms where lint flags unused imports.
-void glass;
 
 export default IntakeTypePickerSheet;

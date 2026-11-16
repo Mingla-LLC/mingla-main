@@ -43,15 +43,7 @@ import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { radius, color, space } from "../../../src/constants/designSystem";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import {
@@ -352,7 +344,7 @@ export default function CancelBookingScreen(): React.ReactElement {
           />
         </View>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.accent} />
           <Text style={styles.loadingText}>Loading cancellation preview…</Text>
         </View>
       </View>
@@ -395,7 +387,7 @@ export default function CancelBookingScreen(): React.ReactElement {
               autoCapitalize="characters"
               autoCorrect={false}
               placeholder="Type CANCEL to confirm"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               accessibilityLabel="Type CANCEL to confirm cancellation"
               accessibilityHint="Cancellation requires explicit confirmation because no refund applies"
             />
@@ -441,7 +433,7 @@ export default function CancelBookingScreen(): React.ReactElement {
             ]}
           >
             {commitMutation.isPending ? (
-              <ActivityIndicator color={semantic.error} />
+              <ActivityIndicator color={color.danger} />
             ) : (
               <Text style={styles.destructiveButtonText}>
                 {refundIsZero ? "Cancel anyway" : "Cancel & refund"}
@@ -459,11 +451,11 @@ export default function CancelBookingScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   headerRow: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     flexDirection: "row",
     alignItems: "center",
   },
@@ -475,60 +467,60 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingBottom: space[9],
+    gap: space[4],
   },
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   loadingText: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   typeToConfirmWrap: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   typeToConfirmLabel: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   typeToConfirmInput: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[2],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
     fontSize: 14,
   },
   submitErrorBanner: {
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radius.md,
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   submitErrorText: {
     fontSize: 13,
-    color: semantic.error,
+    color: color.danger,
   },
   ctaRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
+    gap: space[2],
+    paddingTop: space[2],
   },
   secondaryButton: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     minHeight: 48,
     alignItems: "center",
@@ -537,16 +529,16 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   destructiveButton: {
     flex: 1.5,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
     minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
@@ -554,7 +546,7 @@ const styles = StyleSheet.create({
   destructiveButtonText: {
     fontSize: 14,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.danger,
   },
   pressed: {
     opacity: 0.7,
@@ -563,61 +555,61 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   successWrap: {
-    paddingTop: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    paddingTop: space[7],
+    paddingHorizontal: space[6],
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   successCheck: {
     fontSize: 64,
-    color: semantic.success,
+    color: color.success,
   },
   successTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   successBody: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     lineHeight: 20,
   },
   successReference: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontFamily: "Menlo",
   },
   successCloseButton: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     minWidth: 180,
     flex: 0,
   },
   terminalErrorWrap: {
-    paddingTop: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    paddingTop: space[7],
+    paddingHorizontal: space[6],
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   terminalIcon: {
     fontSize: 64,
   },
   terminalIconNeutral: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   terminalIconSuccess: {
-    color: semantic.success,
+    color: color.success,
   },
   terminalTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   terminalBody: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     lineHeight: 20,
   },

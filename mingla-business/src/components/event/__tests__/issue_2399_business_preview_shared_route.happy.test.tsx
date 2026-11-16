@@ -52,9 +52,10 @@ jest.mock("@tanstack/react-query", () => ({
     removeQueries: jest.fn(), setQueryData: jest.fn(), invalidateQueries: jest.fn(),
   }),
 }));
+// [TEST-MOD-APPROVED #4420] — the preview route reads the Graphite tokens.
 jest.mock("../../../constants/designSystem", () => ({
-  canvas: { discover: "#000" }, spacing: { md: 16, lg: 24 },
-  text: { secondary: "#ccc" }, typography: { bodySm: { fontSize: 14 } },
+  color: { canvas: "#000", text2: "#ccc" }, space: { 4: 16, 6: 24 },
+  type: { small: { fontSize: 14 } },
 }));
 jest.mock("../../ui/Spinner", () => ({ Spinner: () => React.createElement("SpinnerProbe") }));
 jest.mock("../../ui/Toast", () => ({

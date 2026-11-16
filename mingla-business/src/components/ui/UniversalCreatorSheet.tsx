@@ -17,7 +17,7 @@
  *                                   I-BRAND-UNIVERSAL-AUTHORING)
  *
  *   Step "experience" — the universal experience-create chooser, in-place in the
- *   SAME sheet (no second sheet). Heading "Create An Experience", a back
+ *   SAME sheet (no second sheet). Heading "Create an experience", a back
  *   affordance to Step "root", and three option rows:
  *     - "Snap a food menu"        → `/experience/snap?mode=menu`       (Ve5 parser)
  *     - "Snap an activities menu" → `/experience/snap?mode=activities` (Ve6 parser)
@@ -65,11 +65,11 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
-  glass,
+  materials,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "./Icon";
 import { TopSheet } from "./TopSheet";
@@ -312,17 +312,18 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 testID={option.testID}
               >
                 <View style={styles.rowIconWrap}>
-                  <Icon name={option.iconName} size={28} color={textTokens.primary} />
+                  <Icon name={option.iconName} size={28} color={color.text1} />
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>{option.title}</Text>
-                  {/* META-ORCH-1255 (DESIGN §2.2) — defensive 2-line cap; copy is
-                      authored ≤2 lines at phone width. */}
-                  <Text style={styles.rowSubtitle} numberOfLines={2}>
+                  {/* #4420 (native run): no line cap. At the Graphite Glass
+                      type size two of these read "brunch, tasting, cla…" on
+                      a 402pt iPhone; the event step already wraps freely. */}
+                  <Text style={styles.rowSubtitle}>
                     {option.subtitle}
                   </Text>
                 </View>
-                <Icon name="chevR" size={20} color={textTokens.tertiary} />
+                <Icon name="chevR" size={20} color={color.text3} />
               </Pressable>
             ))}
           </View>
@@ -343,7 +344,7 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 }
                 testID="event-chooser-back"
               >
-                <Icon name="chevL" size={18} color={textTokens.secondary} />
+                <Icon name="chevL" size={18} color={color.text2} />
                 <Text style={styles.backLabel}>Back</Text>
               </Pressable>
             ) : null}
@@ -364,13 +365,13 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 testID={option.testID}
               >
                 <View style={styles.expRowIconWrap}>
-                  <Icon name={option.iconName} size={28} color={textTokens.primary} />
+                  <Icon name={option.iconName} size={28} color={color.text1} />
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>{option.title}</Text>
                   <Text style={styles.rowSubtitle}>{option.subtitle}</Text>
                 </View>
-                <Icon name="chevR" size={20} color={textTokens.tertiary} />
+                <Icon name="chevR" size={20} color={color.text3} />
               </Pressable>
             ))}
           </View>
@@ -390,11 +391,11 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 }
                 testID="experience-chooser-back"
               >
-                <Icon name="chevL" size={18} color={textTokens.secondary} />
+                <Icon name="chevL" size={18} color={color.text2} />
                 <Text style={styles.backLabel}>Back</Text>
               </Pressable>
             ) : null}
-            <Text style={styles.headerTitle}>Create An Experience</Text>
+            <Text style={styles.headerTitle}>Create an experience</Text>
             <Text style={styles.headerSubtitle}>
               Snap a menu and let Mingla draft it for you, or build it yourself.
             </Text>
@@ -413,13 +414,13 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 testID={option.testID}
               >
                 <View style={styles.expRowIconWrap}>
-                  <Icon name={option.iconName} size={28} color={textTokens.primary} />
+                  <Icon name={option.iconName} size={28} color={color.text1} />
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>{option.title}</Text>
                   <Text style={styles.rowSubtitle}>{option.subtitle}</Text>
                 </View>
-                <Icon name="chevR" size={20} color={textTokens.tertiary} />
+                <Icon name="chevR" size={20} color={color.text3} />
               </Pressable>
             ))}
           </View>
@@ -434,80 +435,81 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
 // shadow under the rounded fill; overflow:'hidden' clips the row content. Used
 // by the experience-step rows (lifted from the retired ExperienceCreateChooser).
 const ROW_BG = Platform.select({
-  ios: glass.tint.profileBase,
-  android: "#23262b",
-  default: glass.tint.profileBase,
+  ios: color.fill.inset,
+  android: materials.control.solidFill,
+  default: color.fill.inset,
 });
 const ROW_BG_PRESSED = Platform.select({
-  ios: glass.tint.profileElevated,
-  android: "#2c2f35",
-  default: glass.tint.profileElevated,
+  ios: color.fill.tile,
+  android: materials.selected.solidFill,
+  default: color.fill.tile,
 });
 const ROW_ICON_BG = Platform.select({
-  ios: glass.tint.profileElevated,
-  android: "#2c2f35",
-  default: glass.tint.profileElevated,
+  ios: color.fill.tile,
+  android: materials.selected.solidFill,
+  default: color.fill.tile,
 });
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.md,
+    // #4420: the kit's 20 sheet gutter (the brand switcher top sheet's own).
+    paddingHorizontal: space[5],
+    paddingTop: space[4],
+    paddingBottom: space[4],
+    gap: space[4],
   },
   header: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   headerTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   headerSubtitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   backRow: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
     gap: 2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
     paddingVertical: 2,
-    paddingRight: spacing.sm,
+    paddingRight: space[2],
   },
   backRowPressed: {
     opacity: 0.6,
   },
   backLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   rows: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
+    gap: space[4],
+    paddingHorizontal: space[4],
     // META-ORCH-1255 (DESIGN §2.2) — ROOT rows only: padV 16 → 12 so 4 rows fit
     // short viewports (iPhone SE class). No 12 token exists — compose sm+xs,
     // don't invent one. Icon wrap stays 44×44 (row min-height ≥ 44, I-38).
-    paddingVertical: spacing.sm + spacing.xs,
+    paddingVertical: space[2] + space[1],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
     borderWidth: StyleSheet.hairlineWidth,
   },
   rowPressed: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   rowIconWrap: {
     width: 44,
@@ -515,19 +517,19 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   // Experience-step rows — Android opaque fallback (see ROW_BG above).
   expRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
     backgroundColor: ROW_BG,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderWidth: StyleSheet.hairlineWidth,
   },
   expRowPressed: {
@@ -546,15 +548,15 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowTitle: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSubtitle: {
-    fontSize: typography.bodySm?.fontSize ?? typography.body.fontSize,
-    lineHeight: typography.bodySm?.lineHeight ?? typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small?.fontSize ?? type.body.fontSize,
+    lineHeight: type.small?.lineHeight ?? type.body.lineHeight,
+    color: color.text2,
   },
 });
 

@@ -334,14 +334,20 @@ describe("#1023 — full-screen motion overlay on every public page", () => {
   test("the shell mounts the overlay after the scrolling body in all three layouts, never inside the cover", () => {
     const shell = read("packages/offering-rendering/ParallaxCoverShell.tsx");
     const overlays = shell.match(/\{motionOverlay\(\{[^}]*\}\)\}/g) ?? [];
-    expect(overlays).toEqual([
+    // issue #4420 — the premium frame (desktop, web phone, native) comes first,
+    // then the classic frame the brand and venue pages keep; the motion still
+    // covers the whole screen in all six, above the body and below the header.
+    const three = [
       "{motionOverlay({ ref: desktopTextRef })}",
       "{motionOverlay({ ref: bodyRef })}",
       "{motionOverlay({ top: sheetTop })}",
-    ]);
+    ];
+    expect(overlays).toEqual([...three, ...three]);
     // each comes right after its </Scroll>
+    let from = 0;
     for (const o of overlays) {
-      const at = shell.indexOf(o);
+      const at = shell.indexOf(o, from);
+      from = at + o.length;
       expect(shell.lastIndexOf("</Scroll>", at)).toBeGreaterThan(shell.lastIndexOf("<Scroll", at));
     }
     const overlayFn = shell.slice(shell.indexOf("const motionOverlay"), shell.indexOf("const motionPause"));

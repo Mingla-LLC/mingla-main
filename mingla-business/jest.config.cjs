@@ -424,6 +424,17 @@ module.exports = {
     // A lightweight manual mock that renders a `LinearGradient` host element;
     // a suite's own jest.mock wins.
     "^expo-linear-gradient$": "<rootDir>/__manual_mocks__/expo-linear-gradient.js",
+    // #4420 — ui/Material.tsx (the one glass owner) imports expo-blur, whose
+    // ESM build cannot run under node. A manual mock that renders a `BlurView`
+    // host element; a suite's own jest.mock("expo-blur") still wins.
+    "^expo-blur$": "<rootDir>/__manual_mocks__/expo-blur.js",
+    // #4420 — every Sheet / Modal / ConfirmDialog window now mounts the
+    // non-modal ToastHost, which wraps its layer in GestureHandlerRootView, so
+    // any suite rendering one loads react-native-gesture-handler. Its package
+    // entry asks TurboModuleRegistry for a native binary and ships TS specs
+    // this node runner cannot parse. Reuse the #1532 boundary stub (plain View
+    // roots, chainable Gesture builders). A suite's own jest.mock still wins.
+    "^react-native-gesture-handler$": "<rootDir>/jest.issue1532.gesture-handler-stub.cjs",
     // issue #1023 wave 2 — the shared Google font loader (reached by every
     // suite that mounts the Theme sheet) imports expo-font, a native module
     // whose ESM build cannot run under node. A lightweight manual mock

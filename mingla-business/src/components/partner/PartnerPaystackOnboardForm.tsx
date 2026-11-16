@@ -39,13 +39,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
+  color,
   durations,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -231,7 +230,7 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
     <GlassCard
       variant="elevated"
       radius="md"
-      padding={spacing.lg}
+      padding={space[6]}
       testID="partner-paystack-form"
     >
       {onCancel != null ? (
@@ -264,7 +263,7 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
       {/* Bank picker field */}
       <View style={styles.bankLabelRow}>
         <Text style={styles.labelInRow}>Bank</Text>
-        {banksLoading ? <Spinner size={24} color={accent.warm} /> : null}
+        {banksLoading ? <Spinner size={24} color={color.accent} /> : null}
       </View>
       <Pressable
         accessibilityRole="button"
@@ -307,7 +306,7 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
           <Text style={styles.error} accessibilityLiveRegion="polite">
             {E5_BANKS_UNAVAILABLE}
           </Text>
-          <View style={{ marginTop: spacing.sm }}>
+          <View style={{ marginTop: space[2] }}>
             <Button
               label="Retry"
               variant="secondary"
@@ -384,8 +383,8 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
             />
             {banksQuery.isLoading ? (
               <ActivityIndicator
-                color={accent.warm}
-                style={{ marginTop: spacing.lg }}
+                color={color.accent}
+                style={{ marginTop: space[6] }}
               />
             ) : (
               <ScrollView
@@ -426,54 +425,54 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
 const styles = StyleSheet.create({
   backRow: {
     alignItems: "flex-start",
-    marginBottom: spacing.xs,
-    marginLeft: -spacing.xs,
+    marginBottom: space[1],
+    marginLeft: -space[1],
   },
   statusIndicatorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   statusDotMuted: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: textTokens.tertiary,
+    backgroundColor: color.text3,
   },
-  statusLabelMuted: { ...typography.labelCap, color: textTokens.tertiary },
+  statusLabelMuted: { ...type.label, color: color.text3 },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginTop: spacing.xs,
+    ...type.h1,
+    color: color.text1,
+    marginTop: space[1],
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    ...type.small,
+    color: color.text2,
+    marginTop: space[1],
   },
   ngnNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[2],
+    marginBottom: space[2],
   },
   bankLabelRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   label: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   // The bank label's margins live on bankLabelRow (the spinner shares the row).
   labelInRow: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   // Field chrome literals = the kit Input field chrome (Input.tsx:409-410).
   pickerField: {
@@ -482,68 +481,68 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   pickerFieldDisabled: { opacity: 0.5 },
-  pickerValue: { ...typography.body, color: textTokens.primary },
-  pickerPlaceholder: { ...typography.body, color: textTokens.quaternary },
+  pickerValue: { ...type.body, color: color.text1 },
+  pickerPlaceholder: { ...type.body, color: color.text4 },
   privacyCaption: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
   verifiedRow: {
-    marginTop: spacing.md,
-    padding: spacing.md,
+    marginTop: space[4],
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
-  verifiedLabel: { ...typography.caption, color: textTokens.tertiary },
+  verifiedLabel: { ...type.caption, color: color.text3 },
   verifiedName: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
-    marginTop: spacing.xxs,
+    ...type.row,
+    color: color.text1,
+    marginTop: 2,
   },
   verifiedHint: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
   error: {
-    ...typography.caption,
-    color: semantic.error,
-    marginTop: spacing.md,
+    ...type.caption,
+    color: color.danger,
+    marginTop: space[4],
   },
-  actions: { marginTop: spacing.lg },
+  actions: { marginTop: space[6] },
   modalRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" },
+  backdrop: { flex: 1, backgroundColor: scrim.modal },
   sheet: {
     height: "64%",
-    padding: spacing.lg,
+    padding: space[6],
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     // Opaque fill — satisfies ANDROID_GLASS_USES_OPAQUE_FALLBACK by construction.
-    backgroundColor: "#14110f",
+    backgroundColor: color.canvas,
   },
   sheetTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
-    marginBottom: spacing.md,
+    ...type.row,
+    color: color.text1,
+    marginBottom: space[4],
   },
-  bankList: { flex: 1, marginTop: spacing.md },
+  bankList: { flex: 1, marginTop: space[4] },
   // ORCH-1165 DISC-1165-T3 — Android Done-bar clearance.
   bankListKbPad: { paddingBottom: 42 },
   bankRow: {
-    paddingVertical: spacing.md,
+    paddingVertical: space[4],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.08)",
+    borderBottomColor: color.line,
   },
-  bankRowText: { ...typography.body, color: textTokens.primary },
+  bankRowText: { ...type.body, color: color.text1 },
   bankEmpty: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.lg,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[6],
     textAlign: "center",
   },
 });

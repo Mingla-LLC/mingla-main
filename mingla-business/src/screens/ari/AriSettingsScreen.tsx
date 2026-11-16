@@ -23,19 +23,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ariPalette,
-  ariThread,
-  canvas,
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useAriKnowledge } from "../../hooks/useAriKnowledge";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { DesktopColumns } from "../../components/ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { Icon } from "../../components/ui/Icon";
+// #4420 round 3 item 12: a time zone is never shown as a slug
+// ("America/New_York"); the shared picker shows "Eastern Time (New York) ·
+// GMT-5" and still saves the IANA zone.
+import { BrandEditTimezoneField } from "../../components/brand/BrandEditTimezoneField";
 import type {
   AriAgentJob,
   AriMemoryKind,
@@ -96,6 +99,7 @@ export const AriSettingsScreen: React.FC = () => {
   const prefs = useAriPreferences();
   const currentBrand = useCurrentBrand();
   const knowledge = useAriKnowledge(currentBrand?.id ?? null);
+  const { isWideDesktop } = useResponsiveLayout();
   const [displayName, setDisplayName] = useState(
     prefs.profile?.display_name ?? "",
   );
@@ -240,23 +244,7 @@ export const AriSettingsScreen: React.FC = () => {
     }
   };
 
-  return (
-    <View style={[styles.host, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Back to chat"
-        >
-          <Text style={styles.backText}>‹ Back</Text>
-        </Pressable>
-        <Text style={styles.title}>Ari Settings</Text>
-        <View style={{ width: 64 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Mode */}
+  const modeSection = (
         <Section title="Mode">
           <View style={styles.row}>
             <Text style={styles.rowLabel}>
@@ -268,27 +256,24 @@ export const AriSettingsScreen: React.FC = () => {
             Autopilot for reads is coming in a future update.
           </Text>
         </Section>
-
-        {/* What Ari knows */}
+  );
+  const knowsSection = (
         <Section title="What Ari knows about you">
           <FieldRow label="Display name">
             <TextInput
               value={displayName}
               onChangeText={setDisplayName}
               placeholder="Your name"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               style={styles.input}
               accessibilityLabel="Display name for Ari"
             />
           </FieldRow>
           <FieldRow label="Preferred timezone">
-            <TextInput
+            <BrandEditTimezoneField
               value={timezone}
-              onChangeText={setTimezone}
-              placeholder="e.g. America/New_York"
-              placeholderTextColor={textTokens.tertiary}
-              style={styles.input}
-              accessibilityLabel="Preferred timezone for Ari"
+              onChange={setTimezone}
+              testID="ari-settings-timezone"
             />
           </FieldRow>
           <Pressable
@@ -300,7 +285,8 @@ export const AriSettingsScreen: React.FC = () => {
             <Text style={styles.saveBtnText}>Save</Text>
           </Pressable>
         </Section>
-
+  );
+  const remembersSection = (
         <Section
           title={`What Ari remembers${currentBrand ? ` · ${currentBrand.displayName}` : ""}`}
         >
@@ -341,7 +327,7 @@ export const AriSettingsScreen: React.FC = () => {
             multiline
             maxLength={1200}
             placeholder="What should Ari remember?"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             style={styles.memoryInput}
             accessibilityLabel="Memory content"
           />
@@ -424,7 +410,8 @@ export const AriSettingsScreen: React.FC = () => {
             );
           })}
         </Section>
-
+  );
+  const tasksSection = (
         <Section title="Long-running tasks">
           <Text style={styles.about}>
             Ari keeps completed steps when you close the app. Pause, resume, or
@@ -498,8 +485,8 @@ export const AriSettingsScreen: React.FC = () => {
             </View>
           ))}
         </Section>
-
-        {/* Privacy */}
+  );
+  const privacySection = (
         <Section title="Privacy">
           <Pressable
             onPress={handleDeleteAll}
@@ -513,8 +500,8 @@ export const AriSettingsScreen: React.FC = () => {
             <Text style={styles.destructiveText}>Delete all Ari data</Text>
           </Pressable>
         </Section>
-
-        {/* About */}
+  );
+  const aboutSection = (
         <Section title="About">
           <Text style={styles.about}>
             {"Ari is powered by Mingla's AI. Your conversations are stored so "}
@@ -522,8 +509,9 @@ export const AriSettingsScreen: React.FC = () => {
             {"or tax advisor."}
           </Text>
         </Section>
-
-        {__DEV__ ? (
+  );
+  const previewSection = (
+        <>{__DEV__ ? (
           <Section title="Local preview">
             <Text style={styles.about}>
               Inspect every Ari response, research, recovery, and memory state
@@ -541,7 +529,44 @@ export const AriSettingsScreen: React.FC = () => {
               <Text style={styles.previewBtnText}>Open 65-state gallery</Text>
             </Pressable>
           </Section>
-        ) : null}
+        ) : null}</>
+  );
+
+  return (
+    <View style={[styles.host, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Back to chat"
+        >
+          <Icon name="chevL" size={20} color={color.text2} />
+          <Text style={styles.backText}>Back</Text>
+        </Pressable>
+        <Text style={styles.title} accessibilityRole="header">Ari Settings</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* #4420 kit (ari-settings__form, web): desktop lays the cards in
+            two columns; the phone keeps one column in the original order. */}
+        {isWideDesktop ? (
+          <DesktopColumns
+            main={<View style={styles.column}>{modeSection}{remembersSection}{tasksSection}</View>}
+            aside={<View style={styles.column}>{knowsSection}{privacySection}{aboutSection}{previewSection}</View>}
+          />
+        ) : (
+          <>
+            {modeSection}
+            {knowsSection}
+            {remembersSection}
+            {tasksSection}
+            {privacySection}
+            {aboutSection}
+            {previewSection}
+          </>
+        )}
       </ScrollView>
       <ConfirmDialog
         visible={forgetTarget !== null}
@@ -593,58 +618,61 @@ const FieldRow: React.FC<{ label: string; children: React.ReactNode }> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   backBtn: {
     height: 44,
-    paddingHorizontal: spacing.sm,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    width: 64,
+    gap: space[1],
+    width: 88,
   },
   backText: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text2,
   },
+  headerSpacer: { width: 88 },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    ...type.h2,
+    color: color.text1,
   },
   pressed: {
     opacity: 0.7,
   },
+  // #4420: one centred settings column (T5) so desktop never stretches the
+  // fields across the canvas; phone keeps the 16 gutter.
   content: {
-    padding: spacing.md,
-    gap: spacing.lg,
-    paddingBottom: spacing.xxl,
+    padding: space[4],
+    gap: space[4],
+    paddingBottom: space[9],
+    width: "100%",
+    maxWidth: 1120,
+    alignSelf: "center",
   },
+  column: { gap: space[4] },
+  // #4420 kit (ari-settings__form): each section is one card with its label
+  // inside, phone card radius, 20 inner padding.
   section: {
-    gap: spacing.sm,
+    backgroundColor: color.fill.tile,
+    borderWidth: 1,
+    borderColor: color.line,
+    borderRadius: radius.xl,
+    padding: space[5],
+    gap: space[3],
   },
   sectionTitle: {
-    fontSize: typography.labelCap.fontSize,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   sectionInner: {
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    padding: spacing.md,
-    gap: spacing.md,
+    gap: space[4],
   },
   row: {
     flexDirection: "row",
@@ -653,33 +681,34 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   rowLabel: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     flex: 1,
   },
   rowValue: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
   },
   hint: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
   },
   fieldRow: {
-    gap: 4,
+    gap: space[2],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    letterSpacing: typography.caption.letterSpacing,
+    ...type.small,
+    color: color.text2,
   },
   input: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: glass.border.pending,
-    minHeight: 44,
+    ...type.body,
+    color: color.text1,
+    paddingHorizontal: space[4],
+    borderWidth: 1,
+    borderColor: color.line,
+    borderRadius: radius.md,
+    backgroundColor: color.fill.input,
+    minHeight: 52,
   },
   kindRow: {
     flexDirection: "row",
@@ -691,173 +720,170 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     justifyContent: "center",
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   kindChipSelected: {
     backgroundColor: ariPalette.userBubble,
     borderColor: ariPalette.userBubble,
   },
   kindChipText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
   kindChipTextSelected: {
-    color: ariThread.onUserBubble,
+    color: color.ink,
     fontWeight: "700",
   },
   memoryInput: {
-    minHeight: 88,
-    padding: spacing.sm,
+    minHeight: 96,
+    padding: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
-    backgroundColor: canvas.discover,
+    backgroundColor: color.fill.input,
   },
   inlineActions: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
   primaryAction: {
     minHeight: 40,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: ariPalette.userBubble,
   },
   primaryActionText: {
-    color: ariThread.onUserBubble,
-    fontSize: typography.bodySm.fontSize,
+    color: color.ink,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   secondaryAction: {
     minHeight: 40,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
   secondaryActionText: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   disabled: {
     opacity: 0.45,
   },
   emptyText: {
-    color: textTokens.tertiary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text3,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   memoryCard: {
-    gap: spacing.sm,
-    paddingTop: spacing.md,
+    gap: space[2],
+    paddingTop: space[4],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   memoryKind: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   memoryContent: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   cardMeta: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
   },
   textAction: {
     minHeight: 40,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   textActionLabel: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   forgetLabel: {
-    color: semantic.error,
-    fontSize: typography.bodySm.fontSize,
+    color: color.danger,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   jobTitle: {
     flex: 1,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
   },
   statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: glass.tint.profileElevated,
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tile,
   },
   statusText: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
   },
   errorText: {
-    color: semantic.error,
-    fontSize: typography.bodySm.fontSize,
+    color: color.danger,
+    fontSize: type.small.fontSize,
   },
+  // #4420 kit: Save is the Paper pill, sized to its label.
   saveBtn: {
-    marginTop: spacing.sm,
-    height: 44,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    alignSelf: "flex-start",
+    minHeight: 44,
+    paddingHorizontal: space[6],
+    borderRadius: radius.full,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
   },
   saveBtnText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
+    ...type.btn,
+    color: color.ink,
   },
+  // #4420 kit: the solid danger pill, sized to its label.
   destructiveBtn: {
-    height: 44,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    backgroundColor: semantic.errorTint,
-    borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.5)",
+    alignSelf: "flex-start",
+    minHeight: 44,
+    paddingHorizontal: space[6],
+    borderRadius: radius.full,
+    backgroundColor: color.danger,
     alignItems: "center",
     justifyContent: "center",
   },
   destructiveText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "600",
-    color: semantic.error,
+    ...type.btn,
+    color: color.textStrong,
   },
   about: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   previewBtn: {
     minHeight: 44,
@@ -865,12 +891,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.md,
     backgroundColor: ariPalette.userBubble,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   previewBtnText: {
-    color: ariThread.onUserBubble,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.ink,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
   },
 });

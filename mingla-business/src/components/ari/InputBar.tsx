@@ -45,15 +45,8 @@ import { ArrowUp } from "lucide-react-native";
 import { Plus } from "lucide-react-native";
 import { isAriSendReady } from "../../services/agentReliability";
 
-import {
-  ariPalette,
-  ariThread,
-  glass,
-  radius,
-  spacing,
-  canvas,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { ariThread, color, materials, radius, size, space } from "../../constants/designSystem";
+import { FIELD_FOCUS_BOX_PROPS } from "../ui/fieldFocusCss";
 
 // Web-only TextInput props: on react-native-web a multiline TextInput renders
 // as a <textarea> whose browser-default rows (~2) + larger default line-height
@@ -148,7 +141,11 @@ export const InputBar: React.FC<InputBarProps> = ({
   };
 
   return (
+    // #4420 round 3 (6, 24): floating composer. The field is a pill with the
+    // attach control inside it; send is an icon-only Paper circle beside it,
+    // dimmed until there is text. No bar behind either.
     <View style={styles.host}>
+      <View style={styles.field} {...FIELD_FOCUS_BOX_PROPS}>
       {onAttach ? (
         <Pressable
           onPress={onAttach}
@@ -159,7 +156,7 @@ export const InputBar: React.FC<InputBarProps> = ({
           accessibilityState={{ disabled: disabled || attachDisabled }}
           hitSlop={6}
         >
-          <Plus size={22} color={textTokens.secondary} strokeWidth={2.25} />
+          <Plus size={22} color={color.text2} strokeWidth={2.25} />
         </Pressable>
       ) : null}
       <TextInput
@@ -167,7 +164,7 @@ export const InputBar: React.FC<InputBarProps> = ({
         value={text}
         onChangeText={setText}
         placeholder={placeholder}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         editable={!disabled}
         multiline
         style={[styles.input, Platform.OS === "web" && (WEB_INPUT_PROPS.style as object)]}
@@ -187,6 +184,7 @@ export const InputBar: React.FC<InputBarProps> = ({
           }
         }}
       />
+      </View>
       <Pressable
         onPress={handleSend}
         disabled={!canSend}
@@ -199,13 +197,13 @@ export const InputBar: React.FC<InputBarProps> = ({
         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       >
         <Animated.View
-          style={[styles.sendBtn, !canSend && styles.btnDisabled, sendAnimStyle]}
+          style={[styles.sendBtn, !canSend && styles.sendIdle, sendAnimStyle]}
         >
           {/* ORCH-1101: flat ember disc + a single lucide ArrowUp as the ONLY
               child (no SVG gradient, no two-layer composition) — renders
               identically on iOS/Android/web. lucide-react-native is a
               single-path stroke glyph; with no gradient sibling it never blobs. */}
-          <ArrowUp size={20} color={canvas.depth} strokeWidth={2.75} />
+          <ArrowUp size={20} color={canSend ? color.ink : color.text4} strokeWidth={2.75} />
         </Animated.View>
       </Pressable>
     </View>
@@ -216,65 +214,55 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "flex-end",
-    // ORCH-1101 REWORK Bug #4: OPAQUE fill. Was glass.tint.profileBase (rgba .04)
-    // which let the empty-state hint + thread bleed through the field. Solid
-    // surface on every platform (no rgba/hsla → ANDROID_GLASS_USES_OPAQUE_FALLBACK
-    // honored); border + radius preserved so it still reads as a glass-edged input.
-    backgroundColor: ariThread.composerSurface,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    gap: space[2],
+  },
+  field: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    // ORCH-1101 REWORK Bug #4: OPAQUE fill on every platform so the empty-state
+    // hint and the thread never bleed through the field (#4420: the solid sheet
+    // material, not a translucent wash).
+    backgroundColor: materials.sheet.solidFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
     borderRadius: radius.xl,
     overflow: "hidden",
     paddingHorizontal: ariThread.composerPadH,
     // Web has no soft keyboard + tighter chrome → 6; native keeps 8.
     paddingVertical: Platform.OS === "web" ? 6 : ariThread.composerPadV,
-    gap: spacing.sm,
+    gap: space[2],
     minHeight: ariThread.composerMinH, // #3429 premium composer: 60px minimum
   },
   input: {
     flex: 1,
     fontSize: ariThread.bodyFont, // 14 (was body 16 → align to thread)
     lineHeight: ariThread.bodyLine, // 19 (explicit — overrides the web textarea's taller default)
-    color: textTokens.primary,
+    color: color.text1,
     paddingVertical: ariThread.inputPadV, // 6 (was 8)
     minHeight: ariThread.inputMinH, // 30 — caps the empty box to one line
     maxHeight: 120,
   },
   sendBtn: {
-    width: ariThread.sendSize, // #3429: 44px accessible control
-    height: ariThread.sendSize,
-    borderRadius: ariThread.sendSize / 2,
-    // ORCH-1101: flat deepened ember disc (no SVG gradient). Same fill as the
-    // user bubble — "Ari's warmth, owned by me". white ArrowUp = 4.6:1.
-    backgroundColor: ariPalette.userBubble,
+    width: size.btn.phone,
+    height: size.btn.phone,
+    borderRadius: radius.full,
+    // #4420: send is the Paper control (ink arrow), dimmed to card2 when idle.
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
-    ...Platform.select({
-      // iOS-only ember glow (purposeful depth, echoes orb halo). shadowOpacity
-      // is animated on send; this is the base. iOS shadow renders outside the
-      // bounds, so we do NOT clip with overflow on iOS.
-      ios: {
-        shadowColor: ariPalette.ember,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.4,
-        shadowRadius: 7,
-      },
-      // Android: NO elevation/shadow (draws a hard rectangle through rounded
-      // fills). Clip the flat fill to the round shape (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
-      // Web also lands here: flat fill, no shadow (react-native-web shadow is
-      // unreliable and can itself read as a halo-blob).
-      default: {
-        overflow: "hidden",
-      },
-    }),
+    // Android: no elevation (hard rectangle through round fills); clip the fill.
+    overflow: "hidden",
+    marginBottom: (ariThread.composerMinH - size.btn.phone) / 2,
+  },
+  sendIdle: {
+    backgroundColor: color.card2,
   },
   attachBtn: {
     width: ariThread.controlSize,
     height: ariThread.controlSize,
     borderRadius: ariThread.controlSize / 2,
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.transparent,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",

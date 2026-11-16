@@ -2,9 +2,8 @@ import React from "react";
 import { StyleSheet, Text } from "react-native";
 
 import {
-  semantic,
-  text as textTokens,
-  typography,
+  color,
+  type,
 } from "../../constants/designSystem";
 
 export interface MenuTextCounterProps {
@@ -37,11 +36,11 @@ export function MenuTextCounter({
 
 const styles = StyleSheet.create({
   counter: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   invalid: {
-    color: semantic.errorText,
+    color: color.errorText,
     fontWeight: "600",
   },
 });

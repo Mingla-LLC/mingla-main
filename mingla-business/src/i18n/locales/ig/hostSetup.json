@@ -171,6 +171,10 @@
       "readyBank": "Akaụntụ akụ na {{country}}",
       "readyBankAny": "Akaụntụ akụ na mba gị",
       "readyTax": "Nọmba ụtụ isi (naanị ụlọ ọrụ edebanyere aha)"
+    },
+    "stepper": {
+      "saved": "Echekwara",
+      "steps": "Usoro"
     }
   },
   "doorMode": {

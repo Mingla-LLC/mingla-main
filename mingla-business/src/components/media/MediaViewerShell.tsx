@@ -8,6 +8,7 @@ import { useEscapeLayer } from "../ui/escapeLayerStack";
 import { calculateMediaViewerStage } from "./fitContain";
 import { mediaViewerKeyAction } from "./viewerInteraction";
 
+import { scrim } from "../../constants/designSystem";
 export interface MediaViewerStage {
   width: number;
   height: number;
@@ -131,7 +132,7 @@ export function MediaViewerShell({
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.82)" },
+  scrim: { flex: 1, backgroundColor: scrim.modal },
   topBar: { minHeight: 56, justifyContent: "flex-end" },
   stageWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 16 },
   bottomBar: { justifyContent: "flex-start" },

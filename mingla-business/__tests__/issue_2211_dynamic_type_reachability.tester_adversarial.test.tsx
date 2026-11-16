@@ -33,7 +33,7 @@ import {
   textSizeAnalyticsProperties,
   normalizeFontScale,
 } from "../src/constants/dynamicType";
-import { typography } from "../src/constants/designSystem";
+import { type } from "../src/constants/designSystem";
 
 /** Verbatim from react-native/React/CoreModules/RCTAccessibilityManager.mm. */
 const RN_IOS_FONT_SCALES = [
@@ -58,8 +58,8 @@ describe("#2211 adversarial A — the cap is a NUMBER, not a reference", () => {
       // iOS multiplies lineHeight by the same figure it multiplies fontSize by
       // (RCTTextAttributes.mm:139). The line box, not the glyph size, is what
       // has to fit — that distinction is the whole #2180/#2211 defect.
-      const mdLineBox = typography.buttonMd.lineHeight * effective;
-      const lgLineBox = typography.buttonLg.lineHeight * effective;
+      const mdLineBox = type.btnSm.lineHeight * effective;
+      const lgLineBox = type.btn.lineHeight * effective;
       expect(mdLineBox).toBeLessThanOrEqual(PILL_MIN_HEIGHT.sm + 4);
       expect(mdLineBox).toBeLessThanOrEqual(PILL_MIN_HEIGHT.md);
       expect(lgLineBox).toBeLessThanOrEqual(PILL_MIN_HEIGHT.lg);
@@ -69,7 +69,7 @@ describe("#2211 adversarial A — the cap is a NUMBER, not a reference", () => {
   it("A-3 — WITHOUT the cap the largest size overflows, so A-2 is not vacuous", () => {
     // If this ever stops being true, A-2 has stopped testing anything: it would
     // pass with the cap deleted. Proves the guard is falsifiable in principle.
-    const uncapped = typography.buttonMd.lineHeight * 3.571;
+    const uncapped = type.btnSm.lineHeight * 3.571;
     expect(uncapped).toBeGreaterThan(PILL_MIN_HEIGHT.md);
     expect(uncapped).toBeGreaterThan(PILL_MIN_HEIGHT.lg);
   });

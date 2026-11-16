@@ -17,15 +17,7 @@ import {
   View,
 } from "react-native";
 
-import {
-  canvas,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, scrim, space, type } from "../../constants/designSystem";
 import { useAdCreditTopUpPay } from "../../payments/useAdCreditTopUpPay";
 import { mapAdCreditQuoteError } from "../../services/adCreditQuoteErrors";
 import {
@@ -252,7 +244,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
           value={majorText}
           onChangeText={setMajorText}
           placeholder="0"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           editable={!busy}
           testID="ad-credit-quote-amount"
         />
@@ -332,7 +324,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
         {busy ? (
           <ActivityIndicator
             style={styles.spinner}
-            color={textTokens.secondary}
+            color={color.text2}
           />
         ) : null}
       </View>
@@ -343,94 +335,94 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: scrim.modal,
   },
   sheet: {
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[7],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   hint: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
+    ...type.caption,
+    color: color.text2,
+    marginTop: space[1],
+    marginBottom: space[4],
   },
   label: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    ...type.caption,
+    color: color.text2,
+    marginBottom: space[1],
   },
   input: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: glass.tint.profileBase,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    backgroundColor: color.fill.inset,
   },
   error: {
-    ...typography.caption,
-    color: semantic.errorText,
-    marginTop: spacing.sm,
+    ...type.caption,
+    color: color.errorText,
+    marginTop: space[2],
   },
   quoteBox: {
-    marginTop: spacing.md,
-    padding: spacing.md,
+    marginTop: space[4],
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   quoteLine: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     marginBottom: 4,
   },
   quoteLineStrong: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     marginTop: 4,
   },
   quoteNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[2],
   },
   actions: {
-    marginTop: spacing.lg,
-    gap: spacing.sm,
+    marginTop: space[6],
+    gap: space[2],
   },
   denied: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   coming: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   closeLink: {
     alignSelf: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   closeText: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
   },
   spinner: {
     position: "absolute",
-    right: spacing.lg,
-    top: spacing.lg,
+    right: space[6],
+    top: space[6],
   },
 });

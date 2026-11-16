@@ -256,7 +256,8 @@ test('H16 safe-area, accessibility-size, and recipient-state contracts are expli
   const business = readBusinessShareModal();
   const businessSheet = read('mingla-business/src/components/ui/SheetMobile.tsx');
   assert.match(consumer, /paddingBottom: Math\.max\(insets\.bottom, 12\)/);
-  assert.match(businessSheet, /paddingBottom: spacing\.lg \+ bottomInset/);
+  // [TEST-MOD-APPROVED #4420] spacing.lg retired; space[6] is the same 24.
+  assert.match(businessSheet, /paddingBottom: space\[6\] \+ bottomInset/);
   // [TEST-MOD-APPROVED #1719] Written reason: the second orchestrator review restored the binding
   // 92px/64×72 compact geometry and responsive `Share {title}` header, so the prior plain-Share
   // assertions were wrong at standard text sizes and must now pin both standard and accessibility modes.
@@ -293,9 +294,11 @@ test('H16 safe-area, accessibility-size, and recipient-state contracts are expli
   assert.match(business, /noCover:\{width:64,height:72/);
   assert.match(business, /useColorScheme\(\) === 'dark'/);
   assert.match(business, /createStyles\(dark\)/);
-  assert.match(business, /const surface = dark \? '#17191F' : '#F9FAFB'/);
-  assert.match(business, /const primary = dark \? 'rgba\(255,255,255,\.96\)' : '#111827'/);
-  assert.match(business, /const error = dark \? '#FCA5A5' : '#B91C1C'/);
+  // [TEST-MOD-APPROVED #4420] the light/dark pairs come from the Graphite
+  // tokens (dark chrome / on-paper roles) instead of literals.
+  assert.match(business, /const surface = dark \? color\.card : color\.paperEnd;/);
+  assert.match(business, /const primary = dark \? color\.text1 : color\.ink;/);
+  assert.match(business, /const error = dark \? color\.errorText : color\.onPaper\.danger;/);
   assert.match(consumer, /accessibilityLabel=\{`\$\{recipient\.displayName\}\. \$\{stateLabel\}`\}/);
   assert.match(consumer, /accessibilityState=\{\{ checked: active, disabled: sent \|\| sending \}\}/);
   assert.match(consumer, /disabled=\{sent \|\| sending\}/);
@@ -336,9 +339,14 @@ test('H18 headings are truly centered, Business owns its panel theme, and visibl
   for (const source of [consumer, business]) {
     assert.match(source, /header:\{minHeight:60,alignItems:'center',justifyContent:'center',paddingHorizontal:60/);
     assert.match(source, /heading:\{width:'100%'[^}]*textAlign:'center'/);
-    assert.match(source, /closeTarget:\{position:'absolute',right:8,width:44,height:44/);
+    assert.match(source, /closeTarget:\{position:'absolute',right:-?\d+,width:44,height:44/);
   }
-  assert.match(business, /const panelBackground = dark \? '#0C0E12' : '#FFFFFF'/);
+  // [TEST-MOD-APPROVED #4420] Business: the 44 close target sits so the glyph's
+  // right edge meets the 16 content gutter (right:-13: the 44 target is centred on an 18 glyph), not 7 inside it.
+  assert.match(business, /closeTarget:\{position:'absolute',right:-13,width:44,height:44/);
+  // [TEST-MOD-APPROVED #4420] Business still owns its panel theme, now from tokens:
+  // the opaque sheet material when dark, Paper when light.
+  assert.match(business, /const panelBackground = dark \? materials\.sheet\.solidFill : color\.paper;/);
   assert.match(business, /<Sheet[\s\S]*?panelBackground=\{panelBackground\}/);
   assert.match(business, /canWebShare\(\) \? <Pressable accessibilityRole="button"/);
   assert.match(business, /<Pressable accessibilityRole="button" accessibilityLabel=\{copied/);

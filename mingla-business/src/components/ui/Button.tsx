@@ -11,7 +11,7 @@
  * and dims label to 0.7 opacity (layout stable).
  *
  * Native: light haptic on press-down. Web: hover bumps background by 6%
- * alpha; focus draws a 2px `accent.warm` outline (only when
+ * alpha; focus draws the 2px canvas gap + 2px paper ring (only when
  * `:focus-visible`).
  */
 
@@ -34,15 +34,16 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
+  color,
   durations,
-  easings,
-  glass,
+  edge,
+  materials,
+  motion,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  shadow as shadowTokens,
+  size as sizeTokens,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 // ORCH-1162 Bug 3 — pure WCAG-contrast helpers for the optional accentColor.
@@ -60,6 +61,12 @@ import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { Spinner } from "./Spinner";
 
+// #4420 Graphite Glass: primary = Paper (one per view), secondary = control,
+// quiet, danger (solid red), dangerText (quiet red). The pre-#4420 names stay
+// and map onto them: ghost → quiet, destructive → danger, destructiveOutline →
+// dangerText, step → primary (Paper).
+// The legacy unions stay exactly as they were (other modules key exhaustive
+// records on them); the #4420 names are additive on the prop types.
 export type ButtonVariant =
   | "primary"
   | "secondary"
@@ -67,7 +74,9 @@ export type ButtonVariant =
   | "destructive"
   | "step"
   | "destructiveOutline";
+export type ButtonVariantName = ButtonVariant | "quiet" | "danger" | "dangerText";
 export type ButtonSize = "sm" | "md" | "lg";
+export type ButtonSizeName = ButtonSize | "xl";
 export type ButtonShape = "pill" | "square";
 
 const CHECKABLE_ACCESSIBILITY_ROLES: ReadonlySet<AccessibilityRole> = new Set([
@@ -123,91 +132,100 @@ export interface ButtonProps {
   iconColor?: string;
 }
 
-const SIZE_HEIGHT: Record<ButtonSize, number> = { sm: 36, md: 44, lg: 52 };
-const SIZE_PADDING_X: Record<ButtonSize, number> = { sm: 12, md: 16, lg: 20 };
-const SIZE_ICON: Record<ButtonSize, number> = { sm: 16, md: 18, lg: 20 };
-// react-native-reanimated cannot animate to a literal-typed weight ("600"),
-// so cast through the Animated style at the call site.
-const SIZE_LABEL: Record<ButtonSize, TextStyle> = {
-  sm: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-  },
-  md: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-  },
-  lg: {
-    fontSize: typography.buttonLg.fontSize,
-    lineHeight: typography.buttonLg.lineHeight,
-    fontWeight: typography.buttonLg.fontWeight,
-    letterSpacing: typography.buttonLg.letterSpacing,
-  },
+// Kit button heights: 36 / 44 / 52 / 56 on web; phones use 50 / 54 for lg / xl.
+const PHONE = Platform.OS !== "web";
+const SIZE_HEIGHT: Record<ButtonSizeName, number> = {
+  sm: sizeTokens.btn.sm,
+  md: sizeTokens.btn.md,
+  lg: PHONE ? sizeTokens.btn.phone : sizeTokens.btn.lg,
+  xl: PHONE ? sizeTokens.btn.phoneLg : sizeTokens.btn.xl,
 };
+const SIZE_PADDING_X: Record<ButtonSizeName, number> = { sm: space[3], md: space[4], lg: space[5], xl: space[6] };
+const SIZE_ICON: Record<ButtonSizeName, number> = { sm: 16, md: 18, lg: 20, xl: 20 };
+const btnSm: TextStyle = {
+  fontSize: type.btnSm.fontSize,
+  lineHeight: type.btnSm.lineHeight,
+  fontWeight: type.btnSm.fontWeight,
+  letterSpacing: type.btnSm.letterSpacing,
+};
+const btn: TextStyle = {
+  fontSize: type.btn.fontSize,
+  lineHeight: type.btn.lineHeight,
+  fontWeight: type.btn.fontWeight,
+  letterSpacing: type.btn.letterSpacing,
+};
+const SIZE_LABEL: Record<ButtonSizeName, TextStyle> = { sm: btnSm, md: btnSm, lg: btn, xl: btn };
 
 interface VariantTokens {
   background: string;
   hoverBackground: string;
   border?: string;
   borderWidth?: number;
+  /** 1px top highlight (the material rim). */
+  rim?: string;
   text: string;
+  /** Paper buttons carry the small paper shadow. */
+  shadow?: ViewStyle;
 }
 
-// Web-only hover backgrounds. For solid-fill variants (`primary`,
-// `destructive`) we use a marginally lighter shade of the base colour;
-// for translucent / transparent variants we bump alpha as the dispatch
-// §3.6 specifies ("+6% alpha"). The two hardcoded hex values below
-// (#f0843a, #f25656) are tracked as D-IMPL-1 in the implementation
-// report — candidate for a `accent.warm.hover` / `semantic.errorHover`
-// token in a future designSystem revision.
-const VARIANT_TOKENS: Record<ButtonVariant, VariantTokens> = {
-  primary: {
-    background: accent.warm,
-    hoverBackground: "#f0843a",
-    text: textTokens.inverse,
-  },
-  secondary: {
-    background: glass.tint.profileElevated,
-    hoverBackground: "rgba(255, 255, 255, 0.10)",
-    border: glass.border.profileElevated,
-    borderWidth: 1,
-    text: textTokens.primary,
-  },
-  ghost: {
-    background: "transparent",
-    hoverBackground: "rgba(235, 120, 37, 0.08)",
-    text: accent.warm,
-  },
-  destructive: {
-    background: semantic.error,
-    hoverBackground: "#f25656",
-    text: textTokens.inverse,
-  },
-  // #3655 — white "moves you on" look (wizard Continue, Add your venue).
-  step: {
-    background: "#F5F5F6",
-    hoverBackground: "#FFFFFF",
-    text: "#0c0e12",
-  },
+const PAPER: VariantTokens = {
+  background: color.paper,
+  hoverBackground: color.paperEnd,
+  text: color.ink,
+  shadow: shadowTokens.paper,
+};
+const CONTROL: VariantTokens = {
+  background: materials.control.solidFill,
+  hoverBackground: materials.selected.solidFill,
+  border: materials.control.rim.edge,
+  borderWidth: StyleSheet.hairlineWidth,
+  rim: materials.control.rim.top ?? undefined,
+  text: color.text1,
+};
+const QUIET: VariantTokens = {
+  background: color.fill.quiet,
+  hoverBackground: color.fill.quietHover,
+  text: color.text1,
+};
+const DANGER: VariantTokens = {
+  background: color.danger,
+  hoverBackground: color.dangerPressed,
+  text: color.onDanger,
+};
+const DANGER_TEXT: VariantTokens = {
+  background: color.fill.quiet,
+  hoverBackground: color.errorTint,
+  text: color.errorText,
+};
+
+const VARIANT_TOKENS: Record<ButtonVariantName, VariantTokens> = {
+  primary: PAPER,
+  secondary: CONTROL,
+  ghost: QUIET,
+  destructive: DANGER,
+  // #3655 — the "moves you on" look (wizard Continue): Paper since #4420.
+  step: PAPER,
   // #3655 — quiet remove look; solid destructive stays inside ConfirmDialog.
-  destructiveOutline: {
-    background: "rgba(239,68,68,.10)",
-    hoverBackground: "rgba(239,68,68,.16)",
-    border: "rgba(239,68,68,.45)",
-    borderWidth: 1,
-    text: semantic.errorText,
-  },
+  destructiveOutline: DANGER_TEXT,
+  quiet: QUIET,
+  danger: DANGER,
+  dangerText: DANGER_TEXT,
 };
 
 const PRESS_TIMING = { duration: durations.fast } as const;
 
+/**
+ * #4420: what `<Button>` accepts. `ButtonProps` keeps the legacy unions (it is
+ * extended elsewhere, e.g. AriPremiumButton); the Graphite names are additive.
+ */
+export type GraphiteButtonProps = Omit<ButtonProps, "variant" | "size"> & {
+  variant?: ButtonVariantName;
+  size?: ButtonSizeName;
+};
+
 export const Button = forwardRef<
   React.ElementRef<typeof Pressable>,
-  ButtonProps
+  GraphiteButtonProps
 >(function Button(
   {
     label,
@@ -252,7 +270,7 @@ export const Button = forwardRef<
     brandBg !== null ? readableTextFor(brandBg) : tokens.text;
   const effectiveHoverBg =
     brandBg !== null
-      ? mixHex(brandBg, "#ffffff", 0.06)
+      ? mixHex(brandBg, color.paper, 0.06)
       : tokens.hoverBackground;
 
   const handlePressIn = useCallback((): void => {
@@ -263,7 +281,7 @@ export const Button = forwardRef<
     if (reduceMotion) {
       opacity.value = withTiming(0.7, PRESS_TIMING);
     } else {
-      scale.value = withTiming(0.96, PRESS_TIMING);
+      scale.value = withTiming(motion.pressScale, PRESS_TIMING);
     }
   }, [interactive, opacity, reduceMotion, scale]);
 
@@ -306,8 +324,9 @@ export const Button = forwardRef<
   // variant — clarity over variant-specific dimming. Continues DEC-079
   // additive carve-out family (existing primitive, improved disabled
   // signal; no new variant, no API change).
-  const DISABLED_BACKGROUND = "rgba(255, 255, 255, 0.06)";
-  const DISABLED_BORDER = "rgba(255, 255, 255, 0.10)";
+  // #4420: disabled = card2 with text4, no blur, no extra dimming.
+  const DISABLED_BACKGROUND = color.card2;
+  const DISABLED_BORDER = color.line;
 
   const containerStaticStyle: ViewStyle = {
     // #2211 — `minHeight`, NOT `height`. A hard `height` is what cropped every
@@ -323,9 +342,10 @@ export const Button = forwardRef<
     borderRadius: containerRadius,
     backgroundColor: disabled ? DISABLED_BACKGROUND : effectiveBg,
     borderColor: disabled ? DISABLED_BORDER : tokens.border,
-    borderWidth: disabled ? 1 : (tokens.borderWidth ?? 0),
+    borderWidth: disabled ? StyleSheet.hairlineWidth : (tokens.borderWidth ?? 0),
+    borderTopColor: !disabled && tokens.rim !== undefined ? tokens.rim : undefined,
     alignSelf: fullWidth ? "stretch" : "auto",
-    opacity: disabled ? 0.6 : 1,
+    ...(disabled || brandBg !== null || tokens.shadow === undefined ? null : tokens.shadow),
   };
 
   // issue #1023 — the brand gradient over the brand fill (web: CSS
@@ -341,7 +361,7 @@ export const Button = forwardRef<
         ? { backgroundImage: gradientImage }
         : { experimental_backgroundImage: gradientImage };
 
-  const resolvedTextColor = disabled ? textTokens.tertiary : effectiveText;
+  const resolvedTextColor = disabled ? color.text4 : effectiveText;
   const resolvedIconColor =
     !disabled && typeof iconColor === "string" ? iconColor : resolvedTextColor;
 
@@ -451,16 +471,17 @@ const styles = StyleSheet.create({
   content: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   labelDimmed: {
     opacity: 0.7,
   },
+  // #4420: a 2px canvas gap + 2px paper ring (kit `ringFocus`).
   focusRing: {
-    outlineColor: accent.warm,
-    outlineWidth: 2,
+    outlineColor: edge.ringFocus.ring,
+    outlineWidth: edge.ringFocus.ringWidth,
     outlineStyle: "solid",
-    outlineOffset: 2,
+    outlineOffset: edge.ringFocus.gapWidth,
   },
 });
 

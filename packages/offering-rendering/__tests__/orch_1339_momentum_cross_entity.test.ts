@@ -184,10 +184,11 @@ Deno.test("T-1: cluster sizing — shown = min(3, going), overflow = going − 3
 
 // ───────────────────────── T-4 — body mounts + order ───────────────────────
 
-Deno.test("T-4: EventOfferingBody mounts orch-1339-momentum-event BETWEEN §4 pills and the §5 ticket box", () => {
+Deno.test("T-4: EventOfferingBody mounts orch-1339-momentum-event BETWEEN §3-4 fact rows and the §5 ticket box", () => {
   assertStringIncludes(EVENT_BODY, 'testID="orch-1339-momentum-event"');
   assertStringIncludes(EVENT_BODY, "socialProof?: SocialProofSummary | null");
-  const pills = EVENT_BODY.indexOf('testID="orch-1167-pills-row"');
+  // issue #4420 — the pills row became the fact rows + tag line.
+  const pills = EVENT_BODY.indexOf('testID="orch-1167-facts"');
   const momentum = EVENT_BODY.indexOf('testID="orch-1339-momentum-event"');
   // The §5 render gate (NOT the header prose that also mentions EventTicketBox).
   const box = EVENT_BODY.indexOf("{hideTicketBox ? null : (");

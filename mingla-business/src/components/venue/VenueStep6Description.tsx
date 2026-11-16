@@ -6,15 +6,15 @@ import React from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { Input } from "../ui/Input";
 
-const INPUT_BG = "rgba(255,255,255,0.06)";
-const INPUT_BORDER = "rgba(255,255,255,0.12)";
+const INPUT_BG = color.fill.tile;
+const INPUT_BORDER = color.lineStrong;
 
 export interface VenueStep6DescriptionProps {
   showErrors: boolean;
@@ -47,7 +47,7 @@ export const VenueStep6Description: React.FC<VenueStep6DescriptionProps> = ({
         value={description}
         onChangeText={(t) => patch({ description: t })}
         placeholder="What makes this venue special?"
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         multiline
         textAlignVertical="top"
         accessibilityLabel="Venue description"
@@ -60,33 +60,33 @@ export const VenueStep6Description: React.FC<VenueStep6DescriptionProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    gap: space[2],
+    paddingHorizontal: space[6],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   lbl: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
+    marginTop: space[1],
   },
   area: {
     minHeight: 140,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: 12,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: INPUT_BORDER,
     backgroundColor: INPUT_BG,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   err: {
-    fontSize: typography.caption.fontSize,
-    color: "#EF4444",
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
   },
 });
 

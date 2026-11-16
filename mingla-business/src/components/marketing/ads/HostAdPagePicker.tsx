@@ -14,12 +14,7 @@
 import React, { useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
+import { type as typeTokens, color, radius, space } from "../../../constants/designSystem";
 import type { HostAdPage } from "../../../services/hostAdPlanService";
 import {
   type HostAdPageFilter,
@@ -31,7 +26,8 @@ import {
   pageTypeFilters,
 } from "./hostAdPageLabels";
 
-const SELECTED = "#FF7A18";
+// #4420: a selected row or filter is ringed in paper (orange is retired here).
+const SELECTED = color.paper;
 
 export const HOST_AD_PAGE_PICKER_EMPTY =
   "You don't have a public page to promote yet. Publish an event, experience, trip or venue first.";
@@ -192,89 +188,89 @@ export function HostAdPagePicker({
 }
 
 const styles = StyleSheet.create({
-  root: { gap: spacing.sm },
+  root: { gap: space[2] },
   empty: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...typeTokens.small,
+    color: color.text2,
     lineHeight: 20,
   },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   filter: {
     minHeight: 36,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    borderRadius: 999,
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   filterSelected: {
     borderColor: SELECTED,
-    backgroundColor: "rgba(255,122,24,.11)",
+    backgroundColor: color.fill.tabOn,
   },
-  filterLabel: { ...typography.caption, color: textTokens.primary },
+  filterLabel: { ...typeTokens.caption, color: color.text1 },
   row: {
     minHeight: 72,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
   rowSelected: {
     borderColor: SELECTED,
-    backgroundColor: "rgba(255,122,24,.11)",
+    backgroundColor: color.fill.tabOn,
   },
   dimmed: { opacity: 0.5 },
   cover: {
     width: 56,
     height: 56,
     borderRadius: 10,
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: color.fill.tile,
   },
   tile: {
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   tileLetter: {
-    ...typography.h3,
-    color: textTokens.secondary,
+    ...typeTokens.h1,
+    color: color.text2,
   },
   text: { flex: 1, gap: 2 },
   titleRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.xs,
+    gap: space[1],
   },
   title: {
-    ...typography.bodySm,
+    ...typeTokens.small,
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   badge: {
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: glass.tint.chrome.idle,
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
-  badgeLabel: { ...typography.caption, color: textTokens.secondary },
-  meta: { ...typography.caption, color: textTokens.secondary },
+  badgeLabel: { ...typeTokens.caption, color: color.text2 },
+  meta: { ...typeTokens.caption, color: color.text2 },
   // #4238: the greyed-out row's reason, full strength: text.primary over the
   // dark canvas measures well above 4.5:1 (secondary at 0.5 opacity was 3.42).
-  reason: { ...typography.caption, color: textTokens.primary },
+  reason: { ...typeTokens.caption, color: color.text1 },
   radio: {
     width: 18,
     height: 18,
     borderRadius: 9,
     borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
   },
   radioSelected: { borderWidth: 5, borderColor: SELECTED },
 });

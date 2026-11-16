@@ -38,10 +38,10 @@ describe("#1774 — People disabled-query loading and independent Groups",()=>{
     expect(page).toContain("Couldn’t load groups.");
     expect(page).toContain("No buyer groups yet.");
   });
-  it("(T-02f) the compatibility route is renderless and cannot execute either query",()=>{
-    const redirect=fs.readFileSync(path.resolve(__dirname,"..","audiences","index.tsx"),"utf8");
-    expect(redirect).toContain('<Redirect href="/(tabs)/marketing/people" />');
-    expect(redirect).not.toContain("useAudienceList");
-    expect(redirect).not.toContain("useBrandPeople");
+  // [TEST-MOD-APPROVED #4420] — wave 6 deletes the compatibility redirect; the
+  // intent (no second Audiences owner that could run either query) holds.
+  it("(T-02f) the retired Audiences route stays gone, so it cannot execute either query",()=>{
+    expect(fs.existsSync(path.resolve(__dirname,"..","audiences","index.tsx"))).toBe(false);
+    expect(fs.existsSync(path.resolve(__dirname,"..","audiences"))).toBe(false);
   });
 });

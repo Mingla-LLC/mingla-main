@@ -509,7 +509,8 @@ export function phase3dContractDigest(manifest) {
 // #4435 CI fix: re-sealed after skipping 20280708054435 by exact filename in the #1931 filtered replay; MANIFEST.json phase3eContractSha256 matches.
 // #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4238 W4c: re-sealed after the W2, W3 and W4b migrations (ads follow event, builder intelligence, Host ad notices and roles) were listed after 20280709004435 in the #1857, #1931 and #2117 lanes and their three pg17 proofs with sidecars joined the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "56ca0ccfa3c13168709eb4583e594996d99f4d170baaf3a32f5ec65f8a329a34";
+// #4238 W6a: merged origin/4420-host-graphite-glass (its MANIFEST row change kept beside the #4238 W2/W3/W4b rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f19f1dacf61990a6f4cb122b2ddf6440367007b016e90e507a0bb8261451b175";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

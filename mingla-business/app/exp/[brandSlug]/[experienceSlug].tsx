@@ -41,11 +41,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { space, type, color } from "../../../src/constants/designSystem";
 import {
   boldFontFamily,
   createThemePalette,
@@ -117,9 +113,19 @@ const PresentedByFollowAndMessage = React.lazy(
 );
 import {
   ExperienceReservePicker,
+  fetchExperienceSlotAvailability,
   type ExperienceReserveMode,
   type ExperienceReserveSelection,
 } from "../../../src/components/experience/ExperienceReservePicker";
+// issue #4420 — the inline "Book a time" picker shares the sheet's state rules.
+import { ExperienceInlinePicker } from "@mingla/offering-rendering/ExperienceInlinePicker";
+import { useExperienceReserveState } from "@mingla/offering-rendering/useExperienceReserveState";
+import {
+  experienceShortDayLabel,
+  experienceStartTimeLabel,
+} from "@mingla/offering-rendering/experienceReserveModel";
+import { formatExperienceMinute } from "@mingla/offering-rendering/experienceTimeZone";
+import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
 import type {
   PublicExperience,
   PublicExperienceDate,
@@ -132,6 +138,7 @@ import {
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
 
 function allDatesPast(isos: string[], nowMs: number = Date.now()): boolean {
   const valid = isos
@@ -169,7 +176,7 @@ function isOpenDaily(experience: PublicExperience): boolean {
   });
 }
 
-export default function PublicExperienceRoute(): React.ReactElement {
+function PublicExperienceRouteBody(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -372,7 +379,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
       shareModalVisible={shareModalVisible}
       onCloseShareModal={() => setShareModalVisible(false)}
       safeAreaTop={insets.top}
-      contentBottomInset={spacing.md}
+      contentBottomInset={space[4]}
       router={router}
     />
   );
@@ -516,6 +523,7 @@ const ResolvedExperiencePage: React.FC<{
   // exactly 1 / 0 → straight to cart (auto-select the single occurrence).
   const reserveMode: ExperienceReserveMode = openDaily ? "open-daily" : "slots";
   const usesPicker = openDaily || bookable.length > 1;
+  const insetsBottom = useSafeAreaInsets().bottom;
 
   // ---- price + CTA (single CTA — no split, SC-5) ----
   // ORCH-1147/1153 WS3: display the SERVER all-in (fetchTierAllInCents →
@@ -578,6 +586,115 @@ const ResolvedExperiencePage: React.FC<{
               };
   const barKicker =
     expPrice === "Free" || expPrice === "" ? null : "All-in, taxes included";
+
+  // issue #4420 — ONE option list for the Reserve sheet and the inline picker.
+  const reserveOptions = useMemo(
+    () => (
+
+          Array.isArray(experience.options) && experience.options.length > 0
+            ? experience.options.map((opt) => ({
+                ticketTypeId: opt.ticketTypeId,
+                name: opt.name,
+                priceCents: opt.priceCents,
+                priceAllInCents:
+                  typeof opt.priceAllInGbp === "number" && opt.priceAllInGbp > 0
+                    ? Math.round(opt.priceAllInGbp * 100)
+                    : null,
+                currency: opt.currency,
+                isFree: opt.isFree,
+                isUnlimited: opt.isUnlimited,
+                ticketsRemaining: opt.ticketsRemaining,
+                quantityTotal: opt.quantityTotal,
+                ...(opt.priceBasis !== undefined
+                  ? { priceBasis: opt.priceBasis }
+                  : {}),
+                ...(opt.blockMinutes !== undefined
+                  ? { blockMinutes: opt.blockMinutes }
+                  : {}),
+                ...(opt.minBlocks !== undefined
+                  ? { minBlocks: opt.minBlocks }
+                  : {}),
+                ...(opt.maxBlocks !== undefined
+                  ? { maxBlocks: opt.maxBlocks }
+                  : {}),
+                ...(opt.groupMax !== undefined ? { groupMax: opt.groupMax } : {}),
+              }))
+            : ticket !== null
+              ? [
+                  {
+                    ticketTypeId: ticket.ticketTypeId,
+                    name: ticket.name,
+                    priceCents: ticket.priceCents,
+                    priceAllInCents: expDisplayCents,
+                    currency: ticket.currency,
+                    isFree: ticket.isFree,
+                    isUnlimited: ticket.isUnlimited,
+                    ticketsRemaining: ticket.ticketsRemaining,
+                    quantityTotal: ticket.quantityTotal,
+                    ...(ticket.priceBasis !== undefined
+                      ? { priceBasis: ticket.priceBasis }
+                      : {}),
+                    ...(ticket.blockMinutes !== undefined
+                      ? { blockMinutes: ticket.blockMinutes }
+                      : {}),
+                    ...(ticket.minBlocks !== undefined
+                      ? { minBlocks: ticket.minBlocks }
+                      : {}),
+                    ...(ticket.maxBlocks !== undefined
+                      ? { maxBlocks: ticket.maxBlocks }
+                      : {}),
+                    ...(ticket.groupMax !== undefined
+                      ? { groupMax: ticket.groupMax }
+                      : {}),
+                  },
+                ]
+              : undefined
+    ),
+    [experience.options, ticket, expDisplayCents],
+  );
+  // issue #4420 — the inline "Book a time" picker's state (the same rules as
+  // the sheet: useExperienceReserveState). The glass bar reads its selection.
+  const inlineReserve = useExperienceReserveState({
+    mode: reserveMode,
+    dates: experience.dates,
+    timezone: experience.timezone,
+    eventRemaining: ticket?.ticketsRemaining ?? null,
+    unitAllInCents: expDisplayCents,
+    currency: ticket?.currency ?? null,
+    options: reserveOptions,
+    spacingMinutes: experience.spacingMinutes ?? 30,
+    minNoticeMinutes: experience.minNoticeMinutes ?? 120,
+    eventId: experience.id,
+    capacityScope: experience.capacityScope ?? "total",
+    fetchSlotAvailability: fetchExperienceSlotAvailability,
+    slotFetchEnabled: usesPicker,
+  });
+  const inlineSelection = inlineReserve.selection;
+  const inlineSummary = useMemo((): string | null => {
+    const date = inlineReserve.selectedDate;
+    if (inlineSelection === null || date === null) return null;
+    const tz = experience.timezone;
+    if (reserveMode === "slots") {
+      return [experienceShortDayLabel(date.startAt, tz), experienceStartTimeLabel(date.startAt, tz)]
+        .filter((p) => p.length > 0)
+        .join(" · ");
+    }
+    const parts = [experienceShortDayLabel(date.startAt, tz)];
+    if (inlineReserve.selectedMinute !== null) {
+      parts.push(formatExperienceMinute(inlineReserve.selectedMinute));
+    }
+    parts.push(
+      `${inlineReserve.party} ${inlineReserve.party === 1 ? "person" : "people"}`,
+    );
+    return parts.filter((p) => p.length > 0).join(" · ");
+  }, [
+    inlineSelection,
+    inlineReserve.selectedDate,
+    inlineReserve.selectedMinute,
+    inlineReserve.party,
+    experience.timezone,
+    reserveMode,
+  ]);
 
   // issue #2101 [named-buyer checkout] — one exhaustive route action state for
   // EVERY purchase entry this route owns (desktop control, docked bar, floating
@@ -673,6 +790,12 @@ const ResolvedExperiencePage: React.FC<{
       return;
     }
     if (experienceAccess.blocked) return;
+    // issue #4420 — a complete inline pick goes straight to checkout with the
+    // same hand-off the sheet builds.
+    if (usesPicker && inlineSelection !== null) {
+      goToCart(inlineSelection);
+      return;
+    }
     if (usesPicker) {
       setPickerVisible(true);
       return;
@@ -684,6 +807,7 @@ const ResolvedExperiencePage: React.FC<{
     goToCart(); // single / no-date supply → no eventDateId
   }, [
     usesPicker,
+    inlineSelection,
     bookable,
     goToCart,
     router,
@@ -799,6 +923,71 @@ const ResolvedExperiencePage: React.FC<{
     </View>
   );
 
+  // issue #4420 — the inline "Book a time" picker, only where a choice exists
+  // (several occurrences or open daily) and the experience can be booked.
+  const inlinePickerShown = usesPicker && reserveTappable;
+  const reservePicker = inlinePickerShown ? (
+    <View nativeID="experience-book-a-time">
+      <ExperienceInlinePicker
+        state={inlineReserve}
+        mode={reserveMode}
+        dates={experience.dates}
+        timezone={experience.timezone}
+        palette={palette}
+        theme={theme}
+        currency={ticket?.currency ?? null}
+      />
+    </View>
+  ) : undefined;
+  // issue #4420 — the glass bar: nothing picked → "From …" · Choose a time
+  // (web scrolls to the picker, native opens the Reserve sheet); a complete
+  // pick → the total · the day, time and people · Continue (straight to
+  // checkout with the shared hand-off).
+  const handleChooseTime = useCallback((): void => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const el = document.getElementById("experience-book-a-time");
+      if (el !== null && typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+    }
+    handleReserve();
+  }, [handleReserve]);
+  const glassBar = (() => {
+    if (accessGatedExpCta.kind === "unavailable") {
+      return {
+        title: accessGatedExpCta.title,
+        subtitle: accessGatedExpCta.subline,
+        cta: null as string | null,
+        onPress: undefined as (() => void) | undefined,
+      };
+    }
+    if (inlinePickerShown && inlineSelection !== null) {
+      return {
+        title: inlineReserve.total ?? (expPrice.length > 0 ? expPrice : "Reserve"),
+        subtitle: inlineSummary,
+        cta: "Continue",
+        onPress: handleReserve,
+      };
+    }
+    if (inlinePickerShown) {
+      return {
+        title: accessGatedExpCta.kind === "buy" ? accessGatedExpCta.price : "Free",
+        subtitle: barKicker,
+        cta: "Choose a time",
+        onPress: handleChooseTime,
+      };
+    }
+    return {
+      title: accessGatedExpCta.kind === "buy" ? accessGatedExpCta.price : "Free",
+      subtitle: barKicker,
+      cta: accessGatedExpCta.kind === "buy" || accessGatedExpCta.kind === "free"
+        ? accessGatedExpCta.label
+        : "Reserve",
+      onPress: handleReserve,
+    };
+  })();
+
   // DOCKED Reserve CTA — LAST phone-body child (single CTA, no split).
   const dockedReserve = !isDesktop ? (
     <TripReserveBar
@@ -856,6 +1045,7 @@ const ResolvedExperiencePage: React.FC<{
         // business native → inert cluster, DESIGN §1.5).
         onSeeWhosGoing={onSeeWhosGoingProp}
         dockedReserve={dockedReserve}
+        reservePicker={reservePicker}
         onScroll={handleScroll}
         onScrollViewLayout={handleScrollLayout}
         testID="orch-1138-experience-preview"
@@ -889,19 +1079,28 @@ const ResolvedExperiencePage: React.FC<{
         />
       ) : null}
 
-      {/* FLOATING Reserve PILL (phone) — shown while the docked CTA is off-screen */}
-      {!isDesktop && floatingPillVisible ? (
-        <TripReserveBar
-          cta={accessGatedExpCta}
-          palette={palette}
-          theme={theme}
-          surface={surface}
-          kicker={barKicker}
-          fontFamily={boldFamily}
-          onPress={handleReserve}
-          variant="floating"
-          testID="orch-1138-experience-reserve-bar"
-        />
+      {/* issue #4420 — the GLASS BAR (phone: shown while the docked CTA is
+          off-screen; desktop: bottom-right). It names the next step and
+          updates live with the inline pick. */}
+      {isDesktop || floatingPillVisible ? (
+        <View
+          style={[
+            isDesktop ? styles.glassWrapDesktop : styles.glassWrap,
+            { bottom: (isDesktop ? 22 : 12) + insetsBottom },
+          ]}
+          pointerEvents="box-none"
+        >
+          <OfferingGlassBar
+            palette={palette}
+            theme={theme}
+            title={glassBar.title}
+            subtitle={glassBar.subtitle}
+            ctaLabel={glassBar.cta}
+            onPress={glassBar.onPress}
+            testID="orch-1138-experience-reserve-bar"
+            actionTestID="orch-1138-experience-reserve-bar-action"
+          />
+        </View>
       ) : null}
 
       {/* ADAPTIVE Reserve picker (slots / open-daily) — selection only. */}
@@ -919,66 +1118,7 @@ const ResolvedExperiencePage: React.FC<{
         minNoticeMinutes={experience.minNoticeMinutes ?? 120}
         eventId={experience.id}
         capacityScope={experience.capacityScope ?? "total"}
-        options={
-          Array.isArray(experience.options) && experience.options.length > 0
-            ? experience.options.map((opt) => ({
-                ticketTypeId: opt.ticketTypeId,
-                name: opt.name,
-                priceCents: opt.priceCents,
-                priceAllInCents:
-                  typeof opt.priceAllInGbp === "number" && opt.priceAllInGbp > 0
-                    ? Math.round(opt.priceAllInGbp * 100)
-                    : null,
-                currency: opt.currency,
-                isFree: opt.isFree,
-                isUnlimited: opt.isUnlimited,
-                ticketsRemaining: opt.ticketsRemaining,
-                quantityTotal: opt.quantityTotal,
-                ...(opt.priceBasis !== undefined
-                  ? { priceBasis: opt.priceBasis }
-                  : {}),
-                ...(opt.blockMinutes !== undefined
-                  ? { blockMinutes: opt.blockMinutes }
-                  : {}),
-                ...(opt.minBlocks !== undefined
-                  ? { minBlocks: opt.minBlocks }
-                  : {}),
-                ...(opt.maxBlocks !== undefined
-                  ? { maxBlocks: opt.maxBlocks }
-                  : {}),
-                ...(opt.groupMax !== undefined ? { groupMax: opt.groupMax } : {}),
-              }))
-            : ticket !== null
-              ? [
-                  {
-                    ticketTypeId: ticket.ticketTypeId,
-                    name: ticket.name,
-                    priceCents: ticket.priceCents,
-                    priceAllInCents: expDisplayCents,
-                    currency: ticket.currency,
-                    isFree: ticket.isFree,
-                    isUnlimited: ticket.isUnlimited,
-                    ticketsRemaining: ticket.ticketsRemaining,
-                    quantityTotal: ticket.quantityTotal,
-                    ...(ticket.priceBasis !== undefined
-                      ? { priceBasis: ticket.priceBasis }
-                      : {}),
-                    ...(ticket.blockMinutes !== undefined
-                      ? { blockMinutes: ticket.blockMinutes }
-                      : {}),
-                    ...(ticket.minBlocks !== undefined
-                      ? { minBlocks: ticket.minBlocks }
-                      : {}),
-                    ...(ticket.maxBlocks !== undefined
-                      ? { maxBlocks: ticket.maxBlocks }
-                      : {}),
-                    ...(ticket.groupMax !== undefined
-                      ? { groupMax: ticket.groupMax }
-                      : {}),
-                  },
-                ]
-              : undefined
-        }
+        options={reserveOptions}
         onCancel={() => setPickerVisible(false)}
         onConfirm={handlePickerConfirm}
       />
@@ -1011,21 +1151,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: "#0c0e12",
+    padding: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   stateTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
   stateText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   banner: {
@@ -1046,4 +1186,27 @@ const styles = StyleSheet.create({
   },
   deskReserveText: { fontSize: 16, fontWeight: "900" },
   deskReassure: { fontSize: 11, textAlign: "center", marginTop: 10 },
+  // issue #4420 — the glass bar wrappers (phone gutter; desktop bottom-right).
+  glassWrap: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    zIndex: 6,
+  },
+  glassWrapDesktop: {
+    position: "absolute",
+    right: 28,
+    width: 440,
+    maxWidth: "90%",
+    zIndex: 6,
+  },
 });
+
+// issue #4420 — the Host app's real glass for the shared public page.
+export default function PublicExperienceRoute(): React.ReactElement {
+  return (
+    <PublicGlassProvider>
+      <PublicExperienceRouteBody />
+    </PublicGlassProvider>
+  );
+}

@@ -96,6 +96,9 @@ import {
   type ResolvedTheme,
   type ThemePalette,
 } from "@mingla/offering-rendering";
+// issue #4420 — the shared glass bottom bar (no expo-blur).
+import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
+import { OFFERING_PREMIUM_HEADER_ROW } from "@mingla/offering-rendering/offeringFrameMetrics";
 
 import { PublicMenuSections } from "./PublicMenuSections";
 // The package-local React bridge (see PublicVenueTabs.tsx). Files under
@@ -108,6 +111,7 @@ import {
   useBrandRenderingMemo as useMemo,
   useBrandRenderingState as useState,
   PublicVenueTabs,
+  PublicVenueTabPill,
   type BrandRenderingReactElement,
   type BrandRenderingReactNode,
   type PublicVenueTabsHandle,
@@ -144,7 +148,9 @@ import {
 } from "./venueOpenState";
 import {
   resolveVenueStayRate,
+  venueStayRateQualifier,
   venueStayRateRangeLine,
+  venueStayRateValue,
   type VenueStayQuoteView,
   type VenueStayRate,
 } from "./venueStayRate";
@@ -1588,6 +1594,11 @@ export const PublicVenueScreen = ({
     </View>
   );
 
+  // issue #4420 — the premium frame prints the venue's name on the cover
+  // (phone) and at the top of the reading column (desktop), so the body keeps
+  // the category and place chips (the "what is it / where" answer, #1561),
+  // the brand line and the answer bar, without printing the name twice.
+  const identityOnCover = true;
   const identityBlock = (
     <View style={styles.identityWrap}>
       <View style={styles.chipRow}>
@@ -1615,11 +1626,13 @@ export const PublicVenueScreen = ({
           </View>
         ) : null}
       </View>
+      {identityOnCover ? null : (
       <Text
         style={[styles.venueName, themedBoldFont, { color: palette.primaryText }]}
       >
         {venue.name}
       </Text>
+      )}
       {/* #4111 — with no Message (enquiries off / not loaded / desktop) the
           "By {brand}" line renders exactly as before. */}
       {onMessageBrand !== undefined && !isDesktop ? (
@@ -1653,7 +1666,8 @@ export const PublicVenueScreen = ({
             </Text>
           </Pressable>
         </View>
-      ) : (
+      ) : isDesktop && identityOnCover ? null : (
+        // issue #4420 — on desktop the panel above carries "By {brand}".
         <Pressable
           onPress={onOpenBrand}
           accessibilityRole="link"
@@ -2007,6 +2021,28 @@ export const PublicVenueScreen = ({
     </Pressable>
   );
 
+  // issue #4420 — the phone reserve bar is the shared glass bar (design
+  // file → venueDef.bar): the venue on the left with what is true right now
+  // (the open-state line, or a Stay's real nightly rate), the category's own
+  // action on the right ("Reserve a table", "Book a visit", "Reserve this
+  // Stay"). Same handler, same display gate, same testID anchors.
+  const venueKindLine = [categoryChip, placeChip]
+    .filter((p): p is string => typeof p === "string" && p.length > 0)
+    .join(" · ");
+  const stayBarRate =
+    profile.bookingBody === "stay" && stayRate !== null ? stayRate : null;
+  const reserveBarTitle =
+    stayBarRate !== null
+      ? `From ${venueStayRateValue(stayBarRate)}`
+      : todayLine ?? (venueKindLine.length > 0 ? venueKindLine : venue.name);
+  const reserveBarSubtitle =
+    stayBarRate !== null
+      ? venueStayRateQualifier(stayBarRate)
+      : reserveBarTitle === venueKindLine || reserveBarTitle === venue.name
+        ? null
+        : venueKindLine.length > 0
+          ? venueKindLine
+          : null;
   const reserveBar =
     showPersistentReserveCta && !isDesktop ? (
       <View
@@ -2016,13 +2052,21 @@ export const PublicVenueScreen = ({
           Platform.OS === "web"
             ? webVenueStyle({ position: "sticky", marginTop: 8 })
             : null,
-          {
-            backgroundColor: palette.page,
-            paddingBottom: insets.bottom + 8,
-          },
+          { paddingBottom: insets.bottom + 12 },
         ]}
+        pointerEvents="box-none"
       >
-        {reserveCta}
+        <OfferingGlassBar
+          palette={palette}
+          theme={resolvedTheme}
+          title={reserveBarTitle}
+          subtitle={reserveBarSubtitle}
+          ctaLabel={profile.reserveAction}
+          onPress={handleReserve}
+          ctaAccessibilityLabel={profile.reserveAction}
+          testID="issue-4420-venue-glass-bar"
+          actionTestID="issue-2729-reserve-cta"
+        />
       </View>
     ) : null;
 
@@ -2030,7 +2074,7 @@ export const PublicVenueScreen = ({
     showPersistentReserveCta && !isDesktop
       ? Platform.OS === "web"
         ? 0
-        : 52 + 16 + insets.bottom + 8
+        : 68 + 8 + insets.bottom + 12 + 8
       : insets.bottom + 24;
 
   // #4347 wave 4 — a host bar replaces the shared reserve bar at every width.
@@ -2056,11 +2100,14 @@ export const PublicVenueScreen = ({
     <View style={[styles.deskPanel, surface.cardStrong]}>
       <View style={[styles.deskAccent, accentFill(palette)]} />
       <View style={styles.deskInner}>
-        <Text
-          style={[styles.deskName, themedBoldFont, { color: palette.primaryText }]}
-        >
-          {venue.name}
-        </Text>
+        {/* issue #4420 — the premium frame prints the name above this panel. */}
+        {identityOnCover ? null : (
+          <Text
+            style={[styles.deskName, themedBoldFont, { color: palette.primaryText }]}
+          >
+            {venue.name}
+          </Text>
+        )}
         {venue.address !== null ? (
           <Text style={[styles.addrLine, { color: palette.tertiaryText }]}>
             {venue.address}
@@ -2213,6 +2260,34 @@ export const PublicVenueScreen = ({
     overviewSlot === undefined ? null : overviewSlot(themedSlotContext);
   const overviewHasAbout = profile.overview.includes("about");
 
+  // issue #4420 — native has no CSS sticky, so once the in-flow tab strip
+  // scrolls under the glass header a pinned copy shows there (web keeps the
+  // strip's own position: sticky). The strip's content offset is measured
+  // once it lays out; the shell's scroll drives the switch.
+  const pinnedTabsTop = insets.top + 8 + OFFERING_PREMIUM_HEADER_ROW + 4;
+  const scrollYRef = React.useRef(0);
+  const tabsAnchorRef = React.useRef<View | null>(null);
+  const tabsContentYRef = React.useRef<number | null>(null);
+  const [tabsPinned, setTabsPinned] = useState<boolean>(false);
+  const measureTabsAnchor = (): void => {
+    if (Platform.OS === "web") return;
+    const node = tabsAnchorRef.current as unknown as {
+      measureInWindow?: (cb: (x: number, y: number) => void) => void;
+    } | null;
+    node?.measureInWindow?.((_x: number, y: number) => {
+      tabsContentYRef.current = y + scrollYRef.current;
+    });
+  };
+  const handleShellScroll = (event: {
+    nativeEvent: { contentOffset: { y: number } };
+  }): void => {
+    const y = event.nativeEvent.contentOffset.y;
+    scrollYRef.current = y;
+    const top = tabsContentYRef.current;
+    const next = top !== null && y + pinnedTabsTop >= top;
+    if (next !== tabsPinned) setTabsPinned(next);
+  };
+
   const bodyContent = (
     <View style={styles.body}>
       {/* #1561 — the identity + answer block now renders at EVERY width. On
@@ -2261,6 +2336,14 @@ export const PublicVenueScreen = ({
           />
         </View>
       ) : null}
+      {Platform.OS === "web" ? null : (
+        <View
+          ref={tabsAnchorRef}
+          onLayout={measureTabsAnchor}
+          collapsable={false}
+          testID="issue-4420-venue-tabs-anchor"
+        />
+      )}
       <PublicVenueTabs
         ref={publicVenueTabsRef}
         initialTab={initialTab}
@@ -2345,6 +2428,20 @@ export const PublicVenueScreen = ({
         onClose={onClose}
         onShare={onShare}
         hideCloseOnWeb
+        // issue #4420 — the premium public frame (design file → venueDef):
+        // the category, place and name on the cover over the scrim, the live
+        // "Open now" pill under them, the glass header with the title once the
+        // cover scrolls away; desktop is the photo column + the content.
+        frame="premium"
+        coverIdentity={{
+          // The category and place read in the body's chips right under the
+          // cover; the cover carries the name and the live pill.
+          eyebrow: [],
+          title: venue.name,
+          // Only when the venue's own clock says it is open right now
+          // (Constitution 9: "unknown" claims nothing, so no pill).
+          live: openState.status === "open" ? "Open now" : null,
+        }}
         directionCIdentity={useDirectionCIdentity ? {
           title: venue.name,
           meta: [profile.noun, venue.city].filter(Boolean).join(" · "),
@@ -2364,6 +2461,7 @@ export const PublicVenueScreen = ({
         // which is the second of the two places the name appeared and the only
         // place the redundant badge did. Both now live in `identityBlock`.
         stickyPanel={stickyPanel}
+        {...(Platform.OS === "web" ? {} : { onScroll: handleShellScroll })}
         safeAreaTop={insets.top + 8}
         contentBottomInset={contentBottomInset}
         testID="orch-1255-public-venue"
@@ -2375,6 +2473,22 @@ export const PublicVenueScreen = ({
           </React.Fragment>
         ) : null}
       </ParallaxCoverShell>
+      {Platform.OS !== "web" && tabsPinned ? (
+        <View
+          style={[styles.pinnedTabs, { top: pinnedTabsTop }]}
+          pointerEvents="box-none"
+        >
+          <PublicVenueTabPill
+            hasMenu={hasMenu}
+            activeTab={normalizedReservationUiState.activeTab}
+            palette={palette}
+            theme={resolvedTheme}
+            onSelect={(tab: PublicVenueTab) => {
+              publicVenueTabsRef.current?.selectTab(tab);
+            }}
+          />
+        </View>
+      ) : null}
       {/* issue #2729 — web owns the same bar INSIDE ParallaxCoverShell's sole
           scroll ancestry. Native retains the pre-existing absolute sibling
           byte-for-byte, and desktop has no phone bar. */}
@@ -2400,6 +2514,8 @@ export const PublicVenueScreen = ({
 };
 
 const styles = StyleSheet.create({
+  // issue #4420 — the pinned tab pill (native), under the glass header.
+  pinnedTabs: { position: "absolute", left: 16, right: 16, zIndex: 60 },
   // #1595 — NO `backgroundColor` here. The host's colour is themed and is
   // supplied at the call site from `surface.page`. A constant reinstated here
   // would win on any render where the palette resolves light, which is the
@@ -2737,7 +2853,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingTop: 8,
     zIndex: 6,
   },
