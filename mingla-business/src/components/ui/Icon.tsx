@@ -478,11 +478,11 @@ export const Icon: React.FC<IconProps> = ({
   testID,
   style,
 }) => {
-  // #4420 (c_6876753693 item 4): Ari's icon is the Ari orb everywhere. The
-  // orb is Ari's identity art, so it stays orange whatever `color` asks for;
-  // callers show active state with the label colour and the pill.
+  // #4420 (c_6876753693 item 4): Ari's icon is the Ari orb everywhere. As an
+  // icon (nav, menus) it takes the same colour as its neighbours, so it is
+  // white or grey at rest and orange when active (Seth, 2026-11-16).
   if (name === "ari") {
-    return <HomeAriOrb size={size} still testID={testID} style={style} />;
+    return <HomeAriOrb size={size} still tint={color ?? dsColor.text1} testID={testID} style={style} />;
   }
   const resolvedColor = color ?? dsColor.text1;
   const renderer = RENDERERS[name];

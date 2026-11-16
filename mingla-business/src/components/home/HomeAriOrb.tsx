@@ -33,14 +33,20 @@ const geometry = (size: HomeAriOrbSize): { orb: number; halo: number } => {
 
 function StaticAriMark({
   size = "sm",
+  tint,
   testID,
   style,
 }: {
   size?: HomeAriOrbSize;
+  tint?: string;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }): React.ReactElement {
   const { orb, halo } = geometry(size);
+  // #4420: in a nav or menu the mark takes the row's icon colour (Seth,
+  // 2026-11-16) so it reads as one icon set; everywhere else it is orange.
+  const ring = tint ? { borderColor: tint } : null;
+  const fill = tint ? { borderColor: tint, backgroundColor: tint } : null;
   return (
     <View
       testID={testID}
@@ -53,10 +59,11 @@ function StaticAriMark({
         style={[
           mark.outer,
           { top: -halo, left: -halo, width: orb + halo * 2, height: orb + halo * 2, borderRadius: (orb + halo * 2) / 2 },
+          ring,
         ]}
       />
-      <View style={[mark.middle, { width: orb, height: orb, borderRadius: orb / 2 }]} />
-      <View style={[mark.core, { width: orb * 0.46, height: orb * 0.46, borderRadius: orb * 0.23 }]} />
+      <View style={[mark.middle, { width: orb, height: orb, borderRadius: orb / 2 }, ring]} />
+      <View style={[mark.core, { width: orb * 0.46, height: orb * 0.46, borderRadius: orb * 0.23 }, fill]} />
     </View>
   );
 }
@@ -118,12 +125,15 @@ function AnimatedAriMark({ size, reduceMotion }: { size: HomeAriOrbSize; reduceM
 export function HomeAriOrb({
   size = "sm",
   still = false,
+  tint,
   testID,
   style,
 }: {
   size?: HomeAriOrbSize;
   /** #4420: the still mark only (nav, menus, rows): no entrance on every mount. */
   still?: boolean;
+  /** #4420: a single colour for the whole mark (nav and menu icons). */
+  tint?: string;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }): React.ReactElement {
@@ -143,7 +153,7 @@ export function HomeAriOrb({
       alive = false;
     };
   }, [still]);
-  if (still || reduceMotion === null) return <StaticAriMark size={size} testID={testID} style={style} />;
+  if (still || reduceMotion === null) return <StaticAriMark size={size} tint={tint} testID={testID} style={style} />;
   return <AnimatedAriMark size={size} reduceMotion={reduceMotion} />;
 }
 

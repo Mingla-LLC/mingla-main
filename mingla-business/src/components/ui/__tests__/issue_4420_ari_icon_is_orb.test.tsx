@@ -54,6 +54,13 @@ describe("#4420 Ari icon is the Ari orb", () => {
     expect(byId(tree, "svg-Svg")).toHaveLength(0);
   });
 
+  test("in a nav the orb takes the row's icon colour, like its neighbours", () => {
+    const idle = byId(mount(<Icon name="ari" color="#A1A1AA" />), "mock-home-ari-orb");
+    const active = byId(mount(<Icon name="ari" color="#F97316" />), "mock-home-ari-orb");
+    expect(idle[0]?.props.tint).toBe("#A1A1AA");
+    expect(active[0]?.props.tint).toBe("#F97316");
+  });
+
   test("any other icon is still an SVG glyph, never the orb", () => {
     const tree = mount(<Icon name="home" />);
     expect(byId(tree, "mock-home-ari-orb")).toHaveLength(0);
