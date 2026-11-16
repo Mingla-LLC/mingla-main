@@ -180,11 +180,9 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   return (
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
       <View style={styles.body}>
-        <Text style={styles.title}>Review changes</Text>
-        <Text style={styles.subhead}>
-          These changes save immediately when confirmed.
-        </Text>
-
+        {/* #4420 (device round 2): the title scrolls with the diff so the
+          keyboard-lifted body keeps room for the reason field above the
+          pinned Save / Cancel footer. */}
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -192,6 +190,10 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
+          <Text style={styles.title}>Review changes</Text>
+          <Text style={styles.subhead}>
+            These changes save immediately when confirmed.
+          </Text>
           {/* Diff list */}
           {rows.length === 0 ? (
             <Text style={styles.emptyCopy}>No changes to review.</Text>
@@ -611,9 +613,9 @@ const TripPricingTierDiffSubRenderer: React.FC<
 
 const styles = StyleSheet.create({
   body: {
-    // #4420: the Sheet owns the 20 side padding.
+    // #4420: the Sheet owns the 20 side padding and the bottom padding (its
+    // resting space[6] + safe area, or the keyboard + Done bar while typing).
     paddingTop: space[4],
-    paddingBottom: space[7],
     flex: 1,
   },
   title: {
@@ -631,7 +633,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
-    marginBottom: space[4],
+    marginBottom: space[3],
   },
   scrollContent: {
     paddingBottom: space[2],

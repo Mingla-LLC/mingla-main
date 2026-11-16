@@ -59,6 +59,28 @@ export const keyboardSheetHeight = (
 };
 
 /**
+ * #4420 (device round 2) — the docked sheet body's bottom padding while the
+ * keyboard is open: the keyboard, its Done bar and the minimum clearance. The
+ * panel stays docked at the window bottom (its TOP does not move, so the body's
+ * KeyboardAwareScrollView measured the focused field correctly), and the body
+ * content now ends above the Done bar, so a pinned footer (Save / Cancel) sits
+ * above the keyboard instead of behind it. 0 while closed (the caller keeps its
+ * resting padding).
+ */
+export const sheetKeyboardBottomPad = (keyboardHeight: number): number =>
+  keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;
+
+/**
+ * How far a sheet's body scroll view must place the focused field ABOVE the
+ * library's default (keyboard + Done bar + clearance): the gap between the
+ * scroll view's bottom and the body's content bottom (a pinned footer), plus the clearance the lifted body
+ * keeps above the bar, less how far a short sheet's top rose for the keyboard
+ * (the scroll view measured the field before that rise).
+ */
+export const sheetScrollExtraOffset = (footerGap: number, topShift: number): number =>
+  MIN_VISIBLE_CLEARANCE + Math.max(0, footerGap) - Math.max(0, topShift);
+
+/**
  * Bottom inset for a centred dialog: the keyboard, its Done bar and the
  * minimum clearance while open; 0 while closed.
  */

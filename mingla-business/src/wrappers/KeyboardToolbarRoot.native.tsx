@@ -19,11 +19,14 @@ import React, { useCallback, useSyncExternalStore } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import {
   KeyboardToolbar,
+  useReanimatedKeyboardAnimation,
   type KeyboardToolbarProps,
 } from "react-native-keyboard-controller";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 
 import { color } from "../constants/designSystem";
 import { HapticFeedback } from "../utils/hapticFeedback";
+import { KEYBOARD_TOOLBAR_HEIGHT, OPENED_OFFSET } from "./keyboardClearance.native";
 import { useKeyboardIsVisible } from "./useKeyboardIsVisible";
 
 // The library does not re-export its KeyboardToolbarTheme type from the
@@ -145,6 +148,32 @@ const AvailabilityToolbarButton = ({
 // keyboard opens (only the resting-at-top artifact is removed). useKeyboard
 // IsVisible reads the nearest per-window KeyboardProvider (KeyboardRoot), so
 // this resolves correctly inside each Sheet/Modal's own provider window.
+//
+// #4420 (device round 2) — the bar never showed inside a Sheet/Modal window.
+// The library's own KeyboardStickyView follows the provider's RN-Animated
+// keyboard height (a native-driver Animated.event); inside a RN <Modal> window
+// that value never moves, so the bar stayed at offset 0: the window bottom,
+// behind the keyboard (iOS), or partly under it (Android). The Reanimated
+// keyboard values of the SAME per-window provider do move there (the sheet's
+// useKeyboardHeight reads them), so the bar now rides those: the library bar
+// renders with its own sticky translate switched off (`enabled={false}`, with
+// the closed offset cancelled), inside a bottom-anchored Animated.View that
+// translates by the Reanimated keyboard height plus the library's
+// OPENED_OFFSET. One path for every window (root, sheet, dialog).
+const DONE_BAR_REST_OFFSET = { closed: -KEYBOARD_TOOLBAR_HEIGHT, opened: 0 };
+
+const DoneBarDock: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { height } = useReanimatedKeyboardAnimation();
+  const dockStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: height.value + OPENED_OFFSET }],
+  }));
+  return (
+    <Animated.View pointerEvents="box-none" style={[styles.dock, dockStyle]}>
+      {children}
+    </Animated.View>
+  );
+};
+
 export const KeyboardToolbarRoot: React.FC = () => {
   const visible = useKeyboardIsVisible();
   const scoped = useSyncExternalStore(
@@ -171,21 +200,40 @@ export const KeyboardToolbarRoot: React.FC = () => {
   if (!visible) return null;
   if (scoped !== null) {
     return (
-      <KeyboardToolbar
-        button={AvailabilityToolbarButton}
-        onNextCallback={handleNext}
-        onPrevCallback={handlePrevious}
-        showArrows={true}
-        theme={MINGLA_KEYBOARD_TOOLBAR_THEME}
-      />
+      <DoneBarDock>
+        <KeyboardToolbar
+          button={AvailabilityToolbarButton}
+          enabled={false}
+          offset={DONE_BAR_REST_OFFSET}
+          onNextCallback={handleNext}
+          onPrevCallback={handlePrevious}
+          showArrows={true}
+          theme={MINGLA_KEYBOARD_TOOLBAR_THEME}
+        />
+      </DoneBarDock>
     );
   }
   return (
-    <KeyboardToolbar showArrows={false} theme={MINGLA_KEYBOARD_TOOLBAR_THEME} />
+    <DoneBarDock>
+      <KeyboardToolbar
+        enabled={false}
+        offset={DONE_BAR_REST_OFFSET}
+        showArrows={false}
+        theme={MINGLA_KEYBOARD_TOOLBAR_THEME}
+      />
+    </DoneBarDock>
   );
 };
 
 const styles = StyleSheet.create({
+  // Anchored to the window bottom; the library bar inside is `position:
+  // absolute, bottom: 0`, so the dock's translate alone places it.
+  dock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   toolbarButton: {
     minWidth: 44,
     height: 42,

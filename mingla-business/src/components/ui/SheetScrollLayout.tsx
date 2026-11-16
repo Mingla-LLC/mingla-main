@@ -20,7 +20,7 @@
  *
  * Invariant I-4389-SHEET-BOUNDED-SCROLL-BODY | issue #4389 | Every bottom sheet #4389 added or changed renders its content in SheetScrollLayout (or its own ScrollView body) inside a snap point of "half" or "full", with its buttons in the pinned footer. Enforced by issue_4389_sheets_bounded.implementor.test.tsx.
  */
-import React from "react";
+import React, { useContext } from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
+import { SheetKeyboardContext } from "./sheetKeyboardContext";
 
 /**
  * How far the sheet's footer must rise for the keyboard (and its Done bar).
@@ -53,11 +54,19 @@ export interface SheetScrollLayoutProps {
 export const SheetScrollLayout: React.FC<SheetScrollLayoutProps> = (props) =>
   props.keyboardAware === true ? <KeyboardLiftedLayout {...props} /> : <Layout {...props} lift={0} />;
 
-/** Only keyboard-aware sheets subscribe to the keyboard. */
+/**
+ * Only keyboard-aware sheets subscribe to the keyboard. #4420 (device round
+ * 2): inside the native bottom Sheet the panel body itself now clears the
+ * keyboard + Done bar (SheetKeyboardContext is set), so the layout adds no
+ * lift of its own there; lifting again would float the footer a keyboard-high
+ * above the bar. Outside that sheet (no context) it keeps its own lift.
+ */
 const KeyboardLiftedLayout: React.FC<SheetScrollLayoutProps> = (props) => {
   const keyboardHeight = useKeyboardHeight();
   const insets = useSafeAreaInsets();
-  return <Layout {...props} lift={sheetKeyboardLift(keyboardHeight, insets.bottom)} />;
+  const sheet = useContext(SheetKeyboardContext);
+  const lift = sheet === null ? sheetKeyboardLift(keyboardHeight, insets.bottom) : 0;
+  return <Layout {...props} lift={lift} />;
 };
 
 const Layout: React.FC<SheetScrollLayoutProps & { lift: number }> = ({

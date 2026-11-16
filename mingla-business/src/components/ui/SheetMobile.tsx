@@ -70,7 +70,8 @@ import {
 
 import { Material } from "./Material";
 import { ToastHost } from "./ToastHost";
-import { clampOverlayHeight, keyboardSheetHeight } from "./overlayKeyboard";
+import { clampOverlayHeight, keyboardSheetHeight, sheetKeyboardBottomPad } from "./overlayKeyboard";
+import { SheetKeyboardContext, type SheetKeyboardLayout } from "./sheetKeyboardContext";
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
 import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 // ORCH-1165: sheet inputs live in the sheet's own native Modal window, so the
@@ -492,8 +493,13 @@ const SheetNative: React.FC<SheetProps> = ({
               />
             </Animated.View>
             <View style={styles.bottomDock} pointerEvents="box-none">
-              <SheetKeyboardHeight restingHeight={sheetHeight} screenHeight={screenHeight} topInset={insets.top}>
-              {(panelHeight) => (
+              <SheetKeyboardHeight
+                restingHeight={sheetHeight}
+                screenHeight={screenHeight}
+                topInset={insets.top}
+                bottomInset={insets.bottom}
+              >
+              {(panelHeight, keyboardBottomPad) => (
               <Animated.View
                 style={[
                   styles.panel,
@@ -511,6 +517,7 @@ const SheetNative: React.FC<SheetProps> = ({
               >
                 <SheetMobilePanelInner
                   bottomInset={insets.bottom}
+                  keyboardBottomPad={keyboardBottomPad}
                   panelBackground={panelBackground}
                 >
                   {children}
@@ -557,6 +564,12 @@ const SheetNative: React.FC<SheetProps> = ({
  */
 interface SheetMobilePanelInnerProps {
   bottomInset: number;
+  /**
+   * #4420 — native only: while the keyboard is open, the body's bottom padding
+   * (keyboard + Done bar + clearance) so its footer sits above the bar. 0 or
+   * absent = the resting padding (space[6] + the bottom safe area).
+   */
+  keyboardBottomPad?: number;
   children: React.ReactNode;
   /** ORCH-1186 Fix 3 — solid brand fill replacing the material when set. */
   panelBackground?: string;
@@ -570,6 +583,7 @@ interface SheetMobilePanelInnerProps {
 
 const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
   bottomInset,
+  keyboardBottomPad = 0,
   children,
   panelBackground,
   webOpaque = false,
@@ -599,7 +613,12 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
     <View style={styles.handleWrap}>
       <View style={styles.handle} />
     </View>
-    <View style={[styles.body, { paddingBottom: space[6] + bottomInset }]}>
+    <View
+      style={[
+        styles.body,
+        { paddingBottom: keyboardBottomPad > 0 ? keyboardBottomPad : space[6] + bottomInset },
+      ]}
+    >
       {children}
     </View>
   </>
@@ -608,19 +627,39 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
 /**
  * #4420 — keyboard rule for the docked sheet (see `overlayKeyboard.ts`). Lives
  * INSIDE the sheet window's KeyboardProvider so it receives that window's
- * keyboard frames. The sheet keeps its snap height when enough of it shows
- * above the keyboard (the body's SmartScrollView then places the focused field
- * flush above the Done bar); a short sheet rises just enough, clamped to the
- * safe area. Off-native this is a no-op (the hook returns 0).
+ * keyboard frames. The panel stays docked at the window bottom and keeps its
+ * snap height when enough of it shows above the keyboard; a short sheet rises
+ * just enough, clamped to the safe area. Device round 2: the body's bottom
+ * padding now clears the keyboard + Done bar, so a pinned footer (Save /
+ * Cancel) stays above the keyboard, and the body's SmartScrollView reads the
+ * same numbers (SheetKeyboardContext) to place the focused field above that
+ * footer. Off-native this is a no-op (the hook returns 0).
  */
 const SheetKeyboardHeight: React.FC<{
   restingHeight: number;
   screenHeight: number;
   topInset: number;
-  children: (height: number) => React.ReactNode;
-}> = ({ restingHeight, screenHeight, topInset, children }) => {
+  bottomInset: number;
+  children: (height: number, keyboardBottomPad: number) => React.ReactNode;
+}> = ({ restingHeight, screenHeight, topInset, bottomInset, children }) => {
   const keyboardHeight = useKeyboardHeight();
-  return <>{children(keyboardSheetHeight(restingHeight, keyboardHeight, screenHeight, topInset))}</>;
+  const resting = clampOverlayHeight(restingHeight, screenHeight, topInset);
+  const height = keyboardSheetHeight(restingHeight, keyboardHeight, screenHeight, topInset);
+  const keyboardBottomPad = sheetKeyboardBottomPad(keyboardHeight);
+  const restBottomPad = space[6] + bottomInset;
+  const layout = React.useMemo<SheetKeyboardLayout>(
+    () => ({
+      keyboardOpen: keyboardHeight > 0,
+      bottomPad: keyboardBottomPad > 0 ? keyboardBottomPad : restBottomPad,
+      topShift: Math.max(0, height - resting),
+    }),
+    [height, keyboardBottomPad, keyboardHeight, restBottomPad, resting],
+  );
+  return (
+    <SheetKeyboardContext.Provider value={layout}>
+      {children(height, keyboardBottomPad)}
+    </SheetKeyboardContext.Provider>
+  );
 };
 
 // ORCH-1197 / ORCH-1199: web-only VISIBLE-viewport metrics for a bottom-anchored

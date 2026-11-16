@@ -19,6 +19,8 @@ describe("#4420 sheet bodies have one side gutter", () => {
     ["components/event/MultiDateOverrideSheet.tsx", "sheetContent"],
     ["components/event/TicketTierEditSheet.tsx", "sheetContent"],
     ["components/door/DoorModeScreen.tsx", "sheetBody"],
+    // [TEST-MOD-APPROVED #4420] device round 2: Add to guest list.
+    ["components/guests/AddCompGuestSheet.tsx", "body"],
   ])("%s %s adds no paddingHorizontal", (rel, name) => {
     const style = block(read(rel), name);
     expect(style.length).toBeGreaterThan(0);

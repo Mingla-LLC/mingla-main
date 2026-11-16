@@ -962,10 +962,10 @@ const successToast = (guests: GuestDraft[], response: GuestListIssueResponse): s
 };
 
 const styles = StyleSheet.create({
+  // #4420 (device round 2): Sheet's body owns the 20 side gutter and the
+  // bottom padding (resting, or the keyboard + Done bar while typing).
   body: {
-    paddingHorizontal: space[6],
     paddingTop: space[4],
-    paddingBottom: space[7],
     flex: 1,
   },
   title: {
