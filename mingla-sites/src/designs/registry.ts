@@ -16,6 +16,8 @@ import { VoyagePage } from "./voyage/VoyagePage";
  */
 export type DesignRenderer = {
   stylesheet: (version: number) => string;
+  /** #4453 §3.3 — the shared block library's stylesheet, linked BEFORE the design's (signature rules win). */
+  sharedStylesheet?: string;
   /** #2829 W7 — the design draws its own 404 page (others keep the generic one). */
   drawsNotFound?: boolean;
   Page: ComponentType<{
@@ -32,9 +34,12 @@ export type DesignRenderer = {
   }>;
 };
 
+/** #4453 — immutable like a design stylesheet (a change is blocks-2.css). */
+export const SHARED_STYLESHEET = "/designs/_shared/blocks-1.css";
+
 export const DESIGN_RENDERERS: Readonly<Record<DesignKey, DesignRenderer>> = {
   atelier: { stylesheet: (version) => `/designs/atelier/${version}.css`, Page: AtelierPage },
-  voyage: { stylesheet: (version) => `/designs/voyage/${version}.css`, Page: VoyagePage, drawsNotFound: true },
+  voyage: { stylesheet: (version) => `/designs/voyage/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: VoyagePage, drawsNotFound: true },
 };
 
 /** TEMPORARY(#2829): v1 rollback renderer's stylesheet — remove with RestaurantV1. */

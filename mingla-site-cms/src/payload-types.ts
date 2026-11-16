@@ -239,7 +239,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search') | null;
+            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hero';
@@ -269,7 +269,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'prose') | null;
+            variant?: ('atelier' | 'prose' | 'manifesto') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'rich_text';
@@ -380,7 +380,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'photo-card') | null;
+            variant?: ('atelier' | 'photo-card' | 'poster') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_grid';
@@ -429,7 +429,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'neutral') | null;
+            variant?: ('atelier' | 'neutral' | 'columns') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_board';
@@ -560,7 +560,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'mosaic') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'gallery';
@@ -591,7 +591,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'neutral') | null;
+            variant?: ('atelier' | 'neutral' | 'split') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hours_location';
@@ -629,7 +629,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'quote-wall') | null;
+            variant?: ('atelier' | 'quote-wall' | 'rail') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'testimonials';
@@ -650,7 +650,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'accordion-columns') | null;
+            variant?: ('atelier' | 'accordion-columns' | 'split') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'faq';
@@ -683,7 +683,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'neutral') | null;
+            variant?: ('atelier' | 'neutral' | 'ticker') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'marquee';
@@ -880,7 +880,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'ledger') | null;
+            variant?: ('neutral' | 'ledger' | 'ledger-count') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_history';
@@ -933,7 +933,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'card') | null;
+            variant?: ('neutral' | 'card' | 'photo') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'newsletter_signup';
@@ -1270,6 +1270,10 @@ export interface Navigation {
    * Text shown in the header when you have no logo.
    */
   wordmark?: string | null;
+  /**
+   * The header layout. Leave empty for the design's own header.
+   */
+  header_variant?: ('glass' | 'center' | 'pill') | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1292,6 +1296,10 @@ export interface Footer {
         id?: string | null;
       }[]
     | null;
+  /**
+   * The footer layout. Leave empty for the design's own footer.
+   */
+  footer_variant?: ('giant' | 'columns') | null;
   tagline_lines?:
     | {
         text: string;
@@ -2333,6 +2341,7 @@ export interface NavigationSelect<T extends boolean = true> {
         url?: T;
       };
   wordmark?: T;
+  header_variant?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -2354,6 +2363,7 @@ export interface FooterSelect<T extends boolean = true> {
         href?: T;
         id?: T;
       };
+  footer_variant?: T;
   tagline_lines?:
     | T
     | {

@@ -9,7 +9,7 @@ import { isFontFamilyName, type FontAsset } from "../../contracts/generated/font
  * a metric-matched "<Family> Fallback" face over a local system font so the
  * page does not jump when the real face arrives. A visitor's browser never
  * contacts Google. The display and body faces a first screen needs (regular
- * and bold, latin) are preloaded.
+ * latin, #4453: at most two files) are preloaded.
  *
  * Inside a private preview the font URLs carry the preview key, so a draft's
  * new font can load before it is ever published (the route checks the key).
@@ -53,12 +53,12 @@ export function fontFacesCss(artifact: ArtifactV2, previewKey?: string): string 
   return rules.join("\n");
 }
 
-/** The files worth preloading: display and body, regular and bold, latin. */
+/** The files worth preloading: display and body regular, latin (#4453 §3.6: at most 2 files). */
 export function preloadDigests(artifact: ArtifactV2): string[] {
   const out = new Set<string>();
   for (const slot of [artifact.fonts.display, artifact.fonts.body]) {
     if (slot.source !== "google") continue;
-    for (const wanted of [400, 700]) {
+    for (const wanted of [400]) {
       const faces = artifact.font_assets.filter((asset) =>
         asset.family === slot.family && asset.style === "normal" && asset.unicode_range.startsWith("U+0000")
       );

@@ -1,5 +1,6 @@
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
-import { fontStack, type FontSlot } from "../../contracts/generated/fontSlots.ts";
+import { fontStack, labelSlot, type FontSlot } from "../../contracts/generated/fontSlots.ts";
+import { findCatalogFont } from "../../contracts/generated/fontCatalog.ts";
 import { tokenCssDeclarations } from "../../contracts/generated/tokens.ts";
 
 /*
@@ -7,7 +8,7 @@ import { tokenCssDeclarations } from "../../contracts/generated/tokens.ts";
  *
  * Replaces SiteTheme for v2: every colour the design stylesheet uses is a
  * `--c-*` property set here from the artifact's explicit values, and the type
- * families are `--font-display` / `--font-body` / `--font-accent`. Nothing is
+ * families are `--font-display` / `--font-body` / `--font-accent` / `--font-label` (#4453). Nothing is
  * derived at request time and nothing is "corrected": the owner's values are
  * emitted exactly. Values are re-validated at emission (tokens.ts) because
  * this is interpolated into a style element.
@@ -26,6 +27,9 @@ export function tokenStyleCss(artifact: ArtifactV2): string {
   if (artifact.fonts.accent) {
     declarations.push(`--font-accent:${fontStack(artifact.fonts.accent, categoryOf(artifact, artifact.fonts.accent))}`);
   }
+  // #4453 — the label face (labels, dates, prices); a design without one sets labels in the body face.
+  const label = labelSlot(artifact.fonts);
+  declarations.push(`--font-label:${fontStack(label, label === artifact.fonts.body ? categoryOf(artifact, label) : (findCatalogFont(label.family)?.category ?? categoryOf(artifact, label)))}`);
   return `:root{${declarations.join(";")}}`;
 }
 

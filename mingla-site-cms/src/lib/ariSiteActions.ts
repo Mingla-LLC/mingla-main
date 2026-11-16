@@ -32,7 +32,7 @@ import {
 } from "../contracts/generated/ariToolSchemas.ts";
 import { BLOCK_CATALOG, isBlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
 import { buildClaimEvidence, claimSentence, unbackedClaims, type ClaimOffering } from "../contracts/generated/claims.ts";
-import { designFor, designFontSlots, DESIGNS, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
+import { ariDesignVariants, designFor, designFontSlots, DESIGNS, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { assertOwnerTokenOverrides, resolveTokens, type OwnerTokenOverrides } from "../contracts/generated/tokens.ts";
 import { nearestPassingShade, readabilityWarnings, warningSentence } from "../contracts/generated/readability.ts";
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
@@ -599,8 +599,9 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
       if (!Number.isInteger(index) || !block) refuse("VALIDATION_FAILED", { problems: ["block_index is not a block on that page"] });
       const type = String(block.blockType);
       const design = siteDesign(await currentSettings(ctx));
-      if (!isBlockType(type) || !DESIGNS[design].variants[type].includes(String(args.variant))) {
-        refuse("VARIANT_NOT_IN_DESIGN", { variants: isBlockType(type) ? [...DESIGNS[design].variants[type]] : [] });
+      // #4453 — Ari offers only the layouts it may choose (shared ones wait for PR 7).
+      if (!isBlockType(type) || !ariDesignVariants(DESIGNS[design], type).includes(String(args.variant))) {
+        refuse("VARIANT_NOT_IN_DESIGN", { variants: isBlockType(type) ? ariDesignVariants(DESIGNS[design], type) : [] });
       }
       block.variant = String(args.variant);
       const previous = page.revision;

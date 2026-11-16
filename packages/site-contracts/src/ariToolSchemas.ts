@@ -25,8 +25,8 @@
  *     write (ARI_EXCLUDED_FIELDS, each with its reason).
  */
 import { BLOCK_CATALOG, BLOCK_TYPES, type BlockType, type FieldSpec } from "./blocks.ts";
-import { DESIGN_KEYS, DESIGNS, type DesignKey } from "./designs.ts";
-import { FONT_SLOT_KEYS } from "./fontSlots.ts";
+import { ariDesignVariants, DESIGN_KEYS, DESIGNS, type DesignKey } from "./designs.ts";
+import { OWNER_FONT_SLOT_KEYS } from "./fontSlots.ts";
 import { FORBIDDEN_TEXT, isSafeHref, UUID_RE } from "./safety.ts";
 import {
   BUTTON_SHAPES,
@@ -140,7 +140,7 @@ function fieldSchema(spec: FieldSpec, path: string): JsonSchema | null {
 
 /** Every layout any design draws for a block type (the site's own design narrows it on save). */
 export function ariVariants(type: BlockType): string[] {
-  return [...new Set(DESIGN_KEYS.flatMap((key) => DESIGNS[key].variants[type]))];
+  return [...new Set(DESIGN_KEYS.flatMap((key) => ariDesignVariants(DESIGNS[key], type)))];
 }
 
 /**
@@ -151,7 +151,7 @@ export function blockSchema(type: BlockType, design?: DesignKey): JsonSchema {
   const spec = BLOCK_CATALOG[type];
   const properties: Record<string, JsonSchema> = {
     type: { type: "string", enum: [type] },
-    variant: { type: "string", enum: design ? [...DESIGNS[design].variants[type]] : ariVariants(type), description: "Layout" },
+    variant: { type: "string", enum: design ? ariDesignVariants(DESIGNS[design], type) : ariVariants(type), description: "Layout" },
   };
   const required = ["type", "variant"];
   for (const [key, field] of Object.entries(spec.fields) as Array<[string, FieldSpec]>) {
@@ -235,7 +235,7 @@ export function fontChoicesSchema(): JsonSchema {
   return {
     type: "object",
     additionalProperties: false,
-    properties: Object.fromEntries(FONT_SLOT_KEYS.map((slot) => [slot, { ...choice, description: `The ${slot} font` }])),
+    properties: Object.fromEntries(OWNER_FONT_SLOT_KEYS.map((slot) => [slot, { ...choice, description: `The ${slot} font` }])),
   };
 }
 

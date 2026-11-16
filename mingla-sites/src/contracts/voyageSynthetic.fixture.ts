@@ -29,8 +29,10 @@ export function voyageSyntheticArtifact(): ArtifactV2 {
   artifact.tokens = resolveTokens(VOYAGE.tokens, {});
   artifact.fonts = structuredClone(VOYAGE.fonts);
   artifact.font_assets = [
-    { family: "Plus Jakarta Sans", weight: 400, style: "normal", unicode_range: "U+0000-00FF", digest: "e".repeat(64), bytes: 1000 },
-    { family: "Just Another Hand", weight: 400, style: "normal", unicode_range: "U+0000-00FF", digest: "f".repeat(64), bytes: 1000 },
+    // #4453 D3 — voyage's default faces are the gallery's (display, body, label).
+    { family: "Bricolage Grotesque", weight: 800, style: "normal", unicode_range: "U+0000-00FF", digest: "e".repeat(64), bytes: 1000 },
+    { family: "DM Sans", weight: 400, style: "normal", unicode_range: "U+0000-00FF", digest: "f".repeat(64), bytes: 1000 },
+    { family: "JetBrains Mono", weight: 500, style: "normal", unicode_range: "U+0000-00FF", digest: "d".repeat(64), bytes: 1000 },
   ];
   artifact.font_fallbacks = [];
   artifact.brand = { ...artifact.brand, display_name: "Fixture & Friends", short_description: "Invented for tests." };

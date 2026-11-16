@@ -18,6 +18,7 @@ export function SiteDocument({ artifact, page, previewKey, live, forms, entry, s
   const { Page } = design;
   return (
     <>
+      {design.sharedStylesheet ? <link rel="stylesheet" href={design.sharedStylesheet} precedence="design-shared" /> : null}
       <link rel="stylesheet" href={design.stylesheet(artifact.design.version)} precedence="design" />
       <TokenStyle artifact={artifact} />
       <FontFaces artifact={artifact} previewKey={previewKey} />
