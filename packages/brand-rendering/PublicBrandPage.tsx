@@ -129,6 +129,7 @@ import {
   OfferingGlassBar,
 } from "@mingla/offering-rendering/OfferingGlassBar";
 import { OfferingFactRows } from "@mingla/offering-rendering/OfferingFactRows";
+import { BrandOfferingCard } from "./BrandOfferingCard";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 
 // #3426 — "past" is the date-decided Past tab (all four kinds). Happening now is
@@ -287,6 +288,14 @@ const OFFERING_KIND_LABEL: Record<PublicBrandUpcoming["offeringType"], string> =
   rsvp: "RSVP",
   trip: "Trip",
   experience: "Experience",
+};
+
+// issue #4420 wave 2 (D-B3) — the tonal pill's label, per kind.
+const OFFERING_KIND_ACTION: Record<PublicBrandUpcoming["offeringType"], string> = {
+  event: "View tickets",
+  rsvp: "View RSVP",
+  trip: "View trip",
+  experience: "Book a time",
 };
 
 const formatUpcomingDateLine = (startsAt: string | null): string => {
@@ -1479,93 +1488,43 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
   const action = isRsvp ? "View RSVP" : "View tickets";
   const TypeIcon = isRsvp ? CalendarCheck : Ticket;
   return (
-    <Pressable
+    <BrandOfferingCard
       onPress={() => onPress(event)}
       onFocus={() => onFocusEvent?.(event.id)}
       onBlur={() => onFocusEvent?.("")}
-      accessibilityRole="button"
       accessibilityLabel={`${[
         isRsvp ? `Open RSVP event ${event.name}` : `Open event ${event.name}`,
         ...(isRsvp ? [] : ["Tickets"]),
         event.dateLine,
         ...(price !== null ? [price] : []),
       ].join(". ")}.`}
-      style={({ pressed }) => [
-        styles.oCard,
-        surface.card,
-        isDesktop && styles.oCardDesktop,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <CoverBlock
-        theme={theme}
-        palette={palette}
-        hue={event.coverHue}
-        mediaUrl={event.coverMediaUrl}
-        mediaType={event.coverMediaType}
-      />
-      <View style={styles.oCardBody}>
-        <View style={styles.eventTypeRow}>
-          <AccentLucideIcon Icon={TypeIcon} size={14} palette={palette} />
-          <Text style={[styles.eventTypeLabel, { color: themeTextAccent(palette) }]}>
-            {isRsvp ? "RSVP" : "TICKETS"}
-          </Text>
-        </View>
-        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
-          {event.dateLine}
-        </Text>
-        <Text
-          style={[
-            styles.oCardTitle,
-            { ...themeBoldFace(theme), color: palette.primaryText },
-          ]}
-          numberOfLines={2}
-        >
-          {event.name.length > 0 ? event.name : "Untitled event"}
-        </Text>
-        {event.venueName !== null && event.venueName.length > 0 ? (
-          <Text
-            style={[styles.oCardMeta, { color: palette.tertiaryText }]}
-            numberOfLines={1}
-          >
-            {event.venueName}
-          </Text>
-        ) : event.format === "online" || event.format === "hybrid" ? (
-          <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
-            Online event
-          </Text>
-        ) : null}
-        {/* issue #4420 wave 2 (D-B3) — the price and a small TONAL pill on
-            one row; the page's one gradient is the Follow button. */}
-        <View style={styles.cardActionRow}>
-          {price !== null ? (
-            <View style={[styles.oCardPriceRow, styles.cardActionPrice]}>
-              <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-                {price}
-              </Text>
-              {salePrice !== null && listPrice !== null ? (
-                <Text
-                  style={[styles.oCardListPrice, { color: palette.tertiaryText }]}
-                  accessibilityLabel={`Regular price ${listPrice}`}
-                >
-                  {listPrice}
-                </Text>
-              ) : null}
-            </View>
-          ) : (
-            <View style={styles.cardActionPrice} />
-          )}
-          <View
-            style={[styles.buyPill, { backgroundColor: palette.accentWash }]}
-            testID="issue-4420-brand-card-pill"
-          >
-            <Text style={[styles.buyPillLabel, { color: palette.primaryText }]}>
-              {action}
-            </Text>
-          </View>
-        </View>
-      </View>
-    </Pressable>
+      cover={
+        <CoverBlock
+          theme={theme}
+          palette={palette}
+          hue={event.coverHue}
+          mediaUrl={event.coverMediaUrl}
+          mediaType={event.coverMediaType}
+        />
+      }
+      kind={{ label: isRsvp ? "RSVP" : "Tickets", Icon: TypeIcon }}
+      dateLine={event.dateLine}
+      title={event.name.length > 0 ? event.name : "Untitled event"}
+      meta={
+        event.venueName !== null && event.venueName.length > 0
+          ? event.venueName
+          : event.format === "online" || event.format === "hybrid"
+            ? "Online event"
+            : null
+      }
+      price={price}
+      listPrice={salePrice !== null && listPrice !== null ? listPrice : null}
+      actionLabel={action}
+      isDesktop={isDesktop}
+      palette={palette}
+      theme={theme}
+      surfaceCard={surface.card}
+    />
   );
 };
 
@@ -1657,82 +1616,37 @@ const TripMiniCard: React.FC<{
           : null;
 
   return (
-    <Pressable
+    <BrandOfferingCard
       onPress={() => onPress(trip)}
-      accessibilityRole="button"
       accessibilityLabel={`Open trip ${trip.title}`}
-      style={({ pressed }) => [
-        styles.oCard,
-        surface.card,
-        isDesktop && styles.oCardDesktop,
-        past && styles.oCardPast,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <CoverBlock
-        theme={theme}
-        palette={palette}
-        hue={hashHueFromString(trip.id)}
-        mediaUrl={trip.coverMediaUrl}
-        mediaType={trip.coverMediaType}
-      />
-      <View style={styles.oCardBody}>
-        {dateLine.length > 0 ? (
-          <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
-            {dateLine}
-          </Text>
-        ) : null}
-        <Text
-          style={[
-            styles.oCardTitle,
-            { ...themeBoldFace(theme), color: palette.primaryText },
-          ]}
-          numberOfLines={2}
-        >
-          {trip.title.length > 0 ? trip.title : "Untitled trip"}
-        </Text>
-        {trip.destinationText !== null && trip.destinationText.length > 0 ? (
-          <Text
-            style={[styles.oCardMeta, { color: palette.tertiaryText }]}
-            numberOfLines={1}
-          >
-            {trip.destinationText}
-          </Text>
-        ) : null}
-        <View style={styles.oCardFoot}>
-          {price !== null ? (
-            <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-              {price}
-            </Text>
-          ) : (
-            <View />
-          )}
-          {trip.bookingsClosed ? (
-            <View style={[styles.badge, surface.cardStrong]}>
-              <Text
-                style={[styles.badgeLabel, { color: palette.secondaryText }]}
-              >
-                Booking closed
-              </Text>
-            </View>
-          ) : spotsLabel !== null ? (
-            <View
-              style={[
-                styles.badge,
-                {
-                  backgroundColor: palette.accentWash,
-                  borderColor: palette.panelBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.badgeLabel, { color: palette.primaryText }]}>
-                {spotsLabel}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-    </Pressable>
+      cover={
+        <CoverBlock
+          theme={theme}
+          palette={palette}
+          hue={hashHueFromString(trip.id)}
+          mediaUrl={trip.coverMediaUrl}
+          mediaType={trip.coverMediaType}
+        />
+      }
+      kind={{ label: "Trip" }}
+      scarcity={
+        trip.bookingsClosed
+          ? { label: "Booking closed", tone: "glass" }
+          : spotsLabel === null
+            ? null
+            : { label: spotsLabel, tone: spotsLabel === "Sold out" ? "glass" : "paper" }
+      }
+      dateLine={dateLine.length > 0 ? dateLine : null}
+      title={trip.title.length > 0 ? trip.title : "Untitled trip"}
+      meta={trip.destinationText}
+      price={price}
+      actionLabel="View trip"
+      past={past}
+      isDesktop={isDesktop}
+      palette={palette}
+      theme={theme}
+      surfaceCard={surface.card}
+    />
   );
 };
 
@@ -1785,47 +1699,29 @@ const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
   const price = offeringPriceLabel(item);
   const kindLabel = OFFERING_KIND_LABEL[item.offeringType];
   return (
-    <Pressable
+    <BrandOfferingCard
       onPress={() => onPress(item)}
-      accessibilityRole="button"
       accessibilityLabel={`Open ${kindLabel} ${item.name}`}
-      style={({ pressed }) => [
-        styles.oCard,
-        surface.card,
-        isDesktop && styles.oCardDesktop,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <CoverBlock
-        theme={theme}
-        palette={palette}
-        hue={hashHueFromString(item.offeringId)}
-        mediaUrl={item.coverMediaUrl}
-        mediaType={item.coverMediaType}
-      />
-      <View style={styles.oCardBody}>
-        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
-          {formatUpcomingDateLine(item.startsAt)}
-        </Text>
-        <Text
-          style={[
-            styles.oCardTitle,
-            { ...themeBoldFace(theme), color: palette.primaryText },
-          ]}
-          numberOfLines={2}
-        >
-          {item.name.length > 0 ? item.name : "Untitled offering"}
-        </Text>
-        <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
-          {kindLabel}
-        </Text>
-        {price !== null ? (
-          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-            {price}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
+      cover={
+        <CoverBlock
+          theme={theme}
+          palette={palette}
+          hue={hashHueFromString(item.offeringId)}
+          mediaUrl={item.coverMediaUrl}
+          mediaType={item.coverMediaType}
+        />
+      }
+      kind={{ label: item.offeringType === "event" ? "Tickets" : kindLabel }}
+      dateLine={formatUpcomingDateLine(item.startsAt)}
+      title={item.name.length > 0 ? item.name : "Untitled offering"}
+      meta={null}
+      price={price}
+      actionLabel={OFFERING_KIND_ACTION[item.offeringType]}
+      isDesktop={isDesktop}
+      palette={palette}
+      theme={theme}
+      surfaceCard={surface.card}
+    />
   );
 };
 
@@ -1948,52 +1844,35 @@ const SectionMiniCard: React.FC<SectionCardProps> = ({
   const kindLabel = OFFERING_KIND_LABEL[card.kind];
   const dateLine = sectionDateLine(card);
   return (
-    <Pressable
+    <BrandOfferingCard
       onPress={() => card.open(callbacks)}
-      accessibilityRole="button"
       accessibilityLabel={`${[
         `Open ${kindLabel} ${card.name}`,
         dateLine,
         ...(card.priceLabel !== null ? [card.priceLabel] : []),
       ].join(". ")}.`}
       testID={`brand-section-card-${card.section}`}
-      style={({ pressed }: { pressed: boolean }) => [
-        styles.oCard,
-        surface.card,
-        isDesktop && styles.oCardDesktop,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <CoverBlock
-        theme={theme}
-        palette={palette}
-        hue={hashHueFromString(card.hueSeed)}
-        mediaUrl={card.coverMediaUrl}
-        mediaType={card.coverMediaType}
-      />
-      <View style={styles.oCardBody}>
-        <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
-          {dateLine}
-        </Text>
-        <Text
-          style={[
-            styles.oCardTitle,
-            { ...themeBoldFace(theme), color: palette.primaryText },
-          ]}
-          numberOfLines={2}
-        >
-          {card.name.length > 0 ? card.name : "Untitled offering"}
-        </Text>
-        <Text style={[styles.oCardMeta, { color: palette.tertiaryText }]}>
-          {kindLabel}
-        </Text>
-        {card.priceLabel !== null ? (
-          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-            {card.priceLabel}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
+      cover={
+        <CoverBlock
+          theme={theme}
+          palette={palette}
+          hue={hashHueFromString(card.hueSeed)}
+          mediaUrl={card.coverMediaUrl}
+          mediaType={card.coverMediaType}
+        />
+      }
+      kind={{ label: card.kind === "event" ? "Tickets" : kindLabel }}
+      dateLine={dateLine}
+      title={card.name.length > 0 ? card.name : "Untitled offering"}
+      meta={null}
+      price={card.priceLabel}
+      actionLabel={card.section === "past" ? null : OFFERING_KIND_ACTION[card.kind]}
+      past={card.section === "past"}
+      isDesktop={isDesktop}
+      palette={palette}
+      theme={theme}
+      surfaceCard={surface.card}
+    />
   );
 };
 
@@ -2170,56 +2049,35 @@ const ExperienceMiniCard: React.FC<{
 }> = ({ experience, theme, palette, surface, isDesktop, onPress }) => {
   const price = offeringPriceLabel(experience);
   return (
-    <Pressable
+    <BrandOfferingCard
       onPress={() => onPress?.(experience)}
-      accessibilityRole="button"
       accessibilityLabel={`Open experience ${experience.name}`}
-      style={({ pressed }) => [
-        styles.oCard,
-        surface.card,
-        isDesktop && styles.oCardDesktop,
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <CoverBlock
-        theme={theme}
-        palette={palette}
-        hue={hashHueFromString(experience.experienceId)}
-        mediaUrl={experience.coverMediaUrl}
-        // ORCH-1155 — render the experience's REAL cover media type (video/gif),
-        // not the prior hardcoded "image". (SC-9 card.)
-        mediaType={experience.coverMediaType}
-      />
-      <View style={styles.oCardBody}>
-        {experience.nextOccurrenceAt !== null ? (
-          <Text style={[styles.oCardDate, { color: themeTextAccent(palette) }]}>
-            {formatUpcomingDateLine(experience.nextOccurrenceAt)}
-          </Text>
-        ) : null}
-        <Text
-          style={[
-            styles.oCardTitle,
-            { ...themeBoldFace(theme), color: palette.primaryText },
-          ]}
-          numberOfLines={2}
-        >
-          {experience.name.length > 0 ? experience.name : "Untitled experience"}
-        </Text>
-        {experience.venueText !== null && experience.venueText.length > 0 ? (
-          <Text
-            style={[styles.oCardMeta, { color: palette.tertiaryText }]}
-            numberOfLines={1}
-          >
-            {experience.venueText}
-          </Text>
-        ) : null}
-        {price !== null ? (
-          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-            {price}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
+      cover={
+        <CoverBlock
+          theme={theme}
+          palette={palette}
+          hue={hashHueFromString(experience.experienceId)}
+          mediaUrl={experience.coverMediaUrl}
+          // ORCH-1155 — render the experience's REAL cover media type (video/gif),
+          // not the prior hardcoded "image". (SC-9 card.)
+          mediaType={experience.coverMediaType}
+        />
+      }
+      kind={{ label: "Experience" }}
+      dateLine={
+        experience.nextOccurrenceAt !== null
+          ? formatUpcomingDateLine(experience.nextOccurrenceAt)
+          : null
+      }
+      title={experience.name.length > 0 ? experience.name : "Untitled experience"}
+      meta={experience.venueText}
+      price={price}
+      actionLabel="Book a time"
+      isDesktop={isDesktop}
+      palette={palette}
+      theme={theme}
+      surfaceCard={surface.card}
+    />
   );
 };
 
@@ -2681,111 +2539,16 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: "center",
   },
-  // ---- offering card ----
-  oCard: {
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  oCardDesktop: {
-    width: "48%",
-  },
-  oCardPast: {
-    opacity: 0.62,
-  },
   cardPressed: {
     opacity: 0.78,
   },
+  // issue #4420 — the cover fills BrandOfferingCard's 16:10 photo box.
   oCardCover: {
-    width: "100%",
-    height: 184,
+    ...StyleSheet.absoluteFillObject,
   },
   oCardCoverShade: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.12)",
-  },
-  oCardBody: {
-    padding: 14,
-    gap: 4,
-  },
-  eventTypeRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 6,
-  },
-  eventTypeLabel: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-  },
-  oCardDate: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  oCardTitle: {
-    fontSize: 17,
-    fontWeight: "800",
-    marginTop: 1,
-  },
-  oCardMeta: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  oCardFoot: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 10,
-  },
-  oCardPrice: {
-    fontSize: 14,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-  oCardPriceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  oCardListPrice: {
-    fontSize: 13,
-    textDecorationLine: "line-through",
-  },
-  cardActionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 12,
-  },
-  cardActionPrice: {
-    flex: 1,
-    minWidth: 0,
-    marginTop: 0,
-  },
-  buyPill: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 36,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    flexShrink: 0,
-  },
-  buyPillLabel: {
-    fontSize: 13.5,
-    fontWeight: "800",
-  },
-  badge: {
-    paddingVertical: 4,
-    paddingHorizontal: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  badgeLabel: {
-    fontSize: 11,
-    fontWeight: "700",
   },
   // ---- empty ----
   emptyWrap: {
