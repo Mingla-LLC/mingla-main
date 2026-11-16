@@ -145,7 +145,12 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     // token variable, external ids or provider extra.
     const projection = planEndpoint.slice(
       planEndpoint.indexOf("const hostConnections = connectionRows.map"),
-      planEndpoint.indexOf("const rawCountry"),
+      // #4238 W1 added host_budget_guidance (with its own rawCountry) above
+      // host_setup: search from the projection, not the top of the file.
+      planEndpoint.indexOf(
+        "const rawCountry",
+        planEndpoint.indexOf("const hostConnections = connectionRows.map"),
+      ),
     );
     expect(projection).toContain("platform: row.platform");
     expect(projection).toContain("sales:");
