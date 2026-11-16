@@ -303,7 +303,8 @@ Deno.test("#2829 W9b create_site_draft provisions, then composes from the plan, 
 Deno.test("#2829 W9b Core's evidence is its own feed and brand row; unreadable → none (fail closed)", async () => {
   const feed = { offerings: [{ id: OP, kind: "trip", title: "Bali Escape", slug: "bali", min_price_minor: 120000, currency: "GBP", capacity: 12, spots_left: 4, public_url: "x", cover: { path: "secret" } }] };
   const evidence = await siteEvidence(async () => ({ data: feed, error: null }), async () => ({ id: BRAND, name: "Y&S", description: "Since 2019", city: "London" }), SITE, BRAND);
-  assertEquals(evidence?.brand, { id: BRAND, name: "Y&S", description: "Since 2019", city: "London" });
+  // #4453 PR 2 — the brand's slug and contact details ride along (booking lock); absent here, so null.
+  assertEquals(evidence?.brand, { id: BRAND, name: "Y&S", description: "Since 2019", city: "London", slug: null, contact_email: null, contact_phone: null });
   assertEquals(evidence?.offerings[0]?.title, "Bali Escape");
   assert(!("cover" in (evidence?.offerings[0] ?? {})) && !("public_url" in (evidence?.offerings[0] ?? {})), "evidence carries more than the truth check needs");
   assertEquals(await siteEvidence(async () => ({ data: null, error: { message: "down" } }), async () => ({ id: BRAND }), SITE, BRAND), null);

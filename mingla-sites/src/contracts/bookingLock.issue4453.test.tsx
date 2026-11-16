@@ -61,6 +61,8 @@ describe("#4453 isMinglaActionHref (SC-L1)", () => {
     ["https://host.usemingla.com/checkout/22222222-2222-4222-8222-222222222222", "other_brand"],
     ["https://www.opentable.com/r/young-and-stamped", "outside_mingla"],
     ["https://calendly.com/young-and-stamped", "outside_mingla"],
+    ["https://evil.example/t/young-and-stamped/lagos-weekend", "outside_mingla"],
+    ["https://usemingla.com/t/young-and-stamped/lagos-weekend", "outside_mingla"],
     ["https://wa.me/2348012345678", "outside_mingla"],
     ["https://young-and-stamped.sites.usemingla.com/trips", "outside_mingla"],
     ["https://host.usemingla.com/account/settings", "outside_mingla"],
