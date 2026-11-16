@@ -164,3 +164,74 @@ export async function cachedSalesReadiness(
   readinessCache.set(key, { at: now, value });
   return await value;
 }
+
+/** #4238 item 3: platforms with a sign-ups optimisation path (= adHostGoal). */
+export const HOST_SIGNUPS_PLATFORMS = ["meta", "snapchat"] as const;
+
+/**
+ * #4238 item 3: whether an account can optimise a Host ad for sign-ups.
+ * Meta needs its dataset with a live signal (free bookings fire
+ * CompleteRegistration on it); Snapchat needs its pixel (create re-checks the
+ * live pixel signal for PIXEL_SIGNUP). Every other app is not supported.
+ * Read-only; fails closed like salesReadiness.
+ */
+export async function signupsReadiness(
+  conn: AdConnectionRow,
+  probes: SalesSignalProbes = liveSalesSignalProbes,
+  timeoutMs = 4000,
+): Promise<SalesReadiness> {
+  try {
+    if (conn.platform === "meta") {
+      if (!extraString(conn, "dataset_id")) {
+        return { ready: false, reason: "no_pixel" };
+      }
+      const hasSignal = await withTimeout(
+        probes.metaHasSignal(conn),
+        timeoutMs,
+      );
+      return hasSignal === true
+        ? { ready: true, reason: "ready" }
+        : { ready: false, reason: "waiting_for_sales" };
+    }
+    if (conn.platform === "snapchat") {
+      return extraString(conn, "pixel_id")
+        ? { ready: true, reason: "ready" }
+        : { ready: false, reason: "no_pixel" };
+    }
+    return { ready: false, reason: "not_supported" };
+  } catch (err) {
+    console.warn("[ad-sales-readiness] sign-up signal unreadable", {
+      platform: conn.platform,
+      error: err instanceof Error ? err.name : "unknown",
+    });
+    return UNKNOWN;
+  }
+}
+
+/** signupsReadiness with the same in-isolate cache rules as sales. */
+export async function cachedSignupsReadiness(
+  conn: AdConnectionRow,
+  options: {
+    probes?: SalesSignalProbes;
+    now?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<SalesReadiness> {
+  const now = options.now ?? Date.now();
+  const key = `${conn.id}:${conn.platform}:signups`;
+  const hit = readinessCache.get(key);
+  if (hit) {
+    const value = await hit.value;
+    const ttl = value.reason === "unknown"
+      ? SALES_READINESS_UNKNOWN_TTL_MS
+      : SALES_READINESS_TTL_MS;
+    if (now - hit.at < ttl) return value;
+  }
+  const value = signupsReadiness(
+    conn,
+    options.probes ?? liveSalesSignalProbes,
+    options.timeoutMs ?? 4000,
+  );
+  readinessCache.set(key, { at: now, value });
+  return await value;
+}

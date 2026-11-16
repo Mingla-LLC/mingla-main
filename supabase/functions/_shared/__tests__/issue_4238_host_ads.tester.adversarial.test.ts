@@ -693,6 +693,8 @@ Deno.test("#4238 ADV-F host_setup returns only consumer accounts, projected, wit
         "id",
         "platform",
         "sales",
+        // #4238 W1 item 3: sign-ups readiness (a ready/reason pair, no ids).
+        "signups",
         "status",
         "updated_at",
       ],

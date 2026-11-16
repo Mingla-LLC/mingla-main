@@ -73,9 +73,13 @@ import {
 import { HOST_AD_LANE, PLATFORMS } from "../_shared/adChannelCore.ts";
 import {
   hostAllocationLaneError,
+  hostPageIsAllFree,
   validateHostOptimization,
 } from "../_shared/adHostGoal.ts";
-import { cachedSalesReadiness } from "../_shared/adSalesReadiness.ts";
+import {
+  cachedSalesReadiness,
+  cachedSignupsReadiness,
+} from "../_shared/adSalesReadiness.ts";
 import { hostMinimumPayCents } from "../_shared/adMoney.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
@@ -208,8 +212,80 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
  * `<goal>_daily_minimum_pay_cents` is the same minimum in what the Host
  * pays (F-1: grossed up by HOST_FEE_RATIO through hostMinimumPayCents).
  */
+/**
+ * #4238 item 3: the sellable tiers of an event page (the same tier predicates
+ * as ad_offering_destination_by_id, without the sale window so "not on sale
+ * yet" still counts). No event (a brand or venue page): no tiers.
+ */
+export async function loadHostOfferingTiers(
+  db: Db,
+  eventId: unknown,
+): Promise<
+  | {
+    ok: true;
+    rows: { is_free: unknown; price_cents: unknown; currency: unknown }[];
+  }
+  | { ok: false; error: { message?: string; code?: string } }
+> {
+  if (typeof eventId !== "string" || !UUID_RE.test(eventId)) {
+    return { ok: true, rows: [] };
+  }
+  const { data, error } = await db.from("ticket_types")
+    .select("is_free,price_cents,currency")
+    .eq("event_id", eventId)
+    .is("deleted_at", null)
+    .eq("is_hidden", false)
+    .eq("is_disabled", false)
+    .eq("available_online", true)
+    .eq("password_protected", false);
+  if (error) return { ok: false, error };
+  return {
+    ok: true,
+    rows: (data ?? []) as {
+      is_free: unknown;
+      price_cents: unknown;
+      currency: unknown;
+    }[],
+  };
+}
+
+/**
+ * #4238 item 3 / U-3: live readiness for each conversion goal the plan asks
+ * for (the client mirror is never trusted). Only apps on sales or sign-ups
+ * are read; each read fails closed to "not ready".
+ */
+async function hostGoalReadiness(
+  db: Db,
+  allocations: { platform: string; connection_id: string }[],
+  requestedMap: unknown,
+): Promise<Record<string, { sales?: boolean; signups?: boolean }>> {
+  const map = asRecord(requestedMap) ?? {};
+  const wanted = allocations.filter((row) =>
+    map[row.platform] === "sales" || map[row.platform] === "signups"
+  );
+  const out: Record<string, { sales?: boolean; signups?: boolean }> = {};
+  if (wanted.length === 0) return out;
+  const { data, error } = await db.from("ad_connections").select("*")
+    .in("id", wanted.map((row) => row.connection_id));
+  if (error) {
+    console.error("[ad-plan] goal readiness connections unavailable");
+    return out;
+  }
+  for (const row of wanted) {
+    const conn = ((data ?? []) as AdConnectionRow[]).find((item) =>
+      item.id === row.connection_id
+    );
+    if (!conn) continue;
+    const readiness = map[row.platform] === "sales"
+      ? await cachedSalesReadiness(conn)
+      : await cachedSignupsReadiness(conn);
+    out[row.platform] = { [String(map[row.platform])]: readiness.ready };
+  }
+  return out;
+}
+
 /** The Host goals setup.minimums carries a minimum for. */
-const HOST_MINIMUM_GOALS = ["visits", "sales"] as const;
+const HOST_MINIMUM_GOALS = ["visits", "sales", "signups"] as const;
 
 export async function hostDailyMinimums(
   db: Db,
@@ -1468,6 +1544,10 @@ export async function handleAdPlan(
     const readiness = await Promise.allSettled(
       connectionRows.map((row) => cachedSalesReadiness(row)),
     );
+    // #4238 item 3: the same, for the sign-ups goal (free and RSVP pages).
+    const signupReadiness = await Promise.allSettled(
+      connectionRows.map((row) => cachedSignupsReadiness(row)),
+    );
     const hostConnections = connectionRows.map((row, index) => {
       const settled = readiness[index];
       return {
@@ -1480,6 +1560,11 @@ export async function handleAdPlan(
           null,
         sales: settled.status === "fulfilled"
           ? settled.value
+          : { ready: false, reason: "unknown" },
+        signups: signupReadiness[index].status === "fulfilled"
+          ? (signupReadiness[index] as PromiseFulfilledResult<
+            { ready: boolean; reason: string }
+          >).value
           : { ready: false, reason: "unknown" },
       };
     });
@@ -2408,16 +2493,40 @@ export async function handleAdPlan(
     if (plan.owner_kind === "host") {
       // #4238: the Host goal lives inside the plan hash. Sales only where the
       // platform has a website-sales path and the page sells tickets.
+      // #4238 item 3: free events can't pick ticket sales; RSVP and all-free
+      // pages may optimise for sign-ups; every conversion app is re-checked
+      // live; a goal that falls back to visits must be acknowledged.
+      const offeringTiers = await loadHostOfferingTiers(
+        db,
+        resolvedDestination.event_id,
+      );
+      if (!offeringTiers.ok) return databaseFailure(offeringTiers.error);
       const optimization = validateHostOptimization(
         canonicalInput.optimization_by_platform,
         platforms,
         resolvedDestination,
+        {
+          allFree: hostPageIsAllFree(offeringTiers.rows),
+          ready: await hostGoalReadiness(
+            db,
+            normalized.rows.map((row) => ({
+              platform: String(row.platform),
+              connection_id: String(row.connection_id),
+            })),
+            canonicalInput.optimization_by_platform,
+          ),
+          requestedGoal: canonicalInput.optimization_goal,
+          acknowledgedFallback: canonicalInput.acknowledged_visits_fallback,
+        },
       );
       if (!optimization.ok) {
         return json({
           error: "plan_preflight_failed",
           detail: optimization.detail,
-        }, 422);
+          ...(optimization.platforms
+            ? { platforms: optimization.platforms }
+            : {}),
+        }, optimization.status ?? 422);
       }
       canonical.optimization_by_platform = optimization.map;
       // #4238 P0: an app that runs in none of the chosen countries is refused

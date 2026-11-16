@@ -1,5 +1,5 @@
 import { metaBudgetCategoryForBillingEvent } from "./adChannelCore.ts";
-import { hostAdGoalFields } from "./adHostGoal.ts";
+import { hostAdGoalFields, type HostAdOptimization } from "./adHostGoal.ts";
 import { AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY } from "./adMoney.ts";
 
 /**
@@ -99,7 +99,7 @@ export function reachCacheKey(input: unknown): string {
 export function providerDailyMinimumCents(
   platform: string,
   connection: { currency?: unknown; extra?: unknown },
-  optimization: "visits" | "sales",
+  optimization: HostAdOptimization,
 ): number | null {
   const currency = String(connection.currency ?? "").toUpperCase();
   if (currency !== "USD") return null;
@@ -144,13 +144,9 @@ export function paidSocialStagesApply(
 export function hostDailyMinimumCents(
   platform: string,
   connection: { currency?: unknown; extra?: unknown },
-  optimization: "visits" | "sales" | "signups",
+  optimization: HostAdOptimization,
 ): number | null {
-  return providerDailyMinimumCents(
-    platform,
-    connection,
-    optimization === "visits" ? "visits" : "sales",
-  );
+  return providerDailyMinimumCents(platform, connection, optimization);
 }
 
 /** The first allocation whose provider daily budget is under its app minimum. */
@@ -226,8 +222,9 @@ export function minimumsFromSetup(
   for (const raw of rows) {
     const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const platform = String(row.platform ?? "");
-    const value = goals[platform] === "sales"
-      ? row.sales_daily_minimum_cents
+    const goal = goals[platform];
+    const value = goal === "sales" || goal === "signups"
+      ? row[`${goal}_daily_minimum_cents`]
       : row.visits_daily_minimum_cents;
     if (platform && typeof value === "number") out[platform] = value;
   }

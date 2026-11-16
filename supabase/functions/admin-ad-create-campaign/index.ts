@@ -214,6 +214,7 @@ import {
 import { type Platform, resolveOwnerLane } from "../_shared/adChannelCore.ts";
 import {
   hostAdGoalFields,
+  hostMetaCustomEventType,
   hostGoalBodyError,
   hostOptimizationFor,
 } from "../_shared/adHostGoal.ts";
@@ -957,6 +958,9 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "lane_invalid" }, 400);
   }
 
+  // #4238 item 3: the Meta conversion event a Host goal optimises for
+  // (PURCHASE for sales, COMPLETE_REGISTRATION for sign-ups); null = Admin.
+  let hostMetaCustomEvent: "PURCHASE" | "COMPLETE_REGISTRATION" | null = null;
   if (requestedOwnerKind === "host") {
     let hostDestination;
     try {
@@ -1100,6 +1104,9 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     Object.assign(body, hostGoal);
+    hostMetaCustomEvent = hostOptimization
+      ? hostMetaCustomEventType(hostOptimization)
+      : null;
     // #4238 P1: the Host's button comes from the plan, mapped to this app's
     // own value; a client value is never used for a Host ad.
     const frozenCta = hostCanonical.call_to_action;
@@ -6084,7 +6091,7 @@ serve(async (req: Request): Promise<Response> => {
     ? extra.dataset_id.trim()
     : "";
   if (
-    objective === "OUTCOME_SALES" &&
+    (objective === "OUTCOME_SALES" || hostMetaCustomEvent !== null) &&
     optimizationGoal === "OFFSITE_CONVERSIONS" &&
     !metaDatasetId
   ) {
@@ -6191,12 +6198,14 @@ serve(async (req: Request): Promise<Response> => {
     optimizationGoal,
     billingEvent,
     targeting,
-    ...(objective === "OUTCOME_SALES" &&
-        optimizationGoal === "OFFSITE_CONVERSIONS"
+    // #4238 item 3 / I-4238-NO-PURCHASE-GOAL-WITHOUT-PURCHASE: a Host ad's
+    // conversion event follows its goal; Admin keeps PURCHASE on Sales.
+    ...(optimizationGoal === "OFFSITE_CONVERSIONS" &&
+        (hostMetaCustomEvent !== null || objective === "OUTCOME_SALES")
       ? {
         promotedObject: {
           pixel_id: metaDatasetId,
-          custom_event_type: "PURCHASE",
+          custom_event_type: hostMetaCustomEvent ?? "PURCHASE",
         },
       }
       : {}),

@@ -40,6 +40,7 @@ import {
 import { formatHostAdMoneyCents } from "./adMoneyFormat.ts";
 import {
   HOST_SALES_GOAL_PLATFORMS,
+  HOST_SIGNUPS_GOAL_PLATFORMS,
   hostPageSellsTickets,
 } from "./adHostGoal.ts";
 import {
@@ -4250,7 +4251,7 @@ const listAdAudiences = writeTool(
 // verified brand settlement currency and provider-account currency.
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales (optimize_for). Distinct from draft_campaign (Blast email/SMS).",
+  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales; a free event or RSVP page can optimise for sign-ups instead (optimize_for). Never pick ticket sales for a free event. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -4333,7 +4334,7 @@ const proposeAdPlan = writeTool(
       enum: ["owned", "licensed", "authorized_by_brand"],
     },
     ai_generated: { type: "boolean" },
-    optimize_for: { type: "string", enum: ["visits", "sales"] },
+    optimize_for: { type: "string", enum: ["visits", "sales", "signups"] },
     // #4238: keys from list_ad_audiences only; the server checks ownership.
     audience_keys: {
       type: "array",
@@ -4513,6 +4514,7 @@ const proposeAdPlan = writeTool(
         id?: string;
         platform?: string;
         sales?: { ready?: boolean };
+        signups?: { ready?: boolean };
       }>;
       pages?: Array<Record<string, unknown>>;
     };
@@ -4568,11 +4570,7 @@ const proposeAdPlan = writeTool(
     const goalsForSplit = Object.fromEntries(
       platforms.map((platform, index) => [
         platform,
-        args.optimize_for === "sales" &&
-          connections[index]?.sales?.ready === true &&
-          (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
-          ? "sales"
-          : "visits",
+        ariConversionGoal(args.optimize_for, platform, connections[index]),
       ]),
     );
     const dailyShares = splitDailyWithMinimums(
@@ -4628,14 +4626,20 @@ const proposeAdPlan = writeTool(
         (destination.page_type === "brand" ||
           (page.entity_slug ?? undefined) === destination.entity_slug)
       );
-    const wantsSales = args.optimize_for === "sales" &&
-      hostPageSellsTickets(destinationPage);
+    // #4238 item 3: sales only on a page that sells tickets (the server
+    // refuses sales on an all-free page); sign-ups only on an RSVP page or a
+    // ticket page (the server checks the tiers are all free).
+    const pageGoalOk = args.optimize_for === "sales"
+      ? hostPageSellsTickets(destinationPage)
+      : args.optimize_for === "signups"
+      ? destinationPage?.page_type === "rsvp" ||
+        hostPageSellsTickets(destinationPage)
+      : false;
     const optimizationByPlatform = Object.fromEntries(
       platforms.map((platform, index) => [
         platform,
-        wantsSales && connections[index]?.sales?.ready === true &&
-          (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
-          ? "sales"
+        pageGoalOk
+          ? ariConversionGoal(args.optimize_for, platform, connections[index])
           : "visits",
       ]),
     );
@@ -9796,3 +9800,26 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   // #1972 reopen — recording a door sale is money; list stays read-only above.
   "manage_event_door_sale",
 ]);
+
+/**
+ * #4238 item 3: the goal Ari asks for on one app — sales or sign-ups only
+ * where that app has the path and its setup readiness says ready; anything
+ * else runs page visits (the server re-checks every cell).
+ */
+function ariConversionGoal(
+  optimizeFor: unknown,
+  platform: string,
+  connection:
+    | { sales?: { ready?: boolean }; signups?: { ready?: boolean } }
+    | undefined,
+): "visits" | "sales" | "signups" {
+  if (
+    optimizeFor === "sales" && connection?.sales?.ready === true &&
+    (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
+  ) return "sales";
+  if (
+    optimizeFor === "signups" && connection?.signups?.ready === true &&
+    (HOST_SIGNUPS_GOAL_PLATFORMS as readonly string[]).includes(platform)
+  ) return "signups";
+  return "visits";
+}
