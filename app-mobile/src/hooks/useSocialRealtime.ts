@@ -15,7 +15,8 @@ let nextSocialRealtimeOwner = 0;
  * Tables subscribed (all server-side filtered):
  *   - friend_requests (receiver_id = userId)
  *   - pending_invites (inviter_id = userId)
- *   - conversation_participant_lifecycle (user_id = userId, UPDATE: a removed chat coming back)
+ *   - conversation_participant_lifecycle (user_id = userId, UPDATE: a removed
+ *     chat coming back), on its own channel (see below)
  *   - conversation_participants (user_id = userId)
  *   - friends (user_id = userId)
  *   - calendar_entries (user_id = userId)
@@ -69,23 +70,6 @@ export function useSocialRealtime(
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["friends"] });
-        }
-      )
-      // Issue #4435: my own chat-list state. When a removed chat comes back
-      // (anyone writes in it) the server clears hidden_at on my row; the
-      // Chats list refetches so the row returns live. Owner-only RLS limits
-      // this to my rows. (messages has no receiver_id, so the old binding
-      // here could never match a row.)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "conversation_participant_lifecycle",
-          filter: `user_id=eq.${userId}`,
-        },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
         }
       )
       // conversation_participants
@@ -253,8 +237,32 @@ export function useSocialRealtime(
       )
       .subscribe();
 
+    // Issue #4435: my own chat-list state, on its OWN channel. When a removed
+    // chat comes back (anyone writes in it) the server clears hidden_at on my
+    // row; the Chats list refetches so the row returns live. Owner-only RLS
+    // limits this to my rows. It cannot share the channel above: that channel
+    // also binds friend_requests, pending_invites and message_reads, which are
+    // not in the supabase_realtime publication, and a channel with a binding
+    // the server cannot serve delivers no events at all (QA F-1 on #4435).
+    const lifecycleChannel = supabase
+      .channel(`chat-lifecycle-${userId}:${ownerRef.current}:${channelEpoch}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversation_participant_lifecycle",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
+        }
+      )
+      .subscribe();
+
     return () => {
       void supabase.removeChannel(channel);
+      void supabase.removeChannel(lifecycleChannel);
     };
   }, [userId, queryClient]);
 }

@@ -204,3 +204,28 @@ export function leaveHeir<T extends GroupMemberRow>(members: readonly T[], leave
   if (others.some((m) => m.isAdmin || m.isCreator)) return null;
   return [...others].sort((a, b) => joinedKey(a).localeCompare(joinedKey(b)))[0] ?? null;
 }
+
+/**
+ * #4435 QA F-3: Group info hides a member the moment Remove is confirmed (the
+ * held remove). The hide lasts only while the server still lists them: once a
+ * fresh member list no longer has them (the remove went through), the hide is
+ * dropped, so if they are added back later they show again. A held remove
+ * (still pending) always stays hidden. Returns the same set when nothing
+ * changes, so a state update can be skipped.
+ */
+export function pruneHiddenMembers(
+  hidden: ReadonlySet<string>,
+  memberIds: readonly string[],
+  pendingIds: readonly string[],
+): ReadonlySet<string> {
+  if (hidden.size === 0) return hidden;
+  const listed = new Set(memberIds);
+  const pending = new Set(pendingIds);
+  let changed = false;
+  const next = new Set<string>();
+  for (const id of hidden) {
+    if (pending.has(id) || listed.has(id)) next.add(id);
+    else changed = true;
+  }
+  return changed ? next : hidden;
+}

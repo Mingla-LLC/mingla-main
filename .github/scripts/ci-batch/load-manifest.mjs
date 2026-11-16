@@ -297,7 +297,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4435 W2: listed migrations 20280708054435 (group lifecycle) and 20280708064435 (chat reopen and clear) after 20280708046436 in the #1857, #1931 and #2117 lanes, and their four pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 CI fix: skip 20280708054435 (group lifecycle; re-emits the plan RPCs over chat_plans, chat_plan_place_options and chat_plan_place_votes, which only the skipped #4261 migrations create) by exact filename in the #1931 filtered replay; re-sealed.
-export const BOOTSTRAP_SHA256 = "8df3d407835edef6ee1cb3ba8e5ab6cb70772c594ec86b27b0cac8762dd22bd2";
+// #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "39cfce2c41aa046862f24d80b7c1c4dbcd8ee38b4e8ee060be63073812702e5e";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

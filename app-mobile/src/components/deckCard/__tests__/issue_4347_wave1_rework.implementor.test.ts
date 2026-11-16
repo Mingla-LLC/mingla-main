@@ -58,7 +58,10 @@ describe("#4347 rework", () => {
     expect(DECK).not.toMatch(/router\.push\(\s*`\/b\//);
     // The collab sheet closes itself first and pushes after the modal is gone.
     expect(COLLAB).toMatch(/onExternalRoute=\{handleExternalRoute\}/);
-    expect(COLLAB).toMatch(/onDismiss=\{flushPendingRoute\}/);
+    // #4435 QA F-2: the close-edge hand-off also carries Add people; it still
+    // pushes the pending route first.
+    expect(COLLAB).toMatch(/onDismiss=\{flushAfterClose\}/);
+    expect(COLLAB).toMatch(/const flushAfterClose = useCallback\(\(\) => \{\s*flushPendingRoute\(\);/);
     expect(COLLAB).toMatch(/pendingRouteRef\.current = path;\s*setShowPrefsSheet\(false\);\s*onClose\(\);/);
   });
 

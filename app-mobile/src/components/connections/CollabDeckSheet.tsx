@@ -33,6 +33,10 @@ interface CollabDeckSheetProps {
   onOpenPreferences?: () => void;
   /** Issue #4435: the waiting (group of one) state's invite buttons. */
   onShareGroupLink?: () => void;
+  /**
+   * Opens Add people in the chat. The deck closes first and this runs only
+   * once the deck's full-screen modal is really gone (see flushAfterClose).
+   */
   onAddGroupPeople?: () => void;
 }
 
@@ -97,6 +101,32 @@ export function CollabDeckSheet({
     pendingRouteRef.current = null;
     router.push(path as never);
   }, [router]);
+  /*
+    #4435 QA F-2 — "Add people" from the deck opens Group info, another RN
+    Modal. iOS presents one modal at a time: opening it on a timer while this
+    full-screen slide modal was still dismissing (320 ms against a longer
+    slide-down) raced the two transitions and left the chat header dead to
+    taps. Same hand-off as the routes above: close, then run it once the
+    modal is gone (iOS onDismiss; Android on the visible -> false edge).
+  */
+  const pendingAfterCloseRef = React.useRef<(() => void) | null>(null);
+  const flushAfterClose = useCallback(() => {
+    flushPendingRoute();
+    const run = pendingAfterCloseRef.current;
+    pendingAfterCloseRef.current = null;
+    run?.();
+  }, [flushPendingRoute]);
+  const handleAddGroupPeople = useMemo(
+    () =>
+      onAddGroupPeople
+        ? () => {
+            pendingAfterCloseRef.current = onAddGroupPeople;
+            setShowPrefsSheet(false);
+            onClose();
+          }
+        : undefined,
+    [onAddGroupPeople, onClose],
+  );
   const handleExternalRoute = useCallback(
     (path: string) => {
       pendingRouteRef.current = path;
@@ -106,8 +136,8 @@ export function CollabDeckSheet({
     [onClose],
   );
   React.useEffect(() => {
-    if (!visible && Platform.OS !== "ios") flushPendingRoute();
-  }, [visible, flushPendingRoute]);
+    if (!visible && Platform.OS !== "ios") flushAfterClose();
+  }, [visible, flushAfterClose]);
 
   if (!sessionId) {
     return null;
@@ -120,7 +150,7 @@ export function CollabDeckSheet({
       presentationStyle="fullScreen"
       accessibilityViewIsModal
       onRequestClose={handleClose}
-      onDismiss={flushPendingRoute}
+      onDismiss={flushAfterClose}
     >
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top }]}>
@@ -181,7 +211,7 @@ export function CollabDeckSheet({
               onOpenPreferences={onOpenPreferences}
               onOpenCollabPreferences={handleOpenPreferences}
               onShareGroupLink={onShareGroupLink}
-              onAddGroupPeople={onAddGroupPeople}
+              onAddGroupPeople={handleAddGroupPeople}
               onAfterNotify={handleAfterNotify}
               onExternalRoute={handleExternalRoute}
               generateNewMockCard={noop}

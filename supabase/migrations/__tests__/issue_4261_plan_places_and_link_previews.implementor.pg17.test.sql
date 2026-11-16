@@ -1188,3 +1188,4 @@ ROLLBACK;
 \ir ../20280708046436_issue_4436_invited_self_join_and_own_prefs.sql
 \ir ../20280708054435_issue_4435_group_lifecycle.sql
 \ir ../20280708064435_issue_4435_chat_reopen_and_clear.sql
+\ir ../20280709004435_issue_4435_group_qa_fixes.sql
