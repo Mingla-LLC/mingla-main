@@ -7,7 +7,7 @@
  *   - Header (drawer button + title + settings link)
  *   - ConversationDrawer (overlay)
  *   - MessageList (with optional pending ToolProposalCard)
- *   - StreamingText (thinking indicator)
+ *   - AriThreadLoadingState (restoring / opening a thread)
  *   - InputBar at bottom (keyboard-aware via KeyboardAvoidingView)
  *   - Toast (canonical app-wide toast — supports tap, close button, swipe-up to dismiss)
  */
@@ -55,7 +55,6 @@ import {
   type AriFlowUploadKind,
 } from "../../components/ari/ariFlowCards";
 import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
-import { StreamingText } from "../../components/ari/StreamingText";
 import { AriActivity } from "../../components/ari/AriActivity";
 import { AriAttachmentTray } from "../../components/ari/AriAttachmentCards";
 import { AriAttachmentSourceSheet } from "../../components/ari/AriAttachmentSourceSheet";
@@ -1824,14 +1823,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         />
 
         <View style={styles.kav}>
-          {!conversationSelectionReady ? (
-            <View
-              style={styles.flexSpacer}
-              accessibilityLabel="Restoring Ari conversation"
-            >
-              <StreamingText visible />
-            </View>
-          ) : chat.conversationId && chat.isLoadingMessages ? (
+          {/* #4420 (Seth): restoring which thread to open is the same
+              moment as opening it: one centred loading state, not a
+              gutterless orb beside an empty caret pill. */}
+          {!conversationSelectionReady ||
+          (chat.conversationId && chat.isLoadingMessages) ? (
             <AriThreadLoadingState />
           ) : noMessages && firstRunCopy !== null ? (
             firstRunCentred ? (

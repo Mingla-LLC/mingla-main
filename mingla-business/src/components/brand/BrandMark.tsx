@@ -49,6 +49,15 @@ export const BrandMark: React.FC<BrandMarkProps> = ({ brand, size, testID }) => 
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
+      {/* #4420 (native run): the initial always sits underneath, so a logo
+          that is still loading (or never paints) shows the brand's initial on
+          the surface fill, never an empty grey circle. */}
+      <Text
+        style={[styles.initial, { fontSize: Math.round(size * 0.42) }]}
+        testID={testID !== undefined && !showPhoto ? `${testID}-initial` : undefined}
+      >
+        {brandMarkInitial(brand)}
+      </Text>
       {showPhoto ? (
         <Image
           source={{ uri: url }}
@@ -57,14 +66,7 @@ export const BrandMark: React.FC<BrandMarkProps> = ({ brand, size, testID }) => 
           accessibilityIgnoresInvertColors
           testID={testID !== undefined ? `${testID}-photo` : undefined}
         />
-      ) : (
-        <Text
-          style={[styles.initial, { fontSize: Math.round(size * 0.42) }]}
-          testID={testID !== undefined ? `${testID}-initial` : undefined}
-        >
-          {brandMarkInitial(brand)}
-        </Text>
-      )}
+      ) : null}
     </View>
   );
 };
@@ -79,6 +81,7 @@ const styles = StyleSheet.create({
     borderColor: color.line,
   },
   photo: {
+    ...StyleSheet.absoluteFillObject,
     resizeMode: "cover",
   },
   initial: {

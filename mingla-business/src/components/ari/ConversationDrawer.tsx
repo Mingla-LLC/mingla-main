@@ -545,7 +545,9 @@ const styles = StyleSheet.create({
     paddingBottom: space[4],
     gap: space[2],
   },
-  webSheet: { width: 440, maxHeight: "80%" },
+  // #4420: never wider than the viewport (a 390 phone browser clipped the
+  // right edge: "Select", the New conversation row).
+  webSheet: { width: 440, maxWidth: "100%", maxHeight: "80%" },
   // #4420 — wide-desktop side pane (mockup: 320 wide, its own card).
   pane: {
     width: ariConversationPaneWidth,

@@ -21,7 +21,7 @@ import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { isCurrentBrandPending } from "../../utils/currentBrandPending";
 
-import { BrandMark, brandMarkPhotoUrl } from "../brand/BrandMark";
+import { BrandMark } from "../brand/BrandMark";
 import { Icon } from "./Icon";
 
 export const BRAND_LABEL_MAX_CHARS = 18;
@@ -92,10 +92,10 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       style={fullNameLabel ? [styles.brandRow, styles.brandRowShrink] : styles.brandRow}
       testID={testID}
     >
-      {/* #3355 bug 17 — the brand's uploaded logo beside its name. The
-          chip never showed a mark, so a brand without a logo keeps the
-          name-only chip. */}
-      {currentBrand !== null && brandMarkPhotoUrl(currentBrand) !== null ? (
+      {/* #3355 bug 17 — the brand's uploaded logo beside its name.
+          #4420: a brand without a logo shows its initial on the surface
+          fill (BrandMark's fallback), the same mark the switcher uses. */}
+      {currentBrand !== null ? (
         <BrandMark
           brand={currentBrand}
           size={BRAND_MARK_SIZE}

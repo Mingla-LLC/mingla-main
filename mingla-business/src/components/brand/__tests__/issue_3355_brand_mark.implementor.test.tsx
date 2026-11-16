@@ -53,7 +53,12 @@ describe("#3355 BrandMark", () => {
     const images = r.root.findAll((n) => n.type === "image");
     expect(images).toHaveLength(1);
     expect(images[0].props.source).toEqual({ uri: "https://cdn.test/logo.png" });
-    expect(r.root.findAll((n) => n.type === "text")).toHaveLength(0);
+    // [TEST-MOD-APPROVED #4420] the initial sits UNDER the logo, so a logo
+    // still loading (or never painting) is never an empty grey circle; the
+    // photo, drawn last and absolutely filled, covers it once it paints.
+    const text = r.root.findAll((n) => n.type === "text");
+    expect(text).toHaveLength(1);
+    expect(text[0].props.children).toBe("C");
     r.unmount();
   });
 
@@ -91,6 +96,9 @@ describe("#3355 the switcher and the TopBar chip use the brand's logo", () => {
     // #4389 AB — the chip moved, unchanged, into the shared BrandChip.
     expect(read("../../ui/TopBar.tsx")).toContain("<BrandChip ");
     const chip = read("../../ui/BrandChip.tsx");
-    expect(chip).toMatch(/brandMarkPhotoUrl\(currentBrand\) !== null \? \(\s*<BrandMark/);
+    // [TEST-MOD-APPROVED #4420] every current brand gets a mark: the logo,
+    // or its initial on the surface fill when there is no logo.
+    expect(chip).toMatch(/currentBrand !== null \? \(\s*<BrandMark/);
+    expect(chip).not.toContain("brandMarkPhotoUrl(currentBrand) !== null");
   });
 });
