@@ -68,7 +68,7 @@ import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
 import { actionScopeFromCore, OutboundActionLinkError } from "../lib/bookingLock";
-import { OUTBOUND_ACTION_LINK_MESSAGE } from "../contracts/generated/publishChecks.ts";
+import { BOOKING_LINK_UNVERIFIED_MESSAGE, OUTBOUND_ACTION_LINK_MESSAGE } from "../contracts/generated/publishChecks.ts";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return sitesJsonResponse(data, status, headers);
@@ -129,6 +129,7 @@ function safeFailure(error: unknown, returnUrl?: string) {
       "PAGE_LIMIT_EXCEEDED",
       // #4453 PR 2 — a button points outside Mingla (the publish is blocked).
       "OUTBOUND_ACTION_LINK",
+      "BOOKING_LINK_UNVERIFIED",
       "PATH_COLLISION",
       // #2829 W9b — a first publish waits until the design checks have run.
       "DESIGN_CHECKS_REQUIRED",
@@ -166,10 +167,13 @@ function safeFailure(error: unknown, returnUrl?: string) {
                 // #4453 PR 2 — the booking lock (D5).
                 : code === "OUTBOUND_ACTION_LINK"
                   ? OUTBOUND_ACTION_LINK_MESSAGE
+                  : code === "BOOKING_LINK_UNVERIFIED"
+                    ? BOOKING_LINK_UNVERIFIED_MESSAGE
                   : "Website tools are temporarily unavailable.",
         retryable: [
           "MEDIA_PROCESSING",
           "SERVICE_TEMPORARILY_UNAVAILABLE",
+          "BOOKING_LINK_UNVERIFIED",
         ].includes(code),
         ...(returnUrl ? { return_url: returnUrl } : {}),
         // #4453 PR 2 — which buttons to change (page, block, field; never the link itself).
@@ -703,6 +707,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
         "PATH_COLLISION",
         "DESIGN_CHECKS_REQUIRED",
         "OUTBOUND_ACTION_LINK",
+        "BOOKING_LINK_UNVERIFIED",
       ].includes(error.message);
     let failureRecorded = false;
     if (definitiveFailure && callbackContext) {
@@ -767,6 +772,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 "PATH_COLLISION",
                 "DESIGN_CHECKS_REQUIRED",
                 "OUTBOUND_ACTION_LINK",
+                "BOOKING_LINK_UNVERIFIED",
               ].includes(error.message)
                 ? error.message
                 : "SERVICE_TEMPORARILY_UNAVAILABLE",

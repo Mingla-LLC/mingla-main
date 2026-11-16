@@ -73,6 +73,15 @@ export const OUTBOUND_ACTION_LINK = "OUTBOUND_ACTION_LINK" as const;
 export const OUTBOUND_ACTION_LINK_MESSAGE =
   "This button points outside Mingla. Bookings and payments on your site go through Mingla. Change the link to one of your Mingla pages.";
 
+/*
+ * The publish could not confirm the brand (Core sent no usable slug), so the
+ * buttons that need it (a Mingla brand page, checkout, the brand's email,
+ * phone or WhatsApp) fail closed. Retryable: nothing on the site is wrong.
+ */
+export const BOOKING_LINK_UNVERIFIED = "BOOKING_LINK_UNVERIFIED" as const;
+export const BOOKING_LINK_UNVERIFIED_MESSAGE =
+  "We couldn't confirm your brand's Mingla pages and contact details, so buttons that link to them can't be published right now. Nothing on your site changed. Try again in a few minutes.";
+
 /** One button that fails the booking lock: where it is and why. */
 export type OutboundActionLink = {
   /** The page address ("" is Home), or null for the header button. */

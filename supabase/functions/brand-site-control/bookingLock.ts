@@ -11,6 +11,7 @@
  *     ambiguous and tell the owner to retry).
  */
 import { sitesJson } from "../_shared/sitesContracts.ts";
+import { normalizeBrandPhone, socialHandlesFrom } from "../_shared/siteContracts/safety.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -19,6 +20,8 @@ export const BOOKING_LOCK_REASONS = {
     "This button points outside Mingla. Bookings and payments on your site go through Mingla. Change the link to one of your Mingla pages.",
   BOOKING_THROUGH_ENQUIRY:
     "A question form can't take bookings. Bookings go through Mingla: remove words like book, reserve, tickets or stay from the form, or use your Mingla booking button.",
+  BOOKING_LINK_UNVERIFIED:
+    "We couldn't confirm your brand's Mingla pages and contact details, so buttons that link to them can't be published right now. Nothing on your site changed. Try again in a few minutes.",
 } as const;
 
 export type BookingLockReason = keyof typeof BOOKING_LOCK_REASONS;
@@ -57,7 +60,7 @@ export function bookingLockRefusal(
     error: {
       code: "VALIDATION_FAILED",
       message: BOOKING_LOCK_REASONS[body.code],
-      retryable: false,
+      retryable: body.code === "BOOKING_LINK_UNVERIFIED",
       operation_id: operationId,
       reason_code: body.code,
       ...(links ? { links } : {}),
@@ -65,19 +68,30 @@ export function bookingLockRefusal(
   }, 409);
 }
 
-export type PublicationActionScope = { brand_slug: string; contact_email?: string; contact_phone?: string };
+export type PublicationActionScope = {
+  brand_slug: string;
+  contact_email?: string;
+  contact_phone?: string;
+  social_handles?: string[];
+};
 
 /**
- * The brand's slug and own contact details, as Core holds them. Null when the
- * brand can't be read or has no usable slug (Studio then runs its
- * brand-agnostic check; it never loosens).
+ * The brand's slug, own contact details and social handles, as Core holds
+ * them. The phone is normalised (extension and note text dropped); a field
+ * that doesn't normalise is left out on its own. Null when the brand has no
+ * usable slug: Studio then FAILS CLOSED (links that need the brand are
+ * refused with BOOKING_LINK_UNVERIFIED), never a looser check.
  */
 export function publicationActionScope(brand: JsonObject | null): PublicationActionScope | null {
   if (!brand) return null;
   const slug = typeof brand.slug === "string" ? brand.slug.trim() : "";
   if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i.test(slug)) return null;
   const scope: PublicationActionScope = { brand_slug: slug };
-  if (typeof brand.contact_email === "string" && brand.contact_email.trim()) scope.contact_email = brand.contact_email.trim().slice(0, 254);
-  if (typeof brand.contact_phone === "string" && brand.contact_phone.trim()) scope.contact_phone = brand.contact_phone.trim().slice(0, 40);
+  const email = typeof brand.contact_email === "string" ? brand.contact_email.trim() : "";
+  if (email && email.length <= 254 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) scope.contact_email = email;
+  const phone = normalizeBrandPhone(brand.contact_phone);
+  if (phone) scope.contact_phone = phone;
+  const handles = socialHandlesFrom(brand.social_links);
+  if (handles.length) scope.social_handles = handles;
   return scope;
 }

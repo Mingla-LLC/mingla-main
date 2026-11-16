@@ -32,7 +32,7 @@ import {
 } from "../contracts/generated/ariToolSchemas.ts";
 import { BLOCK_CATALOG, blockActionLinks, isBlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
 import { BOOKING_THROUGH_ENQUIRY, bookingThroughEnquiryFields, buildClaimEvidence, claimSentence, ENQUIRY_LABEL_FIELDS, offersBooking, unbackedClaims, type ClaimOffering } from "../contracts/generated/claims.ts";
-import { actionHrefProblem, type MinglaActionScope } from "../contracts/generated/safety.ts";
+import { actionHrefProblem, normalizeBrandPhone, type MinglaActionScope } from "../contracts/generated/safety.ts";
 import { designFor, designFontSlots, DESIGNS, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { assertOwnerTokenOverrides, resolveTokens, type OwnerTokenOverrides } from "../contracts/generated/tokens.ts";
 import { nearestPassingShade, readabilityWarnings, warningSentence } from "../contracts/generated/readability.ts";
@@ -72,6 +72,7 @@ export type AriEvidence = {
     slug?: string | null;
     contact_email?: string | null;
     contact_phone?: string | null;
+    social_handles?: string[];
   };
   offerings: Array<ClaimOffering & { id: string; kind?: string | null }>;
 };
@@ -103,7 +104,10 @@ export function parseAriEvidence(value: unknown, brandId: string): AriEvidence |
       city: text(raw.brand.city, 200),
       slug: typeof raw.brand.slug === "string" && /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i.test(raw.brand.slug) ? raw.brand.slug : null,
       contact_email: text(raw.brand.contact_email, 254),
-      contact_phone: text(raw.brand.contact_phone, 40),
+      contact_phone: text(raw.brand.contact_phone, 80),
+      social_handles: Array.isArray(raw.brand.social_handles)
+        ? raw.brand.social_handles.filter((handle: unknown): handle is string => typeof handle === "string" && /^[a-z0-9._-]{1,100}$/.test(handle)).slice(0, 20)
+        : [],
     },
     offerings: raw.offerings.slice(0, 500).filter((row: AnyDoc) => row && typeof row.id === "string" && UUID.test(row.id)).map((row: AnyDoc) => ({
       id: row.id.toLowerCase(),
@@ -377,10 +381,18 @@ function blockTexts(block: AnyDoc): string[] {
  * booking (BOOKING_THROUGH_ENQUIRY). Whether a same-site page exists is
  * checked at publish, against the whole page tree.
  */
-function ariActionScope(ctx: AriActionContext): MinglaActionScope | null {
+function ariActionScope(ctx: AriActionContext): MinglaActionScope {
   const brand = ctx.evidence?.brand;
-  if (!brand?.slug) return null;
-  return { brandSlug: brand.slug, sitePaths: null, contactEmail: brand.contact_email ?? null, contactPhone: brand.contact_phone ?? null, checkoutEventIds: new Set((ctx.evidence?.offerings ?? []).filter((row) => row.kind === "event").map((row) => row.id)) };
+  // Fail closed: without the brand, links that need it (its Mingla pages,
+  // checkout, email, phone, WhatsApp) are refused (`brand_unknown`).
+  return {
+    brandSlug: brand?.slug ?? null,
+    sitePaths: null,
+    contactEmail: brand?.contact_email ?? null,
+    contactPhone: normalizeBrandPhone(brand?.contact_phone ?? null),
+    checkoutEventIds: new Set((ctx.evidence?.offerings ?? []).filter((row) => row.kind === "event").map((row) => row.id)),
+    socialHandles: brand?.social_handles?.length ? new Set(brand.social_handles) : null,
+  };
 }
 
 export function assertAriBookingLock(ctx: AriActionContext, blocks: readonly AnyDoc[], path: string): void {

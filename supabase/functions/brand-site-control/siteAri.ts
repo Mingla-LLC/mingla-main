@@ -12,6 +12,7 @@
  */
 import { sitesJson } from "../_shared/sitesContracts.ts";
 import { BOOKING_LOCK_REASONS } from "./bookingLock.ts";
+import { socialHandlesFrom } from "../_shared/siteContracts/safety.ts";
 
 type JsonObject = Record<string, unknown>;
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -155,6 +156,7 @@ export type SiteEvidence = {
     slug: string | null;
     contact_email: string | null;
     contact_phone: string | null;
+    social_handles: string[];
   };
   offerings: JsonObject[];
 };
@@ -188,6 +190,7 @@ export async function siteEvidence(
       slug: text(brand.slug),
       contact_email: text(brand.contact_email),
       contact_phone: text(brand.contact_phone),
+      social_handles: socialHandlesFrom(brand.social_links),
     },
     offerings: (offerings as JsonObject[]).slice(0, 500).map((row) => ({
       id: row.id,

@@ -19,40 +19,58 @@ import {
   type ArtifactV2,
 } from "../contracts/generated/artifactV2.ts";
 import {
+  BOOKING_LINK_UNVERIFIED,
   OUTBOUND_ACTION_LINK,
   outboundActionLinks,
   type OutboundActionLink,
 } from "../contracts/generated/publishChecks.ts";
+import { normalizeBrandPhone } from "../contracts/generated/safety.ts";
 
-/** A publish refused by the booking lock; `links` names every failing button. */
+/**
+ * A publish refused by the booking lock; `links` names every failing button.
+ * BOOKING_LINK_UNVERIFIED when the only problem is that Core couldn't name
+ * the brand (the check failed closed); OUTBOUND_ACTION_LINK otherwise.
+ */
 export class OutboundActionLinkError extends Error {
   readonly links: readonly OutboundActionLink[];
   constructor(links: readonly OutboundActionLink[]) {
-    super(OUTBOUND_ACTION_LINK);
+    super(links.every((link) => link.problem === "brand_unknown") ? BOOKING_LINK_UNVERIFIED : OUTBOUND_ACTION_LINK);
     this.name = "OutboundActionLinkError";
     this.links = links;
   }
 }
 
-/** Core's signed `action_scope` from a publication request, or null when absent or malformed. */
+/**
+ * Core's signed `action_scope` from a publication request. A malformed field
+ * is DROPPED on its own (the rest stays, so the check never loosens: a
+ * missing phone or email only means no tel/mailto/WhatsApp passes). The
+ * phone is normalised (extension and note text removed). Null only when
+ * there is no usable brand slug, and the publish then fails closed.
+ */
 export function actionScopeFromCore(value: unknown): ArtifactActionScope | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
-  const text = (field: unknown): string | undefined =>
-    typeof field === "string" && field.trim() ? field.trim() : undefined;
-  const scope: ArtifactActionScope = { brand_slug: String(raw.brand_slug ?? "") };
-  const email = text(raw.contact_email);
-  const phone = text(raw.contact_phone);
-  if (email) scope.contact_email = email;
-  if (phone) scope.contact_phone = phone;
-  try {
-    assertArtifactActionScope(scope);
-    return scope;
-  } catch {
-    // A slug, email or phone that is not well formed is treated as absent:
-    // the publish then runs the brand-agnostic check below, never a looser one.
-    return null;
-  }
+  const slug = typeof raw.brand_slug === "string" ? raw.brand_slug.trim() : "";
+  const keep = (scope: ArtifactActionScope): boolean => {
+    try {
+      assertArtifactActionScope(scope);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const scope: ArtifactActionScope = { brand_slug: slug };
+  if (!keep(scope)) return null;
+  const email = typeof raw.contact_email === "string" ? raw.contact_email.trim() : "";
+  if (email && keep({ brand_slug: slug, contact_email: email })) scope.contact_email = email;
+  const phone = normalizeBrandPhone(raw.contact_phone);
+  if (phone && keep({ brand_slug: slug, contact_phone: phone })) scope.contact_phone = phone;
+  const handles = Array.isArray(raw.social_handles)
+    ? [...new Set(raw.social_handles.filter((handle): handle is string => typeof handle === "string").map((handle) => handle.trim().replace(/^@/, "").toLowerCase()))]
+      .filter((handle) => /^[a-z0-9._-]{1,100}$/.test(handle)).slice(0, 20)
+    : [];
+  if (handles.length) scope.social_handles = handles;
+  return scope;
 }
 
 /** Every failing button of a built v2 artifact (empty = the publish may go ahead). */
@@ -60,7 +78,8 @@ export function artifactOutboundActionLinks(artifact: ArtifactV2): OutboundActio
   return outboundActionLinks({
     pages: artifact.pages.filter((page) => page.enabled),
     headerCtaHref: artifact.navigation.header_cta?.href,
-    scope: artifactActionScope(artifact),
+    // Fail closed: with no Core scope, links that need the brand are refused.
+    scope: artifactActionScope(artifact, { failClosed: true }),
   });
 }
 

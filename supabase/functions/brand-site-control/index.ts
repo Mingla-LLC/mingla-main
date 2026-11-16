@@ -801,14 +801,19 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         .maybeSingle();
       // #4453 PR 2 (booking lock) — the brand every button on the published
       // site must resolve to: Core's own row, never the caller's.
-      const { data: actionBrand } = action === "publications"
+      const { data: actionBrand, error: actionBrandError } = action === "publications"
         ? await db.service
           .from("brands")
-          .select("slug,contact_email,contact_phone")
+          .select("slug,contact_email,contact_phone,social_links")
           .eq("id", String((data as Record<string, unknown>).brand_id ?? ""))
           .is("deleted_at", null)
           .maybeSingle()
-        : { data: null };
+        : { data: null, error: null };
+      // Fail closed: an unreadable brand stops the publish (retryable)
+      // rather than sending no scope.
+      if (actionBrandError) {
+        return sitesFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
+      }
       const actionScope = publicationActionScope(actionBrand as Record<string, unknown> | null);
       return await callCms(db.service, {
         siteId,
@@ -878,7 +883,7 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
           },
           async (brandId) => {
             const { data } = await db.service.from("brands")
-              .select("id,name,description,city,slug,contact_email,contact_phone").eq("id", brandId).is("deleted_at", null).maybeSingle();
+              .select("id,name,description,city,slug,contact_email,contact_phone,social_links").eq("id", brandId).is("deleted_at", null).maybeSingle();
             return (data as JsonObject | null) ?? null;
           },
           siteId,

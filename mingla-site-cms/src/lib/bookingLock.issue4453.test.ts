@@ -78,9 +78,13 @@ describe("#4453 OUTBOUND_ACTION_LINK blocks publish (SC-L2)", () => {
     expect(artifactOutboundActionLinks(built)).toEqual([expect.objectContaining({ blockType: "contact_handoff", problem: "not_brand_contact" })]);
   });
 
-  it("[TRANSITIONAL] without Core's scope the check is brand-agnostic but still refuses other sites", () => {
+  it("without Core's scope it FAILS CLOSED: links that need the brand are refused with BOOKING_LINK_UNVERIFIED", () => {
     expect(() => assertNoOutboundActionLinks(artifact("https://calendly.com/x", undefined))).toThrow(OUTBOUND_ACTION_LINK);
-    expect(() => assertNoOutboundActionLinks(artifact("https://host.usemingla.com/t/another-brand/x", undefined))).not.toThrow();
+    // Another brand's route, and the brand's own mailto, can't be checked without the brand.
+    expect(() => assertNoOutboundActionLinks(artifact("https://host.usemingla.com/t/another-brand/x", undefined))).toThrow("BOOKING_LINK_UNVERIFIED");
+    const sameSiteOnly = artifact("/about", undefined) as any;
+    sameSiteOnly.pages[1].blocks = [];
+    expect(() => assertNoOutboundActionLinks(sameSiteOnly)).not.toThrow();
   });
 
   it("is an owner-fixable refusal code, not an outage", async () => {
@@ -93,7 +97,8 @@ describe("#4453 OUTBOUND_ACTION_LINK blocks publish (SC-L2)", () => {
 
 describe("#4453 rework: informational buttons publish, booking ones go to Mingla", () => {
   const withBlocks = (blocks: Record<string, unknown>[]) => {
-    const built = artifact("/about", { brand_slug: "gogi", contact_phone: "+234 000 000 0000" }) as any;
+    const built = artifact("/about", { brand_slug: "gogi", contact_phone: "+2340000000000" }) as any;
+    built.media = [{ id: "4c1c6d1e-0000-4000-8000-000000000001", url: "/media/4c1c6d1e-0000-4000-8000-000000000001/1440.webp" }];
     built.pages[0].blocks = blocks.map((block) => ({ variant: "band", ...block }));
     built.pages[1].blocks = [];
     return built as ArtifactV2;
@@ -122,7 +127,12 @@ describe("#4453 rework: informational buttons publish, booking ones go to Mingla
 describe("#4453 Core's signed action scope", () => {
   it("keeps a well-formed scope and drops a malformed one", () => {
     expect(actionScopeFromCore({ brand_slug: "young-and-stamped", contact_email: " hello@youngandstamped.com ", contact_phone: "+234 801 234 5678" }))
-      .toEqual({ brand_slug: "young-and-stamped", contact_email: "hello@youngandstamped.com", contact_phone: "+234 801 234 5678" });
+      .toEqual({ brand_slug: "young-and-stamped", contact_email: "hello@youngandstamped.com", contact_phone: "+2348012345678" });
+    // A phone with an extension still normalises; a bad field is dropped on its own, never the whole scope.
+    expect(actionScopeFromCore({ brand_slug: "young-and-stamped", contact_phone: "+44 20 7946 0000 ext. 2", contact_email: "not an email" }))
+      .toEqual({ brand_slug: "young-and-stamped", contact_phone: "+442079460000" });
+    expect(actionScopeFromCore({ brand_slug: "young-and-stamped", contact_phone: "call us", social_handles: ["@YS", "bad handle!"] }))
+      .toEqual({ brand_slug: "young-and-stamped", social_handles: ["ys"] });
     expect(actionScopeFromCore({ brand_slug: "young-and-stamped", contact_email: "" })).toEqual({ brand_slug: "young-and-stamped" });
     expect(actionScopeFromCore({ brand_slug: "../other" })).toBeNull();
     expect(actionScopeFromCore(null)).toBeNull();

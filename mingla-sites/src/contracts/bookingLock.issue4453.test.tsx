@@ -16,10 +16,10 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { assertArtifactV2, siteAnswerPaths, type ArtifactV2 } from "./generated/artifactV2.ts";
+import { artifactActionScope, assertArtifactV2, siteAnswerPaths, type ArtifactV2 } from "./generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "./generated/upgradeV1ToV2.ts";
 import { blockActionLinks, BLOCK_CATALOG } from "./generated/blocks.ts";
-import { actionHrefProblem, isMinglaActionHref, type MinglaActionScope } from "./generated/safety.ts";
+import { actionHrefProblem, isMinglaActionHref, normalizeBrandPhone, offersBookingOrPayment, socialHandlesFrom, type MinglaActionScope } from "./generated/safety.ts";
 import { outboundActionLinks } from "./generated/publishChecks.ts";
 import { bookingThroughEnquiryFields, offersBooking } from "./generated/claims.ts";
 import { FX, gogiV1Fixture } from "./gogiV1.fixture";
@@ -230,20 +230,21 @@ describe("#4453 outboundActionLinks (the OUTBOUND_ACTION_LINK publish check)", (
  * WhatsApp) publishes cleanly; a booking button or any button to a booking
  * site does not.
  */
-const GOGI_PHONE = "+234 000 000 0000";
+const GOGI_PHONE = "+2340000000000";
 function gogiShaped(): ArtifactV2 {
   const artifact = gogi();
   for (const page of artifact.pages) {
     for (const block of page.blocks as any[]) {
       if (block.type === "cta" && /^https:/.test(block.href)) block.href = "https://maps.google.com/?q=1+Example+Way+Lagos";
-      if (block.type === "menu_link") block.href = "https://example-food.sites.usemingla.com/media/4c1c6d1e-0000-4000-8000-000000000001/menu.pdf";
+      // The menu file in the site's own media, on its own address.
+      if (block.type === "menu_link") block.href = `${artifact.seo.canonical_url}${artifact.media.find((item) => item.url.endsWith(".webp"))!.url}`;
       if (block.type === "contact_handoff") block.href = "https://wa.me/2340000000000";
     }
   }
   artifact.action_scope = { brand_slug: "example", contact_phone: GOGI_PHONE };
   return artifact;
 }
-const scopeOf = (artifact: ArtifactV2): MinglaActionScope => ({ brandSlug: "example", sitePaths: siteAnswerPaths(artifact), contactPhone: GOGI_PHONE });
+const scopeOf = (artifact: ArtifactV2): MinglaActionScope => artifactActionScope(artifact)!;
 
 describe("#4453 informational links stay; booking links go to Mingla", () => {
   it("a gögi-shaped site (maps, PDF menu, WhatsApp) publishes cleanly", () => {
@@ -337,5 +338,106 @@ describe("#4453 JS off: a Mingla button is a plain link to Mingla", () => {
     const anchor = html.match(/<a\b[^>]*href="https:\/\/host\.usemingla\.com\/b\/example\/v\/main"[^>]*>/);
     expect(anchor, "server markup carries the Mingla link itself").not.toBeNull();
     expect(anchor![0]).not.toMatch(/\bonclick=/i);
+  });
+});
+
+/*
+ * #4453 PR 2 tester rework (verdict 6928640838): the informational allow list
+ * is not a way out, intent can't be dodged by spelling, and the check fails
+ * closed when the brand can't be named.
+ */
+describe("#4453 rework P1: social redirectors and other profiles", () => {
+  it.each([
+    "https://l.instagram.com/?u=https%3A%2F%2Fwww.opentable.com%2Fr%2Fgogi",
+    "https://l.facebook.com/l.php?u=https%3A%2F%2Fresy.com%2Fx",
+    "https://lm.facebook.com/l.php?u=https%3A%2F%2Fresy.com%2Fx",
+    "https://www.facebook.com/l.php?u=https%3A%2F%2Fresy.com%2Fx",
+    "https://www.youtube.com/redirect?q=https%3A%2F%2Feventbrite.com%2Fe%2F1",
+    "https://www.linkedin.com/redir/redirect?url=https%3A%2F%2Fresy.com",
+    "https://www.instagram.com/young-and-stamped?next=https://resy.com",
+    "https://t.co/abc", "https://bit.ly/abc", "https://goo.gl/abc", "https://linktr.ee/x", "https://tinyurl.com/x",
+    "https://maps.google.com/?q=https://www.opentable.com/r/x",
+    "https://business.instagram.com/x", "https://about.instagram.com/x",
+  ])("refuses %s on an informational button", (href) => {
+    expect(actionHrefProblem(href, SCOPE, "informational")).not.toBeNull();
+    expect(actionHrefProblem(href, null, "informational")).not.toBeNull();
+  });
+
+  it("restricts socials to the brand's own profiles when they are known", () => {
+    const own = { ...SCOPE, socialHandles: new Set(["youngandstamped"]) };
+    expect(actionHrefProblem("https://www.instagram.com/youngandstamped", own, "informational")).toBeNull();
+    expect(actionHrefProblem("https://www.tiktok.com/@youngandstamped", own, "informational")).toBeNull();
+    expect(actionHrefProblem("https://www.instagram.com/rival", own, "informational")).toBe("not_brand_social");
+    expect(actionHrefProblem("https://www.instagram.com/", SCOPE, "informational")).toBe("not_brand_social");
+  });
+
+  it("reads handles from Mingla social_links", () => {
+    expect(socialHandlesFrom({ instagram: "https://www.instagram.com/YoungAndStamped/", tiktok: "@ys.trips", website: "https://ys.example" }).sort())
+      .toEqual(["youngandstamped", "ys.trips"]);
+  });
+
+  it("maps: exact hosts and a /maps/ boundary", () => {
+    expect(actionHrefProblem("https://maps.app.goo.gl/abc", SCOPE, "informational")).toBeNull();
+    expect(actionHrefProblem("https://goo.gl/maps/abc", SCOPE, "informational")).toBeNull();
+    expect(actionHrefProblem("https://goo.gl/mapsAbc", SCOPE, "informational")).not.toBeNull();
+    expect(actionHrefProblem("https://www.google.com/mapsx", SCOPE, "informational")).not.toBeNull();
+  });
+});
+
+describe("#4453 rework P2a: booking intent can't be dodged by spelling", () => {
+  it.each([
+    "Join waitlist", "JOIN WAITLIST", "Join the waitlist \u2728", "Save your spot", "Secure your spot", "Grab a seat",
+    "Claim your place", "Booknow", "B\u043e\u043ek now", "R\u00e9server", "Reservar", "Entradas", "Comprar", "Buchen",
+    "Prenota", "Billets", "Ingressos", "S\u2019inscrire", "Sign-up", "RSVP", "Pre-order", "Check out", "Pay now", "Order online",
+    "Get a table", "\uff22\uff4f\uff4f\uff4b", "Book\u200b now",
+  ])("%j reads as booking", (label) => expect(offersBookingOrPayment(label)).toBe(true));
+
+  it.each(["Read our story", "Find us", "Directions", "Menu", "Follow us", "Stay in touch", "Notebook club", "Facebook", "Our comprehensive guide"])(
+    "%j stays informational", (label) => expect(offersBookingOrPayment(label)).toBe(false),
+  );
+});
+
+describe("#4453 rework P2b: phones normalise and the check fails closed", () => {
+  it("strips extensions and notes; keeps the first number", () => {
+    expect(normalizeBrandPhone("+44 20 7946 0000 ext. 2")).toBe("+442079460000");
+    expect(normalizeBrandPhone("020 7946 0000 (bookings)")).toBe("02079460000");
+    expect(normalizeBrandPhone("+234 803 000 0000 / +234 805 000 0000")).toBe("+2348030000000");
+    expect(normalizeBrandPhone("call us")).toBeNull();
+  });
+
+  it("with no brand, links that need it are refused (brand_unknown); same-site and plain information still pass", () => {
+    const noBrand: MinglaActionScope = { brandSlug: null, sitePaths: new Set(["", "about"]) };
+    for (const href of ["https://host.usemingla.com/e/rival/x", "https://host.usemingla.com/b/young-and-stamped", "mailto:x@y.co", "tel:+15550000", `https://host.usemingla.com/checkout/${EVENT}`]) {
+      expect(actionHrefProblem(href, noBrand, "booking"), href).toBe("brand_unknown");
+    }
+    expect(actionHrefProblem("https://wa.me/2348012345678", noBrand, "informational")).toBe("brand_unknown");
+    expect(actionHrefProblem("/about", noBrand, "booking")).toBeNull();
+    expect(actionHrefProblem("https://maps.apple.com/?q=x", noBrand, "informational")).toBeNull();
+  });
+});
+
+describe("#4453 rework P3: deny-list domains, site media and mailto", () => {
+  it.each(["fever.co.uk", "feverup.co.uk", "designmynight.co.uk", "resy.co.uk", "booking.co.uk", "www.sevenrooms.co.uk", "exploretock.co.uk"])(
+    "%s is a booking site", (host) => expect(actionHrefProblem(`https://${host}/x`, SCOPE, "informational")).toBe("booking_site"),
+  );
+
+  it("media files only from this site's own media", () => {
+    const own = { ...SCOPE, mediaIds: new Set(["4c1c6d1e-0000-4000-8000-000000000001"]), siteHosts: new Set(["young-and-stamped.sites.usemingla.com"]) };
+    expect(actionHrefProblem("/media/4c1c6d1e-0000-4000-8000-000000000001/menu.pdf", own, "informational")).toBeNull();
+    expect(actionHrefProblem("https://young-and-stamped.sites.usemingla.com/media/4c1c6d1e-0000-4000-8000-000000000001/menu.pdf", own, "informational")).toBeNull();
+    expect(actionHrefProblem("https://rival.sites.usemingla.com/media/4c1c6d1e-0000-4000-8000-000000000001/x.pdf", own, "informational")).toBe("not_site_media");
+    expect(actionHrefProblem("/media/9c1c6d1e-0000-4000-8000-000000000009/x.pdf", own, "informational")).toBe("not_site_media");
+    expect(actionHrefProblem("/media/anything", own, "informational")).toBe("not_site_media");
+  });
+
+  it("mailto: every recipient must be the brand's own, with no link or address in the body", () => {
+    expect(actionHrefProblem("mailto:hello@youngandstamped.com?subject=Hello", SCOPE)).toBeNull();
+    for (const href of [
+      "mailto:hello@youngandstamped.com?cc=x@evil.example",
+      "mailto:hello@youngandstamped.com?bcc=x@evil.example",
+      "mailto:hello@youngandstamped.com,x@evil.example",
+      "mailto:hello@youngandstamped.com?to=x@evil.example",
+      "mailto:hello@youngandstamped.com?body=Book%20at%20https://resy.com/x",
+    ]) expect(actionHrefProblem(href, SCOPE), href).toBe("not_brand_contact");
   });
 });

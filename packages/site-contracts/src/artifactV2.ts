@@ -290,19 +290,27 @@ export type ArtifactV2 = {
   commercial: { references: CommercialReference[] };
 };
 
-export type ArtifactActionScope = { brand_slug: string; contact_email?: string; contact_phone?: string };
+/**
+ * The brand every button must resolve to. `contact_phone` is normalised
+ * (normalizeBrandPhone: "+" and digits); `social_handles` are the brand's own
+ * profiles (lowercase, no "@"), so a social link must be one of them.
+ */
+export type ArtifactActionScope = { brand_slug: string; contact_email?: string; contact_phone?: string; social_handles?: string[] };
 
 const ACTION_SCOPE_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i;
 
 /** Throws ARTIFACT_ACTION_SCOPE_MISMATCH unless `value` is a valid action scope. */
 export function assertArtifactActionScope(value: unknown): asserts value is ArtifactActionScope {
   if (
-    !plainObject(value) || !hasOnlyKeys(value, ["brand_slug", "contact_email", "contact_phone"]) ||
+    !plainObject(value) || !hasOnlyKeys(value, ["brand_slug", "contact_email", "contact_phone", "social_handles"]) ||
     typeof value.brand_slug !== "string" || !ACTION_SCOPE_SLUG_RE.test(value.brand_slug) ||
     (value.contact_email !== undefined &&
       !(typeof value.contact_email === "string" && value.contact_email.length <= 254 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value.contact_email))) ||
     (value.contact_phone !== undefined &&
-      !(typeof value.contact_phone === "string" && value.contact_phone.length <= 40 && /^\+?[0-9 ()./-]{5,40}$/.test(value.contact_phone)))
+      !(typeof value.contact_phone === "string" && /^\+?\d{5,20}$/.test(value.contact_phone))) ||
+    (value.social_handles !== undefined &&
+      !(Array.isArray(value.social_handles) && value.social_handles.length <= 20 &&
+        value.social_handles.every((handle) => typeof handle === "string" && /^[a-z0-9._-]{1,100}$/.test(handle))))
   ) fail("ARTIFACT_ACTION_SCOPE_MISMATCH");
 }
 
@@ -326,20 +334,39 @@ export function siteAnswerPaths(input: {
 }
 
 /** The scope an artifact's action links are checked against (null when it carries none). */
-export function artifactActionScope(artifact: Pick<ArtifactV2, "action_scope" | "pages" | "routes" | "collections" | "offerings_snapshot" | "commercial">): MinglaActionScope | null {
+export function artifactActionScope(
+  artifact: Pick<ArtifactV2, "action_scope" | "pages" | "routes" | "collections" | "offerings_snapshot" | "commercial"> &
+    Partial<Pick<ArtifactV2, "media" | "seo">>,
+  /**
+   * Fail closed: with no `action_scope`, return a scope with NO brand, so
+   * every link that needs the brand is refused (`brand_unknown`). Used at
+   * publish when Core couldn't name the brand; never by the runtime, which
+   * keeps serving earlier artifacts unchanged.
+   */
+  options: { failClosed?: boolean } = {},
+): MinglaActionScope | null {
   const scope = artifact.action_scope;
-  if (!scope) return null;
+  if (!scope && !options.failClosed) return null;
   const events = new Set<string>();
   for (const offering of artifact.offerings_snapshot) if (offering.kind === "event") events.add(offering.id.toLowerCase());
   for (const reference of artifact.commercial.references) {
     if (reference.kind === "checkout" || reference.kind === "offering") events.add(reference.id.toLowerCase());
   }
+  let siteHost: string | null = null;
+  try {
+    siteHost = artifact.seo?.canonical_url ? new URL(artifact.seo.canonical_url).hostname : null;
+  } catch {
+    siteHost = null;
+  }
   return {
-    brandSlug: scope.brand_slug,
+    brandSlug: scope?.brand_slug ?? null,
     sitePaths: siteAnswerPaths(artifact),
-    contactEmail: scope.contact_email ?? null,
-    contactPhone: scope.contact_phone ?? null,
+    contactEmail: scope?.contact_email ?? null,
+    contactPhone: scope?.contact_phone ?? null,
     checkoutEventIds: events,
+    socialHandles: scope?.social_handles?.length ? new Set(scope.social_handles) : null,
+    mediaIds: new Set((artifact.media ?? []).map((item) => item.id.toLowerCase())),
+    siteHosts: siteHost ? new Set([siteHost]) : new Set(),
   };
 }
 
@@ -587,6 +614,8 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
       collections,
       offerings_snapshot: a.offerings_snapshot as SiteOffering[],
       commercial: { references },
+      media: a.media as MediaRef[],
+      seo: plainObject(a.seo) && typeof a.seo.canonical_url === "string" ? a.seo as ArtifactV2["seo"] : undefined,
     });
   }
   const paths = new Set<string>();

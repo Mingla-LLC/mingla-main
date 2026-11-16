@@ -32,6 +32,15 @@ Deno.test("#4453 OUTBOUND_ACTION_LINK is owner-fixable, naming the buttons but n
   assert(!JSON.stringify(body).includes("opentable"));
 });
 
+Deno.test("#4453 BOOKING_LINK_UNVERIFIED is owner-facing and retryable", async () => {
+  const response = bookingLockRefusal({ code: "BOOKING_LINK_UNVERIFIED" });
+  assert(response);
+  const body = await response.json();
+  assertEquals(body.error.reason_code, "BOOKING_LINK_UNVERIFIED");
+  assertEquals(body.error.retryable, true);
+  assertEquals(body.error.message, BOOKING_LOCK_REASONS.BOOKING_LINK_UNVERIFIED);
+});
+
 Deno.test("#4453 BOOKING_THROUGH_ENQUIRY is owner-fixable; other codes are not this map's", async () => {
   const response = bookingLockRefusal({ code: "BOOKING_THROUGH_ENQUIRY" });
   assert(response);
@@ -43,15 +52,24 @@ Deno.test("#4453 BOOKING_THROUGH_ENQUIRY is owner-fixable; other codes are not t
 
 Deno.test("#4453 the publish carries Core's brand as action_scope", async () => {
   assertEquals(
-    publicationActionScope({ slug: "young-and-stamped", contact_email: " hello@ys.test ", contact_phone: "+234 801 234 5678" }),
-    { brand_slug: "young-and-stamped", contact_email: "hello@ys.test", contact_phone: "+234 801 234 5678" },
+    publicationActionScope({
+      slug: "young-and-stamped",
+      contact_email: " hello@ys.test ",
+      contact_phone: "+234 801 234 5678 ext. 2",
+      social_links: { instagram: "https://www.instagram.com/YoungAndStamped", tiktok: "@ys.trips", website: "https://ys.example" },
+    }),
+    { brand_slug: "young-and-stamped", contact_email: "hello@ys.test", contact_phone: "+2348012345678", social_handles: ["youngandstamped", "ys.trips"] },
   );
+  // A bad field is dropped on its own; the slug (and so the brand check) stays.
+  assertEquals(publicationActionScope({ slug: "young-and-stamped", contact_email: "nope", contact_phone: "call us" }), { brand_slug: "young-and-stamped" });
   assertEquals(publicationActionScope({ slug: "young-and-stamped", contact_email: null, contact_phone: "" }), { brand_slug: "young-and-stamped" });
   assertEquals(publicationActionScope({ slug: "../evil" }), null);
   assertEquals(publicationActionScope(null), null);
   const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   // Core's own row, read for publications only, and written over anything the caller sent.
-  assert(source.includes('.select("slug,contact_email,contact_phone")'));
+  assert(source.includes('.select("slug,contact_email,contact_phone,social_links")'));
+  // Fail closed: an unreadable brand stops the publish instead of sending no scope.
+  assert(/if \(actionBrandError\) \{\s*return sitesFailure\("SERVICE_TEMPORARILY_UNAVAILABLE", 503/.test(source));
   assert(source.includes("action_scope: actionScope,"));
   assert(source.indexOf("...input,") < source.indexOf("action_scope: actionScope,"));
   // The booking lock is checked before the outage fallback.
@@ -73,5 +91,5 @@ Deno.test("#4453 Ari's evidence carries the brand slug and contact details; its 
   assertEquals(refused.error.message, ARI_FAILURE_MESSAGES.BOOKING_THROUGH_ENQUIRY);
   assertEquals(refused.error.problems, ["blocks[0].heading"]);
   const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assert(source.includes('.select("id,name,description,city,slug,contact_email,contact_phone")'));
+  assert(source.includes('.select("id,name,description,city,slug,contact_email,contact_phone,social_links")'));
 });
