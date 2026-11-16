@@ -523,7 +523,8 @@ export function phase3dContractDigest(manifest) {
 // #4238 W7: merged origin/4420-host-graphite-glass a196ecfd7a (its 20280719004420 migration row kept after the #4238 rows); re-sealed.
 // #4420 experience venue-line privacy and Stay other-contact migrations listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 W8: re-sealed after merging origin/4420-host-graphite-glass c37722672d; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c6aeea8aa70f360bcefb15375650dd97b21837b9c06318b8bc1115cf7b171d35";
+// #4238 rework 6: merged origin/main (#4452 B8 row and skip kept beside the #4238/#4420 rows); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4bfd840c1eb78148a57df39076cd446d64b712dba262a18cf6d110917ec4ff77";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

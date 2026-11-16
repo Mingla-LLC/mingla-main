@@ -67,7 +67,8 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   const result = renderTransactionalEmail(ticketFixture());
   assertEquals(result.from.address, "tickets@usemingla.com");
   assertStringIncludes(result.html, "<!doctype html>");
-  assertStringIncludes(result.html, "mingla-wordmark-email.png");
+  // #4452 (B7) §5.9: the shell's logo is the logo pill.
+  assertStringIncludes(result.html, "mingla-logo-white-on-orange.png");
   assertStringIncludes(result.html, "Sunset Sail");
   assertStringIncludes(result.html, "Hosted by Coastline Co");
   assertStringIncludes(result.html, "Brighton Marina");
@@ -75,7 +76,7 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   assertStringIncludes(result.html, "support@usemingla.com");
   // Footer wordmark replaced the "experience app" tagline — logo now renders
   // in both header and footer (two <img> tags pointing at the same URL).
-  const logoMatches = result.html.match(/mingla-wordmark-email\.png/g) ?? [];
+  const logoMatches = result.html.match(/mingla-logo-white-on-orange\.png/g) ?? [];
   assert(logoMatches.length >= 2);
   assertStringIncludes(result.html, "Get your tickets in Mingla");
   assertFalse(result.html.includes("QR in attached PDF"));

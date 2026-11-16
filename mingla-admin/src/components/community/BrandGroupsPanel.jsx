@@ -64,6 +64,7 @@ import {
   planPrefillFromMessages,
   quickReplies,
   seenByWords,
+  settledSelection,
   sendFailureWords,
   sendLanded,
   typingWords,
@@ -77,6 +78,8 @@ import { BrandGroupRail } from "./BrandGroupRail";
 import { BrandGroupSidePanel } from "./BrandGroupSidePanel";
 import { subscribePageReturn } from "../../lib/pageReturn";
 
+/** The page this panel is drawn on, and so the address it reads and writes. */
+export const BRAND_GROUPS_PAGE_ID = "brand-groups";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 const LIGHT_REFRESH_MS = 1_500;
@@ -141,7 +144,10 @@ export function BrandGroupsPanel({ onCounts }) {
   // #4270 W2: Hosts and Creators powers (host card, plan, Mine) show only to staff who can open Hosts.
   const canHosts = canOpenPage(access, "hosts");
   const canBrands = canOpenPage(access, "brands");
-  const [search, setSearch] = useHashQuery("community");
+  // #4452 (B1): the panel is its own page now (#/brand-groups). Its address
+  // was still Community's, so every click wrote #/community?group=… (a reload
+  // opened Community) and #/brand-groups?group= / ?brand= links were ignored.
+  const [search, setSearch] = useHashQuery(BRAND_GROUPS_PAGE_ID);
   const view = useMemo(() => brandGroupView(search), [search]);
   const stack = usePanelStack(search, setSearch, { kinds: BRAND_GROUP_SIDE_KINDS });
   const { addToast } = useToast();
@@ -364,9 +370,16 @@ export function BrandGroupsPanel({ onCounts }) {
 
   const rows = useMemo(() => mergeInbox(groups, inbox), [groups, inbox]);
   // Needs reply when anyone waits, else All (once, when the inbox first loads).
+  // #4452 (B3): the group picked before the filter settled (the first of ALL
+  // groups) may not be in the filtered list; then the first one shown opens,
+  // unless the address named a group.
   useEffect(() => {
-    if (filter === null && loadedOnce && inbox.length) setFilter(defaultInboxFilter(rows));
-  }, [filter, loadedOnce, inbox.length, rows]);
+    if (filter !== null || !loadedOnce || !inbox.length) return;
+    const next = defaultInboxFilter(rows);
+    setFilter(next);
+    const pick = settledSelection({ selectedId, viewGroup: view.group, visible: applyInboxFilter(rows, next, query) });
+    if (pick !== selectedId) setSelectedId(pick);
+  }, [filter, loadedOnce, inbox.length, rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const activeFilter = filter || "all";
   const visibleRows = useMemo(() => applyInboxFilter(rows, activeFilter, query), [rows, activeFilter, query]);
   const summary = useMemo(() => inboxSummary(rows, nowMs), [rows, nowMs]);
@@ -758,13 +771,13 @@ export function BrandGroupsPanel({ onCounts }) {
 
   const column = (name) => `${pane === name ? "flex" : "hidden"} min-h-0 min-w-0 flex-col`;
   return (
-    <div data-brand-groups="" data-pane={pane} data-side-open={sideOpen ? "true" : "false"} className="flex min-w-0 flex-col gap-3">
+    <div data-brand-groups="" data-pane={pane} data-side-open={sideOpen ? "true" : "false"} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       {summaryWords && (
         <p data-inbox-summary="" role="status" className="self-start rounded-full border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)]">{summaryWords}</p>
       )}
       <div
         data-brand-groups-workspace=""
-        className={`grid h-[calc(100dvh-220px)] min-h-[560px] min-w-0 grid-cols-1 overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] ${sideOpen
+        className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] ${sideOpen
           ? "lg:grid-cols-[72px_minmax(0,1fr)_400px] xl:grid-cols-[72px_minmax(0,1fr)_340px_400px]"
           : "lg:grid-cols-[260px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]"}`}
       >

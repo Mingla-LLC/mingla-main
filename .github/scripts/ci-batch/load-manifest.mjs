@@ -312,7 +312,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4238 W7: merged origin/4420-host-graphite-glass a196ecfd7a (its 20280719004420 migration row kept after the #4238 rows in the #1857, #1931 and #2117 lanes); re-sealed.
 // #4420 filtered replay lanes (#1931, #2117) skip the experience venue-line privacy migration by exact filename; re-sealed.
 // #4238 W8: merged origin/4420-host-graphite-glass c37722672d (its 20280718004420 row and the #1931 filtered-replay skip for 20280719004420 kept beside the #4238 rows); re-sealed.
-export const BOOTSTRAP_SHA256 = "0f1ef4310b69465a94d735cc201b1a702056d5e1b47ccecf54467440e436e625";
+export const BOOTSTRAP_SHA256 = "4d5e85cb493949e6b4f8c1fa129531fd84f11a022a0eaa3bca204c534ad6a1d9";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

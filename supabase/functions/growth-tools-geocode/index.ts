@@ -5,7 +5,8 @@
 // server-side (GOOGLE_MAPS_API_KEY never ships to the browser) and returns real
 // city candidates. Cities/towns only. No DB access. Provider since #4334.
 //
-//   POST {q} → 200 {cities:[{label, city, region, country}]}
+//   POST {q, region?} → 200 {cities:[{label, city, region, country}]}
+//   (region: the visitor's two-letter region, a ranking hint only, #4452 B15)
 //   → 400 {error:"validation"} | 429 {error:"rate_limited"}
 //   | 502 {error:"geocode_unavailable"}
 //   OPTIONS → 200 "ok" + CORS
@@ -91,6 +92,33 @@ export function toCity(p: Prediction): CityHit | null {
   return { label: label.slice(0, 120), city: city.slice(0, 80), region, country };
 }
 
+function fold(v: string): string {
+  return v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+/**
+ * #4452 follow-up (B15): Google's order, except that a city whose name IS what
+ * was typed comes first, then one whose name starts with it ("Lagos" before
+ * "Lagos de Moreno" for "Lagos"). Stable: ties keep Google's order. Only the
+ * predictions Google returned are reordered; nothing is added or dropped.
+ */
+export function rankCities(q: string, hits: CityHit[]): CityHit[] {
+  const needle = fold(q);
+  const tier = (h: CityHit) => {
+    const name = fold(h.city);
+    return name === needle ? 0 : name.startsWith(needle) ? 1 : 2;
+  };
+  return hits.map((h, i) => ({ h, i, t: tier(h) }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .map((x) => x.h);
+}
+
+/** #4452 follow-up (B15): the visitor's region (a CLDR two-letter code), or null. */
+export function regionHint(v: unknown): string | null {
+  const r = asStr(v).trim();
+  return /^[A-Za-z]{2}$/.test(r) ? r.toLowerCase() : null;
+}
+
 function unavailable(reason: string, ms: number, status?: number): Response {
   captureEdgeException(new Error(`growth-tools-geocode upstream failed: ${reason}`), {
     fn: "growth-tools-geocode",
@@ -112,9 +140,11 @@ export async function handler(req: Request): Promise<Response> {
   if (!checkIpRateLimit(ip)) return json({ error: "rate_limited" }, 429);
 
   let q: string;
+  let region: string | null;
   try {
     const body = await req.json();
     q = asStr((body as Record<string, unknown>)?.q).trim();
+    region = regionHint((body as Record<string, unknown>)?.region);
   } catch {
     return json({ error: "validation" }, 400);
   }
@@ -138,6 +168,10 @@ export async function handler(req: Request): Promise<Response> {
         languageCode: "en",
         includeQueryPredictions: false,
         includedPrimaryTypes: CITY_PRIMARY_TYPES,
+        // #4452 follow-up (B15): without it Google ranks for the server's
+        // location (the US), so a visitor in Lagos saw US towns first. The
+        // visitor's region biases the same single request; no extra call.
+        ...(region ? { regionCode: region } : {}),
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -167,7 +201,7 @@ export async function handler(req: Request): Promise<Response> {
     seen.add(k);
     cities.push(hit);
   }
-  return json({ cities });
+  return json({ cities: rankCities(q, cities) });
 }
 
 if (import.meta.main) {

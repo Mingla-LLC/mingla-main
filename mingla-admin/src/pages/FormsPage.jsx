@@ -3,7 +3,7 @@
 // setup card (admins only, §7.8), and Submissions (the Leads list filtered to
 // forms, A1.8). A form opens its builder at #/forms/<id>?tab=<tab>.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, Copy, Pencil, Plus } from "lucide-react";
+import { Archive, ClipboardList, Copy, Inbox, Mail, Pencil, PhoneCall, Plus } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -203,10 +203,10 @@ function FormsList({ onOpen, tab, onTab }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-forms-kpis="">
             {st === "loading" ? [0, 1, 2, 3].map((i) => <Skeleton key={i} height={128} rounded="16px" />) : (
               <>
-                <StatCard label="Submissions, 7 days" value={kpis.subs_7d ?? 0} trend={weekChange(kpis.subs_7d, kpis.subs_prev_7d)} trendUp={(kpis.subs_7d ?? 0) > (kpis.subs_prev_7d ?? 0) ? true : (kpis.subs_7d ?? 0) < (kpis.subs_prev_7d ?? 0) ? false : undefined} />
-                <StatCard label="Live forms" value={kpis.live ?? 0} />
-                <StatCard label="Emails waiting to send" value={kpis.emails_waiting ?? 0} />
-                <StatCard label="Booked a call after" value={anySubs ? bookedAfter : "n/a"} />
+                <StatCard icon={Inbox} label="Submissions, 7 days" value={kpis.subs_7d ?? 0} trend={weekChange(kpis.subs_7d, kpis.subs_prev_7d)} trendUp={(kpis.subs_7d ?? 0) > (kpis.subs_prev_7d ?? 0) ? true : (kpis.subs_7d ?? 0) < (kpis.subs_prev_7d ?? 0) ? false : undefined} />
+                <StatCard icon={ClipboardList} label="Live forms" value={kpis.live ?? 0} />
+                <StatCard icon={Mail} label="Emails waiting to send" value={kpis.emails_waiting ?? 0} />
+                <StatCard icon={PhoneCall} label="Booked a call after" value={anySubs ? bookedAfter : "n/a"} />
               </>
             )}
           </div>
