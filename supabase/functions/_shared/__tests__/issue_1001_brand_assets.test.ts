@@ -39,6 +39,9 @@ const { buildInviteEmail } = await import("../brandInviteEmail.ts");
 import type { RenderInput, TicketBodyInput } from "../email/types.ts";
 
 const CANONICAL = "https://usemingla.com/brand/email/mingla-wordmark-email.png";
+// #4452 (B7) §5.9: every shell email draws the logo pill (live on the bare
+// host); minglaLogoUrl() still owns the PDF and non-shell logos.
+const PILL = "https://usemingla.com/brand/mingla-logo-white-on-orange.png";
 // Assembled from parts so THIS file never carries the dead literals the
 // issue-1001-dead-logo-urls.mjs gate bans repo-wide.
 const DEAD_EMAIL_ASSETS = ["usemingla.com", "email-assets", "mingla-logo.png"]
@@ -108,16 +111,16 @@ Deno.test("T12: whitespace-only env → default returned (trim guard)", () => {
   Deno.env.delete("MINGLA_LOGO_URL");
 });
 
-Deno.test("T3: transactional shell render with NO secret — canonical URL >=2x (header+footer), zero dead/www literals", () => {
+Deno.test("T3: transactional shell render with NO secret — the logo pill >=2x (header+footer), zero dead/www literals", () => {
   Deno.env.delete("MINGLA_LOGO_URL");
   const result = renderTransactionalEmail(ticketFixture());
-  const matches = result.html.match(/mingla-wordmark-email\.png/g) ?? [];
-  assert(matches.length >= 2, `logo rendered ${matches.length}x, expected >=2`);
-  assertStringIncludes(result.html, CANONICAL);
+  const matches = result.html.match(/mingla-logo-white-on-orange\.png/g) ?? [];
+  assert(matches.length >= 2, `logo pill rendered ${matches.length}x, expected >=2`);
+  assert(!result.html.includes(CANONICAL), "#4452 B7: the old wordmark is not the shell logo");
   assertNoDeadOrWwwLogo(result.html);
 });
 
-Deno.test("T4a: marketing render default path emits the canonical URL", () => {
+Deno.test("T4a: marketing render default path emits the logo pill", () => {
   Deno.env.delete("MINGLA_LOGO_URL");
   const result = renderMarketingEmail({
     body_html: "<p>Hello {first_name}</p>",
@@ -141,11 +144,11 @@ Deno.test("T4a: marketing render default path emits the canonical URL", () => {
     subject: "Hello",
     brand_name: "Coastline Co",
   });
-  assertStringIncludes(result.html, CANONICAL);
+  assertStringIncludes(result.html, PILL);
   assertNoDeadOrWwwLogo(result.html);
 });
 
-Deno.test("T4b: brand-invite build default path emits the canonical URL", () => {
+Deno.test("T4b: brand-invite build default path emits the logo pill", () => {
   Deno.env.delete("MINGLA_LOGO_URL");
   const email = buildInviteEmail({
     inviteeName: "Jamie",
@@ -156,7 +159,7 @@ Deno.test("T4b: brand-invite build default path emits the canonical URL", () => 
     acceptUrl: "https://host.usemingla.com/accept-invite?token=tok",
     from: "Mingla <hello@usemingla.com>",
   });
-  assertStringIncludes(email.html, CANONICAL);
+  assertStringIncludes(email.html, PILL);
   assertNoDeadOrWwwLogo(email.html);
 });
 
