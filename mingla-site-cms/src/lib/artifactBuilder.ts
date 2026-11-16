@@ -27,6 +27,8 @@ import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { fileVideoIntegrity, fitsHero, isFileVideoRecord, isStreamVideoRecord, streamVideoRef } from "./siteVideoRefs";
 import type { FileVideoIntegrity, StreamVideoRef } from "../contracts/generated/video.ts";
 import { offeringCoverRenditions, MAX_COVER_SOURCE_BYTES, type CoverRenditionDeps } from "./offeringCoverRenditions";
+import type { ArtifactActionScope } from "../contracts/generated/artifactV2.ts";
+import { assertNoOutboundActionLinks } from "./bookingLock";
 
 /*
  * #3149 wave 4 — where Mingla's own guest-facing flows live. Named once so a
@@ -233,6 +235,18 @@ export async function buildPublicationArtifact(
     fontPipeline?: FontPipelineDeps;
     /** #2829 W7c — where offering covers are read and their renditions kept (tests pass fakes). */
     coverRenditions?: CoverRenditionDeps;
+    /**
+     * #4453 PR 2 (booking lock) — the brand Core signed into this publish
+     * (slug, contact email, phone). Frozen into the artifact as
+     * `action_scope`, so every button is checked against THIS brand here and
+     * again by the runtime's validator.
+     */
+    actionScope?: ArtifactActionScope | null;
+    /**
+     * #4453 PR 2 — refuse the build with OUTBOUND_ACTION_LINK when a button
+     * points outside Mingla. Set by publish; a private preview still renders.
+     */
+    enforceActionLinks?: boolean;
   },
 ): Promise<BuiltPublication> {
   const scopedReq = await tenantRequest(req, input.tenant);
@@ -1317,6 +1331,17 @@ export async function buildPublicationArtifact(
   artifact.fonts = fonts.slots;
   artifact.font_assets = fonts.assets;
   artifact.font_fallbacks = fonts.fallbacks;
+  if (input.actionScope) artifact.action_scope = input.actionScope;
+  /*
+   * #4453 PR 2 (booking lock, D5) — one button outside Mingla blocks the
+   * publish, before anything is written.
+   * [TRANSITIONAL] A publish from a Core that does not yet sign the brand in
+   * (brand-site-control before its #3381 deploy) has no scope, so the check
+   * is brand-agnostic: any Mingla buyer page passes, every other site is
+   * refused. Exit: brand-site-control deployed with `action_scope`; then
+   * every publish carries it.
+   */
+  if (input.enforceActionLinks) assertNoOutboundActionLinks(artifact);
   const serialized = stable(artifact);
   // The public contract (assertArtifactV2) is enforced where it always was:
   // the runtime's candidate probe validates these exact bytes before Core

@@ -6,7 +6,7 @@ import {
   tenantWrite,
 } from "../lib/access";
 import { assertTenantPages, bindRequestTenant, singletonPerTenant } from "../lib/tenantIntegrity";
-import { safeText } from "../lib/validation";
+import { safeActionUrl, safeText } from "../lib/validation";
 import {
   MAX_NAV_CHILDREN,
   MAX_NAV_ITEMS,
@@ -172,7 +172,12 @@ export const Navigation: CollectionConfig = {
           type: "text",
           maxLength: 2048,
           admin: { condition: (_data, sibling) => sibling?.target_type === "url" },
-          validate: secureExternalUrl,
+          // #4453 PR 2 — the header button is an action link: an outside
+          // address must be a Mingla page (the brand is checked at publish).
+          validate: (value: unknown) => {
+            const secure = secureExternalUrl(value);
+            return secure === true ? safeActionUrl(value) : secure;
+          },
         },
       ],
     },

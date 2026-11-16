@@ -80,6 +80,13 @@ function fieldSchema(spec: FieldSpec, path: string): JsonSchema | null {
       return { type: "string", maxLength: 2048, description: `${spec.label}: an https link, mailto:, tel:, or a /path on this website` };
     case "mingla_href":
       return { type: "string", maxLength: 2048, description: `${spec.label}: a usemingla.com page` };
+    // #4453 PR 2 — a button: bookings and payments go through Mingla only.
+    case "action_href":
+      return {
+        type: "string",
+        maxLength: 2048,
+        description: `${spec.label}: a /path to a page on this website, or this brand's own Mingla page (https://host.usemingla.com/t/, /e/, /exp/, /b/ or /checkout/). Never another website`,
+      };
     case "media_url":
     case "video_url":
       return { ...MEDIA_ID, description: `${spec.label}: ${String(MEDIA_ID.description)}` };

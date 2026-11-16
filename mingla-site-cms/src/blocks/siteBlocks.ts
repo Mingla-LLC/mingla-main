@@ -9,7 +9,7 @@ import {
   UnorderedListFeature,
   lexicalEditor,
 } from "@payloadcms/richtext-lexical";
-import { safeText, safeTimeZone, safeUrl } from "../lib/validation";
+import { safeActionUrl, safeText, safeTimeZone, safeUrl } from "../lib/validation";
 import { statsIconOptions } from "../lib/statsIcons";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
@@ -39,13 +39,17 @@ const short = (
     value == null && !required ? true : safeText(value, max),
   admin: description ? { description } : undefined,
 });
-const link = (name = "href", label = "Link", required = true): Field => ({
+/*
+ * #4453 PR 2 — every block link here is a BUTTON (an action link) except the
+ * map and directions links, which say so with `safeUrl`.
+ */
+const link = (name = "href", label = "Link", required = true, validate: (value: unknown) => true | string = safeActionUrl): Field => ({
   name,
   label,
   type: "text",
   required,
   maxLength: 2048,
-  validate: safeUrl,
+  validate,
 });
 const readyMedia = (name = "media", label = "Image"): Field => ({
   name,
@@ -654,7 +658,7 @@ const BLOCK_CONFIGS: Block[] = [
       eyebrow(),
       short("heading", "Heading", false, 120),
       short("address", "Address", true, 300),
-      link("map_url", "Map link", false),
+      link("map_url", "Map link", false, safeUrl),
       /*
        * #3149 wave 4 — THE TWO FIELDS BEHIND A LIVE "OPEN NOW".
        *
@@ -984,7 +988,7 @@ const BLOCK_CONFIGS: Block[] = [
         200,
         "Read out to anyone using a screen reader, and printed on the panel before the map loads. Say plainly what is being pointed at — the street, or the exact address if you are sure of it.",
       ),
-      link("directions_url", "Directions link", false),
+      link("directions_url", "Directions link", false, safeUrl),
     ],
   },
   /* #2829 W5 — collection, history and form blocks (fixed field sets). */

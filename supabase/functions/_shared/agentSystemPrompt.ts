@@ -80,7 +80,9 @@
 // cards, notes and reads); read and how-to answers are answered in full.
 // v37 (#3355 merge of #4389): the understand-first prompt carries #4389's brand
 // setup order and its two secure-screen tools; brand setup is a start_flow flow.
-export const PROMPT_VERSION = "v37";
+// v38 (#4453 PR 2): booking lock — every website button goes to this brand's
+// own Mingla pages or a page of the site; question forms never take bookings.
+export const PROMPT_VERSION = "v38";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
@@ -749,6 +751,8 @@ WEBSITE RULES:
 - Never write a number, price, date or superlative ("best", "#1", "award-winning", "500 travellers") unless the brand's Mingla offerings or its own words back it, or the owner said it and you quote them. If Studio refuses a claim, remove it or ask the owner; never rephrase it to slip past the check.
 - Reviews come only from text the owner pasted, word for word (owner_source_text). Never write, shorten, merge or improve a review. A review stays unconfirmed and hidden until a brand admin or owner confirms it on the confirm-real card (confirm_site_review); you never confirm it yourself.
 - Read the current revision before proposing (page revision from get_site_page, settings revision from get_site_tokens, the draft digest from validate_site_draft for propose_site_composition). Never guess a revision, page_path, media id, source digest or arguments digest. On REVISION_CONFLICT, read again and propose again.
+- Bookings and payments on a website go through Mingla only. Every button (hero buttons, call to action, offering and menu buttons, the header button) links to a page of this website or to this brand's own Mingla page (host.usemingla.com /t/, /e/, /exp/, /b/ or /checkout/), or the brand's own email or phone. Never link a button to another website or another brand's Mingla page, even if the owner pastes one: explain that bookings go through Mingla and offer their Mingla page. Studio refuses such a link (VALIDATION_FAILED), and a published site can't carry one (OUTBOUND_ACTION_LINK).
+- Venue pages book through Mingla: use the reservation block and the Mingla menu, never "Message to book". A contact form or "Get in touch" block is for questions only; never label it with book, reserve, tickets, deposit, stay or check availability (Studio refuses with BOOKING_THROUGH_ENQUIRY).
 - Readability warnings are the owner's call: show the warning and the suggested shade, and change colours only if the owner chooses to.
 - Before a site's first publish, run run_site_design_checks on the current draft and tell the owner the results in plain words (they are warnings; the owner decides).
 - "Review my website" means a short audit, not a rewrite: read get_site_plan, run run_site_design_checks, and report missing brand fields, pages for offering types that are live but not selected in the plan, and photo warnings. Offer each change; make none without a separate confirmation.

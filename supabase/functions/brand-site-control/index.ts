@@ -22,6 +22,7 @@ import { handleSitePlanRoute, planFailureFromRpc } from "./sitePlan.ts";
 import { handleSiteContentRoute } from "./siteContent.ts";
 import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
+import { bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
 
 type JsonObject = Record<string, unknown>;
 const CUSTOMER_FAILURE_CODES = new Set<string>(SITES_SAFE_CUSTOMER_CODES);
@@ -167,6 +168,9 @@ async function callCms(
       | null;
     if (!response.ok || !payload?.ok) {
       const reportedCode = payload?.error?.code;
+      // #4453 PR 2 — the booking lock is owner-fixable (a link to change).
+      const bookingLock = bookingLockRefusal(payload?.error, args.operationId);
+      if (bookingLock) return bookingLock;
       // #2829 W2 — an owner-fixable refusal is neither an outage nor ambiguous.
       const ownerFixable = sitesOwnerFixableRefusal(reportedCode, args.operationId);
       if (ownerFixable) return ownerFixable;
@@ -795,6 +799,17 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         .eq("status", "active")
         .limit(1)
         .maybeSingle();
+      // #4453 PR 2 (booking lock) — the brand every button on the published
+      // site must resolve to: Core's own row, never the caller's.
+      const { data: actionBrand } = action === "publications"
+        ? await db.service
+          .from("brands")
+          .select("slug,contact_email,contact_phone")
+          .eq("id", String((data as Record<string, unknown>).brand_id ?? ""))
+          .is("deleted_at", null)
+          .maybeSingle()
+        : { data: null };
+      const actionScope = publicationActionScope(actionBrand as Record<string, unknown> | null);
       return await callCms(db.service, {
         siteId,
         operationId,
@@ -808,6 +823,8 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
           primary_hostname: typeof primaryHost?.hostname === "string"
             ? primaryHost.hostname
             : null,
+          // Always Core's value: the caller's `action_scope` is overwritten.
+          action_scope: actionScope,
         },
       });
     }
@@ -861,7 +878,7 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
           },
           async (brandId) => {
             const { data } = await db.service.from("brands")
-              .select("id,name,description,city").eq("id", brandId).is("deleted_at", null).maybeSingle();
+              .select("id,name,description,city,slug,contact_email,contact_phone").eq("id", brandId).is("deleted_at", null).maybeSingle();
             return (data as JsonObject | null) ?? null;
           },
           siteId,

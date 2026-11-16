@@ -11,6 +11,7 @@
  *     latest revision, the layouts this design draws).
  */
 import { sitesJson } from "../_shared/sitesContracts.ts";
+import { BOOKING_LOCK_REASONS } from "./bookingLock.ts";
 
 type JsonObject = Record<string, unknown>;
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -71,6 +72,8 @@ export type AriFailureCode =
   | "TITLE_REQUIRED"
   | "SLUG_TAKEN"
   | "CONTENT_LIMIT_EXCEEDED"
+  // #4453 PR 2 — a question form may not take bookings.
+  | "BOOKING_THROUGH_ENQUIRY"
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
@@ -95,6 +98,7 @@ export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
   TITLE_REQUIRED: "Add a name first.",
   SLUG_TAKEN: "Another entry already uses that address.",
   CONTENT_LIMIT_EXCEEDED: "This collection is full.",
+  BOOKING_THROUGH_ENQUIRY: BOOKING_LOCK_REASONS.BOOKING_THROUGH_ENQUIRY,
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 
@@ -138,7 +142,20 @@ export function ariFailureFrom(body: JsonObject | null, status: number): Respons
 }
 
 export type SiteEvidence = {
-  brand: { id: string; name: string | null; description: string | null; city: string | null };
+  /*
+   * #4453 PR 2 (booking lock) — `slug`, `contact_email` and `contact_phone`:
+   * Ari's buttons may only go to this brand's own Mingla pages and its own
+   * mailto/tel, so Studio checks them against these (Core's values).
+   */
+  brand: {
+    id: string;
+    name: string | null;
+    description: string | null;
+    city: string | null;
+    slug: string | null;
+    contact_email: string | null;
+    contact_phone: string | null;
+  };
   offerings: JsonObject[];
 };
 
@@ -163,7 +180,15 @@ export async function siteEvidence(
   if (!Array.isArray(offerings)) return null;
   const text = (value: unknown) => (typeof value === "string" ? value : null);
   return {
-    brand: { id: brandId, name: text(brand.name), description: text(brand.description), city: text(brand.city) },
+    brand: {
+      id: brandId,
+      name: text(brand.name),
+      description: text(brand.description),
+      city: text(brand.city),
+      slug: text(brand.slug),
+      contact_email: text(brand.contact_email),
+      contact_phone: text(brand.contact_phone),
+    },
     offerings: (offerings as JsonObject[]).slice(0, 500).map((row) => ({
       id: row.id,
       kind: row.kind,
