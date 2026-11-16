@@ -233,6 +233,8 @@ BEGIN
     (v_tf, 'purchase', 'Purchase', v_campaign, 'meta', 'web', 'w4b-ev-f', now()),
     (NULL, 'purchase', 'Purchase', v_campaign, 'meta', 'web', 'w4b-ev-none', now());
   PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  -- The CI image's auth.role() reads the older per-claim setting.
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
   SELECT coalesce(sum(results), 0) INTO v_total
   FROM public.ad_campaign_daily_series(ARRAY[v_campaign], 'UTC');
   PERFORM pg_temp.s_assert(v_total = 1,
