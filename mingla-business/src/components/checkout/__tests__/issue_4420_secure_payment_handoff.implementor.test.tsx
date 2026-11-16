@@ -88,8 +88,8 @@ describe("issue #4420 — secure payment handoff", () => {
     expect(openSpy).toHaveBeenCalledWith(url);
     // Seth's standing rule: guest copy names no payment provider.
     const shown = tree.root
-      .findAll((n) => typeof n.props.children === "string")
-      .map((n) => n.props.children as string)
+      .findAll((n) => n.type === "Text")
+      .map((n) => [n.props.children].flat().filter((c) => typeof c === "string").join(""))
       .join(" ");
     expect(shown).toContain("Opening secure payment…");
     expect(shown).toContain("Our secure payment page opens in this tab");
