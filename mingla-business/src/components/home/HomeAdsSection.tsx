@@ -349,7 +349,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
         padding={0}
         testID="home-ads-card"
       >
-        <View style={[
+        <View testID="home-ads-summary" style={[
           styles.summary,
           hasSummaryData
             ? isWideDesktop
@@ -583,7 +583,9 @@ const styles = StyleSheet.create({
   },
   summaryCopy: { flex: 1, minWidth: 0 },
   summaryWithDataWide: { minHeight: 120 },
-  summaryWithDataNarrow: { minHeight: 138 },
+  // Phone/tablet: the summary sizes to its content, top-aligned (no fixed
+  // minHeight + centring, which left ~47dp empty above "ADS").
+  summaryWithDataNarrow: { alignItems: "flex-start", minHeight: 0, paddingVertical: space[5] },
   summaryCompact: { minHeight: 51, paddingVertical: 0 },
   eyebrow: { ...type.label, color: color.text3 },
   salesSummaryRow: {
