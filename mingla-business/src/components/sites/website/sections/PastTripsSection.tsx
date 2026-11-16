@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { PastTripForm } from "../../plan/ProofPart";
+import { PastTripForm, ProofSheet } from "../../plan/ProofPart";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useWebsite } from "../WebsiteContext";
@@ -27,15 +27,16 @@ export function PastTripsSection(): React.ReactElement {
   const [addingPast, setAddingPast] = useState(false);
   const addPastTrip = canHide ? (
     <Card testID="past-add-before-mingla">
-      {addingPast ? (
-        <PastTripForm
-          brandId={ctx.brandId}
-          onDone={() => { setAddingPast(false); void past.refetch(); toast("Trip added. It shows as ended, never bookable.", "success"); }}
-          onCancel={() => setAddingPast(false)}
-        />
-      ) : (
-        <WButton label="Add a trip you ran before Mingla" onPress={() => setAddingPast(true)} testID="past-add-before-mingla-open" />
-      )}
+      <WButton label="Add a trip you ran before Mingla" onPress={() => setAddingPast(true)} testID="past-add-before-mingla-open" />
+      <ProofSheet visible={addingPast} title="Add a trip you ran before Mingla" onClose={() => setAddingPast(false)} testID="past-add-before-mingla-sheet">
+        {addingPast ? (
+          <PastTripForm
+            brandId={ctx.brandId}
+            onDone={() => { setAddingPast(false); void past.refetch(); toast("Trip added. It shows as ended, never bookable.", "success"); }}
+            onCancel={() => setAddingPast(false)}
+          />
+        ) : null}
+      </ProofSheet>
     </Card>
   ) : null;
 

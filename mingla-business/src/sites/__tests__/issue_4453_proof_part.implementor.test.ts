@@ -103,3 +103,19 @@ describe("#4453 Draft review copy", () => {
     expect(sectionName("unknown_block")).toBe("Section");
   });
 });
+
+describe("#4453 the label font slot in the look model", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const look = require("../siteLook") as typeof import("../siteLook");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { ATELIER } = require("../../../../packages/site-contracts/src/designs.ts") as typeof import("../../../../packages/site-contracts/src/designs.ts");
+  it("labels follow the design's label face, else the owner's body font; the owner never edits them", () => {
+    const withLabel = { ...ATELIER, fonts: { ...ATELIER.fonts, label: { family: "Space Mono", source: "google" } } } as never;
+    expect(look.slotFamily(withLabel, { body: { family: "Inter", source: "google" } } as never, "label")).toBe("Space Mono");
+    expect(look.slotFamily({ ...ATELIER, fonts: { ...ATELIER.fonts, label: null } } as never, { body: { family: "Inter", source: "google" } } as never, "label")).toBe("Inter");
+    expect(look.designSlotFamily(ATELIER, "label")).toBe(ATELIER.fonts.label?.family ?? ATELIER.fonts.body.family);
+    expect(look.isOwnerFontSlot("label")).toBe(false);
+    expect(look.isOwnerFontSlot("accent")).toBe(true);
+    expect(Object.keys(look.lookControls(ATELIER, look.resolveLook(ATELIER, {}), {}).fonts).sort()).toEqual(["accent", "body", "display", "label"]);
+  });
+});

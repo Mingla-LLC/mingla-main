@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Sheet } from "../../ui/Sheet";
+import { spacing } from "../../../constants/designSystem";
 import { useRouter } from "expo-router";
 import { Banner, Body, Card, CardTitle, Field, Hint, ListBox, MiniButton, Row, RowText, Skeleton, Toggle, WButton, ui } from "../website/ui";
 import { useBrandSitePlan, useSaveBrandSitePlan, useSetupContent, useSaveSetupContent, useAddPastTrip, type SetupContentItem } from "../../../sites/planApi";
@@ -31,9 +33,33 @@ import {
  * you've been". Optional and skippable; every answer is the owner's own
  * words, saved verbatim. Reviews need the "This is a real review from a real
  * guest" tick (brand admins and owners only); past trips become real ended
- * Mingla trips. Forms open inline in the step (no sheet), each with its own
- * Cancel, so nothing is left half-open.
+ * Mingla trips. Every form opens in a sheet (the Website setup pattern):
+ * room to breathe, and it closes by swipe, backdrop tap or the close button;
+ * nothing half-typed is saved.
  */
+
+/** #4453 — one form sheet: a title, a close button, scrolling fields with room below. */
+export function ProofSheet({ visible, title, onClose, children, testID }: {
+  visible: boolean;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  testID?: string;
+}): React.ReactElement {
+  return (
+    <Sheet visible={visible} onClose={onClose} snapPoint="full" testID={testID}>
+      <View style={styles.sheet}>
+        <View style={styles.sheetHead}>
+          <CardTitle style={styles.grow}>{title}</CardTitle>
+          <MiniButton icon="close" label="Close" onPress={onClose} testID={testID ? `${testID}-close` : undefined} />
+        </View>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetScroll} showsVerticalScrollIndicator={false}>
+          {children}
+        </ScrollView>
+      </View>
+    </Sheet>
+  );
+}
 
 type Notice = { kind: "info" | "error"; message: string } | null;
 
@@ -150,7 +176,12 @@ function StagedSection({ brandId, kind, items, canConfirm, readOnly }: {
           })}
         </ListBox>
       ) : null}
-      {editing ? (
+      {!locked && !editing && items.length < copy.limit ? (
+        <View style={styles.row}>
+          <WButton label={copy.add} onPress={() => open("new")} testID={`proof-${kind}-add`} />
+        </View>
+      ) : null}
+      <ProofSheet visible={editing !== null} title={editing === "new" ? copy.add : `Edit ${copy.title.toLowerCase()}`} onClose={close} testID={`proof-${kind}-sheet`}>
         <View style={styles.form} testID={`proof-${kind}-form`}>
           <FormFields fields={STAGED_FIELDS[kind]} values={values} problems={problems} onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))} disabled={save.isPending} testPrefix={`proof-${kind}`} />
           {kind === "review" ? (
@@ -165,11 +196,7 @@ function StagedSection({ brandId, kind, items, canConfirm, readOnly }: {
             <WButton label="Cancel" variant="ghost" disabled={save.isPending} onPress={close} testID={`proof-${kind}-cancel`} />
           </View>
         </View>
-      ) : !locked && items.length < copy.limit ? (
-        <View style={styles.row}>
-          <WButton label={copy.add} onPress={() => open("new")} testID={`proof-${kind}-add`} />
-        </View>
-      ) : null}
+      </ProofSheet>
       {notice ? <Banner tone={notice.kind === "error" ? "err" : "ok"} icon={notice.kind === "error" ? "alert" : "check"} title={notice.message} alert={notice.kind === "error"} /> : null}
     </Card>
   );
@@ -217,30 +244,67 @@ function RowsEditor<T extends Record<string, string | undefined>>({ title, hint,
   testPrefix: string;
   addLabel: string;
 }): React.ReactElement {
+  // The row being edited in the sheet (an index, or "new"); applied on Done.
+  const [editing, setEditing] = useState<number | "new" | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [problems, setProblems] = useState<Record<string, string>>({});
+  const open = (index: number | "new") => {
+    setEditing(index);
+    setDraft(index === "new" ? {} : { ...(rows[index] as Record<string, string>) });
+    setProblems({});
+  };
+  const close = () => setEditing(null);
+  const onDone = () => {
+    const found: Record<string, string> = {};
+    for (const field of fields) {
+      const value = (draft[field.key] ?? "").trim();
+      if (field.required && !value) found[field.key] = `Add ${field.label.replace(/ \(optional\)$/, "").toLowerCase()}.`;
+      else if (/[<>]/.test(value)) found[field.key] = "Take the < and > out.";
+    }
+    setProblems(found);
+    if (Object.keys(found).length) return;
+    const row = cleanValues(fields, draft) as T;
+    onChange(editing === "new" ? [...rows, row] : rows.map((entry, i) => (i === editing ? row : entry)));
+    close();
+  };
   return (
     <Card testID={testPrefix}>
       <CardTitle>{title}</CardTitle>
       <Hint>{hint}</Hint>
-      {rows.map((row, index) => (
-        <View key={index} style={styles.form}>
-          <FormFields
-            fields={fields}
-            values={row as Record<string, string>}
-            problems={{}}
-            onChange={(key, value) => onChange(rows.map((entry, i) => (i === index ? { ...entry, [key]: value } : entry)))}
-            disabled={disabled}
-            testPrefix={`${testPrefix}-${index}`}
-          />
-          <View style={styles.row}>
-            <MiniButton icon="trash" label={`Remove ${title} ${index + 1}`} onPress={() => onChange(rows.filter((_, i) => i !== index))} disabled={disabled} />
-          </View>
-        </View>
-      ))}
+      {rows.length ? (
+        <ListBox style={styles.list}>
+          {rows.map((row, index) => {
+            const first = String(row[fields[0]!.key] ?? "");
+            const second = fields[1] ? String(row[fields[1].key] ?? "") : "";
+            return (
+              <Row key={index} testID={`${testPrefix}-row`}>
+                <RowText title={first || title} lines={[second || null]} />
+                {!disabled ? (
+                  <View style={styles.rowActions}>
+                    <MiniButton icon="edit" label={`Edit ${first || title}`} onPress={() => open(index)} />
+                    <MiniButton icon="trash" label={`Remove ${first || title}`} onPress={() => onChange(rows.filter((_, i) => i !== index))} />
+                  </View>
+                ) : null}
+              </Row>
+            );
+          })}
+        </ListBox>
+      ) : null}
       {rows.length < max && !disabled ? (
         <View style={styles.row}>
-          <WButton label={addLabel} onPress={() => onChange([...rows, {} as T])} testID={`${testPrefix}-add`} />
+          <WButton label={addLabel} onPress={() => open("new")} testID={`${testPrefix}-add`} />
         </View>
       ) : null}
+      <ProofSheet visible={editing !== null} title={editing === "new" ? addLabel : `Edit ${title.toLowerCase()}`} onClose={close} testID={`${testPrefix}-sheet`}>
+        <View style={styles.form}>
+          <FormFields fields={fields} values={draft} problems={problems} onChange={(key, value) => setDraft((prev) => ({ ...prev, [key]: value }))} disabled={false} testPrefix={testPrefix} />
+          <Hint>Tap Save answers on the step to keep your changes.</Hint>
+          <View style={styles.row}>
+            <WButton label="Done" variant="primary" onPress={onDone} testID={`${testPrefix}-done`} />
+            <WButton label="Cancel" variant="ghost" onPress={close} testID={`${testPrefix}-cancel`} />
+          </View>
+        </View>
+      </ProofSheet>
     </Card>
   );
 }
@@ -365,13 +429,14 @@ export function ProofPart({ brandId, readOnly = false, onDone }: {
             ))}
           </ListBox>
         ) : null}
-        {addingTrip ? (
-          <PastTripForm brandId={brandId} onDone={() => setAddingTrip(false)} onCancel={() => setAddingTrip(false)} />
-        ) : canManage && (content.data?.pastTrips.length ?? 0) < PROOF_LIMITS.past_trips ? (
+        {canManage && (content.data?.pastTrips.length ?? 0) < PROOF_LIMITS.past_trips ? (
           <View style={styles.row}>
             <WButton label="Add a past trip" onPress={() => setAddingTrip(true)} testID="proof-past-trip-add" />
           </View>
         ) : null}
+        <ProofSheet visible={addingTrip} title="Add a trip you ran before Mingla" onClose={() => setAddingTrip(false)} testID="proof-past-trip-sheet">
+          {addingTrip ? <PastTripForm brandId={brandId} onDone={() => setAddingTrip(false)} onCancel={() => setAddingTrip(false)} /> : null}
+        </ProofSheet>
       </Card>
 
       <StagedSection brandId={brandId} kind="destination" items={byKind.destination} canConfirm readOnly={readOnly} />
@@ -465,6 +530,10 @@ export function ProofPart({ brandId, readOnly = false, onDone }: {
 const styles = StyleSheet.create({
   gap: { gap: 16 },
   form: { gap: 12, paddingTop: 8, paddingBottom: 4 },
+  grow: { flex: 1 },
+  sheet: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md },
+  sheetHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+  sheetScroll: { gap: spacing.md, paddingBottom: spacing.xxl },
   list: { marginTop: 8 },
   row: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 4 },
   rowActions: { flexDirection: "row", gap: 8 },
