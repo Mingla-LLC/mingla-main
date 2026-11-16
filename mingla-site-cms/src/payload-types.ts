@@ -1270,6 +1270,9 @@ export interface Navigation {
    * Text shown in the header when you have no logo.
    */
   wordmark?: string | null;
+  /**
+   * The header layout. Leave empty for the design's own header.
+   */
   header_variant?: ('glass' | 'center' | 'pill') | null;
   updatedAt: string;
   createdAt: string;
@@ -1293,6 +1296,10 @@ export interface Footer {
         id?: string | null;
       }[]
     | null;
+  /**
+   * The footer layout. Leave empty for the design's own footer.
+   */
+  footer_variant?: ('giant' | 'columns') | null;
   tagline_lines?:
     | {
         text: string;
@@ -1325,7 +1332,6 @@ export interface Footer {
    * You can use {year} and {site_name}.
    */
   copyright?: string | null;
-  footer_variant?: ('giant' | 'columns') | null;
   built_by?: {
     label?: string | null;
     url?: string | null;
@@ -2357,6 +2363,7 @@ export interface FooterSelect<T extends boolean = true> {
         href?: T;
         id?: T;
       };
+  footer_variant?: T;
   tagline_lines?:
     | T
     | {
@@ -2386,7 +2393,6 @@ export interface FooterSelect<T extends boolean = true> {
         id?: T;
       };
   copyright?: T;
-  footer_variant?: T;
   built_by?:
     | T
     | {
