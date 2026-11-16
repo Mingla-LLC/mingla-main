@@ -81,6 +81,35 @@ export interface SubmitDeps {
   log?: (line: string) => void;
 }
 
+/**
+ * #4452 rework 1 (P2-11): funnel tracking per salted IP hash, per instance (the
+ * same in-memory sliding window as self-serve-unsubscribe). A page sends a
+ * handful of events per visit; 60 a minute is far above a real visitor.
+ * forms_track_event also caps each visit at 200 rows a day.
+ */
+export const TRACK_PER_IP_MINUTE = 60;
+const TRACK_WINDOW_MS = 60_000;
+const trackBuckets = new Map<string, number[]>();
+
+export function trackLimited(ipHash: string, nowMs: number): boolean {
+  const hits = (trackBuckets.get(ipHash) ?? []).filter((t) => t > nowMs - TRACK_WINDOW_MS);
+  if (hits.length >= TRACK_PER_IP_MINUTE) {
+    trackBuckets.set(ipHash, hits);
+    return true;
+  }
+  hits.push(nowMs);
+  trackBuckets.set(ipHash, hits);
+  if (trackBuckets.size > 10_000) {
+    for (const [k, v] of trackBuckets) if (!v.some((t) => t > nowMs - TRACK_WINDOW_MS)) trackBuckets.delete(k);
+  }
+  return false;
+}
+
+/** Test seam: forget every bucket. */
+export function resetTrackLimiter(): void {
+  trackBuckets.clear();
+}
+
 export function corsFor(origin: string | null): Record<string, string> | null {
   if (!origin || !(ALLOWED_ORIGINS.has(origin) || ORIGIN_RE.test(origin))) return null;
   return {
@@ -163,11 +192,28 @@ function sqlCode(err: unknown): string {
 
 export async function handleFormsRequest(req: Request, deps: SubmitDeps): Promise<Response> {
   const log = deps.log ?? ((l: string) => console.log(l));
-  const now = deps.now ?? Date.now;
   const cors = corsFor(req.headers.get("origin"));
   if (!cors) return new Response(JSON.stringify({ error: "origin" }), { status: 403, headers: { "Content-Type": "application/json" } });
   if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: cors });
   if (req.method !== "POST") return json({ error: "method" }, 405, cors);
+  // #4452 rework 1 (P0-4): nothing below may escape as a bare, CORS-less 500.
+  // Malformed input is refused as 400 where it is read; this net only catches
+  // a defect we did not foresee, and still answers in the spec's shape.
+  try {
+    return await handlePost(req, deps, cors, log);
+  } catch (err) {
+    log(`[forms-submit] server_error unhandled=${err instanceof Error ? err.name : "unknown"}`);
+    return json({ error: "server" }, 500, cors);
+  }
+}
+
+async function handlePost(
+  req: Request,
+  deps: SubmitDeps,
+  cors: Record<string, string>,
+  log: (line: string) => void,
+): Promise<Response> {
+  const now = deps.now ?? Date.now;
 
   // 2. Body.
   const raw = await req.text();
@@ -181,11 +227,16 @@ export async function handleFormsRequest(req: Request, deps: SubmitDeps): Promis
     return json({ error: "validation" }, 400, cors);
   }
 
-  if (body.action === "track") return await handleTrack(body, deps, cors);
-  if (body.action !== "submit") return json({ error: "validation" }, 400, cors);
+  if (body.action !== "track" && body.action !== "submit") return json({ error: "validation" }, 400, cors);
 
   // 1. Kill switch (after CORS so the page can read the answer; nothing is written).
+  // It stops funnel tracking too (#4452 rework 1, P2-11).
   if (deps.env("FORMS_KILL_SWITCH") === "1") return json({ error: "paused" }, 503, cors);
+  if (body.action === "track") {
+    const trackIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (trackLimited(await hashIp(trackIp), now())) return json({ error: "rate_limited" }, 429, cors);
+    return await handleTrack(body, deps, cors);
+  }
 
   const formId = typeof body.form_id === "string" && UUID_RE.test(body.form_id) ? body.form_id : null;
   const key = typeof body.idempotency_key === "string" && UUID4_RE.test(body.idempotency_key) ? body.idempotency_key : null;
@@ -221,7 +272,13 @@ export async function handleFormsRequest(req: Request, deps: SubmitDeps): Promis
   }
 
   // 7. Validation with the shared contract (the page's own rules and messages).
-  const answers = body.answers;
+  // Answers must be a plain JSON object: null, an array, a string or a number is
+  // a malformed request (400), never a crash (#4452 rework 1, P0-4).
+  if (!body.answers || typeof body.answers !== "object" || Array.isArray(body.answers)) {
+    await deps.db.recordAttempt(ipHash, formId, "rejected");
+    return json({ error: "validation" }, 400, cors);
+  }
+  const answers = body.answers as Record<string, unknown>;
   const zone = validZone(body.time_zone);
   const today = localToday(now(), zone);
   const result = validateAnswers(form.definition, answers, today);
@@ -235,7 +292,7 @@ export async function handleFormsRequest(req: Request, deps: SubmitDeps): Promis
     return json({
       error: "validation",
       fields: result.errors.map((e) => {
-        const raw = (answers as Record<string, unknown>)[e.key];
+        const raw = Object.prototype.hasOwnProperty.call(answers, e.key) ? answers[e.key] : undefined;
         const fix = e.code === "typo" && typeof raw === "string" ? emailTypoFix(raw) : null;
         return {
           key: e.key,

@@ -116,6 +116,8 @@ CREATE TABLE public.form_funnel_events (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX form_funnel_events_form_idx ON public.form_funnel_events (form_id, created_at DESC);
+-- #4452 rework 1 (P2-11): the per-visit cap in forms_track_event reads this.
+CREATE INDEX form_funnel_events_visit_idx ON public.form_funnel_events (visit_id, created_at DESC);
 
 ALTER TABLE public.form_automations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.form_automation_versions ENABLE ROW LEVEL SECURITY;
@@ -709,6 +711,12 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.forms WHERE id = (p->>'form_id')::uuid AND status = 'live') THEN RETURN; END IF;
+  -- #4452 rework 1 (P2-11): one visit writes at most 200 funnel rows a day, so a
+  -- replayed visit id cannot inflate Results (forms-submit also limits per IP).
+  IF (SELECT count(*) FROM (SELECT 1 FROM public.form_funnel_events
+        WHERE visit_id = (p->>'visit_id')::uuid AND created_at > now() - interval '1 day' LIMIT 200) capped) >= 200 THEN
+    RETURN;
+  END IF;
   INSERT INTO public.form_funnel_events (form_id, event, visit_id, page_path, placement, step, props, utm_campaign, click_source)
   VALUES ((p->>'form_id')::uuid, p->>'event', (p->>'visit_id')::uuid, left(COALESCE(p->>'page_path', '/'), 300),
           p->>'placement', NULLIF(p->>'step', '')::smallint, COALESCE(p->'props', '{}'::jsonb),
