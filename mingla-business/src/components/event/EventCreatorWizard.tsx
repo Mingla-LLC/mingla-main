@@ -169,16 +169,20 @@ const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
   },
 );
 
-const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
-  { title: "Basics", subtitle: "Name, format, and category" },
-  { title: "When", subtitle: "Date, time, and recurrence" },
+// #4420: a step keeps a subheading only when it adds something the title
+// doesn't already say (Seth, 2026-11-16). Steps without one show no line.
+// "Venue or online link" stays: it tells the host online is an option, and
+// the Host help guide names the step by it.
+const STEP_DEFS: readonly { title: string; subtitle?: string }[] = [
+  { title: "Basics" },
+  { title: "When" },
   { title: "Where", subtitle: "Venue or online link" },
-  { title: "Cover", subtitle: "Pick a cover style" },
-  { title: "Tickets", subtitle: "Types, prices, capacity" },
+  { title: "Cover" },
+  { title: "Tickets" },
   // issue #3284 — the refund policy is now the first Settings block.
   { title: "Settings", subtitle: "Refunds, visibility, approvals" },
   { title: "Invite people", subtitle: "Your Book, followers and groups" },
-  { title: "Preview", subtitle: "How it looks to guests" },
+  { title: "Preview" },
 ];
 
 const TOTAL_STEPS = STEP_DEFS.length;
@@ -468,6 +472,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     [inviteEnabled],
   );
   const visibleStepNumber = !inviteEnabled && currentStep === 7 ? 7 : currentStep + 1;
+  const stepSubtitle: string | undefined = currentStep === 6
+    ? "Choose who to invite. Nothing sends until this event is published."
+    : STEP_DEFS[currentStep]?.subtitle;
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -1454,14 +1461,15 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         <Text style={styles.eyebrow}>
           Step {visibleStepNumber} of {visibleStepDefs.length}
         </Text>
-              <Text accessibilityRole={currentStep === 6 ? "header" : undefined} style={styles.stepTitle}>
+              <Text
+                accessibilityRole={currentStep === 6 ? "header" : undefined}
+                style={[styles.stepTitle, stepSubtitle === undefined && styles.stepTitleAlone]}
+              >
                 {STEP_DEFS[currentStep].title}
               </Text>
-              <Text style={styles.stepSub}>
-                {currentStep === 6
-                  ? "Choose who to invite. Nothing sends until this event is published."
-                  : STEP_DEFS[currentStep].subtitle}
-              </Text>
+              {stepSubtitle !== undefined ? (
+                <Text style={styles.stepSub}>{stepSubtitle}</Text>
+              ) : null}
         <View style={styles.stepBodyWrap} onLayout={handleStepBodyLayout}>
           {renderStepBody()}
         </View>
@@ -1710,6 +1718,10 @@ const styles = StyleSheet.create({
     ...type.title,
     color: color.text1,
     marginBottom: space[1],
+  },
+  // #4420 — a title with no subheading keeps the same gap to the step body.
+  stepTitleAlone: {
+    marginBottom: space[6],
   },
   stepSub: {
     ...type.small,

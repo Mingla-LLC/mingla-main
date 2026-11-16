@@ -124,10 +124,6 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
         />
       ) : null}
 
-      <Text style={styles.helper}>
-        Preview what buyers will see. Tap Publish in the footer when ready.
-      </Text>
-
       {publishError !== null ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorBannerTitle}>Can&rsquo;t publish yet</Text>
@@ -322,13 +318,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: space[6],
   },
-  helper: {
-    fontSize: type.small.fontSize,
-    lineHeight: type.small.lineHeight,
-    color: color.text2,
-    paddingTop: space[2],
-    paddingBottom: space[4],
-  },
   errorBanner: {
     margin: space[6],
     padding: space[4],
@@ -357,8 +346,9 @@ const styles = StyleSheet.create({
     marginHorizontal: space[6],
     marginTop: space[4],
   },
+  // #4420 — the gap the removed "Preview what buyers will see" line held.
   previewWrap: {
-    marginTop: space[1],
+    marginTop: space[4],
   },
 });
 

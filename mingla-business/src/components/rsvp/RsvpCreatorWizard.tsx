@@ -144,14 +144,16 @@ const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
   },
 );
 
-const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
-  { title: "Basics", subtitle: "Name, format, and party type" },
-  { title: "When", subtitle: "Date and time" },
+// #4420: a step keeps a subheading only when it adds something the title
+// doesn't already say (Seth, 2026-11-16). Steps without one show no line.
+const STEP_DEFS: readonly { title: string; subtitle?: string }[] = [
+  { title: "Basics" },
+  { title: "When" },
   { title: "Where", subtitle: "Venue or online link" },
-  { title: "Cover", subtitle: "Pick a cover style" },
+  { title: "Cover" },
   { title: "RSVP", subtitle: "Capacity, plus-ones, approvals" },
   { title: "Invite people", subtitle: "Your Book, followers and groups" },
-  { title: "Preview", subtitle: "How it looks to guests" },
+  { title: "Preview" },
 ];
 
 const TOTAL_STEPS = STEP_DEFS.length;
@@ -416,6 +418,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     [inviteEnabled],
   );
   const visibleStepNumber = !inviteEnabled && currentStep === 6 ? 6 : currentStep + 1;
+  const stepSubtitle: string | undefined = currentStep === 5
+    ? "Choose who to invite. Nothing sends until this RSVP is published."
+    : STEP_DEFS[currentStep]?.subtitle;
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -1462,14 +1467,15 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         <Text style={styles.eyebrow}>
           Step {visibleStepNumber} of {visibleStepDefs.length}
         </Text>
-              <Text accessibilityRole={currentStep === 5 ? "header" : undefined} style={styles.stepTitle}>
+              <Text
+                accessibilityRole={currentStep === 5 ? "header" : undefined}
+                style={[styles.stepTitle, stepSubtitle === undefined && styles.stepTitleAlone]}
+              >
                 {STEP_DEFS[currentStep].title}
               </Text>
-              <Text style={styles.stepSub}>
-                {currentStep === 5
-                  ? "Choose who to invite. Nothing sends until this RSVP is published."
-                  : STEP_DEFS[currentStep].subtitle}
-              </Text>
+              {stepSubtitle !== undefined ? (
+                <Text style={styles.stepSub}>{stepSubtitle}</Text>
+              ) : null}
         <View style={styles.stepBodyWrap} onLayout={handleStepBodyLayout}>
           {renderStepBody()}
         </View>
@@ -1788,6 +1794,10 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: color.text1,
     marginBottom: 6,
+  },
+  // #4420 — a title with no subheading keeps the same gap to the step body.
+  stepTitleAlone: {
+    marginBottom: space[6],
   },
   stepSub: {
     fontSize: 14,

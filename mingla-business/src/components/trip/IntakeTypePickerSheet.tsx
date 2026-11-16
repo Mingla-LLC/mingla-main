@@ -94,9 +94,6 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
         <Text style={styles.eyebrow} accessibilityRole="header">
           ADD QUESTION
         </Text>
-        <Text style={styles.helper}>
-          Choose what travelers need to provide.
-        </Text>
 
         <ScrollView
           style={styles.gridScroll}
@@ -154,12 +151,6 @@ const styles = StyleSheet.create({
     letterSpacing: typeToken.label.letterSpacing,
     color: color.accent,
     textTransform: "uppercase",
-    marginBottom: space[1],
-  },
-  helper: {
-    fontSize: typeToken.small.fontSize,
-    lineHeight: typeToken.small.lineHeight,
-    color: color.text3,
     marginBottom: space[4],
   },
   gridScroll: {
