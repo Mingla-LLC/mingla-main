@@ -25,12 +25,65 @@ export type SalesReadinessReason =
   | "not_supported"
   | "no_pixel"
   | "waiting_for_sales"
+  /** #4238 W4b §6: Google needs its purchase conversion action first. */
+  | "needs_setup"
   | "unknown";
 
 export type SalesReadiness = { ready: boolean; reason: SalesReadinessReason };
 
 /** Platforms with a website-sales optimisation path Host ads can use. */
-export const HOST_SALES_PLATFORMS = ["meta", "snapchat", "tiktok"] as const;
+export const HOST_SALES_PLATFORMS = [
+  "meta",
+  "snapchat",
+  "tiktok",
+  // #4238 W4b §6: reported so a sales plan can show "Needs setup"; it is
+  // "ready" only through googleSalesReadiness below.
+  "google",
+] as const;
+
+/**
+ * #4238 W4b §6 (Z-4): Google ticket-sales delivery (Demand Gen
+ * maximizeConversions on the purchase action) is not confirmed by the docs
+ * check yet. Until it is, Google is never "ready" for sales, even with the
+ * action, so a sales plan can never quietly run Google as page visits.
+ */
+export const GOOGLE_HOST_SALES_CONFIRMED = false;
+
+/**
+ * The Google purchase conversion action, in the same lookup order the
+ * conversion sender uses (adConversionFire.ts, #4452-owned, read-only here):
+ * extra.conversion_actions.purchase, then extra.conversion_action_resource,
+ * then extra.google.conversion_action_resource. Another kind (lead,
+ * rsvp_signup) never stands in for purchase.
+ */
+export function googlePurchaseActionResource(
+  conn: Pick<AdConnectionRow, "extra">,
+): string | null {
+  const extra = conn.extra && typeof conn.extra === "object"
+    ? conn.extra as Record<string, unknown>
+    : {};
+  const str = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+  const actions = extra.conversion_actions &&
+      typeof extra.conversion_actions === "object"
+    ? extra.conversion_actions as Record<string, unknown>
+    : {};
+  const google = extra.google && typeof extra.google === "object"
+    ? extra.google as Record<string, unknown>
+    : {};
+  return str(actions.purchase) ?? str(extra.conversion_action_resource) ??
+    str(google.conversion_action_resource);
+}
+
+/** #4238 W4b §6: Google is ready for sales only with the action AND Z-4. */
+export function googleSalesReadiness(
+  conn: Pick<AdConnectionRow, "extra">,
+  confirmed: boolean = GOOGLE_HOST_SALES_CONFIRMED,
+): SalesReadiness {
+  return googlePurchaseActionResource(conn) !== null && confirmed
+    ? { ready: true, reason: "ready" }
+    : { ready: false, reason: "needs_setup" };
+}
 
 export type SalesSignalProbes = {
   metaHasSignal(conn: AdConnectionRow): Promise<boolean>;
@@ -109,6 +162,7 @@ export async function salesReadiness(
         ? { ready: true, reason: "ready" }
         : { ready: false, reason: "waiting_for_sales" };
     }
+    if (conn.platform === "google") return googleSalesReadiness(conn);
     return { ready: false, reason: "not_supported" };
   } catch (err) {
     // Fail closed: an unreadable signal is never "ready". The authoritative

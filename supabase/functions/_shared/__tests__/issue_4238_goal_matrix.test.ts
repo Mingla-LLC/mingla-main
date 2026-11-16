@@ -216,11 +216,13 @@ Deno.test("SC-3.5 every (page x platform x goal) cell matches the matrix", () =>
   assertEquals([...HOST_SIGNUPS_PLATFORMS], [...HOST_SIGNUPS_GOAL_PLATFORMS]);
 });
 
+// #4238 W4b §6: Google may no longer fall back on a sales plan (see
+// issue_4238_google_sales_gate.test.ts); Reddit stands in for "no sales path".
 Deno.test("U-3 a sales plan where an app falls back to visits needs the Host's acknowledgement", () => {
-  const map = { meta: "sales", tiktok: "visits", google: "visits" };
+  const map = { meta: "sales", tiktok: "visits", reddit: "visits" };
   const refused = validateHostOptimization(
     map,
-    ["meta", "tiktok", "google"],
+    ["meta", "tiktok", "reddit"],
     PAID_EVENT,
     {
       requestedGoal: "sales",
@@ -230,15 +232,15 @@ Deno.test("U-3 a sales plan where an app falls back to visits needs the Host's a
   assert(!refused.ok);
   assertEquals(refused.status, 409);
   assertEquals(refused.detail, "host_ad_goal_fallback_unacknowledged");
-  assertEquals(refused.platforms, ["tiktok", "google"]);
+  assertEquals(refused.platforms, ["tiktok", "reddit"]);
   const accepted = validateHostOptimization(
     map,
-    ["meta", "tiktok", "google"],
+    ["meta", "tiktok", "reddit"],
     PAID_EVENT,
     {
       requestedGoal: "sales",
       ready: { meta: { sales: true } },
-      acknowledgedFallback: ["tiktok", "google", "snapchat"],
+      acknowledgedFallback: ["tiktok", "reddit", "snapchat"],
     },
   );
   assert(
@@ -247,7 +249,7 @@ Deno.test("U-3 a sales plan where an app falls back to visits needs the Host's a
   );
   const partial = validateHostOptimization(
     map,
-    ["meta", "tiktok", "google"],
+    ["meta", "tiktok", "reddit"],
     PAID_EVENT,
     {
       requestedGoal: "sales",
@@ -255,7 +257,7 @@ Deno.test("U-3 a sales plan where an app falls back to visits needs the Host's a
       acknowledgedFallback: ["tiktok"],
     },
   );
-  assert(!partial.ok && partial.platforms?.join() === "google");
+  assert(!partial.ok && partial.platforms?.join() === "reddit");
   // A visits plan needs no acknowledgement.
   assert(
     validateHostOptimization({ meta: "visits" }, ["meta"], PAID_EVENT, {

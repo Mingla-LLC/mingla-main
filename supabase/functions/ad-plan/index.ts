@@ -286,8 +286,15 @@ async function hostGoalReadiness(
   db: Db,
   allocations: { platform: string; connection_id: string }[],
   requestedMap: unknown,
+  requestedGoal?: unknown,
 ): Promise<Record<string, { sales?: boolean; signups?: boolean }>> {
-  const map = asRecord(requestedMap) ?? {};
+  const map = { ...(asRecord(requestedMap) ?? {}) };
+  // #4238 W4b §6: on a sales plan Google's sales readiness is always read,
+  // whatever goal the map gives it (it may never fall back to visits).
+  if (
+    requestedGoal === "sales" &&
+    allocations.some((row) => row.platform === "google")
+  ) map.google = "sales";
   const wanted = allocations.filter((row) =>
     map[row.platform] === "sales" || map[row.platform] === "signups"
   );
@@ -3371,6 +3378,7 @@ export async function handleAdPlan(
               connection_id: String(row.connection_id),
             })),
             canonicalInput.optimization_by_platform,
+            canonicalInput.optimization_goal,
           ),
           requestedGoal: canonicalInput.optimization_goal,
           acknowledgedFallback: canonicalInput.acknowledged_visits_fallback,

@@ -308,6 +308,19 @@ export function validateHostOptimization(
       }
     }
   }
+  // #4238 W4b §6: on a ticket-sales plan Google must be set up for sales.
+  // It can never fall back to page visits quietly, and the visits
+  // acknowledgement does not apply to it.
+  if (
+    requested === "sales" && platforms.includes("google") &&
+    context.ready?.google?.sales !== true
+  ) {
+    return {
+      ok: false,
+      detail: "host_ad_google_needs_setup",
+      platforms: ["google"],
+    };
+  }
   if (requested === "sales" || requested === "signups") {
     const acknowledged = new Set(
       Array.isArray(context.acknowledgedFallback)
