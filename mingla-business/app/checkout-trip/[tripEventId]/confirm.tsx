@@ -35,12 +35,8 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // web — buyer-web capture is a separate leg).
 import { postHogService } from "../../../src/services/postHogService";
 
-import {
-  radius as radiusTokens,
-  color,
-  space,
-  materials,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
@@ -615,7 +611,7 @@ function CheckoutTripConfirmScreenInner({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6] },
@@ -728,4 +724,4 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: color.line,
   },
-});
+}));

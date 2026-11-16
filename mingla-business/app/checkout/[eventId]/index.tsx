@@ -34,7 +34,8 @@ import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { radius as radiusTokens, space, color } from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import {
   decodeCartSeed,
   eventPublicPath,
@@ -664,7 +665,8 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           showsVerticalScrollIndicator={false}
         >
           {/* Event mini-card: cover hue band + name + date line */}
-          <View style={styles.miniCard}>
+          {/* #4420 — on desktop the ticket stub carries this. */}
+          <View style={[styles.miniCard, wide ? styles.hiddenOnWide : null]}>
             <EventCoverMedia
               hue={event.coverHue}
               mediaUrl={event.coverMediaUrl}
@@ -859,7 +861,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
-        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom} onBarHeight={setBarHeight}>
+        <CheckoutOrderSummary
+          wide={wide}
+          bottomInset={insets.bottom}
+          onBarHeight={setBarHeight}
+          // #4420 §4.1 — the desktop ticket stub carries the offering.
+          stub={{ title: event.name.trim().length > 0 ? event.name : "Untitled event", eyebrow: dayLine.length > 0 ? dayLine : null, coverUrl: event.coverMediaUrl ?? null }}
+        >
           <React.Suspense fallback={null}>
             <CheckoutDiscountCodeField
               collapsible={!wide}
@@ -915,7 +923,8 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
+  hiddenOnWide: { display: "none" },
   extrasRefusal: {
     color: color.danger,
     fontSize: 14,
@@ -1030,4 +1039,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

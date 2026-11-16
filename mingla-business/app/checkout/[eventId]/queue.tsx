@@ -17,7 +17,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { space, color, type } from "../../../src/constants/designSystem";
+import { space, type } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import {
   useCart,
   useCartQuoteTotals,
@@ -289,7 +290,7 @@ export default function CheckoutQueueScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -328,4 +329,4 @@ const styles = StyleSheet.create({
     ...type.caption,
     color: color.text2,
   },
-});
+}));

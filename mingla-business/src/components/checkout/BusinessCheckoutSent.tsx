@@ -5,12 +5,8 @@ import {
   BUYER_CLAIM_COPY,
   buyerBusinessSentCopy,
 } from "../../constants/buyerClaimCopy";
-import {
-  radius,
-  color,
-  space,
-  type,
-} from "../../constants/designSystem";
+import { radius, space, type } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 import { postHogService } from "../../services/postHogService";
 import { Icon } from "../ui/Icon";
 
@@ -66,7 +62,7 @@ export function BusinessCheckoutSent({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -109,6 +105,6 @@ const styles = StyleSheet.create({
     ...type.btn,
     color: color.ink,
   },
-});
+}));
 
 export default BusinessCheckoutSent;

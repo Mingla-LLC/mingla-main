@@ -12,7 +12,7 @@ import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type { BuyerDiscountSurface } from "./DiscountCodeField";
 import { formatQuoteMoney } from "./quoteMoney";
 
-import { color } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 export interface TicketQuoteSummaryProps {
   quote: TicketQuote;
   compact?: boolean;
@@ -182,7 +182,7 @@ export const TicketCheckoutReviewPanel: React.FC<
   );
 };
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   summary: { gap: 10 },
   summaryCompact: { paddingVertical: 8 },
   row: {
@@ -248,4 +248,4 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: { color: color.onPaper.warningAction, fontWeight: "700" },
   buttonDisabled: { opacity: 0.55 },
-});
+}));

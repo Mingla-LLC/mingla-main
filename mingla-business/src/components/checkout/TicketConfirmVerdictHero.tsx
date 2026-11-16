@@ -29,7 +29,8 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { radius as radiusTokens, space, color } from "../../constants/designSystem";
+import { radius as radiusTokens, space } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 import {
   TICKETS_EXPIRED_MESSAGE,
   TICKETS_EXPIRED_TITLE,
@@ -163,7 +164,7 @@ export function TicketConfirmVerdictHero({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -202,4 +203,4 @@ const styles = StyleSheet.create({
     marginTop: space[6],
     marginHorizontal: "auto",
   },
-});
+}));

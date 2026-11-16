@@ -23,7 +23,8 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { radius as radiusTokens, color, space } from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
@@ -615,7 +616,8 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           showsVerticalScrollIndicator={false}
         >
           {/* Trip mini-card: cover + title + brand/date line */}
-          <View style={styles.miniCard}>
+          {/* #4420 — on desktop the ticket stub carries this. */}
+          <View style={[styles.miniCard, wide ? styles.hiddenOnWide : null]}>
             <EventCoverMedia
               hue={0}
               mediaUrl={trip.coverMediaUrl}
@@ -707,7 +709,13 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
-        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom} onBarHeight={setBarHeight}>
+        <CheckoutOrderSummary
+          wide={wide}
+          bottomInset={insets.bottom}
+          onBarHeight={setBarHeight}
+          // #4420 §4.1 — the desktop ticket stub carries the offering.
+          stub={{ title: trip.title.trim().length > 0 ? trip.title : "Untitled trip", eyebrow: dateLine.length > 0 ? dateLine : null, coverUrl: trip.coverMediaUrl ?? null }}
+        >
           <React.Suspense fallback={null}>
             <CheckoutDiscountCodeField
               collapsible={!wide}
@@ -770,7 +778,8 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
+  hiddenOnWide: { display: "none" },
   host: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -863,4 +872,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

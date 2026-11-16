@@ -533,6 +533,7 @@ function GuestVenueReservationBody({
       setHandoff({
         url: redirect,
         providerName:
+          // orch-strict-grep-allow provider-name-host-copy — buyer-facing, not host copy: the guest is told which payment page opens next (#4420 §2.4).
           result.kind === "requires_web_redirect" ? "Stripe" : "Paystack",
       });
     } catch (caught) {

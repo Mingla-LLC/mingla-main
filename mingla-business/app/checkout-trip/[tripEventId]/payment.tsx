@@ -49,7 +49,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { color, space, materials } from "../../../src/constants/designSystem";
+import { space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
@@ -85,7 +86,7 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 import { tripFunnelTotalSteps, tripPaymentStepIndex } from "./tripFunnelSteps";
 // issue #3351 [free trip intake loop] — the flattener and the presence probe
 // both live in the step-order owner now, so the trip route holds exactly one
@@ -931,8 +932,15 @@ function CheckoutTripPaymentScreenContent({
           ) : null}
         </GlassCard>
 
+        {/* #4420 §4.2 — "Payment not completed": the step's own message,
+            framed as an alert banner in the host's status colours. */}
         {paymentError !== null ? (
-          <Text style={styles.errorText}>{paymentError}</Text>
+          <CheckoutStatusBanner
+            tone="error"
+            title="Payment not completed"
+            body={paymentError}
+            testID="checkout-payment-not-completed"
+          />
         ) : null}
       </ScrollView>
 
@@ -1061,7 +1069,7 @@ function CheckoutTripPaymentScreenContent({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
@@ -1278,4 +1286,4 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-});
+}));

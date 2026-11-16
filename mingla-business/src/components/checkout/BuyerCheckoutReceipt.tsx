@@ -1,7 +1,8 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { space, color } from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 import { formatCurrency } from "../../utils/currency";
 import type { BuyerConfirmationReceipt } from "./CartContext";
@@ -103,7 +104,7 @@ export function BuyerCheckoutReceipt({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   card: { marginBottom: space[6] },
   header: { gap: space[1] },
   eventName: {
@@ -138,4 +139,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.4,
   },
-});
+}));

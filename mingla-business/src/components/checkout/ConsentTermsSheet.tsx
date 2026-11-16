@@ -16,7 +16,8 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { radius as radiusTokens, color, space } from "../../constants/designSystem";
+import { radius as radiusTokens, space } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 import { CONSENT_TERMS_BODY } from "../../constants/consentDisclosure";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -79,7 +80,7 @@ export const ConsentTermsSheet: React.FC<ConsentTermsSheetProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   container: {
     width: "100%",
     maxHeight: "100%",
@@ -106,6 +107,6 @@ const styles = StyleSheet.create({
     marginTop: space[4],
     gap: space[2],
   },
-});
+}));
 
 export default ConsentTermsSheet;

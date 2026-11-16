@@ -30,7 +30,7 @@ import {
   type PublicTicketExtra,
 } from "@mingla/offering-rendering/ticketExtrasCart";
 
-import { color } from "../../constants/designSystem";
+import { color } from "./checkoutTheme";
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency } from "../../utils/currency";

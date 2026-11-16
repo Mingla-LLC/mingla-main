@@ -43,7 +43,13 @@ import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { radius, color, space } from "../../../src/constants/designSystem";
+import { radius, space } from "../../../src/constants/designSystem";
+import {
+  checkoutStyles,
+  color,
+  resolveCheckoutPalette,
+} from "../../../src/components/checkout/checkoutTheme";
+import { useActiveCheckoutPalette } from "../../../src/components/checkout/CheckoutPaletteScope";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import {
@@ -98,6 +104,18 @@ export default function CancelBookingScreen(): React.ReactElement {
           },
     [brandIdentity],
   );
+  // #4420 D-C1 — the cancel page wears the host's colours, like checkout.
+  const cancelPalette = useMemo(
+    () =>
+      brandIdentity === null
+        ? null
+        : resolveCheckoutPalette({
+            brandTheme: brandIdentity.theme,
+            offeringThemeOverrides: null,
+          }),
+    [brandIdentity],
+  );
+  useActiveCheckoutPalette(cancelPalette);
   const tripEventId = previewQuery.data?.eventId ?? null;
   const brandMessage = useBrandMessage({
     brand: messageTarget,
@@ -448,7 +466,7 @@ export default function CancelBookingScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -613,4 +631,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-});
+}));

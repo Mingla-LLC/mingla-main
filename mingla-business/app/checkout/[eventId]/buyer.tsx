@@ -64,13 +64,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import {
-  radius as radiusTokens,
-  space,
-  color,
-  materials,
-  edge,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, materials, edge } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import {
@@ -157,7 +152,8 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
-const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
+// #4420 — read per render: the tokens follow the host palette.
+const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
   backgroundPrimary: color.canvas,
   fieldBackground: color.fill.input,
   textPrimary: color.text1,
@@ -172,7 +168,7 @@ const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   accessoryBorder: color.line,
   accent: color.text1,
   errorText: color.errorText,
-};
+});
 
 /**
  * Resolves the initial country ISO-2 code for the phone field per SPEC Q1
@@ -1030,7 +1026,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
               pickerSearchPlaceholder: "Search country or dial code",
               pickerCloseAccessibilityLabel: "Close country picker",
             }}
-            theme={PUBLIC_BUYER_PHONE_THEME}
+            theme={publicBuyerPhoneTheme()}
           />
         </View>
 
@@ -1184,7 +1180,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -1403,4 +1399,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

@@ -70,12 +70,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import {
-  radius as radiusTokens,
-  color,
-  space,
-  materials,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
@@ -152,7 +148,8 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
-const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
+// #4420 — read per render: the tokens follow the host palette.
+const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
   backgroundPrimary: color.canvas,
   textPrimary: color.text1,
   textTertiary: color.text3,
@@ -166,7 +163,7 @@ const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   accessoryBorder: color.line,
   accent: color.accent,
   errorText: color.errorText,
-};
+});
 
 const resolveInitialCountry = (
   existingFullE164: string,
@@ -894,7 +891,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
               pickerSearchPlaceholder: "Search country or dial code",
               pickerCloseAccessibilityLabel: "Close country picker",
             }}
-            theme={PUBLIC_BUYER_PHONE_THEME}
+            theme={publicBuyerPhoneTheme()}
           />
         </View>
 
@@ -1032,7 +1029,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
@@ -1247,4 +1244,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

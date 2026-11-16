@@ -59,7 +59,8 @@ import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { space, color, materials } from "../../../src/constants/designSystem";
+import { space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
 import {
@@ -103,7 +104,7 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -1047,8 +1048,15 @@ function CheckoutPaymentScreenContent({
             the success toast + auto-navigate happen inside handlePay so
             this surface stays minimal. */}
 
+        {/* #4420 §4.2 — "Payment not completed": the step's own message,
+            framed as an alert banner in the host's status colours. */}
         {paymentError !== null ? (
-          <Text style={styles.errorText}>{paymentError}</Text>
+          <CheckoutStatusBanner
+            tone="error"
+            title="Payment not completed"
+            body={paymentError}
+            testID="checkout-payment-not-completed"
+          />
         ) : null}
         {/* issue #3281 — the quote refused an extra (it sold out, say), so the
             button stays off; say why and take the guest back to change it. */}
@@ -1127,7 +1135,7 @@ function CheckoutPaymentScreenContent({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
     backgroundColor: color.canvas,
@@ -1266,4 +1274,4 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-});
+}));

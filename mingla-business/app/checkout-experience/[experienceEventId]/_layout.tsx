@@ -19,6 +19,8 @@
 import React from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 
+import { ExperienceCheckoutPaletteScope } from "../../../src/components/checkout/CheckoutPaletteScope";
+
 const CartProvider = React.lazy(() =>
   import("../../../src/components/checkout/CartContext").then((module) => ({
     default: module.CartProvider,
@@ -41,7 +43,10 @@ const CheckoutStack = (): React.ReactElement => {
   return (
     <React.Suspense fallback={null}>
       <TicketQuoteController eventId={firstParam(params.experienceEventId)} />
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* #4420 D-C1 — every step wears the offering's own colours. */}
+      <ExperienceCheckoutPaletteScope experienceEventId={firstParam(params.experienceEventId)}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </ExperienceCheckoutPaletteScope>
     </React.Suspense>
   );
 };

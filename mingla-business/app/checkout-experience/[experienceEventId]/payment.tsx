@@ -39,7 +39,8 @@ import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { space, color, materials } from "../../../src/constants/designSystem";
+import { space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import {
@@ -70,7 +71,7 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 
 const formatQuoteMoney = (minor: number, currency: string): string => {
   try {
@@ -716,8 +717,15 @@ function CheckoutExperiencePaymentScreenContent({
           ) : null}
         </GlassCard>
 
+        {/* #4420 §4.2 — "Payment not completed": the step's own message,
+            framed as an alert banner in the host's status colours. */}
         {paymentError !== null ? (
-          <Text style={styles.errorText}>{paymentError}</Text>
+          <CheckoutStatusBanner
+            tone="error"
+            title="Payment not completed"
+            body={paymentError}
+            testID="checkout-payment-not-completed"
+          />
         ) : null}
       </ScrollView>
 
@@ -759,7 +767,7 @@ function CheckoutExperiencePaymentScreenContent({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
@@ -869,4 +877,4 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   toastWrap: { position: "absolute", top: 80, left: 0, right: 0 },
-});
+}));

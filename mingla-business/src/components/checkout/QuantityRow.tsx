@@ -18,7 +18,8 @@ import {
   type QuantityRowTheme,
 } from "@mingla/offering-rendering";
 
-import { color, materials, space } from "../../constants/designSystem";
+import { materials, space } from "../../constants/designSystem";
+import { color } from "./checkoutTheme";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency } from "../../utils/currency";
 
