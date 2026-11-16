@@ -241,7 +241,7 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
     try {
       const res = await testWholeFlow(form.id);
       addToast({ variant: "success", title: res.message || "Test run sent to you: every email in order, with sample answers." });
-    } catch (e) { addToast({ variant: "error", title: e.message }); }
+    } catch (e) { addToast({ variant: "error", title: formsErrorWords(e) }); }
     finally { setBusy(""); }
   };
 

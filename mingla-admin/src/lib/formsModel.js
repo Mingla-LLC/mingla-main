@@ -568,3 +568,24 @@ export function autosaveReducer(state, event) {
       return state;
   }
 }
+
+// ── #4452 B19: plain words when an Admin → edge function call fails ─────────
+/** The browser could not reach the function at all (network, CORS, cold-start relay). */
+export const FUNCTION_UNREACHABLE = "Couldn't reach the server. Check your connection and try again.";
+const FUNCTION_CODE_WORDS = Object.freeze({
+  forbidden: "You don't have edit access. Ask an admin for the Website editor role.",
+  form_not_found: "That form is gone. It may have been removed.",
+  server: "Something on the server failed. Try again.",
+});
+/**
+ * The toast line for a failed functions.invoke: the server's own message when
+ * it sent one, else words for its error code, else the unreachable line. The
+ * client library's raw "Failed to send a request to the Edge Function" is never shown.
+ */
+export function functionErrorWords(error, payload) {
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
+  const code = typeof payload?.error === "string" ? payload.error : "";
+  if (code) return FUNCTION_CODE_WORDS[code] || "That did not go through. Try again.";
+  if (error?.name === "FunctionsFetchError" || error?.name === "FunctionsRelayError") return FUNCTION_UNREACHABLE;
+  return "That did not go through. Try again.";
+}

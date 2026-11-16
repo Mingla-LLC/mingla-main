@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4452-FORMS-ADMIN-CORS | issue #4452 | forms-admin answers the browser preflight and every response, errors included, carries the Admin CORS headers; the edit-access check is unchanged.
 // #4452 T-5.13 / T-5.13b (SC-78, SC-79): test sends go only to the caller, [Test] prefixed, and mark the form tested.
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { type AdminDeps, handleAdmin } from "./admin.ts";
@@ -55,4 +56,47 @@ Deno.test("SC-79 test the whole flow starts a test run", async () => {
   const out = await (await handleAdmin(post({ action: "test_flow", form_id: "f1" }), h.d)).json();
   assertEquals(out.run_id, "run-1");
   assertEquals(out.message, "Test run sent to you: every email in order, with sample answers.");
+});
+
+// #4452 B19: Admin calls forms-admin from the browser. The
+// preflight is answered and every answer, errors included, carries the CORS headers;
+// before this, OPTIONS got 405 with none and "Send me a test" could never run.
+// FAILS-ON-REVERT: dropping the OPTIONS answer or withCors() fails both tests below.
+const cors = (res: Response) => ({
+  origin: res.headers.get("access-control-allow-origin"),
+  headers: (res.headers.get("access-control-allow-headers") ?? "").split(",").map((h) => h.trim()),
+});
+
+Deno.test("B19 the browser preflight is answered with the Admin CORS headers and runs no check", async () => {
+  let checked = false;
+  const h = deps();
+  h.d.canEdit = () => (checked = true, Promise.resolve(true));
+  const res = await handleAdmin(new Request("https://fn/", { method: "OPTIONS", headers: { origin: "https://admin.usemingla.com" } }), h.d);
+  assertEquals(res.status, 200);
+  const c = cors(res);
+  assertEquals(c.origin, "*");
+  for (const name of ["authorization", "apikey", "content-type", "x-client-info"]) assert(c.headers.includes(name), name);
+  assert((res.headers.get("access-control-allow-methods") ?? "").includes("POST"));
+  assertEquals(checked, false, "the preflight never reaches the edit-access check");
+  assertEquals(h.sent.length, 0);
+});
+
+Deno.test("B19 every answer carries CORS: success, 403, 404, 405, 409 and a server failure", async () => {
+  const ok = await handleAdmin(post({ action: "test_email", form_id: "f1" }), deps().d);
+  const viewer = await handleAdmin(post({ action: "test_email", form_id: "f1" }), deps(false).d);
+  const gone = deps();
+  gone.d.loadForm = () => Promise.resolve(null);
+  const missing = await handleAdmin(post({ action: "test_email", form_id: "nope" }), gone.d);
+  const get = await handleAdmin(new Request("https://fn/", { method: "GET" }), deps().d);
+  const unpublished = deps();
+  const f = await unpublished.d.loadForm("f1");
+  unpublished.d.loadForm = () => Promise.resolve(f ? { ...f, live_version_id: null } : null);
+  const first = await handleAdmin(post({ action: "test_flow", form_id: "f1" }), unpublished.d);
+  const broken = deps();
+  broken.d.sendEmail = () => Promise.reject(new Error("network"));
+  const failed = await handleAdmin(post({ action: "test_email", form_id: "f1" }), broken.d);
+  assertEquals([ok.status, viewer.status, missing.status, get.status, first.status, failed.status], [200, 403, 404, 405, 409, 500]);
+  for (const res of [ok, viewer, missing, get, first, failed]) assertEquals(cors(res).origin, "*", `status ${res.status}`);
+  assertEquals((await failed.json()).message, "Something on the server failed. Try again.");
+  assertEquals((await viewer.json()).message, "You don't have edit access", "the auth check is unchanged");
 });
