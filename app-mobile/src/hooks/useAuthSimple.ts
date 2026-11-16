@@ -19,6 +19,8 @@ import { mixpanelService } from "../services/mixpanelService";
 // the native sign-in catch blocks. Mirrors mingla-business's helper.
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { queryClient } from "../config/queryClient";
+// #4445 [signed-out-profile-read] — sign-out race guard helper.
+import { isSignedOutProfileError } from "../utils/signedOutProfileError";
 // ORCH-0640 ch09: experiencesService DELETED. getUserPreferences retained on preferencesService.
 import { PreferencesService } from "../services/preferencesService";
 import { performPrivateAuthCleanup, signOutWithPrivateCleanup, signOutWithoutPrivateCleanup } from "../utils/authCleanup";
@@ -353,6 +355,17 @@ export const useAuthSimple = () => {
               .single();
 
             if (profileError) {
+              // #4445 [signed-out-profile-read] — begin sign-out race guard.
+              // A read that lost the race with sign-out is not a failure.
+              if (profileError.code === '42501') {
+                const { data: { session: liveSession } } = await supabase.auth.getSession();
+                if (isSignedOutProfileError(profileError, session.user.id, liveSession?.user?.id)) {
+                  logger.auth('Profile read ended by sign-out — ignored');
+                  if (mounted) setLoading(false);
+                  return;
+                }
+              }
+              // #4445 [signed-out-profile-read] — end sign-out race guard.
               logger.error('Profile load failed', { code: profileError.code, message: profileError.message });
               console.error("Error loading profile:", profileError);
               console.error("Profile error details:", {

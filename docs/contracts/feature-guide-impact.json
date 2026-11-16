@@ -24,7 +24,8 @@
         "app-mobile/src/services/emailOtpService.ts",
         "app-mobile/src/utils/explorerProfileAuthRest.ts",
         "app-mobile/src/utils/explorerReactivation.ts",
-        "app-mobile/src/utils/authCleanup.ts"
+        "app-mobile/src/utils/authCleanup.ts",
+        "app-mobile/src/utils/signedOutProfileError.ts"
       ]
     },
     {
@@ -234,6 +235,7 @@
         "app-mobile/app/local/review.tsx",
         "app-mobile/src/components/creator/contract/ContractSections.tsx",
         "app-mobile/src/components/creator/handleCheckState.ts",
+        "app-mobile/src/components/creator/profileErrors.ts",
         "app-mobile/src/components/expandedCard/LocalReviewsSection.tsx",
         "app-mobile/src/components/local/localKeys.ts",
         "app-mobile/src/components/local/localPick.ts",
@@ -244,6 +246,8 @@
         "app-mobile/src/components/profile/PublicCreatorSection.tsx",
         "app-mobile/src/components/programs/CreatorMediaPlayerModal.tsx",
         "app-mobile/src/components/programs/ProgramUi.tsx",
+        "app-mobile/src/components/programs/formFocus.ts",
+        "app-mobile/src/components/programs/useScrollToFirstError.ts",
         "app-mobile/src/components/wallet/PayoutConnect.tsx",
         "app-mobile/src/services/creatorGigsService.ts",
         "app-mobile/src/services/creatorMediaService.ts",

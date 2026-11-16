@@ -50,3 +50,14 @@ export const APPLICATION_COPY: Record<string, { pill: string; title: string; tex
 export const SPEND_BANDS = [
   { key: 'budget', label: 'Budget' }, { key: 'moderate', label: 'Moderate' }, { key: 'premium', label: 'Premium' }, { key: 'splurge', label: 'Splurge' },
 ] as const;
+
+/** #4445: a seat that has ended (locals.status = 'ended') gets its own home, not the month card. */
+export function localSeatEnded(local: { status?: string | null } | null | undefined): boolean {
+  return local?.status === 'ended';
+}
+
+export const ENDED_COPY = {
+  pill: 'Seat ended',
+  title: 'Your Mingla Local seat has ended',
+  text: 'Thanks for reviewing places for Mingla. Your past months and any pay still on the way are below.',
+} as const;
