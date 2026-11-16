@@ -137,7 +137,9 @@ insert into w5_called values
   ('accept_invite_and_transfer_brand_ownership', false, true),
   ('accept_pair_request_atomic', true, true),
   ('accept_scanner_invitation', false, true),
-  ('accept_session_with_prefs', true, true),
+  -- #4435 leftovers: anon EXECUTE revoked on purpose (20280710004435); the
+  -- function already refused a signed-out caller, and only signed-in app code calls it.
+  ('accept_session_with_prefs', false, true),
   ('activate_invited_admin', false, true),
   ('ad_admin_operations_overview', false, true),
   ('ad_advertisable_pages', false, true),

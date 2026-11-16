@@ -61,8 +61,6 @@
     "searchPlaceholder": "Tìm bạn bè...", "loadingFriends": "Đang tải bạn bè...", "noUsersFound": "Không tìm thấy người dùng",
     "allFriendsInBoard": "Tất cả bạn bè đã ở trong bảng này", "noFriendsAvailable": "Không có bạn bè khả dụng",
     "tryDifferentName": "Thử tên hoặc tên người dùng khác", "addMoreFriends": "Thêm bạn bè để mời",
-    "sendInvites": "Gửi lời mời ({{count}})", "invitesSent": "Đã gửi lời mời",
-    "invitesSentMsg": "Đã mời thành công {{count}} bạn bè{{plural}} vào \"{{name}}\".",
     "errorSendInvites": "Gửi lời mời thất bại. Vui lòng thử lại.", "error": "Lỗi",
     "addPeople": "Thêm ({{count}})",
     "peopleAdded": "Đã thêm",

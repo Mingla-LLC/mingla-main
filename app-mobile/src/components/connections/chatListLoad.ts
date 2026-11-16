@@ -8,13 +8,14 @@
  * session invites. That took 1.7–1.9 s on every visit.
  *
  * Now the list is ONE React Query entry (useChatList → chatListKeys.list) and
- * this loader runs the reads in three waves:
+ * this loader runs the reads in two waves:
  *   wave 1 (nothing needs ids): conversations + unread, pending session
  *          invites, your brand team rows — all at once;
- *   wave 2 (needs conversation ids): sessions, session phone invites, event
+ *   wave 2 (needs conversation ids): sessions (name, creator, status), event
  *          meta and ONE profiles read (participants ∪ last-message senders ∪
- *          inviters) — all at once;
- *   wave 3 (rare): profiles only for session people the first read missed.
+ *          inviters) — all at once.
+ * #4435 leftovers: the session phone-invite read and the follow-up profiles
+ * read for session people were removed; no row rendered either.
  *
  * Pure and dependency-free (every read is injected) so it runs under Deno.
  */
@@ -149,26 +150,12 @@ export type RawChatConversation = {
   live_session_status?: string | null;
 };
 
+/** What a group row shows from its session: the name fallback, the creator and the status. */
 export type ChatSessionRow = {
   id: string;
   name: string | null;
   created_by: string | null;
   status?: string | null;
-  session_participants?: ReadonlyArray<{ user_id: string; has_accepted: boolean | null }> | null;
-  collaboration_invites?: ReadonlyArray<{
-    id: string;
-    invited_user_id: string;
-    status: string | null;
-    created_at: string | null;
-  }> | null;
-};
-
-export type ChatSessionPhoneInvite = {
-  id: string;
-  session_id: string;
-  phone_e164: string | null;
-  status?: string | null;
-  created_at?: string | null;
 };
 
 export type RawPendingSessionInvite = {
@@ -244,7 +231,6 @@ export type ChatListLoadDeps<TCard extends ChatEventPublicCard = ChatEventPublic
   /** My accepted brand team rows; null when the read failed. */
   fetchTeamBrandIds(userId: string): Promise<string[] | null>;
   fetchSessions(sessionIds: string[]): Promise<ChatSessionRow[]>;
-  fetchSessionPhoneInvites(sessionIds: string[]): Promise<ChatSessionPhoneInvite[]>;
   fetchEventMeta(eventIds: string[]): Promise<Map<string, ChatEventMeta<TCard>>>;
   fetchProfiles(userIds: string[]): Promise<ChatListProfile[]>;
   displayName(profile: ChatListProfile | undefined, fallback?: string): string;
@@ -279,13 +265,6 @@ function withChatListTimeout<T>(promise: Promise<T>, deps: ChatListTimer): Promi
     handle = setTimer(() => reject(new ChatListTimeoutError()), deps.timeoutMs ?? CHAT_LIST_TIMEOUT_MS);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimer(handle));
-}
-
-function sessionRowsOf(row: ChatSessionRow | undefined) {
-  return {
-    participants: [...(row?.session_participants ?? [])],
-    invites: [...(row?.collaboration_invites ?? [])],
-  };
 }
 
 /** Loads every row of the Chats list. Throws on a failed conversations / sessions / profiles read. */
@@ -337,11 +316,8 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
 
   // ── Wave 2: everything that needs conversation ids, at once ──
   const sessionIdList = Array.from(groupSessionIds);
-  const [sessions, phoneInvites, eventMetaMap, firstProfiles, teamRows] = await Promise.all([
+  const [sessions, eventMetaMap, firstProfiles, teamRows] = await Promise.all([
     sessionIdList.length > 0 ? deps.fetchSessions(sessionIdList) : Promise.resolve([] as ChatSessionRow[]),
-    sessionIdList.length > 0
-      ? deps.fetchSessionPhoneInvites(sessionIdList)
-      : Promise.resolve([] as ChatSessionPhoneInvite[]),
     deps.fetchEventMeta(Array.from(groupEventIds)).catch((error: unknown) => {
       deps.warn("[ConnectionsPage] Failed to batch-resolve group chat event metadata:", error);
       return new Map<string, ChatEventMeta<TCard>>();
@@ -351,20 +327,7 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
     groupEventIds.size > 0 ? teamsPromise : teamsPromise.then(() => [] as string[]),
   ]);
 
-  // ── Wave 3 (rare): session people the first profiles read did not cover ──
   const profilesMap = new Map<string, ChatListProfile>(firstProfiles.map((profile) => [profile.id, profile]));
-  const missingIds = new Set<string>();
-  for (const session of sessions) {
-    for (const participant of session.session_participants ?? []) {
-      if (participant.user_id && !firstProfileIds.has(participant.user_id)) missingIds.add(participant.user_id);
-    }
-    for (const invite of session.collaboration_invites ?? []) {
-      if (invite.invited_user_id && !firstProfileIds.has(invite.invited_user_id)) missingIds.add(invite.invited_user_id);
-    }
-  }
-  if (missingIds.size > 0) {
-    for (const profile of await deps.fetchProfiles(Array.from(missingIds))) profilesMap.set(profile.id, profile);
-  }
 
   const senderProfiles = Array.from(senderIds)
     .map((id) => profilesMap.get(id))
@@ -380,22 +343,10 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
     teamBrandIds = Array.from(new Set([...teamRows, ...owned])).sort();
   }
 
-  const phoneInvitesBySession = new Map<string, ChatSessionPhoneInvite[]>();
-  for (const invite of phoneInvites) {
-    const rows = phoneInvitesBySession.get(invite.session_id) ?? [];
-    rows.push(invite);
-    phoneInvitesBySession.set(invite.session_id, rows);
-  }
   const sessionMetaMap = new Map(
     sessions.map((session) => [
       session.id,
-      {
-        name: session.name,
-        created_by: session.created_by,
-        status: session.status ?? null,
-        ...sessionRowsOf(session),
-        phoneInvites: phoneInvitesBySession.get(session.id) ?? [],
-      },
+      { name: session.name, created_by: session.created_by, status: session.status ?? null },
     ]),
   );
 

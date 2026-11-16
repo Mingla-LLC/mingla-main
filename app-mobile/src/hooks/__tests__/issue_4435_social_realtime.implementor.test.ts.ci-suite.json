@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/hooks/__tests__/issue_4435_social_realtime.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4435-social-realtime-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

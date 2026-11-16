@@ -508,7 +508,8 @@ export function phase3dContractDigest(manifest) {
 // #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 CI fix: re-sealed after skipping 20280708054435 by exact filename in the #1931 filtered replay; MANIFEST.json phase3eContractSha256 matches.
 // #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "12dd6374f95f2f80c0ee9a815e55e95421c12b6978539f47fed8ade455505af3";
+// #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "beebaeda62b6ffbcc6a469794c92e0ddd2926c4bb5383ecb924dcfc6b5418049";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

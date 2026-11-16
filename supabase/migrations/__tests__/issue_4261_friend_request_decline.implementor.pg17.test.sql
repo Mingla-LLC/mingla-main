@@ -257,3 +257,4 @@ ROLLBACK;
 \ir ../20280708054435_issue_4435_group_lifecycle.sql
 \ir ../20280708064435_issue_4435_chat_reopen_and_clear.sql
 \ir ../20280709004435_issue_4435_group_qa_fixes.sql
+\ir ../20280710004435_issue_4435_leftovers.sql
