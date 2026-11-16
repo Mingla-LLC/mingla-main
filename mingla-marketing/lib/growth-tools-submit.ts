@@ -712,6 +712,8 @@ export interface TripReport {
   price_basis: { note: string; checked_on: string }
   offer?: { per_person_from: string }
   meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+  /** #4452 §6.5: 'unpriced' when live prices did not come back (absent on older reports). */
+  pricing_status?: 'priced' | 'unpriced'
   /** #4452 §6.2/§6.9: the situation it was run for (absent = today's report). */
   followup?: ToolSituation
 }
