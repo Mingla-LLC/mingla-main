@@ -451,7 +451,8 @@ const ROW_ICON_BG = Platform.select({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: space[4],
+    // #4420: the kit's 20 sheet gutter (the brand switcher top sheet's own).
+    paddingHorizontal: space[5],
     paddingTop: space[4],
     paddingBottom: space[4],
     gap: space[4],

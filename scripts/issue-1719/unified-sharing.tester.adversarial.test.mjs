@@ -280,7 +280,8 @@ test('TA7 accessibility, theme, contrast, touch targets, and small-screen reacha
     assert.match(source, /summary:\{minHeight:92/);
     assert.match(source, /poster(?:Wrap)?:\{width:64,height:72/);
     assert.match(source, /header:\{minHeight:60/);
-    assert.match(source, /closeTarget:\{position:'absolute',right:8,width:44,height:44/);
+    // [TEST-MOD-APPROVED #4420] Business aligns the close glyph to the 16 gutter (right:-13).
+    assert.match(source, /closeTarget:\{position:'absolute',right:(?:8|-13),width:44,height:44/);
     assert.match(source, /accessibilityRole="button"/);
     assert.match(source, /accessibilityLabel=/);
     assert.doesNotMatch(source, /#[Ff]{3,6}[^\n]*backgroundColor:'#EB7825'/);

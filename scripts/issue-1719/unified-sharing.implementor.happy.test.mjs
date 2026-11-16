@@ -339,8 +339,11 @@ test('H18 headings are truly centered, Business owns its panel theme, and visibl
   for (const source of [consumer, business]) {
     assert.match(source, /header:\{minHeight:60,alignItems:'center',justifyContent:'center',paddingHorizontal:60/);
     assert.match(source, /heading:\{width:'100%'[^}]*textAlign:'center'/);
-    assert.match(source, /closeTarget:\{position:'absolute',right:8,width:44,height:44/);
+    assert.match(source, /closeTarget:\{position:'absolute',right:-?\d+,width:44,height:44/);
   }
+  // [TEST-MOD-APPROVED #4420] Business: the 44 close target sits so the glyph's
+  // right edge meets the 16 content gutter (right:-13: the 44 target is centred on an 18 glyph), not 7 inside it.
+  assert.match(business, /closeTarget:\{position:'absolute',right:-13,width:44,height:44/);
   // [TEST-MOD-APPROVED #4420] Business still owns its panel theme, now from tokens:
   // the opaque sheet material when dark, Paper when light.
   assert.match(business, /const panelBackground = dark \? materials\.sheet\.solidFill : color\.paper;/);
