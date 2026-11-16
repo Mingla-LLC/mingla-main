@@ -609,12 +609,15 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             borderBottomColor: palette.panelBorder,
             // No blur behind the band on native or mobile web, so it stays
             // near-opaque there; desktop web blurs what scrolls under it.
+            // Phone web is fully opaque (issue #4420 audit): at 0.9 the
+            // section heading and steppers scrolling under it ghosted through
+            // beside the title (same rule as glassFillAlpha).
             backgroundColor: palette.page.startsWith("#")
               ? hexToRgba(
                   palette.page,
                   headerBlurred
                     ? 0.72
-                    : Platform.OS === "web" ? (isDesktop ? 0.78 : 0.9) : Platform.OS === "android" ? 0.97 : 0.93,
+                    : Platform.OS === "web" ? (isDesktop ? 0.78 : 1) : Platform.OS === "android" ? 0.97 : 0.93,
                 )
               : palette.page,
           },

@@ -62,7 +62,14 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
           numberOfLines={2}
           testID={`${testID}-eyebrow`}
         >
-          {parts.join("  ·  ")}
+          {/* issue #4420 audit — each part keeps its words together, so a
+              long eyebrow wraps only at the dots ("8 DAYS · 7 / NIGHTS" split
+              a fact across lines on the trip cover). A part too long for one
+              line (a long venue name) keeps its normal spaces. */}
+          {parts
+            .map((p) => p.trim())
+            .map((p) => (p.length <= 28 ? p.replace(/ /g, "\u00A0") : p))
+            .join("  ·  ")}
         </Text>
       ) : null}
       <Text

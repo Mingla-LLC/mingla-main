@@ -673,6 +673,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           theme={theme}
           socialProof={renderedSocialProof ?? socialProof}
           onSeeWhosGoing={acquisitionClosed ? undefined : onSeeWhosGoing}
+          ended={variant === "past"}
           testID="orch-1339-momentum-event"
         />
       ) : null}
