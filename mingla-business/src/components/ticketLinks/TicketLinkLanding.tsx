@@ -15,7 +15,7 @@ import { radius, color, space } from "../../constants/designSystem";
 import {
   PURCHASE_PRIVACY_URL,
   PURCHASE_TERMS_URL,
-} from "../../constants/consentDisclosure";
+} from "../../constants/purchaseTermsDisclosure";
 import { checkoutPublicPathWithSeed } from "../../constants/publicUrls";
 import { formatCurrency } from "../../utils/currency";
 import { randomUuid } from "../../utils/randomId";

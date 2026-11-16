@@ -89,7 +89,7 @@ import {
   PURCHASE_TERMS_LABEL_SUFFIX,
   PURCHASE_TERMS_LABEL_TERMS,
   PURCHASE_TERMS_URL,
-} from "../../../src/constants/consentDisclosure";
+} from "../../../src/constants/purchaseTermsDisclosure";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { supabase } from "../../../src/services/supabase";
 

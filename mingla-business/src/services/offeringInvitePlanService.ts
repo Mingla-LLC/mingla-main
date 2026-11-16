@@ -8,7 +8,6 @@ import {
 } from "../features/invites/inviteSelectionModel";
 import type { BookCursor, BrandPeopleBookPage } from "../types/people";
 import type { ManualGroupSummary } from "../types/marketing";
-import { listManualGroups } from "./marketing/manualGroupService";
 import { listBrandPeople } from "./peopleService";
 import { supabase } from "./supabase";
 
@@ -262,8 +261,12 @@ export const listWizardInviteBookPeople = (
   cursor: BookCursor | null,
 ): Promise<BrandPeopleBookPage> => listBrandPeople({ brandId, search, cursor, limit: 50 });
 
+// #4420 — loaded on intent, like every other manual-group reader; a static
+// import here hoisted the service into the eager `__common` boot chunk.
 export const listWizardInviteManualGroups = (brandId: string): Promise<ManualGroupSummary[]> =>
-  listManualGroups(brandId);
+  import("./marketing/manualGroupService").then((service) =>
+    service.listManualGroups(brandId),
+  );
 
 export function formatWizardInviteMoney(minor: number, currency: string): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);

@@ -95,7 +95,8 @@ import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 
-import { ChangeSummaryModal } from "../event/ChangeSummaryModal";
+// #4420 — lazy: the sheet is mounted hidden and opens on intent.
+import { ChangeSummaryModal } from "../event/LazyChangeSummaryModal";
 import { EditAfterPublishTripBanner } from "./EditAfterPublishTripBanner";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — new accordion section body.
 import { EditPublishedTripIntakeAccordion } from "./EditPublishedTripIntakeAccordion";

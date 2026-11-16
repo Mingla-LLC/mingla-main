@@ -34,7 +34,11 @@ import {
   RsvpCreatorWizard,
   type WizardExitMode,
 } from "../../../src/components/rsvp/RsvpCreatorWizard";
-import { EditPublishedScreen } from "../../../src/components/event/EditPublishedScreen";
+// #4420 — the published editor is on-intent; its own chunk, not __common.
+import {
+  EditPublishedScreen,
+  loadEditPublishedScreen,
+} from "../../../src/components/event/LazyEditPublishedScreen";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
@@ -127,6 +131,10 @@ export default function RsvpEditRoute(): React.ReactElement {
   // EditPublishedScreen instead of the create wizard. The id refers to
   // a LIVE event, not a draft.
   const isEditPublished = modeParam === "edit-published";
+  // #4420 — start the editor's chunk while the live event is still loading.
+  useEffect(() => {
+    if (isEditPublished) void loadEditPublishedScreen().catch(() => undefined);
+  }, [isEditPublished]);
   const isLegacyLocalDraftId =
     typeof idParam === "string" && idParam.startsWith("d_");
   const { isAuthReady, user } = useAuth();

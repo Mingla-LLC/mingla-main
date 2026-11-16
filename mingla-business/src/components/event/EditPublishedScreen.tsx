@@ -114,7 +114,8 @@ import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
 
-import { ChangeSummaryModal } from "./ChangeSummaryModal";
+// #4420 — lazy: the sheet is mounted hidden and opens on intent.
+import { ChangeSummaryModal } from "./LazyChangeSummaryModal";
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";

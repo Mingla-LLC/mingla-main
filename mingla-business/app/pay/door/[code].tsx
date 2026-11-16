@@ -56,7 +56,7 @@ import {
   PURCHASE_TERMS_LABEL_SUFFIX,
   PURCHASE_TERMS_LABEL_TERMS,
   PURCHASE_TERMS_URL,
-} from "../../../src/constants/consentDisclosure";
+} from "../../../src/constants/purchaseTermsDisclosure";
 import { DOWNLOAD_PAGE_URL } from "../../../src/constants/storeLinks";
 import {
   doorPayGuestEndCopy,

@@ -74,7 +74,7 @@ import {
 import { EventDetailHeroStatusPill } from "../../../src/components/event/EventDetailHeroStatusPill";
 import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDetailTicketTypeRow";
-import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
+import type { EventManageMenuProps } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
 import {
   eventGridSections,
@@ -118,6 +118,23 @@ import {
   unpublishBusinessEventToDraft,
 } from "../../../src/services/businessEvents";
 
+// #4420 — the manage menu opens on intent. The Hub events list already loads it
+// with import(); a static import here made it reachable from two chunks, so
+// Metro hoisted it into the eager `__common` boot chunk. The screen preloads it
+// on mount so the first tap does not wait on the chunk.
+const loadEventManageMenu = () =>
+  import("../../../src/components/event/EventManageMenu");
+const DeferredEventManageMenu = React.lazy(async () => ({
+  default: (await loadEventManageMenu()).EventManageMenu,
+}));
+function EventManageMenu(props: EventManageMenuProps): React.ReactElement {
+  return (
+    <React.Suspense fallback={null}>
+      <DeferredEventManageMenu {...props} />
+    </React.Suspense>
+  );
+}
+
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -145,6 +162,10 @@ export default function EventDetailScreen(): React.ReactElement {
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === "string" ? params.id : null;
+  // #4420 — warm the manage menu's chunk so the first tap opens it at once.
+  useEffect(() => {
+    void loadEventManageMenu().catch(() => undefined);
+  }, []);
 
   // ----- Resolve event -------------------------------------------
   const routeEvent = useManagedEventRoute(id);

@@ -33,7 +33,8 @@ describe("ORCH-0876 — EditPublishedTripScreen save flow contract", () => {
   });
 
   test("renders the generalized ChangeSummaryModal with entityLabel='trip'", () => {
-    expect(SRC).toContain('import { ChangeSummaryModal } from "../event/ChangeSummaryModal"');
+    // #4420 — through the on-intent wrapper (same component, own chunk).
+    expect(SRC).toContain('import { ChangeSummaryModal } from "../event/LazyChangeSummaryModal"');
     expect(SRC).toMatch(/<ChangeSummaryModal\b[\s\S]*?entityLabel="trip"/);
   });
 

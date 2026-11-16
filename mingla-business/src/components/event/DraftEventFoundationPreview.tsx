@@ -23,7 +23,16 @@ import { readRefundPolicyState } from "@mingla/offering-rendering/offeringRefund
 import type { RefundPolicy } from "../../services/refundPolicyService";
 import type { SocialProofSummary } from "@mingla/offering-rendering";
 import { FoundationEventPreview } from "./FoundationEventPreview";
-import { MultiDateDayChooser } from "./MultiDateDayChooser";
+
+// #4420 — the same lazy day chooser the live page loads (PublicEventPage). A
+// static import here made it reachable from two chunks, so Metro hoisted it
+// into the eager `__common` boot chunk for an affordance only multi-date
+// drafts use.
+const MultiDateDayChooser = React.lazy(() =>
+  import("./MultiDateDayChooser").then((module) => ({
+    default: module.MultiDateDayChooser,
+  })),
+);
 
 interface DraftEventFoundationPreviewProps {
   event: PublicEventProps;
@@ -160,19 +169,21 @@ export const DraftEventFoundationPreview: React.FC<
   }, [dayChooserState, onBlocked, onCheckout, purchaseReady, revealDayChooser]);
 
   const dayChooser = requiresMultiDatePurchase ? (
-    <MultiDateDayChooser
-      timezone={occurrences[0]?.timezone ?? "UTC"}
-      palette={palette}
-      fontFamily={boldFamily}
-      occurrences={occurrences}
-      selectedOccurrenceIds={selectedOccurrenceIds}
-      pricingMode={multiDatePricingMode}
-      allDaysPass={multiDatePricingMode === "all_days"}
-      isPaid={event.tickets.some((ticket) => !ticket.isFree)}
-      highlightUnchosen={dayChoiceMissing}
-      state={dayChooserState}
-      onToggle={handleToggleOccurrence}
-    />
+    <React.Suspense fallback={null}>
+      <MultiDateDayChooser
+        timezone={occurrences[0]?.timezone ?? "UTC"}
+        palette={palette}
+        fontFamily={boldFamily}
+        occurrences={occurrences}
+        selectedOccurrenceIds={selectedOccurrenceIds}
+        pricingMode={multiDatePricingMode}
+        allDaysPass={multiDatePricingMode === "all_days"}
+        isPaid={event.tickets.some((ticket) => !ticket.isFree)}
+        highlightUnchosen={dayChoiceMissing}
+        state={dayChooserState}
+        onToggle={handleToggleOccurrence}
+      />
+    </React.Suspense>
   ) : null;
 
   const stickyPanel = isDesktop ? (
