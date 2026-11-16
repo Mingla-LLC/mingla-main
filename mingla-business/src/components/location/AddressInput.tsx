@@ -31,6 +31,7 @@ import { SharedAddressInput } from "./sharedAddressField";
 import {
   radius as radiusTokens,
   color as dsColor,
+  size as sizeTokens,
   space,
   type,
 } from "../../constants/designSystem";
@@ -125,6 +126,9 @@ const BUSINESS_TOKENS: LocationInputTokens = {
     paddingHorizontal: space[4],
     paddingVertical: space[2],
     focusBorderWidth: 1, // business used borderWidth:1 in all states
+    // #4420 (native run): same height as every other Host input (48), not
+    // padding-derived (~38pt beside a 48pt title field on the trip form).
+    minHeight: sizeTokens.input,
   },
   text: {
     input: dsColor.text1,

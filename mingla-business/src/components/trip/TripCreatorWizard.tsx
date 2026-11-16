@@ -3014,7 +3014,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   subtitleRow: {
-    paddingHorizontal: space[4],
+    // #4420 (native run): the step title and its line sit on the body's 24
+    // gutter, so "Basics" lines up with the fields under it (was 16 vs 24).
+    paddingHorizontal: space[6],
     paddingTop: space[1],
     paddingBottom: space[4],
   },
