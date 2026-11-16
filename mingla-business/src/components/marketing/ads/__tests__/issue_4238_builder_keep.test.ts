@@ -106,7 +106,10 @@ describe("#4238 SC-K: every K option reaches the canonical plan", () => {
     );
     const canonical = call?.[1].body.canonical_plan as Record<string, unknown>;
     // Fails if any K capability (or a W3 choice) is dropped on the way.
+    // #4238 W6a: a sales plan also carries the Host goal and its yes for
+    // visits-only apps (acknowledged_visits_fallback, item 3).
     expect(Object.keys(canonical).sort()).toEqual([
+      "acknowledged_visits_fallback",
       "app_choice",
       "audience_choice",
       "audience_intent",
@@ -123,6 +126,7 @@ describe("#4238 SC-K: every K option reaches the canonical plan", () => {
       "name",
       "occurrence_key",
       "optimization_by_platform",
+      "optimization_goal",
       "schedule",
       "special_ad_category",
       "targeting_selection",

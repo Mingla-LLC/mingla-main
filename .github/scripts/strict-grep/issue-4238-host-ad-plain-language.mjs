@@ -372,10 +372,16 @@ function main() {
 
   // 6. The typed confirmations stay, and are explained.
   const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
+  // #4238 W6a (design v9, question 8 approved): the builder asks once, with
+  // the money in one line, instead of a typed LAUNCH / CANCEL PLAN. The
+  // server still checks the typed constant (D-7), which the service sends.
   if (create !== null) {
-    for (const needle of ['launchPhrase !== "LAUNCH"', "Type LAUNCH to start your ad.", 'confirmText="CANCEL PLAN"']) {
-      if (!create.includes(needle)) fail(`create.tsx lost the typed confirmation ${JSON.stringify(needle)}`);
+    for (const needle of ['hb("review.confirmBody", { amount: money(holdPayCents) })', "onConfirm={handleLaunchConfirmed}", 'hb("review.cancelBody")']) {
+      if (!create.includes(needle)) fail(`create.tsx lost the one launch / cancel confirm ${JSON.stringify(needle)}`);
     }
+  }
+  if (service !== null && !service.includes('phrase: "LAUNCH"')) {
+    fail('hostAdPlanService no longer sends the confirm_launch constant phrase: "LAUNCH"');
   }
   if (detail !== null) {
     for (const needle of ['confirmText={destructiveAction === "end" ? "END" : "CANCEL"}', "Type END to stop your ad on every app."]) {

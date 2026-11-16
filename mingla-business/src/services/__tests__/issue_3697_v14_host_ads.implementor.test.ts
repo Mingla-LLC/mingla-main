@@ -21,9 +21,11 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(tabActions).toContain('label: "Create an ad"');
     expect(tabActions).toContain('href: "/(tabs)/marketing/ads/create"');
     // #4238 plain-language pass: same steps, Host words.
-    expect(createRoute).toContain("Check my ad");
-    expect(createRoute).toContain("Set aside the money");
-    expect(createRoute).toContain("Start my ad");
+    // #4238 W6a: "Check with each app" runs on Review; one confirm then
+    // holds the money and launches (design v9).
+    expect(createRoute).toContain('hb("review.checkNow")');
+    expect(createRoute).toContain("onConfirm={handleLaunchConfirmed}");
+    expect(createRoute).toContain("fundHostAdPlan, launchHostAdPlan");
     expect(adsRoute).toContain("useHostAdPlans");
     expect(adsRoute).toContain('testID="ads-campaigns-empty"');
     expect(adsRoute).not.toContain("Plans in progress");
@@ -42,11 +44,11 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).not.toMatch(/currency:\s*input\./);
     expect(service).toContain('phrase: "LAUNCH"');
     expect(service).toContain("input.connections.map");
-    expect(createRoute).toContain("where it runs and one ready video");
+    expect(createRoute).toContain('hb("platforms.h1")');
     expect(service).toContain("provider_estimate");
     expect(service).toContain("estimate_observed_at");
-    expect(createRoute).toContain("Reach numbers overlap");
-    expect(createRoute).toContain("Don&apos;t add the numbers up");
+    // #4238 W3 U-1: no reach meter in the builder.
+    expect(createRoute).not.toContain("HostAdReachMeter");
   });
 
   it("stops the first three for staff review before provider create", () => {
@@ -56,8 +58,9 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     const createIndex = service.lastIndexOf('"admin-ad-create-campaign"');
     expect(reviewIndex).toBeGreaterThan(-1);
     expect(createIndex).toBeGreaterThan(reviewIndex);
-    expect(createRoute).toContain("Your money is set aside while Mingla checks your ad.");
-    expect(createRoute).toContain("Cancel ad and get my money back");
+    expect(createRoute).toContain('hb("review.inReview")');
+    expect(createRoute).toContain('hb("review.cancelAd")');
+    expect(createRoute).toContain('setLaunched("staff")');
   });
 
   it("runs provider validation only after funding, confirmation and media preparation", () => {
@@ -82,9 +85,9 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain("validate_only: true");
     expect(service).toContain('action: "cancel_before_create"');
     expect(service).toContain('phrase: "CANCEL PLAN"');
-    expect(createRoute).toContain('confirmText="CANCEL PLAN"');
+    expect(createRoute).toContain('description={hb("review.cancelBody")}');
     expect(createRoute).toContain("aggregateHasProviderObjectEvidence");
-    expect(createRoute).toContain("This ad was already set up on at least one app.");
+    expect(createRoute).toContain('hb("review.alreadyBuilt")');
   });
 
   it("creates every provider object paused before any Host activation", () => {
@@ -110,7 +113,9 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain('"creating_paused_objects"');
     expect(service).toContain('action: "record_create_failure"');
     expect(service).not.toContain("item.value.campaigns.length === 0");
-    expect(createRoute).toContain("Try starting my ad again");
+    // #4238 W6a: a retryable create resumes on Review and Launch tries again.
+    expect(createRoute).toContain('"creation_failed_retryable"');
+    expect(createRoute).toContain("await launchHostAdPlan({");
   });
 
   it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
@@ -133,7 +138,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     // the server-created creative id, and says nothing reaches ad platforms
     // before the plan is funded and confirmed.
     expect(createRoute).toContain("patch.adCreativeId");
-    expect(createRoute).toContain("Nothing goes to ad platforms until you fund and confirm the plan.");
+    expect(createRoute).toContain("setCreativeIds((current) =>");
     expect(createRoute).not.toMatch(/uploadAsync|createUpload|bunny.*upload/i);
   });
 

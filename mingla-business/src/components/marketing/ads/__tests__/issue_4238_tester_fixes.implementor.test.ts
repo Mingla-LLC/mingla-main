@@ -120,7 +120,9 @@ describe("#4238 D4 one Ads setup read", () => {
     expect(createRoute).toContain("cachedHostAdSetup(brandId, loadHostAdSetup, { force })");
     expect(createRoute).not.toContain("await loadHostAdSetup(brandId)");
     expect(createRoute).not.toMatch(/router\.replace\(\s*hostAdBuilder/);
-    expect(createRoute.split("router.setParams(").length - 1).toBe(4);
+    // #4238 W6a: also on Edit from Review and when a top-up returns.
+    expect(createRoute.split("router.setParams(").length - 1).toBeGreaterThanOrEqual(4);
+    expect(createRoute).not.toContain("router.replace(\"/(tabs)/marketing/ads/create");
   });
 });
 
@@ -131,7 +133,7 @@ describe("#4238 D5, D7 and Extra A", () => {
     expect(rules).toContain("if (router.canGoBack()) router.back();");
     expect(rules).toContain("else router.replace(HOST_ADS_LIST_HREF as never);");
     expect(createRoute).toContain("goBackToAds(router)");
-    expect(createRoute).toContain('cta={{ label: "Back to Ads", onPress: backToAds }}');
+    expect(createRoute).toContain('cta={{ label: hb("back"), onPress: backToAds }}');
   });
 
   it("a page card shows its type once (badge), then date and city", () => {
@@ -258,7 +260,10 @@ describe("#4238 retest 2: last plain-language fixes", () => {
   });
 
   it("platform checkboxes expose aria-checked", () => {
-    expect(createRoute).toContain("aria-checked={props.multiple ? props.selected : undefined}");
+    // #4238 W6a: app choices are switches now; checkboxes live in the kit.
+    const bits = read("src/components/marketing/ads/HostAdBuilderBits.tsx");
+    expect(bits).toContain("aria-checked={props.checked}");
+    expect(bits).toContain("aria-checked={props.selected}");
   });
 });
 
@@ -416,7 +421,8 @@ describe("#4238 retest 4: back link, ledger words, counting lines, card title", 
     expect(tickets.counts).toBe("We count ticket sales, then checkouts started, then page visits.");
     expect(tickets.sharing).toContain("count every sale.");
     expect(hostAdCountingLines([]).counts).toBe("We count the results Mingla can see.");
-    expect(createRoute).toContain(").counts");
+    // #4238 W6a: the counting line moved to results (ad detail, W6b);
+    // the builder never says "every sale".
     expect(createRoute).not.toContain("still count every sale");
   });
 

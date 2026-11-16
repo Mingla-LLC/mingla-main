@@ -469,9 +469,15 @@ Deno.test("T-F3 #4238 clients never author Host objectives", async () => {
   );
   for (const source of [service, ariPayload]) {
     assert(!/\bobjective:/.test(source));
-    assert(!source.includes("optimization_goal"));
     assert(!source.includes("billing_event"));
   }
+  // #4238 W6a (item 3): the Host client sends the Host's own goal
+  // (sales / sign-ups) as optimization_goal inside canonical_plan, which the
+  // server validates; never a provider objective. Ari's create payload still
+  // never carries it.
+  assert(!ariPayload.includes("optimization_goal"));
+  assertStringIncludes(service, "optimization_goal: input.optimization,");
+  assertStringIncludes(service, '...(input.optimization !== "visits"');
   const create = await read("../../admin-ad-create-campaign/index.ts");
   const derive = create.indexOf("Object.assign(body, hostGoal)");
   const firstRead = create.indexOf("const objective = typeof body.objective");

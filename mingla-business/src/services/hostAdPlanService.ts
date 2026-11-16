@@ -11,6 +11,7 @@ import { supabase } from "./supabase";
 import type { AdVideoFit } from "../utils/adVideoFit";
 import {
   HOST_AD_SALES_PLATFORMS,
+  HOST_AD_SIGNUP_PLATFORMS,
   hostAdPageSellsTickets,
 } from "../components/marketing/ads/hostAdGoal";
 import {
@@ -74,7 +75,7 @@ export type HostAdPage = {
 };
 
 /** #4238: what this ad optimises for on each platform (frozen in the plan). */
-export type HostAdOptimization = "visits" | "sales";
+export type HostAdOptimization = "visits" | "sales" | "signups";
 
 export {
   HOST_AD_SALES_PAGE_TYPES,
@@ -95,7 +96,22 @@ export type HostAdConnection = {
   connected: boolean;
   /** Read-only preview of the server's Sales signal gate. */
   sales: { ready: boolean; reason: string };
+  /** #4238 item 3: the sign-ups signal gate (free and RSVP pages). */
+  signups?: { ready: boolean; reason: string };
 };
+
+/** #4238 W4b: what this teammate may do, with who to ask when they can't. */
+export type HostAdCapabilityAnswer = {
+  allowed: boolean;
+  ask_role?: "brand_owner";
+  ask_name?: string;
+};
+export type HostAdCapabilities = Partial<
+  Record<
+    "plan" | "top_up" | "withdraw" | "launch" | "pause" | "change_live" | "end",
+    HostAdCapabilityAnswer
+  >
+>;
 
 /** #4238 media-buyer: a place (city, region or pin) matched on each app. */
 export type HostAdTargetingCity = HostAdPlace;
@@ -237,7 +253,15 @@ export type HostAdSetup = {
     platform: HostAdPlatform;
     visits_daily_minimum_cents?: number;
     sales_daily_minimum_cents?: number;
+    signups_daily_minimum_cents?: number;
+    /** #4238 W1: the same minimum in what the Host pays (15% fee inside). */
+    visits_daily_minimum_pay_cents?: number;
+    sales_daily_minimum_pay_cents?: number;
+    signups_daily_minimum_pay_cents?: number;
+    currency_unavailable?: boolean;
   }[];
+  /** #4238 W4b: what this teammate may do (absent on older servers). */
+  capabilities?: HostAdCapabilities;
 };
 
 export type TargetingSnapshot = {
@@ -312,12 +336,15 @@ export function hostTargetingSelectionsFromAggregate(
 export class HostAdPlanError extends Error {
   readonly code: string;
   readonly detail: string;
+  /** #4238 W6a: the rest of the server's answer (platforms, apps_plan). */
+  readonly extra: Record<string, unknown>;
 
-  constructor(code: string, detail: string) {
+  constructor(code: string, detail: string, extra: Record<string, unknown> = {}) {
     super(detail);
     this.name = "HostAdPlanError";
     this.code = code;
     this.detail = detail;
+    this.extra = extra;
   }
 }
 
@@ -329,7 +356,12 @@ async function invoke<T>(
     body,
   });
   if (error !== null) {
-    type EdgePayload = { error?: string; detail?: unknown; message?: string };
+    type EdgePayload = {
+      error?: string;
+      detail?: unknown;
+      message?: string;
+      [key: string]: unknown;
+    };
     let payload: EdgePayload | null = null;
     try {
       const response = (error as { context?: Response }).context;
@@ -346,7 +378,7 @@ async function invoke<T>(
       payload?.detail ?? payload?.message ?? payload?.error ?? "request_failed";
     const detail =
       typeof rawDetail === "string" ? rawDetail : JSON.stringify(rawDetail);
-    throw new HostAdPlanError(payload?.error ?? "network", detail);
+    throw new HostAdPlanError(payload?.error ?? "network", detail, payload ?? {});
   }
   // #4238: an edge envelope carries `error: null` on success, and
   // admin-ad-creative-prepare carries an error OBJECT beside `state:"failed"`
@@ -591,6 +623,20 @@ export type PrepareHostAdPlanInput = {
   appChoice?: "mingla" | "host";
   /** #4238 T-3: "mingla" when the Host let Mingla choose the audience. */
   audienceChoice?: "mingla" | "host";
+  /**
+   * #4238 item 3: apps the Host agreed may count page visits instead of the
+   * goal (amendment A decision 10). The server ignores names that did not
+   * fall back.
+   */
+  acknowledgedVisitsFallback?: string[];
+};
+
+/** #4238 T-5: one warn-only words finding (never a block). */
+export type HostAdCopyWarning = {
+  kind: string;
+  platforms: string[];
+  excerpt: string;
+  message: string;
 };
 
 export type PreparedHostAdPlan = {
@@ -607,6 +653,8 @@ export type PreparedHostAdPlan = {
     platform: HostAdPlatform;
     result: Record<string, unknown>;
   }[];
+  /** #4238 T-5: warn-only words findings from create_version. */
+  copyWarnings?: HostAdCopyWarning[];
 };
 
 function splitCents(total: number, count: number): number[] {
@@ -627,7 +675,7 @@ function splitCents(total: number, count: number): number[] {
 export function hostOptimizationByPlatform(
   optimization: HostAdOptimization,
   page: Pick<HostAdPage, "page_type" | "result_kind">,
-  connections: Pick<HostAdConnection, "platform" | "sales">[],
+  connections: Pick<HostAdConnection, "platform" | "sales" | "signups">[],
 ): Record<string, HostAdOptimization> {
   return Object.fromEntries(
     connections.map((connection) => [
@@ -637,7 +685,11 @@ export function hostOptimizationByPlatform(
       connection.sales?.ready === true &&
       HOST_AD_SALES_PLATFORMS.includes(connection.platform)
         ? "sales"
-        : "visits",
+        : optimization === "signups" &&
+            connection.signups?.ready === true &&
+            HOST_AD_SIGNUP_PLATFORMS.includes(connection.platform)
+          ? "signups"
+          : "visits",
     ]),
   );
 }
@@ -819,6 +871,7 @@ export async function prepareHostAdPlan(
       plan_hash: string;
       canonical_plan: Record<string, unknown>;
     };
+    copy_warnings?: HostAdCopyWarning[];
   }>("ad-plan", {
     action: "create_version",
     plan_id: planId,
@@ -871,6 +924,15 @@ export async function prepareHostAdPlan(
         input.page,
         input.connections,
       ),
+      // #4238 item 3: the Host's own goal and its yes for visits-only apps.
+      ...(input.optimization !== "visits"
+        ? {
+            optimization_goal: input.optimization,
+            acknowledged_visits_fallback: [
+              ...new Set(input.acknowledgedVisitsFallback ?? []),
+            ],
+          }
+        : {}),
       broader_acceptance: Object.fromEntries(
         input.connections.map((connection) => [
           connection.platform,
@@ -928,6 +990,9 @@ export async function prepareHostAdPlan(
     // Provider-native video copies do not exist yet. Exact provider validation
     // runs only after funding, review and launch confirmation bind this plan.
     providerValidations: [],
+    copyWarnings: Array.isArray(versioned.copy_warnings)
+      ? versioned.copy_warnings
+      : [],
   };
 }
 
@@ -1614,4 +1679,144 @@ export async function changeHostAdLive(input: {
     daily_not_pushed: result.daily_not_pushed ?? [],
     end_not_pushed: result.end_not_pushed ?? [],
   };
+}
+
+/**
+ * #4238 item 2 (W6a): the budget step's numbers, from the one server source
+ * (ad-plan host_budget_guidance). Every amount comes back in what the Host
+ * pays; `daily_cents` is sent in pay terms too.
+ */
+export type HostAdGuidanceWeek = { low: number; high: number; result: string };
+export type HostAdGuidanceApp = {
+  platform: HostAdPlatform;
+  minimum_daily_cents: number;
+  recommended_daily_cents: number;
+  expected_week: HostAdGuidanceWeek;
+  learning_ok: boolean;
+  retarget?: boolean;
+  ad_sets?: number;
+  smallest_working_pay_cents?: number;
+  learning_pay_cents?: number;
+};
+export type HostAdAppsPlan = {
+  fit: "ok" | "slow" | "none";
+  funded: { platform: HostAdPlatform; daily_credit_cents: number; daily_pay_cents: number }[];
+  trimmed: { platform: HostAdPlatform; reason: string; needs_more_pay_cents: number }[];
+  smallest_overall: { platform: HostAdPlatform; pay_cents: number } | null;
+};
+export type HostAdGuidance = {
+  ok: true;
+  currency: string;
+  per_app: HostAdGuidanceApp[];
+  total: {
+    minimum_daily_cents: number;
+    recommended_daily_cents: number;
+    expected_week: HostAdGuidanceWeek;
+  };
+  fit: "ok" | "slow" | "none";
+  apps_plan?: HostAdAppsPlan;
+  smallest_overall?: { platform: HostAdPlatform; pay_cents: number } | null;
+  creatives_hint?: boolean;
+};
+/** The 422 "no app can run" answer, kept whole so the step can say why. */
+export type HostAdGuidanceBelowEvery = {
+  ok: false;
+  apps_plan: HostAdAppsPlan | null;
+  per_app: { platform: HostAdPlatform; smallest_working_pay_cents: number; learning_pay_cents: number }[];
+};
+
+export async function getHostAdBudgetGuidance(input: {
+  brandId: string;
+  platforms: HostAdPlatform[];
+  goal: HostAdOptimization;
+  dailyPayCents: number;
+  appChoice: "mingla" | "host";
+  page: HostAdPage | null;
+  countries: string[];
+  startsAt?: string | null;
+  endsAt?: string | null;
+  occurrenceKey?: string | null;
+  creativeCount?: number;
+}): Promise<HostAdGuidance | HostAdGuidanceBelowEvery> {
+  try {
+    return await invoke<HostAdGuidance>("ad-plan", {
+      action: "host_budget_guidance",
+      brand_id: input.brandId,
+      platforms: input.platforms,
+      optimization: input.goal,
+      daily_cents: input.dailyPayCents,
+      app_choice: input.appChoice,
+      countries: input.countries,
+      ...(input.page
+        ? {
+            destination: {
+              page_type: input.page.page_type,
+              brand_slug: input.page.brand_slug,
+              entity_slug:
+                input.page.page_type === "brand" ? null : input.page.entity_slug,
+            },
+          }
+        : {}),
+      ...(input.startsAt ? { starts_at: input.startsAt } : {}),
+      ...(input.endsAt ? { ends_at: input.endsAt } : {}),
+      ...(input.occurrenceKey ? { occurrence_key: input.occurrenceKey } : {}),
+      ...(typeof input.creativeCount === "number"
+        ? { creative_count: input.creativeCount }
+        : {}),
+    });
+  } catch (cause) {
+    if (
+      cause instanceof HostAdPlanError &&
+      cause.code === "host_ad_budget_below_every_minimum"
+    ) {
+      return {
+        ok: false,
+        apps_plan: (recordValue(cause.extra.apps_plan) as HostAdAppsPlan | null) ?? null,
+        per_app: Array.isArray(cause.extra.per_app)
+          ? (cause.extra.per_app as HostAdGuidanceBelowEvery["per_app"])
+          : [],
+      };
+    }
+    throw cause;
+  }
+}
+
+/** #4238 5e: the live dates of a series, so the Host can promote one. */
+export type HostAdSeriesDate = {
+  occurrenceKey: string;
+  startAt: string;
+  endAt: string;
+};
+
+export async function listHostAdSeriesDates(
+  eventId: string,
+): Promise<HostAdSeriesDate[]> {
+  const { data, error } = await supabase
+    .from("event_dates")
+    .select("occurrence_key,start_at,end_at,status,cancelled_at")
+    .eq("event_id", eventId)
+    .is("cancelled_at", null)
+    .order("start_at", { ascending: true });
+  if (error !== null) {
+    throw new HostAdPlanError("series_dates_failed", error.message);
+  }
+  const now = Date.now();
+  return ((data ?? []) as {
+    occurrence_key: string | null;
+    start_at: string;
+    end_at: string;
+    status: string | null;
+  }[])
+    .filter(
+      (row) =>
+        typeof row.occurrence_key === "string" &&
+        row.occurrence_key !== "" &&
+        (row.status ?? "active") === "active" &&
+        Date.parse(row.end_at) > now,
+    )
+    .map((row) => ({
+      occurrenceKey: row.occurrence_key as string,
+      startAt: row.start_at,
+      endAt: row.end_at,
+    }));
 }
