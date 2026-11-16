@@ -42,7 +42,17 @@ export function jwtRole(token: string | null): string | null {
   }
 }
 
-/** True for the service-role key (exact match, or a service-role JWT such as the database's copy). */
+/**
+ * True for the service-role key (exact match, or a service-role JWT such as the
+ * database's copy).
+ *
+ * DEPENDS ON verify_jwt: the role claim is read, not its signature. That is
+ * safe only because notify-dispatch runs with verify_jwt = true (the default:
+ * supabase/config.toml has no [functions.notify-dispatch] entry), so the
+ * gateway has already checked the signature. Never deploy notify-dispatch with
+ * verify_jwt = false or --no-verify-jwt; issue_4435_app_notices.implementor
+ * fails if config.toml turns it off.
+ */
 export function isServerCaller(authorization: string | null, serviceRoleKey: string): boolean {
   const token = bearerToken(authorization);
   if (!token) return false;
@@ -54,6 +64,17 @@ export interface SessionNoticeFacts {
   session_exists: boolean;
   sender_member: boolean;
   recipient_member: boolean;
+}
+
+/** Longest title and body an app may send (longer text is shortened). */
+export const APP_TITLE_MAX = 120;
+export const APP_BODY_MAX = 300;
+const APP_NAME_MAX = 80;
+const APP_RELATED_TYPES: ReadonlySet<string> = new Set(["session", "board_saved_card", "board_vote", "board_card_rsvp"]);
+
+function clip(value: unknown, max: number): string {
+  const text = typeof value === "string" ? value : "";
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
 export interface AppCallerDeps {
@@ -124,6 +145,16 @@ export async function authorizeAppCaller(
     return { allowed: false, status: 403, reason: "not_allowed" };
   }
 
+  // Only the fields the app's notices use, each in the shape the app sends:
+  // the deep link may only open this group in the app.
+  const appData: Record<string, unknown> = { sessionId };
+  if (data.deepLink === `mingla://session/${sessionId}`) appData.deepLink = data.deepLink;
+  if (typeof data.savedCardId === "string" && (data.savedCardId === "" || UUID_RE.test(data.savedCardId))) {
+    appData.savedCardId = data.savedCardId;
+  }
+  if (typeof data.senderName === "string") appData.senderName = clip(data.senderName, APP_NAME_MAX);
+  if (data.addedBy === senderId) appData.addedBy = senderId;
+
   const overrides = asRecord(payload.pushOverrides);
   const pushOverrides: Record<string, unknown> = {};
   if (typeof overrides.collapseId === "string") pushOverrides.collapseId = overrides.collapseId;
@@ -132,12 +163,15 @@ export async function authorizeAppCaller(
   const sanitized: Record<string, unknown> = {
     userId: recipientId,
     type,
-    title: payload.title,
-    body: payload.body,
-    data,
-    actorId: typeof payload.actorId === "string" ? payload.actorId : senderId,
-    relatedId: payload.relatedId,
-    relatedType: payload.relatedType,
+    title: clip(payload.title, APP_TITLE_MAX),
+    body: clip(payload.body, APP_BODY_MAX),
+    data: appData,
+    // The actor is always the signed-in sender, never what the request says.
+    actorId: senderId,
+    relatedId: typeof payload.relatedId === "string" && UUID_RE.test(payload.relatedId) ? payload.relatedId : sessionId,
+    relatedType: typeof payload.relatedType === "string" && APP_RELATED_TYPES.has(payload.relatedType)
+      ? payload.relatedType
+      : "session",
     // App keys live in their own namespace so they can never take a key a
     // server notice will use.
     idempotencyKey: typeof payload.idempotencyKey === "string" && payload.idempotencyKey.length > 0
@@ -167,4 +201,43 @@ export async function waitForSessionGone(
     if (exists === false) return true;
   }
   return false;
+}
+
+/** The database function behind sessionFacts is missing (migration not applied yet). */
+export function isMissingFunctionError(error: { code?: string } | null | undefined): boolean {
+  return Boolean(error && (error.code === "PGRST202" || error.code === "42883"));
+}
+
+export interface SessionTableReader {
+  /** Does the group exist? null when the read failed. */
+  sessionExists(sessionId: string): Promise<boolean | null>;
+  /** The person's row in the group, or null when there is none; undefined when the read failed. */
+  participant(sessionId: string, userId: string): Promise<{ has_accepted: boolean | null } | null | undefined>;
+}
+
+/**
+ * [TRANSITIONAL] The membership check read straight from the group tables, for
+ * the window between this function deploying and migration 20280710004435
+ * (issue_4435_session_notice_check) being applied. Stricter than the database
+ * check: only a current accepted member sends, only someone with a row in the
+ * group receives (no recently-left people). Remove once 20280710004435 is
+ * applied in production.
+ */
+export async function sessionFactsFromTables(
+  reader: SessionTableReader,
+  sessionId: string,
+  senderId: string,
+  recipientId: string,
+): Promise<SessionNoticeFacts | null> {
+  const [exists, sender, recipient] = await Promise.all([
+    reader.sessionExists(sessionId),
+    reader.participant(sessionId, senderId),
+    reader.participant(sessionId, recipientId),
+  ]);
+  if (exists === null || sender === undefined || recipient === undefined) return null;
+  return {
+    session_exists: exists,
+    sender_member: sender?.has_accepted === true,
+    recipient_member: recipient !== null,
+  };
 }

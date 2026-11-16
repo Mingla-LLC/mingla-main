@@ -37,7 +37,9 @@ import { transactionalConsentSourceForCategory } from "../_shared/issue4111Enqui
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import {
   authorizeAppCaller,
+  isMissingFunctionError,
   isServerCaller,
+  sessionFactsFromTables,
   waitForSessionGone,
 } from "./appCallerGate.ts";
 import {
@@ -507,6 +509,7 @@ serve(async (req) => {
     // ── Who may send what (appCallerGate.ts) ─────────────────────────────────
     // Server callers keep every option. A signed-in app may send only its
     // group notices, to people in that group; everything else is refused.
+    // Relies on verify_jwt = true for this function (see isServerCaller).
     let payload = requestPayload;
     if (!isServerCaller(authHeader, SUPABASE_SERVICE_ROLE_KEY)) {
       const decision = await authorizeAppCaller(
@@ -522,6 +525,20 @@ serve(async (req) => {
               "issue_4435_session_notice_check",
               { p_session_id: sessionId, p_sender: senderId, p_recipient: recipientId },
             );
+            if (isMissingFunctionError(error)) {
+              // [TRANSITIONAL] until 20280710004435 is applied (appCallerGate.ts).
+              return await sessionFactsFromTables({
+                sessionExists: async (id) => {
+                  const r = await adminClient.from("collaboration_sessions").select("id").eq("id", id).maybeSingle();
+                  return r.error ? null : Boolean(r.data);
+                },
+                participant: async (id, user) => {
+                  const r = await adminClient.from("session_participants").select("has_accepted")
+                    .eq("session_id", id).eq("user_id", user).maybeSingle();
+                  return r.error ? undefined : (r.data as { has_accepted: boolean | null } | null);
+                },
+              }, sessionId, senderId, recipientId);
+            }
             if (error || !data || typeof data !== "object") {
               if (error) console.warn("[notify-dispatch] session check failed:", error.message);
               return null;

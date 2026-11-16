@@ -6,13 +6,18 @@
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  APP_BODY_MAX,
   APP_SESSION_NOTICE_TYPES,
+  APP_TITLE_MAX,
   authorizeAppCaller,
+  isMissingFunctionError,
   isServerCaller,
   jwtRole,
+  sessionFactsFromTables,
   waitForSessionGone,
   type AppCallerDeps,
   type SessionNoticeFacts,
+  type SessionTableReader,
 } from "../appCallerGate.ts";
 
 const SERVICE = "test-service-role-key-not-real";
@@ -183,4 +188,82 @@ Deno.test("index.ts runs the gate before anything else and keeps server callers 
   assert(source.includes('"issue_4435_session_notice_check"'));
   assert(source.includes("waitForSessionGone("));
   assert(source.includes("Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`"), "a held notice is re-sent as a server notice");
+});
+
+Deno.test("the actor is the signed-in sender, whatever the request says", async () => {
+  const decision = await authorizeAppCaller(`Bearer ${USER_TOKEN}`, appBody("session_member_left", { actorId: RECIPIENT }), deps(MEMBERS));
+  assert(decision.allowed);
+  if (!decision.allowed) return;
+  assertEquals(decision.payload.actorId, SENDER);
+  const missing = await authorizeAppCaller(`Bearer ${USER_TOKEN}`, appBody("session_member_left", { actorId: undefined }), deps(MEMBERS));
+  assert(missing.allowed && missing.payload.actorId === SENDER);
+});
+
+Deno.test("app content: the deep link only opens this group in the app; text is capped; data keeps the app's own fields", async () => {
+  for (const link of ["https://evil.example/x", "mingla://session/" + RECIPIENT, `mingla://session/${SESSION}/../x`, `MINGLA://session/${SESSION}`, 5]) {
+    const decision = await authorizeAppCaller(`Bearer ${USER_TOKEN}`, appBody("board_card_saved", {
+      data: { sessionId: SESSION, deepLink: link },
+    }), deps(MEMBERS));
+    assert(decision.allowed);
+    if (decision.allowed) assertEquals("deepLink" in (decision.payload.data as Record<string, unknown>), false, String(link));
+  }
+  const decision = await authorizeAppCaller(`Bearer ${USER_TOKEN}`, appBody("board_card_saved", {
+    title: "t".repeat(500), body: "b".repeat(5000),
+    data: { sessionId: SESSION, deepLink: `mingla://session/${SESSION}`, savedCardId: SESSION, senderName: "n".repeat(300),
+            addedBy: RECIPIENT, url: "https://evil.example", notificationId: "x", type: "business.order_paid" },
+    relatedType: "anything", relatedId: "not-a-uuid",
+  }), deps(MEMBERS));
+  assert(decision.allowed);
+  if (!decision.allowed) return;
+  assertEquals((decision.payload.title as string).length, APP_TITLE_MAX);
+  assertEquals((decision.payload.body as string).length, APP_BODY_MAX);
+  const data = decision.payload.data as Record<string, unknown>;
+  assertEquals(Object.keys(data).sort(), ["deepLink", "savedCardId", "senderName", "sessionId"]);
+  assertEquals(data.deepLink, `mingla://session/${SESSION}`);
+  assertEquals((data.senderName as string).length, 80);
+  assertEquals(decision.payload.relatedType, "session");
+  assertEquals(decision.payload.relatedId, SESSION);
+  // the "added you" shape keeps addedBy only when it is the sender
+  const added = await authorizeAppCaller(`Bearer ${USER_TOKEN}`, appBody("session_member_joined", {
+    data: { sessionId: SESSION, deepLink: `mingla://session/${SESSION}`, addedBy: SENDER, senderName: "Ada" },
+  }), deps(MEMBERS));
+  assert(added.allowed && (added.payload.data as Record<string, unknown>).addedBy === SENDER);
+});
+
+function reader(rows: Record<string, { has_accepted: boolean | null } | null | undefined>, exists: boolean | null): SessionTableReader {
+  return {
+    sessionExists: () => Promise.resolve(exists),
+    participant: (_s, user) => Promise.resolve(rows[user]),
+  };
+}
+
+Deno.test("[TRANSITIONAL] without the database check: the group tables decide, accepted senders only", async () => {
+  assert(isMissingFunctionError({ code: "PGRST202" }) && isMissingFunctionError({ code: "42883" }));
+  assert(!isMissingFunctionError({ code: "57014" }) && !isMissingFunctionError(null));
+  assertEquals(await sessionFactsFromTables(reader({ [SENDER]: { has_accepted: true }, [RECIPIENT]: { has_accepted: false } }, true), SESSION, SENDER, RECIPIENT),
+    { session_exists: true, sender_member: true, recipient_member: true });
+  assertEquals(await sessionFactsFromTables(reader({ [SENDER]: { has_accepted: false }, [RECIPIENT]: { has_accepted: true } }, true), SESSION, SENDER, RECIPIENT),
+    { session_exists: true, sender_member: false, recipient_member: true });
+  assertEquals(await sessionFactsFromTables(reader({ [SENDER]: null, [RECIPIENT]: { has_accepted: true } }, true), SESSION, SENDER, RECIPIENT),
+    { session_exists: true, sender_member: false, recipient_member: true });
+  assertEquals(await sessionFactsFromTables(reader({ [SENDER]: { has_accepted: true }, [RECIPIENT]: null }, false), SESSION, SENDER, RECIPIENT),
+    { session_exists: false, sender_member: true, recipient_member: false });
+  assertEquals(await sessionFactsFromTables(reader({ [SENDER]: undefined, [RECIPIENT]: null }, true), SESSION, SENDER, RECIPIENT), null);
+  assertEquals(await sessionFactsFromTables(reader({ [SENDER]: { has_accepted: true }, [RECIPIENT]: null }, null), SESSION, SENDER, RECIPIENT), null);
+});
+
+Deno.test("index.ts falls back to the group tables only when the database check is missing", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  const fallback = source.indexOf("if (isMissingFunctionError(error))");
+  const failClosed = source.indexOf('if (error) console.warn("[notify-dispatch] session check failed:"');
+  assert(fallback > 0 && failClosed > fallback, "the fallback runs only for a missing function; other errors still fail closed");
+  assert(source.includes("sessionFactsFromTables("));
+});
+
+Deno.test("notify-dispatch keeps verify_jwt on (isServerCaller reads the role claim without its signature)", async () => {
+  const config = await Deno.readTextFile(new URL("../../../config.toml", import.meta.url));
+  const section = /\[functions\.notify-dispatch\]([\s\S]*?)(?=\n\[|$)/.exec(config);
+  if (section) assertEquals(/verify_jwt\s*=\s*false/.test(section[1]), false, "verify_jwt must stay true for notify-dispatch");
+  const gate = await Deno.readTextFile(new URL("../appCallerGate.ts", import.meta.url));
+  assert(gate.includes("DEPENDS ON verify_jwt"), "the dependency is stated beside isServerCaller");
 });
