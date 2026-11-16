@@ -1197,7 +1197,10 @@ export default function HomeTab(): React.ReactElement {
           ]}
           refreshControl={
             <RefreshControl
-              refreshing={isRefreshing || recent.isRefreshing}
+              // #4420 (device round 2): only the host's own pull shows the
+              // spinner. Recent's background refetches (focus, realtime) were
+              // parking it over the To-do card on first load.
+              refreshing={isRefreshing}
               onRefresh={handleRefresh}
             />
           }

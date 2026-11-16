@@ -880,7 +880,10 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           </Text>
           {followerData.newThisWeek > 0 ? (
             <View style={styles.followerPill}>
-              <Text style={styles.followerPillText}>
+              {/* #4420 (device round 2, Android): one line, simple breaking.
+                The bold caption was measured on one line and drawn on two, so
+                the pill showed "+2 this" with "week" cut off. */}
+              <Text style={styles.followerPillText} numberOfLines={1} textBreakStrategy="simple">
                 +{formatCount(followerData.newThisWeek)} this week
               </Text>
             </View>
