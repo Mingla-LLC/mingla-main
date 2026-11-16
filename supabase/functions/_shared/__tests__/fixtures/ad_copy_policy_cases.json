@@ -1,0 +1,302 @@
+{
+  "about": "#4238 T-5: shared copy-checker cases. Both _shared/adCopyPolicy.ts (Deno) and mingla-admin policyLinter.js (node:test) must give exactly `expected` for every case.",
+  "cases": [
+    {
+      "copyText": "Are you single? Meet people tonight.",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 1,
+            "excerpt": "Are you",
+            "message": "'Are you…?' phrasing is the pattern Meta rejects most. It reads as though we know something about the person. Try stating it instead of asking it."
+          },
+          {
+            "pattern": 2,
+            "excerpt": "are you single meet people tonight",
+            "message": "This line points a personal attribute at the reader. Meta rejects that even when the targeting is fine."
+          }
+        ],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "meet someone new this Friday",
+      "channelSet": [
+        "reddit"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": {
+          "excerpt": "meet someone",
+          "message": "\"meet someone\" reads like a dating ad to Reddit's reviewers (rejection_reason DATING + 4 variants). Say \"plan the night\", never \"meet someone.\" On Reddit that's not a brand preference — it's the difference between running and being rejected under DATING."
+        },
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "meet someone new this Friday",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "cold beers and live music",
+      "channelSet": [
+        "meta",
+        "reddit"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "ice cold beer and live music",
+      "channelSet": [
+        "meta",
+        "reddit"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": {
+          "excerpt": "beer",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    },
+    {
+      "copyText": "The best Tuesday plans in the city.",
+      "channelSet": [
+        "meta",
+        "tiktok"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Tired of being alone?",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 3,
+            "excerpt": "Tired of",
+            "message": "This assumes something about how the reader feels. Meta treats that as a personal attribute."
+          }
+        ],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Hey {first_name}, your table is ready",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 4,
+            "excerpt": "{first_name}",
+            "message": "Never put a person's name in ad copy — Meta's example rejection is literally 'Billy Taylor, get this t-shirt with your name in print!'"
+          }
+        ],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Billy, [name] get this",
+      "channelSet": [
+        "snapchat"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 4,
+            "excerpt": "[name]",
+            "message": "Never put a person's name in ad copy — Meta's example rejection is literally 'Billy Taylor, get this t-shirt with your name in print!'"
+          }
+        ],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Still single? Find your match at our dating night",
+      "channelSet": [
+        "reddit",
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 2,
+            "excerpt": "still single find your match at our dating night",
+            "message": "This line points a personal attribute at the reader. Meta rejects that even when the targeting is fine."
+          },
+          {
+            "pattern": 3,
+            "excerpt": "Still single",
+            "message": "This assumes something about how the reader feels. Meta treats that as a personal attribute."
+          }
+        ],
+        "dating": {
+          "excerpt": "single",
+          "message": "\"single\" reads like a dating ad to Reddit's reviewers (rejection_reason DATING + 4 variants). Say \"plan the night\", never \"meet someone.\" On Reddit that's not a brand preference — it's the difference between running and being rejected under DATING."
+        },
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Bottomless prosecco brunch",
+      "channelSet": [
+        "google"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": {
+          "excerpt": "Bottomless",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    },
+    {
+      "copyText": "Is your weekend free? Open bar from 9",
+      "channelSet": [
+        "meta",
+        "reddit",
+        "snapchat"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 1,
+            "excerpt": "Is your",
+            "message": "'Are you…?' phrasing is the pattern Meta rejects most. It reads as though we know something about the person. Try stating it instead of asking it."
+          }
+        ],
+        "dating": null,
+        "alcohol": {
+          "excerpt": "Open bar",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    },
+    {
+      "copyText": "You deserve a night for seniors and young people",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 2,
+            "excerpt": "you deserve a night for seniors",
+            "message": "This line points a personal attribute at the reader. Meta rejects that even when the targeting is fine."
+          }
+        ],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "   ",
+      "channelSet": [
+        "reddit"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Plan the night. Bring whoever.",
+      "channelSet": [
+        "reddit",
+        "google",
+        "snapchat",
+        "tiktok",
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Feeling lonely this winter? Hook up with friends",
+      "channelSet": [
+        "reddit"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 3,
+            "excerpt": "Feeling lonely",
+            "message": "This assumes something about how the reader feels. Meta treats that as a personal attribute."
+          }
+        ],
+        "dating": {
+          "excerpt": "Hook up",
+          "message": "\"Hook up\" reads like a dating ad to Reddit's reviewers (rejection_reason DATING + 4 variants). Say \"plan the night\", never \"meet someone.\" On Reddit that's not a brand preference — it's the difference between running and being rejected under DATING."
+        },
+        "alcohol": null
+      }
+    },
+    {
+      "copyText": "Do you love jazz? Whiskey tasting and matchmaking",
+      "channelSet": [
+        "meta",
+        "reddit"
+      ],
+      "expected": {
+        "personalAttributes": [
+          {
+            "pattern": 1,
+            "excerpt": "Do you",
+            "message": "'Are you…?' phrasing is the pattern Meta rejects most. It reads as though we know something about the person. Try stating it instead of asking it."
+          }
+        ],
+        "dating": {
+          "excerpt": "matchmaking",
+          "message": "\"matchmaking\" reads like a dating ad to Reddit's reviewers (rejection_reason DATING + 4 variants). Say \"plan the night\", never \"meet someone.\" On Reddit that's not a brand preference — it's the difference between running and being rejected under DATING."
+        },
+        "alcohol": {
+          "excerpt": "Whiskey",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    }
+  ]
+}

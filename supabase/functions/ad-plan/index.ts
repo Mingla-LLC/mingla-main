@@ -83,6 +83,7 @@ import {
   cachedSignupsReadiness,
 } from "../_shared/adSalesReadiness.ts";
 import { calendarDaysBetween, hostMinimumPayCents } from "../_shared/adMoney.ts";
+import { hostCopyWarnings } from "../_shared/adCopyPolicy.ts";
 import {
   hostBudgetGuidance,
   OWN_RESULTS_MIN,
@@ -3163,6 +3164,13 @@ export async function handleAdPlan(
         },
       ]),
     );
+    // #4238 T-5 (I-4238-COPY-CHECK-WARN-ONLY): the shared pre-launch copy
+    // checker. Warn-only, like Admin: the findings ride on the response and
+    // never refuse the version.
+    const copyWarnings = hostCopyWarnings(
+      asRecord(canonical.copy) ?? {},
+      platforms,
+    );
     const { data, error } = await db.rpc("ad_plan_create_version", {
       p_plan_id: plan.id,
       p_canonical_plan: canonical,
@@ -3176,6 +3184,7 @@ export async function handleAdPlan(
       ok: true,
       version: data,
       provider_allocations: normalized.rows,
+      copy_warnings: copyWarnings,
     }, 201);
   }
 

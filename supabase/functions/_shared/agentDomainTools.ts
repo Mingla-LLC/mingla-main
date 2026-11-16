@@ -4251,7 +4251,7 @@ const listAdAudiences = writeTool(
 // verified brand settlement currency and provider-account currency.
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales; a free event or RSVP page can optimise for sign-ups instead (optimize_for). Never pick ticket sales for a free event. Distinct from draft_campaign (Blast email/SMS).",
+  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales; a free event or RSVP page can optimise for sign-ups instead (optimize_for). Never pick ticket sales for a free event. When you asked for sales or sign-ups and an app comes back under optimization.visits, tell the Host before anything else, e.g. \"TikTok will get page visits, not ticket sales, until its sales signal is ready\", and offer to keep it or remove that app. When copy_warnings come back, rewrite the words to clear each warning (never quote the rule back) and propose again before showing the plan; the warnings never block. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -4757,6 +4757,7 @@ const proposeAdPlan = writeTool(
       })),
     }) as {
       version?: { id?: string; plan_hash?: string; host_currency?: string };
+      copy_warnings?: unknown[];
     };
     const versionId = versioned.version?.id;
     const planHash = versioned.version?.plan_hash;
@@ -4796,6 +4797,10 @@ const proposeAdPlan = writeTool(
         visits: platforms.filter((p) => optimizationByPlatform[p] === "visits"),
       },
       targeting_snapshots: frozen.targeting_snapshots ?? [],
+      // #4238 T-5: the shared copy checker's warnings (warn-only).
+      copy_warnings: Array.isArray(versioned.copy_warnings)
+        ? versioned.copy_warnings
+        : [],
       // #4238: each app's own answer, in plain words.
       ...(targeting.notes.length > 0
         ? { note: targeting.notes.join(" ") }
