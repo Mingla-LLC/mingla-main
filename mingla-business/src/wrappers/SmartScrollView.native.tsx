@@ -13,13 +13,15 @@
 
 import React, { forwardRef, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
+  FocusedInputEvents,
   KeyboardAwareScrollView,
+  useReanimatedFocusedInput,
   type KeyboardAwareScrollViewProps,
 } from "react-native-keyboard-controller";
 import { Platform, useWindowDimensions } from "react-native";
 import type { LayoutChangeEvent, ScrollView as RNScrollView } from "react-native";
 
-import { sheetScrollExtraOffset } from "../components/ui/overlayKeyboard";
+import { focusedFieldTail, sheetScrollExtraOffset } from "../components/ui/overlayKeyboard";
 import { SheetKeyboardContext } from "../components/ui/sheetKeyboardContext";
 
 // #1890 [keyboard-clearance-overshoot] — the Done-bar terms moved to the shared
@@ -198,7 +200,25 @@ export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
     const { height: windowHeight } = useWindowDimensions();
     const innerRef = useRef<RNScrollView | null>(null);
     const [footerGap, setFooterGap] = useState(0);
+    const [fieldTail, setFieldTail] = useState(0);
     const sheetBottomPad = sheet?.bottomPad;
+
+    // #4420 (device round 2): the focused field's height, read on the JS
+    // thread from the library's focused-input value when focus lands and when
+    // the sheet's keyboard layout changes (never on caret moves), so a tall
+    // field shows whole above a sheet's action row. No module-scope
+    // reanimated import: node-env suites load this wrapper.
+    const { input } = useReanimatedFocusedInput();
+    const readFieldTail = useCallback(() => {
+      setFieldTail(focusedFieldTail(input?.value?.layout.height ?? 0));
+    }, [input]);
+    useEffect(() => {
+      if (sheetBottomPad === undefined) return undefined;
+      const subscription = FocusedInputEvents?.addListener("focusDidSet", () => {
+        requestAnimationFrame(readFieldTail);
+      });
+      return (): void => subscription?.remove();
+    }, [readFieldTail, sheetBottomPad]);
 
     const setRefs = useCallback(
       (node: RNScrollView | null) => {
@@ -219,9 +239,12 @@ export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
 
     useEffect(() => {
       if (sheetBottomPad === undefined) return undefined;
-      const frame = requestAnimationFrame(measureFooterGap);
+      const frame = requestAnimationFrame(() => {
+        measureFooterGap();
+        readFieldTail();
+      });
       return (): void => cancelAnimationFrame(frame);
-    }, [measureFooterGap, sheetBottomPad]);
+    }, [measureFooterGap, readFieldTail, sheetBottomPad]);
 
     const handleLayout = useCallback(
       (event: LayoutChangeEvent) => {
@@ -231,7 +254,7 @@ export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
       [measureFooterGap, onLayout],
     );
 
-    const sheetExtra = sheet === null ? 0 : sheetScrollExtraOffset(footerGap, sheet.topShift);
+    const sheetExtra = sheet === null ? 0 : sheetScrollExtraOffset(footerGap, sheet.topShift) + fieldTail;
     return smartScrollElement({ ...rest, onLayout: handleLayout }, setRefs, sheetExtra);
   },
 );

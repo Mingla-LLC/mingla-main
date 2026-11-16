@@ -17,6 +17,7 @@
  *     of their own, so they centre in the space ABOVE the keyboard + Done bar.
  */
 
+import { size } from "../../constants/designSystem";
 import { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
 
 /** Breathing gap between an overlay and the top safe-area edge. */
@@ -79,6 +80,17 @@ export const sheetKeyboardBottomPad = (keyboardHeight: number): number =>
  */
 export const sheetScrollExtraOffset = (footerGap: number, topShift: number): number =>
   MIN_VISIBLE_CLEARANCE + Math.max(0, footerGap) - Math.max(0, topShift);
+
+/**
+ * #4420 (device round 2) — how much of a focused field lies BELOW the line the
+ * keyboard library aligns. The library places the caret's line, and the
+ * shared offset already covers a single-line Input (size.input) below it. A
+ * taller field (a multiline reason box with the caret on its first line) has
+ * the rest of its box below that line, which landed under the sheet's Save
+ * row. This is that rest, so the whole box sits above the action row.
+ */
+export const focusedFieldTail = (inputHeight: number): number =>
+  Math.max(0, Math.round(inputHeight - size.input));
 
 /**
  * Bottom inset for a centred dialog: the keyboard, its Done bar and the

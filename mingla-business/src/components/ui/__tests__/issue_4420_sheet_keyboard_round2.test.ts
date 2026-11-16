@@ -17,7 +17,7 @@ import path from "path";
 
 jest.mock("../../../wrappers/keyboardClearance", () => ({ DONE_BAR_OCCUPIED: 53, MIN_VISIBLE_CLEARANCE: 12 }));
 
-import { sheetKeyboardBottomPad, sheetScrollExtraOffset } from "../overlayKeyboard";
+import { focusedFieldTail, sheetKeyboardBottomPad, sheetScrollExtraOffset } from "../overlayKeyboard";
 
 const read = (rel: string): string => fs.readFileSync(path.resolve(__dirname, "../../../..", rel), "utf8");
 
@@ -44,6 +44,14 @@ describe("#4420 round 2: the sheet body clears the keyboard and its Done bar", (
   });
 });
 
+describe("#4420 round 2: a tall focused field shows whole above the action row", () => {
+  test("a single-line Input needs nothing extra; a 110pt reason box needs its rest", () => {
+    expect(focusedFieldTail(48)).toBe(0);
+    expect(focusedFieldTail(30)).toBe(0);
+    expect(focusedFieldTail(110)).toBe(62);
+  });
+});
+
 describe("#4420 round 2: wiring", () => {
   const toolbar = read("src/wrappers/KeyboardToolbarRoot.native.tsx");
   const sheet = read("src/components/ui/SheetMobile.tsx");
@@ -53,10 +61,14 @@ describe("#4420 round 2: wiring", () => {
 
   test("the Done bar rides the Reanimated keyboard height, not the library sticky translate", () => {
     expect(toolbar).toMatch(/useReanimatedKeyboardAnimation\(\)/);
-    expect(toolbar).toMatch(/translateY: height\.value \+ OPENED_OFFSET/);
-    expect((toolbar.match(/^\s+enabled=\{false\}$/gm) ?? []).length).toBe(2);
+    // Flush on the keyboard top, full width, DONE_BAR_OCCUPIED tall, Graphite.
+    expect(toolbar).toMatch(/transform: \[\{ translateY: height\.value \}\]/);
     expect((toolbar.match(/<DoneBarDock>/g) ?? []).length).toBe(2);
-    expect(toolbar).toMatch(/closed: -KEYBOARD_TOOLBAR_HEIGHT/);
+    expect(toolbar).not.toMatch(/^\s*<KeyboardToolbar\b/m);
+    expect(toolbar).toMatch(/height: DONE_BAR_OCCUPIED/);
+    expect(toolbar).toMatch(/background: materials\.sheet\.solidFill/);
+    expect(toolbar).not.toMatch(/lightBackground/);
+    expect(toolbar).toMatch(/KeyboardController\.dismiss\(\)/);
   });
 
   test("the sheet pads its body for the keyboard and shares the layout with its scroll view", () => {
@@ -71,7 +83,9 @@ describe("#4420 round 2: wiring", () => {
 
   test("the scroll view adds the measured footer gap inside a sheet only", () => {
     expect(scroll).toMatch(/useContext\(SheetKeyboardContext\)/);
-    expect(scroll).toMatch(/sheet === null \? 0 : sheetScrollExtraOffset\(footerGap, sheet\.topShift\)/);
+    expect(scroll).toMatch(/sheet === null \? 0 : sheetScrollExtraOffset\(footerGap, sheet\.topShift\) \+ fieldTail/);
+    expect(scroll).toMatch(/useReanimatedFocusedInput\(\)/);
+    expect(scroll).not.toMatch(/from "react-native-reanimated"/);
     expect(scroll).toMatch(/bottomOffset=\{bottomOffset \+ sheetExtraOffset\}/);
   });
 
@@ -79,9 +93,10 @@ describe("#4420 round 2: wiring", () => {
     expect(layout).toMatch(/sheet === null \? sheetKeyboardLift\(keyboardHeight, insets\.bottom\) : 0/);
   });
 
-  test("Review changes scrolls its title so the reason field fits above Save / Cancel", () => {
+  test("Review changes keeps its title and subhead fixed; only the body scrolls", () => {
     const scrollAt = review.indexOf("<ScrollView");
     expect(scrollAt).toBeGreaterThan(-1);
-    expect(review.indexOf("Review changes</Text>")).toBeGreaterThan(scrollAt);
+    expect(review.indexOf("Review changes</Text>")).toBeLessThan(scrollAt);
+    expect(review.indexOf("These changes save immediately when confirmed.")).toBeLessThan(scrollAt);
   });
 });

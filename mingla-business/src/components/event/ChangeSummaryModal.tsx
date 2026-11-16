@@ -180,9 +180,13 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   return (
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
       <View style={styles.body}>
-        {/* #4420 (device round 2): the title scrolls with the diff so the
-          keyboard-lifted body keeps room for the reason field above the
-          pinned Save / Cancel footer. */}
+        {/* #4420 (device round 2): the title and subhead stay put; only the
+          body scrolls, so nothing is sliced at the sheet's top edge. */}
+        <Text style={styles.title}>Review changes</Text>
+        <Text style={styles.subhead}>
+          These changes save immediately when confirmed.
+        </Text>
+
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -190,10 +194,6 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>Review changes</Text>
-          <Text style={styles.subhead}>
-            These changes save immediately when confirmed.
-          </Text>
           {/* Diff list */}
           {rows.length === 0 ? (
             <Text style={styles.emptyCopy}>No changes to review.</Text>
