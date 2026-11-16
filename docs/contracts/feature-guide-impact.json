@@ -2688,7 +2688,10 @@
         "mingla-business/src/components/messages/BrandGroupInboxScreen.tsx",
         "mingla-business/src/components/messages/brandGroupFilePicker.ts",
         "mingla-business/src/components/messages/brandGroupFilePickerShared.ts",
-        "mingla-business/src/services/brandGroupFilesService.ts"
+        "mingla-business/src/services/brandGroupFilesService.ts",
+        "mingla-admin/src/hooks/useMinuteClock.js",
+        "mingla-admin/src/lib/brandGroupHostAssign.js",
+        "mingla-admin/src/lib/brandGroupSideAccess.js"
       ]
     },
     {
