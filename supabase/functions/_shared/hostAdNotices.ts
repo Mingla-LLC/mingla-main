@@ -131,7 +131,9 @@ const REJECTED = /DISAPPROVED|REJECT|NOT_APPROVED|DENIED/i;
 const APPROVED = /^(ACTIVE|APPROVED|ENABLED)$/i;
 const IN_REVIEW = /PENDING|IN_PROCESS|REVIEW|PROCESSING/i;
 
-function reviewState(row: HostAdReviewRow): "rejected" | "approved" | "review" | "other" {
+function reviewState(
+  row: HostAdReviewRow,
+): "rejected" | "approved" | "review" | "other" {
   const review = String(row.review_status ?? "").trim();
   if (REJECTED.test(review)) return "rejected";
   if (APPROVED.test(review) || APPROVED.test(String(row.status ?? "").trim())) {
@@ -224,7 +226,9 @@ export function decideReviewNotices(input: {
         idempotencyKey: `ad:${plan.planId}:rejected:${
           plan.versionId ?? "current"
         }`,
-        titleKey: rejected.length > 1 ? "part_rejected_title" : "rejected_title",
+        titleKey: rejected.length > 1
+          ? "part_rejected_title"
+          : "rejected_title",
         bodyKeys,
         params,
         details,
@@ -258,7 +262,8 @@ export function hostAdPauseClass(reason: unknown): HostAdPauseClass {
     value === "bookings_closed" || value === "destination_unavailable"
   ) return "destination_not_public";
   if (
-    value === "spend_fetch_failed" || value === "provider_currency_unresolved" ||
+    value === "spend_fetch_failed" ||
+    value === "provider_currency_unresolved" ||
     value === "provider_cap_unresolved" || value === "destination_check_failed"
   ) return "spend_unreadable";
   return "unknown";
@@ -451,7 +456,8 @@ export function decideSignalNotice(input: {
     type: signal.type,
     brandId: input.plan.brandId,
     planId: input.plan.planId,
-    idempotencyKey: `ad:${input.plan.planId}:${input.event.kind}:${input.event.id}`,
+    idempotencyKey:
+      `ad:${input.plan.planId}:${input.event.kind}:${input.event.id}`,
     audience: "ads",
     creatorId: input.plan.creatorId ?? null,
     titleKey: signal.title,
@@ -492,14 +498,16 @@ export async function hostAdNoticeRecipients(
   notice: HostAdNotice,
 ): Promise<string[]> {
   const roles = HOST_AD_NOTICE_ROLES[notice.audience] as readonly string[];
-  const [{ data: members, error: memberError }, { data: brand, error: brandError }] =
-    await Promise.all([
-      db.from("brand_team_members").select("user_id, role")
-        .eq("brand_id", notice.brandId).is("removed_at", null)
-        .not("accepted_at", "is", null),
-      db.from("brands").select("account_id").eq("id", notice.brandId)
-        .maybeSingle(),
-    ]);
+  const [
+    { data: members, error: memberError },
+    { data: brand, error: brandError },
+  ] = await Promise.all([
+    db.from("brand_team_members").select("user_id, role")
+      .eq("brand_id", notice.brandId).is("removed_at", null)
+      .not("accepted_at", "is", null),
+    db.from("brands").select("account_id").eq("id", notice.brandId)
+      .maybeSingle(),
+  ]);
   if (memberError) throw new Error(`recipients: ${memberError.message}`);
   if (brandError) throw new Error(`recipients: ${brandError.message}`);
   const rows = (members ?? []) as { user_id: unknown; role: unknown }[];
@@ -632,7 +640,9 @@ export async function loadHostAdPlanRef(
   const { data: plan } = await db.from("ad_plans")
     .select("id, brand_id, owner_kind, created_by, current_version_id")
     .eq("id", planId).maybeSingle();
-  if (!plan || plan.owner_kind !== "host" || typeof plan.brand_id !== "string") {
+  if (
+    !plan || plan.owner_kind !== "host" || typeof plan.brand_id !== "string"
+  ) {
     return null;
   }
   planVersionId = planVersionId ??
@@ -710,11 +720,16 @@ export async function loadMinglaResultCount(
   if (ids.length === 0) return 0;
   const { data: conversions } = await db.from("ad_conversions")
     .select("touch_id, created_at").in("campaign_id", ids);
-  const rows = (conversions ?? []) as { touch_id: unknown; created_at: unknown }[];
+  const rows = (conversions ?? []) as {
+    touch_id: unknown;
+    created_at: unknown;
+  }[];
   const touchIds = [
-    ...new Set(rows.flatMap((row) =>
-      typeof row.touch_id === "string" ? [row.touch_id] : []
-    )),
+    ...new Set(
+      rows.flatMap((row) =>
+        typeof row.touch_id === "string" ? [row.touch_id] : []
+      ),
+    ),
   ];
   if (touchIds.length === 0) return 0;
   const { data: touches } = await db.from("ad_attribution_touches")
@@ -726,7 +741,8 @@ export async function loadMinglaResultCount(
     ]),
   );
   return rows.filter((row) =>
-    typeof row.touch_id === "string" && counted(at.get(row.touch_id), row.created_at)
+    typeof row.touch_id === "string" &&
+    counted(at.get(row.touch_id), row.created_at)
   ).length;
 }
 
@@ -800,8 +816,9 @@ export async function notifyHostAdEnded(
       .select("state, amount_cents, currency, release_ledger_id")
       .eq("plan_version_id", plan.versionId).maybeSingle();
     if (!hold || hold.state !== "settled") return;
-    let release: { amount_cents: unknown; final_host_spend_cents?: unknown } | null =
-      null;
+    let release:
+      | { amount_cents: unknown; final_host_spend_cents?: unknown }
+      | null = null;
     if (typeof hold.release_ledger_id === "string") {
       const { data: ledger, error } = await db.from("ad_credit_ledger")
         .select("amount_cents, metadata").eq("id", hold.release_ledger_id)
@@ -821,7 +838,13 @@ export async function notifyHostAdEnded(
       plan.versionId,
       countedByMingla,
     );
-    const notice = decideEndedNotice({ plan, hold, release, results, formatMoney });
+    const notice = decideEndedNotice({
+      plan,
+      hold,
+      release,
+      results,
+      formatMoney,
+    });
     if (notice) await sendHostAdNotices(db, [notice], dispatch);
   } catch (error) {
     console.error("[hostAdNotices] ended notice failed", {
@@ -849,7 +872,9 @@ export async function notifyHostAdSignals(
           event: {
             id: String(event.id),
             kind: String(event.kind),
-            platform: typeof event.platform === "string" ? event.platform : null,
+            platform: typeof event.platform === "string"
+              ? event.platform
+              : null,
           },
         })
       )
@@ -888,9 +913,9 @@ export async function notifyHostAdCreditLow(
     const { data: campaigns } = await db.from("ad_campaigns")
       .select("id, currency, daily_budget_cents").eq("brand_id", input.brandId)
       .eq("owner_kind", "host").eq("status", "ACTIVE");
-    const live = ((campaigns ?? []) as Record<string, unknown>[]).filter((row) =>
-      String(row.currency ?? "").toUpperCase() === currency
-    );
+    const live = ((campaigns ?? []) as Record<string, unknown>[]).filter((
+      row,
+    ) => String(row.currency ?? "").toUpperCase() === currency);
     if (live.length === 0) return;
     const days: string[] = [];
     for (let back = 3; back >= 1; back -= 1) {

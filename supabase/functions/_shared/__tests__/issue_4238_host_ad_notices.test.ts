@@ -66,7 +66,8 @@ function fakeDb(tables: Record<string, Row[]>) {
         gte: () => builder,
         order: () => builder,
         limit: () => builder,
-        maybeSingle: () => Promise.resolve({ data: rows[0] ?? null, error: null }),
+        maybeSingle: () =>
+          Promise.resolve({ data: rows[0] ?? null, error: null }),
         then: (resolve: (value: unknown) => unknown) =>
           resolve({ data: rows, error: null }),
       };
@@ -77,8 +78,12 @@ function fakeDb(tables: Record<string, Row[]>) {
 
 const BRAND = "b0000000-0000-4000-8000-000000000001";
 const OTHER_BRAND = "b0000000-0000-4000-8000-000000000002";
-const owner = "u-owner", admin = "u-admin", marketing = "u-marketing",
-  finance = "u-finance", events = "u-events", removed = "u-removed";
+const owner = "u-owner",
+  admin = "u-admin",
+  marketing = "u-marketing",
+  finance = "u-finance",
+  events = "u-events",
+  removed = "u-removed";
 function team(): Record<string, Row[]> {
   const member = (user_id: string, role: string, extra: Row = {}) => ({
     brand_id: BRAND,
@@ -89,7 +94,10 @@ function team(): Record<string, Row[]> {
     ...extra,
   });
   return {
-    brands: [{ id: BRAND, account_id: owner }, { id: OTHER_BRAND, account_id: "u-x" }],
+    brands: [{ id: BRAND, account_id: owner }, {
+      id: OTHER_BRAND,
+      account_id: "u-x",
+    }],
     brand_team_members: [
       member(admin, "brand_admin"),
       member(marketing, "marketing_manager"),
@@ -107,7 +115,13 @@ const plan: HostAdPlanRef = {
   creatorId: events,
   eventTitle: "Lagos Rooftop",
 };
-type Sent = { userId: string; type: string; idempotencyKey: string; title: string; body: string };
+type Sent = {
+  userId: string;
+  type: string;
+  idempotencyKey: string;
+  title: string;
+  body: string;
+};
 function recorder() {
   const sent: Sent[] = [];
   const seen = new Set<string>();
@@ -130,52 +144,115 @@ Deno.test("SC-B1.1: two sweeps of the same approval send one ad_live per recipie
   await sendHostAdNotices(db, decideReviewNotices({ plan, ads }), dispatch);
   await sendHostAdNotices(db, decideReviewNotices({ plan, ads }), dispatch);
   const live = sent.filter((row) => row.type === "business.ad_live");
-  assertEquals(live.map((row) => row.userId).sort(), [admin, events, marketing, owner].sort());
+  assertEquals(
+    live.map((row) => row.userId).sort(),
+    [admin, events, marketing, owner].sort(),
+  );
   assert(live.every((row) => row.idempotencyKey.startsWith("ad:p1:live:")));
 });
 
 Deno.test("SC-B1.2: 1 of 3 rejected (text-heavy) → part_rejected with reason and fix; finance gets none", async () => {
   const db = fakeDb(team());
   const ads = [
-    { id: "a1", platform: "meta", review_status: "DISAPPROVED", review_detail: { ad_review_feedback: { global: { "Text": "Your image contains too much text" } } } },
+    {
+      id: "a1",
+      platform: "meta",
+      review_status: "DISAPPROVED",
+      review_detail: {
+        ad_review_feedback: {
+          global: { "Text": "Your image contains too much text" },
+        },
+      },
+    },
     { id: "a2", platform: "meta", review_status: "ACTIVE" },
     { id: "a3", platform: "meta", review_status: "PENDING_REVIEW" },
   ];
   const notices = decideReviewNotices({ plan, ads });
   const part = notices.find((n) => n.type === "business.ad_part_rejected");
   assert(part);
-  assertEquals(part.bodyKeys, ["reason_text_heavy", "fix_text_heavy", "part_suffix"]);
+  assertEquals(part.bodyKeys, [
+    "reason_text_heavy",
+    "fix_text_heavy",
+    "part_suffix",
+  ]);
   const { sent, dispatch } = recorder();
   await sendHostAdNotices(db, [part], dispatch);
-  assertEquals(sent.map((row) => row.userId).sort(), [admin, events, marketing, owner].sort());
+  assertEquals(
+    sent.map((row) => row.userId).sort(),
+    [admin, events, marketing, owner].sort(),
+  );
   assert(!sent.some((row) => row.userId === finance || row.userId === removed));
   const ownerRow = sent.find((row) => row.userId === owner);
-  assertEquals(ownerRow?.title, "Instagram and Facebook didn't approve 1 of your ads");
-  assertEquals(ownerRow?.body, "The image has too much text. Use a photo with less writing on it. Your other ads keep running.");
+  assertEquals(
+    ownerRow?.title,
+    "Instagram and Facebook didn't approve 1 of your ads",
+  );
+  assertEquals(
+    ownerRow?.body,
+    "The image has too much text. Use a photo with less writing on it. Your other ads keep running.",
+  );
   // The admin reads it in French.
-  assertEquals(sent.find((row) => row.userId === admin)?.title, "Instagram and Facebook n'a pas approuvé 1 de vos pubs");
+  assertEquals(
+    sent.find((row) => row.userId === admin)?.title,
+    "Instagram and Facebook n'a pas approuvé 1 de vos pubs",
+  );
 });
 
 Deno.test("SC-B1.3: an unmapped code gives the fallback copy, never the raw code", () => {
   const [notice] = decideReviewNotices({
     plan,
-    ads: [{ id: "a1", platform: "snapchat", review_status: "REJECTED", review_detail: { review_status_reasons: ["XQZ_4417"] } }],
+    ads: [{
+      id: "a1",
+      platform: "snapchat",
+      review_status: "REJECTED",
+      review_detail: { review_status_reasons: ["XQZ_4417"] },
+    }],
   });
   assertEquals(notice.type, "business.ad_rejected");
   const copy = renderHostAdNotice(notice, "en");
   assertEquals(copy.title, "Snapchat didn't approve your ad");
-  assertEquals(copy.body, "Snapchat didn't approve 1 of your ads. Open the ad to see what to change.");
+  assertEquals(
+    copy.body,
+    "Snapchat didn't approve 1 of your ads. Open the ad to see what to change.",
+  );
   assert(!copy.title.includes("XQZ") && !copy.body.includes("XQZ"));
 });
 
 Deno.test("SC-B1.4: a sold-out pause says sold out; teammate A's pause skips A", async () => {
-  const soldOut = decidePauseNotice({ plan, reason: "sold_out", pauseRef: "e1" });
-  assertEquals(renderHostAdNotice(soldOut, "en").body, "Lagos Rooftop is sold out, so your ad stopped. Nothing more is spent.");
-  assertEquals(decidePauseNotice({ plan, reason: "cap_98_percent", pauseRef: "e2" }).bodyKeys, ["paused_credit_out"]);
-  assertEquals(decidePauseNotice({ plan, reason: "spend_fetch_failed", pauseRef: "e3" }).bodyKeys, ["paused_safety"]);
-  assertEquals(decidePauseNotice({ plan, reason: "weird", pauseRef: "e4" }).bodyKeys, ["paused_generic"]);
-  const byAdmin = decidePauseNotice({ plan, reason: "host_paused", pauseRef: "host:k", actorId: admin, actorName: "Ada" });
-  assertEquals(renderHostAdNotice(byAdmin, "en").body, "Ada paused your ad. You can turn it back on any time.");
+  const soldOut = decidePauseNotice({
+    plan,
+    reason: "sold_out",
+    pauseRef: "e1",
+  });
+  assertEquals(
+    renderHostAdNotice(soldOut, "en").body,
+    "Lagos Rooftop is sold out, so your ad stopped. Nothing more is spent.",
+  );
+  assertEquals(
+    decidePauseNotice({ plan, reason: "cap_98_percent", pauseRef: "e2" })
+      .bodyKeys,
+    ["paused_credit_out"],
+  );
+  assertEquals(
+    decidePauseNotice({ plan, reason: "spend_fetch_failed", pauseRef: "e3" })
+      .bodyKeys,
+    ["paused_safety"],
+  );
+  assertEquals(
+    decidePauseNotice({ plan, reason: "weird", pauseRef: "e4" }).bodyKeys,
+    ["paused_generic"],
+  );
+  const byAdmin = decidePauseNotice({
+    plan,
+    reason: "host_paused",
+    pauseRef: "host:k",
+    actorId: admin,
+    actorName: "Ada",
+  });
+  assertEquals(
+    renderHostAdNotice(byAdmin, "en").body,
+    "Ada paused your ad. You can turn it back on any time.",
+  );
   const db = fakeDb(team());
   const { sent, dispatch } = recorder();
   await sendHostAdNotices(db, [byAdmin], dispatch);
@@ -196,30 +273,82 @@ Deno.test("SC-B1.5: ₦10,000 credit at ₦6,000/day fires once; again only afte
   const first = decideCreditLowNotice({ ...base, latestTopUpLedgerId: "L1" });
   assert(first);
   // 7 × 6,000 − 10,000 = 32,000 credit; ÷ 0.85 = ₦37,647.06 pay; up to the ₦500 step = ₦38,000.
-  assertEquals((first.details as { suggested_top_up_pay_cents: number }).suggested_top_up_pay_cents, 3_800_000);
+  assertEquals(
+    (first.details as { suggested_top_up_pay_cents: number })
+      .suggested_top_up_pay_cents,
+    3_800_000,
+  );
   assertEquals(first.params.days, 1.6);
   const db = fakeDb(team());
   const { sent, dispatch } = recorder();
   await sendHostAdNotices(db, [first], dispatch);
-  await sendHostAdNotices(db, [decideCreditLowNotice({ ...base, latestTopUpLedgerId: "L1" })!], dispatch);
+  await sendHostAdNotices(db, [
+    decideCreditLowNotice({ ...base, latestTopUpLedgerId: "L1" })!,
+  ], dispatch);
   const afterFirst = sent.length;
   // Money audience: owner, admin, finance — not marketing, not the events manager.
-  assertEquals(sent.map((row) => row.userId).sort(), [admin, finance, owner].sort());
-  await sendHostAdNotices(db, [decideCreditLowNotice({ ...base, latestTopUpLedgerId: "L2" })!], dispatch);
+  assertEquals(
+    sent.map((row) => row.userId).sort(),
+    [admin, finance, owner].sort(),
+  );
+  await sendHostAdNotices(db, [
+    decideCreditLowNotice({ ...base, latestTopUpLedgerId: "L2" })!,
+  ], dispatch);
   assertEquals(sent.length, afterFirst + 3);
   // Two days or more: nothing.
-  assertEquals(decideCreditLowNotice({ ...base, availableCents: 1_200_000, latestTopUpLedgerId: "L3" }), null);
+  assertEquals(
+    decideCreditLowNotice({
+      ...base,
+      availableCents: 1_200_000,
+      latestTopUpLedgerId: "L3",
+    }),
+    null,
+  );
   // Fewer than 3 days of spend: the planned daily is used.
-  assert(decideCreditLowNotice({ ...base, dailySpendCents: [10], plannedDailyCents: 600_000, latestTopUpLedgerId: "L4" }));
+  assert(
+    decideCreditLowNotice({
+      ...base,
+      dailySpendCents: [10],
+      plannedDailyCents: 600_000,
+      latestTopUpLedgerId: "L4",
+    }),
+  );
   // Never below the minimum top-up.
-  const tiny = decideCreditLowNotice({ ...base, availableCents: 100, dailySpendCents: [100, 100, 100], latestTopUpLedgerId: "L5" });
-  assertEquals((tiny!.details as { suggested_top_up_pay_cents: number }).suggested_top_up_pay_cents, 2_500_000);
+  const tiny = decideCreditLowNotice({
+    ...base,
+    availableCents: 100,
+    dailySpendCents: [100, 100, 100],
+    latestTopUpLedgerId: "L5",
+  });
+  assertEquals(
+    (tiny!.details as { suggested_top_up_pay_cents: number })
+      .suggested_top_up_pay_cents,
+    2_500_000,
+  );
 });
 
 Deno.test("SC-B1.6: ad_ended waits for the settled hold and states the ledger's return", () => {
   const held = { state: "held", amount_cents: 1_000_000, currency: "NGN" };
-  assertEquals(decideEndedNotice({ plan, hold: held, release: null, results: 4, formatMoney: money }), null);
-  assertEquals(decideEndedNotice({ plan, hold: null, release: null, results: 4, formatMoney: money }), null);
+  assertEquals(
+    decideEndedNotice({
+      plan,
+      hold: held,
+      release: null,
+      results: 4,
+      formatMoney: money,
+    }),
+    null,
+  );
+  assertEquals(
+    decideEndedNotice({
+      plan,
+      hold: null,
+      release: null,
+      results: 4,
+      formatMoney: money,
+    }),
+    null,
+  );
   const settled = { ...held, state: "settled" };
   const back = decideEndedNotice({
     plan,
@@ -229,24 +358,62 @@ Deno.test("SC-B1.6: ad_ended waits for the settled hold and states the ledger's 
     formatMoney: money,
   })!;
   assertEquals(back.idempotencyKey, "ad:p1:ended");
-  assertEquals(renderHostAdNotice(back, "en").body, "Spent NGN 7500. Results counted by Mingla: 4. NGN 2500 of unused credit is back in your balance.");
-  const none = decideEndedNotice({ plan, hold: settled, release: null, results: 0, formatMoney: money })!;
-  assertEquals(renderHostAdNotice(none, "en").body, "Spent NGN 10000. Results counted by Mingla: 0. Nothing was left over.");
+  assertEquals(
+    renderHostAdNotice(back, "en").body,
+    "Spent NGN 7500. Results counted by Mingla: 4. NGN 2500 of unused credit is back in your balance.",
+  );
+  const none = decideEndedNotice({
+    plan,
+    hold: settled,
+    release: null,
+    results: 0,
+    formatMoney: money,
+  })!;
+  assertEquals(
+    renderHostAdNotice(none, "en").body,
+    "Spent NGN 10000. Results counted by Mingla: 0. Nothing was left over.",
+  );
 });
 
 Deno.test("signals: slow sales, tired creative and last tickets, once per recorded row", () => {
   const kinds = ["slow_sales_nudge", "creative_fatigue", "low_stock_copy"];
-  const types = kinds.map((kind) => decideSignalNotice({ plan, event: { id: `e-${kind}`, kind, platform: "tiktok" } })?.type);
-  assertEquals(types, ["business.ad_slow_sales", "business.ad_creative_tired", "business.ad_last_tickets"]);
-  assertEquals(decideSignalNotice({ plan, event: { id: "x", kind: "goal_promoted" } }), null);
-  assertEquals(decideSignalNotice({ plan, event: { id: "e9", kind: "creative_fatigue" } })?.idempotencyKey, "ad:p1:creative_fatigue:e9");
+  const types = kinds.map((kind) =>
+    decideSignalNotice({
+      plan,
+      event: { id: `e-${kind}`, kind, platform: "tiktok" },
+    })?.type
+  );
+  assertEquals(types, [
+    "business.ad_slow_sales",
+    "business.ad_creative_tired",
+    "business.ad_last_tickets",
+  ]);
+  assertEquals(
+    decideSignalNotice({ plan, event: { id: "x", kind: "goal_promoted" } }),
+    null,
+  );
+  assertEquals(
+    decideSignalNotice({ plan, event: { id: "e9", kind: "creative_fatigue" } })
+      ?.idempotencyKey,
+    "ad:p1:creative_fatigue:e9",
+  );
 });
 
 Deno.test("adversarial: another brand's plan reaches nobody on this team; removed and unaccepted never", async () => {
   const db = fakeDb(team());
-  const notice: HostAdNotice = { ...decidePauseNotice({ plan: { ...plan, brandId: OTHER_BRAND, creatorId: admin }, reason: "sold_out", pauseRef: "z" }) };
+  const notice: HostAdNotice = {
+    ...decidePauseNotice({
+      plan: { ...plan, brandId: OTHER_BRAND, creatorId: admin },
+      reason: "sold_out",
+      pauseRef: "z",
+    }),
+  };
   const ids = await hostAdNoticeRecipients(db, notice);
-  assertEquals(ids, ["u-x"], "only the other brand's owner; our admin (as creator) is not on that team");
+  assertEquals(
+    ids,
+    ["u-x"],
+    "only the other brand's owner; our admin (as creator) is not on that team",
+  );
 });
 
 Deno.test("adversarial: 100 rejections → one notice; HTML in a reason is escaped", () => {
@@ -254,7 +421,9 @@ Deno.test("adversarial: 100 rejections → one notice; HTML in a reason is escap
     id: `a${i}`,
     platform: "reddit",
     review_status: "REJECTED",
-    review_detail: { rejection_reason: "<script>alert(1)</script> misleading claim" },
+    review_detail: {
+      rejection_reason: "<script>alert(1)</script> misleading claim",
+    },
   }));
   const notices = decideReviewNotices({ plan, ads });
   assertEquals(notices.length, 1);
@@ -266,35 +435,75 @@ Deno.test("adversarial: 100 rejections → one notice; HTML in a reason is escap
 });
 
 Deno.test("I-4238-AD-NOTICE-ONCE: the keys are stable and distinct per event", () => {
-  const ads = [{ id: "a2", platform: "meta", review_status: "DISAPPROVED" }, { id: "a1", platform: "meta", review_status: "ACTIVE" }];
+  const ads = [{ id: "a2", platform: "meta", review_status: "DISAPPROVED" }, {
+    id: "a1",
+    platform: "meta",
+    review_status: "ACTIVE",
+  }];
   const one = decideReviewNotices({ plan, ads }).map((n) => n.idempotencyKey);
-  const two = decideReviewNotices({ plan, ads: [...ads].reverse() }).map((n) => n.idempotencyKey);
+  const two = decideReviewNotices({ plan, ads: [...ads].reverse() }).map((n) =>
+    n.idempotencyKey
+  );
   assertEquals(one, two);
-  const more = decideReviewNotices({ plan, ads: [...ads, { id: "a3", platform: "meta", review_status: "DISAPPROVED" }] });
-  assert(more.find((n) => n.type === "business.ad_part_rejected")!.idempotencyKey !== one[1]);
-  assertEquals(decidePauseNotice({ plan, reason: "sold_out", pauseRef: "e1" }).idempotencyKey, "ad:p1:paused:e1");
+  const more = decideReviewNotices({
+    plan,
+    ads: [...ads, { id: "a3", platform: "meta", review_status: "DISAPPROVED" }],
+  });
+  assert(
+    more.find((n) => n.type === "business.ad_part_rejected")!.idempotencyKey !==
+      one[1],
+  );
+  assertEquals(
+    decidePauseNotice({ plan, reason: "sold_out", pauseRef: "e1" })
+      .idempotencyKey,
+    "ad:p1:paused:e1",
+  );
 });
 
 Deno.test("I-4238-HOST-ADS-ALL-LOCALES: every key in all 29 locales, placeholders match English", () => {
   assertEquals(HOST_AD_NOTICE_LOCALES.length, 29);
-  const placeholders = (value: string) => [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
+  const placeholders = (value: string) =>
+    [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
   const english = HOST_AD_NOTICE_COPY.en;
   for (const locale of HOST_AD_NOTICE_LOCALES) {
     const copy = HOST_AD_NOTICE_COPY[locale] as Record<string, string>;
-    assertEquals(Object.keys(copy).sort(), [...HOST_AD_NOTICE_COPY_KEYS].sort(), `keys in ${locale}`);
+    assertEquals(
+      Object.keys(copy).sort(),
+      [...HOST_AD_NOTICE_COPY_KEYS].sort(),
+      `keys in ${locale}`,
+    );
     for (const key of HOST_AD_NOTICE_COPY_KEYS) {
-      assert(typeof copy[key] === "string" && copy[key].trim(), `${locale}.${key} empty`);
-      assertEquals(placeholders(copy[key]), placeholders(english[key]), `${locale}.${key} placeholders`);
-      if (locale !== "en") assert(copy[key] !== english[key], `${locale}.${key} untranslated`);
+      assert(
+        typeof copy[key] === "string" && copy[key].trim(),
+        `${locale}.${key} empty`,
+      );
+      assertEquals(
+        placeholders(copy[key]),
+        placeholders(english[key]),
+        `${locale}.${key} placeholders`,
+      );
+      if (locale !== "en") {
+        assert(copy[key] !== english[key], `${locale}.${key} untranslated`);
+      }
     }
   }
   // Every rejection class's reason and fix keys exist.
   for (const entry of HOST_AD_REJECTION_REASONS) {
-    assert((HOST_AD_NOTICE_COPY_KEYS as readonly string[]).includes(entry.reason_key));
-    assert((HOST_AD_NOTICE_COPY_KEYS as readonly string[]).includes(entry.fix_key));
+    assert(
+      (HOST_AD_NOTICE_COPY_KEYS as readonly string[]).includes(
+        entry.reason_key,
+      ),
+    );
+    assert(
+      (HOST_AD_NOTICE_COPY_KEYS as readonly string[]).includes(entry.fix_key),
+    );
   }
   // The server catalog covers the Host app's 29 locale folders exactly.
-  const folders = [...Deno.readDirSync(new URL("../../../../mingla-business/src/i18n/locales/", import.meta.url))]
+  const folders = [
+    ...Deno.readDirSync(
+      new URL("../../../../mingla-business/src/i18n/locales/", import.meta.url),
+    ),
+  ]
     .filter((entry) => entry.isDirectory).map((entry) => entry.name).sort();
   assertEquals(folders, [...HOST_AD_NOTICE_LOCALES].sort());
   assertEquals(hostAdNoticeLocale("pt-BR"), "pt");
@@ -303,19 +512,32 @@ Deno.test("I-4238-HOST-ADS-ALL-LOCALES: every key in all 29 locales, placeholder
 });
 
 Deno.test("the nine types are preference-aware in notify-dispatch and accepted by the migration", async () => {
-  const dispatchSrc = await Deno.readTextFile(new URL("../../notify-dispatch/index.ts", import.meta.url));
+  const dispatchSrc = await Deno.readTextFile(
+    new URL("../../notify-dispatch/index.ts", import.meta.url),
+  );
   assert(dispatchSrc.includes("...HOST_AD_NOTICE_CHANNEL_DEFAULTS"));
-  const sql = await Deno.readTextFile(new URL("../../../migrations/20280713004238_issue_4238_host_ad_notices_roles.sql", import.meta.url));
-  for (const type of HOST_AD_NOTICE_TYPES) assert(sql.includes(`'${type}'`), type);
-  for (const [fn, hook] of [
-    ["admin-ad-campaign-sync", "decideReviewNotices({ plan, ads: rows })"],
-    ["admin-ad-spend-sync", "notifyHostAdEnded("],
-    ["admin-ad-spend-sync", "notifyHostAdPause(supabase"],
-    ["admin-ad-spend-sync", "notifyHostAdCreditLow("],
-    ["admin-ad-spend-sync", "notifyHostAdSignals("],
-    ["host-ad-campaign", 'reason: "host_paused"'],
-  ]) {
-    const src = await Deno.readTextFile(new URL(`../../${fn}/index.ts`, import.meta.url));
+  const sql = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20280713004238_issue_4238_host_ad_notices_roles.sql",
+      import.meta.url,
+    ),
+  );
+  for (const type of HOST_AD_NOTICE_TYPES) {
+    assert(sql.includes(`'${type}'`), type);
+  }
+  for (
+    const [fn, hook] of [
+      ["admin-ad-campaign-sync", "decideReviewNotices({ plan, ads: rows })"],
+      ["admin-ad-spend-sync", "notifyHostAdEnded("],
+      ["admin-ad-spend-sync", "notifyHostAdPause(supabase"],
+      ["admin-ad-spend-sync", "notifyHostAdCreditLow("],
+      ["admin-ad-spend-sync", "notifyHostAdSignals("],
+      ["host-ad-campaign", 'reason: "host_paused"'],
+    ]
+  ) {
+    const src = await Deno.readTextFile(
+      new URL(`../../${fn}/index.ts`, import.meta.url),
+    );
     assert(src.includes(hook), `${fn} calls ${hook}`);
   }
 });

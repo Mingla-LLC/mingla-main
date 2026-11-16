@@ -26,7 +26,10 @@ function toMs(value: unknown): number | null {
  * tap at `touchAt`. A missing or unreadable time counts as expired, and so
  * does a tap dated after the sale.
  */
-export function countedByMingla(touchAt: unknown, conversionAt: unknown): boolean {
+export function countedByMingla(
+  touchAt: unknown,
+  conversionAt: unknown,
+): boolean {
   const touch = toMs(touchAt);
   const conversion = toMs(conversionAt);
   if (touch === null || conversion === null) return false;

@@ -66,7 +66,9 @@ export function buildAdCreditReceipt(row: LedgerRow): AdCreditReceipt {
     mingla_fee_cents: isTopUp ? (num(row.fee_cents) ?? 0) : null,
     mingla_fee_rate: isTopUp ? HOST_FEE_RATIO : null,
     ad_credit_cents: Math.abs(Math.trunc(row.amount_cents)),
-    refunded_cents: row.entry_kind === "withdraw" ? num(row.refund_cents) : null,
+    refunded_cents: row.entry_kind === "withdraw"
+      ? num(row.refund_cents)
+      : null,
     balance_after_cents: row.balance_after_cents,
     vat: "not_shown_pending_decision",
   };
@@ -78,7 +80,12 @@ export type AdCreditStatement = {
   opening_balance_cents: number;
   top_ups_cents: number;
   fees_cents: number;
-  spend_by_ad: { ad_key: string; held_cents: number; returned_cents: number; net_cents: number }[];
+  spend_by_ad: {
+    ad_key: string;
+    held_cents: number;
+    returned_cents: number;
+    net_cents: number;
+  }[];
   returns_cents: number;
   withdrawals_cents: number;
   closing_balance_cents: number;

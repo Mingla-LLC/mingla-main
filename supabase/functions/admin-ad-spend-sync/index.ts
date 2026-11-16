@@ -1113,8 +1113,8 @@ serve(async (req: Request): Promise<Response> => {
       (settlementResult as { settlement?: unknown } | null)?.settlement ===
         "settled"
     ) {
-      const endedPlanId =
-        (row.plan_version as { plan_id?: unknown } | null)?.plan_id;
+      const endedPlanId = (row.plan_version as { plan_id?: unknown } | null)
+        ?.plan_id;
       if (typeof endedPlanId === "string") {
         await notifyHostAdEnded(
           supabase,

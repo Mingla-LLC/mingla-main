@@ -284,7 +284,10 @@ serve(async (req: Request): Promise<Response> => {
     if (action === "get_receipt") {
       const ledgerId = typeof body.ledger_id === "string" ? body.ledger_id : "";
       if (!UUID_REGEX.test(ledgerId)) {
-        return json({ error: "validation_error", detail: "ledger_id_invalid" }, 400);
+        return json(
+          { error: "validation_error", detail: "ledger_id_invalid" },
+          400,
+        );
       }
       const { data: row, error } = await supabase.from("ad_credit_ledger")
         .select(columns).eq("id", ledgerId).eq("brand_id", brandId)

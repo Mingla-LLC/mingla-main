@@ -38,7 +38,10 @@ Deno.test("SC-B6: no purchase action → needs_setup", async () => {
 
 Deno.test("adversarial: a lead or sign-up action never stands in for purchase", () => {
   const conn = google({
-    conversion_actions: { lead: "customers/1/conversionActions/2", rsvp_signup: "x" },
+    conversion_actions: {
+      lead: "customers/1/conversionActions/2",
+      rsvp_signup: "x",
+    },
   });
   assertEquals(googlePurchaseActionResource(conn), null);
   assertEquals(googleSalesReadiness(conn, true).reason, "needs_setup");
@@ -53,7 +56,9 @@ Deno.test("lookup order matches the sender: purchase, alias, google alias", () =
     purchase,
   );
   assertEquals(
-    googlePurchaseActionResource(google({ conversion_action_resource: "alias" })),
+    googlePurchaseActionResource(
+      google({ conversion_action_resource: "alias" }),
+    ),
     "alias",
   );
   assertEquals(
@@ -67,7 +72,10 @@ Deno.test("lookup order matches the sender: purchase, alias, google alias", () =
 Deno.test("SC-B6: the action alone is not enough while Z-4 is open; with both → ready", () => {
   const conn = google({ conversion_actions: { purchase } });
   assertEquals(googleSalesReadiness(conn).reason, "needs_setup");
-  assertEquals(googleSalesReadiness(conn, true), { ready: true, reason: "ready" });
+  assertEquals(googleSalesReadiness(conn, true), {
+    ready: true,
+    reason: "ready",
+  });
 });
 
 Deno.test("SC-B6: a sales plan with Google not ready is refused, even acknowledged", () => {

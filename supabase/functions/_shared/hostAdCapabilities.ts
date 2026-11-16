@@ -111,13 +111,11 @@ export async function hostAdCapabilities(
   }
   const out = {} as Record<HostAdCapability, HostAdCapabilityAnswer>;
   for (const key of HOST_AD_CAPABILITIES) {
-    out[key] = allowed[key]
-      ? { allowed: true }
-      : {
-        allowed: false,
-        ask_role: "brand_owner",
-        ...(ownerName ? { ask_name: ownerName } : {}),
-      };
+    out[key] = allowed[key] ? { allowed: true } : {
+      allowed: false,
+      ask_role: "brand_owner",
+      ...(ownerName ? { ask_name: ownerName } : {}),
+    };
   }
   return out;
 }

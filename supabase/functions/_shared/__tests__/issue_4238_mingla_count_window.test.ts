@@ -83,7 +83,10 @@ Deno.test("results read Mingla's count and say how it was counted", async () => 
       import.meta.url,
     ),
   );
-  assertEquals(sql.includes("c.created_at - t.created_at <= interval '7 days'"), true);
+  assertEquals(
+    sql.includes("c.created_at - t.created_at <= interval '7 days'"),
+    true,
+  );
   assertEquals(HOST_AD_RESULTS_COPY.tickets.includes("within 7 days"), true);
   assertEquals(HOST_AD_RESULTS_COPY.signups.includes("sign-ups"), true);
 });

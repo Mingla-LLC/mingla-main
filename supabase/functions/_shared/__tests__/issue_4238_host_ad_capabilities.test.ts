@@ -20,18 +20,55 @@ import {
 const BRAND = "brand-1";
 // The migration's matrix (20280713004238): what the RPCs would answer.
 const MATRIX: Record<string, Record<string, boolean>> = {
-  owner: { plan: true, launch: true, pause: true, fund: true, end: true, pay: true },
-  brand_admin: { plan: true, launch: true, pause: true, fund: false, end: false, pay: true },
-  marketing_manager: { plan: true, launch: false, pause: false, fund: false, end: false, pay: false },
-  finance_manager: { plan: false, launch: false, pause: false, fund: true, end: false, pay: true },
-  removed: { plan: false, launch: false, pause: false, fund: false, end: false, pay: false },
+  owner: {
+    plan: true,
+    launch: true,
+    pause: true,
+    fund: true,
+    end: true,
+    pay: true,
+  },
+  brand_admin: {
+    plan: true,
+    launch: true,
+    pause: true,
+    fund: false,
+    end: false,
+    pay: true,
+  },
+  marketing_manager: {
+    plan: true,
+    launch: false,
+    pause: false,
+    fund: false,
+    end: false,
+    pay: false,
+  },
+  finance_manager: {
+    plan: false,
+    launch: false,
+    pause: false,
+    fund: true,
+    end: false,
+    pay: true,
+  },
+  removed: {
+    plan: false,
+    launch: false,
+    pause: false,
+    fund: false,
+    end: false,
+    pay: false,
+  },
 };
 
 function db(role: string, calls: string[] = []) {
   return {
     rpc(name: string, args: Record<string, unknown>) {
       calls.push(name === "ad_can_host_action" ? `ad:${args.p_action}` : name);
-      if (args.p_brand_id !== BRAND) return Promise.resolve({ data: false, error: null });
+      if (args.p_brand_id !== BRAND) {
+        return Promise.resolve({ data: false, error: null });
+      }
       const row = MATRIX[role];
       const data = name === "ad_can_host_action"
         ? row[String(args.p_action)] === true
@@ -42,8 +79,14 @@ function db(role: string, calls: string[] = []) {
     },
     from(table: string) {
       const rows: Record<string, Record<string, unknown>> = {
-        brands: { "brand-1": { account_id: "owner-1" }, "brand-2": { account_id: "owner-2" } },
-        creator_accounts: { "owner-1": { display_name: "Tolu" }, "owner-2": { display_name: "Other Owner" } },
+        brands: {
+          "brand-1": { account_id: "owner-1" },
+          "brand-2": { account_id: "owner-2" },
+        },
+        creator_accounts: {
+          "owner-1": { display_name: "Tolu" },
+          "owner-2": { display_name: "Other Owner" },
+        },
       };
       let id = "";
       const builder = {
@@ -52,7 +95,8 @@ function db(role: string, calls: string[] = []) {
           id = value;
           return builder;
         },
-        maybeSingle: () => Promise.resolve({ data: rows[table]?.[id] ?? null, error: null }),
+        maybeSingle: () =>
+          Promise.resolve({ data: rows[table]?.[id] ?? null, error: null }),
       };
       return builder;
     },
@@ -77,7 +121,11 @@ Deno.test("brand admin: launch and pause yes, end no with who to ask", async () 
   const caps = await hostAdCapabilities(db("brand_admin"), BRAND, "user");
   assertEquals(caps.launch, { allowed: true });
   assertEquals(caps.pause, { allowed: true });
-  assertEquals(caps.end, { allowed: false, ask_role: "brand_owner", ask_name: "Tolu" });
+  assertEquals(caps.end, {
+    allowed: false,
+    ask_role: "brand_owner",
+    ask_name: "Tolu",
+  });
 });
 
 Deno.test("adversarial: a removed member gets all false; ask_name never comes from another brand", async () => {
@@ -89,7 +137,10 @@ Deno.test("adversarial: a removed member gets all false; ask_name never comes fr
 });
 
 Deno.test("an RPC error fails closed", async () => {
-  const broken = { ...db("owner"), rpc: () => Promise.resolve({ data: null, error: { message: "boom" } }) };
+  const broken = {
+    ...db("owner"),
+    rpc: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+  };
   const caps = await hostAdCapabilities(broken, BRAND, "user");
   assert(Object.values(caps).every((answer) => answer.allowed === false));
 });
@@ -97,17 +148,33 @@ Deno.test("an RPC error fails closed", async () => {
 Deno.test("same authority as the actions: host-ad-campaign and ad-credit", async () => {
   const calls: string[] = [];
   await hostAdCapabilities(db("owner", calls), BRAND, "user");
-  assertEquals(calls.sort(), ["ad:end", "ad:fund", "ad:launch", "ad:pause", "ad:plan", "biz_can_manage_payments_for_brand"].sort());
-  const hac = await Deno.readTextFile(new URL("../../host-ad-campaign/index.ts", import.meta.url));
+  assertEquals(
+    calls.sort(),
+    [
+      "ad:end",
+      "ad:fund",
+      "ad:launch",
+      "ad:pause",
+      "ad:plan",
+      "biz_can_manage_payments_for_brand",
+    ].sort(),
+  );
+  const hac = await Deno.readTextFile(
+    new URL("../../host-ad-campaign/index.ts", import.meta.url),
+  );
   // The endpoint's own mapping: change_live needs 'fund', pause 'pause', end 'end', launch 'launch'.
   assert(/action === "change_live"\s*\?\s*"fund"/.test(hac));
   assert(/action === "pause"\s*\?\s*"pause"/.test(hac));
   assert(/action === "end" \|\| action === "cancel"\s*\?\s*"end"/.test(hac));
   assert(/action === "launch"\s*\?\s*"launch"/.test(hac));
   assertEquals(HOST_AD_CAPABILITY_AUTHORITY.change_live, "fund");
-  const credit = await Deno.readTextFile(new URL("../../ad-credit/index.ts", import.meta.url));
+  const credit = await Deno.readTextFile(
+    new URL("../../ad-credit/index.ts", import.meta.url),
+  );
   assert(credit.includes('"biz_can_manage_payments_for_brand"'));
   assert(hac.includes("capabilities,"));
-  const plan = await Deno.readTextFile(new URL("../../ad-plan/index.ts", import.meta.url));
+  const plan = await Deno.readTextFile(
+    new URL("../../ad-plan/index.ts", import.meta.url),
+  );
   assert(plan.includes("await hostAdCapabilities(db, brandId, actor.id)"));
 });

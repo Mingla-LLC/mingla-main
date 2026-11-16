@@ -30,7 +30,8 @@ export type HostAdRejectionReason = {
 export const HOST_AD_REJECTION_REASONS: readonly HostAdRejectionReason[] = [
   {
     cls: "text_heavy",
-    match: /too much text|text[ _-]?(heavy|overlay|in image)|20 ?% text|excessive text/i,
+    match:
+      /too much text|text[ _-]?(heavy|overlay|in image)|20 ?% text|excessive text/i,
     reason_key: "reason_text_heavy",
     fix_key: "fix_text_heavy",
   },
@@ -42,37 +43,43 @@ export const HOST_AD_REJECTION_REASONS: readonly HostAdRejectionReason[] = [
   },
   {
     cls: "personal_attributes",
-    match: /personal (attribute|health|characteristic)|implies? .*(age|race|religion|health)/i,
+    match:
+      /personal (attribute|health|characteristic)|implies? .*(age|race|religion|health)/i,
     reason_key: "reason_personal_attributes",
     fix_key: "fix_personal_attributes",
   },
   {
     cls: "misleading",
-    match: /mislead|deceptive|false claim|unrealistic|exaggerat|sensational|clickbait/i,
+    match:
+      /mislead|deceptive|false claim|unrealistic|exaggerat|sensational|clickbait/i,
     reason_key: "reason_misleading",
     fix_key: "fix_misleading",
   },
   {
     cls: "landing_page",
-    match: /landing page|destination|non[ -]?functional|broken link|mismatch|url/i,
+    match:
+      /landing page|destination|non[ -]?functional|broken link|mismatch|url/i,
     reason_key: "reason_landing_page",
     fix_key: "fix_landing_page",
   },
   {
     cls: "low_quality",
-    match: /low[ -]?quality|blurry|pixelat|resolution|poor quality|image quality|video quality/i,
+    match:
+      /low[ -]?quality|blurry|pixelat|resolution|poor quality|image quality|video quality/i,
     reason_key: "reason_low_quality",
     fix_key: "fix_low_quality",
   },
   {
     cls: "identity",
-    match: /identity|permission|authori[sz]|trademark|copyright|intellectual property|impersonat/i,
+    match:
+      /identity|permission|authori[sz]|trademark|copyright|intellectual property|impersonat/i,
     reason_key: "reason_identity",
     fix_key: "fix_identity",
   },
   {
     cls: "prohibited",
-    match: /prohibited|restricted|weapon|drug|tobacco|adult|sexual|violen|gambling/i,
+    match:
+      /prohibited|restricted|weapon|drug|tobacco|adult|sexual|violen|gambling/i,
     reason_key: "reason_prohibited",
     fix_key: "fix_prohibited",
   },

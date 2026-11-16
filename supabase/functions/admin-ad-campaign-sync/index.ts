@@ -269,7 +269,10 @@ serve(async (req: Request): Promise<Response> => {
       // only; never blocks the sweep.
       if (campaign.owner_kind === "host" && campaign.plan_version_id) {
         try {
-          const plan = await loadHostAdPlanRef(supabase, campaign.plan_version_id);
+          const plan = await loadHostAdPlanRef(
+            supabase,
+            campaign.plan_version_id,
+          );
           if (plan) {
             const rows = await loadHostAdReviewRows(
               supabase,
