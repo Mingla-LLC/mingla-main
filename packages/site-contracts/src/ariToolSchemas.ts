@@ -76,17 +76,14 @@ function fieldSchema(spec: FieldSpec, path: string): JsonSchema | null {
   switch (spec.kind) {
     case "text":
       return { type: "string", maxLength: spec.max, description: `${spec.label} (plain text)` };
+    // #4453 PR 2 — an action link is described exactly as a link, so the
+    // frozen tool declarations (#3355 ship-prep) stay byte-identical; the
+    // booking rules reach Ari through the prompt and Studio's named refusals.
     case "href":
+    case "action_href":
       return { type: "string", maxLength: 2048, description: `${spec.label}: an https link, mailto:, tel:, or a /path on this website` };
     case "mingla_href":
       return { type: "string", maxLength: 2048, description: `${spec.label}: a usemingla.com page` };
-    // #4453 PR 2 — a button: bookings and payments go through Mingla only.
-    case "action_href":
-      return {
-        type: "string",
-        maxLength: 2048,
-        description: `${spec.label}: a /path to a page on this website, or this brand's own Mingla page (https://host.usemingla.com/t/, /e/, /exp/, /b/ or /checkout/). Never another website`,
-      };
     case "media_url":
     case "video_url":
       return { ...MEDIA_ID, description: `${spec.label}: ${String(MEDIA_ID.description)}` };
