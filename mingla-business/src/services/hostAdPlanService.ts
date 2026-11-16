@@ -591,9 +591,6 @@ export type PrepareHostAdPlanInput = {
   appChoice?: "mingla" | "host";
   /** #4238 T-3: "mingla" when the Host let Mingla choose the audience. */
   audienceChoice?: "mingla" | "host";
-  /** #4238 U-3: the goal asked for, and the apps whose visits fallback the Host accepted. */
-  optimizationGoal?: "sales" | "signups" | "visits";
-  acknowledgedVisitsFallback?: HostAdPlatform[];
 };
 
 export type PreparedHostAdPlan = {
@@ -850,12 +847,6 @@ export async function prepareHostAdPlan(
       ...(input.occurrenceKey ? { occurrence_key: input.occurrenceKey } : {}),
       ...(input.appChoice ? { app_choice: input.appChoice } : {}),
       ...(input.audienceChoice ? { audience_choice: input.audienceChoice } : {}),
-      ...(input.optimizationGoal
-        ? { optimization_goal: input.optimizationGoal }
-        : {}),
-      ...(input.acknowledgedVisitsFallback
-        ? { acknowledged_visits_fallback: input.acknowledgedVisitsFallback }
-        : {}),
       creative_url: null,
       media_rights: {
         rights_confirmed: input.rightsConfirmed,

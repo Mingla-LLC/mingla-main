@@ -199,7 +199,7 @@ async function freeze(
   return { result, canonical };
 }
 
-Deno.test("adversarial: another brand's creative is refused; a photo is refused (videos only until W3)", async () => {
+Deno.test("adversarial: another brand's creative is refused; a photo runs on a Meta-only plan (W3 T-9)", async () => {
   const other = await freeze(
     { creative_library_id: ID(1), creative_library_ids: [ID(1), ID(2)] },
     { [ID(2)]: video("brand-b") },
@@ -209,7 +209,14 @@ Deno.test("adversarial: another brand's creative is refused; a photo is refused 
     { creative_library_id: ID(1), creative_library_ids: [ID(1), ID(2)] },
     { [ID(2)]: { ...video("brand-a"), kind: "image" } },
   );
-  assertEquals(photo.result, {
+  // #4238 W3 T-9: photos run on Meta (TikTok/Google refusal is covered in
+  // issue_4238_w3_ad_plan_wiring via hostImageRefusedPlatform).
+  assertEquals(photo.result, { ok: true });
+  const audio = await freeze(
+    { creative_library_id: ID(1), creative_library_ids: [ID(1), ID(2)] },
+    { [ID(2)]: { ...video("brand-a"), kind: "audio" } },
+  );
+  assertEquals(audio.result, {
     ok: false,
     detail: "host_video_creative_required",
   });

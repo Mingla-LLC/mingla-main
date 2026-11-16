@@ -4251,7 +4251,7 @@ const listAdAudiences = writeTool(
 // verified brand settlement currency and provider-account currency.
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales; a free event or RSVP page can optimise for sign-ups instead (optimize_for). Never pick ticket sales for a free event. When you asked for sales or sign-ups and an app comes back under optimization.visits, tell the Host before anything else, e.g. \"TikTok will get page visits, not ticket sales, until its sales signal is ready\", and offer to keep it or remove that app. When copy_warnings come back, rewrite the words to clear each warning (never quote the rule back) and propose again before showing the plan; the warnings never block. Distinct from draft_campaign (Blast email/SMS).",
+  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales; a free event or RSVP page can optimise for sign-ups instead (optimize_for). Never pick ticket sales for a free event. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -4801,6 +4801,28 @@ const proposeAdPlan = writeTool(
       copy_warnings: Array.isArray(versioned.copy_warnings)
         ? versioned.copy_warnings
         : [],
+      // #4238 T-5 / U-3: what Ari does with this result (the tool
+      // declarations are digest-pinned, so the rule rides on the result).
+      ari_next: [
+        ...(Array.isArray(versioned.copy_warnings) &&
+            versioned.copy_warnings.length > 0
+          ? [
+            "Rewrite the ad words to clear each copy warning and propose again before showing the plan; the warnings never block.",
+          ]
+          : []),
+        ...((args.optimize_for === "sales" || args.optimize_for === "signups")
+          ? platforms.filter((p) => optimizationByPlatform[p] === "visits")
+            .map((p) =>
+              `Tell the Host first: ${
+                HOST_AD_PLATFORM_NAMES[p] ?? p
+              } will get page visits, not ${
+                args.optimize_for === "sales" ? "ticket sales" : "sign-ups"
+              }, until its ${
+                args.optimize_for === "sales" ? "sales" : "sign-up"
+              } signal is ready. Offer to keep it or remove that app.`
+            )
+          : []),
+      ],
       // #4238: each app's own answer, in plain words.
       ...(targeting.notes.length > 0
         ? { note: targeting.notes.join(" ") }

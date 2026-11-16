@@ -472,6 +472,11 @@ function setupDb(tables: Record<string, Row[]>, currency = "NGN") {
         filters.push((row) => row[column] === value);
         return chain;
       },
+      // #4238 W3 T-9: host_setup reads videos and photos (kind in [...]).
+      in: (column: string, values: unknown[]) => {
+        filters.push((row) => values.includes(row[column]));
+        return chain;
+      },
       order: () => chain,
       limit: () => chain,
       maybeSingle: () =>
