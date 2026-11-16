@@ -32,7 +32,8 @@ Deno.test("#4063 waitlist email uses the shared shell and one checkout button", 
   });
 
   assertEquals(email.subject, "A spot opened: Bachata Takeover, Sat 25 Oct");
-  assertEquals(email.html.match(/background:#C4471A/g)?.length, 1);
+  // #4452 §5.9: the one CTA is the ink pill (SHELL_TOKENS.BRAND_ORANGE_BUTTON is ink now).
+  assertEquals(email.html.match(/background:#111110/g)?.length, 1);
   assertStringIncludes(email.text, "We're holding 2 General admission");
   assertStringIncludes(email.text, "Book my spot: https://usemingla.com/");
   assert(!email.text.toLowerCase().includes("pdf"));

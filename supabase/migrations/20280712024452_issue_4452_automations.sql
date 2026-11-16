@@ -988,6 +988,36 @@ GRANT EXECUTE ON FUNCTION public.admin_automation_get(uuid), public.admin_automa
   public.admin_form_submission_stop_emails(uuid), public.admin_form_results(uuid, timestamptz, timestamptz),
   public.admin_forms_list(text) TO authenticated, service_role;
 
+-- §5.8 "Test the whole flow": an is_test submission whose run sends to the staff member only.
+CREATE FUNCTION public.forms_start_test_run(p_form_id uuid, p_email text, p_answers jsonb) RETURNS uuid
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_f public.forms;
+  v_a public.form_automations;
+  v_sub uuid;
+  v_run uuid;
+  v_email text := lower(btrim(p_email));
+BEGIN
+  SELECT * INTO v_f FROM public.forms WHERE id = p_form_id;
+  SELECT * INTO v_a FROM public.form_automations WHERE form_id = p_form_id;
+  IF v_f.live_version_id IS NULL OR v_a.live_version IS NULL THEN RAISE EXCEPTION 'publish_first' USING ERRCODE = '22023'; END IF;
+  INSERT INTO public.form_submissions (form_id, form_version_id, lead_label, idempotency_key, email, name, answers, page_path,
+                                       placement, ads_allowed, marketing_consent, consent_text, consent_at, is_test)
+  VALUES (p_form_id, v_f.live_version_id, v_f.audience, gen_random_uuid(), v_email, 'Ada Okafor',
+          COALESCE(p_answers, '{}'::jsonb) || jsonb_build_object('email', v_email), '/creators', 'inline', false,
+          true, '[test]', now(), true)
+  RETURNING id INTO v_sub;
+  INSERT INTO public.form_automation_runs (submission_id, form_id, started_version, time_zone, time_zone_source, test_recipient)
+  VALUES (v_sub, p_form_id, v_a.live_version, 'UTC', 'fallback_utc', v_email)
+  RETURNING id INTO v_run;
+  PERFORM public.forms_plan_next(v_run);
+  RETURN v_run;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.forms_start_test_run(uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.forms_start_test_run(uuid, text, jsonb) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 7. Cron (the house pattern; skipped loudly where pg_cron, pg_net or the vault rows are missing)
 -- ---------------------------------------------------------------------------

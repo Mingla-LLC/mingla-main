@@ -41,7 +41,8 @@ Deno.test("#4063 order confirmation uses the unified one-button email and linked
   });
 
   assertEquals(email.subject, "You're in: Bachata Takeover, Sat 25 Oct");
-  assertEquals(email.html.match(/background:#C4471A/g)?.length, 1);
+  // #4452 §5.9: the one CTA is the ink pill (SHELL_TOKENS.BRAND_ORANGE_BUTTON is ink now).
+  assertEquals(email.html.match(/background:#111110/g)?.length, 1);
   assertStringIncludes(
     email.text,
     "Get my tickets: https://usemingla.com/c/AB12CD34EF",

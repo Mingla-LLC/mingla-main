@@ -146,7 +146,8 @@ Deno.test("#4063 renders one button, claim guidance, details and money truth", (
   assertStringIncludes(result.text, "Fees & tax: £2.50");
   assertStringIncludes(result.text, "Paid: £47.50");
   assertStringIncludes(result.text, "Order A1B2C3D4 · Visa •••• 4242");
-  assertEquals(result.html.match(/background:#C4471A/g)?.length, 1);
+  // #4452 §5.9: the one CTA is the ink pill (BRAND_ORANGE_BUTTON is ink now).
+  assertEquals(result.html.match(/background:#111110/g)?.length, 1);
   assertEquals(result.html.match(/<a /g)?.length, 1);
   assert(!result.html.includes("<img"));
   assert(!result.html.toLowerCase().includes("qr"));
