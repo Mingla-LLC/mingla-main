@@ -90,6 +90,7 @@ import { KeyboardRoot } from "../../wrappers/KeyboardRoot";
 // ORCH-1206: single owner of the panel-height math (pure, no RN imports) so a
 // fractional numeric snapPoint (0–1) is a RATIO of the screen, not clamped UP
 // to MIN_SNAP_PX. Shared by the native + web variants below.
+import { hideModalFocusBrackets } from "./hideModalFocusBrackets";
 import { useEscapeLayer } from "./escapeLayerStack";
 import { computeSheetHeight } from "./sheetSnapHeight";
 import { useSheetGone } from "./useSheetGone";
@@ -472,6 +473,7 @@ const SheetNative: React.FC<SheetProps> = ({
           whole panel so the sheet's inputs + the toolbar share one provider. */}
         <KeyboardRoot>
           <View
+            ref={hideModalFocusBrackets}
             pointerEvents={visible ? "auto" : "none"}
             style={StyleSheet.absoluteFill}
             testID={testID}
@@ -1117,6 +1119,7 @@ const SheetWeb: React.FC<SheetProps> = ({
       statusBarTranslucent
     >
       <View
+        ref={hideModalFocusBrackets}
         pointerEvents={visible ? "auto" : "none"}
         style={StyleSheet.absoluteFill}
         testID={testID}
