@@ -14,7 +14,7 @@ import { type ActionBarInput, renderActionBar, renderButton } from "./actionBar.
 const BRAND_ORANGE = "#EB7825";
 const BRAND_ORANGE_BUTTON = "#111110";
 const BRAND_INK = "#111110";
-const BRAND_MUTED = "#7C7870";
+const BRAND_MUTED = "#6B675F";
 const BRAND_BG_SOFT = "#F5F4F0";
 const BRAND_BORDER = "#E7E3DA";
 const BODY_TEXT = "#3F3D39";

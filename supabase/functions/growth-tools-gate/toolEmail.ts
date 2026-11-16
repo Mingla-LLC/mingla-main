@@ -24,7 +24,7 @@ import { renderFacts, renderHeadline } from "../_shared/email/shell.ts";
 export type GateTool = "venues" | "events" | "trips" | "experiences";
 
 const INK = "#111110";
-const MUTED = "#7C7870";
+const MUTED = "#6B675F";
 const BODY = "#3F3D39";
 const HAIRLINE = "#D8D5CD";
 const SITE = "https://usemingla.com";

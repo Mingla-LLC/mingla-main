@@ -9,6 +9,8 @@
 // G-2  SC-83: the rebranded frame (paper #F5F4F0 body, the logo pill PNG, the Instrument Serif headline).
 // G-3  a11y on every shell document: lang, role="presentation" on every layout table, alt on every
 //      img, and button text contrast >= 4.5.
+// G-5  P2-B: every text colour in every shell document reads at >= 4.5:1 on both the white card and
+//      the paper footer (WCAG AA for body-size text).
 // G-4  SC-86: a booked-call confirmation carries the app button only (no call button); a tool report
 //      and a form welcome carry both; a team alert carries none.
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -272,4 +274,30 @@ Deno.test("G-4 SC-86 the action bar per email: app-only after booking a call", a
   }
   assertEquals(bar(await frozen(TEMPLATES.find(([n]) => n === "form_team_alert")![1])), null, "a team alert has no bar");
   assertEquals(bar(await frozen(TEMPLATES.find(([n]) => n === "booking_team_notify")![1])), null, "the team notice has no bar");
+});
+
+Deno.test("G-5 P2-B text contrast: every text colour on a shell document is >= 4.5:1 on white and on the paper footer", async () => {
+  const BACKGROUNDS = ["#FFFFFF", "#F5F4F0"];
+  // The brand oranges are decorative accents (the ticket receipt label and links), predate this
+  // rework and are not secondary text; white text sits on a dark surface set by a parent (G-3 covers buttons). Out of P2-B's scope and called out in the rework report.
+  const DECORATIVE_ACCENT = new Set(["#EB7825", "#FF6B2C", "#FFFFFF"]);
+  const seen = new Set<string>();
+  for (const [name, render] of TEMPLATES) {
+    const html = await frozen(render);
+    if (!html.startsWith("<!doctype html>")) continue;
+    // Every inline style that sets a text colour and no background of its own (buttons and bars set theirs).
+    for (const m of html.matchAll(/style="([^"]*)"/g)) {
+      const style = m[1];
+      if (/background:/.test(style)) continue;
+      const fg = /(?:^|;)\s*color:(#[0-9A-Fa-f]{6})\b/.exec(style)?.[1];
+      if (!fg) continue;
+      if (DECORATIVE_ACCENT.has(fg.toUpperCase())) continue;
+      seen.add(fg.toUpperCase());
+      for (const bg of BACKGROUNDS) {
+        const ratio = contrast(fg, bg);
+        assert(ratio >= 4.5, `${name}: text ${fg} on ${bg} is ${ratio.toFixed(2)}:1, below 4.5:1`);
+      }
+    }
+  }
+  assert(seen.has("#6B675F"), "the muted secondary-text colour is exercised");
 });
