@@ -611,7 +611,9 @@
         "app-mobile/src/i18n/locales/yo/chat.json",
         "app-mobile/src/i18n/locales/yo/connections.json",
         "app-mobile/src/i18n/locales/zh/chat.json",
-        "app-mobile/src/i18n/locales/zh/connections.json"
+        "app-mobile/src/i18n/locales/zh/connections.json",
+        "supabase/migrations/20280709004435_issue_4435_group_qa_fixes.sql",
+        "app-mobile/src/hooks/useBoardSession.ts"
       ]
     },
     {
@@ -1908,7 +1910,8 @@
         "app-mobile/src/hooks/useClaimedVenues.ts",
         "packages/card-identity/index.d.ts",
         "packages/card-identity/index.js",
-        "app-mobile/src/components/connections/CollabDeckSheet.tsx"
+        "app-mobile/src/components/connections/CollabDeckSheet.tsx",
+        "app-mobile/src/hooks/useBoardSession.ts"
       ]
     },
     {
