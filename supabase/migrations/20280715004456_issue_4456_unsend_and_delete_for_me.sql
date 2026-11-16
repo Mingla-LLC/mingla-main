@@ -962,12 +962,13 @@ UPDATE public.messages
 
 -- U9. The send bump runs with the server's rights. It reads only the row
 -- just inserted (which the insert rules already admitted) and touches only
--- that row's conversation. Body unchanged from the baseline.
+-- that row's conversation. Body unchanged from the baseline; the search_path
+-- stays the one #4423 W5 pins for this function (public, extensions, pg_temp).
 CREATE OR REPLACE FUNCTION public.update_conversation_on_message()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, extensions, pg_temp
 AS $function$
 BEGIN
   UPDATE public.conversations
