@@ -100,6 +100,8 @@ function fieldSchema(spec: FieldSpec, path: string): JsonSchema | null {
       return { type: "string", enum: [...spec.values], description: spec.label };
     case "timezone":
       return { type: "string", maxLength: 60, description: `${spec.label} (IANA zone, e.g. Europe/London)` };
+    case "city_timezone":
+      return { type: "string", maxLength: 60, description: `${spec.label} (IANA region and city, e.g. Europe/London)` };
     case "currency":
       return { type: "string", pattern: "^[A-Z]{3}$", description: spec.label };
     case "rich_text":

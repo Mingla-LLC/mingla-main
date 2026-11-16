@@ -65,15 +65,44 @@ export function isCanonicalMinglaHref(value: unknown): value is string {
   }
 }
 
-export function isIanaTimeZone(value: unknown): value is string {
-  if (typeof value !== "string" || value.length > 60) return false;
-  if (!/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(value)) return false;
+/**
+ * #4453 — single-token zones a trip or event may legitimately be stored in.
+ * Every other single-token alias (EST, Japan, CET ...) stays refused: they
+ * are ambiguous or deprecated. The match is case-sensitive ("utc" is refused).
+ * `Etc/UTC` and `Etc/GMT` already pass the Region/City shape.
+ */
+export const SINGLE_TOKEN_TIME_ZONES = ["UTC", "GMT"] as const;
+
+const REGION_CITY_ZONE_RE = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){1,2}$/;
+
+function platformKnowsZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value });
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * A real `Region/City` zone and nothing else. Venue clocks ("open now, 22:03
+ * in Lagos") need a city, so `hours_location` keeps this strict rule: a bare
+ * "UTC" is refused here.
+ */
+export function isRegionCityTimeZone(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 60) return false;
+  return REGION_CITY_ZONE_RE.test(value) && platformKnowsZone(value);
+}
+
+/**
+ * Any zone an offering, route table or setting may carry: a Region/City zone,
+ * or exactly UTC / GMT. The single source (#4453); consumers import the
+ * generated copy.
+ */
+export function isIanaTimeZone(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 60) return false;
+  if ((SINGLE_TOKEN_TIME_ZONES as readonly string[]).includes(value)) return platformKnowsZone(value);
+  return isRegionCityTimeZone(value);
 }
 
 /** `https://<hostname>` with nothing else: the shape of a canonical origin. */
