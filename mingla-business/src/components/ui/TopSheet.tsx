@@ -394,7 +394,7 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
   return (
     <View
       pointerEvents={visible ? "auto" : "none"}
-      style={StyleSheet.absoluteFill}
+      style={styles.nativeRoot}
       testID={testID}
     >
       <Animated.View
@@ -969,6 +969,15 @@ const HANDLE_AREA_HEIGHT = 24;
 const TOPSHEET_RADIUS = radiusTokens.xxl;
 
 const styles = StyleSheet.create({
+  // #4420 (native run): Fabric flattens layout-only ancestors, so a screen's
+  // floating chrome (the Blast "Send a campaign" button, zIndex 30) ended up a
+  // sibling of this overlay and painted ABOVE the scrim. The overlay outranks
+  // in-screen chrome explicitly, at the Sheet.web overlay layer (100).
+  nativeRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    elevation: 100,
+  },
   scrimPress: {
     flex: 1,
   },

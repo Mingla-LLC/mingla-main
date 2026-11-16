@@ -17,7 +17,7 @@
  *                                   I-BRAND-UNIVERSAL-AUTHORING)
  *
  *   Step "experience" — the universal experience-create chooser, in-place in the
- *   SAME sheet (no second sheet). Heading "Create An Experience", a back
+ *   SAME sheet (no second sheet). Heading "Create an experience", a back
  *   affordance to Step "root", and three option rows:
  *     - "Snap a food menu"        → `/experience/snap?mode=menu`       (Ve5 parser)
  *     - "Snap an activities menu" → `/experience/snap?mode=activities` (Ve6 parser)
@@ -316,9 +316,10 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowTitle}>{option.title}</Text>
-                  {/* META-ORCH-1255 (DESIGN §2.2) — defensive 2-line cap; copy is
-                      authored ≤2 lines at phone width. */}
-                  <Text style={styles.rowSubtitle} numberOfLines={2}>
+                  {/* #4420 (native run): no line cap. At the Graphite Glass
+                      type size two of these read "brunch, tasting, cla…" on
+                      a 402pt iPhone; the event step already wraps freely. */}
+                  <Text style={styles.rowSubtitle}>
                     {option.subtitle}
                   </Text>
                 </View>
@@ -394,7 +395,7 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
                 <Text style={styles.backLabel}>Back</Text>
               </Pressable>
             ) : null}
-            <Text style={styles.headerTitle}>Create An Experience</Text>
+            <Text style={styles.headerTitle}>Create an experience</Text>
             <Text style={styles.headerSubtitle}>
               Snap a menu and let Mingla draft it for you, or build it yourself.
             </Text>
