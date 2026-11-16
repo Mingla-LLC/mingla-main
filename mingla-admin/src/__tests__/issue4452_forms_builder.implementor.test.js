@@ -65,6 +65,11 @@ export const google = (p) => r(<GoogleConversionsCardView onCreate={() => {}} bu
       "context/ToastContext": "export const useToast = () => ({ addToast() {} });",
       "services/formsService": STUB_SERVICES,
       "services/websitePagesService": "export const revalidatePages = async () => true; export const formPlacements = () => new Promise(() => {});",
+      // FormsPage and ResultsTab embed the Leads list (and its drawer): stub their
+      // services too, so no Supabase client (and no realtime socket, which Node 20
+      // lacks) is built at import time.
+      "services/leadsService": "export const listLeads = () => new Promise(() => {}); export const exportLeads = async () => ({}); export const createLeadSelection = async () => ({}); export const getLead = () => new Promise(() => {}); export const linkLeadToCard = async () => ({}); export const stopFormEmails = async () => ({});",
+      "services/crmService": "export const createRecord = async () => ({}); export const newRequestKey = () => 'k';",
     },
   });
 });

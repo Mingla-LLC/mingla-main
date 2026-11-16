@@ -15,8 +15,10 @@ import { guestListPartyLine } from "../email/partyLine.ts";
 // #4452 §5.9 rebranded the shared email tokens (SHELL_TOKENS.BRAND_ORANGE_BUTTON is ink), which
 // the ticket body inlines, so the frozen digest moved with the approved frame. The #3827 rule is
 // unchanged: unset and null still render the same bytes as a body without a party line.
-// Before #4452: 81a4daf04489b49097f977653a377eead16d40386d993328bdd801be6c0f1e38.
-const PRE_3827_DIGEST = "611687922b5955fb4dd05b7789a3143029284a3d0b4c31afff40d6dafba22b65";
+// #4452 then darkened the shell's muted text to #6B675F (contrast fix), which moved it again.
+// Before #4452: 81a4daf04489b49097f977653a377eead16d40386d993328bdd801be6c0f1e38;
+// before the muted-text fix: 611687922b5955fb4dd05b7789a3143029284a3d0b4c31afff40d6dafba22b65.
+const PRE_3827_DIGEST = "0da86bf913b51609f9d1958eaed2092f59210d8ae77b0f361ef2ef3b0e9d2409";
 
 function input(partyLine?: string | null): TicketBodyInput {
   const order: TicketBodyInput["order"] = {

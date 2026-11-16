@@ -195,10 +195,11 @@ Deno.test("#3802 Wave 2: route, CRM access, RPC boundary and responsive controls
     item.id === "content-calendar"
   );
   assert(calendarAt > 0, "Calendar is in the Outreach group");
-  assertEquals(
-    calendarAt,
-    outreach.findIndex((item: { id: string }) => item.id === "inbound") + 1,
-  );
+  // #4452 §7.0: Forms sits right after Leads (the old Inbound leads), so the
+  // Calendar now follows Forms: Leads, Forms, Calendar, Team dashboard.
+  const inboundAt = outreach.findIndex((item: { id: string }) => item.id === "inbound");
+  assertEquals(outreach[inboundAt + 1]?.id, "forms");
+  assertEquals(calendarAt, inboundAt + 2);
   assertEquals(outreach[calendarAt + 1]?.id, "team-dashboard");
   assertEquals(
     [...SERVICE.matchAll(/call\("(content_calendar_[a-z_]+)"/g)].map((match) =>
