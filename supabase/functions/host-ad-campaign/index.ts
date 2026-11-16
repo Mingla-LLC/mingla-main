@@ -50,11 +50,19 @@ import {
   HOST_LIVE_DAILY_PUSH,
   hostLiveEditUnknownField,
   type HostLiveEditProblem,
+  HOST_LEARNING_WINDOW_DAYS,
   loadHostLiveSinceMs,
   planHostLiveEdit,
   runHostLiveEdit,
 } from "../_shared/adHostLiveEdit.ts";
 import { providerDailyMinimumCents } from "../_shared/adHostPlanRules.ts";
+import { parseOfferingStock } from "../_shared/adDestination.ts";
+import {
+  hostAdResultCounts,
+  hostAdSuggestion,
+  type HostAdSuggestion,
+  resolveSuggestedEdit,
+} from "../_shared/adSuggestion.ts";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 import { notifyHostAdPause } from "../_shared/hostAdNotices.ts";
 import { hostAdCapabilities } from "../_shared/hostAdCapabilities.ts";
@@ -808,6 +816,53 @@ serve(async (req: Request): Promise<Response> => {
         ? lastEdit.created_at
         : null;
     }
+    // #4238 W5 (8a/8b): results in tickets and sign-ups, the 7-day click
+    // count, the learning window and the one suggestion (Ari reads these
+    // through get_ad_campaign_report; change_live recomputes the suggestion).
+    const nowMs = Date.now();
+    let w5: Record<string, unknown> = {};
+    if (planId) {
+      const { data: planRow } = await supabase.from("ad_plans")
+        .select("id,brand_id,owner_kind,state,current_version_id,destination_family,destination_key")
+        .eq("id", planId).maybeSingle();
+      const loaded = planRow && planRow.owner_kind === "host" &&
+          planRow.brand_id === brandId
+        ? await loadLiveEditContext(supabase, planRow)
+        : null;
+      const counts = await loadPlanResults(supabase, planCampaignIds, "sales", nowMs);
+      const spendForCost = hostSpendEquivalentCents;
+      const learningUntil = loaded?.ok && loaded.ctx.liveSinceMs !== null
+        ? loaded.ctx.liveSinceMs + HOST_LEARNING_WINDOW_DAYS * 86_400_000
+        : null;
+      w5 = {
+        results_w5: {
+          orders: counts.orders,
+          tickets: counts.tickets,
+          sign_ups: counts.sign_ups,
+          clicks: counts.clicks,
+          clicks_7d: counts.clicks_7d,
+          cost_per_ticket_cents: spendForCost !== null && counts.tickets > 0
+            ? Math.round(spendForCost / counts.tickets)
+            : null,
+          cost_per_sign_up_cents: spendForCost !== null && counts.sign_ups > 0
+            ? Math.round(spendForCost / counts.sign_ups)
+            : null,
+        },
+        days_live: loaded?.ok && loaded.ctx.liveSinceMs !== null
+          ? Math.floor((nowMs - loaded.ctx.liveSinceMs) / 86_400_000) + 1
+          : null,
+        learning: learningUntil === null ? null : {
+          state: nowMs < learningUntil ? "learning" : "done",
+          until: new Date(learningUntil).toISOString(),
+        },
+        next_live_edit_at: lastLiveEditAt
+          ? new Date(Date.parse(lastLiveEditAt) + 86_400_000).toISOString()
+          : null,
+        suggestion: loaded?.ok && planRow
+          ? await loadPlanSuggestion(supabase, brandId, planRow, loaded.ctx, nowMs)
+          : null,
+      };
+    }
     // #4238 W4b §2: what this teammate can do on this ad, and who to ask.
     const capabilities = await hostAdCapabilities(supabase, brandId, user.id);
     return json({
@@ -831,6 +886,7 @@ serve(async (req: Request): Promise<Response> => {
         : "frozen_plan_fx",
       spend_daily: spend,
       results: {
+        ...((w5.results_w5 as Record<string, unknown> | undefined) ?? {}),
         conversions: (conversions ?? []).length,
         value_cents: Object.fromEntries(conversionValueByCurrency),
         spend_by_currency: providerSpendByCurrency,
@@ -870,6 +926,10 @@ serve(async (req: Request): Promise<Response> => {
       by_placement: [...placementMap.values()].sort((a, b) =>
         b.conversions - a.conversions
       ),
+      days_live: w5.days_live ?? null,
+      learning: w5.learning ?? null,
+      next_live_edit_at: w5.next_live_edit_at ?? null,
+      suggestion: w5.suggestion ?? null,
       creatives: creativeRows ?? [],
       timeline: timelineResult.data ?? [],
       credit_events: creditResult.data ?? [],
@@ -1565,6 +1625,20 @@ async function acceptLastTickets(db: any, actorId: string, brandId: string, body
   if (!plan || plan.owner_kind !== "host" || plan.brand_id !== brandId) {
     return json({ error: "forbidden", detail: "plan_not_found" }, 403);
   }
+  // #4238 W5: Ari's (one-tap) suggestion is recomputed; a stale id is refused.
+  if ("suggestion_id" in body) {
+    const { data: full } = await db.from("ad_plans")
+      .select("id,brand_id,owner_kind,state,current_version_id,destination_family,destination_key")
+      .eq("id", planId).maybeSingle();
+    const loaded = full?.current_version_id ? await loadLiveEditContext(db, full) : null;
+    const suggestion = loaded?.ok ? await loadPlanSuggestion(db, brandId, full, loaded.ctx, Date.now()) : null;
+    if (
+      !suggestion || suggestion.kind !== "accept_last_tickets" ||
+      suggestion.suggestion_id !== body.suggestion_id
+    ) {
+      return json({ error: "ad_suggestion_stale", detail: "ad_suggestion_stale" }, 409);
+    }
+  }
   const { data: offers, error: offerError } = await db.from("ad_plan_automation_events")
     .select("id,platform,status,detail").eq("plan_id", planId).eq("kind", "low_stock_copy");
   if (offerError) return json({ error: "plan_lookup_failed" }, 503);
@@ -1726,15 +1800,28 @@ async function changeLive(db: any, actorId: string, brandId: string, body: Recor
   }
 }
 
-async function planAndRunLiveEdit(
+type LiveEditContext = {
+  version: Record<string, unknown>;
+  rows: Record<string, unknown>[];
+  hold: { amount_cents: number; currency: string; state: string };
+  lastEditAt: string | null;
+  lastBookableAt: string | null;
+  destination: Record<string, unknown> | null;
+  hostSpend: number;
+  lines: HostLiveCampaign[];
+  currentEnds: string | null;
+  liveSinceMs: number | null;
+};
+
+/**
+ * #4238 W5: everything a live edit is planned from, shared by change_live and
+ * by the suggestion (so `get` and `change_live` recompute the same one).
+ */
+async function loadLiveEditContext(
   // deno-lint-ignore no-explicit-any
   db: any,
-  actorId: string,
-  brandId: string,
   plan: Record<string, unknown>,
-  editKey: string,
-  body: Record<string, unknown>,
-): Promise<{ status: number; body: Record<string, unknown> }> {
+): Promise<{ ok: true; ctx: LiveEditContext } | { ok: false; status: number; body: Record<string, unknown> }> {
   const planId = String(plan.id);
   const versionId = String(plan.current_version_id);
   const [{ data: version }, { data: campaigns }, { data: allocations }, { data: hold }, { data: lastEdit }] =
@@ -1748,7 +1835,7 @@ async function planAndRunLiveEdit(
     ]);
   const rows = (campaigns ?? []) as Record<string, unknown>[];
   if (!version || rows.length === 0 || !hold || hold.state !== "held") {
-    return { status: 409, body: { error: "plan_conflict", detail: "plan_not_live" } };
+    return { ok: false, status: 409, body: { error: "plan_conflict", detail: "plan_not_live" } };
   }
   const { data: destination } = await db.rpc("ad_plan_destination_resolve", {
     p_destination_family: plan.destination_family,
@@ -1760,7 +1847,7 @@ async function planAndRunLiveEdit(
     .select("id,platform,currency,extra")
     .in("id", rows.map((row) => String(row.connection_id)));
   if (connectionError) {
-    return { status: 503, body: { error: "plan_lookup_failed" } };
+    return { ok: false, status: 503, body: { error: "plan_lookup_failed" } };
   }
   const optimizationByPlatform = (
     (version.canonical_plan as Record<string, unknown> | null)?.optimization_by_platform ?? {}
@@ -1783,7 +1870,7 @@ async function planAndRunLiveEdit(
         p_snapshot: row.fx_snapshot_id,
       });
       if (error || !Number.isSafeInteger(converted)) {
-        return { status: 409, body: { error: "plan_conflict", detail: "spend_unknown" } };
+        return { ok: false, status: 409, body: { error: "plan_conflict", detail: "spend_unknown" } };
       }
       spendInHost = Number(converted);
     }
@@ -1809,22 +1896,227 @@ async function planAndRunLiveEdit(
     });
   }
   const currentEnds = rows.map((row) => row.ends_at).filter((v): v is string => typeof v === "string").sort().pop() ?? null;
-  const planned = planHostLiveEdit({
+  return {
+    ok: true,
+    ctx: {
+      version,
+      rows,
+      hold,
+      lastEditAt: typeof lastEdit?.created_at === "string" ? lastEdit.created_at : null,
+      lastBookableAt: typeof destination?.last_bookable_at === "string" ? destination.last_bookable_at : null,
+      destination: destination && typeof destination === "object" ? destination as Record<string, unknown> : null,
+      hostSpend,
+      lines,
+      currentEnds,
+      liveSinceMs: await loadHostLiveSinceMs(db, rows),
+    },
+  };
+}
+
+/**
+ * #4238 W5 (8b): the plan's one suggestion, from the live-edit context plus
+ * results, the frozen guidance, stock, the wallet and the last-tickets offer.
+ * A budget or end suggestion is dry-run through planHostLiveEdit, so one that
+ * the live-edit rules (floors, spend, last bookable) would refuse is never
+ * shown.
+ */
+async function loadPlanSuggestion(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  brandId: string,
+  plan: Record<string, unknown>,
+  ctx: LiveEditContext,
+  nowMs: number,
+): Promise<HostAdSuggestion | null> {
+  const canonical = (ctx.version.canonical_plan ?? {}) as Record<string, unknown>;
+  const snapshot = (canonical.guidance_snapshot ?? null) as Record<string, unknown> | null;
+  const goal = snapshot?.goal === "sales" || snapshot?.goal === "signups" ? snapshot.goal : "visits";
+  const mid = Number(snapshot?.cost_per_result_cents);
+  const high = Number(snapshot?.cost_per_result_high_cents);
+  const ids = ctx.rows.map((row) => String(row.id));
+  const results = await loadPlanResults(db, ids, goal, nowMs);
+  const eventId = ctx.destination?.event_id;
+  let stock: { remaining: number | null; total: number | null; unlimited: boolean } | null = null;
+  if (typeof eventId === "string" && UUID_REGEX.test(eventId)) {
+    const { data, error } = await db.rpc("ad_offering_stock", {
+      p_event_id: eventId,
+      p_occurrence_key: typeof canonical.occurrence_key === "string" ? canonical.occurrence_key : null,
+    });
+    const parsed = error ? null : parseOfferingStock(data);
+    stock = parsed ? { remaining: parsed.remaining, total: parsed.total, unlimited: parsed.unlimited } : null;
+  }
+  const [{ data: wallet }, { data: offers }] = await Promise.all([
+    db.from("ad_credit_wallets").select("balance_cents,currency").eq("brand_id", brandId).maybeSingle(),
+    db.from("ad_plan_automation_events").select("status,detail").eq("plan_id", String(plan.id))
+      .eq("kind", "low_stock_copy"),
+  ]);
+  const walletCents = wallet && wallet.currency === ctx.hold.currency && Number.isSafeInteger(Number(wallet.balance_cents))
+    ? Number(wallet.balance_cents)
+    : null;
+  const lastTicketsOffered = ((offers ?? []) as Record<string, unknown>[]).some((row) =>
+    row.status === "pending" &&
+    typeof (row.detail as Record<string, unknown> | null)?.accepted_at !== "string"
+  );
+  const suggestion = await hostAdSuggestion({
+    planId: String(plan.id),
     planState: String(plan.state),
-    lastEditAt: lastEdit?.created_at ?? null,
-    nowMs: Date.now(),
-    newHostBudgetCents: body.new_budget_cents,
-    newEndsAt: body.new_ends_at,
-    currentHostBudgetCents: Number(hold.amount_cents),
-    currentEndsAt: currentEnds,
-    lastBookableAt: typeof destination?.last_bookable_at === "string" ? destination.last_bookable_at : null,
-    hostSpendCents: hostSpend,
-    campaigns: lines,
+    nowMs,
+    liveSinceMs: ctx.liveSinceMs,
+    lastEditAt: ctx.lastEditAt,
+    goal,
+    currency: String(ctx.hold.currency),
+    currentTotalCents: Number(ctx.hold.amount_cents),
+    currentEndsAt: ctx.currentEnds,
+    lastBookableAt: ctx.lastBookableAt,
+    spendCents: ctx.hostSpend,
+    results: goal === "sales" ? results.tickets : goal === "signups" ? results.sign_ups : results.clicks,
+    resultsLast3Days: results.last3Days,
+    costPerResult: Number.isFinite(mid) && mid > 0 && Number.isFinite(high) && high > 0
+      ? { midCents: mid, highCents: high }
+      : null,
+    stock,
+    walletCents,
+    lastTicketsOffered,
+  });
+  if (!suggestion || suggestion.apply_action !== "change_live") return suggestion;
+  const dry = planHostLiveEdit(liveEditInput(plan, ctx, nowMs, {
+    newHostBudgetCents: suggestion.host_budget_cents,
+    newEndsAt: suggestion.ends_at,
+    acknowledgeLearningReset: false,
+  }));
+  return dry.ok ? suggestion : null;
+}
+
+/** #4238 W5 (8a): counted results for a plan's campaigns, in tickets. */
+async function loadPlanResults(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  campaignIds: string[],
+  goal: "sales" | "signups" | "visits",
+  nowMs: number,
+): Promise<{ orders: number; tickets: number; sign_ups: number; clicks: number; clicks_7d: number; last3Days: number }> {
+  const sinceDay = (days: number) => new Date(nowMs - days * 86_400_000).toISOString().slice(0, 10);
+  const { data: spendRows } = await db.from("ad_spend_daily").select("clicks,spend_date")
+    .in("campaign_id", campaignIds);
+  const spend = (spendRows ?? []) as { clicks?: unknown; spend_date?: unknown }[];
+  const clicks = spend.reduce((sum, row) => sum + Math.max(0, Number(row.clicks) || 0), 0);
+  const clicks7d = spend.filter((row) => String(row.spend_date ?? "") >= sinceDay(7))
+    .reduce((sum, row) => sum + Math.max(0, Number(row.clicks) || 0), 0);
+  const { data: raw } = await db.from("ad_conversions")
+    .select("touch_id, event_type, order_id, event_id, created_at")
+    .in("campaign_id", campaignIds);
+  const rawRows = (raw ?? []) as Record<string, unknown>[];
+  const touchIds = [...new Set(rawRows.flatMap((row) => typeof row.touch_id === "string" ? [row.touch_id] : []))];
+  const { data: touches } = touchIds.length > 0
+    ? await db.from("ad_attribution_touches").select("id, created_at").in("id", touchIds)
+    : { data: [] };
+  const counted = minglaCountedConversions(
+    rawRows,
+    new Map(((touches ?? []) as { id: unknown; created_at?: unknown }[]).map((row) => [String(row.id), row.created_at])),
+  );
+  const counts = await countPlanResults(db, counted);
+  const recent = counted.filter((row) => String(row.created_at ?? "") >= new Date(nowMs - 3 * 86_400_000).toISOString());
+  const recentCounts = await countPlanResults(db, recent);
+  return {
+    ...counts,
+    clicks,
+    clicks_7d: clicks7d,
+    last3Days: goal === "sales"
+      ? recentCounts.tickets
+      : goal === "signups"
+      ? recentCounts.sign_ups
+      : spend.filter((row) => String(row.spend_date ?? "") >= sinceDay(3))
+        .reduce((sum, row) => sum + Math.max(0, Number(row.clicks) || 0), 0),
+  };
+}
+
+/** Tickets per counted order and heads per counted RSVP (8a). */
+async function countPlanResults(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  rows: Record<string, unknown>[],
+): Promise<{ orders: number; tickets: number; sign_ups: number }> {
+  const orderIds = [...new Set(rows.flatMap((row) => typeof row.order_id === "string" ? [row.order_id] : []))];
+  const rsvpIds = [
+    ...new Set(rows.flatMap((row) =>
+      row.event_type === "reservation" && typeof row.order_id !== "string" &&
+        typeof row.event_id === "string" && UUID_REGEX.test(row.event_id)
+        ? [row.event_id]
+        : []
+    )),
+  ];
+  const [{ data: tickets }, { data: rsvps }] = await Promise.all([
+    orderIds.length > 0
+      ? db.from("tickets").select("order_id").in("order_id", orderIds)
+      : Promise.resolve({ data: [] }),
+    rsvpIds.length > 0
+      ? db.from("event_rsvps").select("id, plus_count").in("id", rsvpIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const ticketsByOrder = new Map<string, number>();
+  for (const row of (tickets ?? []) as { order_id: unknown }[]) {
+    const key = String(row.order_id);
+    ticketsByOrder.set(key, (ticketsByOrder.get(key) ?? 0) + 1);
+  }
+  const rsvpHeads = new Map<string, number>(
+    ((rsvps ?? []) as { id: unknown; plus_count?: unknown }[]).map((row) => [
+      String(row.id),
+      1 + Math.max(0, Math.floor(Number(row.plus_count) || 0)),
+    ]),
+  );
+  return hostAdResultCounts({ conversions: rows, ticketsByOrder, rsvpHeads });
+}
+
+function liveEditInput(
+  plan: Record<string, unknown>,
+  ctx: LiveEditContext,
+  nowMs: number,
+  change: { newHostBudgetCents: unknown; newEndsAt: unknown; acknowledgeLearningReset: boolean },
+): Parameters<typeof planHostLiveEdit>[0] {
+  return {
+    planState: String(plan.state),
+    lastEditAt: ctx.lastEditAt,
+    nowMs,
+    newHostBudgetCents: change.newHostBudgetCents,
+    newEndsAt: change.newEndsAt,
+    currentHostBudgetCents: Number(ctx.hold.amount_cents),
+    currentEndsAt: ctx.currentEnds,
+    lastBookableAt: ctx.lastBookableAt,
+    hostSpendCents: ctx.hostSpend,
+    campaigns: ctx.lines,
     // #4238 6a: the learning-reset guard needs the live date and the Host's
     // explicit acknowledgement (only the literal true counts).
-    liveSinceMs: await loadHostLiveSinceMs(db, rows),
-    acknowledgeLearningReset: body.acknowledge_learning_reset === true,
-  });
+    liveSinceMs: ctx.liveSinceMs,
+    acknowledgeLearningReset: change.acknowledgeLearningReset,
+  };
+}
+
+async function planAndRunLiveEdit(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  actorId: string,
+  brandId: string,
+  plan: Record<string, unknown>,
+  editKey: string,
+  body: Record<string, unknown>,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const planId = String(plan.id);
+  const versionId = String(plan.current_version_id);
+  const loaded = await loadLiveEditContext(db, plan);
+  if (!loaded.ok) return { status: loaded.status, body: loaded.body };
+  const ctx = loaded.ctx;
+  const nowMs = Date.now();
+  const suggested = resolveSuggestedEdit(
+    body,
+    "suggestion_id" in body ? await loadPlanSuggestion(db, brandId, plan, ctx, nowMs) : null,
+    { currentTotalCents: Number(ctx.hold.amount_cents), liveSinceMs: ctx.liveSinceMs, nowMs },
+  );
+  if (!suggested.ok) {
+    return { status: suggested.status, body: { error: suggested.error, detail: suggested.error } };
+  }
+  const rows = ctx.rows;
+  const currentEnds = ctx.currentEnds;
+  const planned = planHostLiveEdit(liveEditInput(plan, ctx, nowMs, suggested.change));
   if (!planned.ok) {
     return {
       status: planned.error === "host_ad_live_edit_once_a_day" ||
@@ -1844,7 +2136,7 @@ async function planAndRunLiveEdit(
     plan: planned,
     planId,
     versionId,
-    planHash: String(version.plan_hash),
+    planHash: String(ctx.version.plan_hash),
     campaigns: rows,
     actorId,
     idempotencyKey: editKey,

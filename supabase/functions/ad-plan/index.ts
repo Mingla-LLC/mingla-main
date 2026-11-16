@@ -108,6 +108,7 @@ import {
   OWN_RESULTS_MIN,
   typicalPaidPriceCents,
 } from "../_shared/adResultEstimate.ts";
+import { BAND_HIGH } from "../_shared/adResultBenchmarks.ts";
 import { parseOfferingStock } from "../_shared/adDestination.ts";
 import { hostSalesLadderStart } from "../_shared/adGoalLadder.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
@@ -828,10 +829,23 @@ export async function freezeHostW2Fields(
       optimizationByPlatform: input.optimizationMap,
       expectedPurchasesWeekMid: mid,
     });
+    // #4238 W5 (8b): the plan's cost per result (credit terms) is frozen
+    // too, so Ari's suggestion is judged against the guidance the Host saw
+    // and recomputes to the same id until something real changes.
+    const costPerResult = Number(
+      (guidance as Record<string, unknown>).cost_per_result_cents,
+    );
     canonical.guidance_snapshot = {
       goal,
       known: guidance.ok === true,
       per_app: snapshot,
+      ...(guidance.ok === true && Number.isFinite(costPerResult) &&
+          costPerResult > 0
+        ? {
+          cost_per_result_cents: Math.round(costPerResult),
+          cost_per_result_high_cents: Math.round(costPerResult * BAND_HIGH),
+        }
+        : {}),
     };
   }
   return { ok: true };
