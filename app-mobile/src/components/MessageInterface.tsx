@@ -10,6 +10,9 @@ import {
   Platform,
   Dimensions,
   ActivityIndicator,
+  AccessibilityInfo,
+  Animated,
+  Easing,
   useWindowDimensions,
   type ListRenderItemInfo,
 } from "react-native";
@@ -133,10 +136,17 @@ import {
   COMPOSER_INPUT_MAX_HEIGHT,
   COMPOSER_LINE_HEIGHT,
   COMPOSER_MIN_HEIGHT,
+  DELETE_FOR_ME_UNDO_MS,
+  DELETE_FOR_ME_UNDO_SCREEN_READER_MS,
+  replyQuoteState,
+  tombstoneLine,
   type GroupPosition,
   type ReactionRow,
   type ReactionSummary,
 } from "../utils/threadModel";
+import { UnsentBubble } from "./chat/UnsentBubble";
+import { UnsendConfirmSheet, type UnsendConfirmRequest } from "./chat/UnsendConfirmSheet";
+import type { UnsendError } from "../services/messagingService";
 import { createComposerSendCoordinator, type ComposerSendCoordinator } from "../utils/composerSendGuard";
 import { TypingIndicator } from "./chat/TypingIndicator";
 import { useComposerLayout } from "../hooks/useComposerLayout";
@@ -231,9 +241,15 @@ interface ContextMenuState {
   messageId: string;
   content: string;
   isMe: boolean;
-  top: number;
   type: string;
   isSent: boolean;
+  /** Issue #4456: a bubble that never reached the server. */
+  isFailed: boolean;
+  /** Issue #4456: the unsent line. */
+  isTombstone: boolean;
+  isViewOnce: boolean;
+  /** Issue #4456: every message the menu acts on (all photos of an album). */
+  messageIds: string[];
 }
 
 const CLOSED_CONTEXT_MENU: ContextMenuState = {
@@ -241,9 +257,12 @@ const CLOSED_CONTEXT_MENU: ContextMenuState = {
   messageId: '',
   content: '',
   isMe: false,
-  top: 0,
   type: 'text',
   isSent: false,
+  isFailed: false,
+  isTombstone: false,
+  isViewOnce: false,
+  messageIds: [],
 };
 
 /** Issue #4114 Wave 3: show the scroll-to-latest button past this offset. */
@@ -292,8 +311,10 @@ interface Message {
   systemPayload?: CollabDeadEndBannerPayload;  // ORCH-1058B
   /** Issue #4114 Wave 3: direct_message_reactions rows for this message. */
   reactions?: ReactionRow[];
-  /** Issue #4114 Wave 3: unsent — hidden from the thread. */
+  /** Issue #4114 Wave 3: hidden from the thread (Issue #4456: a hidden removal or Delete for me). */
   unsent?: boolean;
+  /** Issue #4456: unsent by its author or removed by a group admin: shown as the unsent line. */
+  tombstone?: { kind: "sender" | "admin"; byUserId: string | null };
   /** Issue #4114 Wave 4: view once, who opened it, and the sender's local file while it uploads. */
   viewOnce?: boolean;
   viewOncePurged?: boolean;
@@ -328,8 +349,11 @@ interface ThreadRow {
     content: string;
     imageUrl?: string;
     isDeleted?: boolean;
+    deletedState?: "unsent" | "unavailable";
     messageId?: string;
   };
+  /** Issue #4456: the unsent line's text, for a tombstone row. */
+  tombstoneText?: string;
   isRead: boolean;
   dayLabel: string | null;
   showNewDivider: boolean;
@@ -395,6 +419,8 @@ interface Friend {
   eventPublicCard?: BusinessEventCard | null;
   isBroadcastOnly?: boolean;
   isSessionAdmin?: boolean;
+  /** Issue #4456: I created this plain friend group (its admin). */
+  isPlainGroupCreator?: boolean;
   notificationsMuted?: boolean;
   participantCount?: number;
   participants?: {
@@ -471,8 +497,13 @@ interface MessageInterfaceProps {
   onGroupConversationLeft?: () => void;
   /** Issue #4114 Wave 3: toggle your reaction; awaited, failures roll back and toast. */
   onToggleReaction?: (messageId: string, emoji: string) => Promise<void>;
-  /** Issue #4114 Wave 3: unsend your own message (after the confirm here). */
-  onUnsendMessage?: (messageId: string) => Promise<boolean>;
+  /**
+   * Issue #4456: unsend your own messages, or (a group admin) remove someone
+   * else's, after the confirm here. One call per row (an album is one call).
+   */
+  onUnsendMessages?: (messageIds: string[]) => Promise<{ ok: boolean; error: UnsendError | null }>;
+  /** Issue #4456: Delete for me; resolves with an Undo when it went through. */
+  onDeleteForMe?: (messageIds: string[]) => Promise<{ ok: boolean; undo?: () => Promise<boolean> }>;
   /** Issue #4114 Wave 3: report someone else's message; settles with the real outcome. */
   onReportMessage?: (
     message: { id: string; senderId: string; senderName: string; content: string },
@@ -594,7 +625,8 @@ function MessageInterfaceInner({
   onToggleMute,
   onGroupConversationLeft,
   onToggleReaction,
-  onUnsendMessage,
+  onUnsendMessages,
+  onDeleteForMe,
   onReportMessage,
   isLoadingMessages = false,
   onSessionNameUpdated,
@@ -876,6 +908,17 @@ function MessageInterfaceInner({
     onGroupSessionDeleted,
     onSessionNameUpdated,
   ]);
+  // Issue #4456: a friend group's admin may remove anyone's message (the
+  // server checks chat_group_is_admin again): a session group's admins and
+  // creator, a plain group's creator. Never in a 1:1 chat or an event chat.
+  const isGroupAdmin = useMemo(() => {
+    if (!isGroupChat || !currentUserId) return false;
+    if (isCollabSessionGroupChat) {
+      const me = sessionGroupInfo?.members.find((member) => member.userId === currentUserId);
+      return Boolean(me?.isAdmin || me?.isCreator || friend.isSessionAdmin);
+    }
+    return friend.isPlainGroupCreator === true;
+  }, [currentUserId, friend.isPlainGroupCreator, friend.isSessionAdmin, isCollabSessionGroupChat, isGroupChat, sessionGroupInfo?.members]);
   const queryClient = useQueryClient();
   // Amendment 1 (B-4): a "joined" / "added" group row arriving refetches who is in the chat.
   const groupJoinKey = useMemo(() => (isGroupChat ? groupJoinEventKey(messages) : ""), [isGroupChat, messages]);
@@ -1208,14 +1251,29 @@ function MessageInterfaceInner({
   const visibleMessages = useMemo(() => messages.filter((message) => !message.unsent), [messages]);
   // Issue #4114 Wave 7: consecutive photos of one album become one thread row
   // (the first photo, carrying the rest in albumItems).
+  // Issue #4456: an unsent album is one unsent line (its photos stay together
+  // in albumItems, so Delete for me covers them all).
   const threadMessages = useMemo<Message[]>(() => {
     const runs = groupAlbums(
-      visibleMessages.map((message) => ({ ...message, albumId: message.mediaAlbumId })),
+      visibleMessages.map((message) => ({ ...message, albumId: message.tombstone ? undefined : message.mediaAlbumId })),
     );
-    return runs.map((run) => {
+    const rows = runs.map((run) => {
       const items = run.map(({ albumId: _albumId, ...rest }) => rest as Message);
       return items.length > 1 ? { ...items[0], albumItems: items } : items[0];
     });
+    const folded: Message[] = [];
+    for (const row of rows) {
+      const head = folded[folded.length - 1];
+      if (
+        head?.tombstone && row.tombstone && row.mediaAlbumId &&
+        head.mediaAlbumId === row.mediaAlbumId && head.senderId === row.senderId
+      ) {
+        folded[folded.length - 1] = { ...head, albumItems: [...(head.albumItems ?? [head]), row] };
+      } else {
+        folded.push(row);
+      }
+    }
+    return folded;
   }, [visibleMessages]);
   const groupedMessages = useMemo(() => {
     if (!threadMessages.length) return [];
@@ -1661,24 +1719,30 @@ function MessageInterfaceInner({
 
   // Notification management
   // Issue #4114 Wave 3: stable, so list callbacks that toast stay stable.
+  // Issue #4456: a card can carry one action (Undo) and stay longer, with a
+  // countdown bar; tapping the action closes it.
   const showNotification = useCallback((
     title: string,
     message: string,
-    type: "success" | "error" | "info" = "success"
+    type: "success" | "error" | "info" = "success",
+    options?: { durationMs?: number; action?: { label: string; onPress: () => void } },
   ) => {
+    const durationMs = options?.durationMs ?? 3000;
     const notification = {
-      id: `local-${Date.now()}`,
+      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title,
       message,
       type,
       timestamp: Date.now(),
+      durationMs,
+      action: options?.action,
     };
     setNotifications((prev) => [...prev, notification]);
 
-    // Auto-dismiss after 3 seconds
+    // Auto-dismiss after 3 seconds (or the action's window)
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
-    }, 3000);
+    }, durationMs);
   }, []);
 
   const dismissNotification = (id: string) => {
@@ -1768,13 +1832,31 @@ function MessageInterfaceInner({
             <Text style={styles.notificationMessage}>{notification.message}</Text>
           ) : null}
         </View>
+        {notification.action ? (
+          <TouchableOpacity
+            onPress={() => {
+              dismissNotification(notification.id);
+              notification.action.onPress();
+            }}
+            style={styles.notificationAction}
+            accessibilityRole="button"
+            accessibilityLabel={notification.action.label}
+            testID="chat-notification-action"
+          >
+            <Text style={styles.notificationActionText}>{notification.action.label}</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onPress={() => dismissNotification(notification.id)}
           style={styles.dismissButton}
-          accessibilityLabel="Dismiss notification"
+          accessibilityRole="button"
+          accessibilityLabel={t('chat:a11yDismissNotice')}
         >
           <Icon name="close" size={14} color={colors.gray500} />
         </TouchableOpacity>
+        {notification.action ? (
+          <NotificationCountdown durationMs={notification.durationMs} color={v.stripeColor} />
+        ) : null}
       </View>
     );
   };
@@ -2348,6 +2430,34 @@ function MessageInterfaceInner({
     [brandChannel, visibleMessages],
   );
 
+  // Issue #4456: the unsent line ("You unsent a message", "Ana unsent a
+  // message", "Sam removed a message", "Sam removed your message"), with
+  // first names.
+  const tombstoneTextFor = useCallback((message: Message): string => {
+    const tombstone = message.tombstone;
+    if (!tombstone) return '';
+    const firstName = (name: string) => cleanName(name).split(' ')[0] || name;
+    const actorId = tombstone.byUserId;
+    const actorParticipant = actorId ? headerParticipants.find((participant) => participant.id === actorId) : undefined;
+    const actorName = actorId === currentUserId
+      ? (currentUserName || '')
+      : actorParticipant
+        ? getHeaderParticipantName(actorParticipant)
+        : !isGroupChat
+          ? friend.name
+          : t('chat:someone');
+    const line = tombstoneLine({
+      kind: tombstone.kind,
+      authorIsMe: message.isMe,
+      actorIsMe: !!actorId && actorId === currentUserId,
+      authorName: firstName(getMessageSenderName(message)),
+      actorName: firstName(actorName),
+    });
+    return t(line.key, line.params);
+    // getMessageSenderName and getHeaderParticipantName read only the fields listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, currentUserName, friend.name, headerParticipants, isGroupChat, t]);
+
   // Rows are prepared once per change to the messages (not per keystroke), so
   // MessageBubble (memoised) gets the same props while you type.
   const threadRows = useMemo<ThreadRow[]>(() => {
@@ -2451,8 +2561,11 @@ function MessageInterfaceInner({
         }),
         reactions,
         myReactions: reactions.filter((reaction) => reaction.mine).map((reaction) => reaction.emoji),
+        // Issue #4456: an unsent original reads "Message unsent" (no
+        // thumbnail); one deleted for me or not loaded, "Message not available"
+        // (not tappable).
         replyTo: message.replyToId
-          ? ref
+          ? replyQuoteState(ref) === 'live' && ref
             ? {
                 senderName: getMessageSenderName(ref),
                 content: ref.content,
@@ -2461,8 +2574,11 @@ function MessageInterfaceInner({
                 imageUrl: ref.type === 'image' && !ref.viewOnce ? peekChatMediaUrl(ref.fileUrl) ?? undefined : undefined,
                 messageId: ref.id,
               }
-            : { senderName: '', content: '', isDeleted: true, messageId: message.replyToId }
+            : replyQuoteState(ref) === 'unsent' && ref
+              ? { senderName: getMessageSenderName(ref), content: '', isDeleted: true, deletedState: 'unsent', messageId: ref.id }
+              : { senderName: '', content: '', isDeleted: true, deletedState: 'unavailable' }
           : undefined,
+        tombstoneText: message.tombstone ? tombstoneTextFor(message) : undefined,
         isRead: message.isMe && !message.id.startsWith("temp-") && (message.isRead === true),
         planQuote: message.planId && message.planQuote && message.type !== 'plan' && !message.isSystem
           ? {
@@ -2497,6 +2613,7 @@ function MessageInterfaceInner({
     openedViewOnce,
     brandChannel,
     eventMarkerIds,
+    tombstoneTextFor,
   ]);
   const threadRowsRef = useRef(threadRows);
   threadRowsRef.current = threadRows;
@@ -2721,17 +2838,24 @@ function MessageInterfaceInner({
     setRevealedTimestampId((prev) => (prev === message.id ? null : message.id));
   }, []);
 
-  const handleBubbleLongPress = useCallback((row: ThreadRow, pageY: number) => {
-    // Issue #4114 Wave 4: view once has no long-press menu (no copy, forward or save).
-    if (row.message.viewOnce) return;
+  // Issue #4456: view once now has a menu too (Delete for me, Unsend or
+  // Report; no reactions, Reply or Copy). A message still uploading has none
+  // (its own cancel stays). An album's menu acts on all of its photos.
+  const handleBubbleLongPress = useCallback((row: ThreadRow) => {
+    const local = row.message.id.startsWith('temp-');
+    if (local && !row.message.failed) return;
     setContextMenu({
       visible: true,
       messageId: row.message.id,
       content: row.message.content,
       isMe: row.message.isMe,
-      top: pageY,
       type: row.message.type,
-      isSent: !row.message.id.startsWith('temp-') && !row.message.failed,
+      isSent: !local && !row.message.failed,
+      isFailed: row.message.failed === true,
+      isTombstone: Boolean(row.message.tombstone),
+      isViewOnce: row.message.viewOnce === true,
+      messageIds: (row.message.albumItems && row.message.albumItems.length > 1 ? row.message.albumItems : [row.message])
+        .map((item) => item.id),
     });
   }, []);
 
@@ -2803,22 +2927,82 @@ function MessageInterfaceInner({
     [contextMenu.messageId, threadRows],
   );
 
-  const handleUnsendRequest = useCallback((messageId: string) => {
-    if (!onUnsendMessage) return;
+  // ── Issue #4456: Unsend / Remove for everyone (confirm first) and Delete for me ──
+  const [unsendRequest, setUnsendRequest] = useState<UnsendConfirmRequest | null>(null);
+  const [unsendBusy, setUnsendBusy] = useState(false);
+  const [unsendError, setUnsendError] = useState<string | null>(null);
+  const closeUnsendConfirm = useCallback(() => {
+    setUnsendRequest(null);
+    setUnsendError(null);
+  }, []);
+
+  const menuPreviewFor = useCallback((ids: string[]): string => {
+    const first = messages.find((candidate) => candidate.id === ids[0]);
+    if (!first) return '';
+    if (ids.length > 1) return t('chat:actionUnsendAlbum', { count: ids.length });
+    if (first.type === 'image') return t('chat:photoPreview');
+    if (first.type === 'video') return t('chat:videoPreview');
+    if (first.type === 'file') return first.fileName || t('chat:filePreview');
+    if (first.type === 'card') return (first.cardPayload as { title?: string } | undefined)?.title || first.content;
+    return first.content;
+  }, [messages, t]);
+
+  // The confirm opens after the menu sheet has left (no sheet inside a closing sheet).
+  const requestUnsend = useCallback((mode: UnsendConfirmRequest['mode'], ids: string[]) => {
+    if (!onUnsendMessages || ids.length === 0) return;
+    const preview = menuPreviewFor(ids);
     setTimeout(() => {
-      Alert.alert(t('chat:unsendTitle'), t('chat:unsendBody'), [
-        { text: t('common:cancel'), style: 'cancel' },
-        {
-          text: t('chat:actionUnsend'),
-          style: 'destructive',
-          onPress: async () => {
-            const done = await onUnsendMessage(messageId);
-            if (done) showNotification(t('chat:unsentToast'), '', 'info');
-          },
-        },
-      ]);
+      setUnsendError(null);
+      setUnsendRequest({ ids, mode, preview });
     }, MENU_PRESENT_AFTER_DISMISS_MS);
-  }, [onUnsendMessage, showNotification, t]);
+  }, [menuPreviewFor, onUnsendMessages]);
+
+  const confirmUnsend = useCallback(async () => {
+    if (!unsendRequest || !onUnsendMessages || unsendBusy) return;
+    setUnsendBusy(true);
+    setUnsendError(null);
+    const result = await onUnsendMessages(unsendRequest.ids);
+    setUnsendBusy(false);
+    if (result.ok) {
+      // The unsent line is the confirmation (no extra toast).
+      setUnsendRequest(null);
+      return;
+    }
+    setUnsendError(
+      result.error === 'offline'
+        ? t('chat:actionsOffline')
+        : result.error === 'not_allowed'
+          ? t('chat:unsendNotAllowed')
+          : t('chat:unsendFailed'),
+    );
+  }, [onUnsendMessages, t, unsendBusy, unsendRequest]);
+
+  const runDeleteForMe = useCallback(async (ids: string[]) => {
+    if (!onDeleteForMe || ids.length === 0) return;
+    const result = await onDeleteForMe(ids);
+    if (!result.ok) {
+      showNotification(t('chat:deleteForMeFailed'), '', 'error');
+      return;
+    }
+    const undo = result.undo;
+    const screenReader = await AccessibilityInfo.isScreenReaderEnabled().catch(() => false);
+    const duration = screenReader ? DELETE_FOR_ME_UNDO_SCREEN_READER_MS : DELETE_FOR_ME_UNDO_MS;
+    AccessibilityInfo.announceForAccessibility(`${t('chat:deletedForYouToast')}. ${t('chat:undo')}.`);
+    showNotification(t('chat:deletedForYouToast'), '', 'info', {
+      durationMs: duration,
+      action: undo
+        ? {
+            label: t('chat:undo'),
+            onPress: () => {
+              HapticFeedback.light();
+              void undo().then((restored) => {
+                if (!restored) showNotification(t('chat:deleteForMeFailed'), '', 'error');
+              });
+            },
+          }
+        : undefined,
+    });
+  }, [onDeleteForMe, showNotification, t]);
 
   const handleReportMessageRequest = useCallback((messageId: string) => {
     const row = threadRowsRef.current.find((candidate) => candidate.message.id === messageId);
@@ -2909,6 +3093,26 @@ function MessageInterfaceInner({
         <View style={styles.newMessagesDividerLine} />
       </View>
     ) : null;
+
+    // Issue #4456: the unsent line. Long press offers Delete for me only.
+    if (item.message.tombstone) {
+      return (
+        <>
+          <UnsentBubble
+            text={item.tombstoneText ?? ''}
+            timeLabel={new Date(item.message.timestamp).toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' })}
+            isMe={item.message.isMe}
+            groupPosition={item.groupPosition}
+            onLongPress={onDeleteForMe ? () => handleBubbleLongPress(item) : undefined}
+            bottomGap={item.bottomGap}
+            topGap={item.topGap}
+          />
+          {eventMarker}
+          {newDivider}
+          {daySeparator}
+        </>
+      );
+    }
 
     // Issue #4261: a plan card, full width, read from the chat's plan list.
     const planCardPayload = item.message.cardPayload as { kind?: string; planId?: string } | undefined;
@@ -3054,7 +3258,7 @@ function MessageInterfaceInner({
               }
               handleBubblePress(item);
             }}
-            onLongPress={(e) => handleBubbleLongPress(item, e.nativeEvent.pageY)}
+            onLongPress={() => handleBubbleLongPress(item)}
             delayLongPress={500}
           >
             <MessageBubble
@@ -3117,6 +3321,7 @@ function MessageInterfaceInner({
     handleSystemTokenPress,
     isCollabChat,
     onCancelUpload,
+    onDeleteForMe,
     onRetryMessage,
     onToggleReaction,
     onViewProfile,
@@ -3144,6 +3349,7 @@ function MessageInterfaceInner({
   // thread (hooks/useChatBackHandler).
   useChatBackHandler(
     {
+      unsendConfirm: unsendRequest !== null,
       contextMenu: contextMenu.visible,
       attachmentMenu: showAttachmentMenu,
       imagePreview: !!lightboxUrl || !!videoUrl || !!viewOncePhotoUrl || !!viewOnceVideoUrl,
@@ -3161,6 +3367,9 @@ function MessageInterfaceInner({
       collabPrefs: collabPrefsLink.visible,
     },
     {
+      unsendConfirm: () => {
+        if (!unsendBusy) closeUnsendConfirm();
+      },
       contextMenu: closeContextMenu,
       attachmentMenu: () => setShowAttachmentMenu(false),
       imagePreview: closeMediaViewers,
@@ -3509,12 +3718,17 @@ function MessageInterfaceInner({
           report are wired; Copy only on text. */}
       <MessageContextMenu
         visible={contextMenu.visible}
-        position={{ top: contextMenu.top }}
         messageId={contextMenu.messageId}
         messageContent={contextMenu.content}
         isOwnMessage={contextMenu.isMe}
         messageType={contextMenu.type}
         isSent={contextMenu.isSent}
+        isFailed={contextMenu.isFailed}
+        isTombstone={contextMenu.isTombstone}
+        isViewOnce={contextMenu.isViewOnce}
+        isGroupAdmin={isGroupAdmin}
+        albumCount={contextMenu.messageIds.length}
+        isOffline={isOffline}
         existingReactions={contextMenuMyReactions}
         onReaction={(msgId, emoji) => {
           void toggleReaction(msgId, emoji);
@@ -3526,9 +3740,19 @@ function MessageInterfaceInner({
         onCopy={() => {
           showNotification(t('chat:copied'), "", "info");
         }}
-        onDelete={onUnsendMessage ? handleUnsendRequest : undefined}
+        onUnsend={onUnsendMessages ? () => requestUnsend('unsend', contextMenu.messageIds) : undefined}
+        onRemoveForEveryone={onUnsendMessages && isGroupAdmin ? () => requestUnsend('remove', contextMenu.messageIds) : undefined}
+        onDeleteForMe={onDeleteForMe ? () => void runDeleteForMe(contextMenu.messageIds) : undefined}
+        onNeedsConnection={() => showNotification(t('chat:actionsOffline'), '', 'error')}
         onReport={onReportMessage ? handleReportMessageRequest : undefined}
         onClose={closeContextMenu}
+      />
+      <UnsendConfirmSheet
+        request={unsendRequest}
+        busy={unsendBusy}
+        error={unsendError}
+        onCancel={closeUnsendConfirm}
+        onConfirm={() => void confirmUnsend()}
       />
 
       {/* Issue #4114 Wave 4: media viewers. Photos open in the shared
@@ -4246,6 +4470,25 @@ function MessageInterfaceInner({
   );
 }
 
+/** Issue #4456: the Undo card's 3pt countdown bar (kept under Reduce motion). */
+function NotificationCountdown({ durationMs, color }: { durationMs: number; color: string }): React.ReactElement {
+  const progress = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const animation = Animated.timing(progress, { toValue: 0, duration: durationMs, easing: Easing.linear, useNativeDriver: false });
+    animation.start();
+    return () => animation.stop();
+  }, [durationMs, progress]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.notificationCountdown,
+        { backgroundColor: color, width: progress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) },
+      ]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   // Issue #4114 Wave 5 (D12): "Collaborating · Active now" under a 1:1 collab's name.
   dmCollabSubtitle: {
@@ -4625,16 +4868,38 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 19,
   },
+  // Issue #4456: 44pt target (it was 24); the icon stays 14.
   dismissButton: {
-    width: 24,
-    height: 24,
+    width: 44,
+    height: 44,
     backgroundColor: "transparent",
-    borderRadius: 12,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    alignSelf: "flex-start",
-    marginTop: 2,
+    alignSelf: "center",
+    marginVertical: -12,
+    marginRight: -10,
+  },
+  notificationAction: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginVertical: -12,
+  },
+  notificationActionText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#B85A16",
+  },
+  notificationCountdown: {
+    position: "absolute",
+    left: 0,
+    bottom: 0,
+    height: 3,
   },
   // ORCH-0435: Day separator
   // Issue #4114: small spinner at the top while older history loads.

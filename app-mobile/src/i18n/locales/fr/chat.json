@@ -190,7 +190,6 @@
   "unsendBody": "Il sera retiré pour tout le monde dans cette discussion.",
   "unsendFailed": "Impossible de retirer le message. Réessayez.",
   "unsendTitle": "Retirer ce message ?",
-  "unsentToast": "Message retiré",
   "yesterday": "Hier",
   "you": "vous",
   "a11yReaction_many": "{{emoji}}, {{count}} réactions",

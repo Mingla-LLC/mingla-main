@@ -190,7 +190,6 @@
   "unsendBody": "Bu sohbetteki herkes için kaldırılacak.",
   "unsendFailed": "Gönderim geri alınamadı. Lütfen tekrar dene.",
   "unsendTitle": "Bu mesajın gönderimi geri alınsın mı?",
-  "unsentToast": "Gönderim geri alındı",
   "yesterday": "Dün",
   "you": "sen",
   "a11yReaction_one": "{{emoji}}, {{count}} tepki",

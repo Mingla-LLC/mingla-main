@@ -400,6 +400,11 @@ export const useAuthSimple = () => {
                 logger.auth('User exists but no profile — creating new profile');
                 try {
                   const emailName = session.user.email?.split("@")[0] || "User";
+                  // Issue #4456: only real profiles columns. No photo column
+                  // (it was a non-existent profile_image, so the insert always
+                  // failed) and no username: usernames are unique, and the
+                  // signup trigger (handle_new_user) owns them, with a suffix
+                  // on a collision.
                   const { data: newProfile, error: createError } =
                     await supabase
                       .from("profiles")
@@ -409,15 +414,25 @@ export const useAuthSimple = () => {
                         display_name: emailName,
                         first_name: emailName,
                         last_name: "",
-                        username: emailName,
-                        profile_image: null,
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString(),
                       })
                       .select()
                       .single();
 
-                  if (createError) {
+                  if (createError?.code === "23505") {
+                    // The signup trigger created it meanwhile: read that one.
+                    const { data: existing, error: rereadError } = await supabase
+                      .from("profiles")
+                      .select("*")
+                      .eq("id", session.user.id)
+                      .maybeSingle();
+                    if (rereadError || !existing) {
+                      console.error("Error reading the profile after a create conflict:", rereadError);
+                    } else if (mounted) {
+                      setProfile(existing);
+                    }
+                  } else if (createError) {
                     console.error("Error creating profile:", createError);
                   } else {
                     if (mounted) setProfile(newProfile);

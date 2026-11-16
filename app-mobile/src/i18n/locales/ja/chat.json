@@ -190,7 +190,6 @@
   "unsendBody": "このチャットの全員の画面から削除されます。",
   "unsendFailed": "送信を取り消せませんでした。もう一度お試しください。",
   "unsendTitle": "このメッセージの送信を取り消しますか？",
-  "unsentToast": "送信を取り消しました",
   "yesterday": "昨日",
   "you": "あなた",
   "a11yReaction_other": "{{emoji}}、リアクション{{count}}件",
