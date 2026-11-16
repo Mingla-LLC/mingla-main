@@ -169,9 +169,10 @@ begin
   perform pg_temp.t4255_check('P-1', 'partner areas equal admin areas',
     pg_temp.t4255_as('partner', $q$select (public.admin_team_my_access()->'areas')::text$q$),
     pg_temp.t4255_as('admin', $q$select (public.admin_team_my_access()->'areas')::text$q$));
+  -- #4452: full-admin seats (partner included) also hold website.
   perform pg_temp.t4255_check('P-1', 'partner areas',
     pg_temp.t4255_as('partner', $q$select (public.admin_team_my_access()->'areas')::text$q$),
-    '["admin_console", "team_manage", "crm", "beta_leads", "email_drafts"]');
+    '["admin_console", "team_manage", "crm", "beta_leads", "email_drafts", "website"]');
   perform pg_temp.t4255_check('P-2', 'growth stays out of admin',
     pg_temp.t4255_as('growth', $q$select public.is_admin_user()::text || '/' || public.admin_team_can('admin_console')::text || '/' || public.admin_team_can('team_manage')::text$q$),
     'false/false/false');

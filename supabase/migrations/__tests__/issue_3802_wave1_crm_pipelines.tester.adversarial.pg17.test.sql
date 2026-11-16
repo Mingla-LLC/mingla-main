@@ -1264,10 +1264,11 @@ declare
   v_code text;
 begin
   -- #4255 (D3, D4): owner, admin and partner are equal full-admin seats.
-  perform pg_temp.x_eq('XA-13', 'owner areas',   public.admin_team_role_areas('owner')::text,   '{admin_console,team_manage,crm,beta_leads,email_drafts}');
-  perform pg_temp.x_eq('XA-13', 'admin areas',   public.admin_team_role_areas('admin')::text,   '{admin_console,team_manage,crm,beta_leads,email_drafts}');
+  -- #4452: every full-admin seat also holds website (the Website editor area).
+  perform pg_temp.x_eq('XA-13', 'owner areas',   public.admin_team_role_areas('owner')::text,   '{admin_console,team_manage,crm,beta_leads,email_drafts,website}');
+  perform pg_temp.x_eq('XA-13', 'admin areas',   public.admin_team_role_areas('admin')::text,   '{admin_console,team_manage,crm,beta_leads,email_drafts,website}');
   perform pg_temp.x_eq('XA-13', 'growth areas',  public.admin_team_role_areas('growth')::text,  '{role_home,crm,beta_leads,email_drafts}');
-  perform pg_temp.x_eq('XA-13', 'partner areas', public.admin_team_role_areas('partner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
+  perform pg_temp.x_eq('XA-13', 'partner areas', public.admin_team_role_areas('partner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts,website}');
   foreach v_role in array array['OWNER','Owner',' owner','owner ','admin_console','superadmin','service_role','authenticated','anon',
                                 'postgres','member','invited','revoked','','*','%','owner,admin','growth;partner'] loop
     perform pg_temp.x_eq('XA-13', 'no areas for the role word [' || v_role || ']', public.admin_team_role_areas(v_role)::text, '{}');

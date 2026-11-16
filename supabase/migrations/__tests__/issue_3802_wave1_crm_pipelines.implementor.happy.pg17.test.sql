@@ -286,13 +286,13 @@ begin
   end loop;
 
   perform pg_temp.t3802w_check('W1-2', 'areas: owner',
-    public.admin_team_role_areas('owner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
+    public.admin_team_role_areas('owner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts,website}');
   perform pg_temp.t3802w_check('W1-2', 'areas: admin',
-    public.admin_team_role_areas('admin')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
+    public.admin_team_role_areas('admin')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts,website}');
   perform pg_temp.t3802w_check('W1-2', 'areas: growth',
     public.admin_team_role_areas('growth')::text, '{role_home,crm,beta_leads,email_drafts}');
   perform pg_temp.t3802w_check('W1-2', 'areas: partner',
-    public.admin_team_role_areas('partner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts}');
+    public.admin_team_role_areas('partner')::text, '{admin_console,team_manage,crm,beta_leads,email_drafts,website}');
   perform pg_temp.t3802w_check('W1-2', 'areas: anything else',
     public.admin_team_role_areas('nope')::text || public.admin_team_role_areas(null)::text, '{}{}');
   perform pg_temp.t3802w_check('W1-2', 'growth access lists its areas in order',

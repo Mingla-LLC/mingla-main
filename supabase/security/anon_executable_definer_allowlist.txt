@@ -29,6 +29,10 @@ ad_pixel_public_config(p_country_code text)
 blog_public_post_embeds(p_slug text)
 # #4137: one high-entropy, expiring preview token resolves one immutable review payload; the token is non-enumerable and returns no staff identity.
 blog_public_preview(p_token text)
+# #4452: usemingla.com page content; live published page blocks, live forms (no routing owners, inboxes, automations or staff ids) and form page slugs only, the same public facts the pages render.
+site_public_content()
+# #4452: one high-entropy, one-hour preview token resolves one page draft (the blog_public_preview pattern); a malformed, unknown or expired token returns NULL and no staff identity.
+site_public_preview(p_token text)
 # #4318: the /links week: public, published, upcoming listings for the next seven days under the discover_v2_items eligibility rule; column allow-list only, no ids, buyers or authoring fields, a withheld address gives no place text and a one-decimal point, capped at 500 rows.
 links_page_week()
 # #4318: the /links quiet week: at most 6 Explorer-servable, operational places with a stored thumb, in one live city by id or within 100 km of a point the page passes; name, category, city label, point and bucket-relative thumb only, no address or private column.
