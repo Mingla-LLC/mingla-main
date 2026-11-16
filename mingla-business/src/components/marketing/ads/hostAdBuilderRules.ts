@@ -59,6 +59,27 @@ export function shouldHideHostAdDock(platform: string, keyboardOpen: boolean): b
   return platform === "android" && keyboardOpen;
 }
 
+/**
+ * #4238 (iOS P3-1): the keyboard-aware scroll aligns the focused field's caret
+ * line above the keyboard, not the helper line under it, so an age error line
+ * sat behind the Done bar. When that line is showing, the field's bottom offset
+ * grows by the Done bar the keyboard carries, the caret residual and the clear
+ * gap, plus room for the error line itself, so field and line both show above
+ * the bar. Android and web get no extra offset (Android hides the dock; web has
+ * no accessory bar). Returns null when the default offset should stand.
+ */
+export const HOST_AD_CARET_BELOW_FIELD_IOS = 13.5;
+export const HOST_AD_ERROR_LINE_ROOM = 28;
+export function hostAdErrorLineBottomOffset(
+  platform: string,
+  doneBarOccupied: number,
+  clearance: number,
+  errorLineShown: boolean,
+): number | null {
+  if (platform !== "ios" || !errorLineShown) return null;
+  return doneBarOccupied + HOST_AD_CARET_BELOW_FIELD_IOS + clearance + HOST_AD_ERROR_LINE_ROOM;
+}
+
 /** The router calls the back link needs (expo-router's router fits). */
 export type HostAdBackRouter = {
   canGoBack: () => boolean;

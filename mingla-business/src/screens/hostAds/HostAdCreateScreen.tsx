@@ -43,6 +43,7 @@ import {
   hostAdScheduleIsos,
   hostAdScheduleLimit,
   hostAdScrollBottomPadding,
+  hostAdErrorLineBottomOffset,
   shouldHideHostAdDock,
   hostAdAgeRangeValid,
   initialHostAdConnections,
@@ -161,6 +162,7 @@ import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
 import { hostAdPageGoal } from "../../components/marketing/ads/hostAdGoal";
 import type {
   HostAdConnection,
@@ -1162,6 +1164,15 @@ export default function HostAdCreateRoute(): React.ReactElement {
         : !hostAdAgeRangeValid(ageMin, ageMax)
           ? hb("audience.ageError")
           : null;
+  const ageErrorLine = !hostAdAgeRangeValid(ageMin, ageMax) ? hb("audience.ageError") : null;
+  // #4238 iOS P3-1: room for the age error line above the keyboard Done bar.
+  const errorLineOffset = hostAdErrorLineBottomOffset(
+    Platform.OS,
+    DONE_BAR_OCCUPIED,
+    MIN_VISIBLE_CLEARANCE,
+    ageErrorLine !== null,
+  );
+  const scrollOffsetProps = (errorLineOffset === null ? {} : { bottomOffset: errorLineOffset }) as object;
   const platformsError =
     appChoice === "host" && planConnections.length === 0 ? hb("platforms.turnOnOne") : null;
   // #4238 W6a: one money unit on screen (pay); credit goes to the server.
@@ -2500,6 +2511,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 />
               </View>
             </View>
+            {ageErrorLine ? (
+              <Text style={[bs.caption, styles.errorText]} accessibilityLiveRegion="polite" testID="host-ad-age-error">
+                {ageErrorLine}
+              </Text>
+            ) : null}
             <Text style={bs.caption}>{hb("audience.ageFloor")}</Text>
             <Text style={bs.caption}>{hb("audience.gender")}</Text>
             <ChipRow
@@ -3561,6 +3577,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         ref={scrollRef as never}
         contentContainerStyle={[styles.scroll, scrollBottomStyle]}
         keyboardShouldPersistTaps="handled"
+        {...scrollOffsetProps}
       >
         {!launched ? (
           <View style={styles.progressWrap}>
