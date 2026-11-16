@@ -129,9 +129,12 @@ const EXPECTED_PLAN = Object.freeze({
   // declared gates (issue-4420-host-chrome-tokens-only and
   // issue-4420-host-wiring, +4 batch:A executions: self-test and plain).
   // Read off the plan command as above.
-  executions: 1061,
-  loadsSeconds: [385.7, 385.7, 385.7],
-  counts: [353, 354, 354],
+  // [TEST-MOD-APPROVED #4238] Re-derived after #4238 added the locally declared
+  // Host ads wiring gate (issue-4238-host-ads-wiring, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
+  executions: 1063,
+  loadsSeconds: [385.7, 385.8, 385.8],
+  counts: [353, 355, 355],
 });
 
 const tempDir = (label) =>
