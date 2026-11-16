@@ -58,6 +58,17 @@ test('a. the served CSP allows the four pixel scripts and their beacons', async 
   assert.match(reportOnly, /img-src 'self' data: blob: https:/)
   // Every loader URL the module injects is covered by script-src.
   for (const src of Object.values(pixels.MARKETING_PIXEL_SCRIPTS)) assert.ok(scriptSrc.includes(new URL(src).origin), src)
+  // #4238 W7: every loader and config-script origin (Snap fetches its config
+  // from tr.snapchat.com) is in script-src of BOTH policies.
+  const reportScriptSrc = /script-src ([^;]+)/.exec(reportOnly)[1].split(' ')
+  for (const [provider, origins] of Object.entries(pixels.MARKETING_PIXEL_SCRIPT_ORIGINS)) {
+    assert.ok(origins.includes(new URL(pixels.MARKETING_PIXEL_SCRIPTS[provider]).origin), `${provider} lists its loader origin`)
+    for (const origin of origins) {
+      assert.ok(scriptSrc.includes(origin), `enforced script-src has ${provider} ${origin}`)
+      assert.ok(reportScriptSrc.includes(origin), `report-only script-src has ${provider} ${origin}`)
+    }
+  }
+  assert.ok(pixels.MARKETING_PIXEL_SCRIPT_ORIGINS.snap.includes('https://tr.snapchat.com'))
 })
 
 test('b. ads on: four markers, each pixel inited with its id, PageView once per path, ViewContent on /host/*', () => {
