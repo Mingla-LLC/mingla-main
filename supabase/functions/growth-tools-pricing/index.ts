@@ -1135,7 +1135,7 @@ if (import.meta.main) {
 // #4452 §6.4 (security): the anonymous web lane gets only the preview allowlist
 // (the full report is reached only through growth-tools-report with the emailed
 // token). The app lane is unchanged.
-// MINGLA-INVARIANT: I-4452-REPORT-PREVIEW-ONLY | issue #4452 | the anonymous web lane returns only the preview allowlist (issue_4452_minimise tests).
+// Invariant I-4452-REPORT-PREVIEW-ONLY (declared in its test): the anonymous web lane returns only the preview allowlist (issue_4452_minimise tests).
 function pick4452(o: unknown, path: string[]): unknown {
   let v: unknown = o;
   for (const k of path) {

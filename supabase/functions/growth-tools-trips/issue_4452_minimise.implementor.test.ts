@@ -1,4 +1,5 @@
 // #4452 §6.4–6.5 (SC-137, SC-138, SC-139): the anonymous web lane of the four
+// MINGLA-INVARIANT: I-4452-REPORT-PREVIEW-ONLY | issue #4452 | the anonymous web lane of the four tool run functions returns only the preview allowlist; the app lane keeps the full report.
 // tools returns the preview allowlist only, and a trip whose live prices did
 // not come back is "unpriced" (no price, never "$0").
 // The handler-level halves (web body has no `report`; the app lane still gets

@@ -11,7 +11,7 @@
 --      and admin_forms_list (it reads M2 and M3).
 --   5. Cron: the sender every 5 minutes (vault bearer) and a daily retention job.
 --
--- MINGLA-INVARIANT: I-4452-CONSENT-GATES-FOLLOWUPS | issue #4452 | a follow-up is
+-- Invariant I-4452-CONSENT-GATES-FOLLOWUPS (declared in its test): a follow-up is
 -- never sent without marketing_consent, nor to a suppressed or unsubscribed
 -- email (forms_send_gate; issue_4452_automations pg17 + sender tests).
 --

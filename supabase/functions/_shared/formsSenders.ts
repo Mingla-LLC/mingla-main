@@ -7,7 +7,7 @@
 // support@ and unsubscribe@ are not used; only the https one-click URL is.
 // Domain-level Resend verification on usemingla.com covers every local part.
 //
-// MINGLA-INVARIANT: I-4452-TEAM-ALERT-TO | issue #4452 | team alerts go to exactly info@ and seth@ (sender tests A1-T-10).
+// Invariant I-4452-TEAM-ALERT-TO (declared in its test): team alerts go to exactly info@ and seth@ (sender tests A1-T-10).
 
 export const TEAM_ALERT_TO = ["info@usemingla.com", "seth@usemingla.com"] as const;
 

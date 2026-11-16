@@ -72,7 +72,7 @@
 
   /* #4452 §7.1 the Admin refresh tokens (design v13, exact). The --color-*
      variables below map onto them so every page inherits the refresh.
-     MINGLA-INVARIANT: I-4452-ADMIN-CONTRAST | issue #4452 | every admin text/background
+     Invariant I-4452-ADMIN-CONTRAST (declared in its test): every admin text/background
      token pair is >= 4.5:1 in light and dark (issue4452_admin_contrast test). */
   --a-bg:#f6f5f1;
   --a-panel:#ffffff;

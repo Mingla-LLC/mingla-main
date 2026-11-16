@@ -1,11 +1,14 @@
 // #4452 T-2.2–2.4, T-2.5e, T-2.6, T-2.7c (pure parts): spots, blocks, pop-up rules,
 // the client failure copy and the shared form contract the page uses.
 // Run from mingla-marketing/: node --test lib/__tests__/issue-4452-site-blocks.implementor.test.mjs
+// MINGLA-INVARIANT: I-4452-NO-BLOCKS-NO-CHANGE | issue #4452 | with no published content a page's HTML is unchanged (a spot with no block renders nothing).
+// MINGLA-INVARIANT: I-4452-SITE-PAGE-REGISTRY | issue #4452 | every public route under app/** is in the site page registry or EXCLUDED with a reason (scripts/issue-4452-site-manifest.check.mjs).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { after, test } from 'node:test'
 import { loader, MARKETING } from './issue-4452-ts-loader.mjs'
+import { missingRoutes } from '../../scripts/issue-4452-site-manifest.check.mjs'
 
 const L = loader('issue-4452-blocks-')
 after(L.cleanup)
@@ -129,4 +132,14 @@ test('T-2.6a SC-117 /apply: an old slug 308s to the current one; unknown is the 
   assert.match(p, /permanentRedirect\(`\/apply\/\$\{r\.redirect\}`\)/)
   assert.match(p, /if \(!r\) notFound\(\)/)
   assert.match(p, /robots: own\.index \? undefined : \{ index: false, follow: false \}/)
+})
+
+test('T-2.1 SC-90 every public route is in the site page registry or EXCLUDED (I-4452-SITE-PAGE-REGISTRY)', () => {
+  const registry = JSON.parse(read('lib/site-pages/registry.json'))
+  assert.deepEqual(missingRoutes(path.join(MARKETING, 'app'), registry), [])
+  // Fail-on-revert: dropping a listed page from the registry is caught.
+  const first = registry.pages.find((p) => p.path !== '/')
+  assert.ok(first, 'the registry lists at least one page besides home')
+  const dropped = { ...registry, pages: registry.pages.filter((p) => p.path !== first.path) }
+  assert.ok(missingRoutes(path.join(MARKETING, 'app'), dropped).includes(first.path), `dropping ${first.path} must fail the check`)
 })

@@ -1,4 +1,5 @@
 // #4452 forms-automation-sender (T-5.1, 5.10, 5.11, 5.15; A1-T-10; SC-62, 74, 75, 82, A1-SC-28).
+// MINGLA-INVARIANT: I-4452-TEAM-ALERT-TO | issue #4452 | a form team alert goes to exactly info@ and seth@, Reply-To the person, never to the person (A1-T-10).
 // Hermetic: the real sender over a scripted gate and a captured Resend fetch.
 import { assert, assertEquals, assertFalse } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { TEAM_ALERT_TO } from "../_shared/formsSenders.ts";

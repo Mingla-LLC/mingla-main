@@ -250,7 +250,7 @@ export function appStatusLabel(value: string | null | undefined): string {
 // existing snapshotAudience then leaves out staff/test, invalid, duplicate,
 // suppressed and (for "leads") no-consent people under its existing reasons.
 //
-// MINGLA-INVARIANT: I-4452-LEADS-EMAIL-CONSENT | issue #4452 | a Leads list send reaches only
+// Invariant I-4452-LEADS-EMAIL-CONSENT (declared in its test): a Leads list send reaches only
 // marketing_consent 'yes' people; a reply is blocked only by a full ('all') opt-out
 // (issue_4452_leads_audience test).
 

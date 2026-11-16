@@ -4,7 +4,7 @@
 // scripts/issue-4452-site-manifest.mjs writes from this registry at prebuild.
 // scripts/issue-4452-site-manifest.check.mjs fails the build when a public
 // route under app/** is neither here nor in EXCLUDED (with a reason).
-// MINGLA-INVARIANT: I-4452-SITE-PAGE-REGISTRY | issue #4452 | every public route is in the registry or EXCLUDED (scripts/issue-4452-site-manifest.check.mjs).
+// Invariant I-4452-SITE-PAGE-REGISTRY (declared in its test): every public route is in the registry or EXCLUDED (scripts/issue-4452-site-manifest.check.mjs).
 import data from './registry.json'
 
 export type SiteGroup = 'Explore' | 'Company' | 'Host' | 'Host landing pages' | 'Form pages'

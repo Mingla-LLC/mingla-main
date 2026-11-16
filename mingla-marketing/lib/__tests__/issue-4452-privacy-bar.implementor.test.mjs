@@ -1,4 +1,5 @@
 // #4452 T-2.14a (SC-128): the privacy strip fix, by source.
+// MINGLA-INVARIANT: I-4452-PRIVACY-BAR-PINNED | issue #4452 | the root viewport has viewportFit 'cover' and the privacy strip is fixed at bottom:0 with the safe-area inset height.
 //   - the root layout exports viewport { viewportFit: 'cover' } (so iOS Safari
 //     reports a real safe-area inset), and
 //   - BAR_CSS keeps the strip fixed at bottom:0 with the inset height, on its own

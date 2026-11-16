@@ -13,9 +13,9 @@
 -- and Explorer checkbox wording is not a marketing-email agreement that this
 -- repo can show, so both map to false (A1.2.2; probe on #4452).
 --
--- MINGLA-INVARIANT: I-4452-ONE-LEAD-PER-EMAIL | issue #4452 | leads.email_key is UNIQUE (issue_4452_leads A1-T-2).
--- MINGLA-INVARIANT: I-4452-LEADS-ONE-FILTER | issue #4452 | every lead read goes through leads_filtered_ids (A1-T-6).
--- MINGLA-INVARIANT: I-4452-LEADS-EXPORT-NO-CLICK-IDS | issue #4452 | admin_leads_export reads no ad_match_contexts column (A1-T-8).
+-- Invariant I-4452-ONE-LEAD-PER-EMAIL (declared in its test): leads.email_key is UNIQUE (issue_4452_leads A1-T-2).
+-- Invariant I-4452-LEADS-ONE-FILTER (declared in its test): every lead read goes through leads_filtered_ids (A1-T-6).
+-- Invariant I-4452-LEADS-EXPORT-NO-CLICK-IDS (declared in its test): admin_leads_export reads no ad_match_contexts column (A1-T-8).
 --
 -- ROLLBACK (manual, never automatic):
 --   SELECT cron.unschedule('leads-reconcile');

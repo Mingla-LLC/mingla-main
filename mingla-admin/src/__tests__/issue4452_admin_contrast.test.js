@@ -1,4 +1,5 @@
 // #4452 §7.1 (T-7.1): the Admin refresh tokens meet WCAG AA (4.5:1) in light
+// MINGLA-INVARIANT: I-4452-ADMIN-CONTRAST | issue #4452 | every admin text/background token pair is at least 4.5:1 in light and dark (T-7.1).
 // and dark, and the old --color-* variables map onto them.
 //
 // FAILS-ON-REVERT: restoring --color-text-muted: #9ca3af (2.5:1) fails the

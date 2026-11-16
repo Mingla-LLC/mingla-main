@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4452 M3 automations: executable PostgreSQL 17 proof, after the full migration replay.
+-- MINGLA-INVARIANT: I-4452-CONSENT-GATES-FOLLOWUPS | issue #4452 | a follow-up is never sent without marketing_consent, nor to a suppressed or unsubscribed email (forms_send_gate).
 --
 -- T-5.3  SC-16, SC-63  forms_next_local_time returns the four binding §5.3 vectors (Lagos, Dublin skip
 --                      weekends, London DST, New York hours) and falls back to UTC for 'Not/AZone'.

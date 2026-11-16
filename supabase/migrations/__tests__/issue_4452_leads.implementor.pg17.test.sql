@@ -1,5 +1,8 @@
 \set ON_ERROR_STOP on
 -- #4452 M5 leads (amendment A1): executable PostgreSQL 17 proof, after the full migration replay.
+-- MINGLA-INVARIANT: I-4452-ONE-LEAD-PER-EMAIL | issue #4452 | leads.email_key is UNIQUE, so one email is one lead (A1-T-2).
+-- MINGLA-INVARIANT: I-4452-LEADS-ONE-FILTER | issue #4452 | every lead read applies its filter through leads_filtered_ids (A1-T-6).
+-- MINGLA-INVARIANT: I-4452-LEADS-EXPORT-NO-CLICK-IDS | issue #4452 | admin_leads_export reads no ad_match_contexts column (A1-T-8).
 --
 -- A1-T-1a A1-SC-1   anon and signed-in cannot SELECT, INSERT, UPDATE or DELETE any new #4452 table.
 -- A1-T-1b A1-SC-11  lead_events.summary refuses every banned key (email, phone, click ids, ip_hash, user agent, referer).

@@ -13,7 +13,7 @@
 // Logs carry the outcome, the form key and the submission id only: never an
 // email, a phone or an answer.
 //
-// MINGLA-INVARIANT: I-4452-CONSENT-ONLY-TRUE | issue #4452 | marketing_consent is true only for a JSON boolean true (submit tests T-3.10).
+// Invariant I-4452-CONSENT-ONLY-TRUE (declared in its test): marketing_consent is true only for a JSON boolean true (submit tests T-3.10).
 
 import {
   type FormDefinition,

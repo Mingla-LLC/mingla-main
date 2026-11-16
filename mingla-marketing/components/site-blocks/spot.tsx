@@ -2,7 +2,7 @@
 //   <Spot page="creators" id="after-steps" />
 // It renders null unless live (or preview) content has a block for it, so a
 // page with no blocks is byte-identical to before.
-// MINGLA-INVARIANT: I-4452-NO-BLOCKS-NO-CHANGE | issue #4452 | with no published content a page's HTML is unchanged (Spot returns null; lib/__tests__/issue-4452-site-blocks.implementor.test.mjs).
+// Invariant I-4452-NO-BLOCKS-NO-CHANGE (declared in its test): with no published content a page's HTML is unchanged (Spot returns null; lib/__tests__/issue-4452-site-blocks.implementor.test.mjs).
 import { editorMode, siteContent } from '@/lib/site-pages/content'
 import { blockForSpot, destHref } from '@/lib/site-pages/model'
 import { HOST_ICP_KEYS, SITE_PAGES } from '@/lib/site-pages/registry'

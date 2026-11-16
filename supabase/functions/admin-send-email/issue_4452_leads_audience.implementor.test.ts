@@ -1,4 +1,5 @@
 // #4452 A1.5 (A1-T-4 … A1-T-8; A1-SC-20 … A1-SC-27): emailing leads through the
+// MINGLA-INVARIANT: I-4452-LEADS-EMAIL-CONSENT | issue #4452 | a Leads list send reaches only marketing_consent 'yes' people; a reply is blocked only by a full ('all') opt-out.
 // existing composer. The real createCampaign / model / audience over a
 // scripted in-memory client: the selection resolver, suppressions, the
 // campaign log, deliveries and the audit row.

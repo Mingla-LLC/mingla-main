@@ -1,4 +1,5 @@
 // #4452 forms-submit (T-3.1–3.14; SC-26–40). Hermetic: the real handler and the
+// MINGLA-INVARIANT: I-4452-CONSENT-ONLY-TRUE | issue #4452 | marketing_consent is true only for a JSON boolean true; a string 'true' or a missing box is false (T-3.10).
 // real shared contract over an in-memory SubmitDb; the Lead goes through the real
 // recordLabelledLead into the in-memory ad tables with captured senders.
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
