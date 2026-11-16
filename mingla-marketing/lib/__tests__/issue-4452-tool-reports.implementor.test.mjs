@@ -21,6 +21,7 @@ import path from 'node:path'
 import { after, test } from 'node:test'
 import { MARKETING } from './issue-4452-ts-loader.mjs'
 import { TOOL_STUBS, tsxRenderer } from './issue-4452-tsx-render.mjs'
+import { loadMainViews } from './issue-4452-main-baseline.mjs'
 import { EVENT, PRICING, TRIP, TRIP_UNPRICED, VENUE } from './issue-4452-tool-report-fixtures.mjs'
 
 const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
@@ -64,10 +65,13 @@ const MAIN_LABEL = {
   'You vs': 'You vs',
 }
 
-test('TR-1 SC-141 every section main rendered is still rendered, in main’s order', { skip: MAIN ? false : 'no origin/main in this checkout' }, () => {
-  for (const [tool, [file, name, fixture]] of Object.entries(VIEWS)) {
-    const mainHtml = text(MAIN.render(MAIN.React.createElement(MAIN.load(file)[name], { report: fixture, runId: 'run-1', initialGated: false })))
-    const mainHeadings = [...MAIN.render(MAIN.React.createElement(MAIN.load(file)[name], { report: fixture, runId: 'run-1', initialGated: false })).matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/g)]
+const MAIN_VIEWS = MAIN ? loadMainViews(MAIN, VIEWS) : { skip: 'no origin/main in this checkout' }
+
+test('TR-1 SC-141 every section main rendered is still rendered, in main’s order', { skip: MAIN_VIEWS.skip ?? false }, () => {
+  for (const [tool, [, , fixture]] of Object.entries(VIEWS)) {
+    const mainHtml0 = MAIN.render(MAIN.React.createElement(MAIN_VIEWS.modules[tool], { report: fixture, runId: 'run-1', initialGated: false }))
+    const mainHtml = text(mainHtml0)
+    const mainHeadings = [...mainHtml0.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/g)]
       .map((m) => text(m[1]).trim().replace(/^You vs .*/, 'You vs'))
     const got = sections(renderNew(tool, fixture))
     let at = -1
