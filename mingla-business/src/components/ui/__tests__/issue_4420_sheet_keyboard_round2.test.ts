@@ -45,10 +45,11 @@ describe("#4420 round 2: the sheet body clears the keyboard and its Done bar", (
 });
 
 describe("#4420 round 2: a tall focused field shows whole above the action row", () => {
-  test("a single-line Input needs nothing extra; a 110pt reason box needs its rest", () => {
+  test("a single-line Input needs nothing extra; the 80pt reason box needs its rest", () => {
     expect(focusedFieldTail(48)).toBe(0);
     expect(focusedFieldTail(30)).toBe(0);
-    expect(focusedFieldTail(110)).toBe(62);
+    // Measured on the iOS sim: Review changes' reason TextInput is 80 tall.
+    expect(focusedFieldTail(80)).toBe(64);
   });
 });
 

@@ -17,7 +17,7 @@
  *     of their own, so they centre in the space ABOVE the keyboard + Done bar.
  */
 
-import { size } from "../../constants/designSystem";
+import { size, space } from "../../constants/designSystem";
 import { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
 
 /** Breathing gap between an overlay and the top safe-area edge. */
@@ -82,6 +82,16 @@ export const sheetScrollExtraOffset = (footerGap: number, topShift: number): num
   MIN_VISIBLE_CLEARANCE + Math.max(0, footerGap) - Math.max(0, topShift);
 
 /**
+ * A multiline field's caret sits on its FIRST line (about 10 above where the
+ * shared offset expects a centred single-line caret), and its box keeps its
+ * own padding (about 10) below the text frame, and its helper line (count /
+ * minimum, about 20) sits right under it. Measured on the iOS sim: Review
+ * changes' reason box (TextInput 80 tall) showed its lower edge, then its
+ * helper line, under the action row until all three were covered.
+ */
+const MULTILINE_CARET_AND_BOX_PAD = space[7];
+
+/**
  * #4420 (device round 2) — how much of a focused field lies BELOW the line the
  * keyboard library aligns. The library places the caret's line, and the
  * shared offset already covers a single-line Input (size.input) below it. A
@@ -90,7 +100,9 @@ export const sheetScrollExtraOffset = (footerGap: number, topShift: number): num
  * row. This is that rest, so the whole box sits above the action row.
  */
 export const focusedFieldTail = (inputHeight: number): number =>
-  Math.max(0, Math.round(inputHeight - size.input));
+  inputHeight > size.input
+    ? Math.round(inputHeight - size.input + MULTILINE_CARET_AND_BOX_PAD)
+    : 0;
 
 /**
  * Bottom inset for a centred dialog: the keyboard, its Done bar and the
