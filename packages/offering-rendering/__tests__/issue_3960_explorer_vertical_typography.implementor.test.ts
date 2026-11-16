@@ -14,6 +14,9 @@ const sources = {
   event: await read("../EventOfferingBody.tsx"),
   guestCluster: await read("../GuestAvatarCluster.tsx"),
   brand: await read("../../brand-rendering/PublicBrandPage.tsx"),
+  // #4420: the brand page's name is the premium cover title, so it is checked
+  // where it now renders.
+  coverShell: await read("../ParallaxCoverShell.tsx"),
   menu: await read("../../brand-rendering/PublicMenuSections.tsx"),
   orderingMenu: await read(
     "../../brand-rendering/venueOrdering/VenueOrderingMenuList.tsx",
@@ -68,15 +71,16 @@ Deno.test("#3960 reported momentum count and brand name use native font metrics"
     "momCount",
   );
   assertUsesNativeFontMetrics(
-    "public brand identity",
-    sources.brand,
-    "brandName",
+    "public brand identity (premium cover title)",
+    sources.coverShell,
+    "premiumFullTitle",
   );
 });
 
 Deno.test("#3960 Explorer host-font sweep has no undersized fixed line boxes", () => {
   const cases: Array<[string, string, string]> = [
-    ["public brand next-up teaser", sources.brand, "nextTeaserBody"],
+    // #4420: Next up is the shared OfferingGlassBar (system font, no host font),
+    // so the brand page no longer draws a host-font teaser line.
     ["public brand offering card", sources.brand, "oCardTitle"],
     ["public brand tagline", sources.brand, "tagline"],
     ["public menu section", sources.menu, "menuSectionName"],
