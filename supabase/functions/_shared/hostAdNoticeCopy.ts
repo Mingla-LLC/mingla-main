@@ -110,7 +110,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "توقف إعلانك. افتح الإعلان لمعرفة السبب.",
     credit_low_title: "رصيد الإعلانات يوشك على النفاد",
     credit_low_body:
-      "تبقى نحو {days} أيام من الرصيد بإنفاق اليوم. اشحن {amount} لتستمر إعلاناتك أسبوعًا.",
+      "سيتوقف إعلانك في {date}، قبل تاريخ انتهائه. اشحن {amount} ليستمر حتى النهاية.",
     ended_title: "انتهى إعلانك",
     ended_returned:
       "المصروف: {spend}. النتائج التي احتسبتها Mingla: {results}. عاد {amount} من الرصيد غير المستخدم إلى رصيدك.",
@@ -165,7 +165,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Ọ̀ghọ̀ ẹ̀kpọ̀n ruẹ mudia. Dọ̀ ọ̀ ne u rẹn emwi ne ọ̀ ya.",
     credit_low_title: "Igho ọ̀ghọ̀ ẹ̀kpọ̀n ruẹ ghá fo",
     credit_low_body:
-      "Ọ̀ kpaye vbe ẹdẹ {days} vbe igho ne u loo ẹdẹ nẹ. Ya {amount} rre ne ọ̀ghọ̀ ẹ̀kpọ̀n ruẹ ghá kha ẹ̀ izu ọkpa.",
+      "Ọ̀ghọ̀ ẹ̀kpọ̀n ruẹ ghá mu ẹdẹ {date}, ẹ̀ ghá ẹdẹ ne ọ fo. Ya {amount} rre ne ọ̀ghọ̀ ẹ̀kpọ̀n ruẹ ghá kha sẹ ẹdẹ ne ọ fo.",
     ended_title: "Ọ̀ghọ̀ ẹ̀kpọ̀n ruẹ fo",
     ended_returned:
       "Ne a loo: {spend}. Emwi ne Mingla bu: {results}. {amount} igho ne a i loo dẹ̀ rre ẹbe ruẹ.",
@@ -221,7 +221,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "আপনার বিজ্ঞাপন থেমে গেছে। কারণ জানতে বিজ্ঞাপনটি খুলুন।",
     credit_low_title: "বিজ্ঞাপন ক্রেডিট কমে আসছে",
     credit_low_body:
-      "আজকের খরচে প্রায় {days} দিনের ক্রেডিট বাকি। এক সপ্তাহ বিজ্ঞাপন চালাতে {amount} টপ আপ করুন।",
+      "আপনার বিজ্ঞাপন শেষ তারিখের আগেই {date} তারিখে থেমে যাবে। শেষ পর্যন্ত চালাতে {amount} টপ আপ করুন।",
     ended_title: "আপনার বিজ্ঞাপন শেষ হয়েছে",
     ended_returned:
       "খরচ: {spend}। Mingla-র গোনা ফলাফল: {results}। অব্যবহৃত {amount} ক্রেডিট আপনার ব্যালেন্সে ফিরে এসেছে।",
@@ -278,7 +278,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Deine Anzeige läuft nicht mehr. Öffne die Anzeige, um den Grund zu sehen.",
     credit_low_title: "Dein Anzeigenguthaben wird knapp",
     credit_low_body:
-      "Bei den heutigen Ausgaben reicht das Guthaben noch etwa {days} Tage. Lade {amount} auf, damit deine Anzeigen eine Woche laufen.",
+      "Deine Anzeige stoppt am {date}, vor ihrem Enddatum. Lade {amount} auf, damit sie bis zum Ende läuft.",
     ended_title: "Deine Anzeige ist beendet",
     ended_returned:
       "Ausgegeben: {spend}. Von Mingla gezählte Ergebnisse: {results}. {amount} ungenutztes Guthaben ist zurück auf deinem Konto.",
@@ -338,7 +338,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Η διαφήμισή σου σταμάτησε. Άνοιξέ την για να δεις γιατί.",
     credit_low_title: "Η πίστωση διαφημίσεων τελειώνει",
     credit_low_body:
-      "Απομένουν περίπου {days} μέρες πίστωσης με τα σημερινά έξοδα. Φόρτισε {amount} για να τρέχουν οι διαφημίσεις μια εβδομάδα.",
+      "Η διαφήμισή σου θα σταματήσει στις {date}, πριν από την ημερομηνία λήξης. Φόρτισε {amount} για να τρέξει μέχρι το τέλος.",
     ended_title: "Η διαφήμισή σου ολοκληρώθηκε",
     ended_returned:
       "Ξοδεύτηκαν: {spend}. Αποτελέσματα που μέτρησε η Mingla: {results}. {amount} αχρησιμοποίητης πίστωσης επέστρεψαν στο υπόλοιπό σου.",
@@ -401,7 +401,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Your ad stopped running. Open the ad to see why.",
     credit_low_title: "Ad credit is running low",
     credit_low_body:
-      "About {days} days of credit left at today's spend. Top up {amount} to keep your ads running for a week.",
+      "Your ad will stop on {date}, before its end date. Top up {amount} to keep it running to the end.",
     ended_title: "Your ad has ended",
     ended_returned:
       "Spent {spend}. Results counted by Mingla: {results}. {amount} of unused credit is back in your balance.",
@@ -459,7 +459,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Tu anuncio dejó de mostrarse. Abre el anuncio para ver por qué.",
     credit_low_title: "Tu crédito para anuncios se está acabando",
     credit_low_body:
-      "Quedan unos {days} días de crédito al gasto actual. Recarga {amount} para mantener tus anuncios una semana.",
+      "Tu anuncio se detendrá el {date}, antes de su fecha de fin. Recarga {amount} para que siga hasta el final.",
     ended_title: "Tu anuncio ha terminado",
     ended_returned:
       "Gastado: {spend}. Resultados contados por Mingla: {results}. {amount} de crédito sin usar ha vuelto a tu saldo.",
@@ -520,7 +520,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Votre pub s'est arrêtée. Ouvrez la pub pour savoir pourquoi.",
     credit_low_title: "Votre crédit pub s'épuise",
     credit_low_body:
-      "Environ {days} jours de crédit restants au rythme actuel. Rechargez {amount} pour garder vos pubs actives une semaine.",
+      "Votre pub s'arrêtera le {date}, avant sa date de fin. Rechargez {amount} pour qu'elle tourne jusqu'au bout.",
     ended_title: "Votre pub est terminée",
     ended_returned:
       "Dépensé : {spend}. Résultats comptés par Mingla : {results}. {amount} de crédit non utilisé est revenu sur votre solde.",
@@ -581,7 +581,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Tallanka ya tsaya. Bude tallan don ganin dalili.",
     credit_low_title: "Kuɗin tallanka yana ƙarewa",
     credit_low_body:
-      "Saura kusan kwanaki {days} na kuɗi bisa kashewar yau. Ƙara {amount} don tallace-tallacenka su yi mako guda.",
+      "Tallanka zai tsaya a ranar {date}, kafin ranar ƙarshensa. Ƙara {amount} don ya ci gaba har ƙarshe.",
     ended_title: "Tallanka ya ƙare",
     ended_returned:
       "An kashe: {spend}. Sakamakon da Mingla ta ƙidaya: {results}. {amount} na kuɗin da ba a yi amfani da shi ba ya dawo cikin asusunka.",
@@ -639,7 +639,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "המודעה שלך הפסיקה לרוץ. פתח אותה כדי לראות למה.",
     credit_low_title: "קרדיט הפרסום שלך אוזל",
     credit_low_body:
-      "נשארו בערך {days} ימים של קרדיט בקצב ההוצאה של היום. טען {amount} כדי שהמודעות ירוצו שבוע.",
+      "המודעה שלך תיעצר ב-{date}, לפני תאריך הסיום. טען {amount} כדי שתרוץ עד הסוף.",
     ended_title: "המודעה שלך הסתיימה",
     ended_returned:
       "הוצאה: {spend}. תוצאות לפי ספירת Mingla: {results}. {amount} של קרדיט שלא נוצל חזר ליתרה שלך.",
@@ -693,7 +693,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "आपका विज्ञापन रुक गया। कारण जानने के लिए विज्ञापन खोलें।",
     credit_low_title: "विज्ञापन क्रेडिट कम हो रहा है",
     credit_low_body:
-      "आज के खर्च पर करीब {days} दिन का क्रेडिट बचा है। एक हफ़्ते विज्ञापन चलाने के लिए {amount} टॉप अप करें।",
+      "आपका विज्ञापन अपनी समाप्ति तारीख से पहले {date} को रुक जाएगा। अंत तक चलाने के लिए {amount} टॉप अप करें।",
     ended_title: "आपका विज्ञापन खत्म हो गया",
     ended_returned:
       "खर्च: {spend}। Mingla द्वारा गिने गए नतीजे: {results}। {amount} का बिना इस्तेमाल हुआ क्रेडिट आपके बैलेंस में वापस आ गया।",
@@ -749,7 +749,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Iklan kamu berhenti. Buka iklannya untuk melihat alasannya.",
     credit_low_title: "Kredit iklan kamu hampir habis",
     credit_low_body:
-      "Sisa kredit sekitar {days} hari dengan biaya hari ini. Isi ulang {amount} agar iklan berjalan seminggu.",
+      "Iklan kamu akan berhenti pada {date}, sebelum tanggal berakhirnya. Isi ulang {amount} agar tetap berjalan sampai selesai.",
     ended_title: "Iklan kamu sudah berakhir",
     ended_returned:
       "Terpakai: {spend}. Hasil yang dihitung Mingla: {results}. {amount} kredit yang tidak terpakai sudah kembali ke saldo kamu.",
@@ -808,7 +808,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Mgbasa ozi gị kwụsịrị. Mepee ya ka ịmata ihe kpatara ya.",
     credit_low_title: "Ego mgbasa ozi gị na-agwụ",
     credit_low_body:
-      "Ọ fọdụrụ ihe dị ka ụbọchị {days} n'ego ị na-emefu taa. Tinye {amount} ka mgbasa ozi gị gaa izu otu.",
+      "Mgbasa ozi gị ga-akwụsị na {date}, tupu ụbọchị njedebe ya. Tinye {amount} ka ọ gaa ruo ọgwụgwụ.",
     ended_title: "Mgbasa ozi gị agwụla",
     ended_returned:
       "E mefuru: {spend}. Nsonaazụ Mingla gụrụ: {results}. {amount} ego a na-ejighị laghachiri n'akaụntụ gị.",
@@ -870,7 +870,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Il tuo annuncio si è fermato. Apri l'annuncio per vedere perché.",
     credit_low_title: "Il credito per gli annunci sta finendo",
     credit_low_body:
-      "Restano circa {days} giorni di credito con la spesa attuale. Ricarica {amount} per tenere attivi gli annunci per una settimana.",
+      "Il tuo annuncio si fermerà il {date}, prima della data di fine. Ricarica {amount} per tenerlo attivo fino alla fine.",
     ended_title: "Il tuo annuncio è terminato",
     ended_returned:
       "Speso: {spend}. Risultati contati da Mingla: {results}. {amount} di credito non usato è tornato nel tuo saldo.",
@@ -929,7 +929,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "広告が停止しました。理由は広告を開いて確認してください。",
     credit_low_title: "広告クレジットが残りわずかです",
     credit_low_body:
-      "今日の費用で約{days}日分のクレジットが残っています。1週間配信するには{amount}をチャージしてください。",
+      "広告は終了日より前の{date}に停止します。最後まで配信するには{amount}をチャージしてください。",
     ended_title: "広告が終了しました",
     ended_returned:
       "使用額：{spend}。Minglaが数えた成果：{results}。未使用の{amount}が残高に戻りました。",
@@ -986,7 +986,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "광고가 멈췄어요. 이유를 보려면 광고를 여세요.",
     credit_low_title: "광고 크레딧이 얼마 남지 않았어요",
     credit_low_body:
-      "오늘 비용 기준으로 약 {days}일치 크레딧이 남았어요. 일주일 동안 게재하려면 {amount}을(를) 충전하세요.",
+      "광고가 종료일보다 앞선 {date}에 멈춰요. 끝까지 게재하려면 {amount}을(를) 충전하세요.",
     ended_title: "광고가 종료되었어요",
     ended_returned:
       "사용액: {spend}. Mingla가 집계한 성과: {results}. 사용하지 않은 {amount}이(가) 잔액으로 돌아왔어요.",
@@ -1041,7 +1041,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Iklan anda berhenti. Buka iklan untuk melihat sebabnya.",
     credit_low_title: "Kredit iklan anda hampir habis",
     credit_low_body:
-      "Baki kredit kira-kira {days} hari pada perbelanjaan hari ini. Tambah nilai {amount} supaya iklan berjalan seminggu.",
+      "Iklan anda akan berhenti pada {date}, sebelum tarikh tamatnya. Tambah nilai {amount} supaya ia berjalan hingga tamat.",
     ended_title: "Iklan anda telah tamat",
     ended_returned:
       "Dibelanjakan: {spend}. Hasil yang dikira Mingla: {results}. {amount} kredit yang tidak digunakan telah kembali ke baki anda.",
@@ -1101,7 +1101,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Je advertentie loopt niet meer. Open de advertentie om te zien waarom.",
     credit_low_title: "Je advertentietegoed raakt op",
     credit_low_body:
-      "Nog ongeveer {days} dagen tegoed bij de huidige uitgaven. Waardeer {amount} op om je advertenties een week te laten lopen.",
+      "Je advertentie stopt op {date}, vóór de einddatum. Waardeer {amount} op om hem tot het einde te laten lopen.",
     ended_title: "Je advertentie is afgelopen",
     ended_returned:
       "Uitgegeven: {spend}. Resultaten geteld door Mingla: {results}. {amount} ongebruikt tegoed staat weer op je saldo.",
@@ -1161,7 +1161,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Twoja reklama przestała działać. Otwórz ją, aby zobaczyć dlaczego.",
     credit_low_title: "Kończy się kredyt na reklamy",
     credit_low_body:
-      "Przy obecnych wydatkach zostało około {days} dni kredytu. Doładuj {amount}, aby reklamy działały przez tydzień.",
+      "Twoja reklama zatrzyma się {date}, przed datą zakończenia. Doładuj {amount}, aby działała do końca.",
     ended_title: "Twoja reklama się zakończyła",
     ended_returned:
       "Wydano: {spend}. Wyniki policzone przez Mingla: {results}. {amount} niewykorzystanego kredytu wróciło na Twoje saldo.",
@@ -1220,7 +1220,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Seu anúncio parou de rodar. Abra o anúncio para ver o motivo.",
     credit_low_title: "Seu crédito de anúncios está acabando",
     credit_low_body:
-      "Restam cerca de {days} dias de crédito no gasto atual. Recarregue {amount} para manter seus anúncios por uma semana.",
+      "Seu anúncio vai parar em {date}, antes da data de término. Recarregue {amount} para mantê-lo até o fim.",
     ended_title: "Seu anúncio terminou",
     ended_returned:
       "Gasto: {spend}. Resultados contados pela Mingla: {results}. {amount} de crédito não usado voltou ao seu saldo.",
@@ -1278,7 +1278,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Reclama ta s-a oprit. Deschide reclama ca să vezi de ce.",
     credit_low_title: "Creditul pentru reclame se termină",
     credit_low_body:
-      "Mai sunt aproximativ {days} zile de credit la cheltuiala de azi. Reîncarcă {amount} ca reclamele să ruleze o săptămână.",
+      "Reclama ta se va opri pe {date}, înainte de data de final. Reîncarcă {amount} ca să ruleze până la capăt.",
     ended_title: "Reclama ta s-a încheiat",
     ended_returned:
       "Cheltuit: {spend}. Rezultate numărate de Mingla: {results}. {amount} credit nefolosit a revenit în soldul tău.",
@@ -1339,7 +1339,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Ваша реклама остановилась. Откройте её, чтобы узнать почему.",
     credit_low_title: "Кредит на рекламу заканчивается",
     credit_low_body:
-      "При текущих расходах кредита хватит примерно на {days} дн. Пополните {amount}, чтобы реклама работала неделю.",
+      "Ваша реклама остановится {date}, раньше даты окончания. Пополните {amount}, чтобы она работала до конца.",
     ended_title: "Ваша реклама завершена",
     ended_returned:
       "Потрачено: {spend}. Результаты по подсчёту Mingla: {results}. {amount} неиспользованного кредита вернулось на ваш баланс.",
@@ -1399,7 +1399,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Din annons visas inte längre. Öppna annonsen för att se varför.",
     credit_low_title: "Din annonskredit börjar ta slut",
     credit_low_body:
-      "Ungefär {days} dagars kredit kvar med dagens kostnad. Fyll på {amount} för att hålla annonserna igång en vecka.",
+      "Din annons stoppas den {date}, före slutdatumet. Fyll på {amount} för att hålla den igång till slutet.",
     ended_title: "Din annons har avslutats",
     ended_returned:
       "Spenderat: {spend}. Resultat räknade av Mingla: {results}. {amount} oanvänd kredit är tillbaka på ditt saldo.",
@@ -1456,7 +1456,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "โฆษณาของคุณหยุดทำงาน เปิดโฆษณาเพื่อดูสาเหตุ",
     credit_low_title: "เครดิตโฆษณาใกล้หมด",
     credit_low_body:
-      "เหลือเครดิตประมาณ {days} วันตามการใช้จ่ายวันนี้ เติม {amount} เพื่อให้โฆษณาทำงานหนึ่งสัปดาห์",
+      "โฆษณาของคุณจะหยุดในวันที่ {date} ก่อนวันสิ้นสุด เติม {amount} เพื่อให้ทำงานจนจบ",
     ended_title: "โฆษณาของคุณสิ้นสุดแล้ว",
     ended_returned:
       "ใช้ไป: {spend} ผลลัพธ์ที่ Mingla นับ: {results} เครดิตที่ไม่ได้ใช้ {amount} กลับเข้ายอดคงเหลือแล้ว",
@@ -1507,7 +1507,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Reklamın durdu. Nedenini görmek için reklamı aç.",
     credit_low_title: "Reklam kredin azalıyor",
     credit_low_body:
-      "Bugünkü harcamayla yaklaşık {days} günlük kredin kaldı. Reklamların bir hafta yayında kalsın diye {amount} yükle.",
+      "Reklamın bitiş tarihinden önce {date} tarihinde duracak. Sonuna kadar yayında kalması için {amount} yükle.",
     ended_title: "Reklamın sona erdi",
     ended_returned:
       "Harcanan: {spend}. Mingla'nın saydığı sonuçlar: {results}. Kullanılmayan {amount} kredi bakiyene geri döndü.",
@@ -1568,7 +1568,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
       "Ваша реклама зупинилася. Відкрийте її, щоб дізнатися чому.",
     credit_low_title: "Кредит на рекламу закінчується",
     credit_low_body:
-      "За поточних витрат кредиту вистачить приблизно на {days} дн. Поповніть {amount}, щоб реклама працювала тиждень.",
+      "Ваша реклама зупиниться {date}, раніше дати завершення. Поповніть {amount}, щоб вона працювала до кінця.",
     ended_title: "Ваша реклама завершилася",
     ended_returned:
       "Витрачено: {spend}. Результати за підрахунком Mingla: {results}. {amount} невикористаного кредиту повернулося на ваш баланс.",
@@ -1626,7 +1626,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Quảng cáo của bạn đã dừng. Mở quảng cáo để xem lý do.",
     credit_low_title: "Tín dụng quảng cáo sắp hết",
     credit_low_body:
-      "Còn khoảng {days} ngày tín dụng theo mức chi hôm nay. Nạp {amount} để quảng cáo chạy thêm một tuần.",
+      "Quảng cáo của bạn sẽ dừng vào {date}, trước ngày kết thúc. Nạp {amount} để chạy đến cuối.",
     ended_title: "Quảng cáo của bạn đã kết thúc",
     ended_returned:
       "Đã chi: {spend}. Kết quả do Mingla đếm: {results}. {amount} tín dụng chưa dùng đã trở lại số dư của bạn.",
@@ -1681,7 +1681,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "Ìpolówó rẹ ti dúró. Ṣí i láti mọ ìdí.",
     credit_low_title: "Owó ìpolówó rẹ ń tán",
     credit_low_body:
-      "Ó ku nǹkan bí ọjọ́ {days} ní ìnáwó òní. Fi {amount} kún un kí àwọn ìpolówó rẹ lè lọ fún ọ̀sẹ̀ kan.",
+      "Ìpolówó rẹ yóò dúró ní {date}, ṣáájú ọjọ́ ìparí rẹ̀. Fi {amount} kún un kí ó lè lọ títí dé òpin.",
     ended_title: "Ìpolówó rẹ ti parí",
     ended_returned:
       "A ná: {spend}. Èsì tí Mingla kà: {results}. {amount} owó tí a kò lò ti padà sí àkọọ́lẹ̀ rẹ.",
@@ -1735,7 +1735,7 @@ export const HOST_AD_NOTICE_COPY: Readonly<
     paused_generic: "你的广告已停止投放。打开广告查看原因。",
     credit_low_title: "广告额度快用完了",
     credit_low_body:
-      "按今天的花费，额度还剩约 {days} 天。充值 {amount} 可让广告再投放一周。",
+      "你的广告将在 {date} 停止，早于结束日期。充值 {amount} 可让它投放到结束。",
     ended_title: "你的广告已结束",
     ended_returned:
       "已花费：{spend}。Mingla 统计的成果：{results}。{amount} 未用额度已退回你的余额。",

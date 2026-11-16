@@ -306,25 +306,44 @@ export function decidePauseNotice(input: {
   };
 }
 
-// ── Credit low ────────────────────────────────────────────────────────────
+// ── Credit low ──────────────────────────────────────────────────────────────
 
 export const CREDIT_LOW_RUNWAY_DAYS = 2;
 const TOP_UP_STEP_CENTS: Record<string, number> = { NGN: 50_000 };
+const DAY_MS = 86_400_000;
 
 /**
- * Runway = available credit ÷ the trailing 3-day average daily spend (the
- * planned daily when there are fewer than 3 days). Fires below 2 days. The
- * suggestion covers 7 more days in pay terms (÷ (1 − fee)), rounded UP to
- * the currency step, never below the minimum top-up. Keyed by the latest
- * top-up, so it fires again only after a new top-up and another drop.
+ * #4238 W4c (conductor decision on the W4b review): Host ads are paid upfront
+ * from held funds, so a low free balance never stops a running ad. The
+ * warning is per running ad: it fires when the ad's REMAINING HELD budget
+ * (cap − spent, the app's money) will run out MORE than 2 days before its
+ * end date at the current rate (trailing 3-day average spend, else the
+ * planned daily), AND the free Ads credit can't extend it to the end date.
+ * The notice says the date it will stop and the top-up that keeps it running
+ * to the end date, in pay terms (÷ (1 − fee), the 15% fee included), rounded
+ * UP to the currency step and never below the minimum top-up. Keyed per ad
+ * and latest top-up, so it fires again only after a new top-up.
+ *
+ * MINGLA-INVARIANT: I-4238-CREDIT-LOW-HELD-RUNWAY | issue #4238 | decideCreditLowNotice fires only when a running Host ad's remaining held budget runs out more than 2 days before ends_at and the free Ads credit (converted at the ad's own host/provider rate) is less than what reaching ends_at needs; the top-up is (need − free) ÷ (1 − HOST_FEE_RATIO), stepped up, at least the minimum top-up.
  */
 export function decideCreditLowNotice(input: {
   brandId: string;
+  planId: string | null;
+  campaignId: string;
+  /** The Host's money (the wallet's currency). */
   currency: string;
-  availableCents: number;
-  /** Daily spend (same currency), newest last; only the last 3 are read. */
+  /** Held budget left on the app: cap − spent, in the app's money. */
+  remainingProviderCents: number;
+  /** Daily spend, app money, newest last; only the last 3 are read. */
   dailySpendCents: readonly number[];
+  /** The planned daily (app money) when there are fewer than 3 days. */
   plannedDailyCents: number;
+  /** Host cents per app cent (the ad's own frozen rate). */
+  hostPerProvider: number;
+  endsAtMs: number;
+  nowMs: number;
+  /** Free (unheld) Ads credit, the Host's money. */
+  freeCreditCents: number;
   latestTopUpLedgerId: string | null;
   minTopUpPayCents: number;
   formatMoney: (cents: number, currency: string) => string;
@@ -336,36 +355,57 @@ export function decideCreditLowNotice(input: {
     ? lastThree.reduce((sum, value) => sum + value, 0) / lastThree.length
     : input.plannedDailyCents;
   if (!Number.isFinite(daily) || daily <= 0) return null;
-  if (!Number.isFinite(input.availableCents) || input.availableCents < 0) {
+  const remaining = input.remainingProviderCents;
+  if (!Number.isFinite(remaining)) return null;
+  if (!Number.isFinite(input.endsAtMs) || !Number.isFinite(input.nowMs)) {
     return null;
   }
-  const runway = input.availableCents / daily;
-  if (runway >= CREDIT_LOW_RUNWAY_DAYS) return null;
+  if (!(input.hostPerProvider > 0) || !Number.isFinite(input.hostPerProvider)) {
+    return null;
+  }
+  if (input.endsAtMs <= input.nowMs) return null;
+  const runOutMs = input.nowMs + (Math.max(0, remaining) / daily) * DAY_MS;
+  // Runs out at most 2 days early (or not at all): no warning.
+  if (input.endsAtMs - runOutMs <= CREDIT_LOW_RUNWAY_DAYS * DAY_MS) return null;
+  const daysToEnd = (input.endsAtMs - input.nowMs) / DAY_MS;
+  const needProvider = Math.ceil(daily * daysToEnd - Math.max(0, remaining));
+  if (needProvider <= 0) return null;
+  const needHost = Math.ceil(needProvider * input.hostPerProvider);
+  const free = Number.isFinite(input.freeCreditCents)
+    ? Math.max(0, input.freeCreditCents)
+    : 0;
+  // Free Ads credit can extend it to the end date: no warning.
+  if (free >= needHost) return null;
   const currency = input.currency.trim().toUpperCase();
   const step = TOP_UP_STEP_CENTS[currency] ?? 100;
-  const needCredit = Math.max(0, 7 * daily - input.availableCents);
-  const needPay = Math.ceil(needCredit / (1 - HOST_FEE_RATIO));
+  const needPay = Math.ceil((needHost - free) / (1 - HOST_FEE_RATIO));
   const suggested = Math.max(
     input.minTopUpPayCents,
     Math.ceil(needPay / step) * step,
   );
+  const stopDate = new Date(runOutMs).toISOString().slice(0, 10);
   return {
     type: "business.ad_credit_low",
     brandId: input.brandId,
-    planId: null,
-    idempotencyKey: `ad:${input.brandId}:credit_low:${
+    planId: input.planId,
+    idempotencyKey: `ad:${input.campaignId}:credit_low:${
       input.latestTopUpLedgerId ?? "none"
     }`,
     audience: "money",
     titleKey: "credit_low_title",
     bodyKeys: ["credit_low_body"],
     params: {
-      days: Math.max(0, Math.floor(runway * 10) / 10),
+      date: stopDate,
       amount: input.formatMoney(suggested, currency),
     },
     details: {
-      runway_days: runway,
+      campaign_id: input.campaignId,
+      stops_on: stopDate,
+      ends_at: new Date(input.endsAtMs).toISOString(),
       daily_spend_cents: Math.round(daily),
+      remaining_provider_cents: Math.max(0, Math.round(remaining)),
+      need_host_cents: needHost,
+      free_credit_cents: free,
       suggested_top_up_pay_cents: suggested,
       currency,
     },
@@ -888,10 +928,12 @@ export async function notifyHostAdSignals(
 }
 
 /**
- * Credit low for one brand: the free wallet balance against the live Host
- * ads' trailing 3-day spend in the wallet's currency (or their planned daily
- * when there are fewer than 3 days). Spend in another currency is never
- * converted here; it is left out rather than guessed. Never throws.
+ * #4238 W4c: credit low for one brand, per running Host ad
+ * (decideCreditLowNotice). The remaining held budget is the ad's cap
+ * (amended or original provider budget) minus its recorded spend in the
+ * app's money; spend in another currency is left out, never guessed. The
+ * free Ads credit is the wallet balance in the Host's money, compared at the
+ * ad's own host/provider rate. Never throws.
  */
 export async function notifyHostAdCreditLow(
   db: Db,
@@ -911,50 +953,83 @@ export async function notifyHostAdCreditLow(
     >)[currency];
     if (!limits) return;
     const { data: campaigns } = await db.from("ad_campaigns")
-      .select("id, currency, daily_budget_cents").eq("brand_id", input.brandId)
+      .select(
+        "id, currency, provider_currency, ends_at, host_budget_cents, provider_budget_cents, amended_provider_budget_cents, provider_delivery_budget_cents, amended_provider_delivery_budget_cents, daily_budget_cents, plan_version:ad_plan_versions(plan_id)",
+      )
+      .eq("brand_id", input.brandId)
       .eq("owner_kind", "host").eq("status", "ACTIVE");
     const live = ((campaigns ?? []) as Record<string, unknown>[]).filter((
       row,
     ) => String(row.currency ?? "").toUpperCase() === currency);
     if (live.length === 0) return;
-    const days: string[] = [];
-    for (let back = 3; back >= 1; back -= 1) {
-      days.push(
-        new Date(input.now.getTime() - back * 86_400_000).toISOString().slice(
-          0,
-          10,
-        ),
-      );
-    }
     const { data: spend } = await db.from("ad_spend_daily")
-      .select("spend_date, spend_cents, currency")
-      .in("campaign_id", live.map((row) => String(row.id)))
-      .in("spend_date", days);
-    const byDay = new Map<string, number>();
-    for (const row of (spend ?? []) as Record<string, unknown>[]) {
-      if (String(row.currency ?? "").toUpperCase() !== currency) continue;
-      const day = String(row.spend_date);
-      byDay.set(day, (byDay.get(day) ?? 0) + (Number(row.spend_cents) || 0));
-    }
+      .select("campaign_id, spend_date, spend_cents, currency")
+      .in("campaign_id", live.map((row) => String(row.id)));
     const { data: topUp } = await db.from("ad_credit_ledger").select("id")
       .eq("brand_id", input.brandId).eq("entry_kind", "top_up")
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    const notice = decideCreditLowNotice({
-      brandId: input.brandId,
-      currency,
-      availableCents: Number(wallet.balance_cents),
-      dailySpendCents: days.filter((day) => byDay.has(day)).map((day) =>
-        byDay.get(day) ?? 0
-      ),
-      plannedDailyCents: live.reduce(
-        (sum, row) => sum + Math.max(0, Number(row.daily_budget_cents) || 0),
+    const days: string[] = [];
+    for (let back = 3; back >= 1; back -= 1) {
+      days.push(
+        new Date(input.now.getTime() - back * 86_400_000).toISOString()
+          .slice(0, 10),
+      );
+    }
+    const notices: HostAdNotice[] = [];
+    for (const row of live) {
+      const providerCurrency = String(row.provider_currency ?? row.currency ?? "")
+        .toUpperCase();
+      const mine = ((spend ?? []) as Record<string, unknown>[]).filter((item) =>
+        item.campaign_id === row.id &&
+        String(item.currency ?? "").toUpperCase() === providerCurrency
+      );
+      const spent = mine.reduce(
+        (sum, item) => sum + Math.max(0, Number(item.spend_cents) || 0),
         0,
-      ),
-      latestTopUpLedgerId: typeof topUp?.id === "string" ? topUp.id : null,
-      minTopUpPayCents: limits.min_pay_cents,
-      formatMoney,
-    });
-    if (notice) await sendHostAdNotices(db, [notice], dispatch);
+      );
+      const byDay = new Map<string, number>();
+      for (const item of mine) {
+        const day = String(item.spend_date);
+        byDay.set(day, (byDay.get(day) ?? 0) + (Number(item.spend_cents) || 0));
+      }
+      const cap = Number(
+        row.amended_provider_budget_cents ?? row.provider_budget_cents,
+      );
+      const hostCap = Number(row.host_budget_cents);
+      const providerCap = Number(row.provider_budget_cents);
+      const hostPerProvider = providerCurrency === currency
+        ? 1
+        : hostCap > 0 && providerCap > 0
+        ? hostCap / providerCap
+        : NaN;
+      const version = row.plan_version as Record<string, unknown> | null;
+      const notice = decideCreditLowNotice({
+        brandId: input.brandId,
+        planId: typeof version?.plan_id === "string" ? version.plan_id : null,
+        campaignId: String(row.id),
+        currency,
+        remainingProviderCents: cap - spent,
+        dailySpendCents: days.filter((day) => byDay.has(day)).map((day) =>
+          byDay.get(day) ?? 0
+        ),
+        plannedDailyCents: Math.max(
+          0,
+          Number(
+            row.amended_provider_delivery_budget_cents ??
+              row.provider_delivery_budget_cents ?? row.daily_budget_cents,
+          ) || 0,
+        ),
+        hostPerProvider,
+        endsAtMs: Date.parse(String(row.ends_at ?? "")),
+        nowMs: input.now.getTime(),
+        freeCreditCents: Number(wallet.balance_cents),
+        latestTopUpLedgerId: typeof topUp?.id === "string" ? topUp.id : null,
+        minTopUpPayCents: limits.min_pay_cents,
+        formatMoney,
+      });
+      if (notice) notices.push(notice);
+    }
+    if (notices.length > 0) await sendHostAdNotices(db, notices, dispatch);
   } catch (error) {
     console.error("[hostAdNotices] credit-low notice failed", {
       error: error instanceof Error ? error.message : String(error),

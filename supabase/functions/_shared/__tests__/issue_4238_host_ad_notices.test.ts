@@ -260,25 +260,34 @@ Deno.test("SC-B1.4: a sold-out pause says sold out; teammate A's pause skips A",
   assert(sent.some((row) => row.userId === owner));
 });
 
-Deno.test("SC-B1.5: ₦10,000 credit at ₦6,000/day fires once; again only after a new top-up", async () => {
+Deno.test("SC-B1.5 (W4c): a running ad whose held budget runs out >2 days early, with no free credit to extend it, fires once per top-up", async () => {
+  const NOW = Date.parse("2026-11-16T00:00:00Z");
   const base = {
     brandId: BRAND,
+    planId: "plan-1",
+    campaignId: "camp-1",
     currency: "NGN",
-    availableCents: 1_000_000,
+    // ₦10,000 of held budget left at ₦6,000/day: stops in ~1.7 days.
+    remainingProviderCents: 1_000_000,
     dailySpendCents: [600_000, 600_000, 600_000],
     plannedDailyCents: 0,
+    hostPerProvider: 1,
+    endsAtMs: NOW + 10 * 86_400_000,
+    nowMs: NOW,
+    freeCreditCents: 0,
     minTopUpPayCents: 2_500_000,
     formatMoney: money,
   };
   const first = decideCreditLowNotice({ ...base, latestTopUpLedgerId: "L1" });
   assert(first);
-  // 7 × 6,000 − 10,000 = 32,000 credit; ÷ 0.85 = ₦37,647.06 pay; up to the ₦500 step = ₦38,000.
+  // To the end date: 10 × ₦6,000 − ₦10,000 = ₦50,000; ÷ 0.85 = ₦58,823.53; up to the ₦500 step = ₦59,000.
   assertEquals(
     (first.details as { suggested_top_up_pay_cents: number })
       .suggested_top_up_pay_cents,
-    3_800_000,
+    5_900_000,
   );
-  assertEquals(first.params.days, 1.6);
+  assertEquals(first.params.date, "2026-11-17");
+  assertEquals(first.idempotencyKey, "ad:camp-1:credit_low:L1");
   const db = fakeDb(team());
   const { sent, dispatch } = recorder();
   await sendHostAdNotices(db, [first], dispatch);
@@ -295,13 +304,26 @@ Deno.test("SC-B1.5: ₦10,000 credit at ₦6,000/day fires once; again only afte
     decideCreditLowNotice({ ...base, latestTopUpLedgerId: "L2" })!,
   ], dispatch);
   assertEquals(sent.length, afterFirst + 3);
-  // Two days or more: nothing.
+  // Free credit already covers the run to the end date: nothing (adversarial).
   assertEquals(
-    decideCreditLowNotice({
-      ...base,
-      availableCents: 1_200_000,
-      latestTopUpLedgerId: "L3",
-    }),
+    decideCreditLowNotice({ ...base, freeCreditCents: 5_000_000, latestTopUpLedgerId: "L3" }),
+    null,
+  );
+  // Free credit covers part: the top-up is only the rest, in pay terms.
+  const part = decideCreditLowNotice({ ...base, freeCreditCents: 4_000_000, latestTopUpLedgerId: "L3" });
+  // ₦10,000 short ÷ 0.85 = ₦11,764.71 → ₦12,000, but never below the ₦25,000 minimum.
+  assertEquals(
+    (part!.details as { suggested_top_up_pay_cents: number }).suggested_top_up_pay_cents,
+    2_500_000,
+  );
+  // Runs out within 2 days of the end date: nothing.
+  assertEquals(
+    decideCreditLowNotice({ ...base, endsAtMs: NOW + 3 * 86_400_000, latestTopUpLedgerId: "L4" }),
+    null,
+  );
+  // Held budget reaches the end date: nothing, however low the free balance.
+  assertEquals(
+    decideCreditLowNotice({ ...base, remainingProviderCents: 6_000_000, latestTopUpLedgerId: "L4" }),
     null,
   );
   // Fewer than 3 days of spend: the planned daily is used.
@@ -313,18 +335,19 @@ Deno.test("SC-B1.5: ₦10,000 credit at ₦6,000/day fires once; again only afte
       latestTopUpLedgerId: "L4",
     }),
   );
-  // Never below the minimum top-up.
-  const tiny = decideCreditLowNotice({
+  // An ad in another currency is compared at its own rate: $40 held at
+  // $30/day, ₦1,600 per $1, 10 days → $260 short = ₦416,000 > ₦0 free.
+  const fx = decideCreditLowNotice({
     ...base,
-    availableCents: 100,
-    dailySpendCents: [100, 100, 100],
+    remainingProviderCents: 4_000,
+    dailySpendCents: [3_000, 3_000, 3_000],
+    hostPerProvider: 1_600,
     latestTopUpLedgerId: "L5",
   });
-  assertEquals(
-    (tiny!.details as { suggested_top_up_pay_cents: number })
-      .suggested_top_up_pay_cents,
-    2_500_000,
-  );
+  assertEquals((fx!.details as { need_host_cents: number }).need_host_cents, 41_600_000);
+  // No end date or a past one: nothing.
+  assertEquals(decideCreditLowNotice({ ...base, endsAtMs: NaN, latestTopUpLedgerId: "L6" }), null);
+  assertEquals(decideCreditLowNotice({ ...base, endsAtMs: NOW - 1, latestTopUpLedgerId: "L6" }), null);
 });
 
 Deno.test("SC-B1.6: ad_ended waits for the settled hold and states the ledger's return", () => {
