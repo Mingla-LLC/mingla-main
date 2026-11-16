@@ -252,15 +252,12 @@ const STEP_TITLES: Record<StepIndex, string> = {
   8: "Review",
 };
 
-const STEP_SUBTITLES: Record<StepIndex, string> = {
-  1: "Title, dates and destination",
-  2: "Day-by-day itinerary",
-  3: "What's included and excluded",
-  4: "Pricing and payment plan",
+// #4420: a step keeps a subheading only when it adds something the title
+// doesn't already say (Seth, 2026-11-16). Steps without one show no line.
+const STEP_SUBTITLES: Partial<Record<StepIndex, string>> = {
   5: "Refund tiers and when bookings close",
   6: "What to ask travelers before they pay",
   7: "Your Book, followers and groups",
-  8: "Preview and publish",
 };
 
 // ORCH-0880 [Tr5 Traveler Intake Forms] — wizard grew from 6 to 7 steps per
@@ -2526,7 +2523,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           {brand.name} · Step {visibleStepNumber} of {visibleStepCount}
         </Text>
         <Text accessibilityRole={step === 7 ? "header" : undefined} style={styles.mobileStepTitle}>{stepTitle}</Text>
-        <Text style={styles.mobileStepSub}>{stepSubtitle}</Text>
+        {stepSubtitle ? <Text style={styles.mobileStepSub}>{stepSubtitle}</Text> : null}
         {autosaveStateText.length > 0 ? (
           <Text
             style={[
