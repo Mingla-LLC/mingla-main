@@ -68,9 +68,15 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 /** origin/main's AGENT_TOOLS as declared to the model (sha-256 of the JSON). */
 // #4238 W1 item 3: propose_ad_plan gains the sign-ups goal (enum and
 // description), so the declared tools change on both paths.
+// #4238 W5: Ari as the Host's ad assistant adds get_ad_budget_guidance and
+// apply_ad_suggestion (187→189) on both paths, and propose_ad_plan takes the
+// fallback acknowledgement and up to 5 creatives; the digest is recomputed with
+// this file's own sha256 over ariTurnToolDeclarations(ariTurnAgentTools(false),
+// false). The off path's prompt digests and per-message selections are
+// unchanged (checked above and below).
 const MAIN_DECLARATIONS_DIGEST =
-  "13f7895c049f2947690abe1acdbd0590b1e59abea97d5c5d9e38d0bfb36cba7c";
-const MAIN_DECLARATION_COUNT = 187;
+  "49cda18584d2522cb17b962f6d2b2b82c62177ec4fda3e683187d4713385a0cd";
+const MAIN_DECLARATION_COUNT = 189;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {
   "Create a discount code FAVY10 for 10% off until 19 December": [

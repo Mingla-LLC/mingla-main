@@ -111,10 +111,18 @@ Deno.test("wiring: host-ad-campaign passes the live date and only a literal true
     new URL("../../host-ad-campaign/index.ts", import.meta.url),
   );
   assert(host.includes("liveSinceMs: await loadHostLiveSinceMs(db, rows),"));
+  // #4238 W5: the body → edit mapping moved into resolveSuggestedEdit (one
+  // place for the Host's edit and Ari's suggestion); a suggestion never
+  // carries the acknowledgement.
+  const suggestion = await Deno.readTextFile(
+    new URL("../adSuggestion.ts", import.meta.url),
+  );
+  assert(host.includes("resolveSuggestedEdit("));
   assert(
-    host.includes(
+    suggestion.includes(
       "acknowledgeLearningReset: body.acknowledge_learning_reset === true,",
     ),
   );
+  assert(suggestion.includes("acknowledgeLearningReset: false,"));
   assert(host.includes('planned.error === "host_ad_live_edit_learning_reset"'));
 });

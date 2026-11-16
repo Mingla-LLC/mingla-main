@@ -36,6 +36,8 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   // Issue #3697 v1.4 — report is an inline read. Plan proposal is a confirmed
   // write because it freezes a version after the Host attaches the video.
   "get_ad_campaign_report",
+  // #4238 W5 — budget guidance; ad-plan re-checks ad_can_host_action "plan".
+  "get_ad_budget_guidance",
   // #4238 — the brand's own audience names and sizes; the RPC re-checks
   // ad_can_host_action_for_caller under the caller's JWT.
   "list_ad_audiences",

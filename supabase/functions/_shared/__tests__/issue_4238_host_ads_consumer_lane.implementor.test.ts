@@ -16,6 +16,7 @@ import "../adChannel.ts";
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
@@ -631,7 +632,10 @@ Deno.test("T-A7 #4238 Ari plans on host_setup accounts with a server-checked goa
     },
   } as never;
 
-  const result = await findTool("propose_ad_plan")!.executor(
+  const opensBefore = bodies.filter((row) => row.body.action === "open").length;
+  await assertRejects(
+    () =>
+      findTool("propose_ad_plan")!.executor(
     {
       brand_id: BRAND,
       name: "Deserted Island",
@@ -651,6 +655,34 @@ Deno.test("T-A7 #4238 Ari plans on host_setup accounts with a server-checked goa
     client,
     BRAND,
     {} as never,
+  ),
+    Error,
+    "Tell the Host first: Snapchat will get page visits",
+  );
+  // #4238 W5 adversarial: no yes, no plan opened and nothing saved.
+  assertEquals(bodies.filter((row) => row.body.action === "open").length, opensBefore);
+  const result = await findTool("propose_ad_plan")!.executor(
+    {
+      brand_id: BRAND,
+      name: "Deserted Island",
+      dest_page_type: "event",
+      dest_brand_slug: "femzy",
+      dest_entity_slug: "deserted-island",
+      platforms: ["meta", "snapchat"],
+      budget_cents: 20000,
+      countries: ["NG"],
+      interests: ["live music"],
+      rights_confirmed: true,
+      rights_basis: "owned",
+      ai_generated: true,
+      creative_library_id: CREATIVE,
+      optimize_for: "sales",
+      // #4238 W5 (U-3): the Host agreed Snapchat runs visits for now.
+      acknowledged_visits_fallback: ["snapchat"],
+    },
+    client,
+    BRAND,
+    {} as never,
   ) as { optimization: { sales: string[]; visits: string[] } };
 
   assert(!tables.includes("ad_connections"), "Ari read ad_connections");
@@ -666,6 +698,9 @@ Deno.test("T-A7 #4238 Ari plans on host_setup accounts with a server-checked goa
     snapchat: "visits",
   });
   assertEquals(result.optimization, { sales: ["meta"], visits: ["snapchat"] });
+  // #4238 W5: the goal and the Host's yes ride on the plan like manual plans.
+  assertEquals(canonical.optimization_goal, "sales");
+  assertEquals(canonical.acknowledged_visits_fallback, ["snapchat"]);
   for (const row of bodies) {
     assert(!("lane" in row.body), `${row.name} sent a lane`);
   }

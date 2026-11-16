@@ -109,6 +109,10 @@ import {
   typicalPaidPriceCents,
 } from "../_shared/adResultEstimate.ts";
 import { BAND_HIGH } from "../_shared/adResultBenchmarks.ts";
+import {
+  ariCreativeAiGenerated,
+  ariUnverifiedName,
+} from "../_shared/adAriCreativeRule.ts";
 import { parseOfferingStock } from "../_shared/adDestination.ts";
 import { hostSalesLadderStart } from "../_shared/adGoalLadder.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
@@ -849,6 +853,57 @@ export async function freezeHostW2Fields(
     };
   }
   return { ok: true };
+}
+
+/**
+ * #4238 W5 (8c): why an Ari plan's media or words are refused, or null.
+ * Reads every chosen creative (the frozen creative_library_ids, else the
+ * first) and the event's own record; a failed read refuses (fails closed).
+ */
+export async function ariCreativeRefusal(
+  db: Db,
+  input: {
+    canonical: Record<string, unknown>;
+    brandId: string | null;
+    eventId: unknown;
+  },
+): Promise<string | null> {
+  const { canonical } = input;
+  const ids = (Array.isArray(canonical.creative_library_ids)
+    ? canonical.creative_library_ids
+    : [canonical.creative_library_id]).filter((id): id is string =>
+      typeof id === "string" && UUID_RE.test(id)
+    );
+  const { data: creatives, error } = ids.length > 0
+    ? await db.from("ad_creatives").select("id,ai_generated").in("id", ids)
+    : { data: [], error: null };
+  if (error) return "ari_creative_check_failed";
+  if (
+    ariCreativeAiGenerated({
+      creatives: (creatives ?? []) as { ai_generated?: unknown }[],
+      mediaRights: asRecord(canonical.media_rights),
+    })
+  ) return "ari_creative_ai_generated";
+  const record: (string | null)[] = [];
+  if (input.brandId) {
+    const { data: brand, error: brandError } = await db.from("brands")
+      .select("name").eq("id", input.brandId).maybeSingle();
+    if (brandError) return "ari_creative_check_failed";
+    record.push(typeof brand?.name === "string" ? brand.name : null);
+  }
+  if (typeof input.eventId === "string" && UUID_RE.test(input.eventId)) {
+    const { data: event, error: eventError } = await db.from("events")
+      .select("title,description,location_text").eq("id", input.eventId)
+      .maybeSingle();
+    if (eventError) return "ari_creative_check_failed";
+    record.push(
+      typeof event?.title === "string" ? event.title : null,
+      typeof event?.description === "string" ? event.description : null,
+      typeof event?.location_text === "string" ? event.location_text : null,
+    );
+  }
+  const name = ariUnverifiedName(asRecord(canonical.copy) ?? {}, record);
+  return name ? `ari_copy_unverified_name:${name}` : null;
 }
 
 /**
@@ -3690,6 +3745,19 @@ export async function handleAdPlan(
         },
       ]),
     );
+    // #4238 W5 (8c, I-4238-ARI-REAL-ONLY): an Ari plan uses only the brand's
+    // own non-AI media and names only the people and venues in the event's
+    // own record. The Host's own picks and words are never checked here.
+    if (plan.client_kind === "ari") {
+      const refusal = await ariCreativeRefusal(db, {
+        canonical,
+        brandId: plan.brand_id,
+        eventId: resolvedDestination?.event_id,
+      });
+      if (refusal) {
+        return json({ error: "plan_preflight_failed", detail: refusal }, 422);
+      }
+    }
     // #4238 T-5 (I-4238-COPY-CHECK-WARN-ONLY): the shared pre-launch copy
     // checker. Warn-only, like Admin: the findings ride on the response and
     // never refuse the version.

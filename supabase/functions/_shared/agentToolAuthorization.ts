@@ -175,6 +175,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   pause_ad_campaign: role("finance_manager", "brand", ["pause"]),
   end_ad_campaign: role("finance_manager", "brand", ["end"]),
   get_ad_campaign_report: role("finance_manager", "brand", ["read"]),
+  // #4238 W5: guidance is the plan step's read; a suggestion moves money
+  // (change_live = fund) or starts the last-tickets ad (= launch).
+  get_ad_budget_guidance: role("finance_manager", "brand", ["plan"]),
+  apply_ad_suggestion: role("finance_manager", "brand", ["fund", "launch"]),
   run_growth_tool: role("marketing_manager", "brand"),
   get_growth_tool_report: role("marketing_manager", "brand"),
   get_payout_status: role("finance_manager", "brand"),
