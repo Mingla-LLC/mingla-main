@@ -596,9 +596,6 @@ function StayOverview({
           <View style={styles.readinessHead}>
             <View style={styles.titleCopy}>
               <Text style={styles.cardTitle}>Manage your live Stay</Text>
-              <Text style={styles.helper}>
-                Keep availability, reservations and property details up to date.
-              </Text>
             </View>
           </View>
           {isWideDesktop ? (

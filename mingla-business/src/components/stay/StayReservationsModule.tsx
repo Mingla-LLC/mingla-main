@@ -235,9 +235,6 @@ export function StayReservationsModule({
         <View style={styles.headerRow}>
           <View style={styles.flexOne}>
             <Text style={styles.title}>Stay reservations</Text>
-            <Text style={styles.helper}>
-              Respond, track payment and manage Room-and-Place groups.
-            </Text>
           </View>
           <View style={styles.headerActions}>
             {list.isFetching && !list.isLoading ? (
