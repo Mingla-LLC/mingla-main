@@ -2,13 +2,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StayReservationDetail } from "@mingla/brand-rendering/StayReservationDetail";
 import {
@@ -27,7 +26,10 @@ import {
 } from "../../src/analytics/publicParityWebAdapter";
 import { StayStripePayment } from "../../src/components/stay/StayStripePayment";
 import { useStayReservationGroup } from "../../src/hooks/useStayGuest";
-import { stayGuestService } from "../../src/services/stayGuestService";
+import { StayGuestError, stayGuestService } from "../../src/services/stayGuestService";
+import { StayOtherContactNotice } from "../../src/components/stay/StayOtherContactNotice";
+import { SecurePaymentHandoff } from "../../src/components/checkout/SecurePaymentHandoff";
+import { useAuth } from "../../src/context/AuthContext";
 
 import { color } from "../../src/constants/designSystem";
 const UUID =
@@ -44,6 +46,16 @@ export default function StayReservationRoute(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payment, setPayment] = useState<StayPaymentSession | null>(null);
+  const [handoffUrl, setHandoffUrl] = useState<string | null>(null);
+  const router = useRouter();
+  const { user, signOut } = useAuth();
+  // issue #4420 wave 2 (D-S7) — the booking belongs to another contact.
+  const otherContact =
+    query.error instanceof StayGuestError &&
+    query.error.code === "stay_group_other_contact" &&
+    query.error.maskedEmail !== null
+      ? query.error.maskedEmail
+      : null;
   const groupViewFired = useRef(false);
   const parityViewFired = useRef(false);
   const routeState = resolveBuyerWebPublicLifecycle({
@@ -104,7 +116,8 @@ export default function StayReservationRoute(): React.ReactElement {
         provider: session.provider,
       });
       if (session.provider === "paystack") {
-        await Linking.openURL(session.authorizationUrl);
+        // issue #4420 wave 2 (§2.4) — same-tab handoff with a fallback link.
+        setHandoffUrl(session.authorizationUrl);
       } else {
         setPayment(session);
       }
@@ -132,7 +145,30 @@ export default function StayReservationRoute(): React.ReactElement {
       ]}
     >
       <Text style={[styles.eyebrow, { color: palette.accent }]}>MINGLA STAY</Text>
-      {payment?.provider === "stripe" && query.data ? (
+      {otherContact !== null ? (
+        <StayOtherContactNotice
+          palette={palette}
+          maskedEmail={otherContact}
+          currentEmail={user?.email ?? null}
+          onSignInOther={() => {
+            captureWeb("stay_other_contact_sign_in", { surface: "buyer_web", group_id: groupId });
+            void signOut().finally(() => {
+              router.replace(
+                `/auth?next=${encodeURIComponent(`/stay/${groupId}`)}` as never,
+              );
+            });
+          }}
+        />
+      ) : handoffUrl !== null ? (
+        <SecurePaymentHandoff
+          url={handoffUrl}
+          palette={palette}
+          providerName="Paystack"
+          holdLine="Your rooms are held while you pay."
+          onBack={() => setHandoffUrl(null)}
+          testID="issue-4420-stay-group-secure-payment"
+        />
+      ) : payment?.provider === "stripe" && query.data ? (
         <View style={[styles.payment, { backgroundColor: palette.card }]}>
           <Text style={[styles.paymentTitle, { color: palette.primaryText }]}>
             Pay {formatStayMoney(payment.amountMinor, payment.currencyCode)}
@@ -141,6 +177,7 @@ export default function StayReservationRoute(): React.ReactElement {
             session={payment}
             groupId={query.data.groupId}
             accent={palette.accent}
+            palette={palette}
             onComplete={() => {
               captureWeb("stay_payment_completed", {
                 surface: "buyer_web",

@@ -8,11 +8,16 @@ import {
 
 import type { StayPaymentSession } from "@mingla/brand-rendering/stayGuest";
 
+import type { ThemePalette } from "@mingla/offering-rendering";
+
 import { color } from "../../constants/designSystem";
+import { stayPaymentAppearance } from "./stayPaymentAppearance";
 interface Props {
   session: Extract<StayPaymentSession, { provider: "stripe" }>;
   groupId: string;
   accent: string;
+  /** issue #4420 wave 2 (D-S1) — the page palette; the element follows it. */
+  palette?: ThemePalette;
   onComplete: () => void;
   returnUrl?: string;
 }
@@ -21,6 +26,7 @@ export function StayStripePayment({
   session,
   groupId,
   accent,
+  palette,
   onComplete,
   returnUrl,
 }: Props): React.ReactElement {
@@ -53,10 +59,13 @@ export function StayStripePayment({
         }
         const elements = stripe.elements({
           clientSecret: session.clientSecret,
-          appearance: {
-            theme: "night",
-            variables: { colorPrimary: accent, borderRadius: "12px" },
-          },
+          appearance:
+            palette !== undefined
+              ? stayPaymentAppearance(palette)
+              : {
+                  theme: "night",
+                  variables: { colorPrimary: accent, borderRadius: "12px" },
+                },
         });
         paymentElement = elements.create("payment");
         paymentElement.on("ready", () => {
@@ -79,7 +88,7 @@ export function StayStripePayment({
       stripeRef.current = null;
       elementsRef.current = null;
     };
-  }, [accent, session.clientSecret, stripePromise]);
+  }, [accent, palette, session.clientSecret, stripePromise]);
 
   const pay = async (): Promise<void> => {
     const stripe = stripeRef.current;
@@ -119,6 +128,9 @@ export function StayStripePayment({
         }}
         style={{
           ...styles.button,
+          ...(palette !== undefined
+            ? { backgroundColor: palette.accent, color: palette.accentText }
+            : null),
           opacity: submitting || !ready ? 0.55 : 1,
         }}
       >

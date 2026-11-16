@@ -9,6 +9,7 @@ export function StayStripePayment(_props: {
   session: Extract<StayPaymentSession, { provider: "stripe" }>;
   groupId: string;
   accent: string;
+  palette?: import("@mingla/offering-rendering").ThemePalette;
   onComplete: () => void;
   returnUrl?: string;
 }): React.ReactElement {

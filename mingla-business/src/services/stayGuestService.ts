@@ -21,11 +21,17 @@ type StayEnvelope<T> =
 
 export class StayGuestError extends Error {
   readonly code: string;
+  /**
+   * issue #4420 wave 2 (D-S7) — `stay_group_other_contact` only: the
+   * booking contact's MASKED email ("g•••@example.com"), from the server.
+   */
+  readonly maskedEmail: string | null;
 
-  constructor(code: string, message?: string) {
+  constructor(code: string, message?: string, maskedEmail: string | null = null) {
     super(message ?? code.replaceAll("_", " "));
     this.name = "StayGuestError";
     this.code = code;
+    this.maskedEmail = maskedEmail;
   }
 }
 
@@ -56,20 +62,25 @@ async function invoke<T>(input: {
   if (error) {
     let code = "stay_reservation_failed";
     let message = error.message;
+    let maskedEmail: string | null = null;
     const context = error.context as Response | undefined;
     if (context && typeof context.json === "function") {
       try {
         const body = (await context.json()) as {
           code?: unknown;
           message?: unknown;
+          maskedEmail?: unknown;
         };
         if (typeof body.code === "string") code = body.code;
         if (typeof body.message === "string") message = body.message;
+        if (typeof body.maskedEmail === "string" && body.maskedEmail.includes("•••@")) {
+          maskedEmail = body.maskedEmail;
+        }
       } catch {
         // Use the stable fallback when the edge response is not JSON.
       }
     }
-    throw new StayGuestError(code, message);
+    throw new StayGuestError(code, message, maskedEmail);
   }
   if (!data || data.kind !== "success") {
     throw new StayGuestError(

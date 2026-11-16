@@ -353,8 +353,10 @@ describe("#1503 T-19…T-23 · source pins (the swap cannot be silently reverted
     // at the DATE rows and not just asserting Field is gone entirely.
     expect(source).toContain('label="Guest name"');
     expect(source).toContain("function Field(");
-    // The venue-local seed replaced the UTC one.
-    expect(source).toContain("venueToday(detail.timezone)");
+    // The venue-local seed replaced the UTC one; #4420 wave 2 moved it into
+    // `stayDefaultRange`, which seeds from the same venue-local clock.
+    expect(source).toContain("stayDefaultRange({");
+    expect(source).toContain("timezone: detail.timezone");
   });
 
   test("T-22 the native picker lives ONLY in the .native.tsx half of the split", () => {
