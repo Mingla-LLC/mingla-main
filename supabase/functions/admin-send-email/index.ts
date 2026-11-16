@@ -45,6 +45,10 @@ import {
   DIRECTORY_COLUMNS,
   type DirectoryRow,
   directoryRowToRecipient,
+  isLeadsAudience,
+  leadsAuditAudience,
+  leadsLimitError,
+  loadLeadRecipients,
   requiresMarketingConsent,
 } from "./audience.ts";
 
@@ -150,6 +154,8 @@ interface CampaignRecord {
   snapshot_attempts?: number | null;
   /** When sending of this campaign began (set by the first claim). */
   started_at?: string | null;
+  /** #4452: the stored audience; a lead reply honours only a full opt-out. */
+  audience?: unknown;
 }
 
 /**
@@ -264,13 +270,40 @@ async function loadDirectoryRows(
   return rows;
 }
 
+/** #4452: the caller's own client and id, needed only by the leads modes. */
+export type LeadsContext = { actorId: string; caller: ServiceClient };
+
 async function loadAudienceProfiles(
   supabase: ServiceClient,
   audience: AudienceDefinition,
+  leads?: LeadsContext,
 ): Promise<RecipientProfile[]> {
+  if (isLeadsAudience(audience)) {
+    if (!leads) throw new Error("leads_access_denied");
+    return await loadLeadRecipients(supabase, audience, leads.actorId, leads.caller);
+  }
   return (await loadDirectoryRows(supabase, audience)).map(
     directoryRowToRecipient,
   );
+}
+
+/** #4452 A1.5: both leads modes need leads_can_view as the caller, else 403. */
+export async function assertLeadsAccess(caller: ServiceClient, audience: AudienceDefinition) {
+  if (!isLeadsAudience(audience)) return;
+  const { data, error } = await caller.rpc("leads_can_view");
+  if (error || data !== true) throw new Error("leads_access_denied");
+}
+
+/** #4452: leads campaigns in 24 h, or lead replies in the last hour, by this actor. */
+async function recentLeadsSends(supabase: ServiceClient, audience: AudienceDefinition, actorId: string): Promise<number> {
+  const since = new Date(Date.now() - (audience.mode === "leads" ? 24 : 1) * 3_600_000).toISOString();
+  const { count, error } = await supabase.from("admin_email_log")
+    .select("id", { count: "exact", head: true })
+    .eq("sent_by", actorId)
+    .eq("audience->>mode", audience.mode)
+    .gte("created_at", since);
+  if (error) throw new Error(`leads_limit_check_failed:${error.message}`);
+  return Number(count ?? 0);
 }
 
 /** #4226: staff/test out of bulk sends; ticket buyers need marketing consent. */
@@ -280,21 +313,27 @@ function snapshotFor(
   audience: AudienceDefinition,
 ) {
   return snapshotAudience(recipients, suppressed, {
-    excludeInternal: audience.mode !== "person",
+    // A one-to-one send (a person, or a #4452 lead reply) never drops staff/test.
+    excludeInternal: audience.mode !== "person" && audience.mode !== "lead_reply",
     requireConsent: (profile) => requiresMarketingConsent(audience, profile),
   });
 }
 
-/** Lowercased emails suppressed for marketing/all email channel. */
+/**
+ * Lowercased emails suppressed for marketing/all email channel. #4452: a lead
+ * reply (`allOnly`) is blocked only by a full opt-out (scope 'all'); a
+ * marketing-only unsubscribe does not block a one-to-one reply.
+ */
 async function loadSuppressedEmails(
   supabase: ServiceClient,
+  options: { allOnly?: boolean } = {},
 ): Promise<Set<string>> {
   const suppressed = new Set<string>();
   const { data: channelRows, error: channelError } = await supabase
     .from("channel_suppressions")
     .select("contact")
     .eq("channel", "email")
-    .in("scope", ["marketing", "all"])
+    .in("scope", options.allOnly ? ["all"] : ["marketing", "all"])
     .not("contact", "is", null);
   if (channelError) {
     throw new Error(
@@ -307,6 +346,7 @@ async function loadSuppressedEmails(
       : "";
     if (email) suppressed.add(email);
   }
+  if (options.allOnly) return suppressed;
 
   const { data: legacyRows, error: legacyError } = await supabase
     .from("marketing_unsubscribes")
@@ -516,6 +556,7 @@ export async function createCampaign(
   supabase: ServiceClient,
   userId: string,
   raw: Record<string, unknown>,
+  leads?: LeadsContext & { actorEmail?: string | null },
 ) {
   if (!RESEND_API_KEY) throw new Error("NO_PROVIDER");
   if (!raw.audience || typeof raw.audience !== "object") {
@@ -538,12 +579,34 @@ export async function createCampaign(
     throw new Error("scheduled_timezone_invalid");
   }
 
-  const recipients = await loadAudienceProfiles(supabase, audience);
-  const suppressed = await loadSuppressedEmails(supabase);
+  if (isLeadsAudience(audience)) {
+    if (!leads) throw new Error("leads_access_denied");
+    await assertLeadsAccess(leads.caller, audience);
+  }
+  const recipients = await loadAudienceProfiles(supabase, audience, leads);
+  const suppressed = await loadSuppressedEmails(supabase, { allOnly: audience.mode === "lead_reply" });
   const snapshot = snapshotFor(recipients, suppressed, audience);
+  if (audience.mode === "lead_reply" && snapshot.skippedOptOut > 0) {
+    throw new Error("lead_reply_blocked");
+  }
   if (snapshot.willReceive < 1) {
     throw new Error("audience_has_no_eligible_recipients");
   }
+  let storedAudience: Record<string, unknown> = audience as unknown as Record<string, unknown>;
+  if (isLeadsAudience(audience)) {
+    const limit = leadsLimitError(audience, {
+      willReceive: snapshot.willReceive,
+      recentSends: await recentLeadsSends(supabase, audience, userId),
+    });
+    if (limit) throw new Error(limit);
+    let selection: { filter?: Record<string, unknown> | null } | null = null;
+    if (audience.mode === "leads") {
+      const { data } = await supabase.from("lead_audience_selections").select("filter").eq("id", audience.selectionId).maybeSingle();
+      selection = (data as { filter?: Record<string, unknown> | null } | null) ?? null;
+    }
+    storedAudience = leadsAuditAudience(audience, selection, snapshot.matched);
+  }
+  const oneToOne = audience.mode === "person" || audience.mode === "lead_reply";
 
   const status = scheduledFor && scheduledFor.getTime() > Date.now()
     ? "scheduled"
@@ -556,12 +619,12 @@ export async function createCampaign(
       body_document: versionedDocument(storedDocument),
       from_name: ADMIN_SENDER.name,
       from_email: ADMIN_SENDER.address,
-      recipient_type: audience.mode === "person" ? "individual" : "bulk",
-      recipient_email: audience.mode === "person"
+      recipient_type: oneToOne ? "individual" : "bulk",
+      recipient_email: oneToOne
         ? snapshot.deliveries[0]?.recipient_email ?? null
         : null,
       segment_filter: audience.mode === "segment" ? audience.filters : null,
-      audience,
+      audience: storedAudience,
       recipient_count: snapshot.deliveries.length,
       matched_count: snapshot.matched,
       skipped_count: snapshot.skippedOptOut,
@@ -598,6 +661,19 @@ export async function createCampaign(
     }
   }
 
+  if (audience.mode === "leads") {
+    // #4452 A1.5: one audit row with the counts (never an email address).
+    await auditCampaignChange(supabase, { id: userId, email: leads?.actorEmail ?? null }, "email_campaign_leads_audience", campaign.id, {
+      selection_id: audience.selectionId,
+      selected: snapshot.matched,
+      will_receive: snapshot.willReceive,
+      no_consent: snapshot.noConsent,
+      opted_out: snapshot.skippedOptOut,
+      internal: snapshot.internalExcluded,
+      duplicate: snapshot.duplicate,
+    });
+  }
+
   if (status === "queued") {
     scheduleBackground(processCampaignById(supabase, campaign.id));
   }
@@ -631,7 +707,8 @@ async function auditCampaignChange(
     | "email_campaign_rescheduled"
     | "email_campaign_edited"
     | "email_campaign_cancelled"
-    | "email_campaign_test_sent",
+    | "email_campaign_test_sent"
+    | "email_campaign_leads_audience",
   campaignId: string,
   metadata: Record<string, unknown>,
 ) {
@@ -945,7 +1022,8 @@ export async function processClaimedCampaign(
   if (claimError) {
     throw new Error(`delivery_claim_failed:${claimError.message}`);
   }
-  const liveSuppressed = await loadSuppressedEmails(supabase);
+  // #4452: re-read right before each batch; a lead reply honours only a full opt-out.
+  const liveSuppressed = await loadSuppressedEmails(supabase, { allOnly: (campaign.audience as { mode?: unknown } | null | undefined)?.mode === "lead_reply" });
 
   // One send at a time, each waiting for its slot (paceSend), so the whole
   // drain stays under the share of Resend's rate limit Admin email may use.
@@ -1827,8 +1905,9 @@ export async function handler(req: Request) {
       const audience = segment
         ? legacySegmentAudience(segment)
         : normalizeAudience(body.audience);
-      const recipients = await loadAudienceProfiles(supabase, audience);
-      const suppressed = await loadSuppressedEmails(supabase);
+      await assertLeadsAccess(userSupabase, audience);
+      const recipients = await loadAudienceProfiles(supabase, audience, { actorId: user.id, caller: userSupabase });
+      const suppressed = await loadSuppressedEmails(supabase, { allOnly: audience.mode === "lead_reply" });
       const snapshot = snapshotFor(recipients, suppressed, audience);
       return jsonResponse({
         matched: snapshot.matched,
@@ -1915,7 +1994,7 @@ export async function handler(req: Request) {
 
     if (action === "create_campaign") {
       return jsonResponse({
-        campaign: await createCampaign(supabase, user.id, body),
+        campaign: await createCampaign(supabase, user.id, body, { actorId: user.id, caller: userSupabase, actorEmail: user.email ?? null }),
       }, 201);
     }
 
@@ -2014,8 +2093,15 @@ export function errorStatus(error: unknown): number {
   const message = error instanceof Error ? error.message : String(error);
   return error instanceof BlogPostBlockError && error.code === "blog_not_ready"
     ? 503
-    : /email_admin_only/.test(message)
+    : /email_admin_only|leads_access_denied/.test(message)
     ? 403
+    // #4452 A1.5: the leads limits and the full opt-out on a reply.
+    : /leads_send_limit|lead_reply_limit/.test(message)
+    ? 429
+    : /lead_reply_blocked/.test(message)
+    ? 422
+    : /leads_audience_too_large|lead_selection_expired|lead_not_found/.test(message)
+    ? 400
     : /invalid|required|unsupported|not_cancellable|not_reschedulable|time_past|email_block|email_document|recipient_email|no_eligible|not_found|test_send_limit|test_send_address/
         .test(message)
     ? 400

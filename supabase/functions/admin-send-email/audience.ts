@@ -198,6 +198,10 @@ export function requiresMarketingConsent(
   audience: AudienceDefinition,
   row: RecipientProfile,
 ): boolean {
+  // #4452 A1.5: a Leads list send is marketing (always 'yes'); a one-to-one
+  // reply to a lead is not.
+  if (audience.mode === "leads") return true;
+  if (audience.mode === "lead_reply") return false;
   if (
     audience.mode === "segment" &&
     (audience.filters?.userType === "ticket_buyers" ||
@@ -235,4 +239,114 @@ const APP_STATUS_LABELS: Record<string, string> = {
 
 export function appStatusLabel(value: string | null | undefined): string {
   return (value && APP_STATUS_LABELS[value]) || "Unknown";
+}
+
+// ── #4452 A1.5: leads, through the existing composer (no new sender) ───────
+//
+// A Leads list selection is resolved by public.leads_audience_resolve (service
+// role only; it refuses another actor's or an expired selection), and a reply
+// reads the one lead through admin_lead_get as the caller. Each row becomes the
+// recipient shape the composer personalises, with app_status 'lead'; the
+// existing snapshotAudience then leaves out staff/test, invalid, duplicate,
+// suppressed and (for "leads") no-consent people under its existing reasons.
+//
+// MINGLA-INVARIANT: I-4452-LEADS-EMAIL-CONSENT | issue #4452 | a Leads list send reaches only
+// marketing_consent 'yes' people; a reply is blocked only by a full ('all') opt-out
+// (issue_4452_leads_audience test).
+
+/** Who may be sent at most: per send, per actor per day, replies per hour. */
+export const LEADS_MAX_RECIPIENTS = 5_000;
+export const LEADS_CAMPAIGNS_PER_DAY = 5;
+export const LEAD_REPLIES_PER_HOUR = 60;
+
+export function isLeadsAudience(audience: AudienceDefinition): boolean {
+  return audience.mode === "leads" || audience.mode === "lead_reply";
+}
+
+export interface LeadRow {
+  lead_id?: string | null;
+  id?: string | null;
+  email?: string | null;
+  display_name?: string | null;
+  name?: string | null;
+  first_name?: string | null;
+  marketing_consent?: string | boolean | null;
+  is_internal?: boolean | null;
+  is_test?: boolean | null;
+}
+
+/** One resolved lead as the recipient shape the composer personalises. */
+export function leadRowToRecipient(row: LeadRow): RecipientProfile {
+  const name = (row.display_name ?? row.name ?? "").trim() || null;
+  const consent = typeof row.marketing_consent === "boolean"
+    ? (row.marketing_consent ? "yes" : "no")
+    : row.marketing_consent === "yes" || row.marketing_consent === "unsubscribed"
+    ? row.marketing_consent
+    : "no";
+  return {
+    id: null,
+    email: row.email ?? null,
+    first_name: (row.first_name ?? "").trim() || (name ? name.split(/\s+/)[0] : null),
+    display_name: name,
+    app_status: "lead",
+    is_internal: row.is_internal === true || row.is_test === true,
+    marketing_consent: consent,
+  };
+}
+
+type RpcClient = {
+  rpc: (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }>;
+};
+
+/** The recipients of a leads audience. Reply reads as the caller (its gate). */
+export async function loadLeadRecipients(
+  service: RpcClient,
+  audience: AudienceDefinition,
+  actorId: string,
+  caller: RpcClient,
+): Promise<RecipientProfile[]> {
+  if (audience.mode === "leads") {
+    const { data, error } = await service.rpc("leads_audience_resolve", {
+      p_selection_id: audience.selectionId,
+      p_actor: actorId,
+    });
+    if (error) {
+      throw new Error(/selection_expired/.test(error.message) ? "lead_selection_expired" : `leads_audience_failed:${error.message}`);
+    }
+    return ((data ?? []) as LeadRow[]).map(leadRowToRecipient);
+  }
+  if (audience.mode === "lead_reply") {
+    const { data, error } = await caller.rpc("admin_lead_get", { p_id: audience.leadId });
+    if (error) throw new Error(/not_found|P0002/.test(`${error.code ?? ""} ${error.message}`) ? "lead_not_found" : `lead_read_failed:${error.message}`);
+    const lead = (data as { lead?: LeadRow } | null)?.lead;
+    if (!lead) throw new Error("lead_not_found");
+    // A reply goes to the lead even without marketing consent; staff/test too.
+    return [{ ...leadRowToRecipient({ ...lead, is_test: false }), marketing_consent: "yes" }];
+  }
+  throw new Error("audience_mode_invalid");
+}
+
+/** The send limits, checked before the snapshot is stored. */
+export function leadsLimitError(
+  audience: AudienceDefinition,
+  counts: { willReceive: number; recentSends: number },
+): string | null {
+  if (audience.mode === "leads") {
+    if (counts.willReceive > LEADS_MAX_RECIPIENTS) return "leads_audience_too_large";
+    if (counts.recentSends >= LEADS_CAMPAIGNS_PER_DAY) return "leads_send_limit";
+  }
+  if (audience.mode === "lead_reply" && counts.recentSends >= LEAD_REPLIES_PER_HOUR) return "lead_reply_limit";
+  return null;
+}
+
+/** What admin_email_log.audience stores: never a search text, never an email. */
+export function leadsAuditAudience(
+  audience: AudienceDefinition,
+  selection: { filter?: Record<string, unknown> | null } | null,
+  selected: number,
+): Record<string, unknown> {
+  if (audience.mode === "lead_reply") return { mode: "lead_reply", leadId: audience.leadId };
+  const filter = selection?.filter ? { ...selection.filter } : null;
+  if (filter && "q" in filter) filter.q = "[search]";
+  return { mode: "leads", selectionId: audience.selectionId, filter, selected };
 }
