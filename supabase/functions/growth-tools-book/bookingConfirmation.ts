@@ -4,6 +4,7 @@
 // button only (the design's noCall): they have already booked the call.
 import { renderShell, SHELL_TOKENS } from "../_shared/email/shell.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
+import { actionBarCopy } from "../_shared/email/actionBar.ts";
 
 const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED } = SHELL_TOKENS;
 
@@ -30,10 +31,13 @@ export function renderBookingConfirmation(input: BookingConfirmationInput): { ht
     <p style="margin:0 0 8px;color:${BRAND_INK};font-size:18px;font-weight:700;">${escapeHtml(input.when)}</p>
     <p style="margin:0;color:${BRAND_MUTED};font-size:14px;">A Google Calendar invite with the Meet link is also on its way. Reply to this email if you need to move it.</p>
     ${meetBtn}`;
+  // The plain-text part carries the same app link as the HTML bar (P3-D); no call link (they booked one).
+  const app = actionBarCopy({ kind: input.audience, noCall: true }).app;
   const text =
     `You're booked in.\n\nYour call with Mingla is confirmed for ${input.when}.\n` +
     `A Google Calendar invite with the Meet link is on its way.` +
-    (input.meetUrl ? `\n\nMeet: ${input.meetUrl}` : "");
+    (input.meetUrl ? `\n\nMeet: ${input.meetUrl}` : "") +
+    `\n\n${app.text}: ${app.href}`;
   const preheader = `Confirmed: ${input.when}`;
   const html = renderShell({
     preheader,

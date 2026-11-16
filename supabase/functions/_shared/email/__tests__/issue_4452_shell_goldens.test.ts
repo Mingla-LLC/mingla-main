@@ -301,3 +301,19 @@ Deno.test("G-5 P2-B text contrast: every text colour on a shell document is >= 4
   }
   assert(seen.has("#6B675F"), "the muted secondary-text colour is exercised");
 });
+
+Deno.test("G-6 P3-D the booked-call plain-text part carries the same app link as the HTML bar, and no call link", async () => {
+  const base = { when: "Thursday, November 19 at 11:00 AM EST", meetUrl: null, supportEmail: "support@usemingla.com", logoUrl: LOGO, footerAddress: "Mingla, hello@usemingla.com" };
+  const expected = { host: "https://usemingla.com/host/get", creator: "https://usemingla.com/download", local: "https://usemingla.com/download" } as const;
+  for (const audience of ["host", "creator", "local"] as const) {
+    const { html, text } = renderBookingConfirmation({ ...base, audience });
+    assert(text.includes(expected[audience]), `${audience}: the text part has the app link`);
+    assert(html.includes(`href="${expected[audience]}"`), `${audience}: the HTML bar has the same link`);
+    assert(!/schedule/.test(text), `${audience}: no call link in the text`);
+    const file = new URL(`booking_confirmation_${audience}.txt`, DIR);
+    if (UPDATE) await Deno.writeTextFile(file, text);
+    assertEquals(text, await Deno.readTextFile(file), `${audience}: the text golden`);
+  }
+  const withMeet = renderBookingConfirmation({ ...base, audience: "host", meetUrl: "https://meet.google.com/abc-defg-hij" }).text;
+  assert(withMeet.includes("Meet: https://meet.google.com/abc-defg-hij") && withMeet.includes("Get Mingla Host: https://usemingla.com/host/get"));
+});
