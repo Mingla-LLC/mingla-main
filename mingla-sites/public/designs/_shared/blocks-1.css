@@ -15,7 +15,12 @@
  * marked the page scope `data-mg-motion="on"`. Reduced motion and `motion: none`
  * turn every animation off.
  */
-@layer mg-base, mg-blocks;
+/*
+ * Layer order: a design stylesheet's own `base` and `components` layers
+ * (resets, element defaults) come FIRST, so they never flatten a shared
+ * layout; a design's signature rules are unlayered and therefore still win.
+ */
+@layer base, components, mg-base, mg-blocks;
 
 @layer mg-base {
   :root[data-design] { --mg-max: 1320px; --mg-gutter: max(16px, env(safe-area-inset-left, 0px)); --mg-sec-pad: clamp(72px, 10vw, 150px); --mg-r-card: calc(28px * var(--radius-scale, 1)); --mg-r-field: calc(20px * var(--radius-scale, 1)); --mg-r-btn: var(--button-radius, 999px); }
