@@ -81,7 +81,11 @@ const links = await load('links-src')
 test('exactly the seven ICP pages, from one data file, and none shadows a /host sibling', () => {
   assert.deepEqual(icps.ICP_SLUGS, SLUGS)
   const page = code(read('app/host/[icp]/page.tsx'))
-  assert.match(page, /export const dynamicParams = false/)
+  // #4452 rework 1: was `dynamicParams = false`. The #4339 contract (only the seven ICPs render, no slug
+  // shadows a sibling) now holds through the isIcpSlug -> notFound() guard, because a false value 404s
+  // the prerendered pages when the site-pages tag is revalidated (lib/__tests__/issue-4452-rework-ui).
+  assert.match(page, /export const dynamicParams = true/)
+  assert.match(page, /if \(!isIcpSlug\(icp\)\) notFound\(\)/)
   assert.match(page, /return ICP_SLUGS\.map\(\(icp\) => \(\{ icp \}\)\)/)
   assert.match(page, /<IcpLandingPage slug=\{icp\} \/>/)
   const siblings = fs.readdirSync(path.join(MARKETING, 'app/host')).filter((name) => !name.startsWith('['))

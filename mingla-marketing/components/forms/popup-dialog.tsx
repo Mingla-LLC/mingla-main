@@ -31,13 +31,15 @@ export interface PopupDialogProps {
   onDone: (o: Extract<SubmitOutcome, { ok: true }>, first: string | null, booking?: BookingBasics | null) => void
   /** The builder's preview: drawn inside its frame, not over a page. */
   framed?: boolean
+  /** The draft preview page: the pop-up sits above the preview bar, as a visitor sees it. */
+  overBar?: boolean
 }
 
-export function PopupDialog({ dialogRef, style, form, block, confirmClose, onKeepGoing, onClose, done, onDirty, onDone, onBooked, framed = false }: PopupDialogProps) {
+export function PopupDialog({ dialogRef, style, form, block, confirmClose, onKeepGoing, onClose, done, onDirty, onDone, onBooked, framed = false, overBar = false }: PopupDialogProps) {
   const design = designOf(form.design)
   const title = style === 'side' ? `${block.head ?? design.head}` : block.head ?? design.title ?? form.name
   return (
-    <div className={`pu-scrim${framed ? ' pu-framed' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose('scrim') }}>
+    <div className={`pu-scrim${framed ? ' pu-framed' : ''}${overBar ? ' pu-over-bar' : ''}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose('scrim') }}>
       <div ref={dialogRef} className={`pu pu-${style}`} role="dialog" aria-modal="true" aria-labelledby="pu-title" tabIndex={-1}>
         {style === 'sheet' ? <span className="pu-grab" aria-hidden="true" /> : null}
         {style === 'centre' ? <FormLook design={design} /> : null}

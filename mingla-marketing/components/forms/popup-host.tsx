@@ -29,6 +29,7 @@ import {
   type PublicForm,
   reachedHalf,
 } from '@/lib/site-pages/model'
+import { FIRST_FIELD_SELECTOR, focusablesIn, privacySheetOpen } from '@/lib/forms/popup-dom'
 import './forms.css'
 
 export interface PopupEntry {
@@ -51,8 +52,6 @@ function ctxOf(entry: PopupEntry): FormContext {
   return { form_key: entry.form.key, form_version: entry.form.version, label: entry.form.audience, placement: 'popup', spot: 'popup' }
 }
 
-const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])'
-
 export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, PopupEntry>; keyForPath: Record<string, string> }) {
   const pathname = usePathname() ?? '/'
   const entry = byPage[keyForPath[pathname] ?? ''] ?? null
@@ -71,7 +70,7 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
 
   const show = useCallback((trigger: string, from: HTMLElement | null = null) => {
     if (!entry || shownThisView.current) return
-    if (document.querySelector('.mpb')) return  // the privacy sheet is open
+    if (privacySheetOpen(document)) return  // only while the privacy panel is actually open
     const s = storage()
     const now = Date.now()
     const done = Number(s?.getItem(`mingla:form-done:${entry.form.id}`) ?? '') || null
@@ -152,7 +151,8 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
     root.style.overflow = 'hidden'
     const siblings = Array.from(document.body.children).filter((el) => !el.contains(dialog.current))
     siblings.forEach((el) => el.setAttribute('inert', ''))
-    const first = dialog.current?.querySelector<HTMLElement>('input,textarea,button[role="radio"]') ?? dialog.current
+    // The first real field, never the bot trap (#4452 rework 1, P0-2).
+    const first = dialog.current?.querySelector<HTMLElement>(FIRST_FIELD_SELECTOR) ?? dialog.current
     first?.focus({ preventScroll: true })
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -161,7 +161,7 @@ export function PopupHost({ byPage, keyForPath }: { byPage: Record<string, Popup
         close('esc')
       }
       if (e.key === 'Tab' && dialog.current) {
-        const items = Array.from(dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null || el === document.activeElement)
+        const items = focusablesIn<HTMLElement>(dialog.current).filter((el) => el.offsetParent !== null || el === document.activeElement)
         if (!items.length) return
         const a = items[0]
         const z = items[items.length - 1]

@@ -50,7 +50,7 @@ export default async function ApplyPage({ params }: { params: Promise<{ slug: st
   const terms = TERMS[form.audience]
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface={form.audience === 'host' ? 'host' : 'explorer'}>
+      <SitePage surface={form.audience === 'host' ? 'host' : 'explorer'} callAudience={form.audience}>
         <section className="ap-sec" style={{ background: bg, color: dark ? '#fff' : '#111110' }}>
           <div className="wrap ap-grid">
             <div className="ap-copy">

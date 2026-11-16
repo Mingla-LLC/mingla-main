@@ -599,9 +599,6 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
       {showErrors && errorCount > 0 ? (
         <p className="fk-summary" role="alert">{errorCount} answer{errorCount === 1 ? '' : 's'} need{errorCount === 1 ? 's' : ''} a fix below.</p>
       ) : null}
-      <div className="fk-hp" aria-hidden="true">
-        <label>Leave this empty <input ref={honeypot} tabIndex={-1} autoComplete="off" name="website_url" /></label>
-      </div>
       <div key={structure === 0 ? 'base' : `s${resume ? 'r' : ''}`} className="fk-fields">
         {stepMode ? <p className="fk-step" aria-live="polite">Question {at + 1} of {visibleFields.length}</p> : null}
         {shownFields.map((f) => {
@@ -622,6 +619,10 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
             case 'consent': return <ConsentField key={f.key} {...p} />
           }
         })}
+      </div>
+      {/* The bot trap: after the fields, never focusable, hidden from assistive tech (#4452 rework 1, P0-2). */}
+      <div className="fk-hp" aria-hidden="true">
+        <label>Leave this empty <input ref={honeypot} tabIndex={-1} autoComplete="off" name="website_url" aria-hidden="true" /></label>
       </div>
       {failure ? (
         <p className="fk-failure" role="alert">
