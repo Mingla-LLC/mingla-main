@@ -31,7 +31,7 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { applyAdCreditTopUp } from "../../services/adCreditService";
 import { minorFromMajor } from "../../utils/currency";
-import { buildHostAdList, type HostAdListItem } from "../../services/hostAdLifecycle";
+import { buildHostAdList, hostAdRowIdentity, type HostAdListItem } from "../../services/hostAdLifecycle";
 import { AdListSummaryCard } from "../../components/marketing/ads/results/AdListSummaryCard";
 import { hostAdScrollBottomPadding } from "../../components/marketing/ads/hostAdBuilderRules";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
@@ -377,9 +377,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
       <View style={[styles.tr, styles.th]}>
         <Text style={[styles.td, styles.tdName, styles.thText]}>{hm("list.colAd")}</Text>
         <Text style={[styles.td, styles.tdStatus, styles.thText]}>{hm("list.colStatus")}</Text>
-        <Text style={[styles.td, styles.thText]}>{hm("list.colSpent")}</Text>
+        <Text style={[styles.td, styles.tdNum, styles.thText]}>{hm("list.colSpent")}</Text>
         <Text style={[styles.td, styles.thText]}>{hm("list.colResults")}</Text>
-        <Text style={[styles.td, styles.thText]}>{hm("list.colEach")}</Text>
+        <Text style={[styles.td, styles.tdNum, styles.thText]}>{hm("list.colEach")}</Text>
       </View>
       {shown.map((item) => {
         const status = hostAdRowStatus(item);
@@ -393,15 +393,22 @@ export default function MarketingAdsRoute(): React.ReactElement {
             accessibilityLabel={hm("list.open", { name: item.name })}
             testID={`ads-${item.kind}-row-${item.id}`}
           >
-            <Text style={[styles.td, styles.tdName]} numberOfLines={1}>{item.name}</Text>
+            <View style={[styles.td, styles.tdNameCell]}>
+              <Text style={styles.tdNameText} numberOfLines={2}>{item.name}</Text>
+              {hostAdRowIdentity(item) ? (
+                <Text style={bs.caption} numberOfLines={1} testID={`ads-row-identity-${item.id}`}>
+                  {hostAdRowIdentity(item)}
+                </Text>
+              ) : null}
+            </View>
             <View style={[styles.td, styles.tdStatus]}>
               <Chip label={status.label} tone={status.tone} />
             </View>
-            <Text style={styles.td}>{spentPay ? money(spentPay) : "—"}</Text>
+            <Text style={[styles.td, styles.tdNum]} numberOfLines={1}>{spentPay ? money(spentPay) : "—"}</Text>
             <Text style={styles.td}>
               {item.primaryResultCount ? `${item.primaryResultCount} ${hostAdUnit(hostAdGoalFromResult(item.primaryResultLabel))}` : "—"}
             </Text>
-            <Text style={styles.td}>{item.primaryResultCount && spentPay ? money(Math.round(spentPay / item.primaryResultCount)) : "—"}</Text>
+            <Text style={[styles.td, styles.tdNum]} numberOfLines={1}>{item.primaryResultCount && spentPay ? money(Math.round(spentPay / item.primaryResultCount)) : "—"}</Text>
           </Pressable>
         );
       })}
@@ -602,5 +609,10 @@ const styles = StyleSheet.create({
   thText: { color: color.text2 },
   td: { ...type.small, color: color.text1, flex: 1, textAlign: "right" },
   tdName: { flex: 2, textAlign: "left" },
+  // #4238 rework 3: the name wraps to two lines with apps · start day under it.
+  tdNameCell: { flex: 2, minWidth: 0, gap: space[1] },
+  tdNameText: { ...type.small, color: color.text1, fontWeight: "600" },
+  // Money never breaks between the currency code and the amount.
+  tdNum: { minWidth: 112, flexShrink: 0 },
   tdStatus: { flex: 2, alignItems: "flex-start" },
 });

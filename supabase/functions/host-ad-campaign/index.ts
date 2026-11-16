@@ -1985,6 +1985,17 @@ async function loadPlanSuggestion(
     row.status === "pending" &&
     typeof (row.detail as Record<string, unknown> | null)?.accepted_at !== "string"
   );
+  // #4238 rework 3 (tester P3-3): the latest pause/stop reason on the plan's
+  // campaigns, so Ari never suggests extending a sold-out or passed ad.
+  const { data: stops } = ids.length > 0
+    ? await db.from("ad_status_events")
+      .select("provider_response,created_at")
+      .in("campaign_id", ids).in("action", ["pause", "end"])
+      .order("created_at", { ascending: false }).limit(20)
+    : { data: [] };
+  const stopReason = ((stops ?? []) as Record<string, unknown>[])
+    .map((row) => (row.provider_response as Record<string, unknown> | null)?.reason)
+    .find((value): value is string => typeof value === "string") ?? null;
   const suggestion = await hostAdSuggestion({
     planId: String(plan.id),
     planState: String(plan.state),
@@ -2005,6 +2016,7 @@ async function loadPlanSuggestion(
     stock,
     walletCents,
     lastTicketsOffered,
+    stopReason,
   });
   if (!suggestion || suggestion.apply_action !== "change_live") return suggestion;
   const dry = planHostLiveEdit(liveEditInput(plan, ctx, nowMs, {

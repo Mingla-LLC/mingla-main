@@ -85,8 +85,10 @@ ALTER TABLE public.ad_campaigns DISABLE TRIGGER ad_campaign_record_plan_create_s
 -- ── Brand, event, ticket stock ──────────────────────────────────────────────
 INSERT INTO public.creator_accounts (id) SELECT owner_id FROM seed_ids
 ON CONFLICT (id) DO NOTHING;
-INSERT INTO public.brands (id, account_id, name, slug, pricing_currency, default_currency)
-SELECT brand_id, owner_id, 'Host Ads Test Brand', 'host-ads-test-brand', 'USD', 'USD' FROM seed_ids;
+-- #4238 rework 3 (tester P2-1): a brand country, so Step 2 starts with
+-- "People in United States" instead of an empty country.
+INSERT INTO public.brands (id, account_id, name, slug, pricing_currency, default_currency, country_code)
+SELECT brand_id, owner_id, 'Host Ads Test Brand', 'host-ads-test-brand', 'USD', 'USD', 'US' FROM seed_ids;
 -- A FAKE payout rail row (never called) so the brand's Ads currency resolves.
 INSERT INTO public.stripe_connect_accounts (brand_id, stripe_account_id, charges_enabled, payouts_enabled, country, default_currency)
 SELECT brand_id, 'acct_local_seed_4238', true, true, 'US', 'usd' FROM seed_ids;
@@ -109,10 +111,15 @@ INSERT INTO public.ad_credit_ledger (brand_id, entry_kind, amount_cents, fee_cen
 SELECT brand_id, 'top_up', 8_500_00, 1_500_00, 10_000_00, 8_500_00, 'USD', 'local-seed-4238-top-up-1', '{"local_seed":"4238"}'::jsonb FROM seed_ids;
 
 -- ── Ad connections (fake; never called) ─────────────────────────────────────
+-- #4238 rework 3 (tester P2-1): Host ads read the accounts on HOST_AD_LANE
+-- ('consumer', supabase/functions/_shared/adChannelCore.ts). A 'business'
+-- row left the builder on "Ads aren't available yet" on the seeded stack.
+-- Keep this literal in step with HOST_AD_LANE (pinned by
+-- issue_4238_rework3_seed_lane.implementor.test.ts).
 INSERT INTO public.ad_connections (id, platform, lane, display_name, external_account_id, auth_kind, token_env_var, status, currency, connected)
-SELECT meta_conn, 'meta', 'business', 'Local test Meta', 'act_local_4238', 'system_user_token', 'LOCAL_SEED_4238_FAKE_TOKEN', 'connected', 'USD', true FROM seed_ids
+SELECT meta_conn, 'meta', 'consumer', 'Local test Meta', 'act_local_4238', 'system_user_token', 'LOCAL_SEED_4238_FAKE_TOKEN', 'connected', 'USD', true FROM seed_ids
 UNION ALL
-SELECT tiktok_conn, 'tiktok', 'business', 'Local test TikTok', 'tt_local_4238', 'system_user_token', 'LOCAL_SEED_4238_FAKE_TOKEN', 'connected', 'USD', true FROM seed_ids;
+SELECT tiktok_conn, 'tiktok', 'consumer', 'Local test TikTok', 'tt_local_4238', 'system_user_token', 'LOCAL_SEED_4238_FAKE_TOKEN', 'connected', 'USD', true FROM seed_ids;
 
 -- ── One plan + campaign per state ───────────────────────────────────────────
 -- n, label, platform, plan state, campaign status, days live (NULL = never),
@@ -178,7 +185,10 @@ BEGIN
     v_balance := v_balance - v_cap;
     v_held := v_held + v_cap;
     INSERT INTO public.ad_credit_ledger (brand_id, entry_kind, amount_cents, fee_cents, balance_after_cents, currency, idempotency_key, metadata)
-    VALUES (v_ids.brand_id, 'campaign_spend', -v_cap, 0, greatest(v_balance, 0), 'USD', 'local-seed-4238-hold-' || s.n, '{"local_seed":"4238"}'::jsonb)
+    VALUES (v_ids.brand_id, 'campaign_spend', -v_cap, 0, greatest(v_balance, 0), 'USD', 'local-seed-4238-hold-' || s.n,
+      -- #4238 rework 3 (tester P3-10): plan_id, as the real hold writes it, so
+      -- the statement's "Per ad" rows carry each ad's name.
+      jsonb_build_object('local_seed', '4238', 'plan_id', v_plan))
     RETURNING id INTO v_ledger;
     INSERT INTO public.ad_plan_funding_holds (id, plan_id, plan_version_id, plan_hash, funding_source, brand_id, ledger_id, currency, amount_cents, state)
     VALUES (('4238f1a0-0000-4000-8000-6000000000' || lpad(s.n::text, 2, '0'))::uuid, v_plan, v_version, v_hash, 'host_credit',
@@ -199,10 +209,11 @@ BEGIN
     INSERT INTO public.ad_sets (id, campaign_id, external_adset_id, name, optimization_goal, status, stage)
     VALUES (v_set, v_campaign, 'local-seed-4238-set-' || s.n, 'Prospecting', 'OFFSITE_CONVERSIONS', s.status, 'prospecting');
     FOR i IN 1 .. cardinality(s.reviews) LOOP
-      INSERT INTO public.ad_creatives (id, kind, name, content_hash, source, source_url, source_brand_id)
+      -- #4238 rework 3: brand_id too, so the builder's photo library lists them.
+      INSERT INTO public.ad_creatives (id, kind, name, content_hash, source, source_url, source_brand_id, brand_id, width, height)
       VALUES (('4238f1a0-0000-4000-8000-7000000' || lpad(s.n::text, 2, '0') || lpad(i::text, 3, '0'))::uuid, 'image',
         'Seed creative ' || s.n || '.' || i, encode(sha256(convert_to('seed-creative-' || s.n || '-' || i, 'UTF8')), 'hex'),
-        'host_upload', 'https://usemingla.com/og/default.jpg', v_ids.brand_id)
+        'host_upload', 'https://usemingla.com/og/default.jpg', v_ids.brand_id, v_ids.brand_id, 1080, 1080)
       ON CONFLICT (id) DO NOTHING;
       INSERT INTO public.ads (id, ad_set_id, external_ad_id, name, status, review_status, creative_id)
       VALUES (('4238f1a0-0000-4000-8000-8000000' || lpad(s.n::text, 2, '0') || lpad(i::text, 3, '0'))::uuid, v_set,

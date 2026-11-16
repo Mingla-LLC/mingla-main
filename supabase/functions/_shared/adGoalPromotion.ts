@@ -63,6 +63,40 @@ const COPIED_FIELDS = [
   "lifetime_budget",
 ] as const;
 
+/**
+ * #4238 rework 3 (tester P3-1, race): how long a start run owns its row while
+ * it copies ads into the new ad set. An overlapping sweep's finish step
+ * leaves a row that is still inside this lease alone. Edge functions stop
+ * well inside it (wall clock ~400 s), so a row still copying after the lease
+ * is a dead run and its new ad set is cleaned up as before.
+ */
+export const GOAL_SWITCH_COPY_LEASE_MS = 15 * 60_000;
+
+function leaseUntilIso(nowIso: string): string {
+  const now = Date.parse(nowIso);
+  return new Date((Number.isFinite(now) ? now : Date.now()) + GOAL_SWITCH_COPY_LEASE_MS)
+    .toISOString();
+}
+
+/**
+ * True while another run is still copying ads into this row's new ad set.
+ * An unreadable lease or clock counts as held: the safe side is to wait.
+ *
+ * MINGLA-INVARIANT: I-4238-GOAL-SWITCH-COPY-LEASE | issue #4238 | finishGoalPromotion never pauses, fails or applies a goal-switch row whose detail says copying_ads with an unexpired copy_lease_until; only the run that holds the lease clears it. Enforced by issue_4238_rework3_goal_switch_lease.implementor.test.ts.
+ */
+export function goalSwitchCopyHeld(
+  detail: Record<string, unknown>,
+  nowIso: string,
+): boolean {
+  if (detail.copying_ads !== true) return false;
+  const until = typeof detail.copy_lease_until === "string"
+    ? Date.parse(detail.copy_lease_until)
+    : Number.NaN;
+  const now = Date.parse(nowIso);
+  if (!Number.isFinite(until) || !Number.isFinite(now)) return true;
+  return now < until;
+}
+
 const READY = new Set(["ACTIVE"]);
 const REFUSED = new Set(["DISAPPROVED", "WITH_ISSUES", "DELETED", "ARCHIVED"]);
 
@@ -179,6 +213,8 @@ export async function startGoalPromotion(deps: {
           new_adset_id: newAdSetId,
           cleanup_required: true,
           copying_ads: true,
+          // #4238 rework 3: this run owns the row until the lease ends.
+          copy_lease_until: leaseUntilIso(input.nowIso),
         },
       }).eq("id", rowId);
     if (trackError) {
@@ -310,6 +346,10 @@ export async function finishGoalPromotion(deps: {
     ? detail.old_adset_id
     : "";
   if (!newAdSetId || !oldAdSetId) return "not_started";
+  // #4238 rework 3 (tester P3-1): an overlapping sweep must not pause a new
+  // ad set another run is still copying ads into (it then returned "created"
+  // while the row ended failed). Wait for the lease to end instead.
+  if (goalSwitchCopyHeld(detail, input.nowIso)) return "waiting";
   if (detail.cleanup_required === true) {
     return await cleanUpNewAdSet(db, graph, input.row, newAdSetId, "cleanup");
   }

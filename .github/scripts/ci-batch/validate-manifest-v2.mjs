@@ -513,7 +513,8 @@ export function phase3dContractDigest(manifest) {
 // #4238 rework 1 (tester P1-4): re-sealed after the three #4238 W2/W3/W4b migrations were skipped by exact filename in the #1931 filtered replay and the tester's host_ad_roles adversarial pg17 suite and sidecar joined the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
 // #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4238 rework 2: merged origin/main 3c6bbd0d81 (#4435 leftovers row 20280710004435 kept in filename order between the #4238 rows); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3f3a161f9a86a7e195b68d5ce0e1c64631ef3eac91a496138af9750740c3d06c";
+// #4238 rework 3: re-sealed after the three #4238 migrations were renumbered to 20280715004238 / 20280716004238 / 20280717004238 (lane inventories and the #1931 exact-filename skip list); MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f7e283eb8a20b8fee7dd815c86207833ef8ad00ecf18e3bde25e36de2ddabff3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

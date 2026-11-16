@@ -11,6 +11,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../ui/Button";
 import { DateField } from "../../ui/DateField";
 import { Sheet } from "../../ui/Sheet";
+import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { color, edge, radius, space, type } from "../../../constants/designSystem";
 import {
   type AdCreditLedgerRow,
@@ -63,10 +64,17 @@ function SheetFrame(props: {
 }): React.ReactElement {
   return (
     <Sheet visible={props.visible} onClose={props.onClose} snapPoint="full" testID={props.testID}>
-      <View style={s.wrap}>
+      {/* #4238 rework 3 (P1): the body scrolls inside the sheet and the
+          buttons stay pinned under it, so Save is reachable on a laptop-height
+          window (1280×800). A plain View body ran past the card's clip. */}
+      <View style={s.wrap} testID={`${props.testID}-frame`}>
         <Text style={s.title} accessibilityRole="header">{props.title}</Text>
-        <View style={bs.stackLg}>{props.children}</View>
-        {props.foot ? <View style={s.foot}>{props.foot}</View> : null}
+        <SheetScrollLayout
+          testID={`${props.testID}-layout`}
+          footer={props.foot ? <View style={s.foot}>{props.foot}</View> : undefined}
+        >
+          <View style={bs.stackLg}>{props.children}</View>
+        </SheetScrollLayout>
       </View>
     </Sheet>
   );
@@ -330,6 +338,20 @@ export function hostAdSuggestionText(
   }
 }
 
+/**
+ * #4238 rework 3 (tester P3-2): the unit of Ari's "about X per …" line. The
+ * cost was counted by the server for basis.goal (clicks for a visits goal),
+ * so the unit comes from there. An older server without basis.goal: only a
+ * plan goal of visits is known to match (clicks); otherwise show nothing
+ * rather than a wrong unit ("per ticket" with 0 tickets).
+ */
+export function hostAdSuggestionBasisUnit(suggestion: HostAdSuggestion, planGoal: HostAdGoal): string | null {
+  const counted = suggestion.basis.goal;
+  if (counted === undefined) return planGoal === "visits" ? hostAdUnit("visits", true) : null;
+  if (suggestion.basis.results <= 0) return null;
+  return hostAdUnit(counted, true);
+}
+
 export function HostAdSuggestionCard(props: {
   suggestion: HostAdSuggestion;
   goal: HostAdGoal;
@@ -343,6 +365,7 @@ export function HostAdSuggestionCard(props: {
 }): React.ReactElement {
   const sg = props.suggestion;
   const per = sg.basis.cost_per_result_cents;
+  const basisUnit = hostAdSuggestionBasisUnit(sg, props.goal);
   return (
     <View style={s.ari} accessibilityLabel={hm("ari.label")} testID="host-ad-ari-card">
       <View style={s.who}>
@@ -350,11 +373,11 @@ export function HostAdSuggestionCard(props: {
         <Text style={s.whoText}>{hm("ari.who")}</Text>
       </View>
       <Text style={bs.body}>{hostAdSuggestionText(sg, props.money, props.dateText)}</Text>
-      {per !== null && per > 0 ? (
-        <Text style={bs.small}>
+      {per !== null && per > 0 && basisUnit !== null ? (
+        <Text style={bs.small} testID="host-ad-ari-basis">
           {hm("ari.basis", {
             amount: props.money(hostAdPayFromCredit(per)),
-            unit: hostAdUnit(props.goal, true),
+            unit: basisUnit,
           })}
         </Text>
       ) : null}
@@ -775,9 +798,11 @@ export function HostAdShareSheet(props: {
 }
 
 const s = StyleSheet.create({
-  wrap: { paddingHorizontal: space[6], paddingTop: space[2] },
-  title: { ...type.h1, color: color.text1, marginBottom: space[6] },
-  foot: { paddingTop: space[8], paddingBottom: space[8] },
+  // flex + minHeight 0: the frame takes the sheet's bounded height so the
+  // scroll body shrinks and the footer stays inside the card.
+  wrap: { flex: 1, minHeight: 0, paddingHorizontal: space[6], paddingTop: space[2] },
+  title: { ...type.h1, color: color.text1, marginBottom: space[4] },
+  foot: { paddingTop: space[2], paddingBottom: space[4] },
   half: { flex: 1 },
   center: { textAlign: "center" },
   stepper: { flexDirection: "row", alignItems: "center", gap: space[4] },

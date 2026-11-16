@@ -575,7 +575,7 @@ Deno.test("the nine types are preference-aware in notify-dispatch and accepted b
   assert(dispatchSrc.includes("...HOST_AD_NOTICE_CHANNEL_DEFAULTS"));
   const sql = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20280713004238_issue_4238_host_ad_notices_roles.sql",
+      "../../../migrations/20280717004238_issue_4238_host_ad_notices_roles.sql",
       import.meta.url,
     ),
   );

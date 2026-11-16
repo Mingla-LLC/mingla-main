@@ -4,7 +4,7 @@
 //
 // @invariant I-4238-TRUE-PAUSE-REASON
 //   owner: supabase/functions/_shared/adDestination.ts pauseReasonFor +
-//          ad_offering_stock (20280710004238)
+//          ad_offering_stock (20280715004238)
 //   rule: "nothing on sale" pauses as sold_out only when the stock read says
 //         sold out; not-on-sale-yet says not_on_sale; a failed stock read is
 //         destination_check_failed (never a false sold out); a passed event

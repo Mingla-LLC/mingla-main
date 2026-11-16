@@ -60,7 +60,23 @@ export type HostAdSuggestionInput = {
     | null;
   walletCents: number | null;
   lastTicketsOffered: boolean;
+  /**
+   * #4238 rework 3 (tester P3-3): the latest pause/stop reason code on the
+   * plan's campaigns (ad_status_events provider_response.reason), if any.
+   */
+  stopReason?: string | null;
 };
+
+/**
+ * #4238 rework 3: stop reasons after which no budget or date change helps:
+ * the tickets are gone or the event is over. Ari stays quiet on these.
+ */
+export const SUGGESTION_FINAL_STOP_REASONS: ReadonlySet<string> = new Set([
+  "sold_out",
+  "event_ended",
+  "bookings_closed",
+  "not_on_sale",
+]);
 
 export type HostAdSuggestionMoney = {
   currency: string;
@@ -91,6 +107,12 @@ export type HostAdSuggestion = {
     guidance_mid_cents: number | null;
     guidance_high_cents: number | null;
     stock_left: number | null;
+    /**
+     * #4238 rework 3 (tester P3-2): the goal the results above were counted
+     * for (tickets, sign-ups or clicks). The card names its unit from this,
+     * never from a different goal source.
+     */
+    goal: "sales" | "signups" | "visits";
   };
 };
 
@@ -175,6 +197,15 @@ export async function hostAdSuggestion(
   input: HostAdSuggestionInput,
 ): Promise<HostAdSuggestion | null> {
   if (!HOST_LIVE_EDIT_STATES.has(input.planState)) return null;
+  // #4238 rework 3 (tester P3-3): never "run it longer" on an ad that
+  // stopped because it sold out or the event is over.
+  // Only while paused: a later resume (new stock) makes the ad live again.
+  if (
+    (input.planState === "paused" || input.planState === "pause_requested") &&
+    input.stopReason && SUGGESTION_FINAL_STOP_REASONS.has(input.stopReason)
+  ) {
+    return null;
+  }
   const since = input.liveSinceMs;
   if (since === null || !Number.isFinite(since)) return null;
   if (input.nowMs - since < HOST_LEARNING_WINDOW_DAYS * DAY_MS) return null;
@@ -195,7 +226,9 @@ export async function hostAdSuggestion(
     guidance_mid_cents: guide?.midCents ?? null,
     guidance_high_cents: guide?.highCents ?? null,
     stock_left: stockLeft,
+    goal: input.goal,
   };
+  const soldOut = stockLeft !== null && stockLeft <= 0;
   const build = async (
     kind: HostAdSuggestionKind,
     extra: { host_budget_cents?: number; ends_at?: string },
@@ -239,7 +272,7 @@ export async function hostAdSuggestion(
       return await build("raise_budget", { host_budget_cents: raised });
     }
   }
-  if (editable && input.currentEndsAt && input.lastBookableAt) {
+  if (editable && !soldOut && input.currentEndsAt && input.lastBookableAt) {
     // 2. Extend: the ad stops before people can stop booking.
     const end = Date.parse(input.currentEndsAt);
     const last = Date.parse(input.lastBookableAt);

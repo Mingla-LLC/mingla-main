@@ -65,7 +65,7 @@ export function HostAdWordsSheet(props: {
     <Sheet visible={props.visible} onClose={props.onClose} snapPoint="full" testID="host-ad-words-sheet">
       <View style={s.wrap}>
         <Text style={s.title} accessibilityRole="header">{hb("creative.words")}</Text>
-        <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
+        <ScrollView style={s.scroll} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" testID="host-ad-words-scroll">
           {props.warnings.map((warning) => (
             <Note key={`${warning.excerpt}-${warning.message}`} tone="warn" text={`“${warning.excerpt}”: ${warning.message} ${hb("creative.copyWarn")}`} />
           ))}
@@ -102,7 +102,7 @@ export function HostAdWordsSheet(props: {
             <Text style={bs.caption}>{hb("creative.nameHelp")}</Text>
           </View>
         </ScrollView>
-        <View style={s.foot}>
+        <View style={s.foot} testID="host-ad-words-footer">
           <View style={s.half}>
             <Button label={hb("creative.cancel")} variant="secondary" fullWidth onPress={props.onClose} testID="host-ad-words-cancel" />
           </View>
@@ -121,7 +121,9 @@ export function HostAdWordsSheet(props: {
 }
 
 const s = StyleSheet.create({
-  wrap: { flex: 1, paddingHorizontal: space[6], paddingTop: space[2] },
+  // #4238 rework 3: minHeight 0 + a shrinking scroll keep Save inside the card at 800 px tall.
+  wrap: { flex: 1, minHeight: 0, paddingHorizontal: space[6], paddingTop: space[2] },
+  scroll: { flex: 1, minHeight: 0 },
   title: { ...type.h1, color: color.text1, marginBottom: space[6] },
   body: { gap: space[6], paddingBottom: space[6] },
   over: { color: color.warningText },
@@ -129,7 +131,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     gap: space[3],
     paddingTop: space[4],
-    paddingBottom: space[8],
+    paddingBottom: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.line,
   },

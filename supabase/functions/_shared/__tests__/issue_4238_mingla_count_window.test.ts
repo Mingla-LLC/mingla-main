@@ -79,7 +79,7 @@ Deno.test("results read Mingla's count and say how it was counted", async () => 
   assertEquals(src.includes("view_through: false"), true);
   const sql = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20280713004238_issue_4238_host_ad_notices_roles.sql",
+      "../../../migrations/20280717004238_issue_4238_host_ad_notices_roles.sql",
       import.meta.url,
     ),
   );

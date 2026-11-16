@@ -251,10 +251,11 @@ Deno.test("P3-1: a run killed while copying ads leaves the new ad set tracked, a
     next.push({ method, path, params });
     return Promise.resolve({ success: true });
   };
+  // #4238 rework 3: the killed run's copy lease (15 min) has ended.
   const result = await finishGoalPromotion({ db, graph: sweep }, {
     row: saved as never,
     campaignId: "camp-1",
-    nowIso: "x",
+    nowIso: "2026-11-16T10:16:00.000Z",
   });
   assertEquals(result, "failed");
   assert(next.some((c) => c.path === "new-adset" && (c.params as Row)?.status === "PAUSED"));

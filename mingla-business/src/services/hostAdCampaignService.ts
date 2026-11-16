@@ -101,6 +101,8 @@ export type HostAdSuggestion = {
     guidance_mid_cents: number | null;
     guidance_high_cents: number | null;
     stock_left: number | null;
+    /** #4238 rework 3: the goal the results were counted for (older servers omit it). */
+    goal?: "sales" | "signups" | "visits";
   };
 };
 export type HostAdCapabilityAnswer = {

@@ -6,7 +6,7 @@
  * Pure module: no React, no I/O.
  */
 
-import { getCountryByCode } from "@mingla/phone-input/countries";
+import { COUNTRIES, getCountryByCode } from "@mingla/phone-input/countries";
 
 const ISO_RE = /^[A-Z]{2}$/;
 
@@ -58,4 +58,15 @@ export function countryLabel(code: string): string {
 export function countryName(code: string): string {
   const country = isKnownCountry(code) ? getCountryByCode(code) : undefined;
   return country ? country.name : code;
+}
+
+/** #4238 rework 3: the web country sheet's rows: not yet chosen, matching the search. */
+export function hostAdCountryMatches(
+  query: string,
+  chosen: readonly string[],
+): { code: string; name: string; flag: string }[] {
+  const q = query.trim().toLowerCase();
+  return COUNTRIES.filter((country) => !chosen.includes(country.code))
+    .filter((country) => q === "" || country.name.toLowerCase().includes(q) || country.code.toLowerCase() === q)
+    .map((country) => ({ code: country.code, name: country.name, flag: country.flag }));
 }

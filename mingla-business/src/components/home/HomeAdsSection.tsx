@@ -18,7 +18,7 @@ import {
 } from "../../services/hostAdCampaignService";
 import { currencyCodeOrNull, formatCurrencyRound } from "../../utils/currency";
 import {
-  homeAdAttentionCopy,
+  homeAdAttentionReason,
   homeAdCanPause,
   homeAdNetworkList,
   homeAdStatusLabel,
@@ -169,7 +169,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const line = compactResult !== null
       ? [compactResult, ...salesLines].join(" · ")
       : attention
-        ? homeAdAttentionCopy(campaign.next_action)
+        ? homeAdAttentionReason(campaign)
         : scheduled;
     return line === null ? null : (
       <Text
@@ -194,7 +194,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
       ))}
       {attention ? (
         <Text style={styles.attentionText}>
-          {homeAdAttentionCopy(campaign.next_action)}
+          {homeAdAttentionReason(campaign)}
         </Text>
       ) : null}
     </View>

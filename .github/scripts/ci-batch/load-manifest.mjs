@@ -303,7 +303,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4238 rework 1 (tester P1-4): skipped the three #4238 W2/W3/W4b migrations by exact filename in the #1931 filtered replay (the #2492 closure guard keys on the plan_id and platform column names, which only skipped migrations also define on that lane) and registered the tester's host_ad_roles adversarial pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4238 rework 2: merged origin/main 3c6bbd0d81 (#4435 leftovers row 20280710004435 kept in filename order between the #4238 rows); re-sealed.
-export const BOOTSTRAP_SHA256 = "2d9adf8a9c774d32ff3929f02e264c0b058d011561904f25534028b287f5e33c";
+// #4238 rework 3: renumbered the three #4238 migrations to 20280715004238 / 20280716004238 / 20280717004238 (after origin/main 20280710004435 and the sibling #4452 20280714004452) in the #1857, #1931 and #2117 lanes and the #1931 exact-filename skip list; re-sealed.
+export const BOOTSTRAP_SHA256 = "5ba1812d4f6417381c413930eb169bf1ba76a4de5342effacafdcc4cd46656da";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -12,6 +12,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Sheet } from "../../ui/Sheet";
+import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { color, edge, radius, space, type } from "../../../constants/designSystem";
 import { useAdCreditTopUpPay } from "../../../payments/useAdCreditTopUpPay";
 import { mapAdCreditQuoteError } from "../../../services/adCreditQuoteErrors";
@@ -125,98 +126,106 @@ export function HostAdTopUpSheet(props: {
         <Text style={s.title} accessibilityRole="header">
           {phase === "paying" ? hb("topUp.finishing") : hb("topUp.title")}
         </Text>
-        {phase === "paying" ? (
-          <View style={bs.stackLg} accessibilityLiveRegion="polite" aria-busy>
-            <Text style={bs.body}>{hb("topUp.finishingBody")}</Text>
-            <Text style={bs.small}>{hb("topUp.stuck")}</Text>
-          </View>
-        ) : (
-          <View style={bs.stackLg}>
-            <View style={s.amts} accessibilityRole="radiogroup" accessibilityLabel={hb("topUp.youPay")}>
-              {options.map((value, index) => {
-                const on = picked === value;
-                return (
-                  <Pressable
-                    key={value}
-                    style={[s.amt, on && s.amtOn]}
-                    onPress={() => setPicked(value)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: on }}
-                    accessibilityLabel={props.money(value)}
-                    testID={`host-ad-topup-amount-${index}`}
-                  >
-                    <Text style={s.amtText}>{props.money(value)}</Text>
-                    {index === 0 && showNeed ? <Text style={bs.caption}>{hb("topUp.need")}</Text> : null}
-                  </Pressable>
-                );
-              })}
-              <Pressable
-                style={[s.amt, picked === "other" && s.amtOn]}
-                onPress={() => setPicked("other")}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: picked === "other" }}
-                accessibilityLabel={hb("topUp.other")}
-                testID="host-ad-topup-other"
-              >
-                <Text style={s.amtText}>{hb("topUp.other")}</Text>
-              </Pressable>
-            </View>
-            {picked === "other" ? (
-              <Input
-                value={otherText}
-                onChangeText={setOtherText}
-                variant="number"
-                accessibilityLabel={hb("topUp.otherLabel", { currency: props.currency })}
-                placeholder={hb("topUp.otherLabel", { currency: props.currency })}
-                testID="host-ad-topup-other-input"
+        {/* #4238 rework 3 (P1): scroll body + pinned Pay button (laptop height). */}
+        <SheetScrollLayout
+          testID="host-ad-topup-layout"
+          keyboardAware
+          footer={
+            <View style={s.foot}>
+              <Button
+                label={phase === "paying" ? hb("creative.cancel") : hb("topUp.pay", { amount: props.money(amount) })}
+                variant={phase === "paying" ? "secondary" : "primary"}
+                fullWidth
+                disabled={phase === "pick" && amount <= 0}
+                onPress={() => {
+                  if (phase === "paying") {
+                    setPhase("pick");
+                    return;
+                  }
+                  void pay();
+                }}
+                testID="host-ad-topup-pay-button"
               />
-            ) : null}
-            <View style={s.method}>
-              <Text style={bs.small}>{hb("topUp.method", { currency: props.currency })}</Text>
             </View>
-            <View style={bs.kv}>
-              <View style={bs.kvRow}>
-                <Text style={bs.kvKey}>{hb("topUp.youPay")}</Text>
-                <Text style={bs.kvVal} testID="host-ad-topup-pay">{props.money(amount)}</Text>
-              </View>
-              <View style={[bs.kvRow, bs.kvTotal]}>
-                <Text style={bs.kvKey}>{hb("topUp.added")}</Text>
-                <Text style={bs.kvVal}>{props.money(amount)}</Text>
-              </View>
+          }
+        >
+          {phase === "paying" ? (
+            <View style={bs.stackLg} accessibilityLiveRegion="polite" aria-busy>
+              <Text style={bs.body}>{hb("topUp.finishingBody")}</Text>
+              <Text style={bs.small}>{hb("topUp.stuck")}</Text>
             </View>
-            <Text style={bs.caption} testID="host-ad-topup-split">
-              {hb("topUp.split", {
-                ads: props.money(hostAdCreditFromPay(amount)),
-                fee: props.money(hostAdFeeOfPay(amount)),
-              })}
-            </Text>
-            {error ? <Note tone="error" text={error} /> : null}
-          </View>
-        )}
-        <View style={s.foot}>
-          <Button
-            label={phase === "paying" ? hb("creative.cancel") : hb("topUp.pay", { amount: props.money(amount) })}
-            variant={phase === "paying" ? "secondary" : "primary"}
-            fullWidth
-            disabled={phase === "pick" && amount <= 0}
-            onPress={() => {
-              if (phase === "paying") {
-                setPhase("pick");
-                return;
-              }
-              void pay();
-            }}
-            testID="host-ad-topup-pay-button"
-          />
-        </View>
+          ) : (
+            <View style={bs.stackLg}>
+              <View style={s.amts} accessibilityRole="radiogroup" accessibilityLabel={hb("topUp.youPay")}>
+                {options.map((value, index) => {
+                  const on = picked === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      style={[s.amt, on && s.amtOn]}
+                      onPress={() => setPicked(value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={props.money(value)}
+                      testID={`host-ad-topup-amount-${index}`}
+                    >
+                      <Text style={s.amtText}>{props.money(value)}</Text>
+                      {index === 0 && showNeed ? <Text style={bs.caption}>{hb("topUp.need")}</Text> : null}
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  style={[s.amt, picked === "other" && s.amtOn]}
+                  onPress={() => setPicked("other")}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: picked === "other" }}
+                  accessibilityLabel={hb("topUp.other")}
+                  testID="host-ad-topup-other"
+                >
+                  <Text style={s.amtText}>{hb("topUp.other")}</Text>
+                </Pressable>
+              </View>
+              {picked === "other" ? (
+                <Input
+                  value={otherText}
+                  onChangeText={setOtherText}
+                  variant="number"
+                  accessibilityLabel={hb("topUp.otherLabel", { currency: props.currency })}
+                  placeholder={hb("topUp.otherLabel", { currency: props.currency })}
+                  testID="host-ad-topup-other-input"
+                />
+              ) : null}
+              <View style={s.method}>
+                <Text style={bs.small}>{hb("topUp.method", { currency: props.currency })}</Text>
+              </View>
+              <View style={bs.kv}>
+                <View style={bs.kvRow}>
+                  <Text style={bs.kvKey}>{hb("topUp.youPay")}</Text>
+                  <Text style={bs.kvVal} testID="host-ad-topup-pay">{props.money(amount)}</Text>
+                </View>
+                <View style={[bs.kvRow, bs.kvTotal]}>
+                  <Text style={bs.kvKey}>{hb("topUp.added")}</Text>
+                  <Text style={bs.kvVal}>{props.money(amount)}</Text>
+                </View>
+              </View>
+              <Text style={bs.caption} testID="host-ad-topup-split">
+                {hb("topUp.split", {
+                  ads: props.money(hostAdCreditFromPay(amount)),
+                  fee: props.money(hostAdFeeOfPay(amount)),
+                })}
+              </Text>
+              {error ? <Note tone="error" text={error} /> : null}
+            </View>
+          )}
+        </SheetScrollLayout>
       </View>
     </Sheet>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { paddingHorizontal: space[6], paddingTop: space[2] },
-  title: { ...type.h1, color: color.text1, marginBottom: space[6] },
+  wrap: { flex: 1, minHeight: 0, paddingHorizontal: space[6], paddingTop: space[2] },
+  title: { ...type.h1, color: color.text1, marginBottom: space[4] },
   amts: { flexDirection: "row", flexWrap: "wrap", gap: space[3] },
   amt: {
     flexBasis: "46%",
@@ -240,5 +249,5 @@ const s = StyleSheet.create({
     backgroundColor: color.fill.input,
     ...edge.seg,
   },
-  foot: { paddingTop: space[8], paddingBottom: space[8] },
+  foot: { paddingTop: space[2], paddingBottom: space[4] },
 });

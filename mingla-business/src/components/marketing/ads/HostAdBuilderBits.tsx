@@ -367,6 +367,17 @@ export function ChipRow(props: {
  * step), arrow keys on web, a light haptic when the thumb crosses a mark.
  * Live outcome text is the caller's (no animation on it).
  */
+/**
+ * #4238 rework 3 (tester P3-11): a mark near either end of the track hangs
+ * its label inward (left-aligned at the start, right-aligned at the end) so
+ * "Minimum $5.89" never runs past the slider onto the card's edge.
+ */
+export function hostAdMarkEdge(percent: number): "start" | "middle" | "end" {
+  if (percent < 15) return "start";
+  if (percent > 85) return "end";
+  return "middle";
+}
+
 export function BudgetSlider(props: {
   value: number;
   range: { min: number; max: number; step: number };
@@ -458,11 +469,26 @@ export function BudgetSlider(props: {
         {props.marks.map((mark, index) => (
           <View
             key={mark.label}
-            style={[s.mark, { left: `${pct(mark.value)}%` }, close && index === 1 && s.markLow]}
+            style={[
+              s.mark,
+              { left: `${pct(mark.value)}%` },
+              hostAdMarkEdge(pct(mark.value)) === "start" && s.markStart,
+              hostAdMarkEdge(pct(mark.value)) === "end" && s.markEnd,
+              close && index === 1 && s.markLow,
+            ]}
             pointerEvents="none"
+            testID={`${props.testID ?? "budget-slider"}-mark-${index}`}
           >
             <View style={[s.markTick, mark.accent && s.markTickAccent]} />
-            <Text style={s.markText}>{mark.label}</Text>
+            <Text
+              style={[
+                s.markText,
+                hostAdMarkEdge(pct(mark.value)) === "start" && s.markTextStart,
+                hostAdMarkEdge(pct(mark.value)) === "end" && s.markTextEnd,
+              ]}
+            >
+              {mark.label}
+            </Text>
           </View>
         ))}
       </View>
@@ -695,6 +721,10 @@ const s = StyleSheet.create({
   marksTall: { height: 84 },
   mark: { position: "absolute", top: 0, alignItems: "center", width: 120, marginLeft: -60 },
   markLow: { top: 34 },
+  markStart: { marginLeft: -1, alignItems: "flex-start" },
+  markEnd: { marginLeft: -119, alignItems: "flex-end" },
+  markTextStart: { textAlign: "left" },
+  markTextEnd: { textAlign: "right" },
   markTick: { width: 2, height: 8, backgroundColor: color.text3, marginBottom: 3 },
   markTickAccent: { backgroundColor: color.accent },
   markText: { ...type.caption, color: color.text2, textAlign: "center" },

@@ -284,6 +284,7 @@ Deno.test("T7b Ari: a suggestion_id body can never carry its own amount, end dat
       guidance_mid_cents: 120,
       guidance_high_cents: 200,
       stock_left: null,
+      goal: "sales", // #4238 rework 3: basis names the counted goal
     },
   };
   const ctx = { currentTotalCents: 10_000, liveSinceMs: now - 10 * DAY, nowMs: now };

@@ -2865,7 +2865,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
           value={
             copyWarnings.length > 0
               ? hb("creative.suggestions", { count: copyWarnings.length })
-              : `${headline.trim() || name.trim() || page?.title || ""} · ${ctaLabel}`
+              : // #4238 rework 3 (P3-7): say what is missing, never a filled-in look.
+                primaryText.trim().length < 3
+                ? hb("creative.missingText")
+                : `${headline.trim() || name.trim() || page?.title || ""} · ${ctaLabel}`
           }
           onPress={() => setSheet("words")}
           testID="host-ad-words-row"
