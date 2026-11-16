@@ -57,7 +57,7 @@ const MENU = [
   ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
   // #4383: what we tell hosts and explorers, each its own screen.
-  ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page"]],
+  ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page", "brand-groups:Brand groups"]], // #4452 §7.2
   ["Business", ["people:People", "brands:Brands", "business-offerings:Offerings"]],
   ["Money", ["mingla-money:Mingla money", "business-payments:Payments", "business-orders:Orders", "business-money-ledger:Money ledger", "refund-operations:Refund operations", "subscriptions:Subscriptions", "pricing:Pricing and limits"]],
   ["Explorer app", ["placepool:Place pool"]],
@@ -118,7 +118,7 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     // #4255 W4: - Notifications (Messages is in the top bar).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(NAV_ITEMS.length, 40); // #4294: + Company tools; #4273: + SMS countries
+    assert.equal(NAV_ITEMS.length, 41); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
@@ -304,7 +304,8 @@ describe("#4130 W0-6: every page lights its own menu entry", () => {
 describe("#4130 W0-7: the Work entry counts only your own waiting cards", () => {
   it("the badge sits on Work and reads cards, not drafts", () => {
     const sidebar = stripComments(read("components/layout/Sidebar.jsx"));
-    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;'));
+    // #4452 §7.2: + Brand groups' waiting count, from its own panel.
+    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : 0;'));
     assert.equal(sidebar.includes('item.id === "drafts"'), false);
     const hook = stripComments(read("hooks/useReviewCount.js"));
     // #4270 (D20): the count is your own open cards due today or overdue.

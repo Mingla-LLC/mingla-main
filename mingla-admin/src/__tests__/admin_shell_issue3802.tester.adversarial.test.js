@@ -562,7 +562,8 @@ describe("#3802 TA-8: the phone menu and sign out", () => {
 
   it("in the icon rail every page keeps its name for a screen reader and on hover", () => {
     // #4270: the Work count is cards due today or overdue, so it says "due".
-    assert.match(SIDEBAR, /const spokenLabel = waiting > 0 \? `\$\{item\.label\}, \$\{waiting\} due` : item\.label;/);
+    // #4452 §7.2: Brand groups' count is groups waiting, so it says "waiting".
+    assert.match(SIDEBAR, /const spokenLabel = waiting > 0 \? `\$\{item\.label\}, \$\{waiting\} \$\{item\.id === "brand-groups" \? "waiting" : "due"\}` : item\.label;/);
     assert.match(SIDEBAR, /aria-label=\{spokenLabel\}/);
     assert.match(SIDEBAR, /title=\{rail \? spokenLabel : undefined\}/);
     assert.match(SIDEBAR, /<span className=\{rail \? "sr-only" : "min-w-0 truncate"\}>\{item\.label\}<\/span>/);

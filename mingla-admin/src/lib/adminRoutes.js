@@ -104,7 +104,7 @@ function communicationsTabsOn(pageTabIds) {
 export const TAB_PAGE_REDIRECTS = Object.freeze({
   admin: Object.freeze({ careers: "careers" }),
   support: communicationsTabsOn(["email", "blog", "links"]),
-  community: communicationsTabsOn(["announcements", "roadmap"]),
+  community: communicationsTabsOn(["announcements", "roadmap", "brand-groups"]),
 });
 
 function tabRedirect(hash) {

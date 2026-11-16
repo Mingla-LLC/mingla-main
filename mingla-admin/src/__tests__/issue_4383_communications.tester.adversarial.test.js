@@ -87,7 +87,7 @@ function landedBefore(access, page, tab) {
 }
 
 // ─── The new code, as the app runs it ───
-const COMMS_SCREENS = ["email", "blog", "links", "announcements", "roadmap"];
+const COMMS_SCREENS = ["email", "blog", "links", "announcements", "roadmap", "brand-groups"]; // #4452 §7.2: + Brand groups
 const KNOWN = [...NAV_ITEMS.map((i) => i.id), "home"];
 function panelsAfter(access) {
   const out = new Set();

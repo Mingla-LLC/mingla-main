@@ -138,7 +138,8 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     functions: Object.freeze([]),
   }),
   "brand-groups": Object.freeze({
-    page: "community",
+    // #4452 §7.2: its own Communications screen (was a Community tab).
+    page: "brand-groups",
     area: SUPPORT,
     panel: "components/community/BrandGroupsPanel.jsx",
     // #4270 W7: the staff inbox (who waits, the brand team) and #4304's

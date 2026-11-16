@@ -76,6 +76,9 @@ export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   email: Object.freeze([AREA.EMAIL_DRAFTS]),
   blog: Object.freeze([BLOG_AREA]),
   links: Object.freeze([SUPPORT_OPERATIONS_AREA]),
+  // #4452 §7.2: Brand groups keeps exactly the access its Community tab had
+  // (the Support area; its issue_3720_* / issue_4270_* RPCs gate on it).
+  "brand-groups": Object.freeze([SUPPORT_OPERATIONS_AREA]),
 });
 
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any

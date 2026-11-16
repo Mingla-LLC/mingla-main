@@ -161,7 +161,7 @@ describe("C-4 Brand and team: the brand once", () => {
   it("the brand, Open Brand group, owners and the brand's team; On Mingla does not repeat it", () => {
     const team = code("components/crm/HostTeamSection.jsx");
     assert.match(team, /Open Brand group/);
-    assert.match(team, /#\/community\?tab=brand-groups&brand=/);
+    assert.match(team, /#\/brand-groups\?brand=/); // #4452 §7.2
     assert.match(team, /Mingla owners/);
     assert.match(team, /BRAND_ROLE_WORDS\[m\.role\]/);
     const section = code("components/crm/OnMinglaSection.jsx");
@@ -195,7 +195,7 @@ describe("C-5 Brand groups open the host card", () => {
   });
   it("the address walks list -> thread -> host card", () => {
     const thread = brandGroupSearch("tab=brand-groups", { group: "g1", brand: null, host: null });
-    assert.equal(thread, "tab=brand-groups&group=g1");
+    assert.equal(thread, "group=g1"); // #4452 §7.2: no Community tab in the address
     const card = brandGroupSearch(thread, { group: "g1", host: "11111111-2222-4333-8444-555555555555" });
     // #4270 W7: the view also names the side panel item and the rail tab.
     const pick = ({ group, brand, host }) => ({ group, brand, host });

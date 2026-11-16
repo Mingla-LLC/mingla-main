@@ -173,6 +173,8 @@ export const NAV_GROUPS = [
       { id: "email",                     label: "Email",              icon: "Mail" },
       { id: "blog",                      label: "Blog",               icon: "Newspaper" },
       { id: "links",                     label: "Links page",         icon: "Link" },
+      // #4452 §7.2: moved out of Community (old tab addresses redirect).
+      { id: "brand-groups",              label: "Brand groups",       icon: "Hand" },
     ],
   },
   {

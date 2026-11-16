@@ -53,6 +53,16 @@
 
   --font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+  /* #4452 §7.1: Instrument Serif (local copy of the marketing font; no network font). */
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/InstrumentSerif-latin-400-normal.woff2") format("woff2");
 }
 
 :root {
@@ -60,15 +70,30 @@
   --brand-gradient-start: #FF7043;
   --brand-gradient-end:   #FF5722;
 
-  --color-background-primary:   #ffffff;
-  --color-background-secondary: #faf8f6;
+  /* #4452 §7.1 the Admin refresh tokens (design v13, exact). The --color-*
+     variables below map onto them so every page inherits the refresh.
+     MINGLA-INVARIANT: I-4452-ADMIN-CONTRAST | issue #4452 | every admin text/background
+     token pair is >= 4.5:1 in light and dark (issue4452_admin_contrast test). */
+  --a-bg:#f6f5f1; --a-panel:#ffffff; --a-line:#e7e3da; --a-text:#141413; --a-text2:#4d4943;
+  --a-muted:#66625a; --a-dim:#6f6a62; --a-soft:#f1efe9; --a-active:#141413; --a-accent:#eb7825;
+  --a-chip:#fff4ea; --a-chip-ink:#9a4810;
+  --a-shadow:0 1px 2px rgba(20,20,19,.04),0 8px 24px rgba(20,20,19,.05);
+  --a-live-ink:#166534; --a-live-bg:#dcfce7;
+  --a-stop-ink:#92400e; --a-stop-bg:#fef3c7;
+  --a-sched-ink:#1d4ed8; --a-sched-bg:#dbeafe;
+  --a-draft-ink:var(--a-text2);
+  /* The primary button's hover is ink on orange (6.4:1), not white (3.0:1): §12 Q-10. */
+  --a-hover-ink:#141413; --a-hover-bg:#eb7825;
+
+  --color-background-primary:   var(--a-panel);
+  --color-background-secondary: var(--a-bg);
   --color-background-tertiary:  #f5f0ec;
 
-  --color-text-primary:   #111827;
-  --color-text-secondary: #4b5563;
-  --color-text-tertiary:  #6b7280;
+  --color-text-primary:   var(--a-text);
+  --color-text-secondary: var(--a-text2);
+  --color-text-tertiary:  var(--a-muted);
   --color-text-inverse:   #ffffff;
-  --color-text-muted:     #9ca3af;
+  --color-text-muted:     var(--a-dim);
   /* #3697 — tertiary text on the new Creative Library and Builder video
      screens only. Same as tertiary in light mode; readable (6.1:1) in dark.
      The global --color-text-tertiary is unchanged. */
@@ -131,14 +156,34 @@
   --table-stripe:     var(--color-background-secondary);
 }
 
+/* #4452 §7.1 dark tokens: the OS choice before the theme is set, and the toggle. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --a-bg:#0f0f0e; --a-panel:#181816; --a-line:#2b2a26; --a-text:#eeece7; --a-text2:#c9c5bc;
+    --a-muted:#9c978d; --a-dim:#8f8a80; --a-soft:#201f1c; --a-active:#eeece7; --a-chip:#2b1d15;
+    --a-chip-ink:#f0904a; --a-shadow:0 1px 2px rgba(0,0,0,.4);
+    --a-live-ink:#86efac; --a-live-bg:#052e16;
+    --a-stop-ink:#fcd34d; --a-stop-bg:#451a03;
+    --a-sched-ink:#93c5fd; --a-sched-bg:#172554;
+  }
+}
+
 [data-theme="dark"] {
-  --color-background-primary:   #0f1117;
-  --color-background-secondary: #1a1d27;
+  --a-bg:#0f0f0e; --a-panel:#181816; --a-line:#2b2a26; --a-text:#eeece7; --a-text2:#c9c5bc;
+  --a-muted:#9c978d; --a-dim:#8f8a80; --a-soft:#201f1c; --a-active:#eeece7; --a-chip:#2b1d15;
+  --a-chip-ink:#f0904a; --a-shadow:0 1px 2px rgba(0,0,0,.4);
+  --a-live-ink:#86efac; --a-live-bg:#052e16;
+  --a-stop-ink:#fcd34d; --a-stop-bg:#451a03;
+  --a-sched-ink:#93c5fd; --a-sched-bg:#172554;
+
+  --color-background-primary:   var(--a-panel);
+  --color-background-secondary: var(--a-bg);
   --color-background-tertiary:  #242833;
 
-  --color-text-primary:   #f3f4f6;
-  --color-text-secondary: #9ca3af;
-  --color-text-tertiary:  #6b7280;
+  --color-text-primary:   var(--a-text);
+  --color-text-secondary: var(--a-text2);
+  --color-text-tertiary:  var(--a-muted);
+  --color-text-muted:     var(--a-dim);
   --color-text-tertiary-strong: #8b93a1;
 
   --gray-50:  #1a1d27;

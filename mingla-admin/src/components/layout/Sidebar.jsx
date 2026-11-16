@@ -47,6 +47,8 @@ import {
   Mail,
   Newspaper,
   Link,
+  // #4452 §7.2: Brand groups.
+  Hand,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -64,6 +66,7 @@ import {
 // and never a typed "Mingla" beside it.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
 import { useReviewCount } from "../../hooks/useReviewCount";
+import { BRAND_GROUP_WAITING_EVENT, brandGroupWaiting } from "../../lib/brandGroupWaiting";
 
 // The one registry of menu icons. Every `icon` named in NAV_GROUPS
 // (lib/constants.js) and in the role Home group (lib/access.js) must be a key
@@ -116,6 +119,7 @@ const ICON_MAP = {
   Mail,
   Newspaper,
   Link,
+  Hand,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"
@@ -149,6 +153,13 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const [foldedGroups, setFoldedGroups] = useState(() => readFoldedGroups(browserStorage()));
   const [signingOut, setSigningOut] = useState(false);
   const reviewCount = useReviewCount();
+  // #4452 §7.2: the Brand groups item shows how many groups wait on Mingla.
+  const [groupsWaiting, setGroupsWaiting] = useState(brandGroupWaiting);
+  useEffect(() => {
+    const onWaiting = (e) => setGroupsWaiting(Number(e.detail) || 0);
+    window.addEventListener(BRAND_GROUP_WAITING_EVENT, onWaiting);
+    return () => window.removeEventListener(BRAND_GROUP_WAITING_EVENT, onWaiting);
+  }, []);
 
   // Remember the folded groups in this browser. A browser that refuses is fine:
   // the fold still works until the page is reloaded (lib/shellNav.js).
@@ -195,8 +206,8 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
     const isActive = activeTab === item.id;
     // #4270 (D20): the Work entry counts this person's own open cards due
     // today or overdue (useReviewCount().cards).
-    const waiting = item.id === "work-board" ? reviewCount.cards || 0 : 0;
-    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} due` : item.label;
+    const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : 0;
+    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} ${item.id === "brand-groups" ? "waiting" : "due"}` : item.label;
 
     return (
       <li key={item.id}>

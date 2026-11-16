@@ -490,7 +490,8 @@ describe("E source contracts", () => {
     const panel = code("components/community/BrandGroupsPanel.jsx");
     assert.match(panel, /void loadInbox\(\{ withPlan: false \}\);/);
     assert.match(panel, /const LIGHT_REFRESH_MS = 1_500;/);
-    assert.match(code("pages/CommunitySupportPage.jsx"), /<BrandGroupsPanel onCounts=\{onBrandGroupCounts\} \/>/);
+    // #4452 §7.2: the panel lives on its own screen; its count feeds the menu badge.
+    assert.match(code("pages/communications/BrandGroupsPage.jsx"), /<BrandGroupsPanel onCounts=\{publishBrandGroupWaiting\} \/>/);
   });
 });
 
@@ -768,7 +769,7 @@ describe("R rework 1 (test report D-1 … D-14)", () => {
     assert.doesNotMatch(inPanel, /Open Brand group/);
     assert.match(inPanel, new RegExp(`data-side-link="brand:${U1}"`));
     const outside = harness.team({ record: { id: U2 }, read });
-    assert.match(outside, /href="#\/community\?tab=brand-groups&amp;brand=/, "elsewhere Open Brand group is as before");
+    assert.match(outside, /href="#\/brand-groups\?brand=/, "elsewhere Open Brand group opens the Brand groups screen (#4452 §7.2)");
     assert.match(outside, new RegExp(`href="#/brands\\?brandId=${U1}"`));
   });
 

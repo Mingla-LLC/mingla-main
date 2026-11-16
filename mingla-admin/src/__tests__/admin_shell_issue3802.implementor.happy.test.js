@@ -65,7 +65,7 @@ const MENU = [
   ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "content-calendar", "team-dashboard"]],
   ["Support", ["support", "community"]],
   // #4383: what we tell hosts and explorers, each its own screen.
-  ["Communications", ["communications", "push", "announcements", "roadmap", "email", "blog", "links"]],
+  ["Communications", ["communications", "push", "announcements", "roadmap", "email", "blog", "links", "brand-groups"]], // #4452 §7.2: + Brand groups
   ["Business", ["people", "brands", "business-offerings"]],
   ["Money", ["mingla-money", "business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["placepool"]],
@@ -84,7 +84,7 @@ const LABELS = {
   "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
   inbound: "Inbound leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
   support: "Support", community: "Community",
-  communications: "Overview", push: "Push", announcements: "Announcements", roadmap: "Roadmap", email: "Email", blog: "Blog", links: "Links page",
+  communications: "Overview", push: "Push", announcements: "Announcements", roadmap: "Roadmap", email: "Email", blog: "Blog", links: "Links page", "brand-groups": "Brand groups",
   people: "People", brands: "Brands", "business-offerings": "Offerings",
   "mingla-money": "Mingla money", "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing and limits",
@@ -155,7 +155,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4255 W4: - Notifications (Messages is in the top bar).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(ids.length, 40); // #4294: + Company tools; #4273: + SMS countries
+    assert.equal(ids.length, 41); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -548,7 +548,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     assert.ok(code.includes("export function PageHeader({ title, description, meta, actions, back, tabs, titleId, inline })"));
     const h1 = code.match(/<h1[\s\S]*?className="([^"]*)"/);
     assert.ok(h1);
-    for (const cls of ["text-[22px]", "leading-7", "font-semibold", "tracking-[-0.02em]"]) {
+    // #4452 §7.1: the refresh title is Instrument Serif 34 px/1, weight 400, -.01em.
+    for (const cls of ["font-serif", "text-[34px]", "leading-none", "font-normal", "tracking-[-0.01em]"]) {
       assert.ok(h1[1].split(/\s+/).includes(cls), `the title must be ${cls}`);
     }
     assert.ok(code.includes("onClick={back.onClick}"), "a back control always does something");
