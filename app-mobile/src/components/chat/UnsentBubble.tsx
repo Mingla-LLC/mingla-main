@@ -91,7 +91,7 @@ export function UnsentBubble({
         ]}
         testID="chat-unsent-line"
       >
-        <Icon name="remove-circle-outline" size={14} color={chatTokens.textMuted} />
+        <Icon name="remove-circle" size={14} color={chatTokens.textMuted} />
         {/* Device pass F-3: Android measured the italic line narrower than it
             draws and cut it to "Ana unsent a". The text wraps (no line cap),
             shrinks inside a numeric max width, and keeps a little room on its

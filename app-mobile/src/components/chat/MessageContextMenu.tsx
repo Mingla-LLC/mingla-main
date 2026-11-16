@@ -69,8 +69,8 @@ const ICONS: Record<MessageActionId, string> = {
   copy: 'copy-outline',
   report: 'flag-outline',
   deleteForMe: 'trash-outline',
-  unsend: 'remove-circle-outline',
-  removeForEveryone: 'shield-outline',
+  unsend: 'remove-circle',
+  removeForEveryone: 'shield',
 };
 
 const DANGER: ReadonlySet<MessageActionId> = new Set<MessageActionId>(['report', 'unsend', 'removeForEveryone']);

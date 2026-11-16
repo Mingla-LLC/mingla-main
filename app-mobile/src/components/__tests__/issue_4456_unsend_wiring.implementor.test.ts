@@ -134,7 +134,9 @@ Deno.test("#4456 every icon the unsend surfaces use is registered", async () => 
     const icons = /const ICONS: Record<MessageActionId, string> = \{([\s\S]*?)\};/.exec(source);
     if (icons) for (const m of icons[1].matchAll(/'([a-z0-9-]+)'/g)) used.add(m[1]);
   }
-  for (const name of ["remove-circle-outline", "shield-outline", "trash-outline", "flag-outline"]) {
+  // The design's icons, by the names the Icon map registers (same glyphs:
+  // CircleMinus and Shield).
+  for (const name of ["remove-circle", "shield", "trash-outline", "flag-outline"]) {
     assert(used.has(name), `the scan sees ${name}`);
   }
   const missing = [...used].filter((name) => !registered.has(name));

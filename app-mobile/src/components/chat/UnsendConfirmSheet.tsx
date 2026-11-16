@@ -116,7 +116,7 @@ export function UnsendConfirmSheet({ request, busy, error, onCancel, onConfirm, 
     >
       <View style={styles.body} testID="unsend-confirm-sheet" accessibilityViewIsModal>
         <View style={styles.iconTile}>
-          <Icon name={isRemove ? "shield-outline" : "remove-circle-outline"} size={24} color={chatTokens.danger} />
+          <Icon name={isRemove ? "shield" : "remove-circle"} size={24} color={chatTokens.danger} />
         </View>
         <Text ref={titleRef} style={styles.title} accessibilityRole="header">{title}</Text>
         <Text style={styles.text}>{body}</Text>

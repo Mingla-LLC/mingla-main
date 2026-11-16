@@ -629,7 +629,8 @@
         "app-mobile/src/services/reportService.ts",
         "supabase/functions/open-view-once/handler.ts",
         "supabase/functions/open-view-once/index.ts",
-        "supabase/migrations/20280715004456_issue_4456_unsend_and_delete_for_me.sql"
+        "supabase/migrations/20280715004456_issue_4456_unsend_and_delete_for_me.sql",
+        "app-mobile/jest.issue2774.render.cjs"
       ]
     },
     {
