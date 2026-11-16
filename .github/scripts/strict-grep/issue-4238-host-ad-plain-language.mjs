@@ -396,9 +396,18 @@ function main() {
   // end and cancel each ask once, naming the money that stays held or comes
   // back; the server takes no typed phrase for them.
   if (detail !== null) {
-    for (const needle of ['hm("confirm.endBody", { amount: money(held) })', 'hm("confirm.cancelBody", { amount: money(budget.totalPay) })', 'hm("confirm.pauseBody", { amount: money(held) })', "onConfirm={onStop}"]) {
+    // #4238 rework 5 (native P2-1): Pause states its money through the ONE
+    // shared helper (hostAdPauseConfirmWords), the same one the Home tile uses.
+    for (const needle of ['hm("confirm.endBody", { amount: money(held) })', 'hm("confirm.cancelBody", { amount: money(budget.totalPay) })', "hostAdPauseConfirmWords({ capCredit, spentCredit, currency })", "description={pauseWords.description}", "onConfirm={onStop}"]) {
       if (!detail.includes(needle)) fail(`[id].tsx lost the one money confirm ${JSON.stringify(needle)}`);
     }
+  }
+  const homeAds = read("src/components/home/HomeAdsSection.tsx");
+  if (homeAds !== null) {
+    for (const needle of ["hostAdPauseConfirmWords({", "onPress={() => askPause(campaign)}", "description={pauseWords.description}"]) {
+      if (!homeAds.includes(needle)) fail(`HomeAdsSection lost the shared pause confirm ${JSON.stringify(needle)}`);
+    }
+    if (homeAds.includes("onPress={() => void pause(campaign)}")) fail("HomeAdsSection pauses straight from the tile again (no confirm)");
   }
 
   // 7. #4238 rework 1 — structural money and wiring rules re-homed here from
