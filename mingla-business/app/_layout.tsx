@@ -36,6 +36,7 @@ import {
   type AppStateStatus,
 } from "react-native";
 import { Redirect, Stack, useRouter, usePathname } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -875,6 +876,10 @@ function RootLayoutInner(): React.ReactElement {
   );
 }
 
+const rootStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: color.canvas },
+});
+
 const authRoutingStyles = StyleSheet.create({
   host: {
     flex: 1,
@@ -957,7 +962,14 @@ export default function RootLayout(): React.ReactElement {
   // route redirects to the real sign-in screen, and a warming session shows a
   // loading spinner (no dead-end card, ever).
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    // #4420 (device round 2, Android): edge-to-edge draws the status bar over
+    // the root view. The root was unpainted, so the window's light theme
+    // background showed through as a light grey band under white icons. The
+    // root now carries the dark canvas, and the app's one default status bar
+    // is light icons on that canvas (screens that need dark icons, such as
+    // the update gates, still push their own).
+    <GestureHandlerRootView style={rootStyles.root}>
+      <ExpoStatusBar style="light" />
       <SafeAreaProvider>
         {/* ORCH-0964: top-level ErrorBoundary ABOVE the provider tree. A throw
             in QueryClientProvider / AuthProvider / KeyboardRoot init previously
