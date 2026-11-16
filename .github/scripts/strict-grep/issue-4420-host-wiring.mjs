@@ -210,6 +210,217 @@ export const RULES = [
     why: "the claim flow always lists Stay too",
     has: [/\n\s*includeStay\n\s*stayDisabled=\{stayAuthoringFlag\.data !== true\}/],
   },
+  // ---- Boot chunk on intent (was __tests__/issue_4420_boot_chunk_on_intent) ----
+  // The eager `__common` chunk holds every module two or more lazy chunks reach.
+  // A static import coming back re-hoists the module into the boot payload.
+  ...[
+    ["app/event/[id]/edit.tsx", "EditPublishedScreen", "published editor"],
+    ["app/rsvp/[id]/edit.tsx", "EditPublishedScreen", "published editor"],
+    ["src/components/event/EditPublishedScreen.tsx", "ChangeSummaryModal", "review sheet"],
+    ["src/components/trip/EditPublishedTripScreen.tsx", "ChangeSummaryModal", "review sheet"],
+    ["src/components/event/DraftEventFoundationPreview.tsx", "MultiDateDayChooser", "day chooser"],
+    ["app/event/[id]/index.tsx", "EventManageMenu", "manage menu"],
+    ["src/hooks/useGlobalSearchSheet.ts", "sheetState", "search engine"],
+    ["src/services/discountBlastService.ts", "discountService", "discount service"],
+    ["src/services/offeringInvitePlanService.ts", "manualGroupService", "manual groups"],
+    ["app/checkout/[eventId]/buyer.tsx", "consentDisclosure", "consent body"],
+    ["app/checkout-trip/[tripEventId]/buyer.tsx", "consentDisclosure", "consent body"],
+    ["app/checkout-experience/[experienceEventId]/buyer.tsx", "consentDisclosure", "consent body"],
+    ["app/pay/door/[code].tsx", "consentDisclosure", "consent body"],
+    ["src/components/ticketLinks/TicketLinkLanding.tsx", "consentDisclosure", "consent body"],
+  ].map(([file, mod, what]) => ({
+    file,
+    why: `the ${what} loads through a dynamic boundary; a static import re-hoists it into the eager boot chunk`,
+    lacks: [new RegExp(`^\\s*(?:import|export)\\s+(?!type\\b)[^;]*?from\\s*["'][^"']*\\/${mod}["']`, "m")],
+  })),
+  { file: "src/components/event/LazyEditPublishedScreen.tsx", why: "the lazy wrapper really defers the published editor", has: [/import\("\.\/EditPublishedScreen"\)/] },
+  { file: "src/components/event/LazyChangeSummaryModal.tsx", why: "the lazy wrapper really defers the review sheet", has: [/import\("\.\/ChangeSummaryModal"\)/] },
+  ...["src/lib/search/recents.ts", "src/constants/purchaseTermsDisclosure.ts"].map((file) => ({
+    file,
+    why: "the split-out module carries no imports of its own, so it cannot drag its old parent back in",
+    lacks: [/^\s*import\s/m],
+  })),
+  // ---- Ari thread start (was ari/__tests__/issue_4420_ari_thread_start; StreamingText renders in jest) ----
+  {
+    file: "src/screens/ari/AriChatScreen.tsx",
+    why: "restoring the thread selection shows the thread loading state, never a bare StreamingText bubble",
+    has: [/!conversationSelectionReady \|\| Boolean\(chat\.conversationId && chat\.isLoadingMessages\)[\s\S]*\{threadOpening \? \(\s*<AriThreadLoadingState/],
+    lacks: ["<StreamingText"],
+  },
+  {
+    file: "src/components/ari/ConversationDrawer.tsx",
+    why: "the web conversations sheet never outgrows a 390 phone browser",
+    has: ['webSheet: { width: 440, maxWidth: "100%", maxHeight: "80%" }'],
+  },
+  {
+    file: "src/components/ari/StreamingText.tsx",
+    why: "no lone caret style comes back beside the dots",
+    lacks: ["styles.cursor"],
+  },
+  // ---- Ari icon is the orb (was ui/__tests__/issue_4420_ari_icon_is_orb; Icon renders in jest) ----
+  ...[
+    "app/(tabs)/_layout.tsx",
+    "src/components/ui/DesktopSidebar.tsx",
+    "app/account/support.tsx",
+    "src/components/trip/TripCreatorWizard.tsx",
+    "src/components/rsvp/RsvpCreatorWizard.tsx",
+    "src/components/event/EventCreatorWizard.tsx",
+  ].map((file) => ({
+    file,
+    why: "an Ari nav entry (tab, sidebar, rail, wizard nav, Help rail) names the orb icon, never the sparkle",
+    has: [/\{[^{}]*\b(?:id:\s*"ari"|label:\s*"Ari")[^{}]*\bicon(?:Name)?:\s*"ari"[^{}]*\}/],
+    lacks: [/\{[^{}]*\b(?:id:\s*"ari"|label:\s*"Ari")[^{}]*\bicon(?:Name)?:\s*"sparkle"[^{}]*\}/],
+  })),
+  // ---- Event sheet audit (was event/__tests__/issue_4420_sheet_audit) ----
+  {
+    file: "src/components/event/EventManageMenu.tsx",
+    why: "the Duplicate rows have their own copy glyph; the ticket glyph stays the Orders row's",
+    has: [/key: "duplicate",[\s\S]*?icon: "copy"/, /key: "duplicate-as-new",[\s\S]*?icon: "copy"/, /icon: "ticket",\s*label: "Orders"/],
+  },
+  {
+    file: "app/event/[id]/index.tsx",
+    why: "Cancel event stays a destructive row in the column's card pattern, not a floating ghost label",
+    from: "Cancel event CTA",
+    to: "handleCancelDialogOpen}",
+    has: [/<GlassCard[^>]*style=\{styles\.cancelCtaWrap\}/, /<ListRow[\s\S]*title="Cancel event"[\s\S]*danger/],
+    lacks: [/variant="ghost"/],
+  },
+  ...[
+    ["src/components/event/EditPublishedScreen.tsx", "liveEvent.id"],
+    ["src/components/trip/EditPublishedTripScreen.tsx", "trip.id"],
+  ].map(([file, id]) => ({
+    file,
+    why: "the published editors render Eligible buyers as the same collapsible section card as their other sections",
+    has: ['testID="eligible-buyers-section-header"', "<Text style={styles.sectionLabel}>Eligible buyers</Text>", `<EventTicketCheckoutAccessCard eventId={${id}} embedded />`],
+  })),
+  {
+    file: "src/components/event/EventTicketCheckoutAccessCard.tsx",
+    why: "embedded, the shared card drops its own frame and heading, and uses the Input and Button primitives",
+    has: ["const hostStyle = embedded ? styles.hostEmbedded : styles.host;", "const heading = embedded ? null :", /<Input\b/, /<Button\b/],
+    lacks: [/<Pressable|<TextInput/],
+  },
+  // ---- Taxonomy pill (was event/__tests__/issue_4420_taxonomy_pill_one_line) ----
+  {
+    file: "src/components/event/CreatorStep1Basics.tsx",
+    why: "the taxonomy pill label is one line with simple breaking, or Android draws 'Themed' in a pill sized for two words",
+    has: [/numberOfLines=\{1\}\s*\n\s*textBreakStrategy="simple"\s*\n\s*>\s*\n\s*\{label\}/],
+  },
+  {
+    file: "src/components/event/CreatorStep1Basics.tsx",
+    why: "selecting a taxonomy pill keeps the label weight",
+    from: "  taxonomyPillLabelActive: {",
+    to: "}",
+    lacks: ["fontWeight"],
+  },
+  // ---- Home on Android (was home/__tests__/issue_4420_home_android_round2) ----
+  {
+    file: "app/(tabs)/home.tsx",
+    why: "only the host's own pull shows the refresh spinner, never Recent's background refetch",
+    has: [/refreshing=\{isRefreshing\}[\s\S]*refreshing=\{isRefreshing\}/],
+    lacks: [/refreshing=\{[^}]*recent\.isRefreshing/],
+  },
+  {
+    file: "src/components/home/BusinessPulsePanel.tsx",
+    why: "the Followers pill keeps '+N this week' on one line",
+    has: [/<Text style=\{styles\.followerPillText\} numberOfLines=\{1\} textBreakStrategy="simple">/, "paddingHorizontal: space[4]"],
+  },
+  { file: "src/components/home/BusinessPulsePanel.tsx", why: "on phones the pulse card keeps the page's one gutter", from: "  rootNarrow: {", to: "}", lacks: ["paddingHorizontal"] },
+  { file: "src/components/home/HomeAdsSection.tsx", why: "on phones the ads card keeps the page's one gutter", from: "  sectionNarrow: {", to: "}", lacks: ["paddingHorizontal"] },
+  { file: "src/components/home/HomeAdsSection.tsx", why: "the ads card pads the desktop gutter itself", from: "  section: {", to: "}", has: ["paddingHorizontal: space[4]"] },
+  // ---- Shared address field floor (was location/__tests__/issue_4420_address_field_height; the Host bundle renders in jest) ----
+  {
+    file: "../packages/location-input/src/AddressInput.tsx",
+    why: "the shared field applies the optional height floor and leaves it off when omitted",
+    has: [/tokens\.field\.minHeight !== undefined\s*\?\s*\{ minHeight: tokens\.field\.minHeight \}\s*:\s*null/],
+  },
+  { file: "../packages/location-input/src/types.ts", why: "the token type carries the optional floor", has: ["minHeight?: number;"] },
+  // ---- RSVP guest row (was rsvp/__tests__/issue_4420_guest_row_action_inset) ----
+  {
+    file: "src/components/rsvp/RsvpGuestConsole.tsx",
+    why: "the trailing action cluster keeps a space-scale inset from the clipping card edge",
+    from: "  refundTrailing: {",
+    to: "}",
+    has: ["paddingRight: space[3]", "paddingVertical: space[2]"],
+  },
+  { file: "src/components/rsvp/RsvpGuestConsole.tsx", why: "the guest card clips its contents, which is why the inset matters", from: "  guestRow: {", to: "}", has: ['overflow: "hidden"'] },
+  // ---- Android status bar (was ui/__tests__/issue_4420_android_status_bar) ----
+  {
+    file: "app/_layout.tsx",
+    why: "the root view is painted with the canvas token and the app-wide status bar draws light icons",
+    has: [
+      "<GestureHandlerRootView style={rootStyles.root}>",
+      "root: { flex: 1, backgroundColor: color.canvas }",
+      'import { StatusBar as ExpoStatusBar } from "expo-status-bar";',
+      '<ExpoStatusBar style="light" />',
+    ],
+  },
+  // ---- Sheet single gutter (was ui/__tests__/issue_4420_sheet_single_gutter) ----
+  ...[
+    ["src/components/event/CreatorStep2When.tsx", "sheetContent"],
+    ["src/components/event/CreatorStep2WhenRepeatPickerSheet.tsx", "sheetContent"],
+    ["src/components/event/MultiDateOverrideSheet.tsx", "sheetContent"],
+    ["src/components/event/TicketTierEditSheet.tsx", "sheetContent"],
+    ["src/components/door/DoorModeScreen.tsx", "sheetBody"],
+    ["src/components/guests/AddCompGuestSheet.tsx", "body"],
+  ].map(([file, name]) => ({
+    file,
+    why: `${name} sits inside Sheet, which owns the one side gutter; it adds no paddingHorizontal of its own`,
+    from: `  ${name}: {`,
+    to: "}",
+    lacks: ["paddingHorizontal"],
+  })),
+  {
+    file: "src/components/ui/SheetMobile.tsx",
+    why: "Sheet's mobile body owns the gutter",
+    has: ["export const SHEET_SIDE_GUTTER = space[5];", /body: \{[^}]*paddingHorizontal: SHEET_SIDE_GUTTER/],
+  },
+  // ---- TopSheet native layer (was ui/__tests__/issue_4420_topsheet_native_layer) ----
+  {
+    file: "src/components/ui/TopSheet.tsx",
+    why: "the native overlay root fills the screen and carries an explicit layer above the floating Blast button (zIndex 30)",
+    has: ["style={styles.nativeRoot}"],
+  },
+  {
+    file: "src/components/ui/TopSheet.tsx",
+    why: "nativeRoot: absolute fill, elevation, and a zIndex above 30",
+    from: "  nativeRoot: {",
+    to: "},",
+    has: ["...StyleSheet.absoluteFillObject", /elevation:\s*\d+/, /zIndex:\s*(?:3[1-9]|[4-9]\d|\d{3,})\b/],
+  },
+  { file: "src/components/marketing/MarketingActionButton.tsx", why: "the floating Blast button's layer is the one the TopSheet outranks", from: "  floating: {", to: "},", has: ["zIndex: 30"] },
+  {
+    file: "src/components/ui/UniversalCreatorSheet.tsx",
+    why: "root option subtitles read in full (no line clamp) and step titles share sentence case",
+    has: ["<Text style={styles.headerTitle}>Create an event</Text>", "<Text style={styles.headerTitle}>Create an experience</Text>"],
+    lacks: ["Create An Experience"],
+  },
+  {
+    file: "src/components/ui/UniversalCreatorSheet.tsx",
+    why: "root option subtitles carry no line clamp",
+    from: 'step === "root"',
+    to: 'step === "event"',
+    has: ["<Text style={styles.rowSubtitle}>"],
+    lacks: ["numberOfLines"],
+  },
+  // ---- Venue wizard desktop template (was venue/__tests__/issue_4420_journey_wizard_desktop) ----
+  {
+    file: "src/components/venue/VenueCreatorWizard.tsx",
+    why: "desktop renders the step list in a rail beside the form pane; phones keep the inline stepper above the same pane; the template is sized from the desktop layout tokens",
+    has: [
+      "const { isWideDesktop } = useResponsiveLayout();",
+      /isWideDesktop \? \([\s\S]*?<Stepper\s+layout="list"[\s\S]*?testID="venue-wizard-stepper"/,
+      "<View style={styles.desktopFormPane}>{pane}</View>",
+      /\) : \(\n\s*<>[\s\S]*?<Stepper\s+steps=\{stepperSteps\}[\s\S]*?\{pane\}/,
+      "width: DESKTOP_WIZARD_RAIL_WIDTH",
+      "maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH",
+      "paddingHorizontal: DESKTOP_BEZEL_MARGIN",
+    ],
+  },
+  {
+    file: "src/components/experience/ExperiencePricingStep.tsx",
+    why: "the price option card spaces its children through contentStyle (GlassCard style cannot reach children, #1532)",
+    has: [/contentStyle=\{styles\.optionContent\}\s*\n\s*testID=\{`experience-price-option-/, /optionContent: \{\s*gap: space\[2\],\s*\}/],
+  },
 ];
 
 const label = (p) => (p instanceof RegExp ? String(p) : JSON.stringify(p));
