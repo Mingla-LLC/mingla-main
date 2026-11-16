@@ -84,6 +84,19 @@ const FactGlyph: React.FC<{ icon: OfferingFactIcon; color: string }> = ({
 const present = (s: string | null | undefined): s is string =>
   typeof s === "string" && s.trim().length > 0;
 
+/**
+ * issue #4420 audit — a detail that only repeats the value ("Long Table Loft"
+ * under "Long Table Loft", when the venue's area falls back to its name) is
+ * not printed twice.
+ */
+export const sameLine = (
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean =>
+  typeof a === "string" &&
+  typeof b === "string" &&
+  a.trim().toLowerCase() === b.trim().toLowerCase();
+
 export const OfferingFactRows: React.FC<OfferingFactRowsProps> = ({
   facts,
   palette,
@@ -119,7 +132,7 @@ export const OfferingFactRows: React.FC<OfferingFactRowsProps> = ({
                     {fact.value}
                   </Text>
                 ) : null}
-                {present(fact.detail) ? (
+                {present(fact.detail) && !sameLine(fact.detail, fact.value) ? (
                   <Text style={[styles.detail, { color: palette.secondaryText }]}>
                     {fact.detail}
                   </Text>

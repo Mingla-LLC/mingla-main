@@ -5,7 +5,8 @@
 //   - phone-web glass header band back below opaque → A-2 fails;
 //   - print a trip day's raw "2027-01-27" → A-3 fails;
 //   - eyebrow parts joined without keeping short parts whole → A-4 fails;
-//   - an ended event keeps "going / are pulling up" and the meter → A-5 fails.
+//   - an ended event keeps "going / are pulling up" and the meter → A-5 fails;
+//   - print a place line equal to the venue name under it → A-6 fails.
 
 import {
   assert,
@@ -61,4 +62,11 @@ Deno.test("A-5 an ended event's going box speaks in the past tense", () => {
   assertEquals(ended.showMeter, false);
   assertEquals(ended.displayCount, 6);
   assertStringIncludes(read("../EventOfferingBody.tsx"), 'ended={variant === "past"}');
+});
+
+Deno.test("A-6 a place line that repeats the venue name is not printed twice", () => {
+  const rows = read("../OfferingFactRows.tsx");
+  assertStringIncludes(rows, "!sameLine(fact.detail, fact.value)");
+  assertStringIncludes(read("../EventOfferingBody.tsx"), "sameLine(venueAddressLabel, event.venueName)");
+  assertStringIncludes(read("../RsvpOfferingBody.tsx"), "sameLine(");
 });
