@@ -940,8 +940,9 @@ export function pickWindowWords(window: PickWindow | null | undefined, seatStart
     const detail = window?.reason === 'new_seat' && seatStartedOn ? `You started on ${formatShortDate(persistedDayString(seatStartedOn), now)}, so you get 7 days to pick.` : null;
     return { open: true, headline, detail };
   }
-  const opens = window.opens_on ? ` The next window opens on ${formatDayWithWeekday(persistedDayString(window.opens_on), null, now)}.` : '';
-  return { open: false, headline: `Picks for this month are closed.${opens}`, detail: null };
+  // #4445: the card title already says picks are closed; the body only says when it opens again.
+  const headline = window.opens_on ? `The next window opens on ${formatDayWithWeekday(persistedDayString(window.opens_on), null, now)}.` : 'Check back next month.';
+  return { open: false, headline, detail: null };
 }
 
 // ── #4402: date of birth (typed or picked) and the agreement's sign button ──
