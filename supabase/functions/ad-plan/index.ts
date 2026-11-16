@@ -1028,7 +1028,12 @@ export async function hostDailyMinimums(
           credit = Math.ceil(Number(converted) * 1.02);
         }
       }
-      if (credit === null) continue;
+      if (credit === null) {
+        // #4238 amendment B §4 (B-F1): no rate to convert with → say so; no
+        // amount is guessed and the row is not silently dropped.
+        row.currency_unavailable = true;
+        continue;
+      }
       row[`${goal}_daily_minimum_cents`] = credit;
       row[`${goal}_daily_minimum_pay_cents`] = hostMinimumPayCents(credit);
       // #4238 T-6 / amendment B §3: the "enough to learn" amount max(F, 500)
