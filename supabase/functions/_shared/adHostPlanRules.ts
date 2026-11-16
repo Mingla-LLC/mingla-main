@@ -319,9 +319,15 @@ export function hostMetaAdvantageAudience(input: {
  * Meta only in W2: the Meta adapter and create path already send a CBO
  * `lifetime_budget` with the ad set end time. TikTok's adapter knows
  * BUDGET_MODE_TOTAL and Snap's knows lifetime_budget_micro (Z-2 confirmed),
- * but admin-ad-create-campaign still hard-codes daily on both paths and the
- * live edit can't push a lifetime amount yet — carried to W4 (live-edit
- * code). A "total" never becomes a per-day budget of the total.
+ * but admin-ad-create-campaign still hard-codes daily on both paths.
+ *
+ * W4c docs check (recorded on #4238): the fields exist (Snap ad squad
+ * lifetime_budget_micro; TikTok ad group BUDGET_MODE_TOTAL with
+ * SCHEDULE_START_END, adgroup/budget/update), but neither doc states the
+ * minimum for a total budget, so Mingla can't check the floor before the
+ * provider write as the binding floor rule requires. Snap and TikTok keep the
+ * approved fallback: daily plus Mingla's cap. A "total" never becomes a
+ * per-day budget of the total.
  */
 export const HOST_LIFETIME_PLATFORMS: ReadonlySet<string> = new Set(["meta"]);
 
