@@ -146,7 +146,8 @@ export const NAV_GROUPS = [
       { id: "program-gigs",              label: "Gigs",               icon: "Clapperboard" },
       { id: "program-locals",            label: "Mingla Locals",      icon: "MapPin" },
       { id: "program-disputes",          label: "Disputes",           icon: "Scale" },
-      { id: "inbound",                   label: "Inbound leads",      icon: "Inbox" },
+      // #4452 A1.8: the one Leads list (the id stays, so old links work).
+      { id: "inbound",                   label: "Leads",              icon: "Inbox" },
       { id: "content-calendar",          label: "Calendar",           icon: "CalendarClock" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
     ],

@@ -51,8 +51,11 @@ import {
   choosePreset,
   exclusionReasons,
   isRecipientChosen,
+  leadTargetFromHash,
+  leadsSendError,
   presetIsActive,
 } from "../../lib/emailAudience";
+import { getLead } from "../../services/leadsService";
 import {
   DRAFT_STATUS_LABELS,
   canEditDraft,
@@ -266,7 +269,10 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   const [pendingDraftDeleteId, setPendingDraftDeleteId] = useState("");
   const [discardPrompt, setDiscardPrompt] = useState(null);
   const draftSavingRef = useRef(false);
-  const [audienceMode, setAudienceMode] = useState("segment");
+  // #4452 A1.5: #/email?leads=<selection> or ?lead=<lead> opens a leads audience.
+  const [leadTarget, setLeadTarget] = useState(() => (editingCampaign || initialDraft ? null : leadTargetFromHash(typeof window !== "undefined" ? window.location.hash : "")));
+  const [leadError, setLeadError] = useState(null);
+  const [audienceMode, setAudienceMode] = useState(() => leadTarget?.mode || "segment");
   const [recipientQuery, setRecipientQuery] = useState("");
   const [recipientMatches, setRecipientMatches] = useState([]);
   const [selectedRecipient, setSelectedRecipient] = useState(null);
@@ -305,10 +311,31 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   const linkRangeRef = useRef(null);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const audience = useMemo(
-    () => audienceFor(audienceMode, selectedRecipient, filters),
-    [audienceMode, selectedRecipient, filters],
+    () => audienceFor(audienceMode, selectedRecipient, filters, leadTarget),
+    [audienceMode, selectedRecipient, filters, leadTarget],
   );
   const blogPostIdsKey = useMemo(() => [...new Set(documentValue.filter((block) => block.type === "blog_post").map((block) => block.postId))].sort().join(","), [documentValue]);
+
+  // #4452: a reply's chip names the lead (read through the Leads gate).
+  const replyLeadId = leadTarget?.mode === "lead_reply" ? leadTarget.leadId : null;
+  useEffect(() => {
+    if (!replyLeadId) return undefined;
+    let cancelled = false;
+    getLead(replyLeadId)
+      .then((data) => { if (!cancelled) setLeadTarget((t) => (t && t.leadId === replyLeadId ? { ...t, name: data?.lead?.name || data?.lead?.email || "" } : t)); })
+      .catch(() => { if (!cancelled) setLeadError({ key: "lead_not_found", message: "This lead could not be read. Go back to Leads and try again." }); });
+    return () => { cancelled = true; };
+  }, [replyLeadId]);
+
+  /** Change audience: a leads audience clears back to Hosts. */
+  const clearLeadAudience = useCallback(() => {
+    setLeadTarget(null);
+    setLeadError(null);
+    const hosts = AUDIENCE_PRESETS.find((p) => p.id === "hosts");
+    const next = choosePreset(hosts, EMPTY_FILTERS);
+    setAudienceMode(next.audienceMode);
+    setFilters(next.filters);
+  }, []);
 
   useEffect(() => {
     if (!openTemplateManager) return undefined;
@@ -501,6 +528,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     setSubject("");
     setDocumentValue(defaultDocument());
     setAudienceMode("segment");
+    setLeadTarget(null);
     setFilters(EMPTY_FILTERS);
     setSelectedRecipient(null);
     setRecipientQuery("");
@@ -639,7 +667,11 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
         })
         .catch((error) => {
           if (error?.name === "SessionExpiredError") onSessionExpired?.();
-          if (!cancelled) setEstimate(null);
+          if (!cancelled) {
+            setEstimate(null);
+            const leads = leadsSendError(error);
+            if (leads) setLeadError(leads);
+          }
         })
         .finally(() => { if (!cancelled) setEstimating(false); });
     }, 350);
@@ -964,6 +996,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       setSubject("");
       setDocumentValue(defaultDocument());
       setAudienceMode("segment");
+      setLeadTarget(null);
       setFilters(EMPTY_FILTERS);
       setSelectedRecipient(null);
       setRecipientQuery("");
@@ -981,13 +1014,14 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       }
     } catch (error) {
       if (error?.name === "SessionExpiredError") onSessionExpired?.();
-      else addToast({ variant: "error", title: "Campaign was not queued", description: error.message });
+      else addToast({ variant: "error", title: "Campaign was not queued", description: leadsSendError(error)?.message || error.message });
     } finally {
       setSending(false);
     }
   }
 
-  const audienceLabel = audienceSummary(audienceMode, filters, estimate, selectedRecipient);
+  const audienceLabel = audienceSummary(audienceMode, filters, estimate, selectedRecipient, leadTarget);
+  const leadsMode = audienceMode === "leads" || audienceMode === "lead_reply";
   const leftOut = exclusionReasons(estimate);
   const byGroup = groupBreakdown(estimate);
 
@@ -1062,6 +1096,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <h2 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Audience</h2>
               <p className="text-xs text-[var(--color-text-tertiary)]">Hosts are the default. Explorer, ticket-buyer, host-contact and Everyone sends always require an explicit choice and count review. People without a Mingla account only get marketing email if they agreed to it (a host's import counts as agreement).</p>
             </div>
+            {leadsMode ? null : (
             <div className="flex rounded-lg bg-[var(--gray-100)] p-1">
               {AUDIENCE_PRESETS.map((preset) => {
                 const active = presetIsActive(preset, audienceMode, filters);
@@ -1082,7 +1117,28 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                 );
               })}
             </div>
+            )}
           </div>
+
+          {leadsMode && (
+            <div className="flex flex-col gap-2" data-leads-audience={audienceMode}>
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5 text-sm">
+                <span className="font-semibold text-[var(--color-text-primary)]">
+                  {audienceMode === "leads" ? `${estimate?.matched ?? "…"} leads from Leads` : `Reply to ${leadTarget?.name || "this lead"}`}
+                </span>
+                <button type="button" onClick={clearLeadAudience} className="text-xs font-semibold text-[var(--color-brand-700)] hover:underline">Change audience</button>
+              </div>
+              {audienceMode === "lead_reply" && (
+                <p className="text-xs text-[var(--color-text-secondary)]">One-to-one reply. It goes even without marketing consent; don't use it for promotions.</p>
+              )}
+              {leadError && (
+                <p role="alert" className="text-sm text-[var(--color-error-700)]">
+                  {leadError.message}{" "}
+                  {leadError.key === "lead_selection_expired" && <a href="#/inbound" className="font-semibold underline">Back to Leads</a>}
+                </p>
+              )}
+            </div>
+          )}
 
           {audienceMode === "everyone" && (
             <div className="flex items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5 text-sm text-[var(--color-text-secondary)]">

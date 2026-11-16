@@ -435,7 +435,7 @@ describe("#3802 P-7: the menu each role sees", () => {
       // #4130: the merge with #3872 puts the Creator Program pages (Creators,
       // Gigs, Mingla Locals, Disputes) right under Hosts and creators; owner
       // and admin open them by default, so they see them here.
-      assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "program-creators:Creators:BadgeCheck", "program-gigs:Gigs:Clapperboard", "program-locals:Mingla Locals:MapPin", "program-disputes:Disputes:Scale", "inbound:Inbound leads:Inbox", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
+      assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "program-creators:Creators:BadgeCheck", "program-gigs:Gigs:Clapperboard", "program-locals:Mingla Locals:MapPin", "program-disputes:Disputes:Scale", "inbound:Leads:Inbox", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
     }
     assert.ok(ids(owner).includes("admin"));
     // #4130 (Seth): Team and roles is the owner's again; an admin sees Careers.

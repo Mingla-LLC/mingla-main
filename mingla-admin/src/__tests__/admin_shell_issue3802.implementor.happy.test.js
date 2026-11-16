@@ -82,7 +82,7 @@ const LABELS = {
   outreach: "Hosts and creators",
   // #4130 + #3872: the Creator Program pages keep their #3872 labels.
   "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
-  inbound: "Inbound leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
+  inbound: "Leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard", // #4452 A1.8: Leads
   support: "Support", community: "Community",
   communications: "Overview", push: "Push", announcements: "Announcements", roadmap: "Roadmap", email: "Email", blog: "Blog", links: "Links page", "brand-groups": "Brand groups",
   people: "People", brands: "Brands", "business-offerings": "Offerings",

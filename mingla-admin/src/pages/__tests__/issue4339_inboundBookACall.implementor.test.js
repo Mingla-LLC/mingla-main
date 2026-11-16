@@ -133,16 +133,16 @@ describe("#4339 BC-2: Add to Hosts", () => {
 });
 
 describe("#4339 BC-3: the page", () => {
-  it("reads the booking's contact details and shows the booking details", () => {
-    const page = stripComments(read("pages/InboundLeadsPage.jsx"));
+  it("shows the booking details in the Leads drawer", () => {
+    // #4452 A1.8: the booking is one event in the lead's history; its email
+    // goes on a new card through Add to pipeline (leadCardFields).
+    const drawer = stripComments(read("components/leads/LeadDrawer.jsx"));
     assert.match(read("services/dashboardService.js"), /export const getBookCallLead = \(id\) => rpc\("admin_book_call_lead_get", \{ p_id: id \}\);/);
-    assert.match(page, /lead\.raw\.source === "book_a_call"\) \{\s*const detail = await getBookCallLead\(lead\.id\);/);
-    assert.match(page, /createRecord\("hosts", bookCallHostFields\(lead, detail\), newRequestKey\(\)\)/);
-    assert.match(page, /\{lead\.booking && <BookingDetails booking=\{lead\.booking\} \/>\}/);
-    assert.match(page, /<a href=\{booking\.socialUrl\} target="_blank" rel="noopener noreferrer"/);
-    assert.match(page, /<a href=\{booking\.website\} target="_blank" rel="noopener noreferrer"/);
-    assert.match(page, /Call: \{formatDateTime\(booking\.callAt\)\}/);
-    assert.match(page, /Their email and social go on the card as contact details\./);
+    assert.match(drawer, /\{e\.booking && <BookingLine booking=\{e\.booking\} \/>\}/);
+    assert.match(drawer, /<a href=\{social\} target="_blank" rel="noopener noreferrer"/);
+    assert.match(drawer, /<a href=\{website\} target="_blank" rel="noopener noreferrer"/);
+    assert.match(drawer, /const social = safeLink\(booking\.social_url, false\);/);
+    assert.match(drawer, /createRecord\(pipelineFor\(lead\), leadCardFields\(lead\), newRequestKey\(\)\)/);
   });
 });
 

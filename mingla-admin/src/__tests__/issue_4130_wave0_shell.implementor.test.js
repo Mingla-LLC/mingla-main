@@ -54,7 +54,7 @@ const MENU = [
   // #4255 W4: Notifications left the menu for Messages in the top bar.
   ["Home", ["overview:Dashboard", "work-board:Work"]],
   // #4130 + #3872: the Creator Program pages sit right under Hosts and creators.
-  ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
+  ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Leads", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
   // #4383: what we tell hosts and explorers, each its own screen.
   ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page", "brand-groups:Brand groups"]], // #4452 §7.2
@@ -82,6 +82,7 @@ const REDIRECTS = {
   claims: ["brands", "claims"],
   "beta-leads": ["inbound", "beta"],
   "tool-leads": ["inbound", "tools"],
+  leads: ["inbound", undefined], // #4452 A1.8: #/leads is the Leads list
   hosts: ["outreach", "hosts"],
   creators: ["outreach", "creators"],
   "launch-cities": ["placepool", "cities"],

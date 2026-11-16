@@ -148,9 +148,9 @@ describe("#4339 CC-4: Inbound leads by audience", () => {
     assert.deepEqual(filterLeads(rows, "creator").map((r) => r.id), ["c"]);
     assert.deepEqual(filterLeads(rows, "local").map((r) => r.id), ["l"]);
     assert.deepEqual(filterLeads(rows, "host").map((r) => r.id), ["h"]);
-    const page = strip(read("pages/InboundLeadsPage.jsx"));
-    assert.match(page, /<FilterSelect name="audience" label="Show" value=\{audience\} options=\{LEAD_FILTERS\} onChange=\{setAudience\} \/>/);
-    assert.match(page, /filterLeads\(data\?\.rows, audience\)/);
+    // #4452 A1.8: the Leads list filters by label chips (Host, Creator, Local).
+    const filters = strip(read("components/leads/LeadFilters.jsx"));
+    assert.match(filters, /LABELS\.map\(\(l\) => <Chip key=\{l\.value\} active=\{label === l\.value\} onClick=\{\(\) => set\("label", l\.value\)\}>/);
   });
   it("only a Host call can be added to Hosts", () => {
     assert.equal(leadView(row("h", "host")).canAdd, true);
