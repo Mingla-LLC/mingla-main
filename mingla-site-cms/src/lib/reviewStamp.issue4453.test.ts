@@ -94,6 +94,18 @@ describe("#4453 stampBlocks", () => {
     expect(out[0]!.review).toEqual(draft);
   });
 
+  it("P2-2 flag off after Drafts exist: Mark all (a signed write with no source) clears them, and publish passes", () => {
+    const draft = { state: "draft", source: "composer", at: NOW, by: null };
+    const out = stampBlockReview({
+      data: { blocks: [block("a", "One"), block("b", "Two")] },
+      originalDoc: { blocks: [block("a", "One", { review: draft }), block("b", "Two", { review: draft })] },
+      req: { context: { minglaSignedCore: true, minglaMarkReviewed: "all" }, user: { core_user_id: "00000000-0000-4000-8000-0000000000f1" } },
+      operation: "update",
+    } as never) as { blocks: Record<string, unknown>[] };
+    expect(out.blocks.every((b) => (b.review as { state: string }).state === "reviewed")).toBe(true);
+    expect(() => assertNoUnreviewedSections([{ path: "", title: "Home", enabled: true, blocks: out.blocks }])).not.toThrow();
+  });
+
   it("summaries and chips name the source", () => {
     const draft = { state: "draft", source: "ari", at: NOW, by: null };
     expect(pageReviewSummary([block("a", "One", { review: draft }), block("b", "Two")])).toEqual({ count: 1, blocks: [{ id: "a", type: "page_header", source: "ari" }] });

@@ -19,6 +19,8 @@ const mockSave = jest.fn();
 const mockSavePlan = jest.fn();
 const mockAddTrip = jest.fn();
 let mockContent: Record<string, unknown>;
+const mockMark = jest.fn();
+const mockReview = { total: 2, pages: [{ id: "p1", title: "Home", path: "", enabled: true, count: 2, blocks: [{ id: "a", type: "hero", source: "composer" }, { id: "b", type: "faq", source: "ari" }] }] };
 
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }) }));
 jest.mock("../../website/WebsiteIcon", () => ({ WebsiteIcon: () => null }));
@@ -50,10 +52,13 @@ jest.mock("../../../../sites/contentApi", () => ({
   BrandSiteContentConflict: class BrandSiteContentConflict extends Error {},
   usePastTrips: () => ({ data: { can_hide: true, revision: "r1", trips: [] }, isLoading: false, isError: false, refetch: jest.fn() }),
   useSetPastTripHidden: () => ({ mutate: jest.fn(), isPending: false }),
+  useReviewStatus: () => ({ data: mockReview, isLoading: false, isError: false }),
+  useMarkReviewed: () => ({ mutate: mockMark, isPending: false }),
 }));
 
 import { ProofPart } from "../ProofPart";
 import { PastTripsSection } from "../../website/sections/PastTripsSection";
+import { DraftReviewCard } from "../../website/sections/DraftReviewCard";
 import { WebsiteProvider, type WebsiteContextValue } from "../../website/WebsiteContext";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -183,4 +188,17 @@ describe("#4453 P1-3 Website → Past trips", () => {
     press(root, "past-add-before-mingla-sheet-close");
     expect(has(root, "past-add-before-mingla-sheet-sheet")).toBe(false);
   });
+});
+
+describe("#4453 P2-2 Drafts stay clearable when the flag is off", () => {
+  for (const mode of ["pages", "publish"] as const) {
+    it(`${mode}: the review card shows with SITES_PROOF_PART off, and Mark all clears the page`, () => {
+      mockMark.mockClear();
+      let tree!: ReturnType<typeof create>;
+      act(() => { tree = create(<DraftReviewCard siteId="s1" proofEnabled={false} readOnly={false} mode={mode} toast={jest.fn()} />); });
+      expect(has(tree.root, `draft-review-${mode}`)).toBe(true);
+      press(tree.root, "draft-review-mark-all");
+      expect(mockMark).toHaveBeenCalledWith({ pageId: "p1", blockIds: "all" }, expect.anything());
+    });
+  }
 });

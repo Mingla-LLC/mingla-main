@@ -927,6 +927,9 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
         })),
       };
     }
+    // #4453 — review_status and mark_reviewed are deliberately NOT behind
+    // SITES_PROOF_PART: only creating Drafts is flagged, and Drafts that exist
+    // must always be clearable (the publish gate refuses them regardless).
     case "review_status": {
       // #4453 — each page's Draft sections (spec v1 §4.3): the Pages screen's
       // "N sections to review" and the Publish screen's blocking list.

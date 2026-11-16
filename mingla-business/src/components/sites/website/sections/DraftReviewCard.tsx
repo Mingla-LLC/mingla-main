@@ -30,20 +30,25 @@ export function reviewCountLabel(count: number): string {
 
 export function DraftReviewCard({ siteId, proofEnabled, readOnly, mode, toast }: {
   siteId: string | null;
-  /** SITES_PROOF_PART, from the plan read (WebsiteContext.plan). */
+  /** SITES_PROOF_PART, from the plan read (WebsiteContext.plan): only decides whether a failed check is shown. */
   proofEnabled: boolean;
   readOnly: boolean;
   /** "pages": every Draft with Looks right; "publish": the pages that block publishing. */
   mode: "pages" | "publish";
   toast: (message: string, kind?: "success" | "info" | "warn" | "error") => void;
 }): React.ReactElement | null {
-  // #4453 P3-3 — nothing at all (no query, no error) while SITES_PROOF_PART is off.
-  const proofOn = proofEnabled;
-  const status = useReviewStatus(siteId, proofOn);
+  /*
+   * #4453 — the review card follows the Drafts, not the flag: only CREATING
+   * Drafts is behind SITES_PROOF_PART. If the flag goes off while Drafts
+   * exist, publishing still refuses them (UNREVIEWED_SECTIONS), so the owner
+   * must still see them and clear them here. Core's review_status and
+   * mark_reviewed are deliberately not flag-gated. With the flag off a failed
+   * check shows nothing (P3-3): there is normally nothing to review.
+   */
+  const status = useReviewStatus(siteId);
   const mark = useMarkReviewed(siteId);
-  if (!proofOn) return null;
   if (status.isLoading || !status.data) {
-    return status.isError ? <Banner tone="err" icon="alert" title="We couldn't check which sections need review." body="Try again in a moment." /> : null;
+    return status.isError && proofEnabled ? <Banner tone="err" icon="alert" title="We couldn't check which sections need review." body="Try again in a moment." /> : null;
   }
   const pages = status.data.pages.filter((page) => page.enabled && page.count > 0);
   if (!pages.length) return null;
@@ -66,7 +71,8 @@ export function DraftReviewCard({ siteId, proofEnabled, readOnly, mode, toast }:
         <View key={page.id} style={styles.page}>
           <Row>
             <RowText title={page.title} lines={[reviewCountLabel(page.count)]} />
-            {mode === "pages" && !readOnly ? (
+            {/* On Publish too: a refused publish always has a way out here. */}
+            {!readOnly ? (
               <WButton label="Mark all as reviewed" size="sm" variant="ghost" icon="check" onPress={() => onMark(page, "all")} disabled={mark.isPending} accessibilityLabel={`Mark all on ${page.title} as reviewed`} testID="draft-review-mark-all" />
             ) : null}
           </Row>

@@ -728,7 +728,8 @@ $function$;
 
 -- ── 8. Plan save: the proof answers ────────────────────────────────────────
 -- Re-issued from 20280119092829; changes: the four answer keys, 'proof' in
--- skipped_parts, and the stale-revision refusal carries ERRCODE PT409.
+-- skipped_parts (both refused while SITES_PROOF_PART is off), and the
+-- stale-revision refusal carries ERRCODE PT409.
 CREATE OR REPLACE FUNCTION public.brand_site_plan_save(
   p_brand_id uuid, p_revision integer, p_patch jsonb
 ) RETURNS jsonb
@@ -752,6 +753,15 @@ BEGIN
     RAISE EXCEPTION 'sites_validation_failed';
   END IF;
   v_keys := ARRAY(SELECT jsonb_object_keys(p_patch));
+  -- #4453 — the proof answers (and skipping the proof part) exist only while
+  -- SITES_PROOF_PART is on: refused, never silently stored, while it is off.
+  IF NOT public.brand_site_proof_part_enabled() AND (
+    v_keys && ARRAY['value_points','faq','process_steps','quick_facts']
+    OR (p_patch ? 'skipped_parts' AND jsonb_typeof(p_patch->'skipped_parts') = 'array'
+      AND p_patch->'skipped_parts' @> '["proof"]'::jsonb)
+  ) THEN
+    RAISE EXCEPTION 'sites_feature_off';
+  END IF;
   -- #2829 — only active_part ("Do it with Ari") is open to rank 20-49.
   v_rank := public.brand_site_plan_gate(p_brand_id,
     CASE WHEN v_keys = ARRAY['active_part'] THEN 20 ELSE 50 END);

@@ -20,6 +20,7 @@
 -- T-13 SC-3.5 once the brand has a site, staging is refused (sites_use_website_content).
 -- T-14 SC-3.3 a past trip ending today is refused; a past one becomes a real ended trip (setup:*).
 -- T-15 content ranks: review_status and mark_reviewed are rank 20.
+-- T-18 P2-1 flag off: plan save refuses value_points/faq/process_steps/quick_facts and a 'proof' skip.
 -- T-17 P1-3 flag off: list, staging and past trips are refused (sites_feature_off).
 -- T-16 P1-1 Build's plan check is by key: proof skipped/untouched never blocks (flag on or off); unapproved is refused.
 --
@@ -347,6 +348,23 @@ BEGIN
 
   -- T-17 P1-3 with the flag off every setup-part function refuses (server-side).
   UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'SITES_PROOF_PART';
+  -- T-18 the plan save refuses the proof answers and the proof skip while the flag is off.
+  v_plan := public.brand_site_plan_get(v_brand);
+  v_rev := (v_plan->'plan'->>'revision')::integer;
+  FOREACH v_row IN ARRAY ARRAY[
+    jsonb_build_object('faq', jsonb_build_array(jsonb_build_object('question', 'Q?', 'answer', 'A.'))),
+    jsonb_build_object('value_points', NULL::jsonb),
+    jsonb_build_object('process_steps', NULL::jsonb),
+    jsonb_build_object('quick_facts', NULL::jsonb),
+    jsonb_build_object('skipped_parts', jsonb_build_array('look', 'proof'))
+  ] LOOP
+    v_failed := NULL;
+    BEGIN PERFORM public.brand_site_plan_save(v_brand, v_rev, v_row);
+    EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
+    PERFORM pg_temp.p_assert(v_failed = 'sites_feature_off', 'T-18a flag off: plan save refuses ' || v_row::text);
+  END LOOP;
+  v_plan := public.brand_site_plan_save(v_brand, v_rev, jsonb_build_object('skipped_parts', jsonb_build_array('look')));
+  PERFORM pg_temp.p_assert((v_plan->'plan'->>'revision')::integer = v_rev + 1, 'T-18b flag off: an ordinary plan save still works');
   v_failed := NULL;
   BEGIN PERFORM public.brand_site_setup_content_list(v_brand, v_owner);
   EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM; END;
