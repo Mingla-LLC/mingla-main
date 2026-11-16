@@ -76,6 +76,7 @@ Deno.test("#4238 W3-3 / #4452 the handler reads the ad context for every audienc
   assert(src.includes('leadWrite === "written"'));
   assert(src.includes("lead_event_id: leadEventId"));
   const gate = await Deno.readTextFile(new URL("../growth-tools-gate/index.ts", import.meta.url));
-  assert(gate.includes("subjectId: `tool:${runId as string}`"));
+  // #4452 B20: the gate's lead moved into recordToolGateLead (same id, plus the test-lead check).
+  assert(gate.includes("subjectId: `tool:${input.runId}`"));
   assert(gate.includes("lead_event_id: leadEventId"));
 });

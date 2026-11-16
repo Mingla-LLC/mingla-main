@@ -2,20 +2,21 @@
 // MINGLA-INVARIANT: I-4452-CONSENT-ONLY-TRUE | issue #4452 | marketing_consent is true only for a JSON boolean true; a string 'true' or a missing box is false (T-3.10).
 // real shared contract over an in-memory SubmitDb; the Lead goes through the real
 // recordLabelledLead into the in-memory ad tables with captured senders.
+// MINGLA-INVARIANT: I-4452-TEST-LEADS-NEVER-SENT | issue #4452 | a lead whose email or name public.inbound_lead_is_test marks as test or internal stores no match context, fires no ad conversion and answers lead_event_id null (forms-submit, growth-tools-gate, growth-tools-book); the check fails closed.
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import type { ConversionSendInput, SenderResult } from "../_shared/adConversionFire.ts";
-import { hostFakeDb } from "../_shared/__tests__/hostFunnelFakeDb.issue4238.ts";
+import { hostFakeDb, type HostFakeDbOptions } from "../_shared/__tests__/hostFunnelFakeDb.issue4238.ts";
 import { CREATORS_DEF } from "../_shared/__tests__/issue_4452_forms_contract_vectors.ts";
 import { handleFormsRequest, type LiveForm, MIN_FILL_MS, type SubmitDb } from "./submit.ts";
 
 const FORM = "4452f000-0000-4000-8000-000000000001";
 const ORIGIN = "https://usemingla.com";
 
-function makeDb(form: Partial<LiveForm> = {}) {
+function makeDb(form: Partial<LiveForm> = {}, adOptions: HostFakeDbOptions = {}) {
   const attempts: Array<{ outcome: string; formId: string | null }> = [];
   const cores: Array<Record<string, unknown>> = [];
   const leadEvents: Record<string, string> = {};
-  const ad = hostFakeDb({ ad_attribution_touches: [], ad_connections: [], form_submissions: [] });
+  const ad = hostFakeDb({ ad_attribution_touches: [], ad_connections: [], form_submissions: [] }, adOptions);
   let core: (p: Record<string, unknown>) => Record<string, unknown> = (p) => ({
     replay: false, deduped: false, submission_id: "4452s000-0000-4000-8000-00000000000" + cores.length,
     lead_on: true, goal: "call_booked", run_id: null, form_key: "creators-join", p,
@@ -240,4 +241,43 @@ Deno.test("§3 a body over 32 KB is 400", async () => {
   const res = await handleFormsRequest(post(JSON.stringify(body({ answers: answers({ about: "x".repeat(33 * 1024) }) }))), deps(m.db));
   assertEquals(res.status, 400);
   assertEquals(m.cores.length, 0);
+});
+
+// #4452 B20: a test or internal person is never sent to an ad platform. The rule
+// is public.inbound_lead_is_test (the fake stands in for it by email).
+// FAILS-ON-REVERT: removing the leadIsTestOrInternal guard from recordLabelledLead
+// (or the contact this handler passes) fails the first and third tests.
+Deno.test("B20 an internal email sends no Lead: no context, no conversion, lead_event_id null", async () => {
+  const m = makeDb({}, { testLeadEmails: ["ada@usemingla.com"] });
+  const res = await handleFormsRequest(post(body({ answers: answers({ email: "ada@usemingla.com" }) })), deps(m.db));
+  assertEquals(res.status, 200);
+  const out = await res.json();
+  assertEquals(out.lead_event_id, null, "a null id means the page fires no browser Lead");
+  assertEquals(m.ad.tables.ad_conversions?.length ?? 0, 0);
+  assertEquals(m.ad.tables.ad_match_contexts?.length ?? 0, 0);
+  assertEquals(m.leadEvents[out.submission_id], undefined);
+  assertEquals(m.ad.rpcCalls.filter((c) => c.name === "inbound_lead_is_test").map((c) => c.args),
+    [{ p_email: "ada@usemingla.com", p_name: "Ada Okafor" }], "the SQL rule reads the submitted email and name");
+});
+
+Deno.test("B20 a normal email still sends its labelled Lead", async () => {
+  const m = makeDb({}, { testLeadEmails: ["ada@usemingla.com"] });
+  const out = await (await handleFormsRequest(post(body()), deps(m.db))).json();
+  assertEquals(out.lead_event_id, `creator_lead:form:${out.submission_id}`);
+  assert(m.ad.row("ad_conversions", (r) => r.event_id === out.lead_event_id));
+});
+
+Deno.test("B20 the test-lead check fails closed: when it cannot answer, nothing is sent", async () => {
+  const m = makeDb({}, { testLeadCheckError: true });
+  const out = await (await handleFormsRequest(post(body()), deps(m.db))).json();
+  assertEquals(out.lead_event_id, null);
+  assertEquals(m.ad.tables.ad_conversions?.length ?? 0, 0);
+});
+
+Deno.test("B20 a real visitor with ads off keeps today's opt-out-only server Lead", async () => {
+  const m = makeDb({}, { testLeadEmails: ["ada@usemingla.com"] });
+  const out = await (await handleFormsRequest(post(body({ ad: { tracking_opt_out: true } })), deps(m.db))).json();
+  assertEquals(out.lead_event_id, `creator_lead:form:${out.submission_id}`);
+  const ctx = m.ad.row("ad_match_contexts", (r) => r.subject_id === `form:${out.submission_id}`);
+  assertEquals([ctx?.ad_tracking_opt_out, ctx?.fbc, ctx?.client_ip], [true, null, null]);
 });

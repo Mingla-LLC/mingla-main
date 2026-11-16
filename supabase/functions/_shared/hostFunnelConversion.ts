@@ -15,6 +15,9 @@
  *   - Every value is bounded; a malformed field is dropped, never an error.
  *   - Never throws: a failed write or fire is logged loudly and the caller's
  *     own flow (sign-in, booking, email unlock) carries on.
+ *   - #4452 B20: a test or internal lead (public.inbound_lead_is_test) stores
+ *     nothing and fires nothing, and its event id is null so the browser twin
+ *     stays silent too.
  */
 
 // @ts-ignore — Deno ESM import (pin matches adConversionFire.ts).
@@ -267,7 +270,7 @@ function edgeWaitUntil(): WaitUntil | null {
  */
 export async function recordHostLead(
   supabase: SupabaseClient,
-  input: { subjectId: string; ad: HostAdContext; source?: string | null },
+  input: { subjectId: string; ad: HostAdContext; source?: string | null; contact: LeadContact },
   deps: FireAdConversionDeps = {},
 ): Promise<string | null> {
   return await recordLabelledLead(supabase, {
@@ -275,7 +278,42 @@ export async function recordHostLead(
     subjectId: input.subjectId,
     ad: input.ad,
     source: input.source ?? null,
+    contact: input.contact,
   }, deps);
+}
+
+/** The person behind a lead: the email and name the test-lead rule reads. */
+export interface LeadContact {
+  email: string | null;
+  name: string | null;
+}
+
+/**
+ * #4452 B20 (I-4452-TEST-LEADS-NEVER-SENT): is this a test or internal lead?
+ * The one owner of the rule is public.inbound_lead_is_test(email, name) (the
+ * internal email rule, test / demo name words and Admin users), the same
+ * function the Dashboard and Leads use. Fails closed: when the check cannot
+ * answer, the lead is treated as a test one and nothing reaches an ad
+ * platform. Never throws.
+ */
+export async function leadIsTestOrInternal(
+  supabase: SupabaseClient,
+  contact: LeadContact,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc("inbound_lead_is_test", {
+      p_email: contact.email,
+      p_name: contact.name,
+    });
+    if (error) throw new Error(String((error as { message?: unknown }).message ?? "rpc failed"));
+    return data !== false;
+  } catch (err) {
+    console.error(
+      "[hostFunnelConversion] TEST LEAD CHECK FAILED: conversion skipped",
+      err instanceof Error ? err.message : String(err),
+    );
+    return true;
+  }
 }
 
 /** Ads unknown (no `ad` object sent): treated as off. Nothing but the opt-out is kept. */
@@ -309,11 +347,16 @@ export function callBookedEventId(label: LeadLabel, bookingId: string): string {
  */
 export async function recordLabelledLead(
   supabase: SupabaseClient,
-  input: { label: LeadLabel; subjectId: string; ad: HostAdContext | null; source?: string | null },
+  input: { label: LeadLabel; subjectId: string; ad: HostAdContext | null; source?: string | null; contact: LeadContact },
   deps: FireAdConversionDeps = {},
 ): Promise<string | null> {
   const kind = LEAD_KIND_FOR_LABEL[input.label];
   if (!kind || !input.subjectId) return null;
+  // #4452 B20: a test or internal lead is never sent (server or browser twin: null id).
+  if (await leadIsTestOrInternal(supabase, input.contact)) {
+    console.log(`[hostFunnelConversion] test_lead_skipped kind=${kind}`);
+    return null;
+  }
   const eventId = labelledLeadEventId(input.label, input.subjectId);
   const stored = await upsertAdMatchContext(supabase, {
     subjectType: "lead",
@@ -343,11 +386,16 @@ export async function recordLabelledLead(
  */
 export async function recordCallBooked(
   supabase: SupabaseClient,
-  input: { label: LeadLabel; bookingId: string; source?: string | null },
+  input: { label: LeadLabel; bookingId: string; source?: string | null; contact: LeadContact },
   deps: FireAdConversionDeps = {},
 ): Promise<string | null> {
   const kind = CALL_KIND_FOR_LABEL[input.label];
   if (!kind || !input.bookingId) return null;
+  // #4452 B20: a test or internal booking's call is never sent either.
+  if (await leadIsTestOrInternal(supabase, input.contact)) {
+    console.log(`[hostFunnelConversion] test_lead_skipped kind=${kind}`);
+    return null;
+  }
   const eventId = callBookedEventId(input.label, input.bookingId);
   await scheduleHostFunnelTask(
     fireHostFunnelConversion(supabase, {
