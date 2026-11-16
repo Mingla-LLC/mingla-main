@@ -28,6 +28,7 @@ import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
+import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 // ORCH-1181 — the shared per-package installment sub-line copy (business + web +
 // consumer identical). The deposit-due-today still comes from the existing
@@ -121,26 +122,11 @@ const isTripPast = (endAtIso: string | null): boolean => {
   return Number.isFinite(end) && end + 24 * 60 * 60 * 1000 < Date.now();
 };
 
+// #4420 — trip dates are calendar dates; read at UTC like the public page.
 const formatTripDateLine = (
   startAtIso: string | null,
   endAtIso: string | null,
-): string => {
-  if (startAtIso === null) return "";
-  try {
-    const fmt = new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-    const start = fmt.format(new Date(startAtIso));
-    if (endAtIso !== null) {
-      const end = fmt.format(new Date(endAtIso));
-      return `${start} – ${end}`;
-    }
-    return start;
-  } catch {
-    return "";
-  }
-};
+): string => formatTripCalendarRange(startAtIso, endAtIso);
 
 export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
