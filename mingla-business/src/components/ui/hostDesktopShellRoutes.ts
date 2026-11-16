@@ -38,7 +38,7 @@ const segmentSafe = (pathname: string, base: string): boolean =>
 const NONE_PREFIXES = [
   "/auth",
   "/stay", // /stay/[groupId] and /stay/pay/[token]: guest-facing stay pages
-  "/rsvp", // public RSVP pages; the host RSVP wizard draws its own rail
+  "/rsvp/pass", // the guest's RSVP pass recovery page (public)
   "/invite",
   "/join",
   "/attendance",
@@ -57,10 +57,10 @@ const NONE_PREFIXES = [
 ] as const;
 
 /** Door and scanner are full-screen tools on every platform. */
-const FULL_SCREEN_TOOL_RE = /^\/event\/[^/]+\/(door|scanner)(\/|$)/;
+const FULL_SCREEN_TOOL_RE = /^\/(event\/[^/]+\/(door|scanner)|rsvp\/[^/]+\/scanner)(\/|$)/;
 
 /** Wizards that already draw their own 80 rail (EventCreatorWizard, RsvpCreatorWizard, TripCreatorWizard). */
-const OWN_RAIL_WIZARD_RE = /^\/(event\/create|event\/[^/]+\/edit|trip\/create|trip\/[^/]+\/edit)(\/|$)/;
+const OWN_RAIL_WIZARD_RE = /^\/(event\/create|event\/[^/]+\/edit|trip\/create|trip\/[^/]+\/edit|rsvp\/create|rsvp\/[^/]+\/edit)(\/|$)/;
 
 /** Wizard / full-screen routes that get the shell's 80 rail. */
 const RAIL_RE = /^\/(brand\/new|venue\/create|experience\/create|experience\/[^/]+\/edit|experience\/snap)(\/|$)/;
@@ -78,7 +78,7 @@ export const hostDesktopShellModeFor = (
   if (/^\/(e|t|b|exp|g|o|m|pay|booking|reserve|refund)(\/|$)/.test(path)) return "none";
   if (/^\/checkout(-trip|-experience)?(\/|$)/.test(path)) return "none";
   if (FULL_SCREEN_TOOL_RE.test(path) || OWN_RAIL_WIZARD_RE.test(path)) return "none";
-  if (/^\/event\/[^/]+\/preview(\/|$)/.test(path)) return "none";
+  if (/^\/(event|rsvp)\/[^/]+\/preview(\/|$)/.test(path)) return "none";
   if (RAIL_RE.test(path) || isRailRoute(path)) return "rail";
   return "sidebar";
 };

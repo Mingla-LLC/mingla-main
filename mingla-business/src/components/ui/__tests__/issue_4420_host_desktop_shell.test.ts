@@ -48,6 +48,11 @@ const TABLE: ReadonlyArray<readonly [string, string, string]> = [
   ["insights", "/insights", "sidebar"],
   ["partner earnings", "/partner/earnings", "sidebar"],
   ["promoting", "/promoting", "sidebar"],
+  // [TEST-MOD-APPROVED #4420] journey: the host RSVP manage routes lost the
+  // shell because the whole "/rsvp" prefix was treated as public.
+  ["rsvp home", `/rsvp/${ID}`, "sidebar"],
+  ["rsvp guests", `/rsvp/${ID}/guests`, "sidebar"],
+  ["rsvp scanners", `/rsvp/${ID}/scanners`, "sidebar"],
   // Wizard / full-screen routes → 80 rail
   ["new brand", "/brand/new", "rail"],
   ["venue create", "/venue/create", "rail"],
@@ -84,6 +89,9 @@ const TABLE: ReadonlyArray<readonly [string, string, string]> = [
   ["event edit wizard (own rail)", `/event/${ID}/edit`, "none"],
   ["trip wizard (own rail)", "/trip/create", "none"],
   ["rsvp wizard (own rail)", `/rsvp/${ID}/edit`, "none"],
+  ["rsvp create wizard (own rail)", "/rsvp/create", "none"],
+  ["rsvp scanner", `/rsvp/${ID}/scanner`, "none"],
+  ["rsvp preview", `/rsvp/${ID}/preview`, "none"],
 ];
 
 describe("#4420 B6 — HostDesktopShell route table", () => {
