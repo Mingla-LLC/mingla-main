@@ -74,7 +74,7 @@ import {
   OfferingCoverIdentity,
   type OfferingCoverIdentityData,
 } from "./OfferingCoverIdentity";
-import { boldFontFamily, hexToRgba } from "./themePalette";
+import { boldFontFamily, hexToRgba, paletteAccentGradient } from "./themePalette";
 import { useReduceMotionPreference } from "./useReduceMotionPreference";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { CoverGalleryRow } from "./CoverGalleryRow";
@@ -350,7 +350,35 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       ? {}
       : { label: placeholderLabel };
 
-  const coverMedia = (
+  // #4420 journey — a public offering with NO cover used to print the
+  // authoring placeholder ("COVER" on Mingla-orange stripes). A guest now sees
+  // the host's own colour: their gradient when they chose one, else their
+  // single colour. The premium frame's own scrim keeps the title readable on
+  // it. A caller that names its own placeholder word (the venue page)
+  // keeps it.
+  const hasCoverMedia =
+    typeof coverMediaUrl === "string" && coverMediaUrl.trim().length > 0;
+  const accentStops = paletteAccentGradient(palette);
+  const themedFallback =
+    !hasCoverMedia && placeholderLabel === null ? (
+      <View
+        style={StyleSheet.absoluteFill}
+        testID={testID !== undefined ? `${testID}-themed-cover` : "offering-themed-cover"}
+      >
+        <LinearGradient
+          colors={
+            accentStops !== null
+              ? [accentStops[0], accentStops[1]]
+              : [palette.accent, hexToRgba(palette.accent, 0.72)]
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+    ) : null;
+
+  const coverMedia = themedFallback ?? (
     <EventCoverMedia
       accessibleLabel={activeAccessibleLabel}
       mediaUrl={coverMediaUrl}
