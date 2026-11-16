@@ -39,6 +39,16 @@ describe("#4420 one field, one ring", () => {
     expect(web.FIELD_FOCUS_CSS).not.toMatch(/(^|})textarea:focus\{outline:none/);
   });
 
+  // [TEST-MOD-APPROVED #4420] device round 2: Ari's composer pill.
+  test("an opted-in field box draws the ring on its rounded pill, not inside it", () => {
+    expect(web.FIELD_FOCUS_BOX_PROPS).toEqual({ dataSet: { fieldFocus: "box" } });
+    expect(web.FIELD_FOCUS_CSS).toContain('[data-field-focus="box"] textarea:focus,[data-field-focus="box"] input:focus{outline:none}');
+    expect(web.FIELD_FOCUS_CSS).toContain('[data-field-focus="box"]:has(textarea:focus),[data-field-focus="box"]:has(input:focus){');
+    expect(native.FIELD_FOCUS_BOX_PROPS).toEqual({});
+    expect(read("src/components/ari/InputBar.tsx")).toMatch(/<View style=\{styles\.field\} \{\.\.\.FIELD_FOCUS_BOX_PROPS\}>/);
+    expect(read("src/components/home/HomeAskAri.tsx")).toMatch(/<View style=\{styles\.askRow\} \{\.\.\.FIELD_FOCUS_BOX_PROPS\}>/);
+  });
+
   test("install adds the rule once to the document head", () => {
     const appended: Array<{ id: string; textContent: string }> = [];
     const doc = {

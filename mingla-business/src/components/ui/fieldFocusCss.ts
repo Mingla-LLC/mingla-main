@@ -4,3 +4,5 @@
  */
 export const FIELD_FOCUS_CSS = "";
 export const installFieldFocusCss = (): void => undefined;
+/** Native: no browser ring, so the field box needs no marker. */
+export const FIELD_FOCUS_BOX_PROPS: Record<string, unknown> = {};

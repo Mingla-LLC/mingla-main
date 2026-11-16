@@ -22,6 +22,7 @@ import {
   materials,
 } from "../../constants/designSystem";
 import { HomeAriOrb } from "./HomeAriOrb";
+import { FIELD_FOCUS_BOX_PROPS } from "../ui/fieldFocusCss";
 
 /** The orb at rest: AriOrb's own "sm" geometry and colours (24px, 3px halo),
  *  drawn without animation. Shown while the animated orb loads, and wherever
@@ -43,7 +44,7 @@ export function HomeAskAri({
   };
   return (
     <View style={styles.host} testID={testID}>
-      <View style={styles.askRow}>
+      <View style={styles.askRow} {...FIELD_FOCUS_BOX_PROPS}>
         {/* #4304 — the same three-ring orb as Ari's own screen, so the field
             reads as Ari rather than a generic search box. */}
         <View style={styles.mark} testID="home-ask-ari-orb">

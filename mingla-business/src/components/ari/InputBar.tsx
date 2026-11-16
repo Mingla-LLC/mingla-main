@@ -46,6 +46,7 @@ import { Plus } from "lucide-react-native";
 import { isAriSendReady } from "../../services/agentReliability";
 
 import { ariThread, color, materials, radius, size, space } from "../../constants/designSystem";
+import { FIELD_FOCUS_BOX_PROPS } from "../ui/fieldFocusCss";
 
 // Web-only TextInput props: on react-native-web a multiline TextInput renders
 // as a <textarea> whose browser-default rows (~2) + larger default line-height
@@ -144,7 +145,7 @@ export const InputBar: React.FC<InputBarProps> = ({
     // attach control inside it; send is an icon-only Paper circle beside it,
     // dimmed until there is text. No bar behind either.
     <View style={styles.host}>
-      <View style={styles.field}>
+      <View style={styles.field} {...FIELD_FOCUS_BOX_PROPS}>
       {onAttach ? (
         <Pressable
           onPress={onAttach}

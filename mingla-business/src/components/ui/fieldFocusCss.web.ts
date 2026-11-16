@@ -23,9 +23,26 @@ import { edge } from "../../constants/designSystem";
 
 const STYLE_ID = "mingla-field-focus-4420";
 
+/**
+ * #4420 (device round 2) — a field box that holds its text control beside
+ * other controls (Ari's composer: attach + textarea; Home's Ask Ari: orb +
+ * input + send) opts in by spreading FIELD_FOCUS_BOX_PROPS on the box. The
+ * browser's rectangular ring inside the rounded pill goes; the pill itself
+ * draws the same input focus border and ring as every other field, following
+ * its radius. Boxes that do not opt in keep the browser ring.
+ */
+export const FIELD_FOCUS_BOX_PROPS = { dataSet: { fieldFocus: "box" } } as Record<string, unknown>;
+
+const BOX = '[data-field-focus="box"]';
+
 export const FIELD_FOCUS_CSS = [
   "div:has(> textarea:only-child:focus) > textarea{outline:none}",
   "div:has(> textarea:only-child:focus){",
+  `border-color:${edge.ringInputFocus.borderColor} !important;`,
+  `outline:${edge.ringFocus.ringWidth}px solid ${edge.ringFocus.ring};`,
+  "outline-offset:2px}",
+  `${BOX} textarea:focus,${BOX} input:focus{outline:none}`,
+  `${BOX}:has(textarea:focus),${BOX}:has(input:focus){`,
   `border-color:${edge.ringInputFocus.borderColor} !important;`,
   `outline:${edge.ringFocus.ringWidth}px solid ${edge.ringFocus.ring};`,
   "outline-offset:2px}",
