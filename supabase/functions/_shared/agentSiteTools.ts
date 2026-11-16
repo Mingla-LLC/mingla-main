@@ -41,7 +41,7 @@ import {
   workLogCitesSchema,
 } from "./siteContracts/ariToolSchemas.ts";
 import {
-  DESIGN_KEYS,
+  ARI_DESIGN_KEYS,
   designFontSlots,
   type DesignKey,
   DESIGNS,
@@ -75,7 +75,8 @@ const PAGE_PATH = {
   description:
     'The page\'s address as list_site_pages returns it ("" is the home page, "about", "resources/faqs"). Always send it.',
 };
-const DESIGN = { type: "string", enum: [...DESIGN_KEYS] };
+// #4453 6a — Ari names only ARI_DESIGN_KEYS until PR 7 (frozen declarations, #3355).
+const DESIGN = { type: "string", enum: [...ARI_DESIGN_KEYS] };
 const WHY = {
   type: "string",
   minLength: 1,
@@ -794,7 +795,7 @@ const listSiteDesigns = tool(
       throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
     }
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return DESIGN_KEYS.map((key) => {
+    return ARI_DESIGN_KEYS.map((key) => {
       const design = DESIGNS[key];
       return {
         key,

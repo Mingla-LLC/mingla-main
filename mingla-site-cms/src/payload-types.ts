@@ -239,7 +239,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed') | null;
+            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hero';
@@ -315,7 +315,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'split-panel' | 'panel-caption') | null;
+            variant?: ('atelier' | 'split-panel' | 'panel-caption' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'media_feature';
@@ -332,7 +332,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'dark-panel-glow') | null;
+            variant?: ('atelier' | 'dark-panel-glow' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'cta';
@@ -380,7 +380,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'photo-card' | 'poster') | null;
+            variant?: ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_grid';
@@ -499,7 +499,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'brand-film') | null;
+            variant?: ('atelier' | 'brand-film' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'video_feature';
@@ -538,7 +538,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'team';
@@ -560,7 +560,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage' | 'mosaic') | null;
+            variant?: ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'gallery';
@@ -629,7 +629,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'quote-wall' | 'rail') | null;
+            variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'testimonials';
@@ -727,7 +727,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'stats';
@@ -744,7 +744,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'pull_quote';
@@ -775,7 +775,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'map_embed';
@@ -804,7 +804,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'badge-tile') | null;
+            variant?: ('neutral' | 'badge-tile' | 'tiles') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'destination_grid';
@@ -880,7 +880,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'ledger' | 'ledger-count') | null;
+            variant?: ('neutral' | 'ledger' | 'ledger-count' | 'split') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_history';
@@ -968,7 +968,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'tile-bar' | 'statement') | null;
+            variant?: ('neutral' | 'tile-bar' | 'statement' | 'numbered' | 'tiles') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'feature_cards';
@@ -990,7 +990,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'divider';
@@ -1000,7 +1000,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'spacer';
@@ -1353,7 +1353,7 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage') | null;
+  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison') | null;
   tokens?:
     | {
         [k: string]: unknown;

@@ -21,7 +21,7 @@ import { ActionButton, Arrow, Blk, Go, Label, MinglaNote, Photo, rows, SecHead, 
 
 const KIND_PLURAL: Readonly<Record<string, string>> = { all: "offerings", trip: "trips", event: "events", experience: "experiences" };
 
-function GridShell({ block, index, ctx, className, children }: SharedBlockProps & { className: string; children: (items: GridItem[]) => React.ReactNode }) {
+export function GridShell({ block, index, ctx, className, children }: SharedBlockProps & { className: string; children: (items: GridItem[]) => React.ReactNode }) {
   const id = sectionId(block, index);
   const result = gridItems(block, ctx);
   const noun = KIND_PLURAL[text(block.kind) || "all"] ?? "offerings";
@@ -85,19 +85,19 @@ function GridShell({ block, index, ctx, className, children }: SharedBlockProps 
   );
 }
 
-function State({ item }: { item: GridItem }) {
+export function State({ item }: { item: GridItem }) {
   const badge = item.card.state.badge;
   return badge ? <span className={`mg-avail${item.card.state.bookable ? "" : " mg-avail--out"}`}>{badge}</span> : null;
 }
 
-function Price({ item, className }: { item: GridItem; className: string }) {
+export function Price({ item, className }: { item: GridItem; className: string }) {
   const price = item.card.state.bookable ? item.card.price : null;
   if (!price) return null;
   const from = price.startsWith("From ") ? price.slice(5) : null;
   return <div className={className}>{from ? <><small>From</small>{from}</> : price}</div>;
 }
 
-function Book({ item, ctx, className }: { item: GridItem; ctx: SharedContext; className: string }) {
+export function Book({ item, ctx, className }: { item: GridItem; ctx: SharedContext; className: string }) {
   return (
     <TrackedLink href={item.card.href} context={ctx.analytics} ctaKind="offering" offeringId={item.card.id} className={className}>
       <span>{item.card.cta}</span><Arrow /><span className="mg-sr">{`: ${item.card.title} on Mingla`}</span>
@@ -105,7 +105,7 @@ function Book({ item, ctx, className }: { item: GridItem; ctx: SharedContext; cl
   );
 }
 
-function Cover({ item, sizes }: { item: GridItem; sizes: string }) {
+export function Cover({ item, sizes }: { item: GridItem; sizes: string }) {
   return item.card.coverUrl
     ? <img src={item.card.coverUrl} srcSet={item.card.coverSrcSet ?? undefined} sizes={item.card.coverSrcSet ? sizes : undefined} alt="" loading="lazy" decoding="async" />
     : null;

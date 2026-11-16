@@ -25,7 +25,7 @@
  *     write (ARI_EXCLUDED_FIELDS, each with its reason).
  */
 import { BLOCK_CATALOG, BLOCK_TYPES, type BlockType, type FieldSpec } from "./blocks.ts";
-import { ariDesignVariants, DESIGN_KEYS, DESIGNS, type DesignKey } from "./designs.ts";
+import { ARI_DESIGN_KEYS, ariDesignVariants, DESIGNS, type DesignKey } from "./designs.ts";
 import { OWNER_FONT_SLOT_KEYS } from "./fontSlots.ts";
 import { FORBIDDEN_TEXT, isSafeHref, UUID_RE } from "./safety.ts";
 import {
@@ -144,7 +144,7 @@ function fieldSchema(spec: FieldSpec, path: string): JsonSchema | null {
 
 /** Every layout any design draws for a block type (the site's own design narrows it on save). */
 export function ariVariants(type: BlockType): string[] {
-  return [...new Set(DESIGN_KEYS.flatMap((key) => ariDesignVariants(DESIGNS[key], type)))];
+  return [...new Set(ARI_DESIGN_KEYS.flatMap((key) => ariDesignVariants(DESIGNS[key], type)))];
 }
 
 /**

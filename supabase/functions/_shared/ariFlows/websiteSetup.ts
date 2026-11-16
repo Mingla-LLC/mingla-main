@@ -58,7 +58,7 @@ import {
   websiteSetupUploadRoute,
 } from "../agentWebsiteSetup.ts";
 import {
-  DESIGN_KEYS,
+  ARI_DESIGN_KEYS,
   type DesignKey,
   DESIGNS,
 } from "../siteContracts/designs.ts";
@@ -341,7 +341,8 @@ function choiceOptions(fieldKey: string): { id: string; label: string }[] {
         label: option.label,
       }));
     case "design_key":
-      return DESIGN_KEYS.map((key) => ({ id: key, label: DESIGNS[key].label }));
+      // #4453 6a — Ari offers only ARI_DESIGN_KEYS until PR 7.
+      return ARI_DESIGN_KEYS.map((key) => ({ id: key, label: DESIGNS[key].label }));
     case "theme":
       return WEBSITE_SETUP_THEME_PRESETS.map((preset) => ({
         id: preset.id,

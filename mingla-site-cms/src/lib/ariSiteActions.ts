@@ -33,7 +33,7 @@ import {
 import { BLOCK_CATALOG, blockActionLinks, isBlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
 import { BOOKING_THROUGH_ENQUIRY, bookingThroughEnquiryFields, buildClaimEvidence, claimSentence, ENQUIRY_LABEL_FIELDS, offersBooking, unbackedClaims, type ClaimOffering } from "../contracts/generated/claims.ts";
 import { actionHrefProblem, normalizeBrandPhone, type MinglaActionScope } from "../contracts/generated/safety.ts";
-import { ariDesignVariants, designFor, designFontSlots, DESIGNS, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
+import { ariDesignVariants, designFor, designFontSlots, DESIGNS, isAriDesignKey, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { assertOwnerTokenOverrides, resolveTokens, type OwnerTokenOverrides } from "../contracts/generated/tokens.ts";
 import { nearestPassingShade, readabilityWarnings, warningSentence } from "../contracts/generated/readability.ts";
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
@@ -621,7 +621,8 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
       checkRevision(settings.updatedAt, args.expected_revision);
       const changes: AnyDoc = {};
       if (args.design !== undefined) {
-        if (!isDesignKey(args.design)) refuse("VALIDATION_FAILED", { problems: ["design is not one of the designs"] });
+        // #4453 6a — Ari may name only ARI_DESIGN_KEYS until PR 7 (Studio and owners may pick any design).
+        if (!isAriDesignKey(args.design)) refuse("VALIDATION_FAILED", { problems: ["design is not one of the designs"] });
         changes.design = args.design;
       }
       if (args.tokens !== undefined) {

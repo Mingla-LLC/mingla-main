@@ -64,7 +64,8 @@ SELECT pg_temp.k_assert(true, 'T-4a voyage, atelier and NULL pass the CHECK');
 DO $t4b$
 BEGIN
   BEGIN
-    INSERT INTO k_probe VALUES ('nocturne');
+    -- #4453 6a: nocturne joined the list, so the probe is a key no design will ever have.
+    INSERT INTO k_probe VALUES ('not_a_design');
     RAISE EXCEPTION 'issue #4453 design keys FAIL: T-4b an unlisted key was accepted';
   EXCEPTION WHEN check_violation THEN
     RAISE NOTICE 'PASS  T-4b an unlisted key is refused (23514)';
