@@ -65,9 +65,17 @@ const OWN_RAIL_WIZARD_RE = /^\/(event\/create|event\/[^/]+\/edit|trip\/create|tr
 /** Wizard / full-screen routes that get the shell's 80 rail. */
 const RAIL_RE = /^\/(brand\/new|venue\/create|experience\/create|experience\/[^/]+\/edit|experience\/snap)(\/|$)/;
 
+/**
+ * #4420 journey: editing a LIVE event or RSVP reuses the wizard's `/edit`
+ * route with `?mode=edit-published`, but that screen is a single long form
+ * that draws no rail of its own. Without this it got no chrome on desktop.
+ */
+const EDIT_PUBLISHED_RE = /^\/(event|rsvp)\/[^/]+\/edit$/;
+
 export const hostDesktopShellModeFor = (
   pathname: string | null | undefined,
   segments: readonly string[],
+  editMode?: string | null,
 ): HostDesktopShellMode => {
   if (segments[0] === "(tabs)") return "tabs";
   const raw = (pathname ?? "").split("?")[0] ?? "";
@@ -77,6 +85,7 @@ export const hostDesktopShellModeFor = (
   if (NONE_PREFIXES.some((base) => segmentSafe(path, base))) return "none";
   if (/^\/(e|t|b|exp|g|o|m|pay|booking|reserve|refund)(\/|$)/.test(path)) return "none";
   if (/^\/checkout(-trip|-experience)?(\/|$)/.test(path)) return "none";
+  if (editMode === "edit-published" && EDIT_PUBLISHED_RE.test(path)) return "rail";
   if (FULL_SCREEN_TOOL_RE.test(path) || OWN_RAIL_WIZARD_RE.test(path)) return "none";
   if (/^\/(event|rsvp)\/[^/]+\/preview(\/|$)/.test(path)) return "none";
   if (RAIL_RE.test(path) || isRailRoute(path)) return "rail";

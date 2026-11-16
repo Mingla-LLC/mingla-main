@@ -18,7 +18,7 @@
 
 import React, { Suspense, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
-import { usePathname, useSegments } from "expo-router";
+import { useGlobalSearchParams, usePathname, useSegments } from "expo-router";
 
 import { color, space } from "../../constants/designSystem";
 import { DESKTOP_BEZEL_MARGIN, DESKTOP_RAIL_WIDTH, DESKTOP_SIDEBAR_WIDTH } from "../../constants/desktopLayout";
@@ -68,7 +68,9 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   const segments = useSegments();
   const { user } = useAuth();
   const collapsed = useDesktopSidebarStore((s) => s.collapsed);
-  const mode = hostDesktopShellModeFor(pathname, segments as readonly string[]);
+  const { mode: editModeParam } = useGlobalSearchParams<{ mode?: string | string[] }>();
+  const editMode = Array.isArray(editModeParam) ? editModeParam[0] : editModeParam;
+  const mode = hostDesktopShellModeFor(pathname, segments as readonly string[], editMode ?? null);
   const active = Platform.OS === "web" && isWideDesktop && user != null && (mode === "sidebar" || mode === "rail");
   const rail = mode === "rail";
   const inset = active ? (rail || collapsed ? DESKTOP_RAIL_WIDTH : DESKTOP_SIDEBAR_WIDTH) : 0;

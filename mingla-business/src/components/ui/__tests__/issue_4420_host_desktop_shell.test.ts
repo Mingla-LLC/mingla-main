@@ -108,6 +108,17 @@ describe("#4420 B6 — HostDesktopShell route table", () => {
     }
   });
 
+  // [TEST-MOD-APPROVED #4420] journey: editing a LIVE event / RSVP reuses the
+  // wizard's /edit route but draws no rail, so it rendered with no chrome.
+  test("live-event and live-RSVP edit get the rail; draft wizards keep their own", () => {
+    expect(hostDesktopShellModeFor(`/event/${ID}/edit`, outside, "edit-published")).toBe("rail");
+    expect(hostDesktopShellModeFor(`/rsvp/${ID}/edit`, outside, "edit-published")).toBe("rail");
+    expect(hostDesktopShellModeFor(`/event/${ID}/edit`, outside, null)).toBe("none");
+    expect(hostDesktopShellModeFor(`/rsvp/${ID}/edit`, outside)).toBe("none");
+    expect(hostDesktopShellModeFor("/event/create", outside, "edit-published")).toBe("none");
+    expect(hostDesktopShellModeFor(`/trip/${ID}/edit`, outside, "edit-published")).toBe("none");
+  });
+
   test("a query string never changes the answer", () => {
     expect(hostDesktopShellModeFor(`/event/${ID}?tab=orders`, outside)).toBe("sidebar");
     expect(hostDesktopShellModeFor("/checkout/x?step=pay", outside)).toBe("none");
