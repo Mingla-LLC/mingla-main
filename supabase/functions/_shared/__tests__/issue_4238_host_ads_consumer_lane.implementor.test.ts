@@ -516,7 +516,8 @@ Deno.test("T-F6 #4238 sales readiness mirrors the Admin gates and fails closed",
   );
   assertEquals(
     await salesReadiness(connection("google", {}), ready),
-    { ready: false, reason: "not_supported" },
+    // #4238 W4b §6: Google needs its purchase action (and Z-4) first.
+    { ready: false, reason: "needs_setup" },
   );
   const throwing: SalesSignalProbes = {
     ...ready,
