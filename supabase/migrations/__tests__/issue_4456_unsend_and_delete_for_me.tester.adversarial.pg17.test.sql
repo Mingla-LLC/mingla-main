@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4456 tester adversarial suite (20280715004456). Independent of the
+-- #4456 tester adversarial suite (20280721004456). Independent of the
 -- implementor suite: it reads the catalog instead of sampling columns, checks
 -- the trigger order the tombstone depends on, forges the unsend-kind setting,
 -- and checks every read path and the file rule as a matrix. Everything rolls

@@ -3,7 +3,7 @@
 // setup card (admins only, §7.8), and Submissions (the Leads list filtered to
 // forms, A1.8). A form opens its builder at #/forms/<id>?tab=<tab>.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, Copy, Pencil, Plus } from "lucide-react";
+import { Archive, ClipboardList, Copy, Inbox, Mail, Pencil, PhoneCall, Plus } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -20,7 +20,7 @@ import { FormBuilder } from "../components/forms/FormBuilder";
 import { GoogleConversionsCard } from "../components/forms/GoogleConversionsCard";
 import { LabelPill, ReadOnlyHint } from "../components/forms/formsUi";
 import {
-  ARCHIVED_TOAST, DUPLICATED_TOAST, STATUS_FILTERS, STATUS_PILL, archiveQuestion, formSubLine, formsHash, formsRoute,
+  ARCHIVED_TOAST, DUPLICATED_TOAST, STATUS_FILTERS, STATUS_PILL, archiveQuestion, TOOL_FORM_BADGE, formSubLine, formsHash, isToolForm, formsRoute,
   placementTags, weekChange,
 } from "../lib/formsModel";
 import { archiveForm, createForm, duplicateForm, formsErrorWords, listForms } from "../services/formsService";
@@ -114,7 +114,7 @@ export function FormsTable({ rows, canEdit, onEdit, onDuplicate, onArchive }) {
                   <div className="text-xs text-[var(--color-text-tertiary)]">{formSubLine(f)}</div>
                 </td>
                 <td className="px-4 py-3.5"><Badge variant={variant}>{word}{f.live_version ? ` v${f.live_version}` : ""}</Badge></td>
-                <td className="px-4 py-3.5"><LabelPill label={f.audience} /></td>
+                <td className="px-4 py-3.5">{isToolForm(f) ? <span data-tool-form-badge=""><Badge variant="info">{TOOL_FORM_BADGE}</Badge></span> : <LabelPill label={f.audience} />}</td>
                 <td className="px-4 py-3.5">
                   {tags.length ? (
                     <div className="flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded-full bg-[var(--a-soft)] px-2 py-0.5 text-xs text-[var(--a-text2)]">{t}</span>)}{f.own_page && <span className="rounded-full bg-[var(--a-soft)] px-2 py-0.5 text-xs text-[var(--a-text2)]">/apply/{f.own_page}</span>}</div>
@@ -203,10 +203,10 @@ function FormsList({ onOpen, tab, onTab }) {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-forms-kpis="">
             {st === "loading" ? [0, 1, 2, 3].map((i) => <Skeleton key={i} height={128} rounded="16px" />) : (
               <>
-                <StatCard label="Submissions, 7 days" value={kpis.subs_7d ?? 0} trend={weekChange(kpis.subs_7d, kpis.subs_prev_7d)} trendUp={(kpis.subs_7d ?? 0) > (kpis.subs_prev_7d ?? 0) ? true : (kpis.subs_7d ?? 0) < (kpis.subs_prev_7d ?? 0) ? false : undefined} />
-                <StatCard label="Live forms" value={kpis.live ?? 0} />
-                <StatCard label="Emails waiting to send" value={kpis.emails_waiting ?? 0} />
-                <StatCard label="Booked a call after" value={anySubs ? bookedAfter : "n/a"} />
+                <StatCard icon={Inbox} label="Submissions, 7 days" value={kpis.subs_7d ?? 0} trend={weekChange(kpis.subs_7d, kpis.subs_prev_7d)} trendUp={(kpis.subs_7d ?? 0) > (kpis.subs_prev_7d ?? 0) ? true : (kpis.subs_7d ?? 0) < (kpis.subs_prev_7d ?? 0) ? false : undefined} />
+                <StatCard icon={ClipboardList} label="Live forms" value={kpis.live ?? 0} />
+                <StatCard icon={Mail} label="Emails waiting to send" value={kpis.emails_waiting ?? 0} />
+                <StatCard icon={PhoneCall} label="Booked a call after" value={anySubs ? bookedAfter : "n/a"} />
               </>
             )}
           </div>

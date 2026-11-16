@@ -15,16 +15,19 @@ const config = { supabaseUrl: "https://x", serviceKey: "k" };
 const req = new Request("https://fn/", { headers: { "user-agent": "UA/1" } });
 const ad = parseHostAdContext({ fbc: "fb.1.1.BOOK", tracking_opt_out: false, page_url: "https://usemingla.com/schedule" }, req);
 
-function setup(audience: "host" | "creator" | "local", sub?: Record<string, unknown>) {
+function setup(audience: "host" | "creator" | "local", sub?: Record<string, unknown>, email = "Ada@Example.org", venue = "") {
   const rpc: Array<[string, unknown]> = [];
   const db = hostFakeDb({
-    book_call_leads: [{ id: BOOK, booking_key: "gcal:4452", audience, email: "Ada@Example.org" }],
+    book_call_leads: [{ id: BOOK, booking_key: "gcal:4452", audience, email, name: "Ada Okafor", venue }],
     form_submissions: sub ? [sub] : [],
     ad_attribution_touches: [],
     ad_connections: [],
-  });
+  }, { testLeadEmails: ["staff@usemingla.com"] });
   const client = db.client as Record<string, unknown>;
-  client.rpc = (name: string, args: unknown) => (rpc.push([name, args]), Promise.resolve({ data: 1, error: null }));
+  // #4452 B20: the test-lead rule answers from the fake; every other RPC is recorded.
+  const fakeRpc = client.rpc as (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  client.rpc = (name: string, args: Record<string, unknown>) =>
+    name === "inbound_lead_is_test" ? fakeRpc(name, args) : (rpc.push([name, args]), Promise.resolve({ data: 1, error: null }));
   const sent: ConversionSendInput[] = [];
   const sender = (channel: SenderResult["channel"]) => (input: ConversionSendInput): Promise<SenderResult> => {
     sent.push(input);
@@ -106,4 +109,34 @@ Deno.test("A1-T-11 A1-SC-30 the consent box: strict true ticks it; anything else
   const row = buildBookingLead({ eventId: "e", startMs: 0, name: "Ada", email: "a@example.org", venue: "", source: "", context: ctx.context, extras: on.extras });
   assertEquals(row.marketing_consent, true);
   assert(typeof row.consent_at === "string");
+});
+
+// #4452 B20: a test or internal booker's Lead and booked call never reach an ad
+// platform; both ids are null, so the /schedule page fires no browser twin.
+// FAILS-ON-REVERT: removing the guard from recordLabelledLead / recordCallBooked fails B20-a.
+Deno.test("B20-a an internal booker sends no Lead and no call; the follow-ups still stop", async () => {
+  const h = setup("host", undefined, "staff@usemingla.com");
+  const out = await recordBookingConversions("gcal:4452", "host", ad, null, config, { db: h.db.client, fire: h.fire });
+  assertEquals(out, { leadEventId: null, goalEventId: null });
+  assertEquals(h.db.tables.ad_conversions?.length ?? 0, 0);
+  assertEquals(h.db.tables.ad_match_contexts?.length ?? 0, 0);
+  assertEquals(h.sent.length, 0);
+  assertEquals(h.rpc[0][0], "forms_booking_stops_runs", "the booking itself still counts for the stop rule");
+  const checks = h.db.rpcCalls.filter((c) => c.name === "inbound_lead_is_test");
+  assertEquals(checks[0].args, { p_email: "staff@usemingla.com", p_name: "Ada Okafor" });
+});
+
+Deno.test("B20-b a form-linked internal booker sends no call either; the name read is the venue when given", async () => {
+  const sub = { id: SUB, email: "staff@usemingla.com", lead_label: "creator", created_at: new Date().toISOString(), is_test: false };
+  const h = setup("creator", sub, "staff@usemingla.com", "Ada's Kitchen");
+  const link = await resolveFormLink(SUB, "staff@usemingla.com", config, { db: h.db.client });
+  const out = await recordBookingConversions("gcal:4452", "creator", ad, link, config, { db: h.db.client, fire: h.fire });
+  assertEquals(out, { leadEventId: null, goalEventId: null });
+  assertEquals(h.db.rpcCalls.find((c) => c.name === "inbound_lead_is_test")?.args.p_name, "Ada's Kitchen");
+});
+
+Deno.test("B20-c a normal booker still sends the Lead and the call", async () => {
+  const h = setup("host");
+  const out = await recordBookingConversions("gcal:4452", "host", ad, null, config, { db: h.db.client, fire: h.fire });
+  assertEquals([out.leadEventId, out.goalEventId], [`lead:${BOOK}`, `host_call:${BOOK}`]);
 });

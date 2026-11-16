@@ -430,10 +430,15 @@ export function placementTags(row, pageName = (k) => k) {
   return (row.placements || []).map((p) => `${pageName(p.page_key)} · ${SPOT_WORDS[p.spot] || String(p.spot || "").replace(/-/g, " ")}`);
 }
 
+/** #4452 B18: the four "Free tool follow-ups" forms are system forms (template 'tool', migration 20280714004452). */
+export const isToolForm = (row) => row?.template === "tool";
+export const TOOL_FORM_BADGE = "Free tool emails";
+export const TOOL_FORM_HINT = "The follow-up emails a free tool sends after someone uses it. Not a form on a page.";
+
 /** "n steps" or "Uses Book-a-call emails" (design list sub-line). */
 export function formSubLine(row) {
   if (row.template === "book_call_extra") return "Uses Book-a-call emails";
-  if (row.template === "tool") return "Free tool follow-ups (system form)";
+  if (row.template === "tool") return TOOL_FORM_HINT;
   const n = Number(row.fields || 0);
   return `${n} ${n === 1 ? "question" : "questions"}`;
 }
@@ -562,4 +567,25 @@ export function autosaveReducer(state, event) {
     default:
       return state;
   }
+}
+
+// ── #4452 B19: plain words when an Admin → edge function call fails ─────────
+/** The browser could not reach the function at all (network, CORS, cold-start relay). */
+export const FUNCTION_UNREACHABLE = "Couldn't reach the server. Check your connection and try again.";
+const FUNCTION_CODE_WORDS = Object.freeze({
+  forbidden: "You don't have edit access. Ask an admin for the Website editor role.",
+  form_not_found: "That form is gone. It may have been removed.",
+  server: "Something on the server failed. Try again.",
+});
+/**
+ * The toast line for a failed functions.invoke: the server's own message when
+ * it sent one, else words for its error code, else the unreachable line. The
+ * client library's raw "Failed to send a request to the Edge Function" is never shown.
+ */
+export function functionErrorWords(error, payload) {
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
+  const code = typeof payload?.error === "string" ? payload.error : "";
+  if (code) return FUNCTION_CODE_WORDS[code] || "That did not go through. Try again.";
+  if (error?.name === "FunctionsFetchError" || error?.name === "FunctionsRelayError") return FUNCTION_UNREACHABLE;
+  return "That did not go through. Try again.";
 }

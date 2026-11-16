@@ -22,6 +22,8 @@
 :is([data-landing], :root) .fk-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 :is([data-landing], :root) .fk-cards button, :is([data-landing], :root) .fk-chips button, :is([data-landing], :root) .fk-seg button { min-height: 56px; padding: 12px 16px; border: 1.5px solid #e7e3da; border-radius: 14px; background: #fff; font-size: 16px; color: #111110; cursor: pointer; }
 :is([data-landing], :root) .fk-cards button.on, :is([data-landing], :root) .fk-chips button.on, :is([data-landing], :root) .fk-seg button.on { border-color: #111110; background: #111110; color: #fff; }
+/* #4452 follow-up (B10): a selected card's sub-label sits on ink; #66625a there was 3.11:1. White at 72% reads above 9:1. */
+:is([data-landing], :root) .fk-cards button.on .fk-opt, :is([data-landing], :root) .fk-cards button.on .fk-dim, :is([data-landing], :root) .fk-chips button.on .fk-dim, :is([data-landing], :root) .fk-seg button.on .fk-dim { color: rgba(255, 255, 255, 0.72); }
 :is([data-landing], :root) .fk-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 :is([data-landing], :root) .fk-chips button { min-height: 44px; border-radius: 999px; }
 :is([data-landing], :root) .fk-seg { display: flex; gap: 6px; flex-wrap: wrap; }

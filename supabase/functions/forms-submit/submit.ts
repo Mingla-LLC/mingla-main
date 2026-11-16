@@ -366,6 +366,8 @@ async function handlePost(
       subjectId: `form:${submissionId}`,
       ad,
       source: form.key,
+      // #4452 B20: a test or internal person (inbound_lead_is_test) sends no Lead; the id stays null.
+      contact: { email: result.email, name: result.name },
     }, deps.fire ?? {});
     if (leadEventId) await deps.db.setLeadEvent(submissionId, leadEventId);
   }

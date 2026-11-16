@@ -19,7 +19,7 @@ import { BrandCalendarSide } from "./BrandCalendarSide";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
 /** The trail's words: [brand, ...earlier titles, current]. */
-export function panelTrailWords(brandName, trail, currentTitle) {
+function panelTrailWords(brandName, trail, currentTitle) {
   return [brandName || "Brand group", ...(Array.isArray(trail) ? trail : []).map((t) => t.title || "Item"), currentTitle || "Item"];
 }
 

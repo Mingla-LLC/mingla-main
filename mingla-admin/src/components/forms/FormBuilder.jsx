@@ -15,7 +15,7 @@ import { Tabs } from "../ui/Tabs";
 import { LoadError } from "../ui/LoadError";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
-import { AUTOSAVE_MS, BUILDER_TABS, CONFLICT_COPY, autosaveReducer, builderSubLine, publishReview } from "../../lib/formsModel";
+import { AUTOSAVE_MS, BUILDER_TABS, CONFLICT_COPY, autosaveReducer, TOOL_FORM_BADGE, TOOL_FORM_HINT, builderSubLine, isToolForm, publishReview } from "../../lib/formsModel";
 import { kindsOf, normalizeStops } from "../../lib/flowModel";
 import { formsErrorWords, getAutomation, getForm, saveFormDraft, sendTestEmails } from "../../services/formsService";
 import { ReadOnlyHint } from "./formsUi";
@@ -140,8 +140,8 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
         <PageHeader
           back={{ label: "Forms", onClick: guard(onBack) }}
           title={form.name}
-          meta={<Badge variant={pill[0]}>{pill[1]}</Badge>}
-          description={<span data-builder-sub="">{builderSubLine(def, kinds)}</span>}
+          meta={<span className="inline-flex items-center gap-2"><Badge variant={pill[0]}>{pill[1]}</Badge>{isToolForm(form) && <Badge variant="info">{TOOL_FORM_BADGE}</Badge>}</span>}
+          description={<span data-builder-sub="">{isToolForm(form) ? TOOL_FORM_HINT : builderSubLine(def, kinds)}</span>}
           actions={(
             <>
               <span className="text-xs text-[var(--color-text-tertiary)]" aria-live="polite" data-save-state="">

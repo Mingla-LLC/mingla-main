@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4456 (20280715004456): Unsend for everyone, Delete for me, admin removal,
+-- #4456 (20280721004456): Unsend for everyone, Delete for me, admin removal,
 -- the private 30-day store, chat-file reads, reports that name a message, and
 -- the wipe of rows unsent before this migration. Runs on the fully replayed
 -- PG17 schema; everything rolls back.

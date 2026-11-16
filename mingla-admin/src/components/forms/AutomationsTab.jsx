@@ -4,7 +4,7 @@
 // uses the SAME EmailBodyEditor as Communications › Email); the stop rules; the
 // On toggle, "Test the whole flow" and "Save changes" (publishes a version).
 import { useEffect, useMemo, useState } from "react";
-import { Clock, GitBranch, Mail, MoveRight, Plus, Send, Trash2, Users } from "lucide-react";
+import { CalendarCheck, Clock, GitBranch, Mail, MailOpen, MoveRight, Plus, Send, Trash2, Users } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Input, Select, Toggle } from "../ui/Input";
 import { StatCard } from "../ui/Card";
@@ -241,7 +241,7 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
     try {
       const res = await testWholeFlow(form.id);
       addToast({ variant: "success", title: res.message || "Test run sent to you: every email in order, with sample answers." });
-    } catch (e) { addToast({ variant: "error", title: e.message }); }
+    } catch (e) { addToast({ variant: "error", title: formsErrorWords(e) }); }
     finally { setBusy(""); }
   };
 
@@ -258,10 +258,10 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
         <Button onClick={save} loading={busy === "save"} disabled={!canEdit}>Save changes</Button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="In this flow (30 days)" value={k.in_flow ?? 0} />
-        <StatCard label="Emails sent" value={k.sent ?? 0} />
-        <StatCard label="Opened (approximate)" value={k.opened_pct == null ? "—" : `${k.opened_pct}%`} />
-        <StatCard label="Stopped because they booked" value={k.stopped_booked ?? 0} />
+        <StatCard icon={Users} label="In this flow (30 days)" value={k.in_flow ?? 0} />
+        <StatCard icon={Send} label="Emails sent" value={k.sent ?? 0} />
+        <StatCard icon={MailOpen} label="Opened (approximate)" value={k.opened_pct == null ? "—" : `${k.opened_pct}%`} />
+        <StatCard icon={CalendarCheck} label="Stopped because they booked" value={k.stopped_booked ?? 0} />
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(280px,400px)_minmax(0,1fr)]">
         <div className="flex flex-col gap-3">

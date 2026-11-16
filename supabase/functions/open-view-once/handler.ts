@@ -205,7 +205,7 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
     }
   }
   // #4456: the copies go only after their files did (a failed remove returned above).
-  // RELEASE ORDER: apply migration 20280715004456_issue_4456_unsend_and_delete_for_me
+  // RELEASE ORDER: apply migration 20280721004456_issue_4456_unsend_and_delete_for_me
   // BEFORE this function deploys (merge). Without it the RPC below is missing and
   // every hourly sweep answers 500 (sweep_evidence_failed) after its deletes.
   const unsentIds = [...new Set(rows

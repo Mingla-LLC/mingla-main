@@ -99,7 +99,7 @@ Deno.test("#4456 Android back closes the confirm first, then the menu", () => {
 });
 
 Deno.test("#4456 the phone's limits match the server's", async () => {
-  const sql = await Deno.readTextFile(new URL("../../../../supabase/migrations/20280715004456_issue_4456_unsend_and_delete_for_me.sql", import.meta.url));
+  const sql = await Deno.readTextFile(new URL("../../../../supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql", import.meta.url));
   const max = /cardinality\(v_ids\) > (\d+)\s*\n\s*OR cardinality\(v_ids\) <> cardinality/.exec(sql);
   assertEquals(Number(max?.[1]), UNSEND_MAX_IDS, "unsend_messages takes up to 10 ids");
   const types = /issue_4456_is_unsendable_type[\s\S]*?IN \(([^)]*)\)/.exec(sql);

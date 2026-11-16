@@ -629,7 +629,7 @@
         "app-mobile/src/services/reportService.ts",
         "supabase/functions/open-view-once/handler.ts",
         "supabase/functions/open-view-once/index.ts",
-        "supabase/migrations/20280715004456_issue_4456_unsend_and_delete_for_me.sql"
+        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql"
       ]
     },
     {
@@ -1118,7 +1118,26 @@
         "packages/site-contracts/src/sitePlan.ts",
         "mingla-site-cms/src/contracts/generated/sitePlan.ts",
         "mingla-sites/src/contracts/generated/sitePlan.ts",
-        "supabase/functions/_shared/siteContracts/sitePlan.ts"
+        "supabase/functions/_shared/siteContracts/sitePlan.ts",
+        "mingla-site-cms/src/blocks/siteBlocks.ts",
+        "mingla-site-cms/src/contracts/generated/ariToolSchemas.ts",
+        "mingla-site-cms/src/contracts/generated/blocks.ts",
+        "mingla-site-cms/src/contracts/generated/offerings.ts",
+        "mingla-site-cms/src/contracts/generated/safety.ts",
+        "mingla-site-cms/src/lib/validation.ts",
+        "mingla-sites/src/contracts/artifact.ts",
+        "mingla-sites/src/contracts/generated/ariToolSchemas.ts",
+        "mingla-sites/src/contracts/generated/blocks.ts",
+        "mingla-sites/src/contracts/generated/offerings.ts",
+        "mingla-sites/src/contracts/generated/safety.ts",
+        "packages/site-contracts/src/ariToolSchemas.ts",
+        "packages/site-contracts/src/blocks.ts",
+        "packages/site-contracts/src/offerings.ts",
+        "packages/site-contracts/src/safety.ts",
+        "supabase/functions/_shared/siteContracts/ariToolSchemas.ts",
+        "supabase/functions/_shared/siteContracts/blocks.ts",
+        "supabase/functions/_shared/siteContracts/offerings.ts",
+        "supabase/functions/_shared/siteContracts/safety.ts"
       ]
     },
     {
@@ -1247,7 +1266,8 @@
         "supabase/functions/admin-send-email/model.ts",
         "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
-        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
+        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql",
+        "mingla-marketing/public/brand/mingla-logo-pill.png"
       ]
     },
     {
@@ -1710,7 +1730,8 @@
         "mingla-admin/src/components/ui/Input.jsx",
         "mingla-admin/src/components/ui/Table.jsx",
         "mingla-admin/src/components/ui/Tabs.jsx",
-        "mingla-admin/src/lib/flowModel.js"
+        "mingla-admin/src/lib/flowModel.js",
+        "supabase/migrations/20280720004452_issue_4452_dashboard_last_lead.sql"
       ]
     },
     {
@@ -1804,7 +1825,9 @@
         "supabase/functions/forms-submit/index.ts",
         "supabase/functions/forms-submit/submit.ts",
         "supabase/migrations/20280712004452_issue_4452_forms_core.sql",
-        "supabase/migrations/20280712044452_issue_4452_leads.sql"
+        "supabase/migrations/20280712044452_issue_4452_leads.sql",
+        "mingla-admin/scripts/verify-forms-kit-dist.mjs",
+        "mingla-marketing/app/apply/[slug]/resolve.ts"
       ]
     },
     {
@@ -2693,7 +2716,10 @@
         "mingla-business/src/components/messages/BrandGroupInboxScreen.tsx",
         "mingla-business/src/components/messages/brandGroupFilePicker.ts",
         "mingla-business/src/components/messages/brandGroupFilePickerShared.ts",
-        "mingla-business/src/services/brandGroupFilesService.ts"
+        "mingla-business/src/services/brandGroupFilesService.ts",
+        "mingla-admin/src/hooks/useMinuteClock.js",
+        "mingla-admin/src/lib/brandGroupHostAssign.js",
+        "mingla-admin/src/lib/brandGroupSideAccess.js"
       ]
     },
     {
@@ -3652,7 +3678,8 @@
         "supabase/functions/growth-tools-pricing/index.ts",
         "supabase/functions/growth-tools-run/index.ts",
         "supabase/functions/growth-tools-trips/index.ts",
-        "supabase/migrations/20280714004452_issue_4452_tool_followups.sql"
+        "supabase/migrations/20280714004452_issue_4452_tool_followups.sql",
+        "mingla-marketing/lib/visitor-region.ts"
       ]
     },
     {

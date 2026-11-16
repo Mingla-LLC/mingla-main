@@ -5,7 +5,7 @@
 // again by the RPC or function.
 import { supabase } from "../lib/supabase";
 import { fetchConfig } from "./crmService";
-import { PHOTO_LONG_EDGE, PHOTO_STORED_MAX, PHOTO_THUMB_EDGE, PHOTO_TOO_BIG_AFTER, fitEdge, photoPrecheck } from "../lib/formsModel";
+import { PHOTO_LONG_EDGE, PHOTO_STORED_MAX, PHOTO_THUMB_EDGE, PHOTO_TOO_BIG_AFTER, fitEdge, functionErrorWords, photoPrecheck } from "../lib/formsModel";
 
 export class FormsError extends Error {
   constructor(code, message, detail = null) {
@@ -27,7 +27,9 @@ async function fn(name, body) {
   if (error) {
     let payload = null;
     try { payload = await error.context?.json?.(); } catch { payload = null; }
-    throw new FormsError(payload?.error || "function_error", payload?.message || payload?.error || error.message || "That did not go through.");
+    // #4452 B19: a network or CORS failure has no payload; it reads as "unreachable", never the library's raw text.
+    const code = payload?.error || (error?.name === "FunctionsFetchError" || error?.name === "FunctionsRelayError" ? "unreachable" : "function_error");
+    throw new FormsError(code, functionErrorWords(error, payload));
   }
   return data;
 }
