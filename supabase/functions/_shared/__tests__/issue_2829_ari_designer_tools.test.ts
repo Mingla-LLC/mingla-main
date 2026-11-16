@@ -35,7 +35,7 @@ import { AGENT_TOOL_AUTHORIZATION, authorizeAgentTool } from "../agentToolAuthor
 import { compileGeminiToolDeclarations } from "../agentGemini.ts";
 import { ToolError } from "../agentToolHelpers.ts";
 import { BLOCK_TYPES } from "../siteContracts/blocks.ts";
-import { DESIGN_KEYS, DESIGNS } from "../siteContracts/designs.ts";
+import { ariDesignVariants, DESIGN_KEYS, DESIGNS, SHARED_LAYOUTS } from "../siteContracts/designs.ts";
 import { ARI_EXCLUDED_FIELDS } from "../siteContracts/ariToolSchemas.ts";
 import { MAX_NAV_ITEMS } from "../siteContracts/limits.ts";
 import { RAMP_ROLES, SINGLE_COLOR_ROLES } from "../siteContracts/tokens.ts";
@@ -67,8 +67,14 @@ Deno.test("#2829 W9b composition blocks are generated from the catalogue: every 
   assertEquals(branches.map((branch) => branch.properties.type.enum[0]), [...BLOCK_TYPES]);
   for (const branch of branches) {
     const type = branch.properties.type.enum[0] as (typeof BLOCK_TYPES)[number];
-    const layouts = new Set(DESIGN_KEYS.flatMap((key) => DESIGNS[key].variants[type]));
+    // #4453 — Ari is offered every design's own layouts; the shared layouts
+    // (SHARED_LAYOUTS) stay held until Ari may choose them, which keeps the
+    // #3355 frozen tool declarations byte-identical.
+    const layouts = new Set(DESIGN_KEYS.flatMap((key) => ariDesignVariants(DESIGNS[key], type)));
     assertEquals(new Set(branch.properties.variant.enum), layouts, `${type} layouts drifted`);
+    for (const held of SHARED_LAYOUTS[type] ?? []) {
+      assert(!branch.properties.variant.enum.includes(held), `${type} offers the held shared layout ${held} to Ari`);
+    }
   }
   // The retired hand-written union described 15 blocks with a hero that
   // demanded a photo id named `media`; the generated one names it media_id.

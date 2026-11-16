@@ -134,7 +134,10 @@ function sentinelBlock(type: BlockType, artifact: ArtifactV2): { block: Record<s
         expected.push(v);
         return v;
       }
-      case "href": {
+      // #4453 combined branch: a button link (the booking lock's action_href)
+      // is drawn exactly like a link, so its label must be drawn too.
+      case "href":
+      case "action_href": {
         const v = `https://example.invalid/h${n}`;
         expected.push(v);
         return v;
@@ -167,8 +170,22 @@ function sentinelBlock(type: BlockType, artifact: ArtifactV2): { block: Record<s
         return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
       case "boolean":
         return false;
-      default:
-        return undefined; // enums, icons, slugs, video, email, timezone: behaviour, not drawn content.
+      case "enum":
+      case "icon":
+      case "slug":
+      case "video_url":
+      case "email":
+      case "timezone":
+      case "city_timezone":
+      case "mingla_href":
+      case "number":
+        return undefined; // behaviour, not drawn content.
+      default: {
+        // A new field kind must be classified here (drawn or not), never silently skipped:
+        // an unclassified button-link kind is how a shared layout's labels went unchecked.
+        const unclassified: never = spec;
+        throw new Error(`sentinelBlock: unclassified field kind ${JSON.stringify(unclassified)}`);
+      }
     }
   };
   const block: Record<string, unknown> = { type };
