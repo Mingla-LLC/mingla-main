@@ -7,8 +7,9 @@
  * mingla-business/src/analytics/webAnalytics.web.ts; parity is tested).
  *
  * This is applied where Mingla's count is READ (Host results, the results
- * chart, the ended notice). The conversion writer (adConversionFire.ts
- * resolveTouch) is owned by #4452 and is not changed here.
+ * chart, the ended notice) and, since #4238 W7, by the conversion WRITER
+ * (adConversionFire.ts resolveTouch / touchWindowExpiry), so an expired tap
+ * is never written as the row's touch and nothing tied to it is sent.
  */
 
 export const HOST_AD_CLICK_WINDOW_DAYS = 7;
