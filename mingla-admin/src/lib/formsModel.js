@@ -430,10 +430,15 @@ export function placementTags(row, pageName = (k) => k) {
   return (row.placements || []).map((p) => `${pageName(p.page_key)} · ${SPOT_WORDS[p.spot] || String(p.spot || "").replace(/-/g, " ")}`);
 }
 
+/** #4452 B18: the four "Free tool follow-ups" forms are system forms (template 'tool', migration 20280714004452). */
+export const isToolForm = (row) => row?.template === "tool";
+export const TOOL_FORM_BADGE = "Free tool emails";
+export const TOOL_FORM_HINT = "The follow-up emails a free tool sends after someone uses it. Not a form on a page.";
+
 /** "n steps" or "Uses Book-a-call emails" (design list sub-line). */
 export function formSubLine(row) {
   if (row.template === "book_call_extra") return "Uses Book-a-call emails";
-  if (row.template === "tool") return "Free tool follow-ups (system form)";
+  if (row.template === "tool") return TOOL_FORM_HINT;
   const n = Number(row.fields || 0);
   return `${n} ${n === 1 ? "question" : "questions"}`;
 }

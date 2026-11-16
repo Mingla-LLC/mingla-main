@@ -122,7 +122,7 @@ describe("#4452 T-7.3 the Forms list", () => {
   it("Book-a-call forms say they use the Book-a-call emails", () => {
     assert.equal(h.M.formSubLine({ template: "book_call_extra", fields: 3 }), "Uses Book-a-call emails");
     // #4452 §6.9: the free tools' system follow-up forms are labelled, and never offered for a page spot.
-    assert.equal(h.M.formSubLine({ template: "tool", fields: 3 }), "Free tool follow-ups (system form)");
+    assert.equal(h.M.formSubLine({ template: "tool", fields: 3 }), h.M.TOOL_FORM_HINT);
     assert.match(readSrc("components/website/PageSidePanel.jsx"), /f\.template !== "tool" && \(details \?/);
   });
 });

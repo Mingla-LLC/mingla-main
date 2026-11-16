@@ -20,7 +20,7 @@ import { FormBuilder } from "../components/forms/FormBuilder";
 import { GoogleConversionsCard } from "../components/forms/GoogleConversionsCard";
 import { LabelPill, ReadOnlyHint } from "../components/forms/formsUi";
 import {
-  ARCHIVED_TOAST, DUPLICATED_TOAST, STATUS_FILTERS, STATUS_PILL, archiveQuestion, formSubLine, formsHash, formsRoute,
+  ARCHIVED_TOAST, DUPLICATED_TOAST, STATUS_FILTERS, STATUS_PILL, archiveQuestion, TOOL_FORM_BADGE, formSubLine, formsHash, isToolForm, formsRoute,
   placementTags, weekChange,
 } from "../lib/formsModel";
 import { archiveForm, createForm, duplicateForm, formsErrorWords, listForms } from "../services/formsService";
@@ -114,7 +114,7 @@ export function FormsTable({ rows, canEdit, onEdit, onDuplicate, onArchive }) {
                   <div className="text-xs text-[var(--color-text-tertiary)]">{formSubLine(f)}</div>
                 </td>
                 <td className="px-4 py-3.5"><Badge variant={variant}>{word}{f.live_version ? ` v${f.live_version}` : ""}</Badge></td>
-                <td className="px-4 py-3.5"><LabelPill label={f.audience} /></td>
+                <td className="px-4 py-3.5">{isToolForm(f) ? <span data-tool-form-badge=""><Badge variant="info">{TOOL_FORM_BADGE}</Badge></span> : <LabelPill label={f.audience} />}</td>
                 <td className="px-4 py-3.5">
                   {tags.length ? (
                     <div className="flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded-full bg-[var(--a-soft)] px-2 py-0.5 text-xs text-[var(--a-text2)]">{t}</span>)}{f.own_page && <span className="rounded-full bg-[var(--a-soft)] px-2 py-0.5 text-xs text-[var(--a-text2)]">/apply/{f.own_page}</span>}</div>
