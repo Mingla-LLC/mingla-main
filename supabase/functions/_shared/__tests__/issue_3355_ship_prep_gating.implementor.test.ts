@@ -66,8 +66,10 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
     "65e687c809e6f14987a74fe1736558083c2552ab8a2a613ea0fa8b79f4ef6da4",
 };
 /** origin/main's AGENT_TOOLS as declared to the model (sha-256 of the JSON). */
+// #4238 W1 item 3: propose_ad_plan gains the sign-ups goal (enum and
+// description), so the declared tools change on both paths.
 const MAIN_DECLARATIONS_DIGEST =
-  "72e6c9b02d8039292d87233052bdf10391fab46adb3a7da7c1570c3b9ea7e844";
+  "13f7895c049f2947690abe1acdbd0590b1e59abea97d5c5d9e38d0bfb36cba7c";
 const MAIN_DECLARATION_COUNT = 187;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {

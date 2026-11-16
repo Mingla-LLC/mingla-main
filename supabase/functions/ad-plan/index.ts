@@ -80,7 +80,12 @@ import {
   cachedSalesReadiness,
   cachedSignupsReadiness,
 } from "../_shared/adSalesReadiness.ts";
-import { hostMinimumPayCents } from "../_shared/adMoney.ts";
+import { calendarDaysBetween, hostMinimumPayCents } from "../_shared/adMoney.ts";
+import {
+  hostBudgetGuidance,
+  OWN_RESULTS_MIN,
+  typicalPaidPriceCents,
+} from "../_shared/adResultEstimate.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   audienceCountryMismatch,
@@ -282,6 +287,172 @@ async function hostGoalReadiness(
     out[row.platform] = { [String(map[row.platform])]: readiness.ready };
   }
   return out;
+}
+
+/**
+ * #4238 item 2: Mingla's own cost per result for a Host goal over 90 days,
+ * at the first scope with enough results (brand, then the brand's country).
+ * Host-lane spend (ad_spend_daily) over results (ad_conversions on those
+ * campaigns; page visits count clicks), converted to the brand currency.
+ * Best-effort: any read failure returns null (the benchmark is used).
+ */
+async function hostOwnCostPerResult(
+  db: Db,
+  input: {
+    brandId: string;
+    countryCode: string | null;
+    goal: "sales" | "signups" | "visits";
+    currency: string;
+    snapshotId: string | null;
+  },
+): Promise<{ results: number; costPerResultCents: number } | null> {
+  const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+  const scopes: string[][] = [];
+  const { data: own } = await db.from("ad_campaigns").select("id")
+    .eq("owner_kind", "host").eq("brand_id", input.brandId);
+  scopes.push(((own ?? []) as { id: string }[]).map((row) => row.id));
+  if (input.countryCode) {
+    const { data: brands } = await db.from("brands").select("id")
+      .eq("country_code", input.countryCode);
+    const brandIds = ((brands ?? []) as { id: string }[]).map((row) => row.id);
+    if (brandIds.length > 0) {
+      const { data: wider } = await db.from("ad_campaigns").select("id")
+        .eq("owner_kind", "host").in("brand_id", brandIds);
+      scopes.push(((wider ?? []) as { id: string }[]).map((row) => row.id));
+    }
+  }
+  for (const campaignIds of scopes) {
+    if (campaignIds.length === 0) continue;
+    const { data: spendRows, error: spendError } = await db
+      .from("ad_spend_daily").select("spend_cents,clicks,currency")
+      .in("campaign_id", campaignIds).gte("spend_date", since.slice(0, 10));
+    if (spendError) return null;
+    const rows = (spendRows ?? []) as {
+      spend_cents: number;
+      clicks: number;
+      currency: string;
+    }[];
+    const currencies = new Set(rows.map((row) => row.currency));
+    if (rows.length === 0 || currencies.size !== 1) continue;
+    let results = 0;
+    if (input.goal === "visits") {
+      results = rows.reduce((sum, row) => sum + Number(row.clicks ?? 0), 0);
+    } else {
+      const { count, error } = await db.from("ad_conversions")
+        .select("id", { count: "exact", head: true })
+        .in("campaign_id", campaignIds)
+        .eq("event_type", input.goal === "sales" ? "purchase" : "reservation")
+        .gte("created_at", since);
+      if (error) return null;
+      results = Number(count ?? 0);
+    }
+    if (results < OWN_RESULTS_MIN) continue;
+    let spend = rows.reduce((sum, row) => sum + Number(row.spend_cents), 0);
+    const spendCurrency = [...currencies][0];
+    if (spendCurrency !== input.currency) {
+      if (!input.snapshotId) return null;
+      const { data: converted, error } = await db.rpc("fx_convert_minor", {
+        p_amount: spend,
+        p_source: spendCurrency,
+        p_target: input.currency,
+        p_snapshot: input.snapshotId,
+      });
+      if (error || !Number.isSafeInteger(converted)) return null;
+      spend = Number(converted);
+    }
+    return { results, costPerResultCents: spend / results };
+  }
+  return null;
+}
+
+/**
+ * #4238 item 2 (host_budget_guidance): the minimum, the "enough to learn"
+ * budget and the expected results per app, in pay terms and the brand's
+ * currency. One source (hostBudgetGuidance) for the Host builder and Ari.
+ */
+export async function buildHostBudgetGuidance(
+  db: Db,
+  input: {
+    brandId: string;
+    currency: string;
+    countryCode: string | null;
+    goal: "sales" | "signups" | "visits";
+    dailyPayCents: number;
+    platforms: Platform[];
+    destination: Record<string, unknown> | null;
+    runDays: number | null;
+  },
+): Promise<Record<string, unknown>> {
+  const { data: connections, error } = await db.from("ad_connections")
+    .select("*").eq("lane", HOST_AD_LANE).eq("connected", true)
+    .eq("status", "connected").in("platform", input.platforms);
+  if (error) return { ok: false, status: 502, detail: "connection_lookup_failed" };
+  const rows = (connections ?? []) as AdConnectionRow[];
+  const missing = input.platforms.find((platform) =>
+    !rows.some((row) => row.platform === platform)
+  );
+  if (missing) {
+    return { ok: false, status: 409, detail: `platform_not_connected:${missing}` };
+  }
+  const minimumRows = await hostDailyMinimums(db, rows, input.currency);
+  const apps: { platform: string; minimumCreditCents: number }[] = [];
+  for (const platform of input.platforms) {
+    const row = minimumRows.find((item) => item.platform === platform);
+    const value = row?.[`${input.goal}_daily_minimum_cents`];
+    // No rate to the brand's currency: never show a USD number as local money.
+    if (typeof value !== "number") {
+      return { ok: false, status: 409, detail: "currency_unavailable" };
+    }
+    apps.push({ platform, minimumCreditCents: value });
+  }
+  const { data: snapshot } = await db.from("fx_rate_snapshots")
+    .select("id").eq("status", "active")
+    .order("fetched_at", { ascending: false }).limit(1).maybeSingle();
+  const snapshotId = typeof snapshot?.id === "string" ? snapshot.id : null;
+  let priceUsd: number | null = null;
+  if (input.goal === "sales") {
+    const tiers = await loadHostOfferingTiers(db, input.destination?.event_id);
+    if (!tiers.ok) return { ok: false, status: 502, detail: "tiers_unavailable" };
+    const price = typicalPaidPriceCents(tiers.rows);
+    const tierCurrency = String(tiers.rows[0]?.currency ?? "").trim()
+      .toUpperCase();
+    if (price !== null && tierCurrency === "USD") priceUsd = price / 100;
+    else if (price !== null && tierCurrency && snapshotId) {
+      // X-6: band the ticket on its USD price, never its local number.
+      const { data: converted, error: fxError } = await db.rpc(
+        "fx_convert_minor",
+        {
+          p_amount: price,
+          p_source: tierCurrency,
+          p_target: "USD",
+          p_snapshot: snapshotId,
+        },
+      );
+      if (!fxError && Number.isSafeInteger(converted)) {
+        priceUsd = Number(converted) / 100;
+      }
+    }
+  }
+  const own = await hostOwnCostPerResult(db, {
+    brandId: input.brandId,
+    countryCode: input.countryCode,
+    goal: input.goal,
+    currency: input.currency,
+    snapshotId,
+  });
+  const guidance = hostBudgetGuidance({
+    currency: input.currency,
+    goal: input.goal,
+    dailyPayCents: input.dailyPayCents,
+    priceUsd,
+    apps,
+    own,
+    // [TRANSITIONAL] stock is unknown until W2 adds ad_offering_stock (item 5);
+    // exit: W2 passes {remaining, runDays} from that function.
+    stock: { remaining: null, runDays: input.runDays },
+  });
+  if (!guidance.ok) return { ok: false, status: 422, detail: guidance.detail };
+  return { ...guidance, stock_known: false };
 }
 
 /** The Host goals setup.minimums carries a minimum for. */
@@ -1462,6 +1633,101 @@ export async function handleAdPlan(
     }));
     HOST_ESTIMATE_CACHE.set(cacheKey, { at: now, rows });
     return json({ ok: true, estimates: rows });
+  }
+
+  if (action === "host_budget_guidance") {
+    // #4238 item 2: read-only numbers for the budget step (Host and Ari).
+    const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
+    const platforms = parsePlatformList(body.platforms);
+    const goal = body.optimization;
+    const daily = body.daily_cents;
+    const total = body.total_cents;
+    if (
+      !UUID_RE.test(brandId) || !platforms ||
+      (goal !== "sales" && goal !== "signups" && goal !== "visits")
+    ) {
+      return json({ error: "validation_error", detail: "guidance_invalid" }, 400);
+    }
+    const { data: allowed } = await db.rpc("ad_can_host_action", {
+      p_brand_id: brandId,
+      p_user_id: actor.id,
+      p_action: "plan",
+    });
+    if (allowed !== true) return json({ error: "forbidden" }, 403);
+    const rate = await checkHostEstimateRate(db, brandId, actor.id);
+    if (!rate.allowed) {
+      return json({ error: rate.error, detail: rate.detail }, rate.status);
+    }
+    const startsAt = typeof body.starts_at === "string" ? body.starts_at : null;
+    const endsAt = typeof body.ends_at === "string" ? body.ends_at : null;
+    const runDays = endsAt ? calendarDaysBetween(startsAt, endsAt) : null;
+    const lifetime = body.budget_mode === "lifetime";
+    const dailyPay = lifetime
+      ? (Number.isSafeInteger(total) && runDays && runDays > 0
+        ? Math.floor(Number(total) / runDays)
+        : null)
+      : (Number.isSafeInteger(daily) ? Number(daily) : null);
+    if (dailyPay === null || dailyPay <= 0) {
+      return json({ error: "validation_error", detail: "budget_invalid" }, 422);
+    }
+    const [authority, brand] = await Promise.all([
+      resolveAdBrandCurrency(db, brandId),
+      db.from("brands").select("country_code").eq("id", brandId).maybeSingle(),
+    ]);
+    if (!authority.ok) {
+      return json({
+        error: "currency_authority_unresolved",
+        detail: authority.detail,
+      }, 409);
+    }
+    const descriptor = asRecord(body.destination);
+    let destination: Record<string, unknown> | null = null;
+    if (descriptor) {
+      const { data: resolved } = await db.rpc("ad_plan_destination_resolve", {
+        p_destination_family: "public_mingla_page",
+        p_destination_key: [
+          descriptor.page_type,
+          descriptor.brand_slug,
+          descriptor.entity_slug,
+        ].filter((part) => typeof part === "string" && part).join(":"),
+        p_platforms: platforms,
+      });
+      destination = asRecord(resolved);
+    }
+    // The same goal rules as create_version: a free page never gets sales.
+    if (goal !== "visits") {
+      const tiers = await loadHostOfferingTiers(db, destination?.event_id);
+      if (!tiers.ok) return databaseFailure(tiers.error);
+      const check = validateHostOptimization(
+        Object.fromEntries(platforms.map((platform) => [platform, "visits"])),
+        platforms,
+        destination,
+        { allFree: hostPageIsAllFree(tiers.rows), requestedGoal: goal, acknowledgedFallback: platforms },
+      );
+      if (!check.ok) {
+        return json({ error: "guidance_refused", detail: check.detail }, 422);
+      }
+    }
+    const rawCountry = typeof brand.data?.country_code === "string"
+      ? brand.data.country_code.trim().toUpperCase()
+      : "";
+    const result = await buildHostBudgetGuidance(db, {
+      brandId,
+      currency: authority.currency,
+      countryCode: /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null,
+      goal,
+      dailyPayCents: dailyPay,
+      platforms,
+      destination,
+      runDays,
+    });
+    if (result.ok !== true) {
+      return json({
+        error: "guidance_unavailable",
+        detail: result.detail,
+      }, Number(result.status ?? 422));
+    }
+    return json(result);
   }
 
   if (action === "host_setup") {
