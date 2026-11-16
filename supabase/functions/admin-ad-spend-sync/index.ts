@@ -66,6 +66,7 @@ import {
   runHostAdAutomation,
 } from "../_shared/adGoalPromotion.ts";
 import { loadHostLiveSinceMs } from "../_shared/adHostLiveEdit.ts";
+import { parseMetaAdMetrics } from "../_shared/adCreativeFatigue.ts";
 import { markPlanPaused } from "../_shared/adPlanPauseTransition.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -535,6 +536,63 @@ async function readOfferingStock(
   });
   if (error) return "unavailable";
   return parseOfferingStock(data) ?? "unavailable";
+}
+
+/**
+ * #4238 T-4: per-ad daily impressions, link clicks and spend for a live Host
+ * campaign, into ad_creative_metrics_daily (the tired-creative signal reads
+ * it). Meta (level "ad") in W3; TikTok AUCTION_AD and Snap per-ad stats are
+ * carried to W4 with one ad per extra creative. Best effort: a failure is
+ * reported and never blocks the spend sync.
+ */
+async function syncHostAdMetrics(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    connection: AdConnectionRow;
+    target: CampaignSpendTarget;
+    canonical: Record<string, unknown> | null;
+  },
+): Promise<string> {
+  if (input.target.platform !== "meta") return "not_supported";
+  try {
+    const client = resolveMetaClient(input.connection);
+    const { since, until } = spendWindow();
+    const payload = await metaGraph(
+      client,
+      "GET",
+      `${input.target.external_campaign_id}/insights`,
+      {
+        fields: "ad_id,spend,impressions,inline_link_clicks,date_start",
+        time_increment: 1,
+        time_range: { since, until },
+        level: "ad",
+        limit: 1000,
+      },
+    );
+    const rows = parseMetaAdMetrics(payload);
+    if (rows.length === 0) return "none";
+    // One ad per Host campaign until W4 (one ad per extra creative).
+    const creativeId = typeof input.canonical?.creative_library_id === "string"
+      ? input.canonical.creative_library_id
+      : null;
+    const currency = String(input.target.provider_currency ?? "").trim()
+      .toUpperCase();
+    const { error } = await supabase.from("ad_creative_metrics_daily").upsert(
+      rows.map((row) => ({
+        ...row,
+        campaign_id: input.target.id,
+        platform: "meta",
+        creative_id: creativeId,
+        currency,
+        synced_at: new Date().toISOString(),
+      })),
+      { onConflict: "campaign_id,provider_ad_id,metric_date" },
+    );
+    return error ? `upsert_failed:${error.message}` : `synced:${rows.length}`;
+  } catch (err) {
+    return `failed:${err instanceof Error ? err.message : String(err)}`;
+  }
 }
 
 async function hostAutomation(
@@ -1136,6 +1194,14 @@ serve(async (req: Request): Promise<Response> => {
         isHost && target.status === "ACTIVE" && spendConnection &&
         typeof planVersion?.plan_id === "string"
       ) {
+        const adMetrics = await syncHostAdMetrics(supabase, {
+          connection: spendConnection,
+          target,
+          canonical,
+        });
+        if (!adMetrics.startsWith("synced") && adMetrics !== "none") {
+          console.error("[admin-ad-spend-sync] host ad metrics:", adMetrics);
+        }
         automation = await hostAutomation(supabase, {
           row,
           target,

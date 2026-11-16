@@ -22,6 +22,7 @@
  * existing metaGraph wrapper and tests pass a fake.
  */
 
+import { evaluateCreativeFatigue } from "./adCreativeFatigue.ts";
 import {
   decideGoalPromotion,
   ladderMetaCustomEventType,
@@ -533,5 +534,13 @@ export async function runHostAdAutomation(deps: {
   } catch (error) {
     report.stock_error = message(error);
   }
+  // #4238 T-4: the tired-creative signal (recorded; delivery is W4).
+  report.fatigue = await evaluateCreativeFatigue(db, {
+    planId: ctx.planId,
+    campaignId: ctx.campaignId,
+    platform: ctx.platform,
+    liveSinceMs: ctx.liveSinceMs,
+    nowMs: ctx.nowMs,
+  });
   return report;
 }

@@ -3657,7 +3657,9 @@ serve(async (req: Request): Promise<Response> => {
         });
         externalCampaignIdS = created.externalCampaignId;
         createdUnitsS = [{
-          stage: null,
+          // #4238 T-2/T-4: a Host ad set is the prospecting stage, so the
+          // stage-metrics sync reports its frequency.
+          stage: requestedOwnerKind === "host" ? "prospecting" : null,
           audienceCodes: [],
           audienceSizes: {},
           budgetCents: budgetLevelS === "adset" ? amountCents as number : null,
@@ -4936,7 +4938,9 @@ serve(async (req: Request): Promise<Response> => {
         });
         externalCampaignIdT = createdT.externalCampaignId;
         createdUnitsT = [{
-          stage: null,
+          // #4238 T-2/T-4: a Host ad set is the prospecting stage, so the
+          // stage-metrics sync reports its frequency.
+          stage: requestedOwnerKind === "host" ? "prospecting" : null,
           audienceCodes: [],
           audienceSizes: {},
           budgetCents: budgetLevelT === "adset" ? amountCents as number : null,
@@ -6546,7 +6550,9 @@ serve(async (req: Request): Promise<Response> => {
       });
       externalCampaignId = created.externalCampaignId;
       createdUnits = [{
-        stage: null,
+        // #4238 T-2/T-4: a Host ad set is the prospecting stage, so the
+          // stage-metrics sync reports its frequency.
+          stage: requestedOwnerKind === "host" ? "prospecting" : null,
         audienceCodes: [],
         audienceSizes: {},
         budgetCents: null,

@@ -112,3 +112,153 @@ export function creativeFatigueDue(input: {
   if (recent.impressions < FATIGUE_MIN_RECENT_IMPRESSIONS) return false;
   return recent.ctr <= baseline.ctr * FATIGUE_CTR_RATIO;
 }
+
+/** #4238 T-4: Meta level-"ad" insights → per-ad daily rows (admin-ad-spend-sync). */
+export function parseMetaAdMetrics(
+  payload: unknown,
+): {
+  provider_ad_id: string;
+  metric_date: string;
+  impressions: number;
+  link_clicks: number;
+  spend_cents: number;
+}[] {
+  const rows = (payload as { data?: unknown } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const raw of rows) {
+    const row = raw && typeof raw === "object"
+      ? raw as Record<string, unknown>
+      : {};
+    const adId = String(row.ad_id ?? "").trim();
+    const date = String(row.date_start ?? "").slice(0, 10);
+    if (!adId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const count = (value: unknown) => {
+      const n = Math.floor(Number(value));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const spend = Number(row.spend);
+    out.push({
+      provider_ad_id: adId,
+      metric_date: date,
+      impressions: count(row.impressions),
+      link_clicks: count(row.inline_link_clicks),
+      spend_cents: Number.isFinite(spend) && spend > 0
+        ? Math.round(spend * 100)
+        : 0,
+    });
+  }
+  return out;
+}
+
+// deno-lint-ignore no-explicit-any
+type Db = any;
+
+/**
+ * #4238 T-4: the daily evaluation for one live Host campaign. Reads
+ * ad_creative_metrics_daily (per ad) and the ad set's latest frequency
+ * (ad_stage_metrics_daily), and records one pending creative_fatigue row per
+ * tired creative (never twice for one creative inside 7 days). Never throws;
+ * returns what happened for the sweep report. Delivery is W4.
+ */
+export async function evaluateCreativeFatigue(db: Db, ctx: {
+  planId: string;
+  campaignId: string;
+  platform: string;
+  liveSinceMs: number | null;
+  nowMs: number;
+}): Promise<string> {
+  if (!FATIGUE_PLATFORMS.has(ctx.platform)) return "not_supported";
+  if (ctx.liveSinceMs === null) return "not_live";
+  try {
+    const since = new Date(ctx.nowMs - 21 * DAY_MS).toISOString().slice(0, 10);
+    const { data: metrics, error: metricsError } = await db
+      .from("ad_creative_metrics_daily")
+      .select("provider_ad_id,creative_id,metric_date,impressions,link_clicks")
+      .eq("campaign_id", ctx.campaignId).gte("metric_date", since);
+    if (metricsError) return "metrics_unavailable";
+    const { data: stageRows, error: stageError } = await db
+      .from("ad_stage_metrics_daily")
+      .select("stage,frequency,metric_date")
+      .eq("campaign_id", ctx.campaignId)
+      .order("metric_date", { ascending: false }).limit(10);
+    if (stageError) return "frequency_unavailable";
+    const { data: fired, error: firedError } = await db
+      .from("ad_plan_automation_events")
+      .select("detail,created_at")
+      .eq("plan_id", ctx.planId).eq("platform", ctx.platform)
+      .eq("kind", "creative_fatigue");
+    if (firedError) return "history_unavailable";
+    const byAd = new Map<
+      string,
+      { creativeId: string | null; days: FatigueDay[] }
+    >();
+    for (const row of (metrics ?? []) as Record<string, unknown>[]) {
+      const key = String(row.provider_ad_id ?? "");
+      if (!key) continue;
+      const entry = byAd.get(key) ??
+        {
+          creativeId: typeof row.creative_id === "string"
+            ? row.creative_id
+            : null,
+          days: [],
+        };
+      entry.days.push({
+        metric_date: String(row.metric_date),
+        impressions: Number(row.impressions ?? 0),
+        link_clicks: Number(row.link_clicks ?? 0),
+      });
+      byAd.set(key, entry);
+    }
+    let recorded = 0;
+    for (const [providerAdId, entry] of byAd) {
+      const creativeKey = entry.creativeId ?? providerAdId;
+      const last = ((fired ?? []) as Record<string, unknown>[])
+        .filter((row) =>
+          (row.detail as Record<string, unknown> | null)?.creative_id ===
+            creativeKey
+        )
+        .map((row) => Date.parse(String(row.created_at)))
+        .filter(Number.isFinite)
+        .sort((a, b) => b - a)[0] ?? null;
+      for (const stage of ["prospecting", "retarget"] as const) {
+        const frequency = ((stageRows ?? []) as Record<string, unknown>[])
+          .find((row) => row.stage === stage)?.frequency;
+        if (frequency === undefined) continue;
+        if (
+          !creativeFatigueDue({
+            platform: ctx.platform,
+            stage,
+            nowMs: ctx.nowMs,
+            liveSinceMs: ctx.liveSinceMs,
+            frequency7d: Number(frequency),
+            days: entry.days,
+            lastFiredMs: last,
+          })
+        ) continue;
+        const { error } = await db.from("ad_plan_automation_events").insert({
+          plan_id: ctx.planId,
+          campaign_id: ctx.campaignId,
+          platform: ctx.platform,
+          kind: "creative_fatigue",
+          status: "pending",
+          detail: {
+            creative_id: creativeKey,
+            provider_ad_id: providerAdId,
+            stage,
+          },
+        });
+        if (error) return "record_failed";
+        recorded += 1;
+        break;
+      }
+    }
+    return recorded > 0 ? `recorded:${recorded}` : "none";
+  } catch (error) {
+    console.error(
+      "[adCreativeFatigue] evaluation failed:",
+      error instanceof Error ? error.message : String(error),
+    );
+    return "failed";
+  }
+}

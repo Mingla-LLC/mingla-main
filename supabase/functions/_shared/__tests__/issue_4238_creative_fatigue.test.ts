@@ -157,3 +157,130 @@ Deno.test("T-4 adversarial: zero baseline impressions, a repeat inside 7 days, G
     false,
   );
 });
+
+import { evaluateCreativeFatigue } from "../adCreativeFatigue.ts";
+
+function fatigueDb(rows: Record<string, Record<string, unknown>[]>) {
+  const inserted: Record<string, unknown>[] = [];
+  const from = (table: string) => {
+    const filters: ((row: Record<string, unknown>) => boolean)[] = [];
+    const chain: Record<string, unknown> = {};
+    const run = () => ({
+      data: (rows[table] ?? []).filter((row) => filters.every((f) => f(row))),
+      error: null,
+    });
+    Object.assign(chain, {
+      select: () => chain,
+      eq: (key: string, value: unknown) => {
+        filters.push((row) => row[key] === value);
+        return chain;
+      },
+      gte: () => chain,
+      order: () => chain,
+      limit: () => chain,
+      insert: (row: Record<string, unknown>) => {
+        inserted.push(row);
+        (rows[table] ??= []).push({
+          ...row,
+          created_at: new Date(at(8)).toISOString(),
+        });
+        return Promise.resolve({ error: null });
+      },
+      then: (resolve: (value: unknown) => unknown) => resolve(run()),
+    });
+    return chain;
+  };
+  return { db: { from }, inserted };
+}
+
+Deno.test("T-4 sweep: records one creative_fatigue row, then not again inside 7 days", async () => {
+  const metrics = days(0.01, 0.0065).map((row) => ({
+    ...row,
+    campaign_id: "camp-1",
+    provider_ad_id: "ad-1",
+    creative_id: "cre-1",
+  }));
+  const { db, inserted } = fatigueDb({
+    ad_creative_metrics_daily: metrics,
+    ad_stage_metrics_daily: [{
+      campaign_id: "camp-1",
+      stage: "prospecting",
+      frequency: 3.2,
+    }],
+    ad_plan_automation_events: [],
+  });
+  const ctx = {
+    planId: "plan-1",
+    campaignId: "camp-1",
+    platform: "meta",
+    liveSinceMs: LIVE,
+    nowMs: at(8),
+  };
+  assertEquals(await evaluateCreativeFatigue(db, ctx), "recorded:1");
+  assertEquals(inserted[0].kind, "creative_fatigue");
+  assertEquals(
+    (inserted[0].detail as Record<string, unknown>).creative_id,
+    "cre-1",
+  );
+  assertEquals(await evaluateCreativeFatigue(db, ctx), "none");
+  assertEquals(inserted.length, 1);
+  assertEquals(
+    await evaluateCreativeFatigue(db, { ...ctx, platform: "google" }),
+    "not_supported",
+  );
+});
+
+Deno.test("T-4 data: Meta level-ad insights parse into per-ad daily rows; Host ad sets are the prospecting stage", async () => {
+  const { parseMetaAdMetrics } = await import(
+    "../adCreativeFatigue.ts"
+  );
+  assertEquals(
+    parseMetaAdMetrics({
+      data: [
+        {
+          ad_id: "a1",
+          date_start: "2026-11-08",
+          impressions: "1200",
+          inline_link_clicks: "8",
+          spend: "3.21",
+        },
+        { ad_id: "", date_start: "2026-11-08", impressions: "1" },
+        { ad_id: "a2", date_start: "bad", impressions: "1" },
+        { ad_id: "a3", date_start: "2026-11-09", impressions: "-4" },
+      ],
+    }),
+    [
+      {
+        provider_ad_id: "a1",
+        metric_date: "2026-11-08",
+        impressions: 1200,
+        link_clicks: 8,
+        spend_cents: 321,
+      },
+      {
+        provider_ad_id: "a3",
+        metric_date: "2026-11-09",
+        impressions: 0,
+        link_clicks: 0,
+        spend_cents: 0,
+      },
+    ],
+  );
+  assertEquals(parseMetaAdMetrics(null), []);
+  const create = await Deno.readTextFile(
+    new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
+  );
+  assertEquals(
+    create.split('stage: requestedOwnerKind === "host" ? "prospecting" : null,')
+      .length - 1,
+    3,
+  );
+  const sync = await Deno.readTextFile(
+    new URL("../adCreativeFatigue.ts", import.meta.url),
+  );
+  assertEquals(sync.includes('level: "ad"'), true);
+  assertEquals(
+    sync.includes('from("ad_creative_metrics_daily").upsert('),
+    true,
+  );
+});
