@@ -452,6 +452,7 @@
         "countVisits": "Vizite pe pagină de la oameni care au atins reclama în ultimele 7 zile.",
         "toAds": "{{amount}} din ce ai cheltuit a mers la reclame.",
         "dayByDay": "Zi de zi",
+        "dayByDayTerms": "Sumele de aici sunt cele care au mers la reclame, înainte de comisionul Mingla de 15%.",
         "budget": "Buget",
         "payADay": "Plătești pe zi",
         "payTotal": "Plătești în total",

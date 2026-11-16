@@ -452,6 +452,7 @@
         "countVisits": "Page visits from people who tapped your ad in the last 7 days.",
         "toAds": "{{amount}} of what you spent went to the ads.",
         "dayByDay": "Day by day",
+        "dayByDayTerms": "Amounts here are what went to the ads, before the 15% Mingla fee.",
         "budget": "Budget",
         "payADay": "You pay a day",
         "payTotal": "You pay in total",

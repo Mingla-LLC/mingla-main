@@ -452,6 +452,7 @@
         "countVisits": "来自过去 7 天内点击过你广告的人的页面访问。",
         "toAds": "你的花费中有 {{amount}} 用于广告。",
         "dayByDay": "每日数据",
+        "dayByDayTerms": "这里的金额是用于广告的部分，未扣除 Mingla 15% 的费用。",
         "budget": "预算",
         "payADay": "你每天支付",
         "payTotal": "你总共支付",

@@ -452,6 +452,7 @@
         "countVisits": "Lượt xem trang từ những người chạm vào quảng cáo trong 7 ngày qua.",
         "toAds": "{{amount}} trong số bạn đã chi đến quảng cáo.",
         "dayByDay": "Theo từng ngày",
+        "dayByDayTerms": "Các số tiền ở đây là phần đã chi cho quảng cáo, trước khoản phí 15% của Mingla.",
         "budget": "Ngân sách",
         "payADay": "Bạn trả mỗi ngày",
         "payTotal": "Bạn trả tổng cộng",

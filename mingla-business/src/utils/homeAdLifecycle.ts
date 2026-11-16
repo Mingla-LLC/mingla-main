@@ -7,7 +7,9 @@
  * combined here; presentation keeps each provider currency separate.
  */
 
+import { hostAdPayFromCredit } from "../components/marketing/ads/hostAdBuilderModel";
 import type { HostAdCampaign } from "../services/hostAdCampaignService";
+import { currencyCodeOrNull } from "./currency";
 
 export type HomeAdDestructiveAction = "cancel" | "end";
 
@@ -164,4 +166,59 @@ export function selectHomeAdCampaigns(
       );
     })
     .slice(0, Math.max(0, limit));
+}
+
+
+export type HomeAdCurrencyRow = { currency: string; spent: number; budget: number };
+
+/** Per-currency spent and budget of one ad, in Ads credit (what the apps spend). */
+export const campaignCurrencies = (
+  campaign: HostAdCampaign,
+): { currency: string; spent: number; budget: number }[] => {
+  const currency = currencyCodeOrNull(campaign.currency);
+  const budget = campaign.cap_cents ?? campaign.lifetime_budget_cents ?? 0;
+  if (currency !== null && campaign.host_spend_equivalent_cents !== null) {
+    return [{
+      currency,
+      spent: campaign.host_spend_equivalent_cents,
+      budget,
+    }];
+  }
+  const byCurrency = campaign.spend_by_currency.map((row) => ({
+    currency: row.currency.toUpperCase(),
+    spent: row.spend_cents,
+    budget: row.currency.toUpperCase() === currency ? budget : 0,
+  }));
+  if (byCurrency.length > 0) return byCurrency;
+  return currency === null ? [] : [{ currency, spent: 0, budget }];
+};
+
+/**
+ * #4238 rework 3b (tester P2-2): the Home Ads card total covers EVERY active
+ * ad passed in (not only the tiles shown) and is in pay terms, what the Host
+ * pays (15% Mingla fee inside), through the same hostAdPayFromCredit Promote
+ * uses. Credit is summed per currency first, then converted once, as the
+ * Promote summary does.
+ */
+export function homeAdPayTotals(
+  campaigns: readonly HostAdCampaign[],
+): Map<string, { spent: number; budget: number }> {
+  const credit = new Map<string, { spent: number; budget: number }>();
+  for (const campaign of campaigns) {
+    for (const row of campaignCurrencies(campaign)) {
+      const current = credit.get(row.currency) ?? { spent: 0, budget: 0 };
+      credit.set(row.currency, {
+        spent: current.spent + row.spent,
+        budget: current.budget + row.budget,
+      });
+    }
+  }
+  const pay = new Map<string, { spent: number; budget: number }>();
+  for (const [currency, total] of credit) {
+    pay.set(currency, {
+      spent: hostAdPayFromCredit(total.spent),
+      budget: hostAdPayFromCredit(total.budget),
+    });
+  }
+  return pay;
 }

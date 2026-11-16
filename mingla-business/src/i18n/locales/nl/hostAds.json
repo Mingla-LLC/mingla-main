@@ -452,6 +452,7 @@
         "countVisits": "Paginabezoeken van mensen die de afgelopen 7 dagen op je advertentie tikten.",
         "toAds": "{{amount}} van wat je uitgaf ging naar de advertenties.",
         "dayByDay": "Dag voor dag",
+        "dayByDayTerms": "De bedragen hier zijn wat naar de advertenties ging, vóór de Mingla-kosten van 15%.",
         "budget": "Budget",
         "payADay": "Je betaalt per dag",
         "payTotal": "Je betaalt in totaal",

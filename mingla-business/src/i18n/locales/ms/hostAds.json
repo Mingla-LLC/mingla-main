@@ -452,6 +452,7 @@
         "countVisits": "Lawatan halaman dari orang yang mengetuk iklan anda dalam 7 hari terakhir.",
         "toAds": "{{amount}} dari yang anda belanjakan masuk ke iklan.",
         "dayByDay": "Hari per hari",
+        "dayByDayTerms": "Jumlah di sini ialah yang digunakan untuk iklan, sebelum yuran Mingla 15%.",
         "budget": "Anggaran",
         "payADay": "Anda bayar per hari",
         "payTotal": "Anda bayar total",

@@ -452,6 +452,7 @@
         "countVisits": "Son 7 günde reklamına dokunan kişilerden gelen sayfa ziyaretleri.",
         "toAds": "Harcadığının {{amount}} kadarı reklamlara gitti.",
         "dayByDay": "Gün gün",
+        "dayByDayTerms": "Buradaki tutarlar reklamlara giden paradır, Mingla'nın %15 ücretinden önce.",
         "budget": "Bütçe",
         "payADay": "Günlük ödediğin",
         "payTotal": "Toplam ödediğin",

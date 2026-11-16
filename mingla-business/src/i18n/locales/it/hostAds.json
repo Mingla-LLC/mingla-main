@@ -452,6 +452,7 @@
         "countVisits": "Visite alla pagina da persone che hanno toccato il tuo annuncio negli ultimi 7 giorni.",
         "toAds": "{{amount}} di quanto hai speso è andato agli annunci.",
         "dayByDay": "Giorno per giorno",
+        "dayByDayTerms": "Gli importi qui sono quelli andati agli annunci, prima della commissione Mingla del 15%.",
         "budget": "Budget",
         "payADay": "Paghi al giorno",
         "payTotal": "Paghi in totale",

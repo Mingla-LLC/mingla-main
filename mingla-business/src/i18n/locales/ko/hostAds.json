@@ -452,6 +452,7 @@
         "countVisits": "최근 7일 동안 광고를 누른 사람들의 페이지 방문이에요.",
         "toAds": "쓴 금액 중 {{amount}}이 광고에 쓰였어요.",
         "dayByDay": "날짜별",
+        "dayByDayTerms": "여기 금액은 광고에 쓰인 금액이며, Mingla 수수료 15%를 제외하기 전입니다.",
         "budget": "예산",
         "payADay": "하루에 내는 금액",
         "payTotal": "총 내는 금액",

@@ -452,6 +452,7 @@
         "countVisits": "Sidbesök från folk som tryckte på din annons de senaste 7 dagarna.",
         "toAds": "{{amount}} av det du spenderade gick till annonserna.",
         "dayByDay": "Dag för dag",
+        "dayByDayTerms": "Beloppen här är det som gick till annonserna, före Minglas avgift på 15 %.",
         "budget": "Budget",
         "payADay": "Du betalar per dag",
         "payTotal": "Du betalar totalt",

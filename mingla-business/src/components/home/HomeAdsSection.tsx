@@ -16,12 +16,15 @@ import {
   pauseHostAdCampaign,
   type HostAdCampaign,
 } from "../../services/hostAdCampaignService";
-import { currencyCodeOrNull, formatCurrencyRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import { hostAdPayFromCredit } from "../marketing/ads/hostAdBuilderModel";
 import {
+  campaignCurrencies,
   homeAdAttentionReason,
   homeAdCanPause,
   homeAdNetworkList,
   homeAdStatusLabel,
+  homeAdPayTotals,
   homeAdTileSpan,
   selectHomeAdCampaigns,
 } from "../../utils/homeAdLifecycle";
@@ -34,8 +37,6 @@ interface HomeAdsSectionProps {
   brandId: string;
 }
 
-type CurrencyTotals = Map<string, { spent: number; budget: number }>;
-
 const dateLabel = (value: string | null): string | null => {
   if (value === null) return null;
   const date = new Date(value);
@@ -45,41 +46,6 @@ const dateLabel = (value: string | null): string | null => {
     day: "numeric",
     month: "short",
   }).format(date);
-};
-
-const campaignCurrencies = (
-  campaign: HostAdCampaign,
-): { currency: string; spent: number; budget: number }[] => {
-  const currency = currencyCodeOrNull(campaign.currency);
-  const budget = campaign.cap_cents ?? campaign.lifetime_budget_cents ?? 0;
-  if (currency !== null && campaign.host_spend_equivalent_cents !== null) {
-    return [{
-      currency,
-      spent: campaign.host_spend_equivalent_cents,
-      budget,
-    }];
-  }
-  const byCurrency = campaign.spend_by_currency.map((row) => ({
-    currency: row.currency.toUpperCase(),
-    spent: row.spend_cents,
-    budget: row.currency.toUpperCase() === currency ? budget : 0,
-  }));
-  if (byCurrency.length > 0) return byCurrency;
-  return currency === null ? [] : [{ currency, spent: 0, budget }];
-};
-
-const summaryTotals = (campaigns: readonly HostAdCampaign[]): CurrencyTotals => {
-  const totals: CurrencyTotals = new Map();
-  for (const campaign of campaigns) {
-    for (const row of campaignCurrencies(campaign)) {
-      const current = totals.get(row.currency) ?? { spent: 0, budget: 0 };
-      totals.set(row.currency, {
-        spent: current.spent + row.spent,
-        budget: current.budget + row.budget,
-      });
-    }
-  }
-  return totals;
 };
 
 const currencyLines = (values: Record<string, number>, suffix: string) =>
@@ -161,7 +127,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const start = dateLabel(campaign.starts_at);
     const cap = campaign.cap_cents ?? campaign.lifetime_budget_cents;
     const scheduled = start !== null && cap !== null && campaign.currency !== null
-      ? `Starts ${start} · ${formatCurrencyRound(cap, campaign.currency, true)} budget`
+      ? `Starts ${start} · ${formatCurrencyRound(hostAdPayFromCredit(cap), campaign.currency, true)} budget`
       : null;
     const compactResult = resultCount === null
       ? null
@@ -205,7 +171,12 @@ const Budget: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
   campaign,
   compact = false,
 }) => {
-  const rows = campaignCurrencies(campaign);
+  // Pay terms, the same unit as the card total and Promote.
+  const rows = campaignCurrencies(campaign).map((row) => ({
+    ...row,
+    spent: hostAdPayFromCredit(row.spent),
+    budget: hostAdPayFromCredit(row.budget),
+  }));
   const hasSpend = rows.some((row) => row.spent > 0);
   if (!hasSpend) {
     if (compact) return null;
@@ -213,7 +184,7 @@ const Budget: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const cap = campaign.cap_cents ?? campaign.lifetime_budget_cents;
     return start !== null && cap !== null && campaign.currency !== null ? (
       <Text style={styles.budgetLine}>
-        {`Starts ${start} · ${formatCurrencyRound(cap, campaign.currency, true)} budget`}
+        {`Starts ${start} · ${formatCurrencyRound(hostAdPayFromCredit(cap), campaign.currency, true)} budget`}
       </Text>
     ) : null;
   }
@@ -263,7 +234,9 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
     [ads.campaigns],
   );
   const campaigns = activeCampaigns.slice(0, 4);
-  const totals = useMemo(() => summaryTotals(campaigns), [campaigns]);
+  // #4238 rework 3b (P2-2): the total covers EVERY active ad, not the 4
+  // tiles, and is what the Host pays (same hostAdPayFromCredit as Promote).
+  const totals = useMemo(() => homeAdPayTotals(activeCampaigns), [activeCampaigns]);
   const [busyCampaignId, setBusyCampaignId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 

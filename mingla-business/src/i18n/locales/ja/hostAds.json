@@ -452,6 +452,7 @@
         "countVisits": "過去7日間に広告をタップした人からのページ訪問です。",
         "toAds": "使った金額のうち {{amount}} が広告に使われました。",
         "dayByDay": "日ごと",
+        "dayByDayTerms": "ここの金額は広告に使われた分で、Minglaの手数料15%を引く前の額です。",
         "budget": "予算",
         "payADay": "1日に支払う額",
         "payTotal": "合計で支払う額",

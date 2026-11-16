@@ -652,6 +652,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const numbers = (
     <BuilderCard accessibilityLabel={hm("detail.dayByDay")} testID="ads-detail-numbers">
       <BuilderLabel>{hm("detail.dayByDay")}</BuilderLabel>
+      <Text style={bs.caption} testID="ads-detail-day-by-day-terms">{hm("detail.dayByDayTerms")}</Text>
       <AdResultsSection
         daily={payload.daily ?? []}
         byPlatformSpend={payload.by_platform_spend ?? []}
