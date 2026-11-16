@@ -5693,7 +5693,16 @@ serve(async (req: Request): Promise<Response> => {
     // step (4) below. buildRedditStructuredPostJobBody already emits creative.video
     // + creative.thumbnail for type:"VIDEO", and redditCreateFullChain runs it
     // PAUSED at every level (G-1) — the reddit.ts adapter needs no change.
-    const creativeKindR = creativeR.kind === "video" ? "video" : "image";
+    // #4238 W4c (T-9): a Host plan's kind and photo link come from the
+    // reviewed plan version (frozen at create_version), never the request.
+    const hostFrozenR = requestedOwnerKind === "host"
+      ? (boundCanonicalPlan ?? {}) as Record<string, unknown>
+      : null;
+    const creativeKindR = hostFrozenR
+      ? (hostFrozenR.creative_kind === "image" ? "image" : "video")
+      : creativeR.kind === "video"
+      ? "video"
+      : "image";
     // ISSUE-979 Bug 3: the global compliance intent reaches Reddit's create path
     // now. Reddit has no AI-disclosure and no special-ad-category field —
     // documented + observable, never silently dropped.
@@ -5712,8 +5721,13 @@ serve(async (req: Request): Promise<Response> => {
     // Media presence — pure input validation (400/422 BEFORE any provider call).
     // IMAGE takes a public master URL inline; VIDEO takes the #866 library row id
     // (the create endpoint never receives inline video bytes — payload.js A1).
-    const imageUrlR = creativeKindR === "image" &&
-        typeof creativeR.image_url === "string"
+    const imageUrlR = creativeKindR !== "image"
+      ? ""
+      : hostFrozenR
+      ? (typeof hostFrozenR.creative_image_url === "string"
+        ? hostFrozenR.creative_image_url.trim()
+        : "")
+      : typeof creativeR.image_url === "string"
       ? creativeR.image_url.trim()
       : "";
     const creativeLibraryIdR = creativeKindR === "video" &&

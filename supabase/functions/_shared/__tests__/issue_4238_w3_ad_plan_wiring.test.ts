@@ -260,12 +260,13 @@ Deno.test("T-2: readiness is read from ad_audiences for a one-country event only
 
 Deno.test("SC-T9: a photo runs on Meta; TikTok and Google say Needs a video", () => {
   // #4238 W4a: Snapchat takes photos too (prepared per image at launch);
-  // Reddit, TikTok and Google stay video-only for Hosts (SC-T9).
-  assertEquals([...HOST_IMAGE_PLATFORMS], ["meta", "snapchat"]);
+  // W4c: Reddit too (the photo link is frozen on the plan). TikTok and
+  // Google stay video-only for Hosts (SC-T9).
+  assertEquals([...HOST_IMAGE_PLATFORMS], ["meta", "snapchat", "reddit"]);
   assertEquals(hostImageRefusedPlatform("image", ["meta"]), null);
   assertEquals(hostImageRefusedPlatform("image", ["meta", "snapchat"]), null);
   assertEquals(hostImageRefusedPlatform("image", ["meta", "snapchat", "tiktok"]), "tiktok");
-  assertEquals(hostImageRefusedPlatform("image", ["reddit"]), "reddit");
+  assertEquals(hostImageRefusedPlatform("image", ["reddit"]), null);
   assertEquals(hostImageRefusedPlatform("image", ["meta", "tiktok"]), "tiktok");
   assertEquals(hostImageRefusedPlatform("image", ["google"]), "google");
   assertEquals(hostImageRefusedPlatform("video", ["tiktok", "google"]), null);

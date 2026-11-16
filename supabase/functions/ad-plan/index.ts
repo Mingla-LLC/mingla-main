@@ -842,13 +842,15 @@ export async function freezeHostW2Fields(
  * creative library. Meta takes the hosted image at create. Snapchat (W4a)
  * takes the image's READY Snap media ref, uploaded per image by the launch's
  * prepare step (admin-ad-creative-prepare, image on Snapchat). TikTok
- * (Pangle only) and Google (Demand Gen video) stay video-only. Reddit's image
- * create path reads a request image URL the Host plan never freezes, so it
- * stays video-only for Hosts (decision 9's fallback; recorded on #4238).
+ * (Pangle only) and Google (Demand Gen video) stay video-only. Reddit takes
+ * a photo since W4c: create_version freezes the photo's public master link
+ * (canonical.creative_image_url) and Reddit's image create reads it from the
+ * reviewed plan.
  */
 export const HOST_IMAGE_PLATFORMS: ReadonlySet<string> = new Set([
   "meta",
   "snapchat",
+  "reddit",
 ]);
 
 /** #4238 T-9: the first app in the plan that can't take a photo. */
@@ -3175,15 +3177,25 @@ export async function handleAdPlan(
       }, 422);
     }
     let firstCreativeKind: string | null = null;
+    // #4238 W4c (T-9): a photo's public master link, frozen on the plan so
+    // Reddit's image create reads the reviewed plan, never the request.
+    let firstCreativeImageUrl: string | null = null;
     if (!sparkOnly) {
       const { data: creative, error: creativeError } = await db
         .from("ad_creatives")
-        .select("id,brand_id,kind,status,source,source_brand_id,purged_at")
+        .select(
+          "id,brand_id,kind,status,source,source_brand_id,purged_at,source_url",
+        )
         .eq("id", creativeId)
         .maybeSingle();
       if (creativeError) return databaseFailure(creativeError);
       firstCreativeKind = typeof creative?.kind === "string"
         ? creative.kind
+        : null;
+      firstCreativeImageUrl = creative?.kind === "image" &&
+          typeof creative.source_url === "string" &&
+          /^https:\/\//i.test(creative.source_url.trim())
+        ? creative.source_url.trim()
         : null;
       // #3697 (C-13) — an archived creative stays usable for a plan whose
       // current version already carries it; a new selection refuses it.
@@ -3510,6 +3522,16 @@ export async function handleAdPlan(
       canonical.creative_kind = firstCreativeKind === "image"
         ? "image"
         : "video";
+      delete canonical.creative_image_url;
+      if (canonical.creative_kind === "image" && platforms.includes("reddit")) {
+        if (!firstCreativeImageUrl) {
+          return json({
+            error: "plan_preflight_failed",
+            detail: "host_image_link_missing:reddit",
+          }, 422);
+        }
+        canonical.creative_image_url = firstCreativeImageUrl;
+      }
       // #4238 T-6: whether Mingla chose the apps (frozen; the Host's own
       // pick is kept as chosen).
       canonical.app_choice = canonicalInput.app_choice === "mingla"
