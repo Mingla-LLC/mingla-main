@@ -57,7 +57,10 @@
       "expected": {
         "personalAttributes": [],
         "dating": null,
-        "alcohol": null
+        "alcohol": {
+          "excerpt": "beers",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
       }
     },
     {
@@ -296,6 +299,73 @@
           "excerpt": "Whiskey",
           "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
         }
+      }
+    },
+    {
+      "copyText": "Cold beers and live music all night",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": {
+          "excerpt": "beers",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    },
+    {
+      "copyText": "Two-for-one pints before 9",
+      "channelSet": [
+        "reddit"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": {
+          "excerpt": "pints",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    },
+    {
+      "copyText": "Natural wines, ciders and lagers on tap",
+      "channelSet": [
+        "snapchat"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": {
+          "excerpt": "wines",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    },
+    {
+      "copyText": "Happy hours every Friday",
+      "channelSet": [
+        "google"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": {
+          "excerpt": "Happy hours",
+          "message": "This reads as alcohol-adjacent. Reddit can reject it for that and then require age targeting it doesn't support. Google and Snapchat both restrict alcohol too. Consider leading with the room and the music, not the drinks."
+        }
+      }
+    },
+    {
+      "copyText": "The show begins at nine",
+      "channelSet": [
+        "meta"
+      ],
+      "expected": {
+        "personalAttributes": [],
+        "dating": null,
+        "alcohol": null
       }
     }
   ]

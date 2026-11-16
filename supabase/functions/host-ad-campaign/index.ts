@@ -48,6 +48,7 @@ import type { Platform } from "../_shared/adChannelCore.ts";
 import {
   type HostLiveCampaign,
   HOST_LIVE_DAILY_PUSH,
+  hostLiveEditUnknownField,
   type HostLiveEditProblem,
   loadHostLiveSinceMs,
   planHostLiveEdit,
@@ -1491,6 +1492,15 @@ serve(async (req: Request): Promise<Response> => {
  */
 // deno-lint-ignore no-explicit-any
 async function changeLive(db: any, actorId: string, brandId: string, body: Record<string, unknown>): Promise<Response> {
+  // #4238 amendment B item 7: budget and end date only; any other key is
+  // refused by name before anything is claimed or pushed.
+  const notEditable = hostLiveEditUnknownField(body);
+  if (notEditable !== null) {
+    return json({
+      error: "validation_error",
+      detail: `host_ad_live_edit_field_not_editable:${notEditable.slice(0, 64)}`,
+    }, 400);
+  }
   const planId = typeof body.plan_id === "string" ? body.plan_id : "";
   const key = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
   if (!UUID_REGEX.test(planId) || key.length < 8 || key.length > 160) {

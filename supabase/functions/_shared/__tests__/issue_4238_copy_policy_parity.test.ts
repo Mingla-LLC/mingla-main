@@ -124,3 +124,27 @@ Deno.test("T-5 adversarial: warn-only — create_version never refuses for copy_
   assertEquals(/if \(copyWarnings/.test(slice), false);
   assertEquals(src.includes("copy_warnings: copyWarnings"), true);
 });
+
+Deno.test("W4a (a): plurals and phrases warn the same as the singular, in both copies", async () => {
+  const shared = await import("../adCopyPolicy.ts");
+  const adminAlcohol = admin.lintAlcohol as (
+    text: string,
+  ) => { excerpt: string } | null;
+  for (
+    const [text, excerpt] of [
+      ["cold beers", "beers"],
+      ["Cold beers and live music all night", "beers"],
+      ["Two-for-one pints before 9", "pints"],
+      ["wines and ciders", "wines"],
+      ["happy hours", "happy hours"],
+      ["open bars", "open bars"],
+      ["whiskeys and gins", "whiskeys"],
+    ] as const
+  ) {
+    assertEquals(shared.lintAlcohol(text)?.excerpt, excerpt, text);
+    assertEquals(adminAlcohol(text)?.excerpt, excerpt, `admin: ${text}`);
+  }
+  // A word that merely contains a term never warns.
+  assertEquals(shared.lintAlcohol("The show begins at nine"), null);
+  assertEquals(adminAlcohol("The show begins at nine"), null);
+});

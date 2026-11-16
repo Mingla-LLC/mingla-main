@@ -889,6 +889,88 @@ export async function loadHostRetargetReadiness(
   return out;
 }
 
+/**
+ * #4238 T-6 (W4a): the apps "Let Mingla choose" left off, recorded once per
+ * plan version as `apps_trimmed` automation events. The same hostAppsForBudget
+ * rule guidance uses, over the brand's connected Host-lane apps, in credit
+ * terms; `needs_more_pay_cents` is in what the Host pays. Never throws.
+ */
+export async function recordHostAppsTrimmed(
+  db: Db,
+  input: {
+    planId: string;
+    versionId: string;
+    chosen: readonly string[];
+    currency: string;
+    goal: "sales" | "signups" | "visits";
+    spendCents: number;
+  },
+): Promise<number> {
+  try {
+    const { data: connections, error } = await db.from("ad_connections")
+      .select("*").eq("lane", HOST_AD_LANE).eq("connected", true)
+      .eq("status", "connected");
+    if (error) throw new Error(String(error.message ?? "connections"));
+    const rows = (connections ?? []) as AdConnectionRow[];
+    const left = rows.filter((row) => !input.chosen.includes(row.platform));
+    if (left.length === 0 || !input.versionId) return 0;
+    const minimums = await hostDailyMinimums(db, rows, input.currency);
+    const apps = rows.flatMap((row) => {
+      const minimum = minimums.find((item) => item.platform === row.platform);
+      const floor = minimum?.[`${input.goal}_daily_minimum_cents`];
+      const viability = minimum?.[`${input.goal}_viability_cents`];
+      return typeof floor === "number"
+        ? [{
+          platform: row.platform,
+          floorCents: floor,
+          ...(typeof viability === "number" ? { viabilityCents: viability } : {}),
+        }]
+        : [];
+    });
+    const split = hostAppsForBudget({ spendCents: input.spendCents, apps });
+    const { data: existing } = await db.from("ad_plan_automation_events")
+      .select("platform,detail").eq("plan_id", input.planId)
+      .eq("kind", "apps_trimmed");
+    const done = new Set(
+      ((existing ?? []) as Record<string, unknown>[])
+        .filter((row) =>
+          (row.detail as Record<string, unknown> | null)?.plan_version_id ===
+            input.versionId
+        )
+        .map((row) => String(row.platform)),
+    );
+    const inserts = left.filter((row) => !done.has(row.platform)).map((row) => {
+      const trimmed = split.trimmed.find((item) => item.platform === row.platform);
+      return {
+        plan_id: input.planId,
+        platform: row.platform,
+        kind: "apps_trimmed",
+        status: "applied",
+        applied_at: new Date().toISOString(),
+        detail: {
+          plan_version_id: input.versionId,
+          reason: trimmed?.reason ?? "budget_funds_fewer_apps",
+          needs_more_pay_cents: trimmed
+            ? hostMinimumPayCents(trimmed.needs_more_cents)
+            : null,
+          currency: input.currency,
+        },
+      };
+    });
+    if (inserts.length === 0) return 0;
+    const { error: insertError } = await db.from("ad_plan_automation_events")
+      .insert(inserts);
+    if (insertError) throw new Error(String(insertError.message ?? "insert"));
+    return inserts.length;
+  } catch (error) {
+    console.error("[ad-plan] apps_trimmed not recorded", {
+      plan_id: input.planId,
+      detail: (error instanceof Error ? error.message : String(error)).slice(0, 200),
+    });
+    return 0;
+  }
+}
+
 /** The Host goals setup.minimums carries a minimum for. */
 const HOST_MINIMUM_GOALS = ["visits", "sales", "signups"] as const;
 
@@ -3555,6 +3637,25 @@ export async function handleAdPlan(
       p_actor_id: actor.id,
     });
     if (error) return databaseFailure(error);
+    // #4238 T-6: under "Let Mingla choose", every connected app left off is
+    // recorded on the plan with its reason (best effort; never refuses).
+    if (canonical.app_choice === "mingla" && plan.owner_kind === "host") {
+      await recordHostAppsTrimmed(db, {
+        planId: String(plan.id),
+        versionId: String((data as Record<string, unknown> | null)?.id ?? ""),
+        chosen: platforms,
+        currency: normalized.hostCurrency,
+        goal: canonicalInput.optimization_goal === "sales"
+          ? "sales"
+          : canonicalInput.optimization_goal === "signups"
+          ? "signups"
+          : "visits",
+        spendCents: normalized.rows.reduce(
+          (sum, row) => sum + Number(row.host_delivery_budget_cents ?? 0),
+          0,
+        ),
+      });
+    }
     return json({
       ok: true,
       version: data,

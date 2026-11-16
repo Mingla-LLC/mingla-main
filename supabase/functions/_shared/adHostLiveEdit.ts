@@ -95,6 +95,36 @@ export type HostLivePlan =
     learning?: { change_pct: number | null; days_live: number; learning_until: string };
   };
 
+/**
+ * #4238 amendment B item 7 (B-F4): the only keys a live edit may carry. A
+ * live ad changes budget and end date only; area, audience, age, goal, apps,
+ * ads, copy and video never change live (a wider area or new video is a new
+ * ad). Any other key is refused by name, never silently dropped.
+ *
+ * MINGLA-INVARIANT: I-4238-LIVE-EDIT-ALLOWLIST | issue #4238 | host-ad-campaign change_live refuses every body key outside HOST_LIVE_EDIT_FIELDS with 400 host_ad_live_edit_field_not_editable:<key> before any claim or push.
+ */
+export const HOST_LIVE_EDIT_FIELDS: ReadonlySet<string> = new Set([
+  "action",
+  "brand_id",
+  "plan_id",
+  "new_budget_cents",
+  "new_ends_at",
+  "idempotency_key",
+  "suggestion_id",
+  // #4238 6a: the Host's explicit learning-reset confirmation.
+  "acknowledge_learning_reset",
+]);
+
+/** The first body key a live edit may not carry, or null. */
+export function hostLiveEditUnknownField(
+  body: Record<string, unknown>,
+): string | null {
+  for (const key of Object.keys(body)) {
+    if (!HOST_LIVE_EDIT_FIELDS.has(key)) return key;
+  }
+  return null;
+}
+
 /** #4238 6a: the learning window and the budget change it tolerates. */
 export const HOST_LEARNING_WINDOW_DAYS = 7;
 export const HOST_LEARNING_MAX_CHANGE = 0.2;
