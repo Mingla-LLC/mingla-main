@@ -29,6 +29,7 @@ function heroParts(block: SharedBlockProps["block"], index: number, ctx: SharedC
   const firstHero = index === ctx.page.blocks.findIndex((candidate) => candidate.type === "hero");
   return {
     lines: lines.length ? lines : [text(block.heading)],
+    heading: text(block.heading),
     eyebrow: text(block.eyebrow),
     subheading: text(block.subheading),
     ctas,
@@ -71,7 +72,7 @@ export function HeroFullbleed({ block, index, ctx }: SharedBlockProps) {
       </div>
       <div className="mg-wrap mg-hero__inner">
         {p.eyebrow ? <p className="mg-label mg-kicker" data-mg-in="">{p.eyebrow}</p> : null}
-        <HeadlineLines lines={p.lines} as={p.as} id={id} />
+        <HeadlineLines lines={p.lines} heading={p.heading} as={p.as} id={id} />
         <div className="mg-hero__row">
           <div className="mg-hero__main">
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}
@@ -95,7 +96,7 @@ export function HeroEditorial({ block, index, ctx }: SharedBlockProps) {
       </div>
       <div className="mg-wrap mg-hero__inner">
         {p.eyebrow ? <p className="mg-label" data-mg-in="">{p.eyebrow}</p> : null}
-        <HeadlineLines lines={p.lines} as={p.as} id={id} />
+        <HeadlineLines lines={p.lines} heading={p.heading} as={p.as} id={id} />
         <div className="mg-hero-ed__foot">
           {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : <span />}
           <Buttons ctas={p.ctas} />
@@ -115,7 +116,7 @@ export function HeroArch({ block, index, ctx }: SharedBlockProps) {
         <div className="mg-hero-arch__top">
           <div>
             {p.eyebrow ? <p className="mg-label" data-mg-in="">{p.eyebrow}</p> : null}
-            <HeadlineLines lines={p.lines} as={p.as} id={id} />
+            <HeadlineLines lines={p.lines} heading={p.heading} as={p.as} id={id} />
           </div>
           <div className="mg-hero-arch__side">
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}

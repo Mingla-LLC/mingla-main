@@ -84,7 +84,7 @@ export function history(block: SharedBlock, ctx: SharedContext): { entries: Ledg
 
 /** The destinations a grid shows: the owner's pick, in order, else every destination. */
 export function destinations(block: SharedBlock, ctx: SharedContext): SiteDestination[] {
-  const picked = rows(block.destinations).map((row) => text(row.slug));
+  const picked = rows(block.destinations).map((row) => text(row.slug)).filter(Boolean);
   const all = ctx.artifact.collections.destinations;
   return picked.length
     ? picked.map((slug) => all.find((row) => row.slug === slug)).filter((row): row is SiteDestination => Boolean(row))

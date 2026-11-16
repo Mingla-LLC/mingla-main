@@ -148,12 +148,19 @@ export function Blk({ id, className, labelledBy, tone, children, source, wrap = 
   );
 }
 
-/** The hero headline, line by line (each line is a mask its words rise out of). */
-export function HeadlineLines({ lines, as: Tag = "h1", id }: { lines: string[]; as?: "h1" | "h2"; id?: string }) {
+/**
+ * The hero headline, line by line (each line is a mask its words rise out
+ * of). When the owner set the lines, the one-line `heading` is the heading's
+ * accessible text and the lines are what is seen, so the block's every field
+ * is drawn and a screen reader hears the headline once.
+ */
+export function HeadlineLines({ lines, heading, as: Tag = "h1", id }: { lines: string[]; heading?: string; as?: "h1" | "h2"; id?: string }) {
+  const spoken = heading && lines.join(" ") !== heading ? heading : null;
   return (
     <Tag id={id} className="mg-h1">
+      {spoken ? <span className="mg-sr">{spoken}</span> : null}
       {lines.map((line, lineIndex) => (
-        <span key={lineIndex} className="mg-ln"><span style={{ ["--ln" as string]: String(lineIndex) }}>{line}</span></span>
+        <span key={lineIndex} className="mg-ln" aria-hidden={spoken ? "true" : undefined}><span style={{ ["--ln" as string]: String(lineIndex) }}>{line}</span></span>
       ))}
     </Tag>
   );

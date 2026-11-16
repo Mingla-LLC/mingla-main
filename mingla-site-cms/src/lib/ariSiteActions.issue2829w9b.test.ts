@@ -236,7 +236,8 @@ describe("#2829 W9b looks and layouts", () => {
       page_path: "", expected_revision: "3", block_index: 0, variant: "atelier", why: "x", cites: OWNER_WORDS,
     }, ctx()));
     expect(error.message).toBe("VARIANT_NOT_IN_DESIGN");
-    expect(error.extra.variants).toEqual(["cover-bottom-search"]);
+    // #4453 — voyage's hero now also offers the shared `fullbleed` layout.
+    expect(error.extra.variants).toEqual(["cover-bottom-search", "fullbleed"]);
   });
 });
 
