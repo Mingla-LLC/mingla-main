@@ -12,7 +12,8 @@
 --            heir admin, and the other person keeps it.
 --   T-REJOIN a person who left comes back through a new invite (board invite
 --            or Add people) or the group link, even though the old invite is
---            gone; a creator who left and is re-invited is the creator again.
+--            gone; a creator who left and is re-invited comes back as an
+--            ordinary member (#4435 leftovers: the creator's role passed on).
 --   T-CAP    the 15 cap at accept counts accepted rows only, a lowered cap is
 --            honoured, and a full group's members still update their rows.
 --   T-ORPHAN a group whose creator is in the chat but was never a group
@@ -212,7 +213,10 @@ BEGIN
   r3 := pg_temp.try_as('a', format($q$DELETE FROM public.session_participants WHERE session_id = %L AND user_id <> %L$q$, v_s, pg_temp.u('a')));
   r4 := pg_temp.try_as('a', format($q$DELETE FROM public.collaboration_sessions WHERE id = %L$q$, v_s));
   PERFORM pg_temp.ok('T-EXIT the creator who left removes nobody afterwards', r3 = 'ok:0' AND pg_temp.accepted(v_s, 'b'));
-  PERFORM pg_temp.ok('T-EXIT the creator who left cannot delete the group (a refusal the app only logs)', r4 LIKE '42501:%');
+  -- #4435 leftovers: b took over the creator's role, so row security hides the
+  -- group from a's delete (no row, no error; the app only logs either way).
+  PERFORM pg_temp.ok('T-EXIT the creator who left cannot delete the group (a refusal the app only logs)',
+    r4 = 'ok:0' AND (SELECT created_by FROM public.collaboration_sessions WHERE id = v_s) = pg_temp.u('b'));
   PERFORM pg_temp.ok('T-EXIT the other person keeps the group and becomes its admin',
     EXISTS (SELECT 1 FROM public.collaboration_sessions WHERE id = v_s)
     AND (SELECT is_admin FROM public.session_participants WHERE session_id = v_s AND user_id = pg_temp.u('b')));
@@ -249,15 +253,21 @@ BEGIN
   PERFORM pg_temp.try_as('c', format($q$DELETE FROM public.session_participants WHERE session_id = %L AND user_id = %L$q$, v_s, pg_temp.u('c')));
   r := pg_temp.try_as('b', format($q$SELECT public.add_group_members(%L, ARRAY[%L]::uuid[])$q$, v_conv, pg_temp.u('c')));
   PERFORM pg_temp.ok('T-REJOIN Add people brings the person who left straight back', r = 'ok:1' AND pg_temp.accepted(v_s, 'c'));
-  -- the creator leaves, is re-invited, accepts: they are the creator again
+  -- the creator leaves, is re-invited, accepts: they are an ordinary member
+  -- (#4435 leftovers, Seth's decision; before this it was the creator again)
   PERFORM pg_temp.try_as('a', format($q$DELETE FROM public.session_participants WHERE session_id = %L AND user_id = %L$q$, v_s, pg_temp.u('a')));
   PERFORM pg_temp.ok('T-REJOIN a creator who left is not the creator', NOT public.is_session_creator(v_s, pg_temp.u('a')));
   v_j := pg_temp.val_as('b', format($q$SELECT public.add_friend_to_session(%L, %L)::text$q$, v_s, pg_temp.u('a')))::jsonb;
   r := pg_temp.try_as('a', pg_temp.accept_sql(v_s, pg_temp.invite_of(v_s, 'a')));
   PERFORM pg_temp.ok('T-REJOIN the creator who left can be re-invited and accept', v_j ->> 'outcome' = 'invited' AND r = 'ok:1');
   r := pg_temp.try_as('a', format($q$UPDATE public.session_participants SET is_admin = false WHERE session_id = %L AND user_id = %L$q$, v_s, pg_temp.u('b')));
-  PERFORM pg_temp.ok('T-REJOIN back as a member, the creator has the creator''s say again',
-    public.is_session_creator(v_s, pg_temp.u('a')) AND r = 'ok:1');
+  PERFORM pg_temp.ok('T-REJOIN back as a member, the old creator is an ordinary member and the heir keeps the role',
+    NOT public.is_session_creator(v_s, pg_temp.u('a'))
+    AND (SELECT created_by FROM public.collaboration_sessions WHERE id = v_s) IN (pg_temp.u('b'), pg_temp.u('c'))
+    AND public.is_session_creator(v_s, (SELECT created_by FROM public.collaboration_sessions WHERE id = v_s))
+    AND (SELECT sp.is_admin FROM public.session_participants sp JOIN public.collaboration_sessions cs
+          ON cs.id = sp.session_id AND cs.created_by = sp.user_id WHERE cs.id = v_s)
+    AND r = 'ok:0');
 END $rejoin$;
 
 -- ── T-CAP ───────────────────────────────────────────────────────────────────
