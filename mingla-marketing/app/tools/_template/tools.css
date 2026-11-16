@@ -369,7 +369,7 @@
 .rp .rbar .bb .a2 { border: 1.5px solid rgba(255, 255, 255, .35); color: #fff; }
 .rp .rfoot { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 18px 34px 26px; font-size: 12.5px; color: var(--tp-muted); }
 .rp .rfoot .lks { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-.rp .rfoot a, .rp .rfoot button { color: var(--tp-ink); text-decoration: underline; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; min-height: 32px; }
+.rp .rfoot a, .rp .rfoot button { color: var(--tp-ink); text-decoration: underline; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; min-height: 32px; display: inline-flex; align-items: center; }
 
 @media (max-width: 760px) {
   .rp .rhero, .rp .fc, .rp .tcover .in { grid-template-columns: minmax(0, 1fr); padding: 22px; }
