@@ -56,9 +56,12 @@ Deno.test("Reddit create reads a Host plan's kind and photo link from the bound 
       : null;`));
   assert(
     src.includes(
-      `? (hostFrozenR.creative_kind === "image" ? "image" : "video")`,
+      `kind: hostFrozenR.creative_kind === "image" ? "image" : "video",`,
     ),
   );
-  assert(src.includes(`? (typeof hostFrozenR.creative_image_url === "string"
-        ? hostFrozenR.creative_image_url.trim()`));
+  assert(
+    src.includes(`image_url: typeof hostFrozenR.creative_image_url === "string"
+            ? hostFrozenR.creative_image_url
+            : null,`),
+  );
 });

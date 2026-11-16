@@ -920,7 +920,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, provider_delivery_budget_cents, amended_provider_delivery_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, brand_id, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_delivery_budget_cents, amended_provider_delivery_budget_cents, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, brand_id, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })

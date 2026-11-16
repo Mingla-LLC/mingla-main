@@ -71,9 +71,10 @@ Deno.test("prepare: an Admin plan still prepares only its one creative", () => {
   );
 });
 
-Deno.test("SC-T9: a photo runs on Meta and Snapchat; TikTok, Google and Reddit say it needs a video", () => {
+Deno.test("SC-T9: a photo runs on Meta, Snapchat and (W4c) Reddit; TikTok and Google say it needs a video", () => {
   assertEquals(hostImageRefusedPlatform("image", ["meta", "snapchat"]), null);
-  for (const app of ["tiktok", "google", "reddit"]) {
+  assertEquals(hostImageRefusedPlatform("image", ["meta", "reddit"]), null);
+  for (const app of ["tiktok", "google"]) {
     assertEquals(hostImageRefusedPlatform("image", ["meta", app]), app);
   }
 });
