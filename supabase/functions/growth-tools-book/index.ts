@@ -78,12 +78,13 @@ import {
   CREATOR_MAKES_LABELS,
   ICP_LABELS,
   parseBookingContext,
+  parseBookingExtras,
   parseTimeZone,
   SOCIAL_LABELS,
 } from "./bookingContext.ts";
 import { buildBookingLead, recordBookingLead } from "./bookingLead.ts";
 // #4238 W3-3: a Host booking with the page's ad context is a host lead.
-import { recordBookingAdLead } from "./bookingAdLead.ts";
+import { recordBookingConversions, resolveFormLink } from "./bookingAdLead.ts";
 import { parseHostAdContext } from "../_shared/hostFunnelConversion.ts";
 import {
   type CalendarKeys,
@@ -469,6 +470,12 @@ async function handleBook(
     return json({ error: "validation", field: parsedContext.field }, 400);
   }
   const context = parsedContext.context;
+  // #4452 §4.6: phone (required for Creators and Locals), UTM, click source, form link, consent.
+  const parsedExtras = parseBookingExtras(body, context.audience);
+  if (!parsedExtras.ok) {
+    return json({ error: "validation", field: parsedExtras.field }, 400);
+  }
+  const extras = parsedExtras.extras;
   const timeZone = parseTimeZone(body.time_zone);
   // Slot must be in the future (min notice) and land on a valid grid boundary.
   if (startMs < Date.now() + MIN_NOTICE_MS) {
@@ -535,6 +542,12 @@ async function handleBook(
   // #4339 round A — the booking becomes an Inbound lead in Mingla Admin. Awaited
   // so the write completes before the isolate is frozen; it never fails the
   // booking (recordBookingLead never throws and logs every failure loudly).
+  const leadConfig = {
+    supabaseUrl: Deno.env.get("SUPABASE_URL"),
+    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+  // #4452 §4.6 A: a booking from a form links to it only with the same email within 7 days.
+  const formLink = await resolveFormLink(extras.formSubmissionId, email, leadConfig);
   const leadRow = buildBookingLead({
     eventId: ev.id ?? null,
     startMs,
@@ -546,19 +559,19 @@ async function handleBook(
     timeZone,
     meetUrl: meet,
     eventUrl: ev.htmlLink ?? null,
+    extras,
+    formSubmissionId: formLink?.id ?? null,
   });
-  const leadConfig = {
-    supabaseUrl: Deno.env.get("SUPABASE_URL"),
-    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
-  };
   const leadWrite = await recordBookingLead(leadRow, leadConfig);
 
-  // #4238 W3-3 (D7): a Host call booked with the page's ad context is a host
-  // lead. Creator and Local calls are not. Never fails the booking.
-  const ad = context.audience === "host" ? parseHostAdContext(body.ad, req) : null;
-  const leadEventId = ad && leadWrite === "written"
-    ? await recordBookingAdLead(leadRow.booking_key, ad, leadConfig)
-    : null;
+  // #4452 §4.6 (was #4238 W3-3 host-only): every audience's booking is a
+  // labelled Lead (unless the form already fired it) and a call_booked goal.
+  // The ad context is read for every audience now. Never fails the booking.
+  const ad = parseHostAdContext(body.ad, req);
+  const conversions = leadWrite === "written"
+    ? await recordBookingConversions(leadRow.booking_key, context.audience, ad, formLink, leadConfig)
+    : { leadEventId: null, goalEventId: null };
+  const leadEventId = conversions.leadEventId;
 
   // Confirmation to the booker + notification to Seth. Best-effort and awaited
   // so the sends complete before the isolate is frozen; never fails the booking.
@@ -581,6 +594,7 @@ async function handleBook(
     meet_url: meet,
     start: new Date(startMs).toISOString(),
     lead_event_id: leadEventId,
+    goal_event_id: conversions.goalEventId,
   });
 }
 

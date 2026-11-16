@@ -1287,7 +1287,15 @@ export async function handler(req: Request): Promise<Response> {
         crypto.randomUUID().replace(/-/g, "");
     const { error: gateErr } = await supabase
       .from("tool_leads")
-      .update({ email, status: "gated_email", report_token: reportToken })
+      .update({
+        email,
+        status: "gated_email",
+        report_token: reportToken,
+        // #4452 Q-A1-2: the optional, unticked "Also send me tips for hosts" box; strict true only.
+        ...(body.marketing_consent === true
+          ? { marketing_consent: true, consent_text: "Also send me tips for hosts. Optional.", consent_at: new Date().toISOString() }
+          : {}),
+      })
       .eq("id", runId as string);
     if (gateErr) {
       console.error("[growth-tools-gate] email save failed", gateErr.message);
@@ -1304,6 +1312,8 @@ export async function handler(req: Request): Promise<Response> {
       ? await recordHostLead(supabase as never, {
         subjectId: `tool:${runId as string}`,
         ad,
+        // #4452 §4.7: free tools are host tools; the label rides as host_lead, the source as tool:<tool>.
+        source: `tool:${tool}`,
       })
       : null;
     const reportPath = tool === "events"

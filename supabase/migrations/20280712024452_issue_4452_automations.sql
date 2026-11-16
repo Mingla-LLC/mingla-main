@@ -988,6 +988,31 @@ GRANT EXECUTE ON FUNCTION public.admin_automation_get(uuid), public.admin_automa
   public.admin_form_submission_stop_emails(uuid), public.admin_form_results(uuid, timestamptz, timestamptz),
   public.admin_forms_list(text) TO authenticated, service_role;
 
+-- §4.6: a booking stops the person's follow-ups at once (stop rule "booked"): the linked
+-- submission's run, or any active run of the same email started in the last 30 days.
+CREATE FUNCTION public.forms_booking_stops_runs(p_email text, p_submission_id uuid) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_run uuid;
+  v_n integer := 0;
+BEGIN
+  FOR v_run IN
+    SELECT r.id FROM public.form_automation_runs r JOIN public.form_submissions s ON s.id = r.submission_id
+      JOIN public.form_automations a ON a.form_id = r.form_id
+     WHERE r.status = 'active' AND COALESCE((a.stops->>'booked')::boolean, true)
+       AND ((p_submission_id IS NOT NULL AND s.id = p_submission_id)
+         OR (s.email = lower(btrim(COALESCE(p_email, ''))) AND r.started_at > now() - interval '30 days'))
+  LOOP
+    PERFORM public.forms_stop_run(v_run, 'booked');
+    v_n := v_n + 1;
+  END LOOP;
+  RETURN v_n;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.forms_booking_stops_runs(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.forms_booking_stops_runs(text, uuid) TO service_role;
+
 -- §5.8 "Test the whole flow": an is_test submission whose run sends to the staff member only.
 CREATE FUNCTION public.forms_start_test_run(p_form_id uuid, p_email text, p_answers jsonb) RETURNS uuid
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
