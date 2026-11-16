@@ -17,7 +17,7 @@ vi.mock("./observability", () => ({ emitCmsObservation: vi.fn(), observeCmsEndpo
 vi.mock("./gateway", () => ({ callCore: vi.fn(), verifyCoreRequest: vi.fn(), readCoreProjection: vi.fn() }));
 
 import { actionScopeFromCore, artifactOutboundActionLinks, assertNoOutboundActionLinks, OutboundActionLinkError } from "./bookingLock";
-import { safeActionUrl, safeUrl } from "./validation";
+import { buttonUrl, safeActionUrl, safeUrl } from "./validation";
 import { composeFromPlan, type ComposePlan } from "./composeFromPlan";
 import { assertAriBookingLock, ARI_REFUSAL_CODES, AriRefusal, type AriActionContext } from "./ariSiteActions";
 import { siteBlocks } from "../blocks/siteBlocks";
@@ -59,7 +59,7 @@ describe("#4453 OUTBOUND_ACTION_LINK blocks publish (SC-L2)", () => {
     expect(caught).toBeInstanceOf(OutboundActionLinkError);
     expect((caught as Error).message).toBe(OUTBOUND_ACTION_LINK);
     expect((caught as OutboundActionLinkError).links).toEqual([
-      expect.objectContaining({ pagePath: "", blockIndex: 0, blockType: "cta", field: "href", problem: "outside_mingla" }),
+      expect.objectContaining({ pagePath: "", blockIndex: 0, blockType: "cta", field: "href", intent: "booking", problem: "booking_site" }),
     ]);
   });
 
@@ -91,6 +91,34 @@ describe("#4453 OUTBOUND_ACTION_LINK blocks publish (SC-L2)", () => {
   });
 });
 
+describe("#4453 rework: informational buttons publish, booking ones go to Mingla", () => {
+  const withBlocks = (blocks: Record<string, unknown>[]) => {
+    const built = artifact("/about", { brand_slug: "gogi", contact_phone: "+234 000 000 0000" }) as any;
+    built.pages[0].blocks = blocks.map((block) => ({ variant: "band", ...block }));
+    built.pages[1].blocks = [];
+    return built as ArtifactV2;
+  };
+
+  it("a gögi-shaped site (maps, PDF menu, WhatsApp) publishes cleanly", () => {
+    expect(() => assertNoOutboundActionLinks(withBlocks([
+      { type: "cta", heading: "Come by", label: "Directions", href: "https://maps.google.com/?q=1+Example+Way" },
+      { type: "menu_link", heading: "Prefer a PDF?", label: "Download", href: "/media/4c1c6d1e-0000-4000-8000-000000000001/menu.pdf" },
+      { type: "contact_handoff", heading: "Get in touch", label: "WhatsApp", href: "https://wa.me/2340000000000" },
+      { type: "media_feature", cta_label: "Follow us", cta_href: "https://www.instagram.com/gogi" },
+    ]))).not.toThrow();
+  });
+
+  it("a “Book a table” button to OpenTable is refused", () => {
+    expect(artifactOutboundActionLinks(withBlocks([{ type: "cta", heading: "Dinner", label: "Book a table", href: "https://www.opentable.com/r/gogi" }])))
+      .toEqual([expect.objectContaining({ intent: "booking", problem: "booking_site" })]);
+  });
+
+  it("a hero button to any outside site is refused", () => {
+    expect(artifactOutboundActionLinks(withBlocks([{ type: "hero", heading: "Gogi", ctas: [{ label: "Follow us", href: "https://www.instagram.com/gogi" }] }])))
+      .toEqual([expect.objectContaining({ blockType: "hero", intent: "booking", problem: "outside_mingla" })]);
+  });
+});
+
 describe("#4453 Core's signed action scope", () => {
   it("keeps a well-formed scope and drops a malformed one", () => {
     expect(actionScopeFromCore({ brand_slug: "young-and-stamped", contact_email: " hello@youngandstamped.com ", contact_phone: "+234 801 234 5678" }))
@@ -111,14 +139,26 @@ describe("#4453 Studio's save-time check", () => {
       expect(safeActionUrl(ok), String(ok)).toBe(true);
     }
     expect(safeUrl("https://maps.example.com/x")).toBe(true);
+    const button = buttonUrl("label");
+    expect(button("https://www.instagram.com/gogi", { siblingData: { label: "Follow us" } })).toBe(true);
+    expect(button("https://wa.me/2340000000000", { siblingData: { label: "WhatsApp" } })).toBe(true);
+    expect(button("https://example.com/menu.pdf", { siblingData: { label: "Download" } })).toMatch(/A button can link to/);
   });
 
   it("every Studio block button field uses the action check; map and directions links do not", () => {
     const validatorOf = (slug: string, name: string) =>
       (siteBlocks.find((block) => block.slug === slug)!.fields as any[]).find((field) => field.name === name)?.validate;
-    expect(validatorOf("cta", "href")).toBe(safeActionUrl);
-    expect(validatorOf("contact_handoff", "href")).toBe(safeActionUrl);
-    expect(validatorOf("menu_link", "href")).toBe(safeActionUrl);
+    const heroCta = ((siteBlocks.find((block) => block.slug === "hero")!.fields as any[]).find((field) => field.name === "ctas").fields as any[])
+      .find((field) => field.name === "href").validate;
+    expect(heroCta).toBe(safeActionUrl);
+    expect(validatorOf("offering_grid", "empty_cta_href")).toBe(safeActionUrl);
+    // Other buttons are judged by their label: booking words lock them to Mingla.
+    for (const [slug, name] of [["cta", "href"], ["contact_handoff", "href"], ["menu_link", "href"]] as const) {
+      const validate = validatorOf(slug, name);
+      expect(validate("https://maps.google.com/?q=x", { siblingData: { label: "Directions" } }), slug).toBe(true);
+      expect(validate("https://maps.google.com/?q=x", { siblingData: { label: "Book a table" } }), slug).toMatch(/points outside Mingla/);
+      expect(validate("https://www.opentable.com/r/x", { siblingData: { label: "See the room" } }), slug).toMatch(/takes bookings or payments/);
+    }
     expect(validatorOf("hours_location", "map_url")).toBe(safeUrl);
     expect(validatorOf("map_embed", "directions_url")).toBe(safeUrl);
   });

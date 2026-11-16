@@ -82,29 +82,112 @@ export const CANONICAL_ORIGIN_RE =
 
 /*
  * #4453 PR 2 (booking lock) — where a button on a Mingla site may send a
- * visitor. Every action that books, buys, reserves or signs up goes to
- * Mingla, so an action link is accepted ONLY when it is:
+ * visitor. Every action that BOOKS, buys, reserves, orders or pays goes to
+ * Mingla; informational links may still leave the site.
+ *
+ * A BOOKING action (the hero buttons, the header button, offering and
+ * booking blocks, and any button whose label reads as booking or paying —
+ * `offersBookingOrPayment`) is accepted ONLY when it is:
  *   1. a same-site path (`/…`) to a page this site has;
  *   2. THIS brand's own page on Mingla's buyer host: `/t/{brand}/…`,
  *      `/e/{brand}/…`, `/exp/{brand}/…`, `/b/{brand}` or `/b/{brand}/v/{venue}`,
  *      or `/checkout/{event}` for one of this brand's events;
  *   3. `mailto:` the brand's own contact email or `tel:` its own phone.
+ *
+ * An INFORMATIONAL button (any other action field) may also go to a map
+ * (Google, Apple, OpenStreetMap), the brand's social profiles, a file on
+ * this site's media (`/media/…`) or a Mingla Sites host, or the brand's own
+ * WhatsApp. A known third-party booking or ticketing site
+ * (BOOKING_SITE_HOSTS) is refused on EVERY button, whatever its label.
  * Another brand's Mingla page, any other host, `http:` and script URLs are
- * refused. Links inside prose, map links and footer socials stay `href`
+ * refused. Prose links, map fields and footer socials stay `href`
  * (isSafeHref) and are not action links.
  *
- * invariant: I-SITES-ACTIONS-RESOLVE-TO-MINGLA — every action field on a
+ * invariant: I-SITES-ACTIONS-RESOLVE-TO-MINGLA — every booking action on a
  * published site resolves to this brand's Mingla route, a same-site page, or
- * the brand's own mailto or tel. Enforced by `isMinglaActionHref` here, the
- * artifact validator (artifactV2.ts, when the artifact carries
- * `action_scope`), Studio's publish check `OUTBOUND_ACTION_LINK`
- * (publishChecks.ts) and Ari's writes. Tests:
- * mingla-sites/src/contracts/bookingLock.issue4453.test.tsx and
+ * the brand's own mailto or tel, and no button links a third-party booking
+ * site. Enforced by `isMinglaActionHref` here, the artifact validator
+ * (artifactV2.ts, when the artifact carries `action_scope`), Studio's
+ * publish check `OUTBOUND_ACTION_LINK` (publishChecks.ts) and Ari's writes.
+ * Tests: mingla-sites/src/contracts/bookingLock.issue4453.test.tsx and
  * mingla-site-cms/src/lib/bookingLock.issue4453.test.ts.
  */
 
-/** Mingla's buyer host: the only host an action link may leave the site for. */
+/** Mingla's buyer host: the only host a booking action may leave the site for. */
 export const MINGLA_ACTION_HOST = "host.usemingla.com";
+
+/** Whether a button books/pays (locked to Mingla) or only informs. */
+export type ActionIntent = "booking" | "informational";
+
+/*
+ * ONE SOURCE for the booking lock's host lists (#4453 PR 2 rework).
+ * A host matches an entry when it equals it or is a subdomain of it; an entry
+ * ending in "." matches that name under any top-level domain
+ * ("eventbrite." → eventbrite.com, eventbrite.co.uk).
+ */
+/** Third-party booking, reservation and ticketing sites: refused on every button. */
+export const BOOKING_SITE_HOSTS: readonly string[] = [
+  "opentable.", "resy.com", "sevenrooms.com", "exploretock.com", "tock.com", "eventbrite.",
+  "booking.com", "airbnb.", "feverup.com", "fever.co", "designmynight.com", "ticketmaster.",
+  "livenation.", "dice.fm", "ra.co", "skiddle.com", "ticketsource.", "tickettailor.com",
+  "universe.com", "seetickets.", "tixr.com", "ticketweb.", "stubhub.", "viagogo.",
+  "getyourguide.", "viator.com", "klook.com", "tiqets.com", "headout.com",
+  "fareharbor.com", "peek.com", "rezdy.com", "bokun.io", "checkfront.com", "xola.com",
+  "thefork.", "quandoo.", "bookatable.", "tablein.com", "resdiary.com",
+  "calendly.com", "acuityscheduling.com", "simplybook.", "fresha.com", "vagaro.com",
+  "squareup.com", "square.site", "toasttab.com", "hotels.com", "expedia.", "agoda.",
+  "vrbo.com", "hostelworld.com", "trip.com", "luma.com", "lu.ma", "partiful.com",
+  "meetup.com", "paystack.com", "paystack.shop", "flutterwave.com",
+  "stripe.com", "buy.stripe.com", "paypal.", "paypal.me", "gumroad.com", "selar.co",
+];
+
+/** Map hosts an informational button may open (with the path prefix, when one is needed). */
+export const MAP_LINK_HOSTS: readonly { host: string; path?: string }[] = [
+  { host: "maps.google.com" }, { host: "google.com", path: "/maps" }, { host: "maps.app.goo.gl" },
+  { host: "goo.gl", path: "/maps" }, { host: "maps.apple.com" }, { host: "openstreetmap.org" },
+];
+
+/** Social profile hosts an informational button may open. */
+export const SOCIAL_LINK_HOSTS: readonly string[] = [
+  "instagram.com", "tiktok.com", "facebook.com", "fb.com", "x.com", "twitter.com",
+  "youtube.com", "youtu.be", "linkedin.com", "threads.net", "threads.com", "snapchat.com",
+  "pinterest.com", "spotify.com", "soundcloud.com",
+];
+
+/** Where a site's own media is served when a button links a file (a PDF menu). */
+export const SITES_MEDIA_HOST_SUFFIX = "sites.usemingla.com";
+
+function hostMatches(hostname: string, entry: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  if (entry.endsWith(".")) {
+    const name = entry.slice(0, -1);
+    const labels = host.split(".");
+    // the name followed by a 1-2 label public suffix (eventbrite.com, eventbrite.co.uk)
+    for (let i = 0; i < labels.length; i++) {
+      if (labels[i] === name && labels.length - i - 1 >= 1 && labels.length - i - 1 <= 2) return true;
+    }
+    return false;
+  }
+  return host === entry || host.endsWith(`.${entry}`);
+}
+
+/** Is this a known third-party booking or ticketing host? */
+export function isBookingSiteHost(hostname: string): boolean {
+  return BOOKING_SITE_HOSTS.some((entry) => hostMatches(hostname, entry));
+}
+
+/*
+ * The words that make a button a booking or payment action: the
+ * BOOKING_THROUGH_ENQUIRY vocabulary (claims.ts) plus paying and ordering.
+ */
+const BOOKING_ACTION_RE =
+  /\b(?:book(?:s|ed|ing|ings)?|reserv(?:e|es|ed|ing|ation|ations)|tickets?|deposits?|stays?|check\s+availability|pay(?:s|ing|ment|ments)?|buy(?:s|ing)?|purchase|order(?:s|ing)?|checkout|check\s+out|rsvp|register|sign\s+up|enrol(?:l)?|get\s+a\s+(?:table|room|spot|place))\b/i;
+const HARMLESS_STAY_RE = /\bstay\s+(?:in\s+touch|tuned)\b/gi;
+
+/** Does this button label read as booking, reserving, buying, ordering or paying? */
+export function offersBookingOrPayment(label: unknown): boolean {
+  return typeof label === "string" && BOOKING_ACTION_RE.test(label.replace(HARMLESS_STAY_RE, " "));
+}
 
 /** What an action link is checked against: this site's brand, pages and contact details. */
 export type MinglaActionScope = {
@@ -118,7 +201,7 @@ export type MinglaActionScope = {
   readonly sitePaths: ReadonlySet<string> | null;
   /** The brand's own contact email (mailto targets), if it has one. */
   readonly contactEmail?: string | null;
-  /** The brand's own phone (tel targets), if it has one. */
+  /** The brand's own phone (tel and WhatsApp targets), if it has one. */
   readonly contactPhone?: string | null;
   /**
    * This brand's event ids a `/checkout/{event}` link may name. Null or
@@ -130,25 +213,53 @@ export type MinglaActionScope = {
 export type ActionHrefProblem =
   | "unsafe"
   | "outside_mingla"
+  | "booking_site"
   | "other_brand"
   | "page_missing"
   | "not_brand_contact";
 
 const ACTION_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i;
 const phoneDigits = (value: string): string => value.replace(/[^\d+]/g, "");
+const bareDigits = (value: string): string => value.replace(/\D/g, "");
+
+/** An informational destination outside Mingla (map, social, site media, own WhatsApp), or a reason it isn't one. */
+function informationalProblem(url: URL, scope: MinglaActionScope | null): ActionHrefProblem | null {
+  const host = url.hostname.toLowerCase();
+  if (MAP_LINK_HOSTS.some((entry) => hostMatches(host, entry.host) && (!entry.path || url.pathname.startsWith(entry.path)))) return null;
+  if (SOCIAL_LINK_HOSTS.some((entry) => hostMatches(host, entry))) return null;
+  if (hostMatches(host, SITES_MEDIA_HOST_SUFFIX) && url.pathname.startsWith("/media/")) return null;
+  const whatsapp = hostMatches(host, "wa.me")
+    ? url.pathname.slice(1).split("/")[0] ?? ""
+    : hostMatches(host, "whatsapp.com") && url.pathname === "/send"
+    ? url.searchParams.get("phone") ?? ""
+    : null;
+  if (whatsapp !== null) {
+    if (!scope) return /^\d{5,20}$/.test(bareDigits(whatsapp)) ? null : "not_brand_contact";
+    const own = bareDigits(scope.contactPhone ?? "");
+    return own.length >= 5 && bareDigits(whatsapp) === own ? null : "not_brand_contact";
+  }
+  return "outside_mingla";
+}
 
 /**
- * Why `value` is not an acceptable action link, or null when it is. With no
- * scope (Studio's save-time field check, where the brand is not known) only
- * the shape is checked: a same-site path, a Mingla buyer route for SOME brand,
- * a checkout link, or any mailto/tel. The brand-specific rules run wherever
- * the scope is known (publish, the artifact, Ari's writes).
+ * Why `value` is not an acceptable action link for a button of this intent,
+ * or null when it is. With no scope (Studio's save-time field check, where
+ * the brand is not known) only the shape is checked: a same-site path, a
+ * Mingla buyer route for SOME brand, a checkout link, any mailto/tel and,
+ * for informational buttons, the allowed outside hosts. The brand-specific
+ * rules run wherever the scope is known (publish, the artifact, Ari).
  */
-export function actionHrefProblem(value: unknown, scope: MinglaActionScope | null): ActionHrefProblem | null {
+export function actionHrefProblem(
+  value: unknown,
+  scope: MinglaActionScope | null,
+  intent: ActionIntent = "booking",
+): ActionHrefProblem | null {
   if (!isSafeHref(value)) return "unsafe";
   if (value.startsWith("/")) {
-    if (!scope?.sitePaths) return null;
     const path = value.split(/[?#]/, 1)[0]!.replace(/^\/+/, "").replace(/\/+$/, "");
+    // A file in this site's own media (a PDF menu) is information, not a page.
+    if (intent === "informational" && path.startsWith("media/")) return null;
+    if (!scope?.sitePaths) return null;
     return scope.sitePaths.has(path) ? null : "page_missing";
   }
   let url: URL;
@@ -168,7 +279,11 @@ export function actionHrefProblem(value: unknown, scope: MinglaActionScope | nul
     const own = phoneDigits(scope.contactPhone ?? "");
     return own.length >= 5 && phoneDigits(decodeURIComponent(url.pathname)) === own ? null : "not_brand_contact";
   }
-  if (url.protocol !== "https:" || url.hostname !== MINGLA_ACTION_HOST || url.port) return "outside_mingla";
+  if (url.protocol !== "https:") return "outside_mingla";
+  if (isBookingSiteHost(url.hostname)) return "booking_site";
+  if (url.hostname !== MINGLA_ACTION_HOST || url.port) {
+    return intent === "informational" && !url.port ? informationalProblem(url, scope) : "outside_mingla";
+  }
   const segments = url.pathname.split("/").filter(Boolean);
   const [root, brand] = segments;
   if (root === "checkout") {
@@ -184,7 +299,7 @@ export function actionHrefProblem(value: unknown, scope: MinglaActionScope | nul
   return brand!.toLowerCase() === scope.brandSlug.toLowerCase() ? null : "other_brand";
 }
 
-/** Is `value` an action link this site may carry (see `actionHrefProblem`)? */
-export function isMinglaActionHref(value: unknown, scope: MinglaActionScope | null): value is string {
-  return actionHrefProblem(value, scope) === null;
+/** Is `value` an action link this site may carry for a button of this intent (see `actionHrefProblem`)? */
+export function isMinglaActionHref(value: unknown, scope: MinglaActionScope | null, intent: ActionIntent = "booking"): value is string {
+  return actionHrefProblem(value, scope, intent) === null;
 }

@@ -370,8 +370,9 @@ function blockTexts(block: AnyDoc): string[] {
 }
 
 /*
- * #4453 PR 2 (booking lock) — Ari's blocks: every button must go to this
- * brand's Mingla pages, a page of this site, or its own mailto/tel
+ * #4453 PR 2 (booking lock) — Ari's blocks: every BOOKING button must go to
+ * this brand's Mingla pages, a page of this site, or its own mailto/tel, and
+ * no button may link a third-party booking site
  * (VALIDATION_FAILED names each field), and no question form may offer a
  * booking (BOOKING_THROUGH_ENQUIRY). Whether a same-site page exists is
  * checked at publish, against the whole page tree.
@@ -387,8 +388,12 @@ export function assertAriBookingLock(ctx: AriActionContext, blocks: readonly Any
   const problems: string[] = [];
   blocks.forEach((block, index) => {
     for (const link of blockActionLinks(block)) {
-      const problem = actionHrefProblem(link.href, scope);
-      if (problem) problems.push(`${path}[${index}].${link.field} must link to this website or this brand's own Mingla page (${problem})`);
+      const problem = actionHrefProblem(link.href, scope, link.intent);
+      if (problem) {
+        problems.push(link.intent === "booking"
+          ? `${path}[${index}].${link.field} is a booking button: it must link to this website or this brand's own Mingla page (${problem})`
+          : `${path}[${index}].${link.field} may link to this website, this brand's Mingla pages, a map, its social profiles, a site file or its own WhatsApp, email or phone, never a booking site (${problem})`);
+      }
     }
   });
   if (problems.length) refuse("VALIDATION_FAILED", { problems: problems.slice(0, 20) });

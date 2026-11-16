@@ -59,8 +59,8 @@ describe("#4453 isMinglaActionHref (SC-L1)", () => {
     ["https://host.usemingla.com/t/another-brand/lagos-weekend", "other_brand"],
     ["https://host.usemingla.com/b/another-brand/v/main-room", "other_brand"],
     ["https://host.usemingla.com/checkout/22222222-2222-4222-8222-222222222222", "other_brand"],
-    ["https://www.opentable.com/r/young-and-stamped", "outside_mingla"],
-    ["https://calendly.com/young-and-stamped", "outside_mingla"],
+    ["https://www.opentable.com/r/young-and-stamped", "booking_site"],
+    ["https://calendly.com/young-and-stamped", "booking_site"],
     ["https://evil.example/t/young-and-stamped/lagos-weekend", "outside_mingla"],
     ["https://usemingla.com/t/young-and-stamped/lagos-weekend", "outside_mingla"],
     ["https://wa.me/2348012345678", "outside_mingla"],
@@ -92,7 +92,8 @@ describe("#4453 isMinglaActionHref (SC-L1)", () => {
   it("without a scope checks the shape only: any brand's Mingla page passes, other sites never do", () => {
     expect(actionHrefProblem("https://host.usemingla.com/t/another-brand/x", null)).toBeNull();
     expect(actionHrefProblem("/anything", null)).toBeNull();
-    expect(actionHrefProblem("https://www.opentable.com/r/x", null)).toBe("outside_mingla");
+    expect(actionHrefProblem("https://www.opentable.com/r/x", null)).toBe("booking_site");
+    expect(actionHrefProblem("https://example.com/x", null)).toBe("outside_mingla");
   });
 });
 
@@ -114,8 +115,10 @@ describe("#4453 action fields in the block catalogue", () => {
 
   it("blockActionLinks finds nested buttons and reads Studio blocks too", () => {
     expect(blockActionLinks({ type: "hero", ctas: [{ label: "a", href: "/trips" }, { label: "b", href: "https://x.example" }] }))
-      .toEqual([{ field: "ctas[0].href", href: "/trips" }, { field: "ctas[1].href", href: "https://x.example" }]);
-    expect(blockActionLinks({ blockType: "cta", href: "/about" })).toEqual([{ field: "href", href: "/about" }]);
+      .toEqual([{ field: "ctas[0].href", href: "/trips", intent: "booking" }, { field: "ctas[1].href", href: "https://x.example", intent: "booking" }]);
+    expect(blockActionLinks({ blockType: "cta", label: "Directions", href: "/about" })).toEqual([{ field: "href", href: "/about", intent: "informational" }]);
+    expect(blockActionLinks({ type: "cta", label: "Book a table", href: "/about" })[0]?.intent).toBe("booking");
+    expect(blockActionLinks({ type: "offering_grid", cta_label: "See more", cta_href: "/trips" })[0]?.intent).toBe("booking");
     expect(blockActionLinks({ type: "hours_location", map_url: "https://maps.example.com" })).toEqual([]);
   });
 });
@@ -200,13 +203,15 @@ describe("#4453 the artifact validator (I-SITES-ACTIONS-RESOLVE-TO-MINGLA)", () 
 });
 
 describe("#4453 outboundActionLinks (the OUTBOUND_ACTION_LINK publish check)", () => {
-  it("names every outside button with its page, block and field", () => {
+  it("names every failing button with its page, block, field and intent", () => {
+    // The original gögi fixture links a made-up maps host, a PDF on another
+    // site and a WhatsApp number that isn't the brand's: none is allowed.
     const artifact = gogi();
     const links = outboundActionLinks({ pages: artifact.pages, scope: { brandSlug: "example", sitePaths: siteAnswerPaths(artifact) } });
-    expect(links.map((link) => `${link.blockType}.${link.field}:${link.problem}`).sort()).toEqual([
-      "contact_handoff.href:outside_mingla",
-      "cta.href:outside_mingla",
-      "menu_link.href:outside_mingla",
+    expect(links.map((link) => `${link.blockType}.${link.field}:${link.intent}:${link.problem}`).sort()).toEqual([
+      "contact_handoff.href:informational:not_brand_contact",
+      "cta.href:informational:outside_mingla",
+      "menu_link.href:informational:outside_mingla",
     ]);
   });
 
@@ -214,8 +219,95 @@ describe("#4453 outboundActionLinks (the OUTBOUND_ACTION_LINK publish check)", (
     const artifact = gogiLocked();
     const scope = { brandSlug: "example", sitePaths: siteAnswerPaths(artifact) };
     expect(outboundActionLinks({ pages: artifact.pages, scope })).toEqual([]);
-    expect(outboundActionLinks({ pages: [], headerCtaHref: "https://calendly.com/x", scope })[0])
-      .toMatchObject({ pagePath: null, field: "header_cta.href", problem: "outside_mingla" });
+    expect(outboundActionLinks({ pages: [], headerCtaHref: "https://example.com/x", scope })[0])
+      .toMatchObject({ pagePath: null, field: "header_cta.href", intent: "booking", problem: "outside_mingla" });
+  });
+});
+
+/*
+ * #4453 PR 2 rework — informational buttons may leave the site. A gögi-shaped
+ * site (Directions to Google Maps, a PDF menu in its own media, its own
+ * WhatsApp) publishes cleanly; a booking button or any button to a booking
+ * site does not.
+ */
+const GOGI_PHONE = "+234 000 000 0000";
+function gogiShaped(): ArtifactV2 {
+  const artifact = gogi();
+  for (const page of artifact.pages) {
+    for (const block of page.blocks as any[]) {
+      if (block.type === "cta" && /^https:/.test(block.href)) block.href = "https://maps.google.com/?q=1+Example+Way+Lagos";
+      if (block.type === "menu_link") block.href = "https://example-food.sites.usemingla.com/media/4c1c6d1e-0000-4000-8000-000000000001/menu.pdf";
+      if (block.type === "contact_handoff") block.href = "https://wa.me/2340000000000";
+    }
+  }
+  artifact.action_scope = { brand_slug: "example", contact_phone: GOGI_PHONE };
+  return artifact;
+}
+const scopeOf = (artifact: ArtifactV2): MinglaActionScope => ({ brandSlug: "example", sitePaths: siteAnswerPaths(artifact), contactPhone: GOGI_PHONE });
+
+describe("#4453 informational links stay; booking links go to Mingla", () => {
+  it("a gögi-shaped site (maps, PDF menu, WhatsApp) publishes cleanly", () => {
+    const artifact = gogiShaped();
+    expect(outboundActionLinks({ pages: artifact.pages, scope: scopeOf(artifact) })).toEqual([]);
+    expect(() => assertArtifactV2(artifact)).not.toThrow();
+  });
+
+  it("a PDF menu in the site's own /media/ path passes as information", () => {
+    expect(actionHrefProblem("/media/4c1c6d1e-0000-4000-8000-000000000001/menu.pdf", SCOPE, "informational")).toBeNull();
+    expect(actionHrefProblem("/media/4c1c6d1e-0000-4000-8000-000000000001/menu.pdf", SCOPE, "booking")).toBe("page_missing");
+  });
+
+  it("a “Book a table” button to OpenTable is refused", () => {
+    const artifact = gogiShaped() as any;
+    const cta = artifact.pages.flatMap((page: any) => page.blocks).find((block: any) => block.type === "cta" && block.href.startsWith("https://maps"));
+    cta.label = "Book a table";
+    cta.href = "https://www.opentable.com/r/example-lagos";
+    expect(outboundActionLinks({ pages: artifact.pages, scope: scopeOf(artifact) }))
+      .toEqual([expect.objectContaining({ blockType: "cta", intent: "booking", problem: "booking_site" })]);
+    expect(() => assertArtifactV2(artifact)).toThrow("ARTIFACT_BLOCK_CONTENT_MISMATCH:cta.href");
+  });
+
+  it("a booking site is refused even on a button that doesn't say book", () => {
+    for (const href of ["https://www.eventbrite.co.uk/e/123", "https://resy.com/cities/x", "https://www.sevenrooms.com/x", "https://www.booking.com/hotel/x", "https://www.airbnb.co.uk/rooms/1", "https://feverup.com/x", "https://www.designmynight.com/x", "https://www.exploretock.com/x"]) {
+      expect(actionHrefProblem(href, SCOPE, "informational"), href).toBe("booking_site");
+    }
+  });
+
+  it("a social profile is allowed on an informational button", () => {
+    for (const href of ["https://www.instagram.com/example", "https://www.tiktok.com/@example", "https://facebook.com/example", "https://x.com/example"]) {
+      expect(actionHrefProblem(href, SCOPE, "informational"), href).toBeNull();
+    }
+    const artifact = gogiShaped() as any;
+    artifact.pages[0].blocks.find((block: any) => block.type === "media_feature").cta_href = "https://www.instagram.com/example";
+    expect(() => assertArtifactV2(artifact)).not.toThrow();
+  });
+
+  it("maps: Google, Apple and OpenStreetMap only", () => {
+    for (const href of ["https://www.google.com/maps/place/x", "https://maps.app.goo.gl/abc", "https://maps.apple.com/?q=x", "https://www.openstreetmap.org/#map=1/2/3"]) {
+      expect(actionHrefProblem(href, SCOPE, "informational"), href).toBeNull();
+    }
+    expect(actionHrefProblem("https://www.google.com/search?q=x", SCOPE, "informational")).toBe("outside_mingla");
+  });
+
+  it("only the brand's own WhatsApp", () => {
+    expect(actionHrefProblem("https://wa.me/2348012345678", SCOPE, "informational")).toBeNull();
+    expect(actionHrefProblem("https://wa.me/15550000000", SCOPE, "informational")).toBe("not_brand_contact");
+    expect(actionHrefProblem("https://wa.me/2348012345678", SCOPE, "booking")).toBe("outside_mingla");
+  });
+
+  it("a hero button to any outside site is refused, whatever its label", () => {
+    for (const href of ["https://www.instagram.com/example", "https://maps.google.com/?q=x", "https://example.com/"]) {
+      const artifact = gogiShaped() as any;
+      artifact.pages[0].blocks[0].ctas = [{ label: "Follow us", href }];
+      expect(() => assertArtifactV2(artifact), href).toThrow("ARTIFACT_BLOCK_CONTENT_MISMATCH:hero.ctas");
+    }
+  });
+
+  it("a button whose label books or pays is locked to Mingla", () => {
+    const artifact = gogiShaped() as any;
+    const handoff = artifact.pages.flatMap((page: any) => page.blocks).find((block: any) => block.type === "contact_handoff");
+    handoff.label = "Reserve on WhatsApp";
+    expect(() => assertArtifactV2(artifact)).toThrow("ARTIFACT_BLOCK_CONTENT_MISMATCH:contact_handoff.href");
   });
 });
 

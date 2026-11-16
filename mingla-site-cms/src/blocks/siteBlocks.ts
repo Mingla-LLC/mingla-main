@@ -9,7 +9,7 @@ import {
   UnorderedListFeature,
   lexicalEditor,
 } from "@payloadcms/richtext-lexical";
-import { safeActionUrl, safeText, safeTimeZone, safeUrl } from "../lib/validation";
+import { buttonUrl, safeActionUrl, safeText, safeTimeZone, safeUrl } from "../lib/validation";
 import { statsIconOptions } from "../lib/statsIcons";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
@@ -41,9 +41,12 @@ const short = (
 });
 /*
  * #4453 PR 2 — every block link here is a BUTTON (an action link) except the
- * map and directions links, which say so with `safeUrl`.
+ * map and directions links, which say so with `safeUrl`. A button is checked
+ * by its label (`buttonUrl("label")`: booking words lock it to Mingla);
+ * hero buttons and the empty-offerings button always book (`safeActionUrl`).
  */
-const link = (name = "href", label = "Link", required = true, validate: (value: unknown) => true | string = safeActionUrl): Field => ({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Payload's validate signature varies by field type.
+const link = (name = "href", label = "Link", required = true, validate: (value: unknown, options?: any) => true | string = buttonUrl("label")): Field => ({
   name,
   label,
   type: "text",
@@ -96,6 +99,8 @@ const eyebrow = (): Field =>
   );
 
 const ctaFields: Field[] = [short("label", "Label", true, 80), link()];
+// #4453 PR 2 — the hero's buttons are the site's primary actions: always booking.
+const heroCtaFields: Field[] = [short("label", "Label", true, 80), link("href", "Link", true, safeActionUrl)];
 
 /*
  * #3149 wave 4 — an OPTIONAL button, offered on four blocks that had no way to
@@ -117,7 +122,7 @@ const optionalCta = (
     80,
     `Optional. The words on the button ${where} — for example \u201c${what}\u201d. Leave both this and the link empty and no button is shown.`,
   ),
-  link("cta_href", "Button link", false),
+  link("cta_href", "Button link", false, buttonUrl("cta_label")),
 ];
 
 const BLOCK_CONFIGS: Block[] = [
@@ -172,7 +177,7 @@ const BLOCK_CONFIGS: Block[] = [
             "Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.",
         },
       },
-      { name: "ctas", type: "array", maxRows: 2, fields: ctaFields },
+      { name: "ctas", type: "array", maxRows: 2, fields: heroCtaFields },
     ],
   },
   {
@@ -357,7 +362,7 @@ const BLOCK_CONFIGS: Block[] = [
       short("intro", "Line under the heading", false, 500),
       ...optionalCta("See all trips", "beside the heading"),
       short("empty_cta_label", "Button when there is nothing to show", false, 80, "Optional, for example \u201cGet in touch\u201d."),
-      link("empty_cta_href", "Its link", false),
+      link("empty_cta_href", "Its link", false, safeActionUrl),
       {
         name: "offering_ids",
         label: "Mingla offering IDs",
@@ -550,7 +555,7 @@ const BLOCK_CONFIGS: Block[] = [
         80,
         "Optional, and only used on the FIRST of several videos in a row. The words on the button printed under the grid \u2014 for example \u201cFollow @yourhandle\u201d.",
       ),
-      link("group_cta_href", "Group button link", false),
+      link("group_cta_href", "Group button link", false, buttonUrl("group_cta_label")),
       short("heading", "Heading", false, 120),
       short("caption", "Caption", false, 600),
       {

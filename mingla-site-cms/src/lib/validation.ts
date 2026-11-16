@@ -1,4 +1,4 @@
-import { actionHrefProblem } from "../contracts/generated/safety.ts";
+import { actionHrefProblem, offersBookingOrPayment } from "../contracts/generated/safety.ts";
 const FORBIDDEN_TEXT = /<(?:script|style|iframe|svg)|\son[a-z]+\s*=|javascript:|data:|blob:|file:/i;
 const HEX = /^#[0-9a-f]{6}$/i;
 // #3149 wave 4 — `reservations` links straight into Mingla's own booking
@@ -13,11 +13,11 @@ export function safeUrl(value: unknown): true | string {
   try { const url = new URL(value); return !url.username && !url.password && ["https:", "mailto:", "tel:"].includes(url.protocol) ? true : "Only secure web, email, or telephone links are allowed."; } catch { return "Enter a valid link."; }
 }
 /*
- * #4453 PR 2 (booking lock) — a BUTTON link. Bookings and payments on a
- * Mingla site go through Mingla, so a button may only open a page of this
- * site, a Mingla page (host.usemingla.com /t/, /e/, /exp/, /b/, /checkout/),
- * or an email or phone link. Which brand the Mingla page belongs to is
- * checked at publish, where Core names the brand (OUTBOUND_ACTION_LINK).
+ * #4453 PR 2 (booking lock) — a BOOKING button link. Bookings and payments on
+ * a Mingla site go through Mingla, so a booking button may only open a page
+ * of this site, a Mingla page (host.usemingla.com /t/, /e/, /exp/, /b/,
+ * /checkout/), or an email or phone link. Which brand the Mingla page belongs
+ * to is checked at publish, where Core names the brand (OUTBOUND_ACTION_LINK).
  */
 export const ACTION_LINK_MESSAGE =
   "This button points outside Mingla. Bookings and payments on your site go through Mingla. Use a page of your site or one of your Mingla pages.";
@@ -25,7 +25,30 @@ export function safeActionUrl(value: unknown): true | string {
   if (value == null || value === "") return true;
   const safe = safeUrl(value);
   if (safe !== true) return safe;
-  return actionHrefProblem(value, null) === null ? true : ACTION_LINK_MESSAGE;
+  return actionHrefProblem(value, null, "booking") === null ? true : ACTION_LINK_MESSAGE;
+}
+
+export const BOOKING_SITE_MESSAGE =
+  "That site takes bookings or payments. Bookings and payments on your site go through Mingla. Use one of your Mingla pages.";
+export const INFO_LINK_MESSAGE =
+  "A button can link to your pages, your Mingla pages, a map, your social profiles, a file on your site, or your own WhatsApp, email or phone.";
+
+/*
+ * #4453 PR 2 rework — any other button: a booking action when its label
+ * (`labelField` beside it) reads as booking or paying, else informational
+ * (maps, socials, the site's own files and WhatsApp may stay). A third-party
+ * booking site is refused either way.
+ */
+export function buttonUrl(labelField: string) {
+  return (value: unknown, options?: { siblingData?: Record<string, unknown> }): true | string => {
+    if (value == null || value === "") return true;
+    const safe = safeUrl(value);
+    if (safe !== true) return safe;
+    const booking = offersBookingOrPayment(options?.siblingData?.[labelField]);
+    const problem = actionHrefProblem(value, null, booking ? "booking" : "informational");
+    if (problem === null) return true;
+    return problem === "booking_site" ? BOOKING_SITE_MESSAGE : booking ? ACTION_LINK_MESSAGE : INFO_LINK_MESSAGE;
+  };
 }
 export function boundedColor(value: unknown): true | string { return value == null || value === "" || (typeof value === "string" && HEX.test(value)) ? true : "Use a six-digit color value."; }
 /*

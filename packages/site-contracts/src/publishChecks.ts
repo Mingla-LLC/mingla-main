@@ -8,7 +8,7 @@
  * sentences (each already names its page, "(Home, Call to action block 2)").
  */
 import { blockActionLinks } from "./blocks.ts";
-import { actionHrefProblem, type ActionHrefProblem, type MinglaActionScope } from "./safety.ts";
+import { actionHrefProblem, type ActionHrefProblem, type ActionIntent, type MinglaActionScope } from "./safety.ts";
 
 export type PublishFinding = {
   /** The check it came from ("truth", "links"…). */
@@ -60,8 +60,9 @@ export function publishFindingsCount(count: number): string {
 }
 
 /*
- * #4453 PR 2 (booking lock, D5) — the one publish check that BLOCKS: a button
- * that points outside Mingla. Bookings and payments on a Mingla site go
+ * #4453 PR 2 (booking lock, D5) — the one publish check that BLOCKS: a booking
+ * button that points outside Mingla, or any button to a third-party booking
+ * site (informational buttons may open maps, socials and files). Bookings and payments on a Mingla site go
  * through Mingla, so a single action link that fails isMinglaActionHref stops
  * the publish with this code, and the last good site stays live.
  *
@@ -82,6 +83,8 @@ export type OutboundActionLink = {
   /** The field ("href", "ctas[0].href", "header_cta.href"). */
   readonly field: string;
   readonly href: string;
+  /** Booking buttons must resolve to Mingla; informational ones may also open maps, socials, files. */
+  readonly intent: ActionIntent;
   readonly problem: ActionHrefProblem;
 };
 
@@ -105,7 +108,7 @@ export function outboundActionLinks(input: {
   for (const page of input.pages) {
     (page.blocks ?? []).forEach((block, blockIndex) => {
       for (const link of blockActionLinks(block)) {
-        const problem = actionHrefProblem(link.href, input.scope);
+        const problem = actionHrefProblem(link.href, input.scope, link.intent);
         if (problem) {
           out.push({
             pagePath: page.path,
@@ -113,6 +116,7 @@ export function outboundActionLinks(input: {
             blockType: String(block.type ?? block.blockType),
             field: link.field,
             href: asText(link.href),
+            intent: link.intent,
             problem,
           });
         }
@@ -122,7 +126,7 @@ export function outboundActionLinks(input: {
   if (input.headerCtaHref !== undefined && input.headerCtaHref !== null && input.headerCtaHref !== "") {
     const problem = actionHrefProblem(input.headerCtaHref, input.scope);
     if (problem) {
-      out.push({ pagePath: null, blockIndex: null, blockType: null, field: "header_cta.href", href: asText(input.headerCtaHref), problem });
+      out.push({ pagePath: null, blockIndex: null, blockType: null, field: "header_cta.href", href: asText(input.headerCtaHref), intent: "booking", problem });
     }
   }
   return out;
