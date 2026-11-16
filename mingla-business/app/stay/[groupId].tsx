@@ -30,6 +30,9 @@ import { StayGuestError, stayGuestService } from "../../src/services/stayGuestSe
 import { StayOtherContactNotice } from "../../src/components/stay/StayOtherContactNotice";
 import { SecurePaymentHandoff } from "../../src/components/offering/LazyPublicParts";
 import { useAuth } from "../../src/context/AuthContext";
+import { useBrandMessage } from "../../src/components/brandContact/useBrandMessage";
+import { usePublicBrandIdentity } from "../../src/hooks/usePublicBrandEnquiry";
+import { showAlert } from "../../src/components/ui/showAlert";
 
 import { color } from "../../src/constants/designSystem";
 const UUID =
@@ -50,12 +53,57 @@ export default function StayReservationRoute(): React.ReactElement {
   const router = useRouter();
   const { user, signOut } = useAuth();
   // issue #4420 wave 2 (D-S7) — the booking belongs to another contact.
-  const otherContact =
+  const otherContactView =
     query.error instanceof StayGuestError &&
-    query.error.code === "stay_group_other_contact" &&
-    query.error.maskedEmail !== null
-      ? query.error.maskedEmail
+    query.error.code === "stay_group_other_contact"
+      ? query.error.otherContact
       : null;
+  const otherContact =
+    otherContactView?.maskedEmail ??
+    (query.error instanceof StayGuestError &&
+    query.error.code === "stay_group_other_contact"
+      ? query.error.maskedEmail
+      : null);
+  // issue #4420 wave 2 (D-S7) — "Email me the booking link again": the server
+  // re-sends it to the booking's OWN address; the guest is told the mask only.
+  const [resending, setResending] = useState(false);
+  const resendLink = async (): Promise<void> => {
+    if (groupId === null || resending) return;
+    setResending(true);
+    captureWeb("stay_other_contact_resend", { surface: "buyer_web", group_id: groupId });
+    try {
+      const sent = await stayGuestService.resendGuestLink(groupId);
+      showAlert(`Sent to ${sent.maskedEmail}`, undefined, undefined, { kind: "success" });
+    } catch (caught) {
+      showAlert(
+        caught instanceof StayGuestError && caught.code === "stay_resend_not_available"
+          ? "This booking has no link to send again. Ask the property instead."
+          : "We couldn't send the link just now. Try again in a few minutes.",
+      );
+    } finally {
+      setResending(false);
+    }
+  };
+  // "Ask {Stay} to change the email" — the brand's own enquiry thread.
+  const otherBrandQuery = usePublicBrandIdentity(otherContactView?.brandSlug ?? null);
+  const otherBrand = otherBrandQuery.data ?? null;
+  const otherBrandTarget = useMemo(
+    () =>
+      otherBrand === null
+        ? null
+        : {
+            id: otherBrand.id,
+            name: otherBrand.name,
+            slug: otherBrand.slug,
+            theme: resolveTheme(otherBrand.theme, null),
+          },
+    [otherBrand],
+  );
+  const otherBrandMessage = useBrandMessage({
+    brand: otherBrandTarget,
+    viewer: { userId: user?.id ?? null, name: null },
+    entry: "brand_page",
+  });
   const groupViewFired = useRef(false);
   const parityViewFired = useRef(false);
   const routeState = resolveBuyerWebPublicLifecycle({
@@ -150,6 +198,21 @@ export default function StayReservationRoute(): React.ReactElement {
           palette={palette}
           maskedEmail={otherContact}
           currentEmail={user?.email ?? null}
+          stayName={otherContactView?.venueName ?? null}
+          reference={otherContactView?.publicReference ?? null}
+          onResend={otherContactView?.resendable === true ? () => void resendLink() : null}
+          resending={resending}
+          onAskHost={
+            otherBrandMessage.available && otherBrandTarget !== null
+              ? () => {
+                  captureWeb("stay_other_contact_ask_host", {
+                    surface: "buyer_web",
+                    group_id: groupId,
+                  });
+                  otherBrandMessage.open();
+                }
+              : null
+          }
           onSignInOther={() => {
             captureWeb("stay_other_contact_sign_in", { surface: "buyer_web", group_id: groupId });
             void signOut().finally(() => {
@@ -263,6 +326,7 @@ export default function StayReservationRoute(): React.ReactElement {
       {query.isFetching && !query.isLoading ? (
         <ActivityIndicator color={palette.accent} />
       ) : null}
+      {otherBrandMessage.overlays}
     </ScrollView>
   );
 }
