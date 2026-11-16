@@ -321,7 +321,7 @@ export default function AccountTab(): React.ReactElement {
         <DesktopColumns
           main={
             <View style={styles.section}>
-              <AccountSectionHead title="Your brands" sub="Tap a brand to open its profile." />
+              <AccountSectionHead title="Your brands" />
               {/* ORCH-1136 F-4 defense-in-depth: render the brands list whenever it
                  is populated, even if the status machine is transiently in a loading
                  state during a background refetch. */}
@@ -430,10 +430,7 @@ export default function AccountTab(): React.ReactElement {
 
               {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
               <View style={styles.section}>
-                <AccountSectionHead
-                  title="Settings"
-                  sub="Manage your profile, notifications, and session."
-                />
+                <AccountSectionHead title="Settings" />
                 <GlassCard variant="base" padding={0}>
                   <SettingsNavRow
                     icon="user"

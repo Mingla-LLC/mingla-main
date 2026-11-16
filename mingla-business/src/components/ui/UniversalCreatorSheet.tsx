@@ -294,9 +294,6 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
         <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>What are you creating?</Text>
-            <Text style={styles.headerSubtitle}>
-              Pick one and we&apos;ll walk you through it.
-            </Text>
           </View>
           <View style={styles.rows}>
             {ROOT_OPTIONS.map((option) => (
@@ -396,9 +393,6 @@ export const UniversalCreatorSheet: React.FC<UniversalCreatorSheetProps> = ({
               </Pressable>
             ) : null}
             <Text style={styles.headerTitle}>Create an experience</Text>
-            <Text style={styles.headerSubtitle}>
-              Snap a menu and let Mingla draft it for you, or build it yourself.
-            </Text>
           </View>
           <View style={styles.rows}>
             {EXPERIENCE_OPTIONS.map((option) => (
