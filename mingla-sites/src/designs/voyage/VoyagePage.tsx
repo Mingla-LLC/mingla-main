@@ -15,6 +15,11 @@ import { DestinationTemplate } from "./templates/DestinationTemplate";
 import { StoryTemplate } from "./templates/StoryTemplate";
 import { NotFoundTemplate } from "./templates/NotFoundTemplate";
 import type { VoyageBlock, VoyageContext } from "./parts";
+import { DESIGNS } from "../../contracts/generated/designs.ts";
+import { hrefForPage } from "../../lib/pageRouting";
+import { SharedFooter, SharedHeader } from "../shared/chrome/SharedChrome";
+import { motionAttributes } from "../shared/library";
+import { MotionRoot } from "../shared/MotionRoot";
 
 /*
  * #2829 W7 — one voyage page: the head script, the skip link, the header,
@@ -58,15 +63,35 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
       return Variant ? <Fragment key={`${block.type}-${index}`}><Variant block={block} index={index} ctx={ctx} /></Fragment> : null;
     });
   }
+  /*
+   * #4453 §3.3 — a site whose navigation names a shared header is a new
+   * composition: it gets the shared chrome and the gallery look. A stored
+   * site without one keeps voyage's own header and footer exactly.
+   */
+  const headerVariant = artifact.navigation.header_variant;
+  const footerVariant = artifact.footer.footer_variant;
+  const gallery = Boolean(headerVariant);
+  const motion = motionAttributes(DESIGNS.voyage, artifact.tokens.motion);
+  const path = current ? hrefForPage(current) : "/";
   return (
-    <div className="v-page">
+    <div
+      id="mg-scope"
+      className={`v-page mg-scope${gallery ? " mg-page" : ""}`}
+      data-mg-look={gallery ? "gallery" : undefined}
+      data-motion={motion["data-motion"]}
+      data-mg-profile={motion["data-mg-profile"]}
+      style={motion.style}
+    >
       {/* The 404 has no cover and no reveals, and may render on the client, where a script never runs. */}
       {notFound || !current ? null : <script nonce={nonce} dangerouslySetInnerHTML={{ __html: VOYAGE_HEAD_SCRIPT }} />}
       <SiteRuntimeClient context={analytics} />
       <a href="#main" className="skip-link">Skip to content</a>
-      <VoyageHeader items={items} logo={logo} siteName={siteName} cta={headerCta(artifact)} />
+      {headerVariant
+        ? <SharedHeader variant={headerVariant} items={items} path={path} logo={logo} siteName={siteName} cta={headerCta(artifact)} place={artifact.footer.location} />
+        : <VoyageHeader items={items} logo={logo} siteName={siteName} cta={headerCta(artifact)} />}
       <main id="main" className="v-main">{content}</main>
-      <VoyageFooter artifact={artifact} />
+      {footerVariant ? <SharedFooter variant={footerVariant} artifact={artifact} items={items} /> : <VoyageFooter artifact={artifact} />}
+      {notFound || !current ? null : <MotionRoot rootId="mg-scope" />}
     </div>
   );
 }
