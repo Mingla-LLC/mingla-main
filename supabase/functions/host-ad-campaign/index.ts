@@ -1616,8 +1616,10 @@ async function acceptLastTickets(db: any, actorId: string, brandId: string, body
   return json({
     ok: true,
     accepted: open.map((row) => row.platform),
-    // Snapchat and TikTok keep the words for the next ad (applied on Meta).
-    applied_by_sweep: open.map((row) => row.platform).filter((platform) => platform === "meta"),
+    // #4238 W4c: the hourly sweep applies it on Meta, Snapchat and TikTok.
+    applied_by_sweep: open.map((row) => row.platform).filter((platform) =>
+      platform === "meta" || platform === "snapchat" || platform === "tiktok"
+    ),
   }, 200);
 }
 

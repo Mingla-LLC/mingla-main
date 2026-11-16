@@ -45,8 +45,15 @@ import {
   parseTikTokStageMetrics,
 } from "../_shared/adStageReporting.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
-import { resolveTikTokClient, tiktokApi } from "../_shared/tiktok.ts";
-import { resolveSnapchatClient } from "../_shared/snapchat.ts";
+import {
+  resolveTikTokClient,
+  tiktokApi,
+  tiktokCopyAdWithText,
+} from "../_shared/tiktok.ts";
+import {
+  resolveSnapchatClient,
+  snapchatCopyAdWithHeadline,
+} from "../_shared/snapchat.ts";
 import {
   fetchSnapchatAdSquadStats,
   fetchSnapchatCampaignStats,
@@ -62,11 +69,16 @@ import {
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
 import {
+  type LastTicketsAdOps,
   parseMetaResultCounts,
   runHostAdAutomation,
 } from "../_shared/adGoalPromotion.ts";
 import { loadHostLiveSinceMs } from "../_shared/adHostLiveEdit.ts";
-import { parseMetaAdMetrics } from "../_shared/adCreativeFatigue.ts";
+import {
+  parseMetaAdMetrics,
+  parseSnapchatAdMetrics,
+  parseTikTokAdMetrics,
+} from "../_shared/adCreativeFatigue.ts";
 import { markPlanPaused } from "../_shared/adPlanPauseTransition.ts";
 import {
   dispatchNotification,
@@ -557,11 +569,13 @@ async function readOfferingStock(
 }
 
 /**
- * #4238 T-4: per-ad daily impressions, link clicks and spend for a live Host
- * campaign, into ad_creative_metrics_daily (the tired-creative signal reads
- * it). Meta (level "ad") in W3; TikTok AUCTION_AD and Snap per-ad stats are
- * carried to W4 with one ad per extra creative. Best effort: a failure is
- * reported and never blocks the spend sync.
+ * #4238 T-4 / W4c: per-ad daily impressions, link clicks and spend for a
+ * live Host campaign, into ad_creative_metrics_daily (the tired-creative
+ * signal reads it). Meta level "ad" (W3); TikTok BASIC report AUCTION_AD by
+ * ad_id + stat_time_day and Snapchat campaign stats with breakdown=ad (W4c,
+ * both from the apps' docs). Each row carries the library creative of its
+ * own ad (Mingla's ads row), so one ad per extra creative is read apart.
+ * Best effort: a failure is reported and never blocks the spend sync.
  */
 async function syncHostAdMetrics(
   // deno-lint-ignore no-explicit-any
@@ -570,28 +584,63 @@ async function syncHostAdMetrics(
     connection: AdConnectionRow;
     target: CampaignSpendTarget;
     canonical: Record<string, unknown> | null;
+    snapchatTimeZoneCache?: Map<string, string | null>;
   },
 ): Promise<string> {
-  if (input.target.platform !== "meta") return "not_supported";
+  const platform = input.target.platform;
+  if (platform !== "meta" && platform !== "tiktok" && platform !== "snapchat") {
+    return "not_supported";
+  }
   try {
-    const client = resolveMetaClient(input.connection);
     const { since, until } = spendWindow();
-    const payload = await metaGraph(
-      client,
-      "GET",
-      `${input.target.external_campaign_id}/insights`,
-      {
-        fields: "ad_id,spend,impressions,inline_link_clicks,date_start",
-        time_increment: 1,
-        time_range: { since, until },
-        level: "ad",
-        limit: 1000,
-      },
-    );
-    const rows = parseMetaAdMetrics(payload);
+    let rows: ReturnType<typeof parseMetaAdMetrics>;
+    if (platform === "meta") {
+      const client = resolveMetaClient(input.connection);
+      rows = parseMetaAdMetrics(
+        await metaGraph(
+          client,
+          "GET",
+          `${input.target.external_campaign_id}/insights`,
+          {
+            fields: "ad_id,spend,impressions,inline_link_clicks,date_start",
+            time_increment: 1,
+            time_range: { since, until },
+            level: "ad",
+            limit: 1000,
+          },
+        ),
+      );
+    } else if (platform === "tiktok") {
+      const client = resolveTikTokClient(input.connection);
+      rows = parseTikTokAdMetrics(
+        await tiktokApi(client, "GET", "report/integrated/get/", {
+          advertiser_id: client.advertiserId,
+          report_type: "BASIC",
+          data_level: "AUCTION_AD",
+          dimensions: ["ad_id", "stat_time_day"],
+          metrics: ["spend", "impressions", "clicks"],
+          start_date: since,
+          end_date: until,
+          filtering: { campaign_ids: [input.target.external_campaign_id] },
+          page_size: 1000,
+        }),
+      );
+    } else {
+      const client = await resolveSnapchatClient(input.connection);
+      rows = parseSnapchatAdMetrics(
+        await fetchSnapchatCampaignStats(
+          client,
+          input.target.external_campaign_id,
+          {
+            timeZoneCache: input.snapchatTimeZoneCache,
+            breakdown: "ad",
+          },
+        ),
+      );
+    }
     if (rows.length === 0) return "none";
-    // One ad per Host campaign until W4 (one ad per extra creative).
-    const creativeId = typeof input.canonical?.creative_library_id === "string"
+    const creativeByAd = await hostAdCreativeIds(supabase, input.target.id);
+    const fallback = typeof input.canonical?.creative_library_id === "string"
       ? input.canonical.creative_library_id
       : null;
     const currency = String(input.target.provider_currency ?? "").trim()
@@ -600,8 +649,8 @@ async function syncHostAdMetrics(
       rows.map((row) => ({
         ...row,
         campaign_id: input.target.id,
-        platform: "meta",
-        creative_id: creativeId,
+        platform,
+        creative_id: creativeByAd.get(row.provider_ad_id) ?? fallback,
         currency,
         synced_at: new Date().toISOString(),
       })),
@@ -611,6 +660,49 @@ async function syncHostAdMetrics(
   } catch (err) {
     return `failed:${err instanceof Error ? err.message : String(err)}`;
   }
+}
+
+/** #4238 W4c: provider ad id → the library creative it runs (ads rows). */
+async function hostAdCreativeIds(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const { data: sets, error } = await supabase.from("ad_sets").select("id")
+    .eq("campaign_id", campaignId);
+  if (error || !Array.isArray(sets) || sets.length === 0) return out;
+  const { data: ads } = await supabase.from("ads")
+    .select("external_ad_id,creative_id")
+    .in("ad_set_id", sets.map((row: Record<string, unknown>) => String(row.id)));
+  for (const ad of (ads ?? []) as Record<string, unknown>[]) {
+    if (typeof ad.external_ad_id === "string" && typeof ad.creative_id === "string") {
+      out.set(ad.external_ad_id, ad.creative_id);
+    }
+  }
+  return out;
+}
+
+/**
+ * #4238 W4c (5c): the provider steps the last-tickets offer takes on
+ * Snapchat and TikTok (new ad with the words, review status, pause). Null on
+ * other apps (Meta uses its Graph path).
+ */
+function hostLastTicketsAdOps(
+  platform: string,
+  connection: AdConnectionRow,
+): LastTicketsAdOps | null {
+  if (platform !== "snapchat" && platform !== "tiktok") return null;
+  const adapter = getAdapter(platform);
+  return {
+    copyAd: (adSetId, adId, text) =>
+      platform === "snapchat"
+        ? snapchatCopyAdWithHeadline(connection, adSetId, adId, text)
+        : tiktokCopyAdWithText(connection, adSetId, adId, text),
+    reviewStatus: async (adId) =>
+      (await adapter.getStatus(connection, "ad", adId)).effectiveStatus,
+    pauseAd: (adId) => adapter.setStatus(connection, "ad", adId, "PAUSED"),
+  };
 }
 
 async function hostAutomation(
@@ -639,6 +731,8 @@ async function hostAutomation(
         ? (method, path, params) => metaGraph(meta, method, path, params)
         : null,
       adAccountId: meta ? String(meta.config.adAccountId ?? "") || null : null,
+      // #4238 W4c: Snapchat / TikTok last-tickets steps (adapter hooks).
+      adOps: hostLastTicketsAdOps(input.target.platform, input.connection),
       readStock: async () => {
         const stock = await readOfferingStock(
           supabase,
@@ -1234,6 +1328,7 @@ serve(async (req: Request): Promise<Response> => {
           connection: spendConnection,
           target,
           canonical,
+          snapchatTimeZoneCache,
         });
         if (!adMetrics.startsWith("synced") && adMetrics !== "none") {
           console.error("[admin-ad-spend-sync] host ad metrics:", adMetrics);

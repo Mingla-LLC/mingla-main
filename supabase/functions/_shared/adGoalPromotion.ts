@@ -489,12 +489,136 @@ export async function applyLastTicketsOffer(deps: {
   }
 }
 
+/**
+ * #4238 W4c (5c, D-5): the provider steps the last-tickets offer needs on
+ * Snapchat and TikTok (the adapters' copy hooks plus status reads).
+ */
+export type LastTicketsAdOps = {
+  /** A NEW ad in the same ad set with the words; returns its id. */
+  copyAd(adSetExternalId: string, adExternalId: string, text: string): Promise<string>;
+  /** The app's review / delivery status of one ad (effectiveStatus). */
+  reviewStatus(adExternalId: string): Promise<string | null>;
+  pauseAd(adExternalId: string): Promise<void>;
+};
+
+/**
+ * #4238 W4c: what an app's ad status means for a new last-tickets ad. Snap
+ * reports the ad review_status (APPROVED / PENDING / REJECTED); TikTok the
+ * secondary status (AD_STATUS_DELIVERY_OK, AD_STATUS_AUDIT, …_AUDIT_DENY,
+ * …_REAUDIT, …_NOT_APPROVE). Anything unknown waits: the old ads keep running.
+ */
+export function lastTicketsReview(
+  platform: string,
+  status: string | null,
+): "ready" | "refused" | "waiting" {
+  const value = String(status ?? "").toUpperCase();
+  if (platform === "snapchat") {
+    if (value === "APPROVED") return "ready";
+    if (value === "REJECTED") return "refused";
+    return "waiting";
+  }
+  if (platform === "tiktok") {
+    if (/DENY|REJECT|NOT_APPROVE|DELETE/.test(value)) return "refused";
+    if (value === "AD_STATUS_DELIVERY_OK") return "ready";
+    return "waiting";
+  }
+  return "waiting";
+}
+
+/**
+ * #4238 W4c (5c, D-5): the accepted last-tickets offer on Snapchat or TikTok,
+ * the same two hourly steps as Meta (applyLastTicketsOffer):
+ *  1. for every live ad of the campaign (Mingla's ads rows, status ACTIVE),
+ *     a NEW ad in the same ad set with the frozen words, through the app's
+ *     normal review (nothing spends on it until the app approves it);
+ *  2. once every new ad is approved, the old ads are paused (applied). A
+ *     refused new ad is paused and the row marked failed; old ads untouched.
+ * Never throws; a provider error marks the row failed.
+ */
+export async function applyLastTicketsOfferByAds(deps: {
+  db: Db;
+  platform: "snapchat" | "tiktok";
+  ops: LastTicketsAdOps;
+}, input: {
+  row: PromotionRow;
+  campaignId: string;
+  nowIso: string;
+}): Promise<string> {
+  const { db, ops } = deps;
+  const detail = input.row.detail ?? {};
+  const primary = typeof detail.primary === "string" ? detail.primary : "";
+  const fail = async (error: string) => {
+    await db.from("ad_plan_automation_events").update({
+      status: "failed",
+      detail: { ...detail, error },
+    }).eq("id", input.row.id).eq("status", "pending");
+    return `failed:${error}`;
+  };
+  if (!primary) return await fail("last_tickets_copy_missing");
+  try {
+    const made = Array.isArray(detail.new_ad_ids)
+      ? (detail.new_ad_ids as unknown[]).map(String)
+      : [];
+    if (made.length === 0) {
+      const { data: sets, error: setError } = await db.from("ad_sets")
+        .select("id,external_adset_id").eq("campaign_id", input.campaignId);
+      if (setError) return await fail("ad_sets_read_failed");
+      const setRows = (sets ?? []) as Record<string, unknown>[];
+      const external = new Map(
+        setRows.map((set) => [String(set.id), String(set.external_adset_id ?? "")]),
+      );
+      if (setRows.length === 0) return await fail("no_live_ads_to_copy");
+      const { data: ads, error: adError } = await db.from("ads")
+        .select("id,ad_set_id,external_ad_id,status")
+        .in("ad_set_id", setRows.map((set) => String(set.id)));
+      if (adError) return await fail("ads_read_failed");
+      const created: string[] = [];
+      const old: string[] = [];
+      for (const ad of (ads ?? []) as Record<string, unknown>[]) {
+        if (String(ad.status ?? "").toUpperCase() !== "ACTIVE") continue;
+        const adSetId = external.get(String(ad.ad_set_id)) ?? "";
+        const adId = String(ad.external_ad_id ?? "");
+        if (!adSetId || !adId) continue;
+        created.push(await ops.copyAd(adSetId, adId, primary));
+        old.push(adId);
+      }
+      if (created.length === 0) return await fail("no_live_ads_to_copy");
+      await db.from("ad_plan_automation_events").update({
+        detail: { ...detail, new_ad_ids: created, old_ad_ids: old, started_at: input.nowIso },
+      }).eq("id", input.row.id).eq("status", "pending");
+      return "created";
+    }
+    const reviews: Array<"ready" | "refused" | "waiting"> = [];
+    for (const id of made) {
+      reviews.push(lastTicketsReview(deps.platform, await ops.reviewStatus(id)));
+    }
+    if (reviews.includes("refused")) {
+      for (const id of made) await ops.pauseAd(id);
+      return await fail("new_ad_refused");
+    }
+    if (!reviews.every((review) => review === "ready")) return "waiting";
+    const oldIds = Array.isArray(detail.old_ad_ids)
+      ? (detail.old_ad_ids as unknown[]).map(String)
+      : [];
+    for (const id of oldIds) await ops.pauseAd(id);
+    await db.from("ad_plan_automation_events").update({
+      status: "applied",
+      applied_at: input.nowIso,
+    }).eq("id", input.row.id).eq("status", "pending");
+    return "applied";
+  } catch (error) {
+    return await fail(`provider: ${message(error)}`);
+  }
+}
+
 export async function runHostAdAutomation(deps: {
   db: Db;
   /** Meta Graph for this campaign's connection (null on other apps). */
   graph: Graph | null;
   adAccountId: string | null;
   readStock: () => Promise<OfferingStock | null>;
+  /** #4238 W4c: Snapchat / TikTok ad steps for the last-tickets offer. */
+  adOps?: LastTicketsAdOps | null;
 }, ctx: HostAutomationContext): Promise<Record<string, unknown>> {
   const { db } = deps;
   const report: Record<string, unknown> = {};
@@ -603,7 +727,7 @@ export async function runHostAdAutomation(deps: {
     report.ladder_error = message(error);
   }
 
-  // ── Last tickets: apply an offer the Host accepted (Meta, W4a) ──
+  // ── Last tickets: apply an offer the Host accepted (Meta W4a; Snap/TikTok W4c) ──
   try {
     if (ctx.platform === "meta" && deps.graph && deps.adAccountId) {
       const { data: offer } = await db.from("ad_plan_automation_events")
@@ -616,6 +740,24 @@ export async function runHostAdAutomation(deps: {
       ) {
         report.last_tickets_apply = await applyLastTicketsOffer(
           { db, graph: deps.graph, adAccountId: deps.adAccountId },
+          { row, campaignId: ctx.campaignId, nowIso },
+        );
+      }
+    }
+    // #4238 W4c: Snapchat and TikTok through their adapters' copy hooks.
+    if (
+      (ctx.platform === "snapchat" || ctx.platform === "tiktok") && deps.adOps
+    ) {
+      const { data: offer } = await db.from("ad_plan_automation_events")
+        .select("id,status,detail,created_at,applied_at")
+        .eq("plan_id", ctx.planId).eq("platform", ctx.platform)
+        .eq("kind", "low_stock_copy").maybeSingle();
+      const row = offer as PromotionRow | null;
+      if (
+        row?.status === "pending" && typeof row.detail?.accepted_at === "string"
+      ) {
+        report.last_tickets_apply = await applyLastTicketsOfferByAds(
+          { db, platform: ctx.platform, ops: deps.adOps },
           { row, campaignId: ctx.campaignId, nowIso },
         );
       }

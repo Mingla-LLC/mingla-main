@@ -151,6 +151,93 @@ export function parseMetaAdMetrics(
   return out;
 }
 
+type AdMetricRow = {
+  provider_ad_id: string;
+  metric_date: string;
+  impressions: number;
+  link_clicks: number;
+  spend_cents: number;
+};
+
+function metricCount(value: unknown): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * #4238 W4c: TikTok per-ad daily numbers from a BASIC report with
+ * data_level AUCTION_AD, dimensions ["ad_id","stat_time_day"] and metrics
+ * spend / impressions / clicks (TikTok v1.3 docs). Spend is in the account's
+ * currency units (a decimal string); stat_time_day is "YYYY-MM-DD HH:MM:SS".
+ */
+export function parseTikTokAdMetrics(payload: unknown): AdMetricRow[] {
+  const list = (payload as { list?: unknown } | null)?.list;
+  if (!Array.isArray(list)) return [];
+  const out: AdMetricRow[] = [];
+  for (const raw of list) {
+    const row = raw && typeof raw === "object"
+      ? raw as Record<string, unknown>
+      : {};
+    const dims = (row.dimensions ?? {}) as Record<string, unknown>;
+    const metrics = (row.metrics ?? {}) as Record<string, unknown>;
+    const adId = String(dims.ad_id ?? "").trim();
+    const date = String(dims.stat_time_day ?? "").slice(0, 10);
+    if (!adId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const spend = Number(metrics.spend);
+    out.push({
+      provider_ad_id: adId,
+      metric_date: date,
+      impressions: metricCount(metrics.impressions),
+      link_clicks: metricCount(metrics.clicks),
+      spend_cents: Number.isFinite(spend) && spend > 0
+        ? Math.round(spend * 100)
+        : 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * #4238 W4c: Snapchat per-ad daily numbers from the campaign stats call with
+ * breakdown=ad (Snap measurement docs: timeseries_stats[].timeseries_stat
+ * .breakdown_stats.ad[] each with id and timeseries[] of {start_time, stats}).
+ * Spend is micro-currency (÷ 10,000 → cents); swipes are the link clicks.
+ */
+export function parseSnapchatAdMetrics(payload: unknown): AdMetricRow[] {
+  const series = (payload as { timeseries_stats?: unknown } | null)
+    ?.timeseries_stats;
+  if (!Array.isArray(series)) return [];
+  const out: AdMetricRow[] = [];
+  for (const wrapper of series) {
+    const stat = (wrapper as Record<string, unknown> | null)?.timeseries_stat as
+      | Record<string, unknown>
+      | undefined;
+    const ads = (stat?.breakdown_stats as Record<string, unknown> | undefined)
+      ?.ad;
+    if (!Array.isArray(ads)) continue;
+    for (const ad of ads as Record<string, unknown>[]) {
+      const adId = String(ad?.id ?? "").trim();
+      if (!adId || !Array.isArray(ad.timeseries)) continue;
+      for (const point of ad.timeseries as Record<string, unknown>[]) {
+        const date = String(point?.start_time ?? "").slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+        const stats = (point.stats ?? {}) as Record<string, unknown>;
+        const micro = Number(stats.spend);
+        out.push({
+          provider_ad_id: adId,
+          metric_date: date,
+          impressions: metricCount(stats.impressions),
+          link_clicks: metricCount(stats.swipes),
+          spend_cents: Number.isFinite(micro) && micro > 0
+            ? Math.round(micro / 10_000)
+            : 0,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 // deno-lint-ignore no-explicit-any
 type Db = any;
 

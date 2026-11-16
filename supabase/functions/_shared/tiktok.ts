@@ -3369,3 +3369,67 @@ export const tiktokAdapter: ChannelAdapter = {
   // rollbackCreative is deliberately ABSENT: the creative is inline in
   // ad/create (no account-level residue can exist — QA P2-5 does not apply).
 };
+
+/**
+ * #4238 W4c (5c, D-5): the last-tickets offer on TikTok. Reads the live ad
+ * (ad/get returns ad_text, image_ids, video_id, identity_id, identity_type,
+ * call_to_action, landing_page_url, ad_format — TikTok v1.3 docs) and makes a
+ * NEW ad in the same ad group with the frozen last-tickets words, created
+ * DISABLE then enabled so it goes through TikTok's normal review. The old ad
+ * is untouched. Returns the new ad id.
+ */
+export async function tiktokCopyAdWithText(
+  conn: AdConnectionRow,
+  adGroupId: string,
+  adId: string,
+  text: string,
+): Promise<string> {
+  const client = resolveTikTokClient(conn);
+  assertNumericExternalId("ad_set", adGroupId);
+  const row = await tiktokReadEntity(client, "ad", adId);
+  const ids = (value: unknown): string[] =>
+    Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+  const str = (value: unknown): string | undefined =>
+    typeof value === "string" && value.trim() !== "" ? value : undefined;
+  const landingPageUrl = str(row.landing_page_url);
+  if (!landingPageUrl || ids(row.image_ids).length === 0) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "tiktok_ad_copy_incomplete",
+      message: "The live TikTok ad has no landing page or image to copy.",
+    });
+  }
+  const format = str(row.ad_format) === "SINGLE_VIDEO"
+    ? "SINGLE_VIDEO" as const
+    : "SINGLE_IMAGE" as const;
+  const body = buildTikTokAdBody(client.advertiserId, adGroupId, {
+    adName: `${str(row.ad_name) ?? "Ad"} — last tickets`.slice(0, 512),
+    identityType: str(row.identity_type) ?? "TT_USER",
+    identityId: str(row.identity_id) ?? "",
+    adFormat: format,
+    imageIds: ids(row.image_ids),
+    videoId: format === "SINGLE_VIDEO" ? str(row.video_id) : undefined,
+    adText: text,
+    callToAction: str(row.call_to_action),
+    landingPageUrl,
+    utmParams: Array.isArray(row.utm_params)
+      ? (row.utm_params as Record<string, unknown>[])
+        .filter((p) => typeof p.key === "string" && typeof p.value === "string")
+        .map((p) => ({ key: String(p.key), value: String(p.value) }))
+      : undefined,
+  });
+  const data = await tiktokApi(client, "POST", "ad/create/", body);
+  const first = Array.isArray(data.ad_ids) ? data.ad_ids[0] : undefined;
+  const newId = typeof first === "string" || typeof first === "number"
+    ? String(first)
+    : "";
+  if (!newId) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "create_no_id",
+      message: "ad/create returned code 0 but no ad_ids — refusing to persist.",
+    });
+  }
+  await tiktokAdapter.setStatus(conn, "ad", newId, "ACTIVE");
+  return newId;
+}

@@ -229,6 +229,7 @@ import {
   hostFrequencyCap,
   hostMetaAdvantageAudience,
   paidSocialStagesApply,
+  providerDailyMinimumCents,
 } from "../_shared/adHostPlanRules.ts";
 import {
   ladderMetaCustomEventType,
@@ -826,6 +827,24 @@ async function prepareHostAdSets(
     );
   }
   return { units: built.units, creativeIds: ids.ids, media, folded: built.folded };
+}
+
+/**
+ * #4238 W4c: the one-ad-set floor F that create recomputes the Snapchat or
+ * TikTok split with — the same figure preflight froze it with
+ * (hostDailyMinimumCents → providerDailyMinimumCents; Snap and TikTok floors
+ * do not depend on the goal). Null (a non-USD account) folds back to one ad
+ * set, exactly like preflight.
+ */
+function hostAdSetFloorCents(
+  platform: "snapchat" | "tiktok",
+  connection: AdConnectionRow,
+): number | null {
+  return providerDailyMinimumCents(
+    platform,
+    connection as unknown as { currency?: unknown; extra?: unknown },
+    "visits",
+  );
 }
 
 async function persistStageSnapshots(
@@ -3697,6 +3716,49 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
+    // #4238 W4c: Host ad squads (prospecting + retarget when the frozen split
+    // still holds) and one ad per frozen creative, as on Meta. ABO only: each
+    // ad squad carries its own budget, every one at or above Snap's floor.
+    let hostSnap: HostAdSetPreparation | null = null;
+    if (
+      requestedOwnerKind === "host" && !snapStages && budgetLevelS === "adset"
+    ) {
+      try {
+        hostSnap = await prepareHostAdSets(supabase, {
+          platform: "snapchat",
+          connection: sconn,
+          lane,
+          canonicalPlan: boundCanonicalPlan,
+          markets: countryCodesS.map((country) => String(country)),
+          brandId: boundPlanOwnership?.brand_id ?? null,
+          eventId: destEventIdS,
+          dailySpendCents: providerAmountCents,
+          floorCents: hostAdSetFloorCents("snapchat", sconn),
+          budgetMode: "daily",
+          baseTargeting: adSetInputS.targeting,
+        });
+      } catch (error) {
+        return json({
+          error: "host_ad_set_preflight_failed",
+          detail: hostSafeDatabaseDetail(
+            error,
+            "admin-ad-create-campaign host ad squads",
+            "host_ad_set_preflight_failed",
+          ),
+        }, 422);
+      }
+      const lowS = hostSnap?.units.find((unit) =>
+        unit.budgetCents * 10_000 < SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO
+      );
+      if (lowS) {
+        return json({
+          error: "stage_budget_below_platform_minimum",
+          detail: `${lowS.stage}:${lowS.budgetCents}`,
+          message: `${lowS.stage} is below Snapchat's minimum ad-squad budget.`,
+        }, 422);
+      }
+    }
+
     try {
       let externalCampaignIdS: string;
       let createdUnitsS: Array<{
@@ -3761,6 +3823,61 @@ serve(async (req: Request): Promise<Response> => {
             ads: stageResult.ads.map((ad, index) => ({
               creativeId: creativeIds[index] ?? null,
               name: `${name} — ${stage.stage} — ${index + 1}`,
+              externalCreativeId: ad.externalCreativeId,
+              externalAdId: ad.externalAdId,
+              reviewStatus: ad.reviewStatus,
+            })),
+          };
+        });
+      } else if (hostSnap) {
+        const planS = hostSnap;
+        const unitsS = planS.units.map((unit) => ({
+          unit,
+          adSet: {
+            ...adSetInputS,
+            name: `${name} — ${unit.stage}`,
+            targeting: unit.targeting,
+            budgetCents: unit.budgetCents,
+          } as CreateAdSetInput,
+        }));
+        const adNameS = (stage: string, index: number) =>
+          `${name} — ${stage} — ${index + 1}`;
+        const stagedS = await createStagedCampaignAtomic(adapterS, sconn, {
+          campaign: campaignInputS,
+          stages: unitsS.map(({ unit, adSet }) => ({
+            key: unit.stage,
+            adSet,
+            ads: planS.creativeIds.map((creativeId, index) => {
+              const media = planS.media.get(creativeId);
+              if (!media?.snapMediaId) {
+                throw new Error(`stage_creative_media_missing:${creativeId}`);
+              }
+              return {
+                creative: {
+                  ...creativeInputS,
+                  topSnapMediaId: media.snapMediaId,
+                  adName: adNameS(unit.stage, index),
+                },
+                ad: { ...adInputS, name: adNameS(unit.stage, index) },
+              };
+            }),
+          })),
+        });
+        externalCampaignIdS = stagedS.externalCampaignId;
+        createdUnitsS = stagedS.stages.map((stageResult) => {
+          const item = unitsS.find(({ unit }) =>
+            unit.stage === stageResult.key
+          )!;
+          return {
+            stage: item.unit.stage,
+            audienceCodes: item.unit.audienceCodes,
+            audienceSizes: item.unit.audienceSizes,
+            budgetCents: item.unit.budgetCents,
+            adSetInput: item.adSet,
+            externalAdSetId: stageResult.externalAdSetId,
+            ads: stageResult.ads.map((ad, index) => ({
+              creativeId: planS.creativeIds[index] ?? null,
+              name: adNameS(item.unit.stage, index),
               externalCreativeId: ad.externalCreativeId,
               externalAdId: ad.externalAdId,
               reviewStatus: ad.reviewStatus,
@@ -4052,6 +4169,9 @@ serve(async (req: Request): Promise<Response> => {
           ),
           external_media_ids: snapStages
             ? [...snapStageMedia.values()].map((media) => media.snapMediaId)
+              .filter(Boolean)
+            : hostSnap
+            ? [...hostSnap.media.values()].map((media) => media.snapMediaId)
               .filter(Boolean)
             : [topSnapMediaIdS],
         },
@@ -4885,9 +5005,58 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
+      // #4238 W4c: Host ad groups (prospecting + retarget when the frozen
+      // split still holds) and one ad per frozen creative, as on Meta. ABO
+      // only: each ad group carries its own budget, every one >= TikTok's
+      // ad-group floor. Spark posts keep the one-ad path.
+      let hostTikTok: HostAdSetPreparation | null = null;
+      if (
+        requestedOwnerKind === "host" && !tiktokStages &&
+        budgetLevelT === "adset" && !usesTikTokSparkT
+      ) {
+        try {
+          hostTikTok = await prepareHostAdSets(supabase, {
+            platform: "tiktok",
+            connection: tconn,
+            lane,
+            canonicalPlan: boundCanonicalPlan,
+            markets: countryCodesT.map((country) => String(country)),
+            brandId: boundPlanOwnership?.brand_id ?? null,
+            eventId: destEventIdT,
+            dailySpendCents: providerAmountCents,
+            floorCents: hostAdSetFloorCents("tiktok", tconn),
+            budgetMode: "daily",
+            baseTargeting: baseTargetingT,
+          });
+        } catch (error) {
+          return json({
+            error: "host_ad_set_preflight_failed",
+            detail: hostSafeDatabaseDetail(
+              error,
+              "admin-ad-create-campaign host ad groups",
+              "host_ad_set_preflight_failed",
+            ),
+          }, 422);
+        }
+        const lowT = hostTikTok?.units.find((unit) =>
+          !validateTikTokBudgetFloor({
+            level: "ad_group",
+            mode: "daily",
+            dollars: centsToPlatformBudget("tiktok", unit.budgetCents),
+          }).ok
+        );
+        if (lowT) {
+          return json({
+            error: "stage_budget_below_platform_minimum",
+            detail: `${lowT.stage}:${lowT.budgetCents}`,
+            message: `${lowT.stage} is below TikTok's minimum ad-group budget.`,
+          }, 422);
+        }
+      }
+
       // (7) Image upload when the create-time URL path is used (GR-58:
       // UPLOAD_BY_URL, unique per-advertiser file name, both ids captured).
-      if (!tiktokStages && !imageIdT) {
+      if (!tiktokStages && !hostTikTok && !imageIdT) {
         const uploaded = await tiktokUploadImage(tconn, imageUrlT);
         imageIdT = uploaded.imageId;
       }
@@ -5040,6 +5209,76 @@ serve(async (req: Request): Promise<Response> => {
                     ? creativeId
                     : null,
                 name: `${name} — ${stage.stage} — ${index + 1}`,
+                externalAdId: ad.externalAdId,
+                reviewStatus: ad.reviewStatus,
+                imageId: media?.tiktokImageId ?? null,
+                videoId: media?.tiktokVideoId ?? null,
+              };
+            }),
+          };
+        });
+      } else if (hostTikTok) {
+        const planT = hostTikTok;
+        const unitsT = planT.units.map((unit) => ({
+          unit,
+          adSet: {
+            ...adSetInputT,
+            name: `${name} — ${unit.stage}`,
+            targeting: {
+              ...(adSetInputT.targeting as Record<string, unknown>),
+              ...unit.targeting,
+            },
+            budgetCents: unit.budgetCents,
+          } as CreateAdSetInput,
+        }));
+        const adNameT = (stage: string, index: number) =>
+          `${name} — ${stage} — ${index + 1}`;
+        const stagedT = await createStagedCampaignAtomic(adapterT, tconn, {
+          campaign: campaignInputT,
+          stages: unitsT.map(({ unit, adSet }) => ({
+            key: unit.stage,
+            adSet,
+            ads: planT.creativeIds.map((creativeId, index) => {
+              const media = planT.media.get(creativeId);
+              if (!media?.tiktokImageId) {
+                throw new Error(`stage_creative_media_missing:${creativeId}`);
+              }
+              return {
+                creative: creativeInputT,
+                ad: {
+                  ...adInputT,
+                  name: adNameT(unit.stage, index),
+                  adFormat: media.kind === "video"
+                    ? "SINGLE_VIDEO" as const
+                    : "SINGLE_IMAGE" as const,
+                  imageIds: [media.tiktokImageId],
+                  ...(media.tiktokVideoId
+                    ? { videoId: media.tiktokVideoId }
+                    : {}),
+                },
+              };
+            }),
+          })),
+        });
+        externalCampaignIdT = stagedT.externalCampaignId;
+        createdUnitsT = stagedT.stages.map((stageResult) => {
+          const item = unitsT.find(({ unit }) =>
+            unit.stage === stageResult.key
+          )!;
+          return {
+            stage: item.unit.stage,
+            audienceCodes: item.unit.audienceCodes,
+            audienceSizes: item.unit.audienceSizes,
+            budgetCents: item.unit.budgetCents,
+            adSetInput: item.adSet,
+            externalAdSetId: stageResult.externalAdSetId,
+            ads: stageResult.ads.map((ad, index) => {
+              const creativeId = planT.creativeIds[index] ?? null;
+              const media = creativeId ? planT.media.get(creativeId) : null;
+              return {
+                creativeId,
+                externalCreativeId: null,
+                name: adNameT(item.unit.stage, index),
                 externalAdId: ad.externalAdId,
                 reviewStatus: ad.reviewStatus,
                 imageId: media?.tiktokImageId ?? null,

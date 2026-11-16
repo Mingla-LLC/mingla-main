@@ -733,14 +733,15 @@ export function hostLiveAdSetBudgets(input: {
 }
 
 /**
- * #4238 W4a: the apps whose create path builds the retarget ad set today.
- * Meta only: Snapchat and TikTok create still build one ad set, so guidance
- * and create_version must not promise a second one there (the X-1 lesson:
- * what the Host is shown is what create builds). Exit: the Snapchat and
- * TikTok Host branches call prepareHostAdSets (carried on #4238).
+ * #4238 W4a/W4c: the apps whose create path builds the retarget ad set.
+ * Meta (W4a), Snapchat and TikTok (W4c: their Host branches call
+ * prepareHostAdSets). Guidance and create_version promise a second ad set
+ * only here (the X-1 lesson: what the Host is shown is what create builds).
  */
 export const HOST_RETARGET_BUILT_PLATFORMS: ReadonlySet<string> = new Set([
   "meta",
+  "snapchat",
+  "tiktok",
 ]);
 
 /** hostAdSetSplit, limited to the apps whose create builds the split. */

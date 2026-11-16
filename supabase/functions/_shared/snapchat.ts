@@ -2906,3 +2906,83 @@ export const snapchatAdapter: ChannelAdapter = {
     await snapchatApi(client, "DELETE", `creatives/${creativeExternalId}`);
   },
 };
+
+/**
+ * #4238 W4c (5c, D-5): the last-tickets offer on Snapchat. Snap creatives
+ * carry one headline (≤ 34 characters) and no body text, so the frozen
+ * last-tickets words replace the headline. Reads the live ad (GET
+ * /v1/ads/{id} → creative_id) and its creative (GET /v1/creatives/{id}),
+ * makes a NEW creative with the new headline (POST
+ * /v1/adaccounts/{id}/creatives) and a NEW ACTIVE ad in the same ad squad
+ * (POST /v1/adsquads/{id}/ads), through Snap's normal review. The old ad is
+ * untouched. Words Snap would refuse are refused here, before any write.
+ */
+export async function snapchatCopyAdWithHeadline(
+  conn: AdConnectionRow,
+  adSquadId: string,
+  adId: string,
+  text: string,
+): Promise<string> {
+  const check = validateSnapchatHeadline(text);
+  if (!check.ok) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "snapchat_last_tickets_headline_invalid",
+      message: check.message,
+    });
+  }
+  const client = await resolveSnapchatClient(conn);
+  assertSnapchatExternalId("ad_set", adSquadId);
+  const ad = await snapchatReadEntity(client, "ad", adId);
+  const creativeId = typeof ad.creative_id === "string" ? ad.creative_id : "";
+  if (!creativeId) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "snapchat_ad_creative_missing",
+      message: `Snap ad ${adId} has no creative to copy.`,
+    });
+  }
+  const read = await snapchatApi(client, "GET", `creatives/${creativeId}`);
+  const source = snapchatEntityFromPayload(read, "creatives", "creative");
+  const copy = snapchatStripReadOnlyFields(source);
+  delete copy.id;
+  copy.headline = text;
+  copy.name = `${String(source.name ?? "Creative")} — last tickets`.slice(0, 375);
+  const made = snapchatEntityFromPayload(
+    await snapchatApi(client, "POST", `adaccounts/${client.adAccountId}/creatives`, {
+      creatives: [copy],
+    }),
+    "creatives",
+    "creative",
+  );
+  const newCreativeId = typeof made.id === "string" ? made.id : "";
+  if (!newCreativeId) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "create_no_id",
+      message: "Snap creative create returned SUCCESS but no id.",
+    });
+  }
+  const newAd = snapchatEntityFromPayload(
+    await snapchatApi(client, "POST", `adsquads/${adSquadId}/ads`, {
+      ads: [{
+        ad_squad_id: adSquadId,
+        creative_id: newCreativeId,
+        name: `${String(ad.name ?? "Ad")} — last tickets`.slice(0, 375),
+        type: ad.type,
+        status: "ACTIVE",
+      }],
+    }),
+    "ads",
+    "ad",
+  );
+  const newAdId = typeof newAd.id === "string" ? newAd.id : "";
+  if (!newAdId) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "create_no_id",
+      message: "Snap ad create returned SUCCESS but no id.",
+    });
+  }
+  return newAdId;
+}
