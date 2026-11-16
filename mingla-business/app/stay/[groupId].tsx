@@ -226,8 +226,6 @@ export default function StayReservationRoute(): React.ReactElement {
         <SecurePaymentHandoff
           url={handoffUrl}
           palette={palette}
-          // orch-strict-grep-allow provider-name-host-copy — buyer-facing, not host copy: the guest is told which payment page opens next (#4420 §2.4).
-          providerName="Paystack"
           holdLine="Your rooms are held while you pay."
           onBack={() => setHandoffUrl(null)}
           testID="issue-4420-stay-group-secure-payment"

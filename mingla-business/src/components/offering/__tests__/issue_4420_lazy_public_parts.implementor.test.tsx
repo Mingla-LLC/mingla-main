@@ -34,8 +34,8 @@ jest.mock("../../checkout/SecurePaymentHandoff", () => {
   const { Text: RNText } = jest.requireActual("react-native");
   return {
     __esModule: true,
-    SecurePaymentHandoff: (props: { url: string; providerName: string }) => (
-      <RNText testID="real-handoff">{`${props.providerName} ${props.url}`}</RNText>
+    SecurePaymentHandoff: (props: { url: string }) => (
+      <RNText testID="real-handoff">{`handoff ${props.url}`}</RNText>
     ),
   };
 });
@@ -112,7 +112,6 @@ describe("issue #4420 — public parts load on demand", () => {
         <SecurePaymentHandoff
           url="https://checkout.stripe.com/c/pay/cs_test_10"
           palette={palette}
-          providerName="Stripe"
           onBack={() => undefined}
         />,
       );
@@ -139,7 +138,6 @@ describe("issue #4420 — public parts load on demand", () => {
         <SecurePaymentHandoff
           url="https://checkout.stripe.com/c/pay/cs_test_9"
           palette={palette}
-          providerName="Stripe"
           onBack={() => undefined}
         />,
       );
@@ -147,7 +145,7 @@ describe("issue #4420 — public parts load on demand", () => {
     expect(textOf(tree)).toContain("Opening secure payment…");
     await flush();
     expect(textOf(tree)).not.toContain("Opening secure payment…");
-    expect(textOf(tree)).toContain("Stripe https://checkout.stripe.com/c/pay/cs_test_9");
+    expect(textOf(tree)).toContain("handoff https://checkout.stripe.com/c/pay/cs_test_9");
     await TestRenderer.act(async () => tree.unmount());
   });
 

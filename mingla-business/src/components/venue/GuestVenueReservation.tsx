@@ -279,10 +279,7 @@ function GuestVenueReservationBody({
     useState<GuestReservationPreview | null>(null);
   // issue #4420 wave 2 (§2.4) — the hosted payment page opens in THIS tab;
   // while it does, the Secure payment step replaces the form.
-  const [handoff, setHandoff] = useState<{
-    url: string;
-    providerName: string;
-  } | null>(null);
+  const [handoff, setHandoff] = useState<{ url: string } | null>(null);
   const [completed, setCompleted] = useState<{
     email: string | null;
     phoneLast4: string | null;
@@ -530,12 +527,7 @@ function GuestVenueReservationBody({
       if (redirect === null || redirect.length === 0) {
         throw new Error("The payment page could not open. Try again.");
       }
-      setHandoff({
-        url: redirect,
-        providerName:
-          // orch-strict-grep-allow provider-name-host-copy — buyer-facing, not host copy: the guest is told which payment page opens next (#4420 §2.4).
-          result.kind === "requires_web_redirect" ? "Stripe" : "Paystack",
-      });
+      setHandoff({ url: redirect });
     } catch (caught) {
       if (caught instanceof GuestReservationReviewError) {
         if (analyticsSurface === "buyer_web") {
@@ -581,7 +573,6 @@ function GuestVenueReservationBody({
       <SecurePaymentHandoff
         url={handoff.url}
         palette={palette}
-        providerName={handoff.providerName}
         onBack={() => setHandoff(null)}
         testID="issue-4420-venue-secure-payment"
       />
