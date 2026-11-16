@@ -52,8 +52,22 @@ import {
 } from "../_shared/tiktok.ts";
 import {
   resolveSnapchatClient,
+  snapchatCopyAdIntoSquad,
   snapchatCopyAdWithHeadline,
 } from "../_shared/snapchat.ts";
+import {
+  addHostRetargetAdSetLive,
+  HOST_LIVE_RETARGET_ADD_PLATFORMS,
+  hostRetargetLiveAddDecision,
+} from "../_shared/hostRetargetLiveAdd.ts";
+import {
+  hostRetargetReadiness,
+  providerDailyMinimumCents,
+} from "../_shared/adHostPlanRules.ts";
+import {
+  type AdAudienceRow,
+  buildAdStagePlan,
+} from "../_shared/adAudienceStages.ts";
 import {
   fetchSnapchatAdSquadStats,
   fetchSnapchatCampaignStats,
@@ -705,6 +719,120 @@ function hostLastTicketsAdOps(
   };
 }
 
+/**
+ * #4238 W4c (sub-item 3): once per campaign, when the Host's raise crossed
+ * 2F on a one-ad-set Snapchat or TikTok plan and the retarget audience and
+ * buyer exclusion are ready, add the retarget ad set live. A failed try is
+ * retried no sooner than a day later. Returns null when nothing applies.
+ */
+async function maybeAddHostRetargetLive(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    row: Record<string, unknown>;
+    target: CampaignSpendTarget;
+    connection: AdConnectionRow;
+    planId: string;
+    canonical: Record<string, unknown>;
+    eventId: string | null;
+  },
+): Promise<string | null> {
+  const platform = input.target.platform;
+  if (!HOST_LIVE_RETARGET_ADD_PLATFORMS.has(platform)) return null;
+  if (input.row.owner_kind !== "host" || input.row.status !== "ACTIVE") {
+    return null;
+  }
+  const original = Number(input.row.provider_delivery_budget_cents);
+  const amendedRaw = input.row.amended_provider_delivery_budget_cents;
+  const amended = amendedRaw === null || amendedRaw === undefined
+    ? null
+    : Number(amendedRaw);
+  const floor = providerDailyMinimumCents(platform, input.connection, "visits");
+  if (
+    amended === null || floor === null || !(original < 2 * floor) ||
+    amended < 2 * floor
+  ) return null;
+  const { data: moves } = await supabase.from("ad_plan_automation_events")
+    .select("status,created_at").eq("campaign_id", input.target.id)
+    .eq("kind", "retarget_added");
+  const tries = (moves ?? []) as Record<string, unknown>[];
+  if (tries.some((row) => row.status === "applied")) return null;
+  if (
+    tries.some((row) =>
+      Date.now() - Date.parse(String(row.created_at ?? "")) < 86_400_000
+    )
+  ) return "skipped:retry_tomorrow";
+  const intent = (input.canonical.audience_intent ?? {}) as Record<string, unknown>;
+  const countries = Array.isArray(intent.countries)
+    ? (intent.countries as unknown[]).map((code) => String(code).trim().toUpperCase())
+    : [];
+  const brandId = String(input.row.brand_id ?? "");
+  if (countries.length !== 1 || !/^[A-Z]{2}$/.test(countries[0]) || !input.eventId || !brandId) {
+    return "skipped:retarget_single_market_required";
+  }
+  const { data: audienceRows, error } = await supabase.from("ad_audiences")
+    .select(
+      "id,platform,code,scope,market,brand_id,event_id,platform_audience_id,approx_size,status",
+    )
+    .eq("platform", platform).eq("market", countries[0]);
+  if (error) return "skipped:audiences_unavailable";
+  const stagePlan = buildAdStagePlan({
+    platform,
+    rows: (audienceRows ?? []) as AdAudienceRow[],
+    market: countries[0],
+    brandId,
+    eventId: input.eventId,
+    totalBudgetCents: 0,
+  });
+  const { data: sets } = await supabase.from("ad_sets").select("stage")
+    .eq("campaign_id", input.target.id);
+  const decision = hostRetargetLiveAddDecision({
+    platform,
+    ownerKind: "host",
+    originalDailyCents: original,
+    amendedDailyCents: amended,
+    floorCents: floor,
+    hasRetargetAdSet: ((sets ?? []) as Record<string, unknown>[]).some((row) =>
+      row.stage === "retarget"
+    ),
+    lifetime: input.canonical.budget_mode === "total",
+    readiness: hostRetargetReadiness(stagePlan),
+  });
+  if (!decision.add || !stagePlan) {
+    return decision.add ? "skipped:retarget_audience_not_ready" : null;
+  }
+  const warm = stagePlan.stages.filter((stage) =>
+    (stage.stage === "retarget" || stage.stage === "abandoners") &&
+    stage.executable
+  );
+  const include = [...new Set(warm.flatMap((stage) => stage.includeAudienceIds))];
+  const exclude = stagePlan.stages.find((stage) => stage.stage === "prospecting")
+    ?.excludeAudienceIds ?? [];
+  if (include.length === 0 || exclude.length === 0) {
+    return "skipped:retarget_audience_not_ready";
+  }
+  const connection = input.connection;
+  return await addHostRetargetAdSetLive({
+    db: supabase,
+    adapter: getAdapter(platform),
+    connection,
+    copyAdInto: (adSetId, ad) =>
+      platform === "snapchat"
+        ? snapchatCopyAdIntoSquad(connection, adSetId, ad.externalAdId)
+        : tiktokCopyAdWithText(connection, adSetId, ad.externalAdId, null, " — retarget"),
+  }, {
+    campaignId: input.target.id,
+    externalCampaignId: input.target.external_campaign_id,
+    platform,
+    planId: input.planId,
+    decision,
+    include,
+    exclude: [...exclude],
+    audienceCodes: warm.flatMap((stage) => [...stage.audienceCodes]),
+    audienceSizes: Object.assign({}, ...warm.map((stage) => ({ ...stage.audienceSizes }))),
+  });
+}
+
 async function hostAutomation(
   // deno-lint-ignore no-explicit-any
   supabase: any,
@@ -725,7 +853,7 @@ async function hostAutomation(
       : null;
     const nextDate = Date.parse(String(input.destination?.next_date ?? ""));
     const endsAt = Date.parse(String(input.target.ends_at ?? ""));
-    return await runHostAdAutomation({
+    const report = await runHostAdAutomation({
       db: supabase,
       graph: meta
         ? (method, path, params) => metaGraph(meta, method, path, params)
@@ -753,6 +881,10 @@ async function hostAutomation(
       liveSinceMs: await loadHostLiveSinceMs(supabase, [input.row]),
       nowMs: Date.now(),
     });
+    // #4238 W4c: a raise past 2F on a one-ad-set Snap/TikTok plan adds the
+    // retarget ad set live (hostRetargetLiveAdd).
+    const retarget = await maybeAddHostRetargetLive(supabase, input);
+    return retarget ? { ...report, retarget_live_add: retarget } : report;
   } catch (error) {
     return {
       automation_error: (error instanceof Error ? error.message : String(error))
@@ -788,7 +920,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, brand_id, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, provider_delivery_budget_cents, amended_provider_delivery_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, brand_id, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })

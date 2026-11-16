@@ -3402,7 +3402,9 @@ export async function tiktokCopyAdWithText(
   conn: AdConnectionRow,
   adGroupId: string,
   adId: string,
-  text: string,
+  /** null keeps the live ad's own words (W4c live retarget copy). */
+  text: string | null,
+  suffix = " — last tickets",
 ): Promise<string> {
   const client = resolveTikTokClient(conn);
   assertNumericExternalId("ad_set", adGroupId);
@@ -3423,13 +3425,13 @@ export async function tiktokCopyAdWithText(
     ? "SINGLE_VIDEO" as const
     : "SINGLE_IMAGE" as const;
   const body = buildTikTokAdBody(client.advertiserId, adGroupId, {
-    adName: `${str(row.ad_name) ?? "Ad"} — last tickets`.slice(0, 512),
+    adName: `${str(row.ad_name) ?? "Ad"}${suffix}`.slice(0, 512),
     identityType: str(row.identity_type) ?? "TT_USER",
     identityId: str(row.identity_id) ?? "",
     adFormat: format,
     imageIds: ids(row.image_ids),
     videoId: format === "SINGLE_VIDEO" ? str(row.video_id) : undefined,
-    adText: text,
+    adText: text ?? str(row.ad_text) ?? "",
     callToAction: str(row.call_to_action),
     landingPageUrl,
     utmParams: Array.isArray(row.utm_params)

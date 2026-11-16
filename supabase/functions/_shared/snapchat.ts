@@ -2986,3 +2986,48 @@ export async function snapchatCopyAdWithHeadline(
   }
   return newAdId;
 }
+
+/**
+ * #4238 W4c: the same live ad, same creative, as a NEW ACTIVE ad in another
+ * ad squad (the live retarget ad squad). Snap creatives are ad-account
+ * objects, so the reviewed creative is reused as is.
+ */
+export async function snapchatCopyAdIntoSquad(
+  conn: AdConnectionRow,
+  adSquadId: string,
+  adId: string,
+): Promise<string> {
+  const client = await resolveSnapchatClient(conn);
+  assertSnapchatExternalId("ad_set", adSquadId);
+  const ad = await snapchatReadEntity(client, "ad", adId);
+  const creativeId = typeof ad.creative_id === "string" ? ad.creative_id : "";
+  if (!creativeId) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "snapchat_ad_creative_missing",
+      message: `Snap ad ${adId} has no creative to copy.`,
+    });
+  }
+  const made = snapchatEntityFromPayload(
+    await snapchatApi(client, "POST", `adsquads/${adSquadId}/ads`, {
+      ads: [{
+        ad_squad_id: adSquadId,
+        creative_id: creativeId,
+        name: `${String(ad.name ?? "Ad")} — retarget`.slice(0, 375),
+        type: ad.type,
+        status: "ACTIVE",
+      }],
+    }),
+    "ads",
+    "ad",
+  );
+  const id = typeof made.id === "string" ? made.id : "";
+  if (!id) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "create_no_id",
+      message: "Snap ad create returned SUCCESS but no id.",
+    });
+  }
+  return id;
+}
