@@ -267,8 +267,57 @@ const expectedAfter4318Fast = (base) => {
   return I4318F_SWAPS.reduce((text, [prior, next]) => swapLine(text, prior, next), base);
 };
 
+// #4452 — fourteenth binding amendment. Exactly TWO intended-public readers
+// for usemingla.com: the live page content (published blocks, live forms
+// without routing owners, inboxes, automations or staff ids, and form page
+// slugs) and the one-hour page preview behind a high-entropy token. They sit
+// directly after the #4318 live-cities reader and advance the intended-public
+// count by two. Like #4318's per-city swap it is applied LAST: a base that
+// already carries it is first rewound, run through the chain, and moved
+// forward again, so the earlier amendments keep their original anchors.
+const I4452_OLD_HEADER = I4318C_NEW_HEADER;
+const I4452_NEW_HEADER =
+  "# Signature count: 209 (intended-public 36, internally-gated 108, predicate/read-helper 62, PostGIS 3).";
+const I4452_ANCHOR = I4318C_SIGNATURE;
+const I4452_SIGNATURES = ["site_public_content()", "site_public_preview(p_token text)"];
+const I4452_BLOCK = [
+  "# #4452: usemingla.com page content; live published page blocks, live forms (no routing owners, inboxes, automations or staff ids) and form page slugs only, the same public facts the pages render.",
+  I4452_SIGNATURES[0],
+  "# #4452: one high-entropy, one-hour preview token resolves one page draft (the blog_public_preview pattern); a malformed, unknown or expired token returns NULL and no staff identity.",
+  I4452_SIGNATURES[1],
+].join("\n");
+const I4452_NAMES = ["site_public_content(", "site_public_preview("];
+const has4452Lookalike = (text) => I4452_NAMES.some((name) => text.includes(name)) || text.includes("# #4452:");
+const rewind4452 = (base) => {
+  if (
+    I4452_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I4452_ANCHOR}\n${I4452_BLOCK}\n`) &&
+    countExactLine(base, I4452_NEW_HEADER) === 1
+  ) {
+    return base
+      .replace(`${I4452_ANCHOR}\n${I4452_BLOCK}\n`, `${I4452_ANCHOR}\n`)
+      .replace(I4452_NEW_HEADER, I4452_OLD_HEADER);
+  }
+  if (has4452Lookalike(base) || countExactLine(base, I4452_NEW_HEADER) !== 0) {
+    throw new Error("base contains a partial or lookalike #4452 site page reader");
+  }
+  return base;
+};
+const expectedAfter4452 = (base) => {
+  if (has4452Lookalike(base)) throw new Error("base contains a partial or lookalike #4452 site page reader");
+  if (countExactLine(base, I4452_OLD_HEADER) !== 1) {
+    throw new Error("base #4452 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I4452_ANCHOR) !== 1) {
+    throw new Error("base #4452 insertion anchor is absent or duplicated");
+  }
+  return base
+    .replace(I4452_OLD_HEADER, I4452_NEW_HEADER)
+    .replace(`${I4452_ANCHOR}\n`, `${I4452_ANCHOR}\n${I4452_BLOCK}\n`);
+};
+
 // The count header every later amendment leaves in place.
-const CURRENT_HEADER = I4318C_NEW_HEADER;
+const CURRENT_HEADER = I4452_NEW_HEADER;
 
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
@@ -509,8 +558,8 @@ const expectedAfter4318Cities = (base) => {
 };
 
 export const expectedAllowlist = (input) => {
-  const base = rewind4318Fast(input);
-  return expectedAfter4318Fast(expectedAfter4318Cities(expectedAfter4318(expectedAfter4137(
+  const base = rewind4318Fast(rewind4452(input));
+  return expectedAfter4452(expectedAfter4318Fast(expectedAfter4318Cities(expectedAfter4318(expectedAfter4137(
     expectedAfter2829(
       expectedAfter3872Public(
         expectedAfter4111(
@@ -522,7 +571,7 @@ export const expectedAllowlist = (input) => {
         ),
       ),
     ),
-  ))));
+  )))));
 };
 
 export const validate = ({ baseAllowlist, currentAllowlist }) => {
@@ -535,7 +584,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, #4318 /links week and places readers, and the #4318 /links live-cities reader",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, #4318 /links week and places readers, the #4318 /links live-cities reader, and the #4452 site page readers",
     );
   }
   for (const signature of [
@@ -553,6 +602,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
     I4318_SIGNATURE,
     I4318F_PLACES_SIGNATURE,
     I4318C_SIGNATURE,
+    ...I4452_SIGNATURES,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -731,12 +781,24 @@ const runSelfTest = () => {
     ["#4318 live cities moved away from its anchor", head.replace(`${H4318C_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${H4318C_BLOCK}\n`), false],
     ["#4318 live cities plus a forged neighbour", head.replace(`${H4318C_BLOCK}\n`, `${H4318C_BLOCK}\nforged_neighbour_function()\n`), false],
     ["#4318 live cities count not corrected", head.replace(CURRENT_HEADER, I4318C_OLD_HEADER), false],
+    // #4452 — the fourteenth amendment is exactly two site page readers, their
+    // comments, their placement after the live-cities reader and the count.
+    ["#4452 block missing", head.replace(`${I4452_BLOCK}\n`, ""), false],
+    ["#4452 block missing, count kept", head.replace(`${I4452_BLOCK}\n`, "").replace(CURRENT_HEADER, I4452_OLD_HEADER), false],
+    ["#4452 content reader dropped", head.replace(`\n${I4452_SIGNATURES[0]}\n`, "\n"), false],
+    ["#4452 preview reader dropped", head.replace(`\n${I4452_SIGNATURES[1]}\n`, "\n"), false],
+    ["#4452 comment substituted", head.replace("# #4452: usemingla.com page content;", "# #4452: approved somehow;"), false],
+    ["#4452 signature changed", head.replace(`\n${I4452_SIGNATURES[1]}\n`, "\nsite_public_preview(p_token text, p_debug boolean)\n"), false],
+    ["#4452 lookalike overload", `${head}site_public_content(p_page text)\n`, false],
+    ["#4452 moved away from its anchor", head.replace(`${I4452_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4452_BLOCK}\n`), false],
+    ["#4452 plus a forged neighbour", head.replace(`${I4452_BLOCK}\n`, `${I4452_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#4452 count not corrected", head.replace(CURRENT_HEADER, I4452_OLD_HEADER), false],
   ];
   for (const [name, candidate, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all twelve amendments, the ONLY accepted head is that
+  // Once a base carries every amendment (#4452 included), the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled }).length !== 0) {
@@ -759,7 +821,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week and places readers + #4318 /links live-cities reader PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week and places readers + #4318 /links live-cities reader + #4452 site page readers PASS\n",
   );
 };
 
