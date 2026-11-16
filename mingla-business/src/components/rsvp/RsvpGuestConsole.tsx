@@ -723,9 +723,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.line,
   },
+  // #4420 journey: the row's actions sat flush against the card's right edge
+  // (the card clips with overflow hidden), so "Remove" read as cut off.
   refundTrailing: {
     alignItems: "flex-end",
     gap: space[1],
+    paddingRight: space[3],
+    paddingVertical: space[2],
   },
   // ORCH-1334 — the tappable body is its OWN press target (Constitution #1: the
   // trailing action cluster is a sibling, never swallowed by the body press).
