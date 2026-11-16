@@ -13,26 +13,8 @@ import { useServerRead } from "../../hooks/useServerRead";
 import { formatDate, formatDateTime } from "../../lib/formatters";
 import { adLine, consentLine, firstName, labelName, leadCardFields, leadsErrorWords, pipelineFor, sourceName } from "../../lib/leadsModel";
 import { getLead, linkLeadToCard, stopFormEmails } from "../../services/leadsService";
-import { CALL_STATUS_LABELS, callStatus, safeLink } from "../../lib/inboundLeads";
+import { BookingLine } from "./BookingLine";
 import { createRecord, newRequestKey } from "../../services/crmService";
-
-/** #4339 kept: a booking's call time and Google Calendar status, social and website. */
-function BookingLine({ booking }) {
-  const status = callStatus(booking.status);
-  const off = status === "cancelled" || status === "declined";
-  const social = safeLink(booking.social_url, false);
-  const website = safeLink(booking.website, true);
-  const linkClass = "font-medium text-[var(--color-brand-700)] hover:underline";
-  return (
-    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--color-text-secondary)]" data-booking-details="">
-      {booking.call_at && <span className={off ? "line-through" : undefined}>Call: {formatDateTime(booking.call_at)}</span>}
-      <span data-booking-status={status}>{CALL_STATUS_LABELS[status]}</span>
-      {booking.city && <span>City: {booking.city}</span>}
-      {social && <a href={social} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-social="">Social profile</a>}
-      {website && <a href={website} target="_blank" rel="noopener noreferrer" className={linkClass} data-booking-website="">Website</a>}
-    </div>
-  );
-}
 
 const cardHash = (crm) => `#/outreach?tab=${crm.pipeline === "creators" ? "creators" : "hosts"}&card=${encodeURIComponent(crm.id)}`;
 

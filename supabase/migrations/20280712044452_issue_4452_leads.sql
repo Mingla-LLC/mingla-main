@@ -23,6 +23,8 @@
 --   DROP TRIGGER IF EXISTS lead_ingest ON public.beta_access_leads; DROP TRIGGER IF EXISTS lead_ingest ON public.explorer_app_leads;
 --   DROP TRIGGER IF EXISTS lead_ingest ON public.tool_leads; DROP TRIGGER IF EXISTS lead_forget ON public.tool_leads;
 --   DROP FUNCTION IF EXISTS (every function created below);
+--   DROP INDEX IF EXISTS public.channel_suppressions_email_key_idx, public.marketing_unsubscribes_email_key_idx,
+--     public.admin_email_recipient_deliveries_email_key_idx;
 --   DROP TABLE IF EXISTS public.leads_export_log, public.lead_audience_selections, public.lead_ingest_failures,
 --     public.lead_events, public.leads;
 --   ALTER TABLE public.book_call_leads DROP CONSTRAINT book_call_leads_consent_shape, DROP COLUMN marketing_consent,
@@ -94,6 +96,17 @@ CREATE INDEX lead_events_lead_idx ON public.lead_events (lead_id, occurred_at DE
 CREATE INDEX lead_events_form_idx ON public.lead_events (form_id, occurred_at DESC) WHERE form_id IS NOT NULL;
 CREATE INDEX lead_events_source_idx ON public.lead_events (source, occurred_at DESC);
 CREATE INDEX lead_events_campaign_idx ON public.lead_events (lower(utm_campaign)) WHERE utm_campaign IS NOT NULL;
+
+-- The email-status reads (lead_email_status) match a lead's email_key against
+-- three existing tables by lower(btrim(...)). These expression indexes turn each
+-- read into an index probe, so the Leads page and its email_status filter stay
+-- inside the A1.4 budget however large the send history grows.
+CREATE INDEX IF NOT EXISTS channel_suppressions_email_key_idx
+  ON public.channel_suppressions (lower(btrim(contact))) WHERE channel = 'email';
+CREATE INDEX IF NOT EXISTS marketing_unsubscribes_email_key_idx
+  ON public.marketing_unsubscribes (lower(btrim(contact_email)));
+CREATE INDEX IF NOT EXISTS admin_email_recipient_deliveries_email_key_idx
+  ON public.admin_email_recipient_deliveries (lower(btrim(recipient_email)));
 
 -- Ingest failures: SQLSTATE only, never the message (it can contain an email).
 CREATE TABLE public.lead_ingest_failures (
@@ -513,9 +526,50 @@ AS $$
     ELSE 'never_emailed' END
 $$;
 
+-- The same rule as lead_email_status, for every lead at once: each membership
+-- test is an uncorrelated IN (a hashed subplan, read once), so the email_status
+-- filter costs one pass instead of one function call per lead. The two must
+-- agree for every lead (issue_4452_leads, A1 email-status parity).
+CREATE FUNCTION public.leads_email_status_all() RETURNS TABLE(lead_id uuid, email_status text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT l.id, CASE
+    WHEN l.email_key IN (SELECT lower(btrim(c.contact)) FROM public.channel_suppressions c
+                          WHERE c.channel = 'email' AND c.scope IN ('marketing','all') AND c.contact IS NOT NULL)
+      OR l.email_key IN (SELECT lower(btrim(u.contact_email)) FROM public.marketing_unsubscribes u WHERE u.contact_email IS NOT NULL)
+      THEN 'unsubscribed'
+    WHEN l.id IN (SELECT e.lead_id FROM public.lead_events e JOIN public.form_automation_runs r ON r.submission_id = e.source_id
+                   WHERE e.source_table = 'form_submissions' AND r.status = 'active'
+                     AND EXISTS (SELECT 1 FROM public.form_automation_sends s WHERE s.run_id = r.id AND s.status = 'scheduled'))
+      THEN 'follow_ups_active'
+    WHEN l.id IN (SELECT e.lead_id FROM public.lead_events e JOIN public.form_automation_runs r ON r.submission_id = e.source_id
+                   WHERE e.source_table = 'form_submissions' AND r.status = 'stopped')
+      THEN 'follow_ups_stopped'
+    WHEN l.id IN (SELECT e.lead_id FROM public.lead_events e JOIN public.form_automation_runs r ON r.submission_id = e.source_id
+                   JOIN public.form_automation_sends s ON s.run_id = r.id
+                   WHERE e.source_table = 'form_submissions' AND s.status = 'sent')
+      OR l.email_key IN (SELECT lower(btrim(d.recipient_email)) FROM public.admin_email_recipient_deliveries d
+                          WHERE d.accepted_at IS NOT NULL AND d.recipient_email IS NOT NULL)
+      THEN 'emailed'
+    ELSE 'never_emailed' END
+  FROM public.leads l
+$$;
+
 -- The ONLY place a filter is applied (I-4452-LEADS-ONE-FILTER). Event-level
 -- keys combine on the same event.
-CREATE FUNCTION public.leads_filtered_ids(p_f jsonb) RETURNS TABLE(lead_id uuid)
+--
+-- leads_filter_scan walks the leads and their events ONCE and answers, per
+-- lead: does it match the filter (hit); would it match with test leads shown
+-- (hit_with_test); and, for the facet chips, would it match with the label
+-- (or source) dimension replaced by each single value. The list, its total,
+-- its facets and test_hidden all read this one scan, so a page costs one pass
+-- over lead_events instead of eleven (A1.4 budget: p95 <= 300 ms at 20k/60k).
+-- leads_filtered_ids is the hit column of the same scan, so every other reader
+-- (selection, audience, export) still applies the identical predicates.
+CREATE FUNCTION public.leads_filter_scan(p_f jsonb)
+RETURNS TABLE(lead_id uuid, last_seen_at timestamptz, hit boolean, hit_with_test boolean,
+              fl_host boolean, fl_creator boolean, fl_local boolean, fl_explorer boolean,
+              fs_form boolean, fs_book_a_call boolean, fs_tool boolean, fs_beta boolean)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
@@ -523,29 +577,53 @@ DECLARE
   v_test boolean := COALESCE(f->'show_test' = 'true'::jsonb, false);
   v_ev boolean := f ?| ARRAY['labels','sources','form_id','page_path','utm_source','utm_campaign','click_source','from','to'];
   v_q text := CASE WHEN f ? 'q' THEN '%' || replace(replace(replace(f->>'q', '\', '\\'), '%', '\%'), '_', '\_') || '%' END;
+  v_labels text[] := CASE WHEN f ? 'labels' THEN ARRAY(SELECT jsonb_array_elements_text(f->'labels')) END;
+  v_sources text[] := CASE WHEN f ? 'sources' THEN ARRAY(SELECT jsonb_array_elements_text(f->'sources')) END;
+  v_form uuid := (f->>'form_id')::uuid;
+  v_from timestamptz := CASE WHEN f ? 'from' THEN (f->>'from')::date::timestamp AT TIME ZONE 'UTC' END;
+  v_to timestamptz := CASE WHEN f ? 'to' THEN ((f->>'to')::date + 1)::timestamp AT TIME ZONE 'UTC' END;
 BEGIN
   RETURN QUERY
-  SELECT l.id FROM public.leads l
-   WHERE (v_test OR NOT l.is_test)
-     AND (v_q IS NULL OR l.email_key LIKE v_q ESCAPE '\' OR lower(COALESCE(l.name, '')) LIKE v_q ESCAPE '\')
+  SELECT l.id, l.last_seen_at,
+         (v_test OR NOT l.is_test) AND (NOT v_ev OR COALESCE(bool_or(m.c AND m.pl AND m.ps AND m.t), false)),
+         (NOT v_ev OR COALESCE(bool_or(m.c AND m.pl AND m.ps), false)),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.ps AND m.t AND m.label = 'host'), false),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.ps AND m.t AND m.label = 'creator'), false),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.ps AND m.t AND m.label = 'local'), false),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.ps AND m.t AND m.label = 'explorer'), false),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.pl AND m.t AND m.source = 'form'), false),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.pl AND m.t AND m.source = 'book_a_call'), false),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.pl AND m.t AND m.source = 'tool'), false),
+         (v_test OR NOT l.is_test) AND COALESCE(bool_or(m.c AND m.pl AND m.t AND m.source = 'beta'), false)
+    FROM public.leads l
+    LEFT JOIN (
+      SELECT e.lead_id, e.label, e.source,
+             (v_test OR NOT e.is_test) AS t,
+             (v_labels IS NULL OR e.label = ANY (v_labels)) AS pl,
+             (v_sources IS NULL OR e.source = ANY (v_sources)) AS ps,
+             ((v_form IS NULL OR e.form_id = v_form)
+              AND (NOT (f ? 'page_path') OR e.page_path = f->>'page_path')
+              AND (NOT (f ? 'utm_source') OR lower(e.utm_source) = f->>'utm_source')
+              AND (NOT (f ? 'utm_campaign') OR lower(e.utm_campaign) = f->>'utm_campaign')
+              AND (NOT (f ? 'click_source') OR e.click_source = f->>'click_source')
+              AND (v_from IS NULL OR e.occurred_at >= v_from)
+              AND (v_to IS NULL OR e.occurred_at < v_to)) AS c
+        FROM public.lead_events e
+    ) m ON m.lead_id = l.id
+   WHERE (v_q IS NULL OR l.email_key LIKE v_q ESCAPE '\' OR lower(COALESCE(l.name, '')) LIKE v_q ESCAPE '\')
      AND (NOT (f ? 'consent') OR l.marketing_consent = (f->>'consent' = 'yes'))
      AND (NOT (f ? 'in_pipeline') OR (l.crm_record_id IS NOT NULL) = (f->>'in_pipeline' = 'yes'))
-     AND (NOT (f ? 'email_status') OR public.lead_email_status(l.email_key, l.id) = f->>'email_status')
-     AND (NOT v_ev OR EXISTS (
-       SELECT 1 FROM public.lead_events e
-        WHERE e.lead_id = l.id
-          AND (v_test OR NOT e.is_test)
-          AND (NOT (f ? 'labels') OR e.label IN (SELECT jsonb_array_elements_text(f->'labels')))
-          AND (NOT (f ? 'sources') OR e.source IN (SELECT jsonb_array_elements_text(f->'sources')))
-          AND (NOT (f ? 'form_id') OR e.form_id = (f->>'form_id')::uuid)
-          AND (NOT (f ? 'page_path') OR e.page_path = f->>'page_path')
-          AND (NOT (f ? 'utm_source') OR lower(e.utm_source) = f->>'utm_source')
-          AND (NOT (f ? 'utm_campaign') OR lower(e.utm_campaign) = f->>'utm_campaign')
-          AND (NOT (f ? 'click_source') OR e.click_source = f->>'click_source')
-          AND (NOT (f ? 'from') OR e.occurred_at >= (f->>'from')::date::timestamp AT TIME ZONE 'UTC')
-          AND (NOT (f ? 'to') OR e.occurred_at < ((f->>'to')::date + 1)::timestamp AT TIME ZONE 'UTC')));
+     AND (NOT (f ? 'email_status')
+          OR l.id IN (SELECT st.lead_id FROM public.leads_email_status_all() st WHERE st.email_status = f->>'email_status'))
+   GROUP BY l.id;
 END;
 $fn$;
+
+CREATE FUNCTION public.leads_filtered_ids(p_f jsonb) RETURNS TABLE(lead_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT s.lead_id FROM public.leads_filter_scan(p_f) s WHERE s.hit
+$$;
 
 CREATE FUNCTION public.lead_crm_json(p_record uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
@@ -565,7 +643,10 @@ DECLARE
   v_after_id uuid;
   v_rows jsonb;
   v_next jsonb;
-  v_base jsonb;
+  v_total bigint;
+  v_with_test bigint;
+  v_flabels jsonb;
+  v_fsources jsonb;
 BEGIN
   IF NOT public.leads_can_view() THEN RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501'; END IF;
   f := public.leads_filter_normalize(p_filter);
@@ -579,17 +660,28 @@ BEGIN
     IF v_after_at IS NULL OR v_after_id IS NULL THEN RAISE EXCEPTION 'bad_cursor' USING ERRCODE = '22023'; END IF;
   END IF;
 
-  WITH page AS (
-    SELECT l.* FROM public.leads l
-     WHERE l.id IN (SELECT x.lead_id FROM public.leads_filtered_ids(f) x)
-       AND (v_after_at IS NULL OR (l.last_seen_at, l.id) < (v_after_at, v_after_id))
-     ORDER BY l.last_seen_at DESC, l.id DESC
+  -- One scan answers the page, the total, the facets and test_hidden (A1.4 budget).
+  WITH s AS MATERIALIZED (
+    SELECT * FROM public.leads_filter_scan(f)
+  ), page AS (
+    SELECT l.* FROM s JOIN public.leads l ON l.id = s.lead_id
+     WHERE s.hit
+       AND (v_after_at IS NULL OR (s.last_seen_at, s.lead_id) < (v_after_at, v_after_id))
+     ORDER BY s.last_seen_at DESC, s.lead_id DESC
      LIMIT v_limit + 1
   ), numbered AS (
     SELECT p.*, row_number() OVER (ORDER BY p.last_seen_at DESC, p.id DESC) AS rn FROM page p
+  ), counts AS (
+    SELECT count(*) FILTER (WHERE s.hit) AS total,
+           count(*) FILTER (WHERE s.hit_with_test) AS with_test,
+           jsonb_build_object('host', count(*) FILTER (WHERE s.fl_host), 'creator', count(*) FILTER (WHERE s.fl_creator),
+                              'local', count(*) FILTER (WHERE s.fl_local), 'explorer', count(*) FILTER (WHERE s.fl_explorer)) AS labels,
+           jsonb_build_object('form', count(*) FILTER (WHERE s.fs_form), 'book_a_call', count(*) FILTER (WHERE s.fs_book_a_call),
+                              'tool', count(*) FILTER (WHERE s.fs_tool), 'beta', count(*) FILTER (WHERE s.fs_beta)) AS sources
+      FROM s
   )
   SELECT
-    COALESCE(jsonb_agg(jsonb_build_object(
+    COALESCE((SELECT jsonb_agg(jsonb_build_object(
       'id', n.id, 'name', n.name, 'email', n.email_key, 'primary_label', n.primary_label, 'labels', to_jsonb(n.labels),
       'sources', to_jsonb(n.sources), 'event_count', n.event_count, 'first_seen_at', n.first_seen_at,
       'last_seen_at', n.last_seen_at,
@@ -601,24 +693,19 @@ BEGIN
       'marketing_consent', n.marketing_consent,
       'email_status', public.lead_email_status(n.email_key, n.id),
       'crm', CASE WHEN n.crm_record_id IS NULL THEN NULL ELSE public.lead_crm_json(n.crm_record_id) END,
-      'is_test', n.is_test) ORDER BY n.last_seen_at DESC, n.id DESC) FILTER (WHERE n.rn <= v_limit), '[]'::jsonb),
-    CASE WHEN count(*) > v_limit THEN
-      (SELECT jsonb_build_object('last_seen_at', m.last_seen_at, 'id', m.id) FROM numbered m WHERE m.rn = v_limit) END
-  INTO v_rows, v_next
-  FROM numbered n;
+      'is_test', n.is_test) ORDER BY n.last_seen_at DESC, n.id DESC) FROM numbered n WHERE n.rn <= v_limit), '[]'::jsonb),
+    (SELECT jsonb_build_object('last_seen_at', m.last_seen_at, 'id', m.id) FROM numbered m
+      WHERE m.rn = v_limit AND (SELECT count(*) FROM numbered) > v_limit),
+    c.total, c.with_test, c.labels, c.sources
+  INTO v_rows, v_next, v_total, v_with_test, v_flabels, v_fsources
+  FROM counts c;
 
-  v_base := f - 'labels';
   RETURN jsonb_build_object(
     'rows', v_rows,
     'next', v_next,
-    'total', (SELECT count(*) FROM public.leads_filtered_ids(f)),
-    'facets', jsonb_build_object(
-      'labels', (SELECT jsonb_object_agg(k, (SELECT count(*) FROM public.leads_filtered_ids(v_base || jsonb_build_object('labels', jsonb_build_array(k)))))
-                   FROM unnest(ARRAY['host','creator','local','explorer']) k),
-      'sources', (SELECT jsonb_object_agg(k, (SELECT count(*) FROM public.leads_filtered_ids((f - 'sources') || jsonb_build_object('sources', jsonb_build_array(k)))))
-                   FROM unnest(ARRAY['form','book_a_call','tool','beta']) k)),
-    'test_hidden', CASE WHEN f ? 'show_test' THEN 0 ELSE
-      (SELECT count(*) FROM public.leads_filtered_ids(f || '{"show_test":true}'::jsonb)) - (SELECT count(*) FROM public.leads_filtered_ids(f)) END,
+    'total', v_total,
+    'facets', jsonb_build_object('labels', v_flabels, 'sources', v_fsources),
+    'test_hidden', CASE WHEN f ? 'show_test' THEN 0 ELSE v_with_test - v_total END,
     'can', jsonb_build_object('email', public.leads_can_view(), 'export', public.leads_can_export(),
                               'add_to_pipeline', public.is_admin_user() OR COALESCE(public.admin_team_can('crm'), false)),
     'as_of', now());
@@ -666,6 +753,7 @@ BEGIN
             FROM public.form_submissions s JOIN public.form_versions v ON v.id = s.form_version_id WHERE s.id = e.source_id) END,
         'booking', CASE WHEN e.source_table = 'book_call_leads' THEN (
           SELECT jsonb_build_object('audience', k.audience, 'icp', k.icp, 'city', k.city, 'call_at', k.call_at,
+                                    'original_call_at', k.original_call_at, 'status_changed_at', k.status_changed_at,
                                     'status', k.status, 'social_url', k.social_url, 'website', k.website,
                                     'phone', k.phone_e164, 'meet_url', k.meet_url, 'creator_makes', k.creator_makes,
                                     'first_place', k.first_place)
@@ -862,11 +950,11 @@ END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.leads_filter_normalize(jsonb), public.lead_email_status(text, uuid),
-  public.leads_filtered_ids(jsonb), public.lead_crm_json(uuid), public.leads_selection_ids(uuid),
+  public.leads_email_status_all(), public.leads_filter_scan(jsonb), public.leads_filtered_ids(jsonb), public.lead_crm_json(uuid), public.leads_selection_ids(uuid),
   public.leads_audience_counts(uuid), public.leads_audience_resolve(uuid, uuid), public.lead_reply_recipient(uuid)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.leads_filter_normalize(jsonb), public.lead_email_status(text, uuid),
-  public.leads_filtered_ids(jsonb), public.lead_crm_json(uuid), public.leads_selection_ids(uuid),
+  public.leads_email_status_all(), public.leads_filter_scan(jsonb), public.leads_filtered_ids(jsonb), public.lead_crm_json(uuid), public.leads_selection_ids(uuid),
   public.leads_audience_counts(uuid), public.leads_audience_resolve(uuid, uuid), public.lead_reply_recipient(uuid)
   TO service_role;
 REVOKE ALL ON FUNCTION public.admin_leads_list(jsonb, jsonb, integer), public.admin_lead_get(uuid),

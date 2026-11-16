@@ -194,7 +194,7 @@ DECLARE
   v_out    constant uuid := '44520000-0000-4000-c000-000000000003';
   v_web    constant uuid := '44520000-0000-4000-c000-000000000004';
   v jsonb; v_after jsonb; v_seen uuid[] := ARRAY[]::uuid[]; v_page jsonb; v_i integer; v_ids uuid[];
-  v_lead uuid; v_rec uuid; v_rec2 uuid; v_sel jsonb; v_exp jsonb; v_text text;
+  v_lead uuid; v_rec uuid; v_rec2 uuid; v_sel jsonb; v_exp jsonb; v_text text; v_bookw uuid;
   v_form uuid; v_ver uuid; v_sub uuid;
 BEGIN
   INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
@@ -322,6 +322,20 @@ BEGIN
   PERFORM pg_temp.l_assert(v->'crm'->>'id' = v_rec::text AND jsonb_array_length(v->'events') = 2, 'A1 the drawer has the card and both events');
   PERFORM pg_temp.l_assert(v::text NOT LIKE '%TESTGCLID123%' AND (SELECT e->>'ad' FROM jsonb_array_elements(v->'events') e WHERE e->>'source' = 'form') = 'meta_click',
     'A1 the drawer ad line is the platform only, never the click id');
+  -- A moved call keeps its booked time for the drawer's "Was: <time>" line (the #4339 row it replaces showed it).
+  RESET ROLE;
+  v_bookw := pg_temp.l_booking('was-moved@x-fixture.org', 'creator', 'gcal:l4452-was', now() - interval '1 day');
+  UPDATE public.book_call_leads SET original_call_at = '2026-12-01T10:00:00Z', call_at = '2026-12-02T15:00:00Z',
+         status = 'moved', status_changed_at = now() WHERE id = v_bookw;
+  v_bookw := (SELECT id FROM public.leads WHERE email_key = 'was-moved@x-fixture.org');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.l_as(v_admin);
+  v := public.admin_lead_get(v_bookw);
+  PERFORM pg_temp.l_assert((SELECT (e->'booking'->>'original_call_at')::timestamptz FROM jsonb_array_elements(v->'events') e
+                             WHERE e->>'source' = 'book_a_call') = '2026-12-01T10:00:00Z'::timestamptz
+                       AND (SELECT e->'booking'->>'status_changed_at' FROM jsonb_array_elements(v->'events') e
+                             WHERE e->>'source' = 'book_a_call') IS NOT NULL,
+    'A1 the drawer booking carries original_call_at and status_changed_at (the Was: line)');
   -- The 10,000 cap.
   RESET ROLE;
   INSERT INTO public.leads (email_key, primary_label, labels, sources, first_seen_at, last_seen_at)
@@ -329,6 +343,69 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.l_as(v_admin);
   PERFORM pg_temp.l_assert(pg_temp.l_state($$SELECT public.admin_leads_export('{}'::jsonb)$$) = '22023', 'A1-T-8b A1-SC-26 more than 10,000 rows is refused');
+  RESET ROLE;
+END
+$t$;
+ROLLBACK;
+
+-- ═══ A1 email-status parity: the set rule (the filter) equals the per-lead rule (the rows) ══
+-- FAILS-ON-REVERT: reordering a WHEN in either leads_email_status_all or lead_email_status, or
+-- dropping one membership test, makes a status below disagree.
+BEGIN;
+DO $t$
+DECLARE
+  v_admin constant uuid := '44520000-0000-4000-c000-0000000000e1';
+  v_form uuid; v_ver uuid; v_sub uuid; v_run uuid; v jsonb; v_k text; v_e text;
+  v_want constant jsonb := '{"st-never@x-fixture.org":"never_emailed","st-active@x-fixture.org":"follow_ups_active",
+                             "st-stopped@x-fixture.org":"follow_ups_stopped","st-sent@x-fixture.org":"emailed",
+                             "st-supp@x-fixture.org":"unsubscribed","st-unsub@x-fixture.org":"unsubscribed"}';
+BEGIN
+  ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+  INSERT INTO auth.users(id, email, email_confirmed_at) VALUES (v_admin, 'st4452-admin@mingla-fixture.org', now());
+  INSERT INTO public.admin_users(email, role, status) VALUES ('st4452-admin@mingla-fixture.org', 'admin', 'active')
+  ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status;
+  INSERT INTO public.forms (id, key, name, audience, status, draft, created_by, updated_by)
+  VALUES (gen_random_uuid(), 'status-fixture', 'Status fixture', 'creator', 'draft', '{}'::jsonb, v_admin, v_admin) RETURNING id INTO v_form;
+  INSERT INTO public.form_versions (form_id, version, definition, definition_sha256, published_by)
+  VALUES (v_form, 1, '{"fields":[{"key":"name","type":"name","label":"Name"},{"key":"email","type":"email","label":"Email"}]}', repeat('b', 64), v_admin)
+  RETURNING id INTO v_ver;
+  UPDATE public.forms SET status = 'live', live_version_id = v_ver WHERE id = v_form;
+  FOREACH v_k IN ARRAY ARRAY['never','active','stopped','sent'] LOOP
+    INSERT INTO public.form_submissions (form_id, form_version_id, lead_label, idempotency_key, email, name, answers, page_path, placement, ads_allowed)
+    VALUES (v_form, v_ver, 'creator', gen_random_uuid(), format('st-%s@x-fixture.org', v_k), 'St ' || v_k, '{}', '/creators', 'inline', false)
+    RETURNING id INTO v_sub;
+    CONTINUE WHEN v_k = 'never';
+    INSERT INTO public.form_automation_runs (submission_id, form_id, started_version, status, stop_reason, time_zone, time_zone_source, ended_at)
+    VALUES (v_sub, v_form, 1, CASE v_k WHEN 'active' THEN 'active' WHEN 'stopped' THEN 'stopped' ELSE 'completed' END,
+            CASE WHEN v_k = 'stopped' THEN 'booked' END, 'UTC', 'fallback_utc', CASE WHEN v_k <> 'active' THEN now() END)
+    RETURNING id INTO v_run;
+    INSERT INTO public.form_automation_sends (run_id, step_id, email_kind, due_at, status, sent_at)
+    VALUES (v_run, 'welcome', 'confirmation', now(), CASE v_k WHEN 'active' THEN 'scheduled' WHEN 'sent' THEN 'sent' ELSE 'cancelled' END,
+            CASE WHEN v_k = 'sent' THEN now() END);
+  END LOOP;
+  PERFORM pg_temp.l_booking('st-supp@x-fixture.org', 'host', 'gcal:st-supp');
+  PERFORM pg_temp.l_booking('st-unsub@x-fixture.org', 'host', 'gcal:st-unsub');
+  INSERT INTO public.channel_suppressions (contact, channel, scope, reason) VALUES (' ST-Supp@x-fixture.org', 'email', 'marketing', 'unsubscribe');
+  INSERT INTO public.marketing_unsubscribes (contact_email, channel, scope) VALUES ('St-Unsub@X-fixture.org ', 'email', 'global');
+
+  FOR v_e, v_k IN SELECT key, value #>> '{}' FROM jsonb_each(v_want) LOOP
+    PERFORM pg_temp.l_assert(public.lead_email_status(v_e, (SELECT id FROM public.leads WHERE email_key = v_e)) = v_k,
+      format('A1 lead_email_status(%s) = %s', v_e, v_k));
+  END LOOP;
+  PERFORM pg_temp.l_assert(NOT EXISTS (SELECT 1 FROM public.leads l JOIN public.leads_email_status_all() a ON a.lead_id = l.id
+                                         WHERE a.email_status <> public.lead_email_status(l.email_key, l.id))
+                       AND (SELECT count(*) FROM public.leads_email_status_all()) = (SELECT count(*) FROM public.leads),
+    'A1 email-status parity: the set rule equals the per-lead rule for every lead');
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.l_as(v_admin);
+  FOREACH v_k IN ARRAY ARRAY['never_emailed','follow_ups_active','follow_ups_stopped','emailed','unsubscribed'] LOOP
+    v := public.admin_leads_list(jsonb_build_object('email_status', v_k, 'q', 'st-'), NULL, 50);
+    PERFORM pg_temp.l_assert(
+      (SELECT array_agg(r->>'email' ORDER BY r->>'email') FROM jsonb_array_elements(v->'rows') r)
+        = (SELECT array_agg(key ORDER BY key) FROM jsonb_each_text(v_want) WHERE value = v_k)
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') r WHERE r->>'email_status' <> v_k),
+      format('A1 the email_status filter %s returns exactly its leads, and each row says so', v_k));
+  END LOOP;
   RESET ROLE;
 END
 $t$;
