@@ -847,6 +847,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     }
   }, [trip]);
 
+  // #4420: the Eligible buyers section card's own open state (web only).
+  const [buyersOpen, setBuyersOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<SectionKey | null>("basics");
 
   // ORCH-1118 — reveal the inline "pick from suggestions" error on a
@@ -2245,10 +2247,35 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             owner; no per-offering-type policy logic). Web-only by filename
             resolution: the .native.tsx sibling is a typed null renderer. */}
         {Platform.OS === "web" ? (
+          // #4420: the same collapsible section card as the sections above
+          // (it read as a raw form under them).
           <View style={styles.sectionCard}>
-            <React.Suspense fallback={null}>
-              <EventTicketCheckoutAccessCard eventId={trip.id} />
-            </React.Suspense>
+            <Pressable
+              onPress={() => setBuyersOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityLabel={`Eligible buyers section${buyersOpen ? " (expanded)" : " (collapsed)"}`}
+              style={({ pressed }) => [
+                styles.sectionHeader,
+                pressed && styles.sectionHeaderPressed,
+              ]}
+              testID="eligible-buyers-section-header"
+            >
+              <View style={styles.sectionHeaderLeft}>
+                <Text style={styles.sectionLabel}>Eligible buyers</Text>
+              </View>
+              <Icon
+                name={buyersOpen ? "chevU" : "chevD"}
+                size={16}
+                color={color.text3}
+              />
+            </Pressable>
+            {buyersOpen ? (
+              <View style={styles.sectionBody}>
+                <React.Suspense fallback={null}>
+                  <EventTicketCheckoutAccessCard eventId={trip.id} embedded />
+                </React.Suspense>
+              </View>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>

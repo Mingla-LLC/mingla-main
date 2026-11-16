@@ -321,7 +321,8 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     if (status === "upcoming") {
       list.push({
         key: "duplicate",
-        icon: "ticket",
+        // #4420: its own glyph; "ticket" is the Orders row's.
+        icon: "copy",
         label: "Duplicate",
         tone: "default",
         onPress: () => {
@@ -386,7 +387,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
       list.push({
         key: "duplicate-as-new",
-        icon: "ticket",
+        icon: "copy",
         label: "Duplicate as new",
         tone: "default",
         onPress: () => {

@@ -30,6 +30,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   color,
+  radius,
   space,
 } from "../../../src/constants/designSystem";
 import {
@@ -51,11 +52,11 @@ import { eventPublicUrl } from "../../../src/constants/publicUrls";
 // Cycle 17d Stage 2 §F.4 — ActivityEvent type + activityRowKey + helpers
 // extracted to ../../../src/components/event/EventDetailActivityRow.tsx.
 
-import { Button } from "../../../src/components/ui/Button";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { ListRow } from "../../../src/components/ui/ListRow";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal, offeringShareability } from "../../../src/components/ui/ShareModal";
 import type { ShareEntityKind } from "@mingla/sharing";
@@ -1325,19 +1326,25 @@ export default function EventDetailScreen(): React.ReactElement {
               </GlassCard>
 
               {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm.
-                  Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users. */}
+                  Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users.
+                  #4420: a destructive row in the column's own card pattern
+                  (the floating ghost label read as orphaned under Recent
+                  activity). Kept beside the manage menu's entry: the menu also
+                  needs lifecycle actions, so this row is not a duplicate for
+                  every host. */}
               {(status === "live" || status === "upcoming") &&
               canEditEvent ? (
-                <View style={styles.cancelCtaWrap}>
-                  <Button
-                    label="Cancel event"
-                    variant="ghost"
-                    size="md"
-                    fullWidth
+                <GlassCard variant="base" radius="md" padding={0} style={styles.cancelCtaWrap} contentStyle={styles.cancelCtaContent}>
+                  <ListRow
+                    title="Cancel event"
+                    icon="trash"
+                    danger
+                    chevron={false}
                     onPress={handleCancelDialogOpen}
                     accessibilityLabel="Cancel event"
+                    testID="event-detail-cancel-event"
                   />
-                </View>
+                </GlassCard>
               ) : null}
             </View>
           }
@@ -1589,7 +1596,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   cancelCtaWrap: {
-    marginTop: space[7],
+    marginTop: space[6],
+  },
+  // The row's hover / press wash keeps the card's rounded corners.
+  cancelCtaContent: {
+    borderRadius: radius.md,
+    overflow: "hidden",
   },
   toastWrap: {
     position: "absolute",

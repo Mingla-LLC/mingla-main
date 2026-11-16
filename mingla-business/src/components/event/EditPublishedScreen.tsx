@@ -512,6 +512,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   }, [freshPricingMode]);
 
   // Currently expanded section (accordion — only one at a time)
+  // #4420: the Eligible buyers section card's own open state (web only).
+  const [buyersOpen, setBuyersOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<SectionKey | null>(() =>
     initialSection !== null &&
     sectionsForMode(rsvpMode).some((sec) => sec.key === initialSection)
@@ -2032,10 +2034,35 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             .native.tsx sibling is a typed null renderer, so no native Business
             screen gains a configuration control. */}
         {!rsvpMode && Platform.OS === "web" ? (
+          // #4420: the same collapsible section card as the sections above
+          // (it read as a raw form under them).
           <View style={styles.sectionCard}>
-            <React.Suspense fallback={null}>
-              <EventTicketCheckoutAccessCard eventId={liveEvent.id} />
-            </React.Suspense>
+            <Pressable
+              onPress={() => setBuyersOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityLabel={`Eligible buyers section${buyersOpen ? " (expanded)" : " (collapsed)"}`}
+              style={({ pressed }) => [
+                styles.sectionHeader,
+                pressed && styles.sectionHeaderPressed,
+              ]}
+              testID="eligible-buyers-section-header"
+            >
+              <View style={styles.sectionHeaderLeft}>
+                <Text style={styles.sectionLabel}>Eligible buyers</Text>
+              </View>
+              <Icon
+                name={buyersOpen ? "chevU" : "chevD"}
+                size={16}
+                color={color.text3}
+              />
+            </Pressable>
+            {buyersOpen ? (
+              <View style={styles.sectionBody}>
+                <React.Suspense fallback={null}>
+                  <EventTicketCheckoutAccessCard eventId={liveEvent.id} embedded />
+                </React.Suspense>
+              </View>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>

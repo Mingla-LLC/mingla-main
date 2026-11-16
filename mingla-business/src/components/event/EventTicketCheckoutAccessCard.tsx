@@ -29,10 +29,8 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -43,6 +41,8 @@ import {
   type,
 } from "../../constants/designSystem";
 import { useEventTicketCheckoutAccess } from "../../hooks/useEventTicketCheckoutAccess";
+import { Button } from "../ui/Button";
+import { Input } from "../ui/Input";
 import {
   eventTicketCheckoutAccessErrorCode,
   type EventTicketCheckoutAccessErrorCode,
@@ -52,6 +52,12 @@ export interface EventTicketCheckoutAccessCardProps {
   /** The offering's canonical events-row UUID. */
   eventId: string;
   testID?: string;
+  /**
+   * #4420 — rendered inside a host screen's collapsible section card, whose
+   * header already reads "Eligible buyers": the card drops its own border,
+   * padding and heading so it sits on the section body's gutter.
+   */
+  embedded?: boolean;
 }
 
 const ERROR_COPY: Record<EventTicketCheckoutAccessErrorCode, string> = {
@@ -80,7 +86,7 @@ const newRequestId = (): string => {
 
 export const EventTicketCheckoutAccessCard: React.FC<
   EventTicketCheckoutAccessCardProps
-> = ({ eventId, testID = "issue-2101-eligible-buyers-card" }) => {
+> = ({ eventId, testID = "issue-2101-eligible-buyers-card", embedded = false }) => {
   const access = useEventTicketCheckoutAccess(eventId);
   const [username, setUsername] = useState<string>("");
   const [pendingRemoval, setPendingRemoval] = useState<string | null>(null);
@@ -185,10 +191,17 @@ export const EventTicketCheckoutAccessCard: React.FC<
     [access.setMode, handleError, revision],
   );
 
+  const hostStyle = embedded ? styles.hostEmbedded : styles.host;
+  const heading = embedded ? null : (
+    <Text style={styles.heading} accessibilityRole="header">
+      Eligible buyers
+    </Text>
+  );
+
   if (access.loading) {
     return (
-      <View style={styles.host} testID={`${testID}-loading`}>
-        <Text style={styles.heading}>Eligible buyers</Text>
+      <View style={hostStyle} testID={`${testID}-loading`}>
+        {heading}
         <View style={styles.row}>
           <ActivityIndicator size="small" color={color.text2} />
           <Text style={styles.body}>Loading who can buy…</Text>
@@ -199,20 +212,20 @@ export const EventTicketCheckoutAccessCard: React.FC<
 
   if (access.error !== null && access.error !== undefined) {
     return (
-      <View style={styles.host} testID={`${testID}-error`}>
-        <Text style={styles.heading}>Eligible buyers</Text>
+      <View style={hostStyle} testID={`${testID}-error`}>
+        {heading}
         <Text style={styles.body} accessibilityRole="alert">
           We couldn&rsquo;t load who can buy this ticket.
         </Text>
-        <Pressable
+        <Button
+          label="Try again"
+          variant="secondary"
+          size="sm"
           onPress={access.refetch}
-          accessibilityRole="button"
           accessibilityLabel="Retry loading eligible buyers"
-          style={styles.secondaryButton}
+          style={styles.action}
           testID={`${testID}-retry`}
-        >
-          <Text style={styles.secondaryButtonText}>Try again</Text>
-        </Pressable>
+        />
       </View>
     );
   }
@@ -220,10 +233,8 @@ export const EventTicketCheckoutAccessCard: React.FC<
   const restricted = data?.mode === "named_buyers";
 
   return (
-    <View style={styles.host} testID={testID}>
-      <Text style={styles.heading} accessibilityRole="header">
-        Eligible buyers
-      </Text>
+    <View style={hostStyle} testID={testID}>
+      {heading}
       <Text style={styles.body}>
         {restricted
           ? "Only the approved Mingla accounts below can check out. The page stays public — everyone else just can't buy."
@@ -270,85 +281,80 @@ export const EventTicketCheckoutAccessCard: React.FC<
             </Text>
             {pendingRemoval === member.membershipId ? (
               <View style={styles.row}>
-                <Pressable
+                <Button
+                  label="Remove"
+                  variant="destructive"
+                  size="sm"
                   onPress={() => handleRemove(member.membershipId)}
                   disabled={saving}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: saving }}
                   accessibilityLabel={`Confirm removing ${member.label}`}
-                  style={styles.dangerButton}
                   testID={`${testID}-confirm-remove-${member.membershipId}`}
-                >
-                  <Text style={styles.dangerButtonText}>Remove</Text>
-                </Pressable>
-                <Pressable
+                />
+                <Button
+                  label="Keep"
+                  variant="ghost"
+                  size="sm"
                   onPress={() => setPendingRemoval(null)}
-                  accessibilityRole="button"
                   accessibilityLabel="Keep this account"
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonText}>Keep</Text>
-                </Pressable>
+                />
               </View>
             ) : (
-              <Pressable
+              <Button
+                label="Remove"
+                variant="secondary"
+                size="sm"
                 onPress={() => setPendingRemoval(member.membershipId)}
                 disabled={saving}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: saving }}
                 accessibilityLabel={`Remove ${member.label}`}
-                style={styles.secondaryButton}
                 testID={`${testID}-remove-${member.membershipId}`}
-              >
-                <Text style={styles.secondaryButtonText}>Remove</Text>
-              </Pressable>
+              />
             )}
           </View>
         ))}
       </View>
 
-      <Pressable
+      <Button
+        label="Add my account"
+        variant="secondary"
+        size="sm"
+        leadingIcon="plus"
         onPress={handleAddSelf}
         disabled={saving}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: saving }}
         accessibilityLabel="Add my account to the approved buyers"
-        style={styles.primaryButton}
+        style={styles.action}
         testID={`${testID}-add-self`}
-      >
-        <Text style={styles.primaryButtonText}>Add my account</Text>
-      </Pressable>
-
-      <Text
-        style={styles.fieldLabel}
-        nativeID={`${testID}-username-label`}
-        accessibilityRole="text"
-      >
-        Approve by Mingla username
-      </Text>
-      <TextInput
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholder="exact username"
-        placeholderTextColor={color.text4}
-        editable={!saving}
-        accessibilityLabel="Approve by Mingla username"
-        style={styles.input}
-        testID={`${testID}-username-input`}
       />
-      <Pressable
-        onPress={handleAddUsername}
-        disabled={saving}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: saving }}
-        accessibilityLabel="Approve this username"
-        style={styles.secondaryButton}
-        testID={`${testID}-add-username`}
-      >
-        <Text style={styles.secondaryButtonText}>Approve username</Text>
-      </Pressable>
+
+      <View style={styles.field}>
+        <Text
+          style={styles.fieldLabel}
+          nativeID={`${testID}-username-label`}
+          accessibilityRole="text"
+        >
+          Approve by Mingla username
+        </Text>
+        <View style={styles.fieldRow}>
+          <Input
+            value={username}
+            onChangeText={setUsername}
+            variant="text"
+            placeholder="exact username"
+            disabled={saving}
+            accessibilityLabel="Approve by Mingla username"
+            style={styles.fieldInput}
+            testID={`${testID}-username-input`}
+          />
+          <Button
+            label="Approve username"
+            variant="secondary"
+            size="md"
+            onPress={handleAddUsername}
+            disabled={saving}
+            accessibilityLabel="Approve this username"
+            testID={`${testID}-add-username`}
+          />
+        </View>
+      </View>
 
       {pendingMode !== null ? (
         <View style={styles.confirm} testID={`${testID}-mode-confirm`}>
@@ -358,47 +364,41 @@ export const EventTicketCheckoutAccessCard: React.FC<
               : "Anyone will be able to buy again. Your approved list is kept."}
           </Text>
           <View style={styles.row}>
-            <Pressable
+            <Button
+              label="Confirm"
+              variant="primary"
+              size="sm"
               onPress={() => handleSetMode(pendingMode)}
               disabled={saving}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: saving }}
               accessibilityLabel="Confirm this change"
-              style={styles.primaryButton}
               testID={`${testID}-mode-confirm-yes`}
-            >
-              <Text style={styles.primaryButtonText}>Confirm</Text>
-            </Pressable>
-            <Pressable
+            />
+            <Button
+              label="Cancel"
+              variant="ghost"
+              size="sm"
               onPress={() => setPendingMode(null)}
-              accessibilityRole="button"
               accessibilityLabel="Cancel this change"
-              style={styles.secondaryButton}
-            >
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </Pressable>
+            />
           </View>
         </View>
       ) : (
-        <Pressable
+        <Button
+          label={restricted ? "Let anyone buy" : "Limit to approved accounts"}
+          variant="secondary"
+          size="sm"
           onPress={() =>
             setPendingMode(restricted ? "unrestricted" : "named_buyers")
           }
           disabled={saving}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: saving }}
           accessibilityLabel={
             restricted
               ? "Let anyone buy this ticket"
               : "Limit checkout to approved accounts"
           }
-          style={styles.secondaryButton}
+          style={styles.action}
           testID={`${testID}-toggle-mode`}
-        >
-          <Text style={styles.secondaryButtonText}>
-            {restricted ? "Let anyone buy" : "Limit to approved accounts"}
-          </Text>
-        </Pressable>
+        />
       )}
 
       {saving ? (
@@ -417,7 +417,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.lineStrong,
     padding: space[4],
-    gap: space[2],
+    gap: space[3],
+  },
+  // #4420: inside a host screen's section card (the section owns the border,
+  // the header and the 16 gutter).
+  hostEmbedded: {
+    gap: space[3],
   },
   heading: {
     fontSize: type.h1.fontSize,
@@ -461,56 +466,17 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   row: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  // #4420: buttons size to their label, left on the gutter.
+  action: { alignSelf: "flex-start" },
+  field: { gap: space[2] },
   fieldLabel: {
-    fontSize: type.caption.fontSize,
-    fontWeight: "700",
+    ...type.caption,
+    fontWeight: "600",
     color: color.text2,
   },
-  input: {
-    borderRadius: radiusTokens.sm,
-    borderWidth: 1,
-    borderColor: color.lineStrong,
-    paddingHorizontal: space[2],
-    paddingVertical: 10,
-    fontSize: type.small.fontSize,
-    color: color.text1,
-  },
-  primaryButton: {
-    alignSelf: "flex-start",
-    borderRadius: radiusTokens.sm,
-    backgroundColor: color.paper,
-    paddingHorizontal: space[4],
-    paddingVertical: 10,
-  },
-  primaryButtonText: {
-    fontSize: type.btnSm.fontSize,
-    fontWeight: "700",
-    color: color.ink,
-  },
-  secondaryButton: {
-    alignSelf: "flex-start",
-    borderRadius: radiusTokens.sm,
-    borderWidth: 1,
-    borderColor: color.lineStrong,
-    paddingHorizontal: space[4],
-    paddingVertical: 10,
-  },
-  secondaryButtonText: {
-    fontSize: type.btnSm.fontSize,
-    fontWeight: "700",
-    color: color.text1,
-  },
-  dangerButton: {
-    alignSelf: "flex-start",
-    borderRadius: radiusTokens.sm,
-    backgroundColor: color.danger,
-    paddingHorizontal: space[4],
-    paddingVertical: 10,
-  },
-  dangerButtonText: {
-    fontSize: type.btnSm.fontSize,
-    fontWeight: "700",
-    color: color.textStrong,
-  },
+  // The button sits beside the field when there is room and wraps under it on
+  // a phone, so the field never shrinks to a sliver.
+  fieldRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
+  fieldInput: { flexGrow: 1, flexBasis: 240, minWidth: 0 },
   confirm: { gap: space[2] },
 });
