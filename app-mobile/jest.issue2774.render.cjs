@@ -177,5 +177,7 @@ module.exports = {
     // issue #4456 — the Unsend / Remove confirm sheet opens, Cancel and the
     // backdrop close it, and a sheet that never opens is closed (device F-1).
     "**/__tests__/issue_4456_unsend_confirm_sheet.implementor.render.test.tsx",
+    // issue #4456 — Profile → Edit bio opens (it froze), saves and closes.
+    "**/__tests__/issue_4456_edit_bio_sheet.implementor.render.test.tsx",
   ],
 };
