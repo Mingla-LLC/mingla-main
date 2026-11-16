@@ -497,7 +497,11 @@ export async function applyLastTicketsOffer(deps: {
  */
 export type LastTicketsAdOps = {
   /** A NEW ad in the same ad set with the words; returns its id. */
-  copyAd(adSetExternalId: string, adExternalId: string, text: string): Promise<string>;
+  copyAd(
+    adSetExternalId: string,
+    adExternalId: string,
+    text: string,
+  ): Promise<string>;
   /** The app's review / delivery status of one ad (effectiveStatus). */
   reviewStatus(adExternalId: string): Promise<string | null>;
   pauseAd(adExternalId: string): Promise<void>;
@@ -567,7 +571,9 @@ export async function applyLastTicketsOfferByAds(deps: {
       if (setError) return await fail("ad_sets_read_failed");
       const setRows = (sets ?? []) as Record<string, unknown>[];
       const external = new Map(
-        setRows.map((set) => [String(set.id), String(set.external_adset_id ?? "")]),
+        setRows.map((
+          set,
+        ) => [String(set.id), String(set.external_adset_id ?? "")]),
       );
       if (setRows.length === 0) return await fail("no_live_ads_to_copy");
       const { data: ads, error: adError } = await db.from("ads")
@@ -586,13 +592,20 @@ export async function applyLastTicketsOfferByAds(deps: {
       }
       if (created.length === 0) return await fail("no_live_ads_to_copy");
       await db.from("ad_plan_automation_events").update({
-        detail: { ...detail, new_ad_ids: created, old_ad_ids: old, started_at: input.nowIso },
+        detail: {
+          ...detail,
+          new_ad_ids: created,
+          old_ad_ids: old,
+          started_at: input.nowIso,
+        },
       }).eq("id", input.row.id).eq("status", "pending");
       return "created";
     }
     const reviews: Array<"ready" | "refused" | "waiting"> = [];
     for (const id of made) {
-      reviews.push(lastTicketsReview(deps.platform, await ops.reviewStatus(id)));
+      reviews.push(
+        lastTicketsReview(deps.platform, await ops.reviewStatus(id)),
+      );
     }
     if (reviews.includes("refused")) {
       for (const id of made) await ops.pauseAd(id);

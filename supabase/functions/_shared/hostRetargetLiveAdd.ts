@@ -23,7 +23,11 @@
  *
  * MINGLA-INVARIANT: I-4238-LIVE-RETARGET-ADD-ONLY-PAST-2F | issue #4238 | hostRetargetLiveAddDecision adds a retarget ad set to a live one-ad-set Host plan only on Snapchat/TikTok, only when the original daily was < 2F and the raised daily is >= 2F with a ready audience and buyer exclusion; both ad sets stay >= F.
  */
-import type { AdConnectionRow, ChannelAdapter, Platform } from "./adChannelCore.ts";
+import type {
+  AdConnectionRow,
+  ChannelAdapter,
+  Platform,
+} from "./adChannelCore.ts";
 import {
   hostAdSetSplit,
   type HostRetargetReadiness,
@@ -57,7 +61,9 @@ export function hostRetargetLiveAddDecision(input: {
     return { add: false, reason: "retarget_live_add_not_supported" };
   }
   if (input.hasRetargetAdSet) return { add: false, reason: "retarget_exists" };
-  if (input.lifetime) return { add: false, reason: "retarget_needs_daily_budget" };
+  if (input.lifetime) {
+    return { add: false, reason: "retarget_needs_daily_budget" };
+  }
   const floor = input.floorCents;
   const amended = input.amendedDailyCents;
   if (floor === null || !(floor > 0) || amended === null) {
@@ -69,7 +75,10 @@ export function hostRetargetLiveAddDecision(input: {
   }
   const split = hostAdSetSplit(input.platform, amended, floor, input.readiness);
   if (split.ad_sets !== 2) {
-    return { add: false, reason: split.retarget.reason ?? "retarget_audience_not_ready" };
+    return {
+      add: false,
+      reason: split.retarget.reason ?? "retarget_audience_not_ready",
+    };
   }
   return {
     add: true,
@@ -102,12 +111,17 @@ export async function addHostRetargetAdSetLive(deps: {
 }): Promise<string> {
   const { db, adapter, connection } = deps;
   const { data: sets, error } = await db.from("ad_sets")
-    .select("id,external_adset_id,name,targeting,optimization_goal,billing_event,budget_cents,stage")
+    .select(
+      "id,external_adset_id,name,targeting,optimization_goal,billing_event,budget_cents,stage",
+    )
     .eq("campaign_id", input.campaignId);
   if (error) return "failed:ad_sets_read_failed";
   const rows = (sets ?? []) as Record<string, unknown>[];
-  if (rows.some((row) => row.stage === "retarget")) return "skipped:retarget_exists";
-  const prospecting = rows.find((row) => row.stage === "prospecting") ?? rows[0];
+  if (rows.some((row) => row.stage === "retarget")) {
+    return "skipped:retarget_exists";
+  }
+  const prospecting = rows.find((row) => row.stage === "prospecting") ??
+    rows[0];
   if (!prospecting || rows.length !== 1) return "skipped:not_one_ad_set";
   const prospectingId = String(prospecting.external_adset_id ?? "");
   let before = Number(prospecting.budget_cents);
@@ -133,17 +147,26 @@ export async function addHostRetargetAdSetLive(deps: {
   try {
     // Restore to what the app really holds, not only Mingla's record.
     if (typeof adapter.getBudget === "function") {
-      before = (await adapter.getBudget(connection, "ad_set", prospectingId)).cents;
+      before =
+        (await adapter.getBudget(connection, "ad_set", prospectingId)).cents;
     }
-    const made = await adapter.createAdSet(connection, input.externalCampaignId, {
-      name: `${String(prospecting.name ?? "Ad set")} — retarget`.slice(0, 200),
-      optimizationGoal: String(prospecting.optimization_goal ?? ""),
-      billingEvent: String(prospecting.billing_event ?? ""),
-      budgetCents: input.decision.retargetCents,
-      targeting,
-    });
+    const made = await adapter.createAdSet(
+      connection,
+      input.externalCampaignId,
+      {
+        name: `${String(prospecting.name ?? "Ad set")} — retarget`.slice(
+          0,
+          200,
+        ),
+        optimizationGoal: String(prospecting.optimization_goal ?? ""),
+        billingEvent: String(prospecting.billing_event ?? ""),
+        budgetCents: input.decision.retargetCents,
+        targeting,
+      },
+    );
     newAdSetId = made.externalId;
-    const newAds: Array<{ externalAdId: string; creativeId: string | null }> = [];
+    const newAds: Array<{ externalAdId: string; creativeId: string | null }> =
+      [];
     for (const ad of live) {
       newAds.push({
         externalAdId: await deps.copyAdInto(newAdSetId, {
@@ -155,29 +178,44 @@ export async function addHostRetargetAdSetLive(deps: {
         creativeId: typeof ad.creative_id === "string" ? ad.creative_id : null,
       });
     }
-    await adapter.setBudget(connection, "ad_set", prospectingId, input.decision.prospectingCents);
+    await adapter.setBudget(
+      connection,
+      "ad_set",
+      prospectingId,
+      input.decision.prospectingCents,
+    );
     lowered = true;
     if (typeof adapter.getBudget === "function") {
-      const readback = await adapter.getBudget(connection, "ad_set", prospectingId);
+      const readback = await adapter.getBudget(
+        connection,
+        "ad_set",
+        prospectingId,
+      );
       if (readback.cents !== input.decision.prospectingCents) {
         throw new Error(`provider_budget_readback_mismatch:${readback.cents}`);
       }
     }
     await adapter.setStatus(connection, "ad_set", newAdSetId, "ACTIVE");
-    const { data: inserted, error: insertError } = await db.from("ad_sets").insert({
-      campaign_id: input.campaignId,
-      external_adset_id: newAdSetId,
-      name: `${String(prospecting.name ?? "Ad set")} — retarget`.slice(0, 200),
-      targeting,
-      budget_cents: input.decision.retargetCents,
-      optimization_goal: prospecting.optimization_goal,
-      billing_event: prospecting.billing_event,
-      status: "ACTIVE",
-      stage: "retarget",
-      audience_codes: input.audienceCodes,
-      audience_sizes: input.audienceSizes,
-    }).select("id").single();
-    if (insertError || !inserted?.id) throw new Error("retarget_ad_set_persist_failed");
+    const { data: inserted, error: insertError } = await db.from("ad_sets")
+      .insert({
+        campaign_id: input.campaignId,
+        external_adset_id: newAdSetId,
+        name: `${String(prospecting.name ?? "Ad set")} — retarget`.slice(
+          0,
+          200,
+        ),
+        targeting,
+        budget_cents: input.decision.retargetCents,
+        optimization_goal: prospecting.optimization_goal,
+        billing_event: prospecting.billing_event,
+        status: "ACTIVE",
+        stage: "retarget",
+        audience_codes: input.audienceCodes,
+        audience_sizes: input.audienceSizes,
+      }).select("id").single();
+    if (insertError || !inserted?.id) {
+      throw new Error("retarget_ad_set_persist_failed");
+    }
     await db.from("ads").insert(newAds.map((ad, index) => ({
       ad_set_id: inserted.id,
       external_ad_id: ad.externalAdId,
@@ -185,7 +223,9 @@ export async function addHostRetargetAdSetLive(deps: {
       name: `Retarget — ${index + 1}`,
       status: "ACTIVE",
     })));
-    await db.from("ad_sets").update({ budget_cents: input.decision.prospectingCents })
+    await db.from("ad_sets").update({
+      budget_cents: input.decision.prospectingCents,
+    })
       .eq("id", prospecting.id);
     await db.from("ad_plan_automation_events").insert({
       plan_id: input.planId,
@@ -202,7 +242,8 @@ export async function addHostRetargetAdSetLive(deps: {
     });
     return `added:${newAds.length}`;
   } catch (error) {
-    const detail = (error instanceof Error ? error.message : String(error)).slice(0, 200);
+    const detail = (error instanceof Error ? error.message : String(error))
+      .slice(0, 200);
     // Never leave the apps above the daily total or on an unrecorded split.
     if (newAdSetId) {
       try {
@@ -222,7 +263,11 @@ export async function addHostRetargetAdSetLive(deps: {
       // a failed live add is a retarget_added row with status failed.
       kind: "retarget_added",
       status: "failed",
-      detail: { live_add: true, error: detail, external_adset_id: newAdSetId || null },
+      detail: {
+        live_add: true,
+        error: detail,
+        external_adset_id: newAdSetId || null,
+      },
     });
     return `failed:${detail}`;
   }

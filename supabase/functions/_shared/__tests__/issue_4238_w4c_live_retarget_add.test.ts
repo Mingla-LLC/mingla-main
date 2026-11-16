@@ -5,7 +5,10 @@
  * new daily total in between (new ad set paused → ads → prospecting lowered
  * → retarget on). A failure undoes what it pushed.
  */
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   addHostRetargetAdSetLive,
   hostRetargetLiveAddDecision,
@@ -37,7 +40,11 @@ Deno.test("decision: a raise from below 2F to at least 2F adds it; R = max(F, 20
     amendedDailyCents: 20_000,
     floorCents: 2000,
   });
-  assertEquals(tiktok, { add: true, prospectingCents: 16_000, retargetCents: 4000 });
+  assertEquals(tiktok, {
+    add: true,
+    prospectingCents: 16_000,
+    retargetCents: 4000,
+  });
 });
 
 Deno.test("adversarial decision: never below the thresholds, never on Meta, never twice, never without the audience", () => {
@@ -50,8 +57,14 @@ Deno.test("adversarial decision: never below the thresholds, never on Meta, neve
   assertEquals(no({ platform: "reddit" }), false);
   assertEquals(no({ hasRetargetAdSet: true }), false);
   assertEquals(no({ lifetime: true }), false);
-  assertEquals(no({ readiness: { audienceReady: false, buyerExclusionReady: true } }), false);
-  assertEquals(no({ readiness: { audienceReady: true, buyerExclusionReady: false } }), false);
+  assertEquals(
+    no({ readiness: { audienceReady: false, buyerExclusionReady: true } }),
+    false,
+  );
+  assertEquals(
+    no({ readiness: { audienceReady: true, buyerExclusionReady: false } }),
+    false,
+  );
   assertEquals(no({ ownerKind: "mingla" }), false);
   assertEquals(no({ floorCents: null }), false);
   // Brute force: whenever it adds, both ad sets are >= F and add up.
@@ -86,13 +99,17 @@ function fakeDb(tables: Record<string, Row[]>) {
       single: () => Promise.resolve({ data: { id: "new-local" }, error: null }),
       insert: (item: unknown) => {
         writes.push([`${table}.insert`, item]);
-        return { ...chain, then: (r: (v: unknown) => void) => r({ error: null }) };
+        return {
+          ...chain,
+          then: (r: (v: unknown) => void) => r({ error: null }),
+        };
       },
       update: (patch: Row) => {
         writes.push([`${table}.update`, patch]);
         return { eq: () => Promise.resolve({ error: null }) };
       },
-      then: (resolve: (value: unknown) => void) => resolve({ data: rows, error: null }),
+      then: (resolve: (value: unknown) => void) =>
+        resolve({ data: rows, error: null }),
     };
     return chain;
   };
@@ -112,17 +129,36 @@ const TABLES = () => ({
     stage: "prospecting",
   }],
   ads: [
-    { ad_set_id: "p", external_ad_id: "a1", external_creative_id: "cr1", creative_id: "lib1", status: "ACTIVE" },
-    { ad_set_id: "p", external_ad_id: "a2", external_creative_id: "cr2", creative_id: "lib2", status: "PAUSED" },
+    {
+      ad_set_id: "p",
+      external_ad_id: "a1",
+      external_creative_id: "cr1",
+      creative_id: "lib1",
+      status: "ACTIVE",
+    },
+    {
+      ad_set_id: "p",
+      external_ad_id: "a2",
+      external_creative_id: "cr2",
+      creative_id: "lib2",
+      status: "PAUSED",
+    },
   ],
 });
 
-function adapter(calls: string[], opts: { failCopy?: boolean; readback?: number } = {}) {
+function adapter(
+  calls: string[],
+  opts: { failCopy?: boolean; readback?: number } = {},
+) {
   let reads = 0;
   return {
     platform: "snapchat",
     createAdSet: (_c: unknown, campaign: string, input: Row) => {
-      calls.push(`createAdSet:${campaign}:${input.budgetCents}:${JSON.stringify((input.targeting as Row).segment_include_ids)}`);
+      calls.push(
+        `createAdSet:${campaign}:${input.budgetCents}:${
+          JSON.stringify((input.targeting as Row).segment_include_ids)
+        }`,
+      );
       return Promise.resolve({ externalId: "xr" });
     },
     setBudget: (_c: unknown, _l: string, id: string, cents: number) => {
@@ -132,7 +168,10 @@ function adapter(calls: string[], opts: { failCopy?: boolean; readback?: number 
     getBudget: () => {
       reads += 1;
       // First read: what the app holds now; second: the readback.
-      return Promise.resolve({ cents: reads === 1 ? 1500 : opts.readback ?? 1000, field: "daily_budget_micro" });
+      return Promise.resolve({
+        cents: reads === 1 ? 1500 : opts.readback ?? 1000,
+        field: "daily_budget_micro",
+      });
     },
     setStatus: (_c: unknown, _l: string, id: string, status: string) => {
       calls.push(`status:${id}:${status}`);
@@ -172,7 +211,8 @@ Deno.test("live add: paused retarget first, ads copied, prospecting lowered and 
     "budget:xp:1000",
     "status:xr:ACTIVE",
   ]);
-  const event = writes.find(([n]) => n === "ad_plan_automation_events.insert")?.[1] as Row;
+  const event = writes.find(([n]) => n === "ad_plan_automation_events.insert")
+    ?.[1] as Row;
   assertEquals([event.kind, event.status], ["retarget_added", "applied"]);
 });
 
@@ -187,7 +227,8 @@ Deno.test("live add adversarial: a copy failure pauses the new ad set and never 
   }, INPUT);
   assert(out.startsWith("failed:"));
   assertEquals(calls, ['createAdSet:xc:500:["viewers"]', "status:xr:PAUSED"]);
-  const event = writes.find(([n]) => n === "ad_plan_automation_events.insert")?.[1] as Row;
+  const event = writes.find(([n]) => n === "ad_plan_automation_events.insert")
+    ?.[1] as Row;
   assertEquals([event.kind, event.status], ["retarget_added", "failed"]);
 });
 
@@ -206,10 +247,16 @@ Deno.test("live add adversarial: a readback mismatch puts prospecting back and p
 });
 
 Deno.test("sweep wiring: only a raise (original < 2F <= amended), once, retried no sooner than a day", async () => {
-  const src = await Deno.readTextFile(new URL("../../admin-ad-spend-sync/index.ts", import.meta.url));
+  const src = await Deno.readTextFile(
+    new URL("../../admin-ad-spend-sync/index.ts", import.meta.url),
+  );
   const fn = src.slice(src.indexOf("async function maybeAddHostRetargetLive("));
   assert(fn.includes("!(original < 2 * floor) ||\n    amended < 2 * floor"));
   assert(fn.includes('tries.some((row) => row.status === "applied")'));
   assert(fn.includes("< 86_400_000"));
-  assert(src.includes("const retarget = await maybeAddHostRetargetLive(supabase, input);"));
+  assert(
+    src.includes(
+      "const retarget = await maybeAddHostRetargetLive(supabase, input);",
+    ),
+  );
 });

@@ -7,11 +7,15 @@
  * only), Reddit (account level only) and Google (conversion action, #4452)
  * are not set.
  */
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildMetaAdSetBody } from "../meta.ts";
 import { buildTikTokAdGroupBody } from "../tiktok.ts";
 
-const read = (path: string) => Deno.readTextFile(new URL(path, import.meta.url));
+const read = (path: string) =>
+  Deno.readTextFile(new URL(path, import.meta.url));
 
 Deno.test("Meta: a 7-day click-only ad set sends attribution_spec CLICK_THROUGH 7, nothing else does", () => {
   const base = {
@@ -21,7 +25,8 @@ Deno.test("Meta: a 7-day click-only ad set sends attribution_spec CLICK_THROUGH 
     targeting: { geo_locations: { countries: ["US"] } },
   };
   assertEquals(
-    buildMetaAdSetBody("c1", { ...base, clickOnlyAttributionDays: 7 }).attribution_spec,
+    buildMetaAdSetBody("c1", { ...base, clickOnlyAttributionDays: 7 })
+      .attribution_spec,
     [{ event_type: "CLICK_THROUGH", window_days: 7 }],
   );
   assertEquals("attribution_spec" in buildMetaAdSetBody("c1", base), false);
@@ -64,12 +69,20 @@ Deno.test("create wiring: only Host conversion ad sets ask for 7-day click; the 
   assert(source.includes(`...(requestedOwnerKind === "host" &&
         optimizationGoal === "OFFSITE_CONVERSIONS"
       ? { clickOnlyAttributionDays: 7 as const }`));
-  assert(source.includes(`...(requestedOwnerKind === "host" && objectiveT === "WEB_CONVERSIONS"
-          ? { clickOnlyAttributionDays: 7 as const }`));
+  assert(
+    source.includes(
+      `...(requestedOwnerKind === "host" && objectiveT === "WEB_CONVERSIONS"
+          ? { clickOnlyAttributionDays: 7 as const }`,
+    ),
+  );
   // Not on Snapchat, Reddit or Google create bodies.
   assertEquals(source.split("clickOnlyAttributionDays").length - 1, 2);
   const tiktok = await read("../tiktok.ts");
   assert(tiktok.includes(`input.clickOnlyAttributionDays === 7`));
   const ladder = await read("../adGoalPromotion.ts");
-  assert(ladder.includes(`body.attribution_spec = [{ event_type: "CLICK_THROUGH", window_days: 7 }];`));
+  assert(
+    ladder.includes(
+      `body.attribution_spec = [{ event_type: "CLICK_THROUGH", window_days: 7 }];`,
+    ),
+  );
 });

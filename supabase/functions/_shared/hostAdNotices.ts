@@ -977,7 +977,9 @@ export async function notifyHostAdCreditLow(
     }
     const notices: HostAdNotice[] = [];
     for (const row of live) {
-      const providerCurrency = String(row.provider_currency ?? row.currency ?? "")
+      const providerCurrency = String(
+        row.provider_currency ?? row.currency ?? "",
+      )
         .toUpperCase();
       const mine = ((spend ?? []) as Record<string, unknown>[]).filter((item) =>
         item.campaign_id === row.id &&

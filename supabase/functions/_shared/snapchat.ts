@@ -2947,11 +2947,19 @@ export async function snapchatCopyAdWithHeadline(
   const copy = snapchatStripReadOnlyFields(source);
   delete copy.id;
   copy.headline = text;
-  copy.name = `${String(source.name ?? "Creative")} — last tickets`.slice(0, 375);
+  copy.name = `${String(source.name ?? "Creative")} — last tickets`.slice(
+    0,
+    375,
+  );
   const made = snapchatEntityFromPayload(
-    await snapchatApi(client, "POST", `adaccounts/${client.adAccountId}/creatives`, {
-      creatives: [copy],
-    }),
+    await snapchatApi(
+      client,
+      "POST",
+      `adaccounts/${client.adAccountId}/creatives`,
+      {
+        creatives: [copy],
+      },
+    ),
     "creatives",
     "creative",
   );

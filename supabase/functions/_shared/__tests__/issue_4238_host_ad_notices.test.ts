@@ -306,24 +306,41 @@ Deno.test("SC-B1.5 (W4c): a running ad whose held budget runs out >2 days early,
   assertEquals(sent.length, afterFirst + 3);
   // Free credit already covers the run to the end date: nothing (adversarial).
   assertEquals(
-    decideCreditLowNotice({ ...base, freeCreditCents: 5_000_000, latestTopUpLedgerId: "L3" }),
+    decideCreditLowNotice({
+      ...base,
+      freeCreditCents: 5_000_000,
+      latestTopUpLedgerId: "L3",
+    }),
     null,
   );
   // Free credit covers part: the top-up is only the rest, in pay terms.
-  const part = decideCreditLowNotice({ ...base, freeCreditCents: 4_000_000, latestTopUpLedgerId: "L3" });
+  const part = decideCreditLowNotice({
+    ...base,
+    freeCreditCents: 4_000_000,
+    latestTopUpLedgerId: "L3",
+  });
   // ₦10,000 short ÷ 0.85 = ₦11,764.71 → ₦12,000, but never below the ₦25,000 minimum.
   assertEquals(
-    (part!.details as { suggested_top_up_pay_cents: number }).suggested_top_up_pay_cents,
+    (part!.details as { suggested_top_up_pay_cents: number })
+      .suggested_top_up_pay_cents,
     2_500_000,
   );
   // Runs out within 2 days of the end date: nothing.
   assertEquals(
-    decideCreditLowNotice({ ...base, endsAtMs: NOW + 3 * 86_400_000, latestTopUpLedgerId: "L4" }),
+    decideCreditLowNotice({
+      ...base,
+      endsAtMs: NOW + 3 * 86_400_000,
+      latestTopUpLedgerId: "L4",
+    }),
     null,
   );
   // Held budget reaches the end date: nothing, however low the free balance.
   assertEquals(
-    decideCreditLowNotice({ ...base, remainingProviderCents: 6_000_000, latestTopUpLedgerId: "L4" }),
+    decideCreditLowNotice({
+      ...base,
+      remainingProviderCents: 6_000_000,
+      latestTopUpLedgerId: "L4",
+    }),
     null,
   );
   // Fewer than 3 days of spend: the planned daily is used.
@@ -344,10 +361,27 @@ Deno.test("SC-B1.5 (W4c): a running ad whose held budget runs out >2 days early,
     hostPerProvider: 1_600,
     latestTopUpLedgerId: "L5",
   });
-  assertEquals((fx!.details as { need_host_cents: number }).need_host_cents, 41_600_000);
+  assertEquals(
+    (fx!.details as { need_host_cents: number }).need_host_cents,
+    41_600_000,
+  );
   // No end date or a past one: nothing.
-  assertEquals(decideCreditLowNotice({ ...base, endsAtMs: NaN, latestTopUpLedgerId: "L6" }), null);
-  assertEquals(decideCreditLowNotice({ ...base, endsAtMs: NOW - 1, latestTopUpLedgerId: "L6" }), null);
+  assertEquals(
+    decideCreditLowNotice({
+      ...base,
+      endsAtMs: NaN,
+      latestTopUpLedgerId: "L6",
+    }),
+    null,
+  );
+  assertEquals(
+    decideCreditLowNotice({
+      ...base,
+      endsAtMs: NOW - 1,
+      latestTopUpLedgerId: "L6",
+    }),
+    null,
+  );
 });
 
 Deno.test("SC-B1.6: ad_ended waits for the settled hold and states the ledger's return", () => {
