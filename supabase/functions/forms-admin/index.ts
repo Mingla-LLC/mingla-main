@@ -29,6 +29,7 @@ export async function handler(req: Request): Promise<Response> {
       return { ...f, flow: a?.draft ?? null, automation_live: a?.live_version ?? null };
     },
     sendEmail: async (email) => {
+      // no-attachment: a form test email is the rendered subject, HTML and text only; forms never attach files.
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${Deno.env.get("RESEND_API_KEY") ?? ""}`, "Content-Type": "application/json" },

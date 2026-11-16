@@ -204,6 +204,10 @@ const SCANNED_EXTENSIONS = [
   ".json", ".sql",
   // issue #3980: GraphQL query fixtures are text a model id could hide in.
   ".graphql",
+  // issue #4452: rendered email goldens (HTML and plain text) under
+  // supabase/functions. Scanned rather than exempted: they are text a model id
+  // or a rate literal could be pasted into.
+  ".html", ".txt",
 ];
 
 // Extensions that legitimately carry no code — CAPPED, and every entry earns

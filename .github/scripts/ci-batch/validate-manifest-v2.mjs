@@ -512,7 +512,8 @@ export function phase3dContractDigest(manifest) {
 // #4452 rework 1: registered the tester adversarial pg17 suite and the rework SQL suite (with sidecars) in the #1931 and #2117 inventories; re-sealed.
 // #4452 retest 1: registered the tester rework adversarial pg17 suite (with its sidecar) in the #1931 and #2117 inventories; re-sealed.
 // #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "4be895e7c1a1e1b48dddf3b508feb3e1892ad301d18aa09cf6b69447ed51acf5";
+// #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "901deb8153ba2cf14f7de13dda7ccf948782fc3cc29e72b523cc12e380cf25c0";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
