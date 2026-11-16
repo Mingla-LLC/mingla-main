@@ -1609,10 +1609,13 @@ begin
       -- [TEST-MOD-APPROVED #3980] D-9: brand auto-link (ops_brand_autolink_one) is the one new writer of crm_records and crm_activity.
       -- #4130: the approved stale-card bulk reset is an admin-only, audited
       -- writer. Naming it keeps the exact-writer guard closed to every other function.
-      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
+      -- #4452: forms routing (a submission makes or updates a card and logs it) and the
+      -- automation "move stage" step are the approved new writers; all three are
+      -- service-role only and log every change to crm_activity.
+      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.forms_move_stage,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
       ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
-      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.ops_brand_autolink_one,public.team_draft_unsend'),
+      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.forms_move_stage,public.forms_route_submission,public.forms_submit_core,public.ops_brand_autolink_one,public.team_draft_unsend'),
       ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)
   loop
@@ -1632,7 +1635,8 @@ begin
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname !~ '^pg_temp' and p.prosrc ~* 'update\s+public\.crm_records\s+set\s+stage\s*='),
-    'public.crm_apply_brand_link,public.crm_reconcile_live,public.crm_record_move_stage,public.crm_record_undo_stage_move');
+    -- #4452: the automation "move stage" step (forms_move_stage) is the one new stage writer.
+    'public.crm_apply_brand_link,public.crm_reconcile_live,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.forms_move_stage');
   perform pg_temp.t3802w_check('W1-12', 'only the two exact Undo functions remove a log line',
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
