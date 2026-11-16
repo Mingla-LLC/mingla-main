@@ -41,7 +41,7 @@ import type { RenderInput, TicketBodyInput } from "../email/types.ts";
 const CANONICAL = "https://usemingla.com/brand/email/mingla-wordmark-email.png";
 // #4452 (B7) §5.9: every shell email draws the logo pill (live on the bare
 // host); minglaLogoUrl() still owns the PDF and non-shell logos.
-const PILL = "https://usemingla.com/brand/mingla-logo-white-on-orange.png";
+const PILL = "https://usemingla.com/brand/mingla-logo-pill.png";
 // Assembled from parts so THIS file never carries the dead literals the
 // issue-1001-dead-logo-urls.mjs gate bans repo-wide.
 const DEAD_EMAIL_ASSETS = ["usemingla.com", "email-assets", "mingla-logo.png"]
@@ -114,7 +114,7 @@ Deno.test("T12: whitespace-only env → default returned (trim guard)", () => {
 Deno.test("T3: transactional shell render with NO secret — the logo pill >=2x (header+footer), zero dead/www literals", () => {
   Deno.env.delete("MINGLA_LOGO_URL");
   const result = renderTransactionalEmail(ticketFixture());
-  const matches = result.html.match(/mingla-logo-white-on-orange\.png/g) ?? [];
+  const matches = result.html.match(/mingla-logo-pill\.png/g) ?? [];
   assert(matches.length >= 2, `logo pill rendered ${matches.length}x, expected >=2`);
   assert(!result.html.includes(CANONICAL), "#4452 B7: the old wordmark is not the shell logo");
   assertNoDeadOrWwwLogo(result.html);
