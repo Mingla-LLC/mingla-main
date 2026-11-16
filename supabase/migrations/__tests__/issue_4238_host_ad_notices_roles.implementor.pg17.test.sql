@@ -11,6 +11,7 @@
 --   R2  marketing without ads_spend still cannot launch or pause; finance
 --       cannot launch; a removed admin and an unaccepted admin get nothing.
 --   R3  the owner can still do everything; end stays owner-only.
+--   R4  no answer is NULL (a missing permission key is false).
 --   A1  the chart counts a sale 6 days after the tap, not one 8 days after,
 --       not one before its tap and not one with no tap.
 --
@@ -177,6 +178,12 @@ BEGIN
     AND NOT public.ad_can_host_action(v_brand, v_finance, 'end')
     AND NOT public.ad_can_host_action(v_brand, v_marketing, 'end'),
     'R3 owner does everything; end stays owner-only');
+  -- R4: every answer is true or false, never NULL (fail closed explicitly).
+  PERFORM pg_temp.s_assert(
+    (SELECT bool_and(public.ad_can_host_action(v_brand, u, a) IS NOT NULL)
+     FROM unnest(ARRAY[v_admin, v_marketing, v_finance, v_removed, v_invited]) u,
+          unnest(ARRAY['read','plan','fund','launch','pause','end','bogus']) a),
+    'R4 no NULL answers');
 END
 $t$;
 
@@ -192,10 +199,24 @@ DECLARE
   v_tf uuid := gen_random_uuid();
   v_total bigint;
 BEGIN
-  INSERT INTO public.ad_connections (id, platform, lane, display_name, external_account_id, auth_kind)
-  VALUES (v_conn, 'meta', 'business', 'W4b Meta', 'act_w4b', 'system_user');
-  INSERT INTO public.ad_campaigns (id, platform, connection_id, brand_id, external_campaign_id, name, status, owner_kind)
-  VALUES (v_campaign, 'meta', v_conn, v_brand, 'w4b-ext', 'W4b ad', 'ACTIVE', 'host');
+  INSERT INTO public.ad_connections (
+    id, platform, lane, display_name, external_account_id, auth_kind,
+    token_env_var, status, currency, connected
+  ) VALUES (
+    v_conn, 'meta', 'business', 'W4b Meta', 'act_w4b', 'system_user_token',
+    'ISSUE_4238_W4B_TOKEN', 'connected', 'USD', true
+  );
+  -- The window is the same for every lane; an Admin-lane row keeps the
+  -- fixture free of a funded plan.
+  INSERT INTO public.ad_campaigns (
+    id, connection_id, platform, external_campaign_id, name, objective,
+    status, dest_page_type, dest_brand_slug, dest_url, dest_smart_link,
+    currency
+  ) VALUES (
+    v_campaign, v_conn, 'meta', 'w4b-ext', 'W4b ad', 'OUTCOME_TRAFFIC',
+    'PAUSED', 'event', 'w4b-brand', 'https://usemingla.com/e/w4b-brand/x',
+    'https://usemingla.com/e/w4b-brand/x', 'USD'
+  );
   INSERT INTO public.ad_attribution_touches (id, click_id, network, campaign_id, surface, created_at) VALUES
     (v_t6, 'w4b-click-6', 'meta', v_campaign, 'web', now() - interval '6 days'),
     (v_t8, 'w4b-click-8', 'meta', v_campaign, 'web', now() - interval '8 days'),

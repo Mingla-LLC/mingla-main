@@ -94,7 +94,9 @@ BEGIN
 
   IF NOT FOUND THEN RETURN false; END IF;
 
-  RETURN CASE p_action
+  -- #4238 W4b: a missing permission key used to make some answers NULL
+  -- (e.g. 'fund' for a brand admin); every answer is now true or false.
+  RETURN COALESCE(CASE p_action
     WHEN 'read' THEN
       v_role IN ('brand_admin','marketing_manager','finance_manager')
       OR v_permissions->'ads_view' = 'true'::jsonb
@@ -117,7 +119,7 @@ BEGIN
       OR v_permissions->'ads_pause' = 'true'::jsonb
     WHEN 'end' THEN false
     ELSE false
-  END;
+  END, false);
 END;
 $function$;
 
