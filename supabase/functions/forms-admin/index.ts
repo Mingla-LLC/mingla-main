@@ -14,18 +14,24 @@ function staticEnv(values: Record<string, string | undefined>): (n: string) => s
 export async function handler(req: Request): Promise<Response> {
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  const service = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", { auth: { autoRefreshToken: false, persistSession: false } });
-  const user = createClient(url, anon, {
+  // #4452 B19: the clients are made on first use, inside handleAdmin's CORS net,
+  // so the preflight never builds one and a failure still answers with CORS.
+  const makeService = () => createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", { auth: { autoRefreshToken: false, persistSession: false } });
+  const makeUser = () => createClient(url, anon, {
     global: { headers: { Authorization: req.headers.get("authorization") ?? "" } },
     auth: { autoRefreshToken: false, persistSession: false },
   });
+  let serviceClient: ReturnType<typeof makeService> | null = null;
+  let userClient: ReturnType<typeof makeUser> | null = null;
+  const service = () => (serviceClient ??= makeService());
+  const user = () => (userClient ??= makeUser());
   return await handleAdmin(req, {
-    canEdit: async () => (await user.rpc("forms_can_edit")).data === true,
-    callerEmail: async () => (await user.auth.getUser()).data.user?.email?.toLowerCase() ?? null,
+    canEdit: async () => (await user().rpc("forms_can_edit")).data === true,
+    callerEmail: async () => (await user().auth.getUser()).data.user?.email?.toLowerCase() ?? null,
     loadForm: async (formId) => {
-      const { data: f } = await service.from("forms").select("id,key,name,audience,draft,live_version_id").eq("id", formId).maybeSingle();
+      const { data: f } = await service().from("forms").select("id,key,name,audience,draft,live_version_id").eq("id", formId).maybeSingle();
       if (!f) return null;
-      const { data: a } = await service.from("form_automations").select("draft,live_version").eq("form_id", formId).maybeSingle();
+      const { data: a } = await service().from("form_automations").select("draft,live_version").eq("form_id", formId).maybeSingle();
       return { ...f, flow: a?.draft ?? null, automation_live: a?.live_version ?? null };
     },
     sendEmail: async (email) => {
@@ -39,10 +45,10 @@ export async function handler(req: Request): Promise<Response> {
       return res.ok;
     },
     markTested: async (formId) => {
-      await service.rpc("admin_form_mark_tested", { p_form_id: formId });
+      await service().rpc("admin_form_mark_tested", { p_form_id: formId });
     },
     startTestFlow: async (formId, email) => {
-      const { data } = await service.rpc("forms_start_test_run", { p_form_id: formId, p_email: email, p_answers: SAMPLE_ANSWERS });
+      const { data } = await service().rpc("forms_start_test_run", { p_form_id: formId, p_email: email, p_answers: SAMPLE_ANSWERS });
       if (data) {
         await fetch(`${url}/functions/v1/forms-automation-sender`, {
           method: "POST", headers: { authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}` }, body: "{}",

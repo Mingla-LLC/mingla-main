@@ -18,7 +18,7 @@ const BRAND_MUTED = "#6B675F";
 const BRAND_BG_SOFT = "#F5F4F0";
 const BRAND_BORDER = "#E7E3DA";
 const BODY_TEXT = "#3F3D39";
-export const LOGO_PILL_URL = "https://usemingla.com/brand/mingla-logo-white-on-orange.png";
+export const LOGO_PILL_URL = "https://usemingla.com/brand/mingla-logo-pill.png";
 
 export interface ShellInput {
   preheader: string;
@@ -93,7 +93,7 @@ export function renderShell(input: ShellInput): string {
     : `<tr>
               <td style="padding:24px 28px 0 28px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                  <td align="left" valign="middle"><img src="${logo}" alt="Mingla" width="96" style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:96px;" /></td>
+                  <td align="left" valign="middle"><img src="${logo}" alt="Mingla" width="96" height="38" style="display:block;border:0;outline:none;text-decoration:none;width:96px;height:38px;max-width:96px;" /></td>
                   <td align="right" valign="middle">${labelPill}</td>
                 </tr></table>
               </td>
@@ -127,7 +127,7 @@ export function renderShell(input: ShellInput): string {
             </tr>
             <tr>
               <td style="padding:24px 28px;border-top:1px solid ${BRAND_BORDER};background:${BRAND_BG_SOFT};font-size:13px;line-height:1.5;color:${BRAND_MUTED};">
-                <img src="${logo}" alt="Mingla" width="64" style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:64px;margin:0 0 10px 0;" />
+                <img src="${logo}" alt="Mingla" width="64" height="25" style="display:block;border:0;outline:none;text-decoration:none;width:64px;height:25px;max-width:64px;margin:0 0 10px 0;" />
                 <p style="margin:0 0 8px 0;color:${BRAND_INK};">Making real life easier to find.</p>
                 <p style="margin:0 0 8px 0;">Questions? Reply to this email or write to <a href="mailto:${support}" style="color:${BRAND_INK};text-decoration:underline;">${support}</a> · ${address}</p>
                 ${

@@ -122,7 +122,7 @@ describe("#4452 T-7.3 the Forms list", () => {
   it("Book-a-call forms say they use the Book-a-call emails", () => {
     assert.equal(h.M.formSubLine({ template: "book_call_extra", fields: 3 }), "Uses Book-a-call emails");
     // #4452 §6.9: the free tools' system follow-up forms are labelled, and never offered for a page spot.
-    assert.equal(h.M.formSubLine({ template: "tool", fields: 3 }), "Free tool follow-ups (system form)");
+    assert.equal(h.M.formSubLine({ template: "tool", fields: 3 }), h.M.TOOL_FORM_HINT);
     assert.match(readSrc("components/website/PageSidePanel.jsx"), /f\.template !== "tool" && \(details \?/);
   });
 });
@@ -407,5 +407,30 @@ describe("#4452 T-7.0 view-only members", () => {
       assert.equal(canOpenPage(website, page), true, `website ${page}`);
       assert.equal(canOpenPage(nobody, page), false, `nobody ${page}`);
     }
+  });
+});
+
+// #4452 B19: a failed forms-admin call ("Send me a test", "Test the whole flow")
+// shows plain words, never the client library's raw "Failed to send a request
+// to the Edge Function". FAILS-ON-REVERT: putting `error.message` back into the
+// fn() throw, or `e.message` back into the flow test's toast, fails these.
+describe("#4452 B19 a failed forms-admin call reads in plain English", () => {
+  const RAW = "Failed to send a request to the Edge Function";
+  it("an unreachable function says so plainly; the server's own message wins when it sent one", () => {
+    const fetchError = Object.assign(new Error(RAW), { name: "FunctionsFetchError" });
+    assert.equal(h.M.functionErrorWords(fetchError, null), h.M.FUNCTION_UNREACHABLE);
+    assert.doesNotMatch(h.M.FUNCTION_UNREACHABLE, /Edge Function/);
+    assert.equal(h.M.functionErrorWords(new Error("x"), { error: "publish_first", message: "Publish the form and its emails first." }), "Publish the form and its emails first.");
+    assert.equal(h.M.functionErrorWords(new Error(RAW), { error: "server" }), "Something on the server failed. Try again.");
+    assert.equal(h.M.functionErrorWords(new Error(RAW), { error: "validation" }), "That did not go through. Try again.");
+    assert.equal(h.M.functionErrorWords(new Error(RAW), null), "That did not go through. Try again.");
+  });
+  it("the service throws those words, and every forms-admin toast goes through formsErrorWords", () => {
+    const svc = readSrc("services/formsService.js");
+    assert.match(svc, /throw new FormsError\(code, functionErrorWords\(error, payload\)\);/);
+    assert.doesNotMatch(svc, /error\.message \|\| "That did not go through\."/);
+    const auto = readSrc("components/forms/AutomationsTab.jsx");
+    assert.doesNotMatch(auto, /title: e\.message/);
+    assert.match(auto, /const res = await testWholeFlow\(form\.id\);[\s\S]{0,200}title: formsErrorWords\(e\)/);
   });
 });

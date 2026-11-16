@@ -106,7 +106,7 @@ import { HostCardEmptyState } from "../components/community/HostCardEmptyState.j
 import { ToastProvider } from "../context/ToastContext.jsx";
 import { HostTeamSection } from "../components/crm/HostTeamSection.jsx";
 import { PageLink } from "../components/ui/PanelStack.jsx";
-export { assignHostToMe } from "../components/community/BrandGroupHeader.jsx";
+export { assignHostToMe } from "../lib/brandGroupHostAssign.js";
 const html = (el) => renderToStaticMarkup(el);
 export const row = (p) => html(<BrandGroupRow onOpen={() => {}} {...p} />);
 export const list = (p) => html(<BrandGroupList onFilter={() => {}} onQuery={() => {}} onOpen={() => {}} {...p} />);
@@ -484,7 +484,7 @@ describe("E source contracts", () => {
     assert.doesNotMatch(panel, /addEventListener\("popstate"/, "no popstate counting (Chrome fires popstate for the page's own pushes)");
     assert.doesNotMatch(close, /replace:\s*true/);
     assert.match(panel, /const side = sideAllowed\(view\.side, \{ canHosts, canBrands \}\) \? view\.side : null;/);
-    assert.match(panel, /if \(side\.kind === "brand"\) return !!canBrands;/);
+    assert.match(code("lib/brandGroupSideAccess.js"), /if \(side\.kind === "brand"\) return !!canBrands;/);
   });
   it("the light refresh after a message reads no plans; the counts reach the page", () => {
     const panel = code("components/community/BrandGroupsPanel.jsx");
@@ -805,7 +805,7 @@ describe("R rework 2 (retest 1: R-1, N-2, N-3, X-1, toast reopen)", () => {
     assert.equal(win.location.href, opened);
     const panel = code("components/community/BrandGroupsPanel.jsx");
     assert.match(panel, /const setRailTab = \(tab\) => panelHistory\.current\.replace\(\(\) => setSearch\(brandGroupSearch\(search, \{ rail: tab \}\), \{ replace: true \}\)\);/);
-    assert.match(panel, /if \(match\) panelHistory\.current\.replace\(\(\) => setSearch\(brandGroupSearch\(search, \{ group: match\.conversation_id, brand: null \}\), \{ replace: true \}\)\);/);
+    assert.match(panel, /if \(match\) panelHistory\.current\.replace\(\(\) => nowSetSearch\(brandGroupSearch\(nowSearch, \{ group: match\.conversation_id, brand: null \}\), \{ replace: true \}\)\);/);
   });
 
   it("toast reopen: a panel opened from a drawer's kept callback after Close is tagged, so its Close walks back", () => {
