@@ -411,6 +411,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'refresh-outline':            RefreshCw,
   'remove':                     Minus,
   'remove-circle':              CircleMinus,
+  // #4456: Unsend for everyone and the unsent line.
+  'remove-circle-outline':      CircleMinus,
   'restaurant':                  UtensilsCrossed,
   'restaurant-outline':         UtensilsCrossed,
 
@@ -426,6 +428,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'share-outline':              Share,
   'share-social-outline':       Share2,
   'shield':                     Shield,
+  // #4456: Remove for everyone (group admin).
+  'shield-outline':             Shield,
   'shield-checkmark':           ShieldCheck,
   'shield-checkmark-outline':   ShieldCheck,
   'shuffle-outline':            Shuffle,

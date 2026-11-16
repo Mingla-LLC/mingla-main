@@ -6,8 +6,17 @@
  * only when the server says yes. While "Unsending..." the scrim, the drag and
  * Cancel are held; a failure stays in the sheet with Try again (and the error
  * is announced). It closes by Cancel, the scrim, a drag or Android back.
+ *
+ * Device pass F-1: with `scrollMode="view"` the body is a plain View, which
+ * gorhom's dynamic sizing cannot measure, so the sheet never reached an open
+ * snap point while its RN Modal window was up: an invisible layer that
+ * swallowed every touch. The body is now a BottomSheetScrollView
+ * (`scrollMode="scroll"`) with the menu's `['86%']` cap, the same setup the
+ * message menu opens with. A watchdog closes the confirm (and reports it) if
+ * the sheet still has not opened after CONFIRM_OPEN_WATCHDOG_MS, so a failed
+ * open can never leave the chat frozen.
  */
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { AccessibilityInfo, ActivityIndicator, StyleSheet, Text, TouchableOpacity, View, findNodeHandle, useWindowDimensions } from "react-native";
 import { useTranslation } from "react-i18next";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
@@ -15,6 +24,11 @@ import { Icon } from "../ui/Icon";
 import { chatTokens } from "../../constants/chatTokens";
 
 export type UnsendConfirmMode = "unsend" | "remove";
+
+/** The sheet's snap cap (same as the message menu, which opens reliably). */
+export const UNSEND_CONFIRM_SNAP_POINTS = ["86%"] as const;
+/** Open animation (280 ms) plus margin: past this an unopened sheet is closed. */
+export const CONFIRM_OPEN_WATCHDOG_MS = 1500;
 
 export interface UnsendConfirmRequest {
   ids: string[];
@@ -30,9 +44,11 @@ interface UnsendConfirmSheetProps {
   error: string | null;
   onCancel: () => void;
   onConfirm: () => void;
+  /** The sheet did not open in time; it has been closed. */
+  onOpenFailed?: () => void;
 }
 
-export function UnsendConfirmSheet({ request, busy, error, onCancel, onConfirm }: UnsendConfirmSheetProps): React.ReactElement {
+export function UnsendConfirmSheet({ request, busy, error, onCancel, onConfirm, onOpenFailed }: UnsendConfirmSheetProps): React.ReactElement {
   const { t } = useTranslation(["chat", "common"]);
   const titleRef = useRef<Text>(null);
   const { height: windowHeight } = useWindowDimensions();
@@ -61,14 +77,38 @@ export function UnsendConfirmSheet({ request, busy, error, onCancel, onConfirm }
     if (error) AccessibilityInfo.announceForAccessibility(error);
   }, [error]);
 
+  // F-1 guard: the sheet reports its open snap through onChange. If it never
+  // does, close the confirm so its modal window cannot stay up invisibly.
+  const openedRef = useRef(false);
+  const handleChange = useCallback((index: number) => {
+    if (index >= 0) openedRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!visible) {
+      openedRef.current = false;
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      if (openedRef.current) return;
+      console.warn("[UnsendConfirmSheet] the confirm sheet did not open; closing it");
+      onCancel();
+      onOpenFailed?.();
+    }, CONFIRM_OPEN_WATCHDOG_MS);
+    return () => clearTimeout(timer);
+    // Re-arm only when the sheet opens for a new request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, request]);
+
   return (
     <BaseBottomSheet
       visible={visible}
       onClose={busy ? () => undefined : onCancel}
+      onChange={handleChange}
       theme="dark"
+      snapPoints={UNSEND_CONFIRM_SNAP_POINTS as unknown as string[]}
       enableDynamicSizing
       maxDynamicContentSize={Math.round(windowHeight * 0.86)}
-      scrollMode="view"
+      scrollMode="scroll"
       wrapInRNModal
       enablePanDownToClose={!busy}
       backdropPressBehavior={busy ? "none" : "close"}

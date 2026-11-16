@@ -111,3 +111,54 @@ Deno.test("#4456 sign-in fallback writes only real profile columns", async () =>
   assert(JSON.stringify(keys) === JSON.stringify(expected), `insert keys ${keys.join(", ")}`);
   assert(/createError\?\.code === "23505"/.test(auth.slice(start)), "a create conflict reads the existing profile");
 });
+
+// Device pass F-2: an icon name missing from the Icon map renders nothing
+// ("Unknown icon name"), which left Unsend, Remove, the unsent line and the
+// confirm sheet without their icons.
+Deno.test("#4456 every icon the unsend surfaces use is registered", async () => {
+  const iconSource = await read("components/ui/Icon.tsx");
+  const map = /const ICON_MAP: Record<string, LucideIcon> = \{([\s\S]*?)\n\};/.exec(iconSource);
+  assert(map, "the Icon map");
+  const registered = new Set([...map[1].matchAll(/^\s*'([a-z0-9-]+)':/gm)].map((m) => m[1]));
+  const used = new Set<string>();
+  for (const path of [
+    "components/chat/MessageContextMenu.tsx",
+    "components/chat/UnsentBubble.tsx",
+    "components/chat/UnsendConfirmSheet.tsx",
+  ]) {
+    const source = strip(await read(path));
+    for (const m of source.matchAll(/<Icon\s+name="([a-z0-9-]+)"/g)) used.add(m[1]);
+    for (const m of source.matchAll(/<Icon\s+name=\{([^}]*)\}/g)) {
+      for (const lit of m[1].matchAll(/"([a-z0-9-]+)"/g)) used.add(lit[1]);
+    }
+    const icons = /const ICONS: Record<MessageActionId, string> = \{([\s\S]*?)\};/.exec(source);
+    if (icons) for (const m of icons[1].matchAll(/'([a-z0-9-]+)'/g)) used.add(m[1]);
+  }
+  for (const name of ["remove-circle-outline", "shield-outline", "trash-outline", "flag-outline"]) {
+    assert(used.has(name), `the scan sees ${name}`);
+  }
+  const missing = [...used].filter((name) => !registered.has(name));
+  assert(missing.length === 0, `icons not in the Icon map: ${missing.join(", ")}`);
+});
+
+// Device pass F-1: a view-mode body cannot be measured by dynamic sizing, so
+// the confirm never opened and its modal window swallowed every touch.
+Deno.test("#4456 the confirm sheet opens like the menu and can never stay up unopened", async () => {
+  const sheet = strip(await read("components/chat/UnsendConfirmSheet.tsx"));
+  assert(/scrollMode="scroll"/.test(sheet) && !/scrollMode="view"/.test(sheet), "a measurable scroll body");
+  assert(/UNSEND_CONFIRM_SNAP_POINTS = \["86%"\]/.test(sheet) && /snapPoints=\{UNSEND_CONFIRM_SNAP_POINTS/.test(sheet), "the menu's snap cap");
+  assert(/onChange=\{handleChange\}/.test(sheet) && /if \(openedRef\.current\) return;[\s\S]*?onCancel\(\);[\s\S]*?onOpenFailed\?\.\(\);/.test(sheet), "an unopened sheet is closed by the watchdog");
+  const menu = strip(await read("components/chat/MessageContextMenu.tsx"));
+  assert(!/scrollMode="view"[\s\S]{0,200}enableDynamicSizing|enableDynamicSizing[\s\S]{0,200}scrollMode="view"/.test(menu), "the menu never pairs dynamic sizing with a view body");
+  const chat = strip(await read("components/MessageInterface.tsx"));
+  assert(/onOpenFailed=\{\(\) => showNotification\(t\('chat:unsendFailed'\), '', 'error'\)\}/.test(chat), "a failed open is reported");
+});
+
+// Device pass F-3: Android cut the italic unsent line to "Ana unsent a".
+Deno.test("#4456 the unsent line wraps inside a numeric width on Android", async () => {
+  const line = strip(await read("components/chat/UnsentBubble.tsx"));
+  assert(!/numberOfLines/.test(line), "the line is never capped");
+  assert(/maxWidth: Math\.round\(width \* UNSENT_BUBBLE_MAX_WIDTH_RATIO\)/.test(line), "numeric max width");
+  assert(!/maxWidth: "78%"/.test(line), "no percentage width inside a flex row");
+  assert(/paddingRight: 3/.test(line) && /textBreakStrategy=\{Platform\.OS === "android" \? "simple" : undefined\}/.test(line), "room for the italic overhang");
+});

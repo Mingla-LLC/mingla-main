@@ -3753,6 +3753,7 @@ function MessageInterfaceInner({
         error={unsendError}
         onCancel={closeUnsendConfirm}
         onConfirm={() => void confirmUnsend()}
+        onOpenFailed={() => showNotification(t('chat:unsendFailed'), '', 'error')}
       />
 
       {/* Issue #4114 Wave 4: media viewers. Photos open in the shared

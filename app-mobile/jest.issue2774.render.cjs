@@ -174,5 +174,8 @@ module.exports = {
     // the Shoot card and the posts-checked notices; the media poll and resume.
     "**/__tests__/issue_4402_explorer_delivery.implementor.render.test.tsx",
     "**/__tests__/issue_4402_explorer_media_poll.implementor.render.test.ts",
+    // issue #4456 — the Unsend / Remove confirm sheet opens, Cancel and the
+    // backdrop close it, and a sheet that never opens is closed (device F-1).
+    "**/__tests__/issue_4456_unsend_confirm_sheet.implementor.render.test.tsx",
   ],
 };

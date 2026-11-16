@@ -7,7 +7,7 @@
  * screen reader's custom action, offers Delete for me only.
  */
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Platform, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { chatTokens } from "../../constants/chatTokens";
@@ -15,6 +15,8 @@ import type { GroupPosition } from "../../utils/threadModel";
 
 const FULL = 16;
 const SMALL = 4;
+/** Same cap as a message bubble (MessageBubble: 78% of the screen). */
+export const UNSENT_BUBBLE_MAX_WIDTH_RATIO = 0.78;
 
 /** The same corner table as MessageBubble (sent tail bottom-right, received top-left). */
 export function unsentBubbleCorners(isMe: boolean, position: GroupPosition): {
@@ -61,6 +63,7 @@ export function UnsentBubble({
   topGap,
 }: UnsentBubbleProps): React.ReactElement {
   const { t } = useTranslation(["chat"]);
+  const { width } = useWindowDimensions();
   return (
     <View
       style={[
@@ -81,11 +84,21 @@ export function UnsentBubble({
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === "deleteForMe") onLongPress?.();
         }}
-        style={[styles.bubble, unsentBubbleCorners(isMe, groupPosition)]}
+        style={[
+          styles.bubble,
+          { maxWidth: Math.round(width * UNSENT_BUBBLE_MAX_WIDTH_RATIO) },
+          unsentBubbleCorners(isMe, groupPosition),
+        ]}
         testID="chat-unsent-line"
       >
         <Icon name="remove-circle-outline" size={14} color={chatTokens.textMuted} />
-        <Text style={styles.text}>{text}</Text>
+        {/* Device pass F-3: Android measured the italic line narrower than it
+            draws and cut it to "Ana unsent a". The text wraps (no line cap),
+            shrinks inside a numeric max width, and keeps a little room on its
+            trailing edge for the italic overhang. */}
+        <Text style={styles.text} textBreakStrategy={Platform.OS === "android" ? "simple" : undefined}>
+          {text}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -107,7 +120,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     minHeight: 36,
-    maxWidth: "78%",
+    flexShrink: 1,
     paddingVertical: 7,
     paddingHorizontal: 12,
     borderWidth: 1,
@@ -116,6 +129,9 @@ const styles = StyleSheet.create({
   },
   text: {
     flexShrink: 1,
+    flexGrow: 0,
+    paddingRight: 3,
+    includeFontPadding: false,
     fontSize: 14,
     lineHeight: 20,
     fontStyle: "italic",
