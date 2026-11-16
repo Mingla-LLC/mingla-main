@@ -34,7 +34,10 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   // Community, each with one flat row of tabs (a select on a phone).
   // #4383: Email, Announcements and Roadmap are Communications screens; the
   // Product inbox tab is called Product board.
-  for (const tab of ["Inbox", "People and roles", "Ideas from hosts", "Questions", "Moderation", "Reported enquiries", "Brand groups", "Feature guide", "Product board"]) assert(tabs.includes(`label: "${tab}"`), tab);
+  // #4452 §7.2: Brand groups left Community for its own Communications screen.
+  for (const tab of ["Inbox", "People and roles", "Ideas from hosts", "Questions", "Moderation", "Reported enquiries", "Feature guide", "Product board"]) assert(tabs.includes(`label: "${tab}"`), tab);
+  assert(!tabs.includes('label: "Brand groups"'), "Brand groups is no longer a Community tab");
+  assert(tabs.includes('"brand-groups": "brand-groups"'), "the old Brand groups tab lands on its own screen");
   assertMatch(navigation, /md:hidden/);
   assertMatch(page, /Available for support/);
   assertMatch(page, /Conversations with hosts and explorers, oldest waiting first[.]/);

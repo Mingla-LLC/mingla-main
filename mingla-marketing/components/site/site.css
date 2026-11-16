@@ -967,3 +967,47 @@
     font-size: clamp(34px, 11.5vw, 46px);
   }
 }
+
+/* #4452 §2.13 — the logo pill: white wordmark on orange. */
+.logo-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #eb7825;
+  box-sizing: border-box;
+}
+.logo-pill img {
+  display: block;
+  height: 20px;
+  width: auto;
+}
+@media (max-width: 640px) {
+  .logo-pill {
+    height: 28px;
+  }
+  .logo-pill img {
+    height: 16px;
+  }
+}
+
+/* #4452 §2.11 — the top bar's call link (desktop label, phone label). */
+.nav-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nav-call .nav-call-short {
+  display: none;
+}
+@media (max-width: 640px) {
+  .nav-call .nav-call-long {
+    display: none;
+  }
+  .nav-call .nav-call-short {
+    display: inline;
+  }
+}

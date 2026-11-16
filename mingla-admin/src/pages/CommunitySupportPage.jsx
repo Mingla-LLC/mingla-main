@@ -1,8 +1,8 @@
 /**
  * #3720 Slice F console, split by #4130 Wave 6 into two pages that share this
  * frame: Support (the inbox first, then People and roles) and Community
- * (ideas, questions, moderation, reported enquiries, brand groups, feature
- * guide, product board). SupportPage and CommunityPage below are the two pages.
+ * (ideas, questions, moderation, reported enquiries, feature guide, product
+ * board; #4452 moved Brand groups to its own Communications screen). SupportPage and CommunityPage below are the two pages.
  * #4383: Email, Blog, Links page, Announcements and Roadmap are their own
  * Communications screens (pages/communications/); their old tab addresses
  * redirect there (lib/adminRoutes.js TAB_PAGE_REDIRECTS).
@@ -20,7 +20,6 @@ import { Toggle } from "../components/ui/Input";
 import { SectionCard } from "../components/ui/Card";
 import { SupportDeskPage } from "./SupportDeskPage";
 import { TeamRolesPanel } from "../components/community/TeamRolesPanel";
-import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
 import { ProductInboxPanel } from "../components/community/ProductInboxPanel";
 import { FeatureGuidePanel } from "../components/community/FeatureGuidePanel";
 import { ModerationPanel } from "../components/community/ModerationPanel";
@@ -115,11 +114,6 @@ export function SupportCommunityConsole({ pageId }) {
   // Support's Inbox badge is the inbox's own Open count, so it always matches.
   const onInboxCounts = useCallback((counts) => {
     setNavCounts((current) => (current.support === counts.open ? current : { ...current, support: counts.open }));
-  }, []);
-
-  // #4270 W7: the Brand groups badge is how many groups wait on Mingla.
-  const onBrandGroupCounts = useCallback((waiting) => {
-    setNavCounts((current) => (current["brand-groups"] === waiting ? current : { ...current, "brand-groups": waiting }));
   }, []);
 
   useEffect(() => {
@@ -240,7 +234,6 @@ export function SupportCommunityConsole({ pageId }) {
       {activeTab === "questions" && capabilities.canCommunity && <QuestionsPanel />}
       {activeTab === "moderation" && capabilities.canCommunity && <ModerationPanel />}
       {activeTab === "enquiry-reports" && capabilities.canCommunity && <ReportedEnquiriesPanel />}
-      {activeTab === "brand-groups" && <BrandGroupsPanel onCounts={onBrandGroupCounts} />}
       {activeTab === "feature-guide" && capabilities.canSupport && (
         <FeatureGuidePanel canManage={capabilities.isAdmin} />
       )}

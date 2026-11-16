@@ -1,146 +1,64 @@
 'use client'
-// #1004 [Event Turnout Predictor] — the report document.
+// #1004 [Event Turnout Predictor] — the full report.
 //
-// A parchment "document card" on the dark /tools stage (data-theme="light").
-// FREE zone: the event header + the big turnout FORECAST (range, % of capacity,
-// confidence) + headline. GATED zone (blur + gate overlay): the budget engine
-// (what your promo spend buys), the factor breakdown, competing events,
-// comparables, weather, and the fixes — revealed only via the emailed tokenized
-// link (entering an email sends a summary, it does NOT unlock the page). Once
-// ungated (from that link) the consolidated offer card closes to /schedule.
+// #4452 §6.7: redesigned on the paper report template (design ch. 4d,
+// eventReport, approved from the real Lekki yacht cruise report). Every section
+// it rendered before is kept, in the same order (the order guard keys on
+// `data-section`): the forecast hero and the read · the bottom line · how your
+// room fills · the ad-spend plan (paid or free) · pick your spend · what's
+// driving your turnout · who you're up against that night · similar events,
+// real turnouts · weather · demand right now · how to pull a bigger crowd · your
+// event as a Mingla listing · the offer. Newly shown: each fix's why, each
+// comparable's source, and more of the listing (cover, title, why go, best
+// for). The page only renders the token-verified full report (§6.4).
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { cn } from '@/lib/cn'
-import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
-import {
-  submitGrowthToolsGate,
-  type EventFactor,
-  type EventReport,
-  type EventScenario,
-  type GrowthToolsError,
-} from '@/lib/growth-tools-submit'
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-const GATE_ERROR_COPY: Record<GrowthToolsError, string> = {
-  rate_limited: 'You’ve hit today’s limit — try again tomorrow.',
-  generation_failed: 'That didn’t work — try again.',
-  validation: 'Enter a valid email address.',
-  server: 'That didn’t work — try again.',
-  network: 'We couldn’t reach our servers — check your connection and try again.',
-  booking_unconfigured: 'That didn’t work — try again.',
-  slot_taken: 'That time was just taken — pick another.',
-  calendar_unavailable: 'That didn’t work — try again.',
-}
-
-const FACTOR_STYLE: Record<EventFactor['status'], { mark: string; className: string; word: string }> = {
-  help: { mark: '↑', className: 'border-moss/40 bg-moss/12 text-moss', word: 'Helps' },
-  watch: { mark: '~', className: 'border-butter/50 bg-butter/15 text-warning', word: 'Watch' },
-  hurt: { mark: '↓', className: 'border-danger/30 bg-danger/10 text-danger', word: 'Hurts' },
-}
-
-const EFFORT_CHIP: Record<string, string> = {
-  this_week: 'This week',
-  this_month: 'This month',
-  project: 'Bigger project',
-}
-
-function money(n: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: n < 100 && !Number.isInteger(n) ? 2 : 0,
-    }).format(n)
-  } catch {
-    return `${currency} ${Math.round(n)}`
-  }
-}
+import { DeviceLink } from '@/components/cutout/device-link'
+import { toolAttribution } from '@/lib/links-src'
+import type { EventReport, EventScenario } from '@/lib/growth-tools-submit'
+import { nextStepCta } from '@/lib/tools/scenarios'
+import { BottomLine, effortLabel, Factors, Fixes, money, Offer, ReportFrame, RSec, Source, ToldUs, WeatherCard } from '../_template/ReportShell'
 
 function dateLabel(iso: string, time: string): string {
   const ms = Date.parse(`${iso}T00:00:00Z`)
   if (!Number.isFinite(ms)) return iso
-  const d = new Intl.DateTimeFormat(undefined, {
-    weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC',
-  }).format(new Date(ms))
-  return time ? `${d} · ${time}` : d
+  const d = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(ms))
+  return time ? `${d}, ${time}` : d
 }
 
-function DocHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-      {children}
-    </h2>
-  )
-}
-
-// ── Forecast hero: the turnout range + capacity bar + confidence ─────────────
+// ── Forecast hero (Night field): the turnout range + capacity bar + confidence ─
 function ForecastHero({ report }: { report: EventReport }) {
   const f = report.forecast
   const cap = Math.max(1, f.capacity)
   const lowPct = Math.min(100, Math.round((f.total_low / cap) * 100))
   const highPct = Math.min(100, Math.round((f.total_high / cap) * 100))
-  const confColor = f.confidence === 'high'
-    ? 'bg-moss/15 text-moss'
-    : f.confidence === 'low'
-      ? 'bg-danger/10 text-danger'
-      : 'bg-butter/20 text-warning'
+  const situation = report.followup?.reason === 'free_rsvp' ? report.followup : null
   return (
-    <div className="rounded-md border border-divider-strong bg-stripe p-6 text-center md:p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-        Predicted turnout
-      </p>
-      <p className="mt-2 font-display text-[clamp(2.6rem,9vw,4.5rem)] leading-none text-text-primary">
-        {f.total_low}<span className="text-text-muted">–</span>{f.total_high}
-      </p>
-      <p className="mt-1 text-sm font-semibold text-text-secondary">
-        {f.pct_capacity_low}–{f.pct_capacity_high}% of your {f.capacity} capacity
-      </p>
-      {/* capacity bar */}
-      <div className="mx-auto mt-5 h-2.5 max-w-md overflow-hidden rounded-full bg-divider-strong">
-        <div
-          className="h-full rounded-full bg-warm/40"
-          style={{ width: `${highPct}%` }}
-        >
-          <div className="h-full rounded-full bg-warm" style={{ width: `${lowPct === 0 ? 0 : (lowPct / Math.max(highPct, 1)) * 100}%` }} />
-        </div>
+    <div className="fc" data-hero="events">
+      <div style={{ display: 'grid', gap: 10 }}>
+        <span className="rkick">Predicted turnout</span>
+        <span className="big">{f.total_low}–{f.total_high}</span>
+        <span>{f.pct_capacity_low}–{f.pct_capacity_high}% of your {f.capacity} capacity</span>
+        <div className="cap" aria-hidden="true"><u style={{ left: `${lowPct}%`, right: `${100 - highPct}%` }} /><i style={{ left: 0, width: `${lowPct}%` }} /></div>
+        <span className={`conf ${f.confidence}`}>{f.confidence[0].toUpperCase()}{f.confidence.slice(1)} confidence</span>
+        <span className="src" style={{ color: 'rgba(245,244,240,.55)' }}>From your answers and live research.</span>
       </div>
-      <div className="mt-4 inline-flex items-center gap-2">
-        <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize', confColor)}>
-          {f.confidence} confidence
-        </span>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {f.headline_read ? <div style={{ fontSize: 16, lineHeight: 1.5 }}>{f.headline_read}</div> : null}
+        {situation ? (
+          <ToldUs>
+            it&rsquo;s free (RSVP only), your RSVP goal is {situation.rsvp_goal.toLocaleString('en')}, and you&rsquo;ve had {situation.no_shows === 'lots' ? 'lots of' : 'a few'} no-shows before.
+          </ToldUs>
+        ) : null}
       </div>
-      {f.headline_read ? (
-        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-text-secondary md:text-base">
-          {f.headline_read}
-        </p>
-      ) : null}
     </div>
   )
 }
 
-// Small stat cell used across both plan cards.
 function Stat({ k, v, sub }: { k: string; v: string; sub?: string }) {
-  return (
-    <div className="rounded-md bg-white/12 p-3">
-      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-white/70">{k}</p>
-      <p className="mt-1 text-lg font-bold">{v}</p>
-      {sub ? <p className="text-[0.7rem] text-white/70">{sub}</p> : null}
-    </div>
-  )
-}
-
-// A generic disclaimer only — never expose the CPC / conversion assumptions
-// (those are the model, and competitors shouldn't be able to read it off).
-function BenchmarkNote() {
-  return (
-    <p className="mt-3 text-xs leading-relaxed text-white/70">
-      Grounded in live research on your event plus Mingla&rsquo;s demand data. Estimates for
-      planning — real results vary.
-    </p>
-  )
+  return <div><b>{v}</b><span>{k}{sub ? ` · ${sub}` : ''}</span></div>
 }
 
 // ── The plan engine: profit-optimiser (paid) or budget-buys (free) ───────────
@@ -151,143 +69,67 @@ function BudgetEngine({ report }: { report: EventReport }) {
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
   if (!plan || (plan.kind !== 'paid_optimized' && plan.kind !== 'free_budget')) {
     return (
-      <div className="rounded-md border border-divider-strong bg-white p-5">
-        <DocHeading>Your ad-spend plan</DocHeading>
-        <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-          This report predates our upgraded ad-spend planner. Re-run the predictor for the
-          full profit-max forecast — Mingla can drive people to your event from{' '}
-          <span className="font-semibold text-text-primary">{offerFrom}</span> per head.
-        </p>
-      </div>
+      <RSec id="Your ad-spend plan" h="Your ad-spend" em="plan.">
+        <div className="rcard">This report predates our upgraded ad-spend planner. Re-run the predictor for the full profit-max forecast: Mingla can drive people to your event from {offerFrom} per head.</div>
+      </RSec>
     )
   }
   const cur = plan.currency
-  const warmCard =
-    'overflow-hidden rounded-md p-6 text-white md:p-7'
-  const warmStyle = {
-    background: 'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)',
-  }
-
-  // ── PAID: recommend the profit-max budget ─────────────────────────────────
   if (plan.kind === 'paid_optimized') {
     if (!plan.ads_worth_it) {
       return (
-        <div className="rounded-md border border-divider-strong bg-white p-5">
-          <DocHeading>Your ad-spend plan</DocHeading>
-          <p className="mt-3 text-sm leading-relaxed text-text-secondary">{plan.read}</p>
-          <p className="mt-2 text-xs text-text-muted">
-            (At {money(plan.ticket_price, cur)}/ticket, ad clicks cost about {money(plan.cpc, cur)}{' '}
-            and ~{plan.benchmarks.landing_to_ticket_pct}% buy — so each ad ticket would cost more
-            than it earns. Lean on organic + Mingla’s {offerFrom}/head promotion.)
-          </p>
-        </div>
+        <RSec id="Your ad-spend plan" h="Your ad-spend" em="plan.">
+          <div className="rcard">
+            <span>{plan.read}</span>
+            <span style={{ fontSize: 12.5, color: '#7c7870' }}>
+              At {money(plan.ticket_price, cur)} a ticket, ad clicks cost about {money(plan.cpc, cur)} and about {plan.benchmarks.landing_to_ticket_pct}% buy, so each ad ticket would cost more than it earns. Lean on organic and Mingla&rsquo;s {offerFrom}/head promotion.
+            </span>
+          </div>
+        </RSec>
       )
     }
     return (
-      <div className={warmCard} style={warmStyle}>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">
-          Your profit-max ad plan
-        </p>
-        <p className="mt-2 font-display text-[clamp(1.5rem,4.5vw,2.2rem)] leading-tight">
-          Spend <span className="whitespace-nowrap">{money(plan.recommended_budget, cur)}</span> on ads
-          → net <span className="whitespace-nowrap">≈{money(plan.ad_profit, cur)}</span> more profit.
-        </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat k="Recommended budget" v={money(plan.recommended_budget, cur)} sub="the profit sweet-spot" />
-          <Stat k="Extra tickets sold" v={`${plan.ad_tickets_low}–${plan.ad_tickets_high}`} sub={`~${money(plan.ad_revenue, cur)} revenue`} />
-          <Stat k="Cost per ticket" v={plan.cost_per_ticket !== null ? money(plan.cost_per_ticket, cur) : '—'} sub={plan.cost_pct_of_ticket !== null ? `${plan.cost_pct_of_ticket}% of your ticket` : undefined} />
-          <Stat k="Return on ad spend" v={plan.roas !== null ? `${plan.roas}×` : '—'} sub="revenue per £/$ spent" />
+      <div className="rsec" style={{ paddingTop: 0 }} data-section="Your ad-spend plan">
+        <div className="adplan">
+          <span className="rkick">Your profit-max ad plan</span>
+          <h3>Spend {money(plan.recommended_budget, cur)} on ads → net ≈ {money(plan.ad_profit, cur)} more profit.</h3>
+          <div className="stats">
+            <Stat k="Recommended budget" v={money(plan.recommended_budget, cur)} />
+            <Stat k="Extra tickets" v={`${plan.ad_tickets_low}–${plan.ad_tickets_high}`} sub={money(plan.ad_revenue, cur)} />
+            {plan.cost_per_ticket !== null ? <Stat k="Per ticket" v={money(plan.cost_per_ticket, cur)} sub={plan.cost_pct_of_ticket !== null ? `${plan.cost_pct_of_ticket}% of price` : undefined} /> : null}
+            {plan.roas !== null ? <Stat k="Return on ad spend" v={`${plan.roas}×`} /> : null}
+          </div>
+          <p>{plan.read} Beyond that, each new ticket starts costing more than it earns. Estimates for planning, from live research and Mingla&rsquo;s demand data; real results vary.</p>
         </div>
-        <div className="mt-5 rounded-md bg-white/10 p-4 text-sm text-white/90">
-          {plan.read} Beyond that, each new ticket starts costing more than it earns.
-        </div>
-        <BenchmarkNote />
       </div>
     )
   }
-
-  // ── FREE: what the budget buys ────────────────────────────────────────────
   if (!plan.budget || plan.budget <= 0) {
     return (
-      <div className="rounded-md border border-divider-strong bg-white p-5">
-        <DocHeading>What a promo budget could add</DocHeading>
-        <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-          This is your organic outlook. Add a promo budget on a re-run and we’ll show exactly
-          how many more people it can bring — Mingla puts your event in front of people already
-          planning their week, from{' '}
-          <span className="font-semibold text-text-primary">{offerFrom}</span> per head.
-        </p>
-      </div>
+      <RSec id="Your ad-spend plan" h="What a promo budget" em="could add.">
+        <div className="rcard">This is your organic outlook. Add a promo budget on a re-run and we&rsquo;ll show how many more people it can bring. Mingla puts your event in front of people already planning their week, from {offerFrom} per head.</div>
+      </RSec>
     )
   }
   return (
-    <div className={warmCard} style={warmStyle}>
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">
-        Your {money(plan.budget, cur)} promo plan
-      </p>
-      <p className="mt-2 font-display text-[clamp(1.5rem,4.5vw,2.2rem)] leading-tight">
-        Mingla can drive{' '}
-        <span className="whitespace-nowrap">{plan.attendees_low}–{plan.attendees_high}</span>{' '}
-        more people to your event.
-      </p>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <Stat k="Ad cost per click" v={money(plan.cpc, cur)} sub={plan.cpc_source === 'researched' ? 'from live research' : 'estimated'} />
-        <Stat k="Clicks your budget buys" v={`${plan.clicks_low}–${plan.clicks_high}`} sub="to your event page" />
-        <Stat k="Cost per attendee" v={plan.cost_per_attendee_low !== null && plan.cost_per_attendee_high !== null ? `${money(plan.cost_per_attendee_low, cur)}–${money(plan.cost_per_attendee_high, cur)}` : '—'} sub={`promo from ${offerFrom}/head`} />
-      </div>
-      <BenchmarkNote />
-    </div>
-  )
-}
-
-// ── The bottom line — a decision-first summary ───────────────────────────────
-function DecisionBox({ report }: { report: EventReport }) {
-  const f = report.forecast
-  const plan = report.plan
-  const topFix = report.fixes[0]
-  const risk = report.factors.find((x) => x.status === 'hurt') ??
-    report.factors.find((x) => x.status === 'watch')
-  const cur = plan.currency
-  const paidWorth = plan.kind === 'paid_optimized' && plan.ads_worth_it
-  return (
-    <div className="rounded-md border-2 border-warm/30 bg-warm/[0.06] p-5 md:p-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-warm">The bottom line</p>
-      <p className="mt-2 text-base leading-relaxed text-text-primary md:text-lg">
-        You’ll likely draw <span className="font-bold">{f.total_low}–{f.total_high}</span>{' '}
-        (<span className="font-bold">{f.pct_capacity_low}–{f.pct_capacity_high}% full</span>), at{' '}
-        <span className="font-bold">{f.confidence} confidence</span>.
-        {paidWorth ? (
-          <> The profit-max ad spend is <span className="font-bold">{money((plan as { recommended_budget: number }).recommended_budget, cur)}</span> → about <span className="font-bold">{money((plan as { ad_profit: number }).ad_profit, cur)}</span> more profit.</>
-        ) : null}
-      </p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {topFix ? (
-          <div className="rounded-md bg-white p-3">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-moss">Best move</p>
-            <p className="mt-0.5 text-sm font-semibold text-text-primary">{topFix.title}</p>
-          </div>
-        ) : null}
-        {risk ? (
-          <div className="rounded-md bg-white p-3">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-warning">Watch out for</p>
-            <p className="mt-0.5 text-sm font-semibold text-text-primary">{risk.label}</p>
-          </div>
-        ) : null}
+    <div className="rsec" style={{ paddingTop: 0 }} data-section="Your ad-spend plan">
+      <div className="adplan">
+        <span className="rkick">Your {money(plan.budget, cur)} promo plan</span>
+        <h3>Mingla can drive {plan.attendees_low}–{plan.attendees_high} more people to your event.</h3>
+        <div className="stats">
+          <Stat k={plan.cpc_source === 'researched' ? 'Per click, live research' : 'Per click, estimated'} v={money(plan.cpc, cur)} />
+          <Stat k="Clicks your budget buys" v={`${plan.clicks_low}–${plan.clicks_high}`} />
+          {plan.cost_per_attendee_low !== null && plan.cost_per_attendee_high !== null ? (
+            <Stat k="Per attendee" v={`${money(plan.cost_per_attendee_low, cur)}–${money(plan.cost_per_attendee_high, cur)}`} />
+          ) : null}
+        </div>
+        <p>Estimates for planning, from live research and Mingla&rsquo;s demand data; real results vary.</p>
       </div>
     </div>
   )
 }
 
-// ── How your room fills — a stacked visual (organic + ads + empty) ───────────
-function Legend({ color, label, value }: { color: string; label: string; value: number }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn('size-2.5 rounded-full', color)} />
-      <span className="font-semibold text-text-primary">{value}</span>
-      <span className="text-text-secondary">{label}</span>
-    </span>
-  )
-}
+// ── How your room fills — organic + ads + empty ──────────────────────────────
 function RoomFill({ report }: { report: EventReport }) {
   const f = report.forecast
   const cap = Math.max(1, f.capacity)
@@ -297,116 +139,49 @@ function RoomFill({ report }: { report: EventReport }) {
     ? Math.round((plan.ad_attendees_low + plan.ad_attendees_high) / 2)
     : Math.round((plan.attendees_low + plan.attendees_high) / 2)
   const ad = Math.max(0, Math.min(cap - organic, adMid))
-  const empty = Math.max(0, cap - organic - ad)
   const pct = (n: number) => (n / cap) * 100
   return (
-    <div className="rounded-md border border-divider-strong bg-white p-5">
-      <DocHeading>How your room fills</DocHeading>
-      <div className="mt-3 flex h-7 w-full overflow-hidden rounded-full bg-stripe">
-        <div className="bg-moss" style={{ width: `${pct(organic)}%` }} />
-        <div className="bg-warm" style={{ width: `${pct(ad)}%` }} />
+    <RSec id="How your room fills" h="How your room" em="fills.">
+      <div className="rcard">
+        <div className="stack" aria-hidden="true">
+          <i style={{ width: `${pct(organic)}%`, background: '#2f3a2e' }} />
+          <i style={{ width: `${pct(ad)}%`, background: '#eb7825' }} />
+        </div>
+        <div className="legend">
+          <span style={{ ['--c' as string]: '#2f3a2e' }}>Come organically ({f.baseline_low}–{f.baseline_high})</span>
+          {ad > 0 ? <span style={{ ['--c' as string]: '#eb7825' }}>{plan.kind === 'paid_optimized' ? 'From ads, recommended' : 'From your budget'} ({ad})</span> : null}
+          <span style={{ ['--c' as string]: '#efede7' }}>Empty seats ({Math.max(0, cap - organic - ad)})</span>
+        </div>
+        <small style={{ color: '#7c7870' }}>Capacity {cap} · likely {organic + ad} through the door ({Math.round(pct(organic + ad))}% full).</small>
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
-        <Legend color="bg-moss" label="Come organically" value={organic} />
-        {ad > 0 ? (
-          <Legend color="bg-warm" label={plan.kind === 'paid_optimized' ? 'From ads (recommended)' : 'From your budget'} value={ad} />
-        ) : null}
-        <Legend color="bg-divider-strong" label="Empty seats" value={empty} />
-      </div>
-      <p className="mt-2 text-xs text-text-muted">
-        Capacity {cap} · likely {organic + ad} through the door ({Math.round(pct(organic + ad))}% full).
-      </p>
-    </div>
+    </RSec>
   )
 }
 
-// ── Pick your spend — the budget scenario ladder (the decision tool) ─────────
+// ── Pick your spend — the budget scenario ladder ─────────────────────────────
 function ScenarioLadder({ scenarios, currency }: { scenarios: EventScenario[]; currency: string }) {
   if (scenarios.length === 0) return null
   const maxProfit = Math.max(...scenarios.map((s) => s.profit), 1)
   return (
-    <div className="mt-8">
-      <DocHeading>Pick your spend</DocHeading>
-      <p className="mt-1 text-sm text-text-secondary">
-        Every level is profitable — pick your risk. We recommend the one marked ★.
-      </p>
-      <div className="mt-3 space-y-2">
+    <RSec id="Pick your spend" h="Pick your" em="spend." lede="Every level is profitable: pick your risk. We recommend the one marked ★.">
+      <div className="scen">
         {scenarios.map((s) => (
-          <div
-            key={s.label}
-            className={cn('rounded-md border p-3', s.recommended ? 'border-warm bg-warm/10' : 'border-divider-strong bg-white')}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-text-primary">
-                {s.recommended ? '★ ' : ''}{s.label} — {money(s.budget, currency)}
-              </span>
-              <span className="text-xs text-text-secondary">
-                {s.total_attendees} in ({s.pct_capacity}% full){s.roas !== null ? ` · ${s.roas}× ROAS` : ''}
-              </span>
-            </div>
-            <div className="mt-2 flex items-center gap-3">
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-stripe">
-                <div className="h-full rounded-full bg-warm" style={{ width: `${Math.max(4, (s.profit / maxProfit) * 100)}%` }} />
-              </div>
-              <span className="shrink-0 text-sm font-bold text-warm-ink">+{money(s.profit, currency)} profit</span>
-            </div>
-            <p className="mt-1 text-xs text-text-muted">
-              {s.ad_tickets} extra tickets{s.cost_per_ticket !== null ? ` · ${money(s.cost_per_ticket, currency)}/ticket` : ''}
-            </p>
+          <div key={s.label} className={`r${s.recommended ? ' rec' : ''}`}>
+            <b>{s.recommended ? '★ ' : ''}{s.label}</b>
+            <span>{money(s.budget, currency)}</span>
+            <span className="bar" aria-hidden="true"><i style={{ width: `${Math.max(4, (s.profit / maxProfit) * 100)}%` }} /></span>
+            <span style={{ textAlign: 'right' }}>
+              <b>+{money(s.profit, currency)}</b><br />
+              <small>{s.total_attendees} in ({s.pct_capacity}%){s.roas !== null ? ` · ${s.roas}×` : ''} · {s.ad_tickets} tickets{s.cost_per_ticket !== null ? ` · ${money(s.cost_per_ticket, currency)}/ticket` : ''}</small>
+            </span>
           </div>
         ))}
       </div>
-    </div>
+    </RSec>
   )
 }
 
-// ── Weather card — a visual read of the day ──────────────────────────────────
-function weatherGlyph(summary: string): string {
-  const s = summary.toLowerCase()
-  if (/(snow|freezing)/.test(s)) return '❄️'
-  if (/(thunder|storm)/.test(s)) return '⛈️'
-  if (/(rain|drizzle|shower)/.test(s)) return '🌧️'
-  if (/fog/.test(s)) return '🌫️'
-  if (/(overcast|cloud)/.test(s)) return '☁️'
-  if (/(clear|sun)/.test(s)) return '☀️'
-  return '🌤️'
-}
-function WeatherCard({ weather }: { weather: NonNullable<EventReport['weather']> }) {
-  const badge = weather.kind === 'forecast'
-    ? { t: 'Forecast', c: 'bg-moss/15 text-moss' }
-    : { t: weather.kind === 'climate_normal' ? 'Typical for this date' : 'Seasonal', c: 'bg-butter/20 text-warning' }
-  return (
-    <div className="rounded-md border border-divider-strong bg-white p-4">
-      <div className="flex items-center justify-between gap-2">
-        <DocHeading>Weather</DocHeading>
-        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold', badge.c)}>{badge.t}</span>
-      </div>
-      <div className="mt-2 flex items-start gap-3">
-        <span aria-hidden="true" className="text-3xl leading-none">{weatherGlyph(weather.summary)}</span>
-        <div>
-          <p className="text-sm text-text-secondary">{weather.summary}</p>
-          {weather.impact ? <p className="mt-1 text-xs font-medium text-warm-ink">{weather.impact}</p> : null}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export function EventReportView({
-  report,
-  runId,
-  initialGated = true,
-}: {
-  report: EventReport
-  runId: string
-  initialGated?: boolean
-}) {
-  const [gated, setGated] = useState(initialGated)
-  const [email, setEmail] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [gateError, setGateError] = useState<GrowthToolsError | null>(null)
-  const [emailedTo, setEmailedTo] = useState<string | null>(null)
-
+export function EventReportView({ report, runId }: { report: EventReport; runId: string }) {
   // Deep-link to /schedule with event context (added after mount — no SSR window).
   const [bookHref, setBookHref] = useState(
     () => `/schedule?${new URLSearchParams({ venue: report.event.title, source: 'event_predictor' }).toString()}`,
@@ -423,286 +198,148 @@ export function EventReportView({
 
   useEffect(() => {
     captureMarketing('tool_gate_viewed', { tool: 'events', run_id: runId })
+    captureMarketing('tool_offer_view', { tool: 'events', run_id: runId })
   }, [runId])
-  useEffect(() => {
-    if (!gated) captureMarketing('tool_offer_view', { tool: 'events', run_id: runId })
-  }, [gated, runId])
 
-  const emailValid = EMAIL_REGEX.test(email.trim())
   const ev = report.event
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
-
-  async function onGateSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!emailValid || submitting) return
-    setSubmitting(true)
-    setGateError(null)
-    captureMarketing('tool_gate_email_submitted', { tool: 'events', run_id: runId })
-    const res = await submitGrowthToolsGate(runId, email.trim())
-    setSubmitting(false)
-    if (res.ok) {
-      captureMarketing('tool_report_emailed', { tool: 'events', run_id: runId })
-      setEmailedTo(email.trim())
-      return
-    }
-    setGateError(res.error)
-  }
+  const situation = report.followup?.reason === 'free_rsvp' ? report.followup : null
+  const f = report.forecast
+  const plan = report.plan
+  const topFix = report.fixes[0]
+  const risk = report.factors.find((x) => x.status === 'hurt') ?? report.factors.find((x) => x.status === 'watch')
+  const paidWorth = plan.kind === 'paid_optimized' && plan.ads_worth_it
+  const lp = report.listing_preview
+  const price = ev.ticket_price > 0 ? money(ev.ticket_price, ev.currency) : 'Free'
 
   return (
-    <article
-      data-theme="light"
-      className="rounded-md bg-parchment p-5 font-dashboard text-text-primary shadow-[0_40px_120px_rgba(0,0,0,0.5)] sm:p-8 md:p-10"
+    <ReportFrame
+      tool="events"
+      runId={runId}
+      kick={[ev.category, 'turnout forecast', 'full report'].filter(Boolean).join(' · ')}
+      title={ev.title}
+      titleItalicWords={ev.title.trim().split(/\s+/).length > 2 ? 2 : 1}
+      sub={[[ev.venue_name, ev.city].filter(Boolean).join(', '), dateLabel(ev.date, ev.start_time), price, `${ev.capacity} capacity`].filter(Boolean).join(' · ')}
+      actionLine={situation ? 'Take RSVPs in Mingla Host, or plan the reminders with the team.' : 'Sell tickets in Mingla Host, or plan the promo with the team.'}
+      hero={<ForecastHero report={report} />}
+      offer={(
+        <Offer
+          title={<>We put your event in front of people planning their week, from {offerFrom} per head.</>}
+          body={<>That&rsquo;s the introductory Mingla promotion. Book a call and we&rsquo;ll help you hit the top of your forecast, and list your event free.</>}
+        >
+          {situation ? (
+            <DeviceLink surface="host" attribution={toolAttribution('tool_events')} className="tp-go"
+              onActivate={() => captureMarketing('tool_gate_app_click', { tool: 'events', run_id: runId, location: 'offer' })}>
+              {nextStepCta('events', 'free_rsvp')}
+            </DeviceLink>
+          ) : null}
+          <Link href={bookHref} className={situation ? 'tp-ghost' : 'tp-go'}
+            onClick={() => captureMarketing('tool_offer_cta_click', { tool: 'events', run_id: runId, cta: 'call' })}>
+            Book a call: we&rsquo;ll help you fill it
+          </Link>
+        </Offer>
+      )}
     >
-      {/* ── FREE ZONE ─────────────────────────────────────────────────────── */}
-      <header>
-        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-warm">
-          {ev.category}
-        </span>
-        <h1 className="mt-2 break-words font-display text-3xl leading-tight text-text-primary md:text-4xl">
-          {ev.title}
-        </h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          {[ev.venue_name, ev.city].filter(Boolean).join(' · ')} — {dateLabel(ev.date, ev.start_time)}
-        </p>
-      </header>
+      {report.narrative ? <div className="rsec"><p className="prose">{report.narrative}</p></div> : null}
 
-      <div className="mt-6">
-        <ForecastHero report={report} />
-      </div>
+      <RSec id="The bottom line" h="The bottom" em="line.">
+        <BottomLine best={topFix?.title} watch={risk?.label}>
+          You&rsquo;ll likely draw {f.total_low}–{f.total_high} ({f.pct_capacity_low}–{f.pct_capacity_high}% full), at {f.confidence} confidence.
+          {paidWorth ? <> Spend about {money((plan as { recommended_budget: number }).recommended_budget, plan.currency)} on ads for roughly {money((plan as { ad_profit: number }).ad_profit, plan.currency)} more profit.</> : null}
+        </BottomLine>
+      </RSec>
 
-      {report.narrative ? (
-        <p className="mt-5 text-sm leading-relaxed text-text-secondary md:text-base">
-          {report.narrative}
-        </p>
+      <RoomFill report={report} />
+
+      <BudgetEngine report={report} />
+
+      {plan.kind === 'paid_optimized' && plan.scenarios && plan.scenarios.length > 0 ? (
+        <ScenarioLadder scenarios={plan.scenarios} currency={plan.currency} />
       ) : null}
 
-      {/* ── GATED ZONE ────────────────────────────────────────────────────── */}
-      <section className="relative mt-8">
-        <div className={cn(gated && 'pointer-events-none select-none blur-[7px]')} aria-hidden={gated}>
-          {/* The bottom line + how the room fills — decision-first */}
-          <div className="grid gap-4">
-            <DecisionBox report={report} />
-            <RoomFill report={report} />
-          </div>
+      {report.factors.length > 0 ? (
+        <RSec id="What’s driving your turnout" h="What’s driving your" em="turnout.">
+          <Factors items={report.factors} />
+        </RSec>
+      ) : null}
 
-          {/* Budget engine */}
-          <div className="mt-8">
-            <BudgetEngine report={report} />
-          </div>
-
-          {/* Scenario ladder — pick your spend (paid events) */}
-          {report.plan.kind === 'paid_optimized' && report.plan.scenarios && report.plan.scenarios.length > 0 ? (
-            <ScenarioLadder scenarios={report.plan.scenarios} currency={report.plan.currency} />
-          ) : null}
-
-          {/* Factor breakdown */}
-          {report.factors.length > 0 ? (
-            <div className="mt-8">
-              <DocHeading>What’s driving your turnout</DocHeading>
-              <div className="mt-3 grid gap-2.5 sm:auto-rows-fr sm:grid-cols-2">
-                {report.factors.map((factor, i) => {
-                  const s = FACTOR_STYLE[factor.status]
-                  const lastOdd = i === report.factors.length - 1 && report.factors.length % 2 === 1
-                  return (
-                    <div key={factor.label} className={cn('rounded-md border border-divider-strong bg-white p-3.5', lastOdd && 'sm:col-span-2')}>
-                      <div className="flex items-center gap-2">
-                        <span className={cn('grid size-6 shrink-0 place-items-center rounded-full border text-xs font-bold', s.className)}>
-                          {s.mark}
-                        </span>
-                        <p className="text-sm font-semibold text-text-primary">{factor.label}</p>
-                      </div>
-                      <p className="mt-1.5 text-xs leading-relaxed text-text-secondary">{factor.detail}</p>
-                    </div>
-                  )
-                })}
+      {report.competitors.length > 0 ? (
+        <RSec id="Who you’re up against that night" h="Who you’re up against" em="that night.">
+          <div className="lines">
+            {report.competitors.map((c) => (
+              <div key={c.name}>
+                <span><b>{c.name}</b><small>{[c.date_note, c.scale_note].filter(Boolean).join(' · ')}</small></span>
+                {c.platform ? <span className="chip2">{c.platform}</span> : <span />}
               </div>
-            </div>
-          ) : null}
+            ))}
+          </div>
+          <Source from={['research']} />
+        </RSec>
+      ) : null}
 
-          {/* Competing events */}
-          {report.competitors.length > 0 ? (
-            <div className="mt-8">
-              <DocHeading>Who you’re up against that night</DocHeading>
-              <ul className="mt-3 space-y-2">
-                {report.competitors.map((c) => (
-                  <li key={c.name} className="rounded-md border border-divider-strong bg-white p-3.5">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <p className="text-sm font-semibold text-text-primary">{c.name}</p>
-                      {c.platform ? <span className="rounded-full bg-stripe-strong px-2 py-0.5 text-[0.7rem] font-semibold text-text-muted">{c.platform}</span> : null}
-                    </div>
-                    <p className="mt-1 text-xs text-text-secondary">
-                      {[c.date_note, c.scale_note].filter(Boolean).join(' · ')}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+      {report.comparables.length > 0 ? (
+        <RSec id="Similar events, real turnouts" h="Similar events," em="real turnouts." isNew={report.comparables.some((c) => c.source_note)}>
+          <div className="lines">
+            {report.comparables.map((c) => (
+              <div key={c.name}>
+                <span><b>{c.name}</b><small>{c.turnout_note}</small></span>
+                {c.source_note ? <span className="chip2" data-new="source_note">{c.source_note}</span> : <span />}
+              </div>
+            ))}
+          </div>
+        </RSec>
+      ) : null}
 
-          {/* Comparables — full width */}
-          {report.comparables.length > 0 ? (
-            <div className="mt-8 rounded-md border border-divider-strong bg-white p-4">
-              <DocHeading>Similar events, real turnouts</DocHeading>
-              <ul className="mt-2 space-y-2">
-                {report.comparables.map((c) => (
-                  <li key={c.name} className="text-sm">
-                    <span className="font-semibold text-text-primary">{c.name}</span>
-                    <span className="text-text-secondary"> — {c.turnout_note}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* Weather + demand — side by side */}
-          {(report.weather || report.demand_read) ? (
-            <div className="mt-8 grid gap-4 md:auto-rows-fr md:grid-cols-2">
-              {report.weather ? <WeatherCard weather={report.weather} /> : null}
-              {report.demand_read ? (
-                <div className="rounded-md border border-divider-strong bg-white p-4">
-                  <DocHeading>Demand right now</DocHeading>
-                  <p className="mt-2 text-sm text-text-secondary">{report.demand_read}</p>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {/* Fixes */}
-          {report.fixes.length > 0 ? (
-            <div className="mt-8">
-              <DocHeading>How to pull a bigger crowd</DocHeading>
-              <ol className="mt-3 space-y-3">
-                {report.fixes.map((fix, i) => (
-                  <li key={fix.title} className="rounded-md border border-divider-strong bg-white p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-warm/15 text-xs font-bold text-warm">{i + 1}</span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-text-primary">{fix.title}</p>
-                          <span className="rounded-full border border-divider-strong bg-stripe-strong px-2 py-0.5 text-[0.7rem] font-medium text-text-secondary">
-                            {EFFORT_CHIP[fix.effort] ?? fix.effort}
-                          </span>
-                        </div>
-                        {fix.change ? <p className="mt-1 text-xs leading-relaxed text-text-secondary">{fix.change}</p> : null}
-                        {fix.lift_note ? <p className="mt-1 text-xs font-semibold text-warm-ink">Upside: {fix.lift_note}</p> : null}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ) : null}
-
-          {/* Listing preview link */}
-          <div className="mt-8 rounded-md border border-divider-strong bg-white p-5">
-            <DocHeading>Your event as a Mingla listing</DocHeading>
-            <p className="mt-2 text-sm text-text-secondary">
-              {report.listing_preview.tagline || 'A polished, ready-to-publish version of your event.'}
-            </p>
-            {report.listing_preview.vibe_tags.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {report.listing_preview.vibe_tags.map((t) => (
-                  <span key={t} className="rounded-full bg-warm/10 px-3 py-1 text-xs font-semibold text-warm-ink">{t}</span>
-                ))}
+      {report.weather || report.demand_read ? (
+        <section className="rsec" data-section={report.weather ? 'Weather' : 'Demand right now'}>
+          <h2>{report.weather && report.demand_read ? <>Weather and <em>demand.</em></> : report.weather ? <>The <em>weather.</em></> : <>Demand right <em>now.</em></>}</h2>
+          <div className="wx">
+            {report.weather ? <WeatherCard weather={report.weather} /> : null}
+            {report.demand_read ? (
+              <div className="rcard" data-section={report.weather ? 'Demand right now' : undefined}>
+                <b>Demand right now</b>
+                <div>{report.demand_read}</div>
+                <Source from={['research']} />
               </div>
             ) : null}
-            {!gated ? (
-              <Link
-                href={`/event-preview?run_id=${encodeURIComponent(runId)}`}
-                target="_blank"
-                className="mt-4 inline-flex min-h-10 items-center rounded-full border border-divider-strong bg-parchment px-4 text-sm font-semibold text-text-primary transition hover:bg-stripe focus-ring"
-              >
-                See the full listing preview →
-              </Link>
-            ) : null}
           </div>
-        </div>
+        </section>
+      ) : null}
 
-        {/* Gate overlay */}
-        {gated ? (
-          <div className="absolute inset-x-0 top-0 z-10 flex justify-center px-2 pt-10">
-            <div className="w-full max-w-md rounded-md border border-divider-strong bg-parchment p-6 text-center shadow-[0_24px_64px_rgba(0,0,0,0.25)]">
-              {emailedTo ? (
-                <>
-                  <div className="mx-auto grid size-11 place-items-center rounded-full bg-moss/15 text-xl text-moss">✓</div>
-                  <p className="mt-3 font-display text-xl text-text-primary">Check your inbox</p>
-                  <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                    Your full forecast — budget plan, competitors, weather and fixes — is on its
-                    way to <span className="font-semibold text-text-primary">{emailedTo}</span> with
-                    a private link.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setEmailedTo(null)}
-                    className="mt-3 text-sm font-semibold text-warm underline-offset-4 hover:underline focus-ring"
-                  >
-                    Wrong email? Send to a different one
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="font-display text-xl text-text-primary">See your full forecast</p>
-                  <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                    Your budget plan, the competition, weather, and the fixes — we’ll email your
-                    full report with a private link.
-                  </p>
-                  <form onSubmit={onGateSubmit} className="mt-4">
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="email"
-                        inputMode="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@yourevent.com"
-                        aria-label="Your email"
-                        aria-invalid={email.trim().length > 0 && !emailValid}
-                        className="min-h-11 w-full min-w-0 flex-1 rounded-sm border border-divider-strong bg-white px-3 text-base text-text-primary placeholder:text-text-muted focus-ring"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!emailValid || submitting}
-                        className={buttonClasses({ variant: 'primary', size: 'sm', className: 'whitespace-nowrap' })}
-                      >
-                        {submitting ? 'Sending…' : 'Email my report'}
-                      </button>
-                    </div>
-                    {gateError ? (
-                      <p role="alert" className="mt-2 text-sm text-danger">{GATE_ERROR_COPY[gateError]}</p>
-                    ) : null}
-                  </form>
-                </>
-              )}
+      {report.fixes.length > 0 ? (
+        <RSec id="How to pull a bigger crowd" h="How to pull a" em="bigger crowd.">
+          <Fixes items={report.fixes.map((fix, i) => ({
+            title: fix.title,
+            body: fix.change,
+            why: fix.why,
+            upside: fix.lift_note,
+            tags: effortLabel(fix.effort) ? [{ label: effortLabel(fix.effort) as string, hot: i === 0 }] : [],
+          }))} />
+        </RSec>
+      ) : null}
+
+      <RSec id="Your event as a Mingla listing" h="Your event as a" em="Mingla listing." isNew={lp.why_go.length > 0 || lp.best_for.length > 0 || !!lp.cover_url}>
+        <div className="listing">
+          <div className="cv" style={lp.cover_url ? { backgroundImage: `url(${JSON.stringify(lp.cover_url)})` } : undefined}>
+            <div>
+              <b>{lp.title || ev.title}</b>
+              <span style={{ fontSize: 13.5, opacity: 0.9 }}>{lp.tagline || 'A polished, ready-to-publish version of your event.'}</span>
             </div>
           </div>
-        ) : null}
-      </section>
-
-      {/* ── THE OFFER — one consolidated close (post-unlock) ────────────────── */}
-      {!gated ? (
-        <div
-          className="mt-10 overflow-hidden rounded-md p-6 text-white md:p-8"
-          style={{ background: 'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)' }}
-        >
-          <p className="break-words font-display text-[clamp(1.6rem,4.5vw,2.3rem)] leading-tight">
-            We put your event in front of people planning their week — for as low as{' '}
-            <span className="whitespace-nowrap">{offerFrom}</span> per head.
-          </p>
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 md:text-base">
-            That’s the introductory Mingla promotion. Book a call and we’ll help you hit the
-            top of your forecast — and list your event free.
-          </p>
-          <div className="mt-6">
-            <Link
-              href={bookHref}
-              onClick={() => captureMarketing('tool_offer_cta_click', { tool: 'events', run_id: runId, cta: 'call' })}
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
-            >
-              Book a call — we’ll help you fill it
+          <div className="bd2">
+            {lp.vibe_tags.length > 0 ? <div className="vibes">{lp.vibe_tags.map((t) => <span key={t}>{t}</span>)}</div> : null}
+            {lp.why_go.length > 0 || lp.best_for.length > 0 ? (
+              <div className="two2">
+                {lp.why_go.length > 0 ? <div><b>Why go</b><ul>{lp.why_go.map((x) => <li key={x}>{x}</li>)}</ul></div> : null}
+                {lp.best_for.length > 0 ? <div><b>Best for</b><ul>{lp.best_for.map((x) => <li key={x}>{x}</li>)}</ul></div> : null}
+              </div>
+            ) : null}
+            <Link href={`/event-preview?run_id=${encodeURIComponent(runId)}`} target="_blank" className="tp-ghost" style={{ justifySelf: 'start' }}>
+              See the full listing preview →
             </Link>
           </div>
         </div>
-      ) : null}
-    </article>
+      </RSec>
+    </ReportFrame>
   )
 }

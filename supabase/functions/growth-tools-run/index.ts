@@ -91,6 +91,8 @@ import {
 // issue #3526 M-4 — Layer-C passive health observation for the GEMINI_API_KEY
 // surface, which recorded nothing at all before this change.
 import { recordApiCall } from "../_shared/apiHealthLog.ts";
+// #4452 §6.2 — the adaptive follow-up answer (validated here, passed to the prompts).
+import { followupPromptLines, parseToolFollowup, type VenueFollowup } from "../_shared/growthToolFollowups.ts";
 // ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module
 // (P-6: no per-function copies; one point of audit).
 import {
@@ -227,8 +229,11 @@ export function normalizeWebsite(raw: string): string | null {
 export interface RunInput {
   name: string;
   city: string;
-  website: string; // normalized https URL
+  /** Normalized https URL; "" only for a Google pick with no website (#4452 §6.2). */
+  website: string;
   place_id: string | null;
+  /** #4452 §6.2: "Where do people find you today?" when Google lists no website. */
+  followup?: VenueFollowup | null;
 }
 
 export type RunValidation =
@@ -251,17 +256,28 @@ export function validateRunInput(raw: unknown): RunValidation {
   if (name.length < 2 || name.length > 80) fields.push("name");
   if (city.length < 2 || city.length > 60) fields.push("city");
   const website = websiteRaw.length > 0 ? normalizeWebsite(websiteRaw) : null;
-  if (website === null) fields.push("website");
   let place_id: string | null = null;
   if (placeIdRaw !== undefined && placeIdRaw !== null && placeIdRaw !== "") {
     if (isUuid(placeIdRaw)) place_id = placeIdRaw;
     else fields.push("place_id");
   }
+  // #4452 §6.2: a Google pick with no website may run without one, but only
+  // with the "Where do people find you today?" answer. A follow-up sent with a
+  // website (or without a Google pick) is the wrong scenario and is rejected.
+  const fu = parseToolFollowup("venues", body.followup, {
+    website: websiteRaw.length > 0 ? (website ?? websiteRaw) : "",
+    placeId: place_id,
+  });
+  if (!fu.ok) fields.push("followup");
+  const followup = fu.ok ? fu.value as VenueFollowup | null : null;
+  if (website === null && !(websiteRaw.length === 0 && followup)) fields.push("website");
 
   if (fields.length > 0) return { ok: false, fields };
   return {
     ok: true,
-    input: { name, city, website: website as string, place_id },
+    input: followup
+      ? { name, city, website: "", place_id, followup }
+      : { name, city, website: website as string, place_id },
   };
 }
 
@@ -1235,7 +1251,8 @@ export function buildGeminiUserPrompt(
     "VENUE FACTS:",
     `name: ${input.name}`,
     `city: ${input.city}`,
-    `website: ${input.website}`,
+    `website: ${input.website || "(none: Google lists no website)"}`,
+    ...followupPromptLines(input.followup),
     "",
     "MINGLA MATCH FACTS:",
     `found_in_mingla_pool: ${match.found}`,
@@ -1251,7 +1268,12 @@ export function buildGeminiUserPrompt(
     "",
     `SITE FETCH: ${site.fetch_failed ? "FAILED" : "ok"}`,
   );
-  if (site.fetch_failed) {
+  if (site.fetch_failed && input.followup) {
+    lines.push(
+      "There is no website to fetch (see SITUATION above). Grade from the venue",
+      "and match facts only, and make every fix about getting a page.",
+    );
+  } else if (site.fetch_failed) {
     lines.push(
       "The website could not be fetched. Grade from the venue + match facts",
       "only; treat the site as unreachable and reflect that in the scores,",
@@ -1719,7 +1741,8 @@ export function buildCompetitionPrompt(
     "VENUE FACTS:",
     `name: ${input.name}`,
     `city: ${input.city}`,
-    `website: ${input.website}`,
+    `website: ${input.website || "(none: Google lists no website)"}`,
+    ...followupPromptLines(input.followup),
     `found_in_mingla_pool: ${match.found}`,
   ];
   if (match.found) {
@@ -2147,6 +2170,8 @@ async function handleRun(
     city: input.city,
     website: input.website,
     ...(input.place_id ? { place_id: input.place_id } : {}),
+    // #4452 §6.2: present only when asked, so a run without it hashes and persists as today.
+    ...(input.followup ? { followup: input.followup } : {}),
   };
 
   let ipHash: string | null = null;
@@ -2263,13 +2288,14 @@ async function handleRun(
 
   // d. Fetch the website server-side. A total fetch failure still generates a
   //    report from name/city/match facts (fetch_failed=true noted in meta).
-  const site = await fetchSite(input.website);
+  // #4452 §6.2: no website (a Google pick without one) → nothing to fetch or screenshot.
+  const site = input.website ? await fetchSite(input.website) : FAILED_SITE;
 
   // e. Best-effort place match (+ top place_scores score) + city percentile.
   const match = await findPlaceMatch(supabase, input);
   const percentile = await computePoolPercentile(supabase, match, input.city);
   // Live "before" screenshot (signed URL, rendered on first browser load).
-  const screenshotUrl = await buildScreenshotUrl(input.website);
+  const screenshotUrl = input.website ? await buildScreenshotUrl(input.website) : null;
 
   // f. Gemini grade (strict JSON, one retry). FATAL stage (P-24): bounded by
   //    min(structured cap, remaining budget); budget exhaustion → the honest
@@ -2416,6 +2442,8 @@ async function handleRun(
       : {}),
     offer: { per_person_from: "$3.99" },
     ai_read: gemini.ai_read,
+    // #4452 §6.2/§6.9: the situation the page and the email adapt to (absent = today).
+    ...(input.followup ? { followup: input.followup } : {}),
     meta: {
       generated_at: new Date().toISOString(),
       model: GEMINI_MODEL_ID,
@@ -2444,7 +2472,8 @@ async function handleRun(
     return json({ error: "server" }, 500);
   }
 
-  return json({ run_id: runId, report }, 200);
+  // #4452 §6.4: the app lane keeps the full report; the web lane gets the preview only.
+  return json(appLane ? { run_id: runId, report } : { run_id: runId, preview: previewOfVenues4452(report) }, 200);
 }
 
 // ── ISSUE-1734 §S11: competitor-watch CRUD (app lane ONLY) ───────────────────
@@ -3122,4 +3151,34 @@ export async function handler(req: Request): Promise<Response> {
 // when imported by a test suite (which would otherwise try to bind a port).
 if (import.meta.main) {
   serve(handler);
+}
+
+// #4452 §6.4 (security): the anonymous web lane gets only the preview allowlist
+// (the full report is reached only through growth-tools-report with the emailed
+// token). The app lane is unchanged.
+// Invariant I-4452-REPORT-PREVIEW-ONLY (declared in its test): the anonymous web lane returns only the preview allowlist (issue_4452_minimise tests).
+function pick4452(o: unknown, path: string[]): unknown {
+  let v: unknown = o;
+  for (const k of path) {
+    if (v === null || typeof v !== "object") return null;
+    v = (v as Record<string, unknown>)[k];
+  }
+  return v === undefined ? null : v;
+}
+function firstFixTitle4452(report: unknown): unknown {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) && fixes.length > 0 ? pick4452(fixes[0], ["title"]) : null;
+}
+function fixCount4452(report: unknown): number {
+  const fixes = pick4452(report, ["fixes"]);
+  return Array.isArray(fixes) ? fixes.length : 0;
+}
+
+export function previewOfVenues4452(report: unknown): Record<string, unknown> {
+  return {
+    venue: { name: pick4452(report, ["venue", "name"]), address: pick4452(report, ["venue", "address"]) },
+    scores: { overall: pick4452(report, ["scores", "overall"]), grade: pick4452(report, ["scores", "grade"]) },
+    first_fix: { title: firstFixTitle4452(report) },
+    fix_count: fixCount4452(report),
+  };
 }

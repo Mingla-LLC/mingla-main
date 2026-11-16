@@ -11,6 +11,7 @@
 import { Suspense } from 'react'
 import { ScheduleClient } from './ScheduleClient'
 import { SitePage } from '@/components/site/site-page'
+import { Spot } from '@/components/site-blocks/spot'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
@@ -28,6 +29,7 @@ export default function SchedulePage() {
         <Suspense fallback={<ScheduleSkeleton />}>
           <ScheduleClient />
         </Suspense>
+        <Spot page="schedule" id="before-footer" />
       </SitePage>
     </div>
   )

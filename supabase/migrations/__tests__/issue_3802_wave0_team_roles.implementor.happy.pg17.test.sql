@@ -266,18 +266,19 @@ begin
   perform pg_temp.t3802_check('T-1', 'no caller identity -> no role', v_role, '<none>');
   perform pg_temp.t3802_check('T-3', 'no caller identity -> no access', v_access, '<none>');
 
+  -- #4452: full-admin seats (owner, admin, partner) also hold website.
   perform pg_temp.t3802_check('T-3', 'owner access',
     pg_temp.t3802_j(pg_temp.t3802_as('owner', $q$select public.admin_team_my_access()::text$q$)),
-    pg_temp.t3802_j('{"email":"issue3802-owner@test.local","role":"owner","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-owner@test.local","role":"owner","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts","website"]}'));
   perform pg_temp.t3802_check('T-3', 'admin access',
     pg_temp.t3802_j(pg_temp.t3802_as('admin', $q$select public.admin_team_my_access()::text$q$)),
-    pg_temp.t3802_j('{"email":"issue3802-admin@test.local","role":"admin","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-admin@test.local","role":"admin","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts","website"]}'));
   perform pg_temp.t3802_check('T-3', 'growth access',
     pg_temp.t3802_j(pg_temp.t3802_as('growth', $q$select public.admin_team_my_access()::text$q$)),
     pg_temp.t3802_j('{"email":"issue3802-growth@test.local","role":"growth","status":"active","areas":["role_home","crm","beta_leads","email_drafts"]}'));
   perform pg_temp.t3802_check('T-3', 'partner access',
     pg_temp.t3802_j(pg_temp.t3802_as('partner', $q$select public.admin_team_my_access()::text$q$)),
-    pg_temp.t3802_j('{"email":"issue3802-partner@test.local","role":"partner","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-partner@test.local","role":"partner","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts","website"]}'));
   perform pg_temp.t3802_check('T-3', 'invitee access (invited, no areas)',
     pg_temp.t3802_j(pg_temp.t3802_as('invitee', $q$select public.admin_team_my_access()::text$q$)),
     pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"invited","areas":[]}'));
@@ -504,7 +505,7 @@ begin
 
   r := pg_temp.t3802_as('invitee', $q$select public.admin_team_activate_self()::text$q$);
   perform pg_temp.t3802_check('T-9', 'invitee activation result', pg_temp.t3802_j(r),
-    pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"active","areas":["admin_console","team_manage","crm","beta_leads","email_drafts","website"]}'));
   -- #4255 (D3): a Founding partner's row lives in admin_users.
   perform pg_temp.t3802_check('T-9', 'invitee row is active with the invited role',
     (select role || '/' || status || '/' || (accepted_at is not null)::text

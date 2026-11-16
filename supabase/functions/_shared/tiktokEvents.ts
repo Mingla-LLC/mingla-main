@@ -76,6 +76,10 @@ export async function sendTikTokConversion(
     content_id: input.contentId ?? undefined,
     content_type: input.contentId ? "product" : undefined,
     brand_id: input.brandId ?? undefined,
+    // #4452 §4.2 (D-1): the lead label is content_category, never content_type
+    // (TikTok accepts only product / product_group there). Unset on purchases.
+    content_category: input.contentCategory ?? undefined,
+    content_name: input.contentName ?? undefined,
   } as Record<string, unknown>);
 
   const event = definedOnly({

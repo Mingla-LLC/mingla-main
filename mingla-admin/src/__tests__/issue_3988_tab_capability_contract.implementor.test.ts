@@ -95,13 +95,13 @@ const CONTRACT = COMMUNITY_SUPPORT_TAB_CONTRACT as Record<string, { page: string
 
 Deno.test("every rendered tab and Communications screen has exactly one contract row, and no row is orphaned", () => {
   const tabIds = [...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS].map((tab) => tab.id);
-  assert(tabIds.length >= 9, "tab list parsed");
+  assert(tabIds.length >= 8, "tab list parsed"); // #4452 §7.2: Brand groups left Community
   assertEquals(new Set(tabIds).size, tabIds.length, "no tab is on both pages");
   assertEquals([...tabIds].sort(), [...SUPPORT_COMMUNITY_TAB_ROWS].sort());
   for (const tab of SUPPORT_PAGE_TABS) assertEquals(CONTRACT[tab.id].page, "support", tab.id);
   for (const tab of COMMUNITY_PAGE_TABS) assertEquals(CONTRACT[tab.id].page, "community", tab.id);
   const comms = NAV_ITEMS.filter((item: { id: string }) =>
-    ["communications", "push", "announcements", "roadmap", "email", "blog", "links"].includes(item.id)).map((item: { id: string }) => item.id);
+    ["communications", "push", "announcements", "roadmap", "email", "blog", "links", "brand-groups"].includes(item.id)).map((item: { id: string }) => item.id);
   assertEquals([...COMMUNICATIONS_SCREEN_ROWS].sort(), [...comms].sort(), "every Communications menu entry has a row");
   for (const id of COMMUNICATIONS_SCREEN_ROWS) assertEquals(CONTRACT[id].page, id);
 });

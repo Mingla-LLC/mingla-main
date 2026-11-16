@@ -1,19 +1,23 @@
 import { AlertTriangle, CheckCircle, Info, AlertCircle } from "lucide-react";
 import { trendTone } from "../../lib/trendTone";
 
+// #4452 §7.1 (design .kpi): radius 16, --a-line border, --a-shadow, a 28 x 3
+// orange tick at the top and the value in Instrument Serif 34 px.
 export function StatCard({ icon: Icon, label, value, trend, trendUp, className = "" }) {
   return (
     <div
+      data-stat-card=""
       className={[
-        "bg-[var(--color-background-primary)] border border-[var(--gray-200)]",
-        "border-l-[3px] border-l-[var(--color-brand-500)] rounded-xl p-5",
-        "transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] p-4",
+        "relative bg-[var(--color-background-primary)] border border-[var(--a-line)]",
+        "rounded-2xl p-[18px] shadow-[var(--a-shadow)]",
+        "transition-all duration-200 ease-out hover:-translate-y-0.5",
         className,
       ].join(" ")}
     >
+      <span aria-hidden="true" data-stat-tick="" className="absolute left-[18px] top-0 h-[3px] w-7 rounded-b-[3px] bg-[#eb7825]" />
       <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          {Icon && <Icon className="w-[18px] h-[18px] text-[var(--color-brand-500)]" />}
+        <div className="w-10 h-10 rounded-full bg-[var(--a-chip)] flex items-center justify-center shrink-0">
+          {Icon && <Icon className="w-[18px] h-[18px] text-[var(--a-chip-ink)]" />}
         </div>
         {/* #4130: green when up, red when down, grey when level or unknown
             (lib/trendTone.js). Pass trendUp; leaving it out reads as level. */}
@@ -23,8 +27,8 @@ export function StatCard({ icon: Icon, label, value, trend, trendUp, className =
           </span>
         )}
       </div>
-      <p className="text-[13px] text-[var(--color-text-secondary)] mb-0.5">{label}</p>
-      <p className="text-[28px] font-bold text-[var(--color-text-primary)] leading-tight">{value}</p>
+      <p className="text-[13px] text-[var(--color-text-secondary)] mb-1">{label}</p>
+      <p className="font-serif text-[34px] font-normal leading-[1.05] text-[var(--color-text-primary)]">{value}</p>
     </div>
   );
 }
@@ -32,14 +36,16 @@ export function StatCard({ icon: Icon, label, value, trend, trendUp, className =
 export function SectionCard({ title, subtitle, badge, action, children, className = "", noPadding = false }) {
   return (
     <div
+      data-section-card=""
       className={[
-        "bg-[var(--color-background-primary)] border border-[var(--gray-200)]",
-        "rounded-xl overflow-hidden shadow-[var(--shadow-sm)]",
+        // #4452 §7.1: radius 16, --a-line border, --a-shadow.
+        "bg-[var(--color-background-primary)] border border-[var(--a-line)]",
+        "rounded-2xl overflow-hidden shadow-[var(--a-shadow)]",
         className,
       ].join(" ")}
     >
       {title && (
-        <div className="flex flex-col items-stretch gap-3 px-4 py-3.5 sm:px-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between border-b border-[var(--gray-200)]">
+        <div className="flex flex-col items-stretch gap-3 px-4 py-3.5 sm:px-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between border-b border-[var(--a-line)]">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
             <h3 className="break-words text-[15px] font-semibold text-[var(--color-text-primary)]">{title}</h3>
             {badge}
@@ -74,6 +80,19 @@ export function AlertCard({ variant = "info", title, children, action, className
           {action && <div className="mt-2">{action}</div>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** #4452 §7.1: a plain card (radius 16, --a-line border, --a-shadow). */
+export function Card({ children, className = "", ...props }) {
+  return (
+    <div
+      data-card=""
+      className={["bg-[var(--color-background-primary)] border border-[var(--a-line)] rounded-2xl shadow-[var(--a-shadow)]", className].join(" ")}
+      {...props}
+    >
+      {children}
     </div>
   );
 }

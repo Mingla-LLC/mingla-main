@@ -63,7 +63,9 @@ describe("#4419 composer body typing", () => {
   });
 
   it("C-3 the rich_text block renders EditableRichBlock and no longer uses dangerouslySetInnerHTML", () => {
-    const composer = read("src/components/email/EmailComposer.jsx");
+    // #4452 §5.7: the body editor moved to EmailBodyEditor, which the composer renders.
+    const composer = read("src/components/email/EmailComposer.jsx") + read("src/components/email/EmailBodyEditor.jsx");
+    assert.match(composer, /<EmailBodyEditor/);
     assert.match(composer, /<EditableRichBlock/);
     assert.doesNotMatch(composer, /dangerouslySetInnerHTML=\{\{ __html: sanitizeLocalRichText\(block\.html\) \}\}/);
     const block = read("src/components/email/EditableRichBlock.jsx");

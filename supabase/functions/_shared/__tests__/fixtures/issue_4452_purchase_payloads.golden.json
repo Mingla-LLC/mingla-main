@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "data": [
+      {
+        "event_name": "Purchase",
+        "event_time": 1763000000,
+        "event_id": "order-4452-golden",
+        "action_source": "website",
+        "event_source_url": "https://usemingla.com/e/x/y",
+        "user_data": {
+          "em": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "ph": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "external_id": [
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          ],
+          "fbc": "fb.1.1.GOLD",
+          "fbp": "fb.1.1.FBP",
+          "client_ip_address": "203.0.113.1",
+          "client_user_agent": "UA/1.0"
+        },
+        "custom_data": {
+          "value": 25,
+          "currency": "USD",
+          "content_ids": [
+            "evt-4452"
+          ],
+          "content_type": "product",
+          "brand_id": "brand-4452"
+        }
+      }
+    ],
+    "access_token": "token"
+  },
+  "tiktok": {
+    "event_source": "web",
+    "event_source_id": "PIXEL",
+    "data": [
+      {
+        "event": "CompletePayment",
+        "event_time": 1763000000,
+        "event_id": "order-4452-golden",
+        "user": {
+          "email": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "phone": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "ttclid": "CLICK-GOLD",
+          "external_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "ttp": "TTP-GOLD",
+          "ip": "203.0.113.1",
+          "user_agent": "UA/1.0"
+        },
+        "properties": {
+          "value": 25,
+          "currency": "USD",
+          "content_id": "evt-4452",
+          "content_type": "product",
+          "brand_id": "brand-4452"
+        },
+        "page": {
+          "url": "https://usemingla.com/e/x/y"
+        }
+      }
+    ]
+  },
+  "snap": {
+    "data": [
+      {
+        "event_name": "PURCHASE",
+        "action_source": "web",
+        "event_conversion_type": "WEB",
+        "event_time": 1763000000000,
+        "client_dedup_id": "order-4452-golden",
+        "user_data": {
+          "em": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "ph": [
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "sc_click_id": "CLICK-GOLD",
+          "sc_cookie1": "SC-GOLD",
+          "external_id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "client_ip_address": "203.0.113.1",
+          "client_user_agent": "UA/1.0"
+        },
+        "custom_data": {
+          "value": 25,
+          "currency": "USD",
+          "item_ids": [
+            "evt-4452"
+          ],
+          "content_type": "product",
+          "brand_id": "brand-4452"
+        },
+        "event_source_url": "https://usemingla.com/e/x/y"
+      }
+    ]
+  },
+  "reddit": {
+    "data": {
+      "events": [
+        {
+          "event_at": 1763000000000,
+          "action_source": "WEBSITE",
+          "type": {
+            "tracking_type": "PURCHASE"
+          },
+          "click_id": "CLICK-GOLD",
+          "event_source_url": "https://usemingla.com/e/x/y",
+          "user": {
+            "email": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "phone_number": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "ip_address": "203.0.113.1",
+            "user_agent": "UA/1.0"
+          },
+          "metadata": {
+            "conversion_id": "order-4452-golden",
+            "value": 25,
+            "currency": "USD"
+          }
+        }
+      ]
+    }
+  }
+}

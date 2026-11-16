@@ -71,7 +71,17 @@ export type BookCallInput = {
     }
 )
 
-export async function bookCall(input: BookCallInput): Promise<
+/** #4452 §4.6 / A1: phone, UTM, the form link, the ads context and the optional consent box, for every audience. */
+export interface BookCallExtras {
+  phone?: string
+  utm?: Record<string, string>
+  form_submission_id?: string
+  marketing_consent?: boolean
+  consent_text?: string
+  ad?: MarketingAdContext
+}
+
+export async function bookCall(input: BookCallInput & BookCallExtras): Promise<
   | {
       ok: true
       event_url: string | null
@@ -79,6 +89,8 @@ export async function bookCall(input: BookCallInput): Promise<
       start: string
       /** #4238 W3-3 — `lead:<id>` when the server recorded a host lead, else null. */
       lead_event_id: string | null
+      /** #4452: `<label>_call:<id>` when the server recorded the booked call. */
+      goal_event_id: string | null
     }
   | { ok: false; error: GrowthToolsError; field?: string }
 > {
@@ -105,6 +117,9 @@ export async function bookCall(input: BookCallInput): Promise<
     meet_url: b.meet_url ?? null,
     start: b.start,
     lead_event_id: leadEventIdFrom(b),
+    goal_event_id: typeof (b as { goal_event_id?: unknown }).goal_event_id === 'string'
+      ? (b as { goal_event_id: string }).goal_event_id
+      : null,
   }
 }
 

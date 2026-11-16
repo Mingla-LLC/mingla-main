@@ -14,9 +14,9 @@ function initials(name) {
   return (parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : String(name || "?").slice(0, 2)).toUpperCase();
 }
 
-/** The Brand group of a brand, on the Community page. */
+/** The Brand group of a brand, on the Brand groups screen (#4452 §7.2). */
 function brandGroupHref(brandId) {
-  return brandId ? `#/community?tab=brand-groups&brand=${encodeURIComponent(brandId)}` : "";
+  return brandId ? `#/brand-groups?brand=${encodeURIComponent(brandId)}` : "";
 }
 
 /**

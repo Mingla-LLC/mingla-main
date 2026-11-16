@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "kind": "shared-module-policy-patch",
+  "ownerIssue": "#4452",
+  "target": {
+    "kind": "shared_module",
+    "module_path": "supabase/functions/_shared/capiTokens.ts"
+  },
+  "basePolicySha256": "5877a204e81f54158a47d196b74bbbf6799b009c9ffcdc4b5fb802edfc763ff2",
+  "operations": [
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@54521:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@57702:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@72225:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@75406:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/metaCapi.ts@4912:getToken:call_argument:metaApiVersion:getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/metaCapi.ts@5302:getToken:call_argument:metaApiVersion:getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/redditCapi.ts@5061:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/redditCapi.ts@5480:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "efb2eafcfbaca0a5284720b729d2209c30137edacfa85af3f62a77f1d7bcaf50",
+  "reason": "Issue #4452 adds the lead-label fields to the four senders and the host-funnel identity read, which moves the existing deps.getToken / metaApiVersion(getToken) references; the same references are re-declared at their new offsets."
+}

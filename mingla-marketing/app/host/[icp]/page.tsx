@@ -12,10 +12,17 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // (content/host-landing/icps.ts). Adding an ICP is adding data.
 //
 // The static siblings /host/download (page) and /host/get (route handler) win
-// over this dynamic segment, and `dynamicParams = false` 404s every slug that
+// over this dynamic segment, and the isIcpSlug guard below 404s every slug that
 // is not an ICP, so no landing slug can shadow them (pinned by the #4339 test).
+//
+// #4452 rework 1 (P0-3): dynamicParams is true. Every page now carries the
+// site-pages cache tag (the root layout's pop-up mount and the Spots), and on
+// Next 15 revalidating a tag on a `dynamicParams = false` route turns its
+// prerendered pages into 404s (NoFallbackError) until the next deploy. The seven
+// ICP pages are still prerendered by generateStaticParams; anything else is the
+// 404 page through notFound().
 
-export const dynamicParams = false
+export const dynamicParams = true
 
 export function generateStaticParams(): { icp: string }[] {
   return ICP_SLUGS.map((icp) => ({ icp }))

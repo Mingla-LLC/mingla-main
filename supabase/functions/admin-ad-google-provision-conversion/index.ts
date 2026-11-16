@@ -7,7 +7,9 @@
  * a gated follow-on and is deliberately untouched here.
  *
  * Body: { lane?='consumer', action?, kind?='purchase', name?, attribution_window_days?, sample_gclid? }
- *   kind (#4238 W5-1) = purchase | free_signup | host_lead | host_signup — one
+ *   kind (#4238 W5-1, #4452) = purchase | free_signup | host_lead | host_signup |
+ *                             creator_lead | local_lead | host_call_booked |
+ *                             creator_call_booked | local_call_booked — one
  *                             conversion action per kind, stored in
  *                             extra.conversion_actions.<kind>. purchase also keeps
  *                             extra.conversion_action_resource (the alias the

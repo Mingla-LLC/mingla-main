@@ -186,7 +186,8 @@ export function wordmarkLinks(source) {
 
 test('3. every standalone Mingla wordmark is a home link (cards that link elsewhere excepted)', () => {
   let seen = 0
-  for (const rel of SOURCES.filter((r) => r.endsWith('.tsx') && !r.endsWith('components/site/wordmark.tsx'))) {
+  // #4452 §2.13: the logo pill is the wordmark component's pill form (it is placed inside the home link).
+  for (const rel of SOURCES.filter((r) => r.endsWith('.tsx') && !r.endsWith('components/site/wordmark.tsx') && !r.endsWith('components/site/logo-pill.tsx'))) {
     for (const w of wordmarkLinks(code(read(rel)))) {
       seen += 1
       if (w.exempt) continue
@@ -210,7 +211,7 @@ test('3. every standalone Mingla wordmark is a home link (cards that link elsewh
 test('3. no file is excepted from the wordmark rule (the #4339 /links exception is gone)', () => {
   const self = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
   assert.doesNotMatch(code(self), /const NAMED_\w+ = new Set|\.has\(rel\)\) continue/, 'no named file exception in the scanner')
-  assert.match(code(self), /for \(const rel of SOURCES\.filter\(\(r\) => r\.endsWith\('\.tsx'\) && !r\.endsWith\('components\/site\/wordmark\.tsx'\)\)\) \{\s*for \(const w of wordmarkLinks/, 'every .tsx source (but the Wordmark component itself) is scanned')
+  assert.match(code(self), /for \(const rel of SOURCES\.filter\(\(r\) => r\.endsWith\('\.tsx'\) && !r\.endsWith\('components\/site\/wordmark\.tsx'\) && !r\.endsWith\('components\/site\/logo-pill\.tsx'\)\)\) \{\s*for \(const w of wordmarkLinks/, 'every .tsx source (but the Wordmark and LogoPill components themselves) is scanned')
 })
 
 test('3. the scanner itself: a bare wordmark fails, a card wordmark is exempt', () => {

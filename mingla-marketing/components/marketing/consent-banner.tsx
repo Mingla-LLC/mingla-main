@@ -67,9 +67,9 @@ const SERVER_SNAPSHOT: MarketingPrivacySnapshot = { saved: true, analytics: fals
 
 // Above page content and the fixed nav; below dialogs, sheets and the side menu (z ≥ 100).
 const BAR_CSS = `
-:root{${PRIVACY_INSET_PROPERTY}:calc(28px + env(safe-area-inset-bottom,0px))}
+:root{${PRIVACY_INSET_PROPERTY}:calc(28px + max(env(safe-area-inset-bottom,0px),0px))}
 body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
-.mps{position:fixed;left:0;right:0;bottom:0;z-index:95;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:calc(28px + env(safe-area-inset-bottom,0px));margin:0;padding:0 12px env(safe-area-inset-bottom,0px);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 var(--font-inter,-apple-system),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+.mps{position:fixed;left:0;right:0;bottom:0;z-index:95;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:calc(28px + max(env(safe-area-inset-bottom,0px),0px));margin:0;padding:0 12px max(env(safe-area-inset-bottom,0px),0px);transform:translateZ(0);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 var(--font-inter,-apple-system),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 .mps svg{display:block;flex:none;width:14px;height:14px}
 .mps:focus{outline:none}
 .mps:focus-visible{outline:2px solid #eb7825;outline-offset:-3px}

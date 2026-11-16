@@ -33,6 +33,8 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
   claims: Object.freeze({ page: "brands", tab: "claims" }),
   "beta-leads": Object.freeze({ page: "inbound", tab: "beta" }),
   "tool-leads": Object.freeze({ page: "inbound", tab: "tools" }),
+  // #4452 A1.8: Inbound leads is the Leads list; #/leads is its alias.
+  leads: Object.freeze({ page: "inbound" }),
   hosts: Object.freeze({ page: "outreach", tab: "hosts" }),
   creators: Object.freeze({ page: "outreach", tab: "creators" }),
   "launch-cities": Object.freeze({ page: "placepool", tab: "cities" }),
@@ -104,7 +106,7 @@ function communicationsTabsOn(pageTabIds) {
 export const TAB_PAGE_REDIRECTS = Object.freeze({
   admin: Object.freeze({ careers: "careers" }),
   support: communicationsTabsOn(["email", "blog", "links"]),
-  community: communicationsTabsOn(["announcements", "roadmap"]),
+  community: communicationsTabsOn(["announcements", "roadmap", "brand-groups"]),
 });
 
 function tabRedirect(hash) {

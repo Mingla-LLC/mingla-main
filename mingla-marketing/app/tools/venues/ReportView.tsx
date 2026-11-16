@@ -1,42 +1,30 @@
 'use client'
-// #1003 [Venue Website Grader — growth tools, test cut] — the report document.
+// #1003 [Venue Website Grader — growth tools, test cut] — the full report.
 //
-// A parchment "document card" (light card on the dark /tools stage —
-// data-theme="light" flips the theme-aware text tokens; Inter via
-// .font-dashboard; radius 16 via rounded-md). FREE zone: header + screenshot,
-// grade ring, vibe card, and the "Mingla already knows you" strip when the
-// place is already on Mingla. GATED zone (CSS blur + parchment gradient
-// overlay): score bars with reasons, the Google listing, the fixes, the
-// competition head-to-head + outrank playbook (when the backend sends
-// report.competition), and the before/after copy block. The gate card floats
-// over the blur; the app CTA is
-// the ATTRIBUTED business OneLink (pid/c=tool_venues — base imported from
-// lib/store-links, never a hardcoded domain, per the ORCH-1399 SSOT rule).
+// #4452 §6.7: redesigned on the paper report template (design ch. 4d, venueReport,
+// approved from the real Angus Barn report). Every section the report rendered
+// before is kept, in the same order (the order guard keys on `data-section`):
+// your vibe card · site health check · Mingla already knows you · the grades ·
+// your Google listing · what your customers say · your fixes · who's eating
+// your Friday nights · you vs <competitor> · where you already win · how to
+// outrank them · your homepage, redesigned · the offer. The hero is the Night
+// field with the live screenshot and the score ring; the two-button action bar
+// and the share links close it. Newly shown: `rewritten_hero` (the homepage
+// words before and after, under the slider). The page only renders the
+// token-verified full report (§6.4: the anonymous page gets the preview only).
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { motion, useReducedMotion } from 'framer-motion'
-import { cn } from '@/lib/cn'
-import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { toolAttribution } from '@/lib/links-src'
-import {
-  submitGrowthToolsGate,
-  type GraderCompetitionEffort,
-  type GraderReport,
-  type GraderScoreKey,
-  type GrowthToolsError,
-  type SignalStatus,
-} from '@/lib/growth-tools-submit'
+import type { GraderCompetitionEffort, GraderReport, GraderScoreKey } from '@/lib/growth-tools-submit'
+import { nextStepCta } from '@/lib/tools/scenarios'
+import { effortLabel, Fixes, Offer, reportDate, ReportFrame, RSec, Source, ToldUs } from '../_template/ReportShell'
 
-// #4137: the app gate goes through the one CTA seam. A phone gets the business
-// OneLink with `?pid=tool_venues&c=tool_venues` (byte-identical to the old
-// hand-built href); a computer, which cannot install the app, now gets the host
-// web app instead of a OneLink.
+// #4137: the app CTA goes through the one CTA seam (DeviceLink): a phone gets the
+// business OneLink with `?pid=tool_venues&c=tool_venues`; a computer the host web app.
 const APP_GATE_ATTRIBUTION = toolAttribution('tool_venues')
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const SCORE_ROWS: Array<{ key: GraderScoreKey; label: string }> = [
   { key: 'first_impression', label: 'First impression' },
@@ -46,30 +34,7 @@ const SCORE_ROWS: Array<{ key: GraderScoreKey; label: string }> = [
   { key: 'occasion_signal', label: 'Occasion signal' },
 ]
 
-// Effort chips for the outrank playbook — warm-tinted for this_week, neutral
-// for the rest. Unknown values from the backend fall back to the neutral chip.
-const EFFORT_CHIPS: Record<GraderCompetitionEffort, { label: string; className: string }> = {
-  this_week: { label: 'This week', className: 'border-warm/40 bg-warm/10 text-warm-ink' },
-  this_month: {
-    label: 'This month',
-    className: 'border-divider-strong bg-stripe-strong text-text-secondary',
-  },
-  project: {
-    label: 'Bigger project',
-    className: 'border-divider-strong bg-stripe-strong text-text-secondary',
-  },
-}
-
-const GATE_ERROR_COPY: Record<GrowthToolsError, string> = {
-  rate_limited: 'You’ve hit today’s limit — try again tomorrow.',
-  generation_failed: 'That didn’t work — try again.',
-  validation: 'Enter a valid email address.',
-  server: 'That didn’t work — try again.',
-  network: 'We couldn’t reach our servers — check your connection and try again.',
-  booking_unconfigured: 'That didn’t work — try again.',
-  slot_taken: 'That time was just taken — pick another.',
-  calendar_unavailable: 'That didn’t work — try again.',
-}
+const FOUND_VIA = { instagram: 'Instagram', whatsapp: 'WhatsApp', google_only: 'Google only' } as const
 
 function clampScore(value: number): number {
   if (!Number.isFinite(value)) return 0
@@ -84,268 +49,88 @@ function displayHost(website: string): string {
   }
 }
 
-// Site-health chip styling per status — moss/butter/danger tints, and the mark.
-const SIGNAL_STYLE: Record<SignalStatus, { mark: string; className: string }> = {
-  pass: { mark: '✓', className: 'border-moss/40 bg-moss/12 text-moss' },
-  warn: { mark: '!', className: 'border-butter/50 bg-butter/15 text-warning' },
-  fail: { mark: '✗', className: 'border-danger/30 bg-danger/10 text-danger' },
-}
+const barColor = (v: number) => (v >= 80 ? '#16a34a' : v >= 60 ? '#eb7825' : '#dc2626')
 
-function DocHeading({ children }: { children: React.ReactNode }) {
+/** #4452 §6.7 / §6.8: the homepage words before and after (data the report already has). */
+function RewrittenHero({ rewritten }: { rewritten: { before_excerpt: string; after_copy: string } }) {
   return (
-    <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-      {children}
-    </h2>
+    <div className="ba2" data-rewritten-hero="">
+      {rewritten.before_excerpt ? (
+        <div className="b"><span className="lb2">Today</span>{rewritten.before_excerpt}</div>
+      ) : null}
+      {rewritten.after_copy ? (
+        <div className="a"><span className="lb2">Rewritten by Mingla</span>{rewritten.after_copy}</div>
+      ) : null}
+    </div>
   )
 }
 
-// Interactive before/after: the redesigned homepage (after) clipped over the
-// current site (before), split by a range slider. Keyboard-accessible; the clip
-// is the only thing that moves, so it's smooth and dependency-free.
+// The before / after slider (design baSlider): the current site (before) is
+// clipped over the redesign (after); drag anywhere, or use the range control
+// (keyboard). The after side is the "after" screenshot, or (#4452 §6.8) the
+// live preview page of this run, drawn at 1280 px and scaled to the frame.
 function BeforeAfterSlider({
   before,
   after,
+  afterFrame,
   host,
 }: {
   before: string
-  after: string
+  after: string | null
+  /** #4452 §6.8: no after_url → the existing venue preview page, drawn live. */
+  afterFrame?: string | null
   host: string
 }) {
   const [pos, setPos] = useState(50)
-  const [beforeLoaded, setBeforeLoaded] = useState(false)
-  const [afterLoaded, setAfterLoaded] = useState(false)
-  const ready = beforeLoaded && afterLoaded
+  const [scale, setScale] = useState(0.5)
   const frameRef = useRef<HTMLDivElement>(null)
-  const dragging = useRef(false)
-
-  const setFromClientX = (clientX: number) => {
+  useEffect(() => {
     const el = frameRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const p = ((clientX - rect.left) / rect.width) * 100
-    setPos(Math.max(0, Math.min(100, p)))
-  }
-
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => setScale(entry.contentRect.width / 1280))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   return (
-    <div>
-      <div
-        ref={frameRef}
-        className="relative touch-none select-none overflow-hidden rounded-sm border border-divider-strong bg-black"
-        style={{ cursor: ready ? 'ew-resize' : 'default' }}
-        onPointerDown={(e) => {
-          if (!ready) return
-          dragging.current = true
-          e.currentTarget.setPointerCapture(e.pointerId)
-          setFromClientX(e.clientX)
-        }}
-        onPointerMove={(e) => {
-          if (dragging.current) setFromClientX(e.clientX)
-        }}
-        onPointerUp={(e) => {
-          dragging.current = false
-          e.currentTarget.releasePointerCapture(e.pointerId)
-        }}
-        onPointerCancel={() => {
-          dragging.current = false
-        }}
-      >
-        {!ready ? (
-          <div className="absolute inset-0 z-10 grid place-items-center bg-ink/90">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <span
-                aria-hidden="true"
-                className="size-6 animate-spin rounded-full border-2 border-white/25 border-t-white"
-              />
-              <p className="px-6 text-xs text-white/70">
-                Rendering your before &amp; after… this takes a few seconds the first time.
-              </p>
-            </div>
-          </div>
-        ) : null}
-        <img
-          src={before}
-          alt={`Current site — ${host}`}
-          onLoad={() => setBeforeLoaded(true)}
-          onError={() => setBeforeLoaded(true)}
-          className="block aspect-[16/10] w-full max-w-full object-cover object-top"
-          draggable={false}
-        />
-        <div
-          className="absolute inset-0 overflow-hidden"
-          style={{ clipPath: `inset(0 0 0 ${pos}%)` }}
-        >
-          <img
-            src={after}
-            alt="Redesigned in a Mingla template"
-            onLoad={() => setAfterLoaded(true)}
-            onError={() => setAfterLoaded(true)}
-            className="block aspect-[16/10] w-full max-w-full object-cover object-top"
-            draggable={false}
+    <div ref={frameRef} className="bas" style={{ ['--p' as string]: `${pos}%` }} data-slider="">
+      <div className="bas-after">
+        {after ? (
+          <img src={after} alt="Your homepage rebuilt in a Mingla template" draggable={false} />
+        ) : afterFrame ? (
+          // #4452 §6.8: the live preview page (same origin; its client needs scripts), scaled into the frame.
+          <iframe
+            src={afterFrame}
+            title="Your homepage rebuilt in a Mingla template (live preview)"
+            sandbox="allow-scripts allow-same-origin"
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            tabIndex={-1}
+            style={{ transform: `scale(${scale})` }}
           />
-        </div>
-        {/* Divider + handle */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.25)]"
-          style={{ left: `${pos}%` }}
-        >
-          <span className="absolute top-1/2 left-1/2 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white text-[11px] font-bold text-ink shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
-            ⇄
-          </span>
-        </div>
-        {/* Labels */}
-        <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
-          Before
-        </span>
-        <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-warm px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
-          After
-        </span>
+        ) : null}
       </div>
-      <label className="sr-only" htmlFor="ba-slider">
-        Drag to compare before and after
-      </label>
+      <div className="bas-before"><img src={before} alt={`Your site today, ${host}`} draggable={false} /></div>
+      <div className="bas-line" aria-hidden="true"><span>⇄</span></div>
+      <span className="bas-l">Today</span>
+      <span className="bas-r">Mingla</span>
       <input
-        id="ba-slider"
         type="range"
         min={0}
         max={100}
         value={pos}
         onChange={(e) => setPos(Number(e.target.value))}
-        className="mt-3 w-full accent-warm"
-        aria-label="Compare your current site with the redesign"
+        aria-label="Compare your site today with the redesign"
       />
-      <p className="mt-1 text-center text-xs text-text-muted">
-        Drag anywhere on the image — your site now vs. rebuilt in a Mingla template
-      </p>
     </div>
   )
 }
 
-// Count a number up to `target` over ~800ms once mounted. Honors reduced motion
-// (jumps straight to the value). SSR-safe: starts from the target so the first
-// paint is never wrong if JS is slow.
-function useCountUp(target: number, enabled: boolean): number {
-  const [value, setValue] = useState(enabled ? 0 : target)
-  useEffect(() => {
-    if (!enabled) {
-      setValue(target)
-      return
-    }
-    let raf = 0
-    let start: number | null = null
-    const duration = 800
-    const tick = (t: number) => {
-      if (start === null) start = t
-      const p = Math.min(1, (t - start) / duration)
-      // easeOutCubic
-      const eased = 1 - Math.pow(1 - p, 3)
-      setValue(Math.round(target * eased))
-      if (p < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [target, enabled])
-  return value
-}
-
-function GradeRing({
-  overall,
-  grade,
-  percentile,
-}: {
-  overall: number
-  grade: string
-  percentile?: { city: string; better_than_pct: number; sample: number }
-}) {
-  const pct = clampScore(overall)
-  const reduce = useReducedMotion()
-  const animate = !reduce
-  const shown = useCountUp(pct, animate)
-  // SVG ring geometry.
-  const R = 52
-  const C = 2 * Math.PI * R
-  const offset = C * (1 - pct / 100)
-
-  return (
-    <div className="flex flex-wrap items-center gap-5">
-      <div
-        role="img"
-        aria-label={`Overall grade ${grade} — ${pct} out of 100`}
-        className="relative grid size-28 shrink-0 place-items-center"
-      >
-        <svg viewBox="0 0 120 120" className="size-28 -rotate-90">
-          <circle
-            cx="60"
-            cy="60"
-            r={R}
-            fill="none"
-            stroke="var(--color-divider-strong)"
-            strokeWidth="12"
-          />
-          <motion.circle
-            cx="60"
-            cy="60"
-            r={R}
-            fill="none"
-            stroke="var(--color-warm)"
-            strokeWidth="12"
-            strokeLinecap="round"
-            strokeDasharray={C}
-            initial={{ strokeDashoffset: animate ? C : offset }}
-            animate={{ strokeDashoffset: offset }}
-            transition={{ duration: animate ? 1 : 0, ease: 'easeOut' }}
-          />
-        </svg>
-        <span className="absolute font-display text-[clamp(1.9rem,5vw,2.4rem)] leading-none text-text-primary">
-          {grade}
-        </span>
-      </div>
-      <div>
-        <p className="whitespace-nowrap font-display text-[clamp(1.6rem,4.5vw,2.1rem)] leading-none tabular-nums text-text-primary">
-          {shown}
-          <span className="text-text-muted">/100</span>
-        </p>
-        <p className="mt-2 text-sm text-text-secondary">Overall website score</p>
-        {percentile ? (
-          <p className="mt-1.5 text-sm font-semibold text-warm-ink">
-            Better than{' '}
-            <span className="tabular-nums">{clampScore(percentile.better_than_pct)}%</span> of{' '}
-            <span className="tabular-nums">{percentile.sample.toLocaleString()}</span> scored
-            venues in {percentile.city}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-export function ReportView({
-  report,
-  runId,
-  initialGated = true,
-}: {
-  report: GraderReport
-  runId: string
-  /** false when opened from the emailed, token-verified report link. */
-  initialGated?: boolean
-}) {
-  const [gated, setGated] = useState(initialGated)
-  const [emailOpen, setEmailOpen] = useState(false)
-  const [email, setEmail] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [gateError, setGateError] = useState<GrowthToolsError | null>(null)
-  const [emailedTo, setEmailedTo] = useState<string | null>(null)
-
+export function ReportView({ report, runId }: { report: GraderReport; runId: string }) {
   // Deep-link to the standalone scheduling page, carrying venue + source. The
   // report_url is added after mount (window is server-undefined) — starting
-  // without it keeps the SSR and first client render identical (no hydration
-  // mismatch), then the effect enriches the link.
+  // without it keeps the SSR and first client render identical.
   const [bookHref, setBookHref] = useState(
-    () =>
-      `/schedule?${new URLSearchParams({
-        venue: report.venue.name,
-        source: 'venue_grader',
-      }).toString()}`,
+    () => `/schedule?${new URLSearchParams({ venue: report.venue.name, source: 'venue_grader' }).toString()}`,
   )
   useEffect(() => {
     setBookHref(
@@ -357,20 +142,18 @@ export function ReportView({
     )
   }, [report.venue.name])
 
-  // The report first renders gated — count the gate view exactly once per run.
   useEffect(() => {
     captureMarketing('tool_gate_viewed', { tool: 'venues', run_id: runId })
+    captureMarketing('tool_offer_view', { tool: 'venues', run_id: runId })
   }, [runId])
 
-  const emailValid = EMAIL_REGEX.test(email.trim())
-  const host = displayHost(report.venue.website)
+  const situation = report.followup?.reason === 'no_website' ? report.followup : null
+  const host = report.venue.website ? displayHost(report.venue.website) : ''
   const vibes = report.vibe_card.vibes.slice(0, 3)
   const photos = (report.match.photo_urls ?? []).slice(0, 3)
-  // Competition is optional on the report — hide everything when absent.
   const competition = report.competition
   const competitors = (competition?.competitors ?? []).slice(0, 4)
   const playbook = (competition?.outrank_playbook ?? []).slice(0, 5)
-  // Depth fields — all optional, each hides gracefully.
   const checks = report.site_signals?.checks ?? []
   const passCount = checks.filter((c) => c.status === 'pass').length
   const warnCount = checks.filter((c) => c.status === 'warn').length
@@ -381,686 +164,248 @@ export function ReportView({
   const hhRows = (headToHead?.rows ?? []).slice(0, 6)
   const whereYouWin = (report.where_you_win ?? []).slice(0, 3)
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
+  const overall = clampScore(report.scores.overall)
   // Prefer the live ScreenshotOne capture; fall back to the site's og:image.
   const siteImage = report.screenshot.image_url || report.screenshot.og_image_url || null
   const afterImage = report.screenshot.after_url || null
-
-  // The offer view fires once, when the report first renders unlocked.
-  useEffect(() => {
-    if (!gated) captureMarketing('tool_offer_view', { tool: 'venues', run_id: runId })
-  }, [gated, runId])
-
-  async function onGateSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!emailValid || submitting) return
-    setSubmitting(true)
-    setGateError(null)
-    captureMarketing('tool_gate_email_submitted', { tool: 'venues', run_id: runId })
-    const res = await submitGrowthToolsGate(runId, email.trim())
-    setSubmitting(false)
-    if (res.ok) {
-      captureMarketing('tool_report_emailed', { tool: 'venues', run_id: runId })
-      // The page stays gated on purpose — the full report opens only from the
-      // tokenized link we just emailed (email-verified access).
-      setEmailedTo(email.trim())
-      return
-    }
-    setGateError(res.error)
-  }
+  // #4452 §6.8: without after_url the after side is the live preview page of this run.
+  const afterFrame = !afterImage && runId ? `/venue-preview?run_id=${encodeURIComponent(runId)}` : null
+  const rewritten = report.rewritten_hero && (report.rewritten_hero.before_excerpt || report.rewritten_hero.after_copy) ? report.rewritten_hero : null
+  const topFix = report.fixes[0]
 
   return (
-    <article
-      data-theme="light"
-      className="rounded-md bg-parchment p-5 font-dashboard text-text-primary shadow-[0_40px_120px_rgba(0,0,0,0.5)] sm:p-8 md:p-10"
-    >
-      {/* ── FREE ZONE ─────────────────────────────────────────────────────── */}
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-warm-ink">
-          Venue Website Grader — free report
-        </p>
-        <h1 className="mt-2 break-words text-[clamp(1.6rem,5vw,2.2rem)] font-bold leading-tight text-text-primary">
-          {report.venue.name}
-        </h1>
-        <p className="mt-1 break-words text-sm text-text-secondary">
-          {[report.venue.city, host].filter(Boolean).join(' · ')}
-        </p>
-      </header>
-
-      {siteImage ? (
-        <figure className="mt-6 overflow-hidden rounded-sm border border-divider-strong bg-white p-1.5 shadow-[var(--elev-1)]">
-          <img
-            src={siteImage}
-            alt={`Live screenshot of ${host}`}
-            loading="lazy"
-            className="aspect-[16/10] w-full max-w-full rounded-[6px] object-cover object-top"
-          />
-          <figcaption className="px-1 py-1.5 text-center text-xs text-text-muted">
-            Your site right now — {host}
-          </figcaption>
-        </figure>
-      ) : (
-        <div className="mt-6 grid place-items-center rounded-sm border border-dashed border-divider-strong bg-stripe-strong px-4 py-10 text-center">
-          <p className="text-sm text-text-muted">
-            No site preview available — we graded the live site directly.
-          </p>
-        </div>
-      )}
-      {report.meta?.fetch_failed ? (
-        <p className="mt-2 text-xs text-warning">
-          Parts of the site didn&rsquo;t load when we visited — some grades reflect
-          that (which is itself a finding).
-        </p>
-      ) : null}
-
-      <div className="mt-8">
-        <GradeRing
-          overall={report.scores.overall}
-          grade={report.scores.grade}
-          percentile={report.percentile}
-        />
-      </div>
-
-      {/* Vibe Card */}
-      <section className="mt-8 rounded-sm border border-divider bg-vellum p-5 md:p-6">
-        <DocHeading>Your vibe card</DocHeading>
-        {vibes.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {vibes.map((vibe) => (
-              <span
-                key={vibe}
-                className="rounded-full border border-warm/40 bg-warm/10 px-3 py-1 text-xs font-semibold text-warm-ink"
-              >
-                {vibe}
-              </span>
-            ))}
-          </div>
-        ) : null}
-        {report.vibe_card.occasions.length > 0 ? (
-          <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-            <span className="font-semibold text-text-primary">Good for:</span>{' '}
-            {report.vibe_card.occasions.join(' · ')}
-          </p>
-        ) : null}
-        {report.vibe_card.signature_mention ? (
-          <p className="mt-3 text-sm italic leading-relaxed text-text-secondary">
-            &ldquo;{report.vibe_card.signature_mention}&rdquo;
-          </p>
-        ) : null}
-        {report.ai_read ? (
-          <p className="mt-4 border-t border-divider pt-4 text-sm leading-relaxed text-text-secondary">
-            <span className="font-semibold text-text-primary">How AI reads your site:</span>{' '}
-            {report.ai_read}
-          </p>
-        ) : null}
-      </section>
-
-      {/* Site health — FREE zone, deterministic checks (credibility bait) */}
-      {checks.length > 0 ? (
-        <section className="mt-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <DocHeading>Site health check</DocHeading>
-            <p className="text-xs font-semibold tabular-nums text-text-muted">
-              <span className="text-moss">{passCount} passed</span> ·{' '}
-              <span className="text-warning">{warnCount} warning{warnCount === 1 ? '' : 's'}</span> ·{' '}
-              <span className="text-danger">{failCount} failing</span>
-            </p>
-          </div>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {checks.map((c) => {
-              const style = SIGNAL_STYLE[c.status] ?? SIGNAL_STYLE.warn
-              return (
-                <li
-                  key={c.key}
-                  className={cn(
-                    'flex gap-2.5 rounded-sm border p-3',
-                    style.className,
-                  )}
-                >
-                  <span aria-hidden="true" className="mt-px shrink-0 font-bold leading-none">
-                    {style.mark}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block break-words text-sm font-semibold text-text-primary">
-                      {c.label}
-                    </span>
-                    {c.detail ? (
-                      <span className="mt-0.5 block break-words text-xs leading-relaxed text-text-secondary">
-                        {c.detail}
-                      </span>
-                    ) : null}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      ) : null}
-
-      {/* Mingla already knows you — FREE zone */}
-      {report.match.found ? (
-        <section className="mt-6 rounded-sm border border-warm/40 bg-warm/10 p-5 md:p-6">
-          <DocHeading>
-            <span className="text-warm-ink">Mingla already knows you</span>
-          </DocHeading>
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            {photos.map((url) => (
-              <img
-                key={url}
-                src={url}
-                alt=""
-                className="size-16 rounded-sm object-cover"
-              />
-            ))}
-            {typeof report.match.mingla_score === 'number' ? (
-              <div>
-                <p className="whitespace-nowrap font-display text-[clamp(1.4rem,4vw,1.9rem)] leading-none tabular-nums text-text-primary">
-                  {clampScore(report.match.mingla_score)}
-                </p>
-                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-                  Mingla score
-                </p>
+    <ReportFrame
+      tool="venues"
+      runId={runId}
+      kick={['Venue website grader', 'full report', reportDate(report.meta?.generated_at)].filter(Boolean).join(' · ')}
+      title={report.venue.name}
+      sub={[report.venue.city, host || (situation ? 'No website on Google' : '')].filter(Boolean).join(' · ')}
+      actionLine={situation ? 'Make your free page in Mingla Host, or set it up with the team.' : 'Fix all of this in Mingla Host, or talk it through with the team.'}
+      hero={(
+        <div className="rhero" data-hero="venues">
+          <div style={{ display: 'grid', gap: 14 }}>
+            {siteImage ? (
+              <div className="rp-shot" style={{ backgroundImage: `url(${JSON.stringify(siteImage)})` }} role="img" aria-label={`Live screenshot of ${host}`}>
+                <span>Your site right now · {host}</span>
               </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <span className="rkick">{situation ? 'No website on Google' : 'No preview of your site'}</span>
+                <p className="verdict">{situation ? <>People can&rsquo;t book you from a search <em>yet.</em></> : <>We graded the live site <em>directly.</em></>}</p>
+              </div>
+            )}
+            {topFix ? <p>Start here: <b style={{ color: '#f5f4f0' }}>{topFix.title}</b></p> : null}
+            {situation ? <ToldUs>people find you on {FOUND_VIA[situation.found_via]}.</ToldUs> : null}
+            {report.meta?.fetch_failed && !situation ? (
+              <p className="src">Parts of the site didn&rsquo;t load when we visited; some grades reflect that (which is itself a finding).</p>
             ) : null}
           </div>
-          {report.match.ai_read ? (
-            <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-              {report.match.ai_read}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
-
-      {emailedTo ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-6 rounded-sm border border-warm/40 bg-warm/10 px-4 py-4 text-sm text-text-secondary"
-        >
-          <p className="font-semibold text-text-primary">Check your inbox.</p>
-          <p className="mt-1">
-            We sent your full report — grades, fixes, competitor head-to-head, and
-            your homepage redesigned — to{' '}
-            <span className="font-semibold text-text-primary">{emailedTo}</span>. Open
-            it from the link in that email.
-          </p>
-        </div>
-      ) : null}
-
-      {/* Teasers — FREE zone, the gate's strongest hooks */}
-      {competitors.length > 0 ? (
-        <p className="mt-6 rounded-sm border border-warm/40 bg-warm/10 px-4 py-3.5 text-sm font-semibold leading-relaxed text-warm-ink">
-          We found <span className="tabular-nums">{competitors.length}</span>{' '}
-          {competitors.length === 1 ? 'place' : 'places'}
-          {report.venue.city ? ` in ${report.venue.city}` : ''} competing for your
-          nights — the head-to-head scorecard is inside.
-        </p>
-      ) : null}
-      <p className="mt-3 rounded-sm border border-warm/40 bg-warm/10 px-4 py-3.5 text-sm font-semibold leading-relaxed text-warm-ink">
-        Inside: how Mingla drives people to your venue from {offerFrom} per person.
-      </p>
-
-      {/* ── GATED ZONE ────────────────────────────────────────────────────── */}
-      <section className="relative mt-8">
-        <div
-          aria-hidden={gated || undefined}
-          className={cn(gated && 'pointer-events-none select-none blur-md')}
-        >
-          {/* Score bars with reasons */}
-          <DocHeading>The grades</DocHeading>
-          <ul className="mt-4 space-y-5">
-            {SCORE_ROWS.map(({ key, label }) => {
-              const value = clampScore(report.scores[key])
-              const reason = report.scores.reasons[key]
-              return (
-                <li key={key}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-sm font-semibold text-text-primary">{label}</span>
-                    <span className="whitespace-nowrap text-[clamp(0.95rem,2.5vw,1.05rem)] font-semibold tabular-nums text-text-primary">
-                      {value}
-                      <span className="text-text-muted">/100</span>
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-divider-strong">
-                    <motion.div
-                      className="h-full rounded-full bg-warm"
-                      initial={{ width: 0 }}
-                      whileInView={{ width: `${value}%` }}
-                      viewport={{ once: true, amount: 0.6 }}
-                      transition={{ duration: 0.7, ease: 'easeOut' }}
-                    />
-                  </div>
-                  {reason ? (
-                    <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
-                      {reason}
-                    </p>
-                  ) : null}
-                </li>
-              )
-            })}
-          </ul>
-
-          {/* Google listing */}
-          {report.google_listing.lines.length > 0 ? (
-            <div className="mt-10">
-              <DocHeading>Your Google listing</DocHeading>
-              <div className="mt-4 space-y-1 rounded-sm border border-divider-strong bg-white p-4">
-                {report.google_listing.lines.map((line, i) => (
-                  <p
-                    key={`${i}-${line.slice(0, 24)}`}
-                    className={cn(
-                      'break-words text-sm leading-relaxed',
-                      i === 0 ? 'font-semibold text-text-primary' : 'text-text-secondary',
-                    )}
-                  >
-                    {line}
-                  </p>
-                ))}
-              </div>
+          <div className="rp-grade">
+            <div className="rp-ring" style={{ ['--v' as string]: overall }} role="img" aria-label={`Overall grade ${report.scores.grade}, ${overall} out of 100`}>
+              <div><b>{report.scores.grade}</b><span>{overall} / 100</span></div>
             </div>
-          ) : null}
-
-          {/* What your customers say — real review themes */}
-          {praise.length > 0 || complaints.length > 0 ? (
-            <div className="mt-10">
-              <DocHeading>What your customers say</DocHeading>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {praise.length > 0 ? (
-                  <div className="rounded-sm border border-moss/40 bg-moss/10 p-4 md:p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">
-                      People love
-                    </p>
-                    <ul className="mt-3 space-y-2">
-                      {praise.map((s) => (
-                        <li key={s} className="flex gap-2 text-sm leading-relaxed text-text-secondary">
-                          <span aria-hidden="true" className="shrink-0 text-moss">+</span>
-                          <span className="min-w-0 break-words">{s}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {complaints.length > 0 ? (
-                  <div className="rounded-sm border border-divider bg-white p-4 md:p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                      What comes up as a gripe
-                    </p>
-                    <ul className="mt-3 space-y-2">
-                      {complaints.map((s) => (
-                        <li key={s} className="flex gap-2 text-sm leading-relaxed text-text-secondary">
-                          <span aria-hidden="true" className="shrink-0 text-warning">–</span>
-                          <span className="min-w-0 break-words">{s}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Fixes */}
-          {report.fixes.length > 0 ? (
-            <div className="mt-10">
-              <DocHeading>Your fixes</DocHeading>
-              <ol className="mt-4 space-y-4">
-                {report.fixes.map((fix, i) => (
-                  <li
-                    key={fix.title}
-                    className="rounded-sm border border-divider bg-white p-4 md:p-5"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-                      <p className="min-w-0 flex-1 break-words text-sm font-semibold text-text-primary">
-                        <span className="tabular-nums text-warm-ink">{i + 1}.</span>{' '}
-                        {fix.title}
-                      </p>
-                      <span
-                        className={cn(
-                          'whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold',
-                          fix.impact === 'high'
-                            ? 'border-warm/40 bg-warm/10 text-warm-ink'
-                            : 'border-divider-strong bg-stripe-strong text-text-secondary',
-                        )}
-                      >
-                        {fix.impact === 'high' ? 'High impact' : 'Medium'}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
-                      {fix.why}
-                    </p>
-                    <p className="mt-3 rounded-sm bg-vellum p-3 text-sm leading-relaxed text-text-primary">
-                      <span className="text-xs font-semibold uppercase tracking-[0.14em] text-warm-ink">
-                        Change:{' '}
-                      </span>
-                      {fix.change}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ) : null}
-
-          {/* Competition — head-to-head */}
-          {competitors.length > 0 ? (
-            <div className="mt-10">
-              <DocHeading>Who&rsquo;s eating your Friday nights</DocHeading>
-              {competition?.your_rank_read ? (
-                <p className="mt-4 text-sm leading-relaxed text-text-secondary">
-                  {competition.your_rank_read}
-                </p>
-              ) : null}
-              <ul className="mt-4 space-y-4">
-                {competitors.map((competitor, i) => (
-                  <li
-                    key={`${competitor.name}-${i}`}
-                    className="rounded-sm border border-divider bg-white p-4 md:p-5"
-                  >
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                      <p className="min-w-0 break-words text-sm font-semibold text-text-primary">
-                        {competitor.name}
-                        {competitor.city ? (
-                          <span className="font-normal text-text-muted">
-                            {' '}
-                            · {competitor.city}
-                          </span>
-                        ) : null}
-                      </p>
-                      {typeof competitor.mingla_score === 'number' ? (
-                        <span className="whitespace-nowrap rounded-full border border-warm/40 bg-warm/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-warm-ink">
-                          Mingla score {clampScore(competitor.mingla_score)}
-                        </span>
-                      ) : null}
-                    </div>
-                    {competitor.what_they_do_better.length > 0 ? (
-                      <ul className="mt-2.5 space-y-1.5">
-                        {competitor.what_they_do_better.slice(0, 3).map((point) => (
-                          <li
-                            key={point}
-                            className="flex gap-2 text-sm leading-relaxed text-text-secondary"
-                          >
-                            <span aria-hidden="true" className="shrink-0 text-warm-ink">
-                              •
-                            </span>
-                            <span className="min-w-0 break-words">{point}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {competitor.evidence ? (
-                      <p className="mt-2.5 break-words text-xs leading-relaxed text-text-muted">
-                        {competitor.evidence}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* Head-to-head scorecard */}
-          {headToHead && hhRows.length > 0 ? (
-            <div className="mt-10">
-              <DocHeading>You vs {headToHead.competitor}</DocHeading>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[26rem] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-divider-strong">
-                      <th className="py-2 pr-3 text-left font-semibold text-text-muted" />
-                      <th className="py-2 pr-3 text-left font-semibold text-text-primary">You</th>
-                      <th className="break-words py-2 text-left font-semibold text-text-muted">
-                        {headToHead.competitor}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hhRows.map((row, i) => (
-                      <tr key={`${row.dimension}-${i}`} className="border-b border-divider align-top">
-                        <td className="py-2.5 pr-3 text-text-muted">{row.dimension}</td>
-                        <td
-                          className={cn(
-                            'py-2.5 pr-3',
-                            row.winner === 'you'
-                              ? 'rounded-sm bg-warm/10 font-semibold text-warm-ink'
-                              : 'text-text-secondary',
-                          )}
-                        >
-                          {row.you}
-                        </td>
-                        <td
-                          className={cn(
-                            'py-2.5',
-                            row.winner === 'them'
-                              ? 'rounded-sm bg-warm/10 font-semibold text-warm-ink'
-                              : 'text-text-secondary',
-                          )}
-                        >
-                          {row.them}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Where you already win */}
-          {whereYouWin.length > 0 ? (
-            <div className="mt-10">
-              <DocHeading>Where you already win</DocHeading>
-              <ul className="mt-4 space-y-2.5">
-                {whereYouWin.map((s) => (
-                  <li key={s} className="flex gap-2.5 text-sm leading-relaxed text-text-primary">
-                    <span aria-hidden="true" className="mt-px shrink-0 font-bold text-moss">✓</span>
-                    <span className="min-w-0 break-words">{s}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {/* Outrank playbook */}
-          {playbook.length > 0 ? (
-            <div className="mt-10">
-              <DocHeading>How to outrank them</DocHeading>
-              <ol className="mt-4 space-y-4">
-                {playbook.map((move, i) => {
-                  const chip = EFFORT_CHIPS[move.effort] ?? EFFORT_CHIPS.project
-                  return (
-                    <li
-                      key={`${move.move}-${i}`}
-                      className="rounded-sm border border-divider bg-white p-4 md:p-5"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-                        <p className="min-w-0 flex-1 break-words text-sm font-semibold text-text-primary">
-                          <span className="tabular-nums text-warm-ink">{i + 1}.</span>{' '}
-                          {move.move}
-                        </p>
-                        <span
-                          className={cn(
-                            'whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold',
-                            chip.className,
-                          )}
-                        >
-                          {chip.label}
-                        </span>
-                      </div>
-                      <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
-                        {move.why_it_works}
-                      </p>
-                    </li>
-                  )
-                })}
-              </ol>
-            </div>
-          ) : null}
-
-          {/* Before / After — the visual redesign */}
-          {siteImage && afterImage ? (
-            <div className="mt-10">
-              <DocHeading>Your homepage, redesigned</DocHeading>
-              <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                Your current site vs. the same venue rebuilt in a premium Mingla
-                template — your real photos, a clearer story, a reason to book.
-              </p>
-              <div className="mt-4">
-                <BeforeAfterSlider before={siteImage} after={afterImage} host={host} />
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Gate overlay + floating gate card */}
-        {gated ? (
-          <div className="absolute inset-0">
-            <div
-              aria-hidden="true"
-              className="absolute inset-0 bg-gradient-to-b from-parchment/30 via-parchment/70 to-parchment"
-            />
-            <div className="relative mx-auto mt-4 max-w-md px-1 sm:mt-8">
-              <div className="rounded-md border border-divider-strong bg-parchment p-5 text-center shadow-[0_24px_80px_rgba(14,14,16,0.28)] sm:p-6">
-                {emailedTo ? (
-                  <>
-                    <p className="font-display text-2xl text-text-primary">
-                      Check your inbox
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                      We sent your full report to{' '}
-                      <span className="font-semibold text-text-primary">{emailedTo}</span>.
-                      Open it from the private link in that email — grades, fixes, the
-                      competitor head-to-head, and your homepage redesigned.
-                    </p>
-                    <p className="mt-3 text-xs text-text-muted">
-                      Didn&rsquo;t get it? Check spam, or try a different email below.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEmailedTo(null)
-                        setEmail('')
-                        setEmailOpen(true)
-                      }}
-                      className="mt-2 rounded-sm text-sm font-semibold text-warm-ink underline-offset-4 transition hover:underline focus-ring"
-                    >
-                      Use a different email
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-display text-2xl text-text-primary">
-                      Get your full report
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                      Grades, fixes, your competitor head-to-head, and your homepage
-                      redesigned — we&rsquo;ll email you a private link to the full report.
-                    </p>
-                    <DeviceLink
-                      surface="host"
-                      attribution={APP_GATE_ATTRIBUTION}
-                      onActivate={() =>
-                        captureMarketing('tool_gate_app_click', {
-                          tool: 'venues',
-                          run_id: runId,
-                          location: 'gate',
-                        })
-                      }
-                      className={buttonClasses({ variant: 'primary', className: 'mt-5 w-full' })}
-                    >
-                      View in Mingla Host
-                    </DeviceLink>
-                    {!emailOpen ? (
-                      <button
-                        type="button"
-                        onClick={() => setEmailOpen(true)}
-                        className="mt-3 rounded-sm text-sm font-semibold text-warm-ink underline-offset-4 transition hover:underline focus-ring"
-                      >
-                        Or email me my full report
-                      </button>
-                    ) : (
-                      <form onSubmit={onGateSubmit} noValidate className="mt-4 text-left">
-                        <label
-                          htmlFor="gate-email"
-                          className="block text-xs font-semibold uppercase tracking-[0.16em] text-text-muted"
-                        >
-                          Your email <span aria-hidden="true" className="text-warm">*</span>
-                        </label>
-                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                          <input
-                            id="gate-email"
-                            type="email"
-                            inputMode="email"
-                            autoComplete="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="you@yourplace.com"
-                            aria-invalid={email.trim().length > 0 && !emailValid}
-                            className="min-h-11 w-full min-w-0 flex-1 rounded-sm border border-divider-strong bg-white px-3 text-base text-text-primary placeholder:text-text-muted focus-ring"
-                          />
-                          <button
-                            type="submit"
-                            disabled={!emailValid || submitting}
-                            className={buttonClasses({
-                              variant: 'primary',
-                              size: 'sm',
-                              className: 'whitespace-nowrap',
-                            })}
-                          >
-                            {submitting ? 'Sending…' : 'Send my report'}
-                          </button>
-                        </div>
-                        {gateError ? (
-                          <p role="alert" className="mt-2 text-sm text-danger">
-                            {GATE_ERROR_COPY[gateError]}
-                          </p>
-                        ) : null}
-                      </form>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
+            <small>
+              Overall website score.
+              {report.percentile ? ` Better than ${clampScore(report.percentile.better_than_pct)}% of ${report.percentile.sample.toLocaleString('en')} scored venues in ${report.percentile.city}.` : ''}
+            </small>
+            <span className="src">{situation ? 'From Google and live research.' : 'From your live website and live research.'}</span>
           </div>
-        ) : null}
-      </section>
-
-      {/* ── THE OFFER — one consolidated close (post-unlock) ──────────────── */}
-      {!gated ? (
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.4 }}
-          transition={{ duration: 0.45, ease: 'easeOut' }}
-          className="mt-10 overflow-hidden rounded-md p-6 text-white md:p-8"
-          style={{
-            background:
-              'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)',
-          }}
+        </div>
+      )}
+      offer={(
+        <Offer
+          title={<>We drive high-ticket people looking for date spots to your venue, from {offerFrom} per person.</>}
+          body={<>That&rsquo;s the introductory Mingla promotion. Book a call and we&rsquo;ll fix everything in this report for you, free, and put your venue in front of people planning a night out.</>}
         >
-          <p className="break-words font-display text-[clamp(1.6rem,4.5vw,2.3rem)] leading-tight">
-            We drive high-ticket people looking for date spots to your venue — for as
-            low as <span className="whitespace-nowrap">{offerFrom}</span> per person.
-          </p>
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 md:text-base">
-            That&rsquo;s the introductory Mingla promotion. Book a call and we&rsquo;ll fix
-            everything in this report for you — free — and put your venue in front of
-            people planning a night out.
-          </p>
-          <div className="mt-6">
-            <Link
-              href={bookHref}
-              onClick={() =>
-                captureMarketing('tool_offer_cta_click', {
-                  tool: 'venues',
-                  run_id: runId,
-                  cta: 'call',
-                })
-              }
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
+          {situation ? (
+            <DeviceLink
+              surface="host"
+              attribution={APP_GATE_ATTRIBUTION}
+              onActivate={() => captureMarketing('tool_gate_app_click', { tool: 'venues', run_id: runId, location: 'offer' })}
+              className="tp-go"
             >
-              Book a call — we fix all of this, free
-            </Link>
+              {nextStepCta('venues', 'no_website')}
+            </DeviceLink>
+          ) : null}
+          <Link
+            href={bookHref}
+            onClick={() => captureMarketing('tool_offer_cta_click', { tool: 'venues', run_id: runId, cta: 'call' })}
+            className={situation ? 'tp-ghost' : 'tp-go'}
+          >
+            Book a call: we fix all of this, free
+          </Link>
+        </Offer>
+      )}
+    >
+      <RSec id="Your vibe card" h="Your vibe" em="card.">
+        <div className="rcard">
+          {vibes.length > 0 ? <div className="vibes">{vibes.map((v) => <span key={v}>{v}</span>)}</div> : null}
+          {report.vibe_card.occasions.length > 0 ? (
+            <div style={{ fontSize: 13.5 }}><b>Good for:</b> {report.vibe_card.occasions.join(' · ')}</div>
+          ) : null}
+          {report.vibe_card.signature_mention ? <div className="quote">&ldquo;{report.vibe_card.signature_mention}&rdquo;</div> : null}
+          {report.ai_read ? <div className="ai"><b>How AI reads your site:</b> {report.ai_read}</div> : null}
+          <Source from={situation ? ['google', 'research'] : ['site', 'research']} />
+        </div>
+      </RSec>
+
+      {checks.length > 0 ? (
+        <RSec id="Site health check" h="Site health" em="check.">
+          <div className="rcard">
+            <div className="counts">
+              <span style={{ background: '#dcfce7', color: '#166534' }}>{passCount} passing</span>
+              <span style={{ background: '#fef3c7', color: '#92400e' }}>{warnCount} to tidy</span>
+              <span style={{ background: '#fee2e2', color: '#991b1b' }}>{failCount} failing</span>
+            </div>
+            <ul className="checks" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {checks.map((c) => (
+                <li key={c.key} className={`chkr ${c.status}`}>
+                  <i aria-hidden="true">{c.status === 'pass' ? '✓' : c.status === 'warn' ? '!' : '✕'}</i>
+                  <span><b>{c.label}</b>{c.detail}</span>
+                </li>
+              ))}
+            </ul>
+            <Source from={['site']} />
           </div>
-        </motion.div>
+        </RSec>
       ) : null}
-    </article>
+
+      {report.match.found ? (
+        <RSec id="Mingla already knows you" h="Mingla already" em="knows you.">
+          <div className="rcard">
+            {photos.length > 0 ? <div className="photos">{photos.map((url) => <img key={url} src={url} alt="" loading="lazy" />)}</div> : null}
+            {typeof report.match.mingla_score === 'number' ? (
+              <div className="score2"><b>{clampScore(report.match.mingla_score)}</b><span style={{ color: '#7c7870' }}>Mingla score</span></div>
+            ) : null}
+            {report.match.ai_read ? <div className="ai">{report.match.ai_read}</div> : null}
+            <Source from={['mingla']} />
+          </div>
+        </RSec>
+      ) : null}
+
+      <RSec id="The grades" h="The" em="grades.">
+        <div className="rcard gbars">
+          {SCORE_ROWS.map(({ key, label }) => {
+            const value = clampScore(report.scores[key])
+            const reason = report.scores.reasons[key]
+            return (
+              <div key={key} className="gbar">
+                <div className="top"><span>{label}</span><span>{value}/100</span></div>
+                <div className="trk" aria-hidden="true"><i style={{ width: `${value}%`, background: barColor(value) }} /></div>
+                {reason ? <p>{reason}</p> : null}
+              </div>
+            )
+          })}
+        </div>
+      </RSec>
+
+      {report.google_listing.lines.length > 0 ? (
+        <RSec id="Your Google listing" h="Your Google" em="listing.">
+          <div className="rcard glist">
+            {report.google_listing.lines.map((line, i) => <div key={`${i}-${line.slice(0, 24)}`}>{line}</div>)}
+            <Source from={['google']} />
+          </div>
+        </RSec>
+      ) : null}
+
+      {praise.length > 0 || complaints.length > 0 ? (
+        <RSec id="What your customers say" h="What your customers" em="say.">
+          <div className="say">
+            {praise.length > 0 ? (
+              <div className="rcard"><b style={{ color: '#166534' }}>What they love</b><ul className="rlist">{praise.map((s) => <li key={s}>{s}</li>)}</ul></div>
+            ) : null}
+            {complaints.length > 0 ? (
+              <div className="rcard"><b style={{ color: '#991b1b' }}>What comes up as a gripe</b><ul className="rlist">{complaints.map((s) => <li key={s}>{s}</li>)}</ul></div>
+            ) : null}
+          </div>
+          <Source from={['google', 'research']} />
+        </RSec>
+      ) : null}
+
+      {report.fixes.length > 0 ? (
+        <RSec id="Your fixes" h="Your fixes," em="in order.">
+          <Fixes items={report.fixes.map((fix, i) => ({
+            title: fix.title,
+            body: fix.change,
+            why: fix.why,
+            tags: [{ label: fix.impact === 'high' ? 'High impact' : 'Medium', hot: i === 0 && fix.impact === 'high' }],
+          }))} />
+        </RSec>
+      ) : null}
+
+      {competitors.length > 0 ? (
+        <RSec id="Who’s eating your Friday nights" h="Who’s eating your" em="Friday nights." lede={competition?.your_rank_read}>
+          <div className="comps4">
+            {competitors.map((c, i) => (
+              <div key={`${c.name}-${i}`} className="comp">
+                <div className="t"><b>{c.name}</b>{typeof c.mingla_score === 'number' ? <span className="ms">Mingla score {clampScore(c.mingla_score)}</span> : null}</div>
+                {c.city ? <small>{c.city}</small> : null}
+                {c.what_they_do_better.length > 0 ? <ul>{c.what_they_do_better.slice(0, 3).map((p) => <li key={p}>{p}</li>)}</ul> : null}
+                {c.evidence ? <small>{c.evidence}</small> : null}
+              </div>
+            ))}
+          </div>
+          <Source from={['research', 'mingla']} />
+        </RSec>
+      ) : null}
+
+      {headToHead && hhRows.length > 0 ? (
+        <RSec id="You vs" h="You vs" em={`${headToHead.competitor}.`}>
+          <div className="tablewrap">
+            <table className="h2h">
+              <thead><tr><th><span className="sr-only">What</span></th><th>You</th><th>{headToHead.competitor}</th></tr></thead>
+              <tbody>
+                {hhRows.map((row, i) => (
+                  <tr key={`${row.dimension}-${i}`}>
+                    <td><b>{row.dimension}</b></td>
+                    <td className={row.winner === 'you' ? 'w' : row.winner === 'tie' ? 'tie' : undefined}>{row.you}</td>
+                    <td className={row.winner === 'them' ? 'w' : row.winner === 'tie' ? 'tie' : undefined}>{row.them}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </RSec>
+      ) : null}
+
+      {whereYouWin.length > 0 ? (
+        <RSec id="Where you already win" h="Where you already" em="win.">
+          <div className="good">{whereYouWin.map((s) => <div key={s}>{s}</div>)}</div>
+        </RSec>
+      ) : null}
+
+      {playbook.length > 0 ? (
+        <RSec id="How to outrank them" h="How to" em="outrank them.">
+          <ol className="moves" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {playbook.map((move, i) => (
+              <li key={`${move.move}-${i}`} className="move">
+                <span className="n" aria-hidden="true">{i + 1}</span>
+                <div><b>{move.move}</b><p>{move.why_it_works}</p></div>
+                <span className="eff">{effortLabel(move.effort as GraderCompetitionEffort) ?? 'Bigger project'}</span>
+              </li>
+            ))}
+          </ol>
+        </RSec>
+      ) : null}
+
+      {siteImage && (afterImage || afterFrame) ? (
+        <RSec id="Your homepage, redesigned" h="Your homepage," em="redesigned.">
+          <div data-before-after={afterImage ? 'image' : 'live'} style={{ display: 'grid', gap: 12 }}>
+            <BeforeAfterSlider before={siteImage} after={afterImage} afterFrame={afterFrame} host={host} />
+            <p className="lede" style={{ margin: 0 }}>Drag anywhere on the image: your site today vs rebuilt in a Mingla template.{rewritten ? ' The words, rewritten:' : ''}</p>
+            {rewritten ? <RewrittenHero rewritten={rewritten} /> : null}
+          </div>
+        </RSec>
+      ) : rewritten ? (
+        // #4452 §6.8: neither image: the words before and after, no slider.
+        <RSec id="Your homepage, redesigned" h="Your homepage," em="redesigned.">
+          <div data-before-after="copy" style={{ display: 'grid', gap: 12 }}>
+            <p className="lede" style={{ margin: 0 }}>{situation ? 'The words for your first page, written from what Google knows about you:' : 'Your homepage words today, and rewritten by Mingla:'}</p>
+            <RewrittenHero rewritten={rewritten} />
+          </div>
+        </RSec>
+      ) : null}
+
+    </ReportFrame>
   )
 }

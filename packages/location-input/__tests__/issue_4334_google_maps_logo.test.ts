@@ -80,12 +80,22 @@ Deno.test("L-4 every website picker of Google results draws the White logo", asy
   assert(comp.includes('src="/brand/google-maps-logo-white.png"'));
   assert(comp.includes("width={98}") && comp.includes("height={18}") && comp.includes('alt="Google Maps"'));
   assert(comp.includes("px-[10px] pt-[10px] pb-[5px]"));
+  // #4452: the tools share one city picker (CitySearch in the tool template),
+  // and its Google results list draws the logo under the options.
+  const template = await read("mingla-marketing/app/tools/_template/ToolPage.tsx");
+  const picker = template.slice(template.indexOf("export function CitySearch"));
+  assert(picker.length > 0 && /<ul role="listbox"[\s\S]*?<GoogleMapsAttribution \/>/.test(picker.slice(0, picker.indexOf("\n}\n"))),
+    "the shared city picker lists Google results without the logo");
   for (const page of [
     "mingla-marketing/app/tools/events/EventPredictorExperience.tsx",
     "mingla-marketing/app/tools/pricing/PricingAuditExperience.tsx",
     "mingla-marketing/app/tools/trips/TripQuoterExperience.tsx",
   ]) {
     const src = await read(page);
-    assert(src.includes("<GoogleMapsAttribution />"), `${page} lists Google results without the logo`);
+    // Either the page draws its own list with the logo, or it lists Google
+    // results only through the shared picker (no list of its own).
+    const ownList = /searchCities\s*\(/.test(src);
+    assert(src.includes("<GoogleMapsAttribution />") || (src.includes("<CitySearch") && !ownList),
+      `${page} lists Google results without the logo`);
   }
 });

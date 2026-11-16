@@ -150,8 +150,10 @@ function bookingRequest(extra: Record<string, unknown> = {}): Request {
   });
 }
 
+// #4452: the booking's conversions now also read the row back and record the
+// event ids (GET + PATCH); a lead WRITE is the insert.
 const leadCalls = (calls: Recorded[]) =>
-  calls.filter((c) => c.url.startsWith(`${SUPABASE}/rest/v1/book_call_leads`));
+  calls.filter((c) => c.url.startsWith(`${SUPABASE}/rest/v1/book_call_leads`) && c.method === "POST");
 
 function withCredentials(on: boolean): void {
   if (on) {
@@ -213,6 +215,19 @@ Deno.test("#4339 A a confirmed booking writes ONE Inbound lead, idempotent on th
       meet_url: "https://meet.example/abc",
       event_url: "https://calendar.example/event",
       source: "venue_grader",
+      // #4452 §4.6 / A1: phone, UTM, click source, form link and consent ride along (empty here).
+      phone_e164: null,
+      utm_source: null,
+      utm_medium: null,
+      utm_campaign: null,
+      utm_content: null,
+      utm_term: null,
+      utm_id: null,
+      click_source: null,
+      form_submission_id: null,
+      marketing_consent: false,
+      consent_text: null,
+      consent_at: null,
     });
   });
 });

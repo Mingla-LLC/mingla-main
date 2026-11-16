@@ -51,13 +51,10 @@ Deno.test("T-W1 — anonymous run → gate → email → token → report, statu
     assertEquals(run.status, 200);
     const runId = run.body.run_id as string;
     assert(typeof runId === "string");
-    assertEquals(
-      run.body.report.meta.schema_version,
-      1,
-      "P-11 stamps the web lane too",
-    );
-
+    // #4452 §6.4: the web lane returns the preview only; the full report (with its schema stamp) is stored for the emailed link.
+    assertEquals(run.body.report, undefined);
     const row = stub.state.toolLeads[0];
+    assertEquals(row.report.meta.schema_version, 1, "P-11 stamps the web lane too");
     assertEquals(row.lane, "web");
     assertEquals(row.pid, "tool_venues");
     assertEquals(row.utm.source, "ig");

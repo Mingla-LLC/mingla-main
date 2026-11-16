@@ -74,7 +74,8 @@ Deno.test("#3980 W3 D-11: the Pipeline menu is Needs you, Work and Calendar toge
   assertEquals(outreach?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
     // #4130 + #3872: the Creator Program pages sit under Hosts and creators.
     "outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs",
-    "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard",
+    // #4452 A1.8 / §7.0: Inbound leads is the one Leads list, and Forms follows it.
+    "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Leads", "forms:Forms", "content-calendar:Calendar", "team-dashboard:Team dashboard",
   ]);
   // The page id stays, open to the pipelines, and lands on the tab.
   assertEquals(PAGE_AREA_OVERRIDES["agent-log"], "crm");

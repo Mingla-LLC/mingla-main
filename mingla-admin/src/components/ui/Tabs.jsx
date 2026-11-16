@@ -33,7 +33,7 @@ export function Tabs({ tabs, activeTab, onChange, className = "", variant = "def
   }
 
   return (
-    <div className={`admin-control-scroll min-w-0 overflow-x-auto border-b border-[var(--gray-200)] ${className}`}>
+    <div className={`admin-control-scroll min-w-0 overflow-x-auto border-b border-[var(--a-line)] ${className}`}>
       <nav className={mobileGrid ? "grid min-w-full grid-cols-2 gap-0 sm:flex sm:w-max" : "flex w-max min-w-full gap-0"} role="tablist">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
@@ -56,10 +56,10 @@ export function Tabs({ tabs, activeTab, onChange, className = "", variant = "def
                 isActive
                   ? variant === "highContrast"
                     ? "text-[var(--color-brand-700)] border-b-2 border-[var(--color-brand-700)]"
-                    : "text-[var(--color-brand-500)] border-b-2 border-[var(--color-brand-500)]"
+                    : "text-[var(--a-text)] border-b-2 border-[var(--a-text)]" /* #4452 §7.1: the active underline is ink */
                   : variant === "highContrast"
                     ? "text-[var(--color-text-secondary)] border-b-2 border-transparent hover:text-[var(--color-text-primary)]"
-                    : "text-[var(--color-text-tertiary)] border-b-2 border-transparent hover:text-[var(--color-text-secondary)]",
+                    : "text-[var(--a-muted)] border-b-2 border-transparent hover:text-[var(--a-text2)]",
               ].join(" ")}
             >
               {tab.label}

@@ -299,7 +299,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4435 CI fix: skip 20280708054435 (group lifecycle; re-emits the plan RPCs over chat_plans, chat_plan_place_options and chat_plan_place_votes, which only the skipped #4261 migrations create) by exact filename in the #1931 filtered replay; re-sealed.
 // #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "fd0566918d3a48510653e6ebb7b3eee1157713cbe5e83c03af4b49f63df7975e";
+// #4452 retest 1: registered the tester rework adversarial pg17 suite and its sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
+// #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
+export const BOOTSTRAP_SHA256 = "669d2dd3b3825baa4f3611851ed2a3805a293b816d09c485699783293bcdb5fc";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

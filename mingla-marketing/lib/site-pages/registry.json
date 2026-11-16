@@ -1,0 +1,624 @@
+{
+  "pages": [
+    {
+      "key": "home",
+      "path": "/",
+      "group": "Explore",
+      "title": "Home",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "going-out",
+      "path": "/going-out",
+      "group": "Explore",
+      "title": "Going out",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "cities",
+      "path": "/cities",
+      "group": "Explore",
+      "title": "Cities",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "city",
+      "path": "/cities/[city]",
+      "group": "Explore",
+      "title": "A city",
+      "since": "2026-11-16",
+      "pattern": true
+    },
+    {
+      "key": "download",
+      "path": "/download",
+      "group": "Explore",
+      "title": "Get the app",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "blog",
+      "path": "/blog",
+      "group": "Explore",
+      "title": "Blog",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "blog-post",
+      "path": "/blog/[slug]",
+      "group": "Explore",
+      "title": "A blog post",
+      "since": "2026-11-16",
+      "pattern": true
+    },
+    {
+      "key": "blog-category",
+      "path": "/blog/category/[category]",
+      "group": "Explore",
+      "title": "A blog category",
+      "since": "2026-11-16",
+      "pattern": true
+    },
+    {
+      "key": "help",
+      "path": "/help",
+      "group": "Explore",
+      "title": "Help centre",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "help-video",
+      "path": "/help/[slug]",
+      "group": "Explore",
+      "title": "A help video",
+      "since": "2026-11-16",
+      "pattern": true
+    },
+    {
+      "key": "links",
+      "path": "/links",
+      "group": "Explore",
+      "title": "Links",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "about",
+      "path": "/about",
+      "group": "Company",
+      "title": "About",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "creators",
+      "path": "/creators",
+      "group": "Company",
+      "title": "Creators",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-clips",
+          "label": "After the clip grid",
+          "kind": "inline"
+        },
+        {
+          "key": "after-steps",
+          "label": "After the steps",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "hero": {
+        "h1": 48,
+        "em": 24,
+        "lead": 200,
+        "buttons": 2
+      }
+    },
+    {
+      "key": "locals",
+      "path": "/locals",
+      "group": "Company",
+      "title": "Locals",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-steps",
+          "label": "After the steps",
+          "kind": "inline"
+        },
+        {
+          "key": "after-facts",
+          "label": "After the fact cards",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "hero": {
+        "h1": 48,
+        "em": 24,
+        "lead": 200,
+        "buttons": 2
+      }
+    },
+    {
+      "key": "support",
+      "path": "/support",
+      "group": "Company",
+      "title": "Support",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "creator-agreement",
+      "path": "/creator-agreement",
+      "group": "Company",
+      "title": "Creator agreement",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "local-agreement",
+      "path": "/local-agreement",
+      "group": "Company",
+      "title": "Local agreement",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "organiser-terms",
+      "path": "/organiser-terms",
+      "group": "Company",
+      "title": "Organiser terms",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "privacy-policy",
+      "path": "/privacy-policy",
+      "group": "Company",
+      "title": "Privacy policy",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "terms-of-service",
+      "path": "/terms-of-service",
+      "group": "Company",
+      "title": "Terms of service",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "sms-terms",
+      "path": "/sms-terms",
+      "group": "Company",
+      "title": "SMS terms",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "delete-account",
+      "path": "/delete-account",
+      "group": "Company",
+      "title": "Delete your account",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "host",
+      "path": "/host",
+      "group": "Host",
+      "title": "Mingla Host",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "host-download",
+      "path": "/host/download",
+      "group": "Host",
+      "title": "Get Mingla Host",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "schedule",
+      "path": "/schedule",
+      "group": "Host",
+      "title": "Book a call",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "details-step",
+          "label": "Inside the details step (extra questions)",
+          "kind": "details"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ]
+    },
+    {
+      "key": "schedule-creators",
+      "path": "/schedule/creators",
+      "group": "Host",
+      "title": "Book a call: creators",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "schedule-locals",
+      "path": "/schedule/locals",
+      "group": "Host",
+      "title": "Book a call: locals",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "tools",
+      "path": "/tools",
+      "group": "Host",
+      "title": "Free tools",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "tools-venues",
+      "path": "/tools/venues",
+      "group": "Host",
+      "title": "Venue grader",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "tools-events",
+      "path": "/tools/events",
+      "group": "Host",
+      "title": "Event predictor",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "tools-trips",
+      "path": "/tools/trips",
+      "group": "Host",
+      "title": "Trip quoter",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "tools-pricing",
+      "path": "/tools/pricing",
+      "group": "Host",
+      "title": "Pricing audit",
+      "since": "2026-11-16"
+    },
+    {
+      "key": "events",
+      "path": "/host/events",
+      "group": "Host landing pages",
+      "title": "Host: events",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-features",
+          "label": "After the features",
+          "kind": "inline"
+        },
+        {
+          "key": "before-faq",
+          "label": "Before the FAQ",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "template": "host"
+    },
+    {
+      "key": "trips",
+      "path": "/host/trips",
+      "group": "Host landing pages",
+      "title": "Host: trips",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-features",
+          "label": "After the features",
+          "kind": "inline"
+        },
+        {
+          "key": "before-faq",
+          "label": "Before the FAQ",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "template": "host"
+    },
+    {
+      "key": "experiences",
+      "path": "/host/experiences",
+      "group": "Host landing pages",
+      "title": "Host: experiences",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-features",
+          "label": "After the features",
+          "kind": "inline"
+        },
+        {
+          "key": "before-faq",
+          "label": "Before the FAQ",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "template": "host"
+    },
+    {
+      "key": "restaurants",
+      "path": "/host/restaurants",
+      "group": "Host landing pages",
+      "title": "Host: restaurants",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-features",
+          "label": "After the features",
+          "kind": "inline"
+        },
+        {
+          "key": "before-faq",
+          "label": "Before the FAQ",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "template": "host"
+    },
+    {
+      "key": "hotels",
+      "path": "/host/hotels",
+      "group": "Host landing pages",
+      "title": "Host: hotels",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-features",
+          "label": "After the features",
+          "kind": "inline"
+        },
+        {
+          "key": "before-faq",
+          "label": "Before the FAQ",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "template": "host"
+    },
+    {
+      "key": "art",
+      "path": "/host/art",
+      "group": "Host landing pages",
+      "title": "Host: art",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-features",
+          "label": "After the features",
+          "kind": "inline"
+        },
+        {
+          "key": "before-faq",
+          "label": "Before the FAQ",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "template": "host"
+    },
+    {
+      "key": "play",
+      "path": "/host/play",
+      "group": "Host landing pages",
+      "title": "Host: play",
+      "since": "2026-11-16",
+      "spots": [
+        {
+          "key": "after-hero",
+          "label": "After the hero",
+          "kind": "inline"
+        },
+        {
+          "key": "after-features",
+          "label": "After the features",
+          "kind": "inline"
+        },
+        {
+          "key": "before-faq",
+          "label": "Before the FAQ",
+          "kind": "inline"
+        },
+        {
+          "key": "before-footer",
+          "label": "Before the footer",
+          "kind": "inline"
+        }
+      ],
+      "template": "host"
+    },
+    {
+      "key": "apply",
+      "path": "/apply/[slug]",
+      "group": "Form pages",
+      "title": "A form page",
+      "since": "2026-11-16",
+      "pattern": true
+    }
+  ],
+  "excluded": [
+    {
+      "route": "/api/*",
+      "reason": "API routes"
+    },
+    {
+      "route": "/internal/*",
+      "reason": "internal tools"
+    },
+    {
+      "route": "/c/[code]",
+      "reason": "share proxy"
+    },
+    {
+      "route": "/r/*",
+      "reason": "redirects"
+    },
+    {
+      "route": "/p/*",
+      "reason": "share proxy"
+    },
+    {
+      "route": "/s/*",
+      "reason": "share proxy"
+    },
+    {
+      "route": "/careers",
+      "reason": "the careers host"
+    },
+    {
+      "route": "/careers/*",
+      "reason": "the careers host"
+    },
+    {
+      "route": "/unsubscribe",
+      "reason": "account action with a token"
+    },
+    {
+      "route": "/unsubscribe/*",
+      "reason": "account action with a token"
+    },
+    {
+      "route": "/claim/*",
+      "reason": "private claim links"
+    },
+    {
+      "route": "/event-preview",
+      "reason": "capture page"
+    },
+    {
+      "route": "/trip-preview",
+      "reason": "capture page"
+    },
+    {
+      "route": "/venue-preview",
+      "reason": "capture page"
+    },
+    {
+      "route": "/venue-preview/*",
+      "reason": "capture page"
+    },
+    {
+      "route": "/intent-preview",
+      "reason": "capture page"
+    },
+    {
+      "route": "/board/*",
+      "reason": "app hand-off"
+    },
+    {
+      "route": "/chat/*",
+      "reason": "app hand-off"
+    },
+    {
+      "route": "/orders/*",
+      "reason": "app hand-off"
+    },
+    {
+      "route": "/invite/*",
+      "reason": "app hand-off"
+    },
+    {
+      "route": "/blog/preview/[token]",
+      "reason": "draft preview"
+    },
+    {
+      "route": "/site-preview/[token]",
+      "reason": "draft preview"
+    },
+    {
+      "route": "/apply/[slug]/thanks",
+      "reason": "success page (noindex)"
+    },
+    {
+      "route": "/apply/[slug]/booked",
+      "reason": "booked page (noindex)"
+    },
+    {
+      "route": "/tools/*/report",
+      "reason": "a report behind an emailed token"
+    },
+    {
+      "route": "/host/[icp]",
+      "reason": "the seven ICP pages are listed one by one"
+    }
+  ]
+}

@@ -56,6 +56,24 @@ export const MARKETING_EVENT_NAMES = [
   'schedule_slot_selected',
   'schedule_details_submitted',
   'download_toggle_changed',
+  // #4452 §8 — forms, pop-ups, site blocks and the call buttons. Properties are
+  // ids and enums only: never a name, an email, a phone or answer text.
+  'popup_shown',
+  'form_viewed',
+  'form_started',
+  'form_step',
+  'form_error',
+  'form_submitted',
+  'form_submit_failed',
+  'popup_closed',
+  'success_viewed',
+  'next_step',
+  'call_slot_selected',
+  'call_booked_inform',
+  'site_block_clicked',
+  'call_button_clicked',
+  'form_resumed',
+  'tool_followup_shown',
 ] as const
 
 export type MarketingEventName = (typeof MARKETING_EVENT_NAMES)[number]

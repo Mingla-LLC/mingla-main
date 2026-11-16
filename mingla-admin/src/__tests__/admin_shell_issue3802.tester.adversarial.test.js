@@ -194,10 +194,11 @@ describe("#3802 TA-2: the menu, for every combination of areas", () => {
       const labels = visibleNavGroups(NAV_GROUPS, who).map((g) => g.label);
       // #4130: Work sits in Home; the boards, Inbound leads (Beta leads tab)
       // and Calendar in Outreach. My agent and Guide moved to the header.
-      assert.deepEqual(labels, [null, "Home", "Outreach"], role);
+      // #4452 §7.0: + Communications (Website pages, view-only for them).
+      assert.deepEqual(labels, [null, "Home", "Outreach", "Communications"], role);
       // [TEST-MOD-APPROVED #3802] Content Calendar deliberately shares CRM access with the pipeline pages.
       // [TEST-MOD-APPROVED #3980] the Work board and Agent log are pipeline pages too.
-      for (const id of ALL_IDS.filter((x) => !["outreach", "inbound", "work-board", "content-calendar"].includes(x))) {
+      for (const id of ALL_IDS.filter((x) => !["outreach", "inbound", "work-board", "content-calendar", "forms", "website-pages"].includes(x))) {
         assert.equal(canOpenPage(who, id), false, `${role} must not open ${id}`);
       }
     }
@@ -562,7 +563,8 @@ describe("#3802 TA-8: the phone menu and sign out", () => {
 
   it("in the icon rail every page keeps its name for a screen reader and on hover", () => {
     // #4270: the Work count is cards due today or overdue, so it says "due".
-    assert.match(SIDEBAR, /const spokenLabel = waiting > 0 \? `\$\{item\.label\}, \$\{waiting\} due` : item\.label;/);
+    // #4452 §7.2: Brand groups' count is groups waiting, so it says "waiting".
+    assert.match(SIDEBAR, /const spokenLabel = waiting > 0 \? `\$\{item\.label\}, \$\{waiting\} \$\{item\.id === "brand-groups" \? "waiting" : "due"\}` : item\.label;/);
     assert.match(SIDEBAR, /aria-label=\{spokenLabel\}/);
     assert.match(SIDEBAR, /title=\{rail \? spokenLabel : undefined\}/);
     assert.match(SIDEBAR, /<span className=\{rail \? "sr-only" : "min-w-0 truncate"\}>\{item\.label\}<\/span>/);

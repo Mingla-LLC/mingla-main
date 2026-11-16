@@ -25,7 +25,7 @@
 // No module imports beyond the sibling type file, so the Deno suites can run
 // it with a stubbed fetch and no network.
 
-import type { BookingContext } from "./bookingContext.ts";
+import type { BookingContext, BookingExtras } from "./bookingContext.ts";
 
 export interface BookingLeadInput {
   eventId: string | null;
@@ -39,6 +39,10 @@ export interface BookingLeadInput {
   timeZone?: string | null;
   meetUrl?: string | null;
   eventUrl?: string | null;
+  /** #4452 §4.6: phone, UTM, click source, the validated form link and consent. */
+  extras?: BookingExtras | null;
+  /** #4452: the form submission id only once it was validated (same email, ≤ 7 days). */
+  formSubmissionId?: string | null;
 }
 
 export interface BookingLeadRow {
@@ -62,6 +66,18 @@ export interface BookingLeadRow {
   meet_url: string | null;
   event_url: string | null;
   source: string | null;
+  phone_e164?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_content?: string | null;
+  utm_term?: string | null;
+  utm_id?: string | null;
+  click_source?: string | null;
+  form_submission_id?: string | null;
+  marketing_consent?: boolean;
+  consent_text?: string | null;
+  consent_at?: string | null;
 }
 
 /** Only an https link is stored for the Meet and the calendar event. */
@@ -123,6 +139,21 @@ export function buildBookingLead(input: BookingLeadInput): BookingLeadRow {
     meet_url: httpsOrNull(input.meetUrl),
     event_url: httpsOrNull(input.eventUrl),
     source: source === "" ? null : source,
+    // #4452: present only when the page sent them, so an old-shape booking row is unchanged.
+    ...(input.extras ? {
+      phone_e164: input.extras.phoneE164,
+      utm_source: input.extras.utm.source,
+      utm_medium: input.extras.utm.medium,
+      utm_campaign: input.extras.utm.campaign,
+      utm_content: input.extras.utm.content,
+      utm_term: input.extras.utm.term,
+      utm_id: input.extras.utm.id,
+      click_source: input.extras.clickSource,
+      form_submission_id: input.formSubmissionId ?? null,
+      marketing_consent: input.extras.marketingConsent,
+      consent_text: input.extras.marketingConsent ? input.extras.consentText : null,
+      consent_at: input.extras.marketingConsent ? new Date().toISOString() : null,
+    } : {}),
   };
 }
 

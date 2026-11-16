@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isLinksRevalidated, isPrivateAddress, linksRevalidateRequest, resolveMarketingRevalidateSecret, validateLinkCheckUrl } from "./model.ts";
+import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isLinksRevalidated, isPagesRevalidated, isPrivateAddress, linksRevalidateRequest, pagesRevalidateRequest, resolveMarketingRevalidateSecret, validateLinkCheckUrl } from "./model.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -63,6 +63,24 @@ serve(async (req) => {
   const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false, autoRefreshToken: false } });
   const { data: { user }, error: authError } = await service.auth.getUser(authorization.replace(/^Bearer\s+/i, ""));
   if (authError || !user) return json({ error: "unauthorized" }, 401);
+  // #4452 §2.10: the Website pages editor refreshes the site after a publish. Its
+  // gate is the Website editor role (forms_can_edit, the same gate as the
+  // admin_site_page_* RPCs), not blog writing, so it is answered before the blog check.
+  const early = await req.clone().json().catch(() => ({})) as { action?: string };
+  if (early.action === "revalidate_page") {
+    const can = await userClient.rpc("forms_can_edit");
+    if (can.error) return json({ error: "server" }, 500);
+    if (can.data !== true) return json({ error: "forbidden" }, 403);
+    if (!REVALIDATE_SECRET) return json({ error: "revalidate_not_configured" }, 503);
+    const request = pagesRevalidateRequest(MARKETING_ORIGIN, REVALIDATE_SECRET);
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(request.url, { ...request.init, signal: controller.signal });
+      const ok = isPagesRevalidated(response.status, await response.json().catch(() => null));
+      return json({ ok, status: response.status }, ok ? 200 : 502);
+    } catch { return json({ ok: false, status: 0 }, 502); }
+    finally { clearTimeout(timer); }
+  }
   const permissions = await userClient.rpc("issue_4137_blog_my_permissions");
   if (permissions.error) return json({ error: isBlogNotReadyError(permissions.error) ? "blog_not_ready" : "server" }, isBlogNotReadyError(permissions.error) ? 503 : 500);
   if (!permissions.data?.can_write) return json({ error: "forbidden" }, 403);

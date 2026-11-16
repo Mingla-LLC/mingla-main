@@ -56,3 +56,87 @@ export async function recordBookingAdLead(
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// #4452 §4.6: every booking carries its label, and a booked call is its own
+// result (call_booked), credited to the lead's ad click.
+//
+//   A. Booked from a form (a valid form_submission_id: it exists, the same
+//      email, created within 7 days): no Lead (the form fired it); fire
+//      `<label>_call:<booking id>` and stop that submission's follow-ups.
+//   B. Direct /schedule booking: fire the labelled Lead (`lead:<id>` for hosts,
+//      byte-identical to today; `creator_lead:<id>`, `local_lead:<id>`), then
+//      the call, and stop any active run of a submission with the same email
+//      in the last 30 days.
+// Never throws and never fails the booking.
+// ---------------------------------------------------------------------------
+import {
+  OPTED_OUT_CONTEXT,
+  recordCallBooked,
+  recordLabelledLead,
+} from "../_shared/hostFunnelConversion.ts";
+
+export interface FormLink {
+  id: string;
+  label: "host" | "creator" | "local";
+}
+
+function serviceDb(config: { supabaseUrl: string | undefined; serviceKey: string | undefined }, given?: Db): Db | null {
+  if (given) return given;
+  if (!config.supabaseUrl || !config.serviceKey) return null;
+  return createClient(config.supabaseUrl, config.serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+/** A form_submission_id counts only when it exists, has the same email and is at most 7 days old. */
+export async function resolveFormLink(
+  submissionId: string | null,
+  email: string,
+  config: { supabaseUrl: string | undefined; serviceKey: string | undefined },
+  deps: BookingAdLeadDeps = {},
+  nowMs = Date.now(),
+): Promise<FormLink | null> {
+  if (!submissionId) return null;
+  try {
+    const db = serviceDb(config, deps.db);
+    if (!db) return null;
+    const { data, error } = await db.from("form_submissions")
+      .select("id,email,lead_label,created_at,is_test").eq("id", submissionId).maybeSingle();
+    if (error || !data) return null;
+    const sameEmail = String(data.email ?? "").toLowerCase() === email.trim().toLowerCase();
+    const fresh = Date.parse(String(data.created_at)) >= nowMs - 7 * 24 * 3_600_000;
+    if (!sameEmail || !fresh || data.is_test === true) return null;
+    return { id: String(data.id), label: data.lead_label as FormLink["label"] };
+  } catch {
+    return null;
+  }
+}
+
+export async function recordBookingConversions(
+  bookingKey: string,
+  audience: "host" | "creator" | "local",
+  ad: HostAdContext | null,
+  formLink: FormLink | null,
+  config: { supabaseUrl: string | undefined; serviceKey: string | undefined },
+  deps: BookingAdLeadDeps = {},
+): Promise<{ leadEventId: string | null; goalEventId: string | null }> {
+  try {
+    const db = serviceDb(config, deps.db);
+    if (!db) return { leadEventId: null, goalEventId: null };
+    const { data, error } = await db.from("book_call_leads").select("id,email").eq("booking_key", bookingKey).maybeSingle();
+    if (error || !data?.id) return { leadEventId: null, goalEventId: null };
+    const bookingId = String(data.id);
+    let leadEventId: string | null = null;
+    const label = formLink ? formLink.label : audience;
+    if (!formLink) {
+      leadEventId = await recordLabelledLead(db, { label, subjectId: bookingId, ad: ad ?? OPTED_OUT_CONTEXT, source: "book_a_call" }, deps.fire);
+    }
+    const goalEventId = await recordCallBooked(db, { label, bookingId, source: "book_a_call" }, deps.fire);
+    await db.from("book_call_leads").update({ lead_event_id: leadEventId, goal_event_id: goalEventId }).eq("id", bookingId);
+    // Stop rule "booked": the person's follow-ups end now.
+    await db.rpc("forms_booking_stops_runs", { p_email: String(data.email ?? ""), p_submission_id: formLink?.id ?? null });
+    return { leadEventId, goalEventId };
+  } catch (err) {
+    console.error("[growth-tools-book] booking conversions failed (non-fatal)", err instanceof Error ? err.name : "error");
+    return { leadEventId: null, goalEventId: null };
+  }
+}

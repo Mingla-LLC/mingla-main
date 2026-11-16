@@ -2,10 +2,12 @@ import { forwardRef } from "react";
 import { Loader2 } from "lucide-react";
 
 const VARIANTS = {
+  // #4452 §7.1: primary is ink, turning orange on hover with INK text (6.4:1;
+  // white on orange is 3.0:1, §12 Q-10). Secondary has the --a-line border.
   primary:
-    "bg-[var(--color-brand-500)] text-white border-transparent hover:bg-[var(--color-brand-600)] active:bg-[var(--color-brand-700)]",
+    "bg-[var(--a-text)] text-[var(--a-panel)] border-transparent hover:bg-[var(--a-hover-bg)] hover:text-[var(--a-hover-ink)] active:bg-[var(--a-hover-bg)] active:text-[var(--a-hover-ink)]",
   secondary:
-    "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border-[var(--gray-300)] hover:bg-[var(--gray-50)] active:bg-[var(--gray-100)]",
+    "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] border-[var(--a-line)] hover:bg-[var(--a-soft)] active:bg-[var(--a-soft)]",
   ghost:
     "bg-transparent text-[var(--color-text-secondary)] border-transparent hover:bg-[var(--gray-100)] active:bg-[var(--gray-200)]",
   danger:
@@ -18,7 +20,7 @@ const VARIANTS = {
 
 const SIZES = {
   sm: "h-8 px-3 text-xs gap-1.5 rounded-lg",
-  md: "h-10 px-4 text-sm gap-2 rounded-lg",
+  md: "h-[38px] px-4 text-sm gap-2 rounded-xl",
   lg: "h-12 px-6 text-base gap-2 rounded-xl",
 };
 

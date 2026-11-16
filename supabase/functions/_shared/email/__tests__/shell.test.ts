@@ -156,7 +156,9 @@ Deno.test("missing master event_date omits the date line entirely", () => {
   body.event.startAt = null;
   const result = renderTransactionalEmail(fixture);
   // The date line is a <p> containing "·" — its absence is the test.
-  assert(!result.html.includes("·"));
+  // #4452: the rebranded footer uses "·" between the support address and the
+  // postal address, so only the body above the footer is checked.
+  assert(!result.html.split("Making real life easier to find.")[0].includes("·"));
 });
 
 Deno.test("buyer name XSS escapes in HTML", () => {

@@ -1222,7 +1222,8 @@ begin
   end;
   perform pg_temp.t3802h_record('H-8', v_notes);
   perform pg_temp.t3802h_check('H-8', 'the area map is back as it was',
-    array_to_string(public.admin_team_role_areas('partner'), ','), 'admin_console,team_manage,crm,beta_leads,email_drafts');
+    -- #4452: the partner (full-admin) seat also holds website.
+    array_to_string(public.admin_team_role_areas('partner'), ','), 'admin_console,team_manage,crm,beta_leads,email_drafts,website');
 
   -- The full-admin reader is untouched.
   perform pg_temp.t3802h_check('H-8', 'the full-admin reader still refuses the rest of the team',

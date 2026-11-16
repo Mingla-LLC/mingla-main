@@ -94,6 +94,12 @@ export async function sendMetaConversion(
     content_ids: input.contentId ? [input.contentId] : undefined,
     content_type: input.contentId ? "product" : undefined,
     brand_id: input.brandId ?? undefined,
+    // #4452 §4.2: the lead label rides as Meta's predefined content_category /
+    // content_name (plus the lead_source custom property). Only set for labelled
+    // leads and booked calls, so a purchase payload is byte-identical.
+    content_category: input.contentCategory ?? undefined,
+    content_name: input.contentName ?? undefined,
+    lead_source: input.leadSource ?? undefined,
   } as Record<string, unknown>);
 
   const event = definedOnly({
