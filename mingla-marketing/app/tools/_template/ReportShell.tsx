@@ -16,6 +16,7 @@ import './tools.css'
 import { captureMarketing } from '@/components/marketing/marketing-capture'
 import { DeviceLink } from '@/components/cutout/device-link'
 import { toolAttribution } from '@/lib/links-src'
+import { shareLink } from './share-link'
 
 export type ReportTool = 'venues' | 'events' | 'trips' | 'experiences'
 
@@ -241,8 +242,7 @@ export function ReportFoot({ tool }: { tool: ReportTool }) {
   useEffect(() => { setCanShare(typeof navigator !== 'undefined' && (typeof navigator.share === 'function' || !!navigator.clipboard)) }, [])
   async function share() {
     try {
-      if (typeof navigator.share === 'function') await navigator.share({ title: 'My Mingla report', url: window.location.href })
-      else { await navigator.clipboard.writeText(window.location.href); setShared('copied') }
+      if ((await shareLink('My Mingla report', window.location.href)) === 'copied') setShared('copied')
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError')) setShared('failed')
     }

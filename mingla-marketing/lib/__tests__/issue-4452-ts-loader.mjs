@@ -1,13 +1,30 @@
 // #4452 test harness (not a test): load lib/*.ts modules in plain node by
 // stripping their TypeScript types (no install), following their './' and
 // '@/lib/' imports. Same approach as the #4318 links test.
+//
+// node:module stripTypeScriptTypes exists from Node 22.13. Older runners (the
+// mingla-business web build runs this app's prebuild on Node 20) fall back to
+// the app's own `typescript` transpiler, so the same assertions run there.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { stripTypeScriptTypes } from 'node:module'
+import * as nodeModule from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+
+let fallbackStrip = null
+function stripTypeScriptTypes(source) {
+  if (typeof nodeModule.stripTypeScriptTypes === 'function') return nodeModule.stripTypeScriptTypes(source)
+  if (!fallbackStrip) {
+    const ts = nodeModule.createRequire(path.join(MARKETING, 'package.json'))('typescript')
+    console.log(`issue-4452-ts-loader: node ${process.version} has no stripTypeScriptTypes; transpiling with typescript ${ts.version}`)
+    fallbackStrip = (text) => ts.transpileModule(text, {
+      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: false },
+    }).outputText
+  }
+  return fallbackStrip(source)
+}
 const IMPORT = /from\s+'(@\/lib\/|\.\/|\.\.\/)([\w\/-]+)'/g
 
 export function loader(prefix) {
