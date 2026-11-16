@@ -82,12 +82,15 @@ DECLARE
     'discover_v2_event_base',
     'events_public_view',
     'issue_2489_public_theme',
+    'issue_4420_experience_venue_line',  -- #4420: an experience's venue line withholds the street.
     'links_page_week',  -- #4318: the /links week reader withholds addresses through the gate.
+    'pg_brand_experiences_for_place',  -- #4420: the Explorer place sheet's experience stops.
     'pg_direct_event_checkout_bundle',
     'pg_discover_business_events',
     'pg_public_brand_upcoming',
     'pg_public_event_by_slug',
     'pg_public_experience_by_slug',
+    'pg_public_experiences_by_brand',  -- #4420: the brand page's experience cards.
     'pg_public_rsvp_by_slug',
     'pg_ticket_link_resolve',
     'public_search_source_facts'

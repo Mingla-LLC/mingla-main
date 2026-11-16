@@ -292,7 +292,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order, in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): listed the new pg17 suite and its sidecar in the #1931 and #2117 replay inventories; re-sealed.
 // #4238 integration 3: merged origin/main f512401461 (#4438: the #4430 local review owner-read pg17 suite and sidecar kept in the #1931 and #2117 inventories beside the #4238 rows); re-sealed.
-export const BOOTSTRAP_SHA256 = "cd639b43f3c60054b2c1b8660e63a2f49c703dfaa92f9ed6d715257b5f5ae8ba";
+export const BOOTSTRAP_SHA256 = "191fcce9a5171f16b8eb681610d7e0abba58f46ba9336c4d3130c40a5b3214b6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
