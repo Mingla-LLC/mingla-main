@@ -37,6 +37,7 @@ import { type BookingBasics, bookingFromAnswers } from '@/lib/forms/booking'
 import type { FormContext } from '@/lib/forms/events'
 import { fireMarketingLead } from '@/lib/marketing-pixels'
 import { postGrowthTools } from '@/lib/growth-tools-transport'
+import { visitorRegion } from '@/lib/visitor-region'
 import './forms.css'
 
 export interface RendererForm {
@@ -288,7 +289,9 @@ function CityField(props: FieldProps & { onCountry: (iso: string | null) => void
     if (q.trim().length < 2) { setResults([]); return }
     const mine = ++seq.current
     const t = setTimeout(async () => {
-      const r = await postGrowthTools('growth-tools-geocode', { q: q.trim() }).catch(() => null)
+      // #4452 follow-up (B15): the visitor's region ranks their own country's cities first.
+      const region = visitorRegion()
+      const r = await postGrowthTools('growth-tools-geocode', region ? { q: q.trim(), region } : { q: q.trim() }).catch(() => null)
       if (mine !== seq.current) return  // only the latest query is shown
       const cities = r && r.ok ? (r.body as { cities?: typeof results } | null)?.cities : null
       if (cities) { setBusy(false); setResults(cities.slice(0, 5)) }

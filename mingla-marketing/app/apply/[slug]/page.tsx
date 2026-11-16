@@ -4,8 +4,7 @@
 // form's own_page.index is on.
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
-import { siteContent } from '@/lib/site-pages/content'
-import type { PublicForm } from '@/lib/site-pages/model'
+import { resolveApplySlug as resolve } from './resolve'
 import { SitePage } from '@/components/site/site-page'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 import { ApplyClient } from './apply-client'
@@ -19,21 +18,13 @@ const TERMS: Record<string, { href: string; label: string }> = {
   host: { href: '/organiser-terms', label: 'Organiser terms' },
 }
 
-async function resolve(slug: string): Promise<{ redirect: string } | { form: PublicForm } | null> {
-  const content = await siteContent()
-  const hit = content.form_pages[slug]
-  if (!hit) return null
-  if (hit.current_slug && hit.current_slug !== slug) return { redirect: hit.current_slug }
-  const form = content.forms[hit.form_id]
-  return form ? { form } : null
-}
-
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const r = await resolve((await params).slug)
   if (!r || !('form' in r)) return { robots: { index: false, follow: false } }
   const own = (r.form.own_page ?? {}) as { h?: string; em?: string; lead?: string; index?: boolean }
   return {
-    title: `${[own.h, own.em].filter(Boolean).join(' ') || r.form.name} | Mingla`,
+    // #4452 follow-up (B14): the root template adds " — Mingla" once.
+    title: [own.h, own.em].filter(Boolean).join(' ') || r.form.name,
     description: own.lead,
     robots: own.index ? undefined : { index: false, follow: false },
   }
