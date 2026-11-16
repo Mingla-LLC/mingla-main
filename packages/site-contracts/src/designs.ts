@@ -16,6 +16,12 @@
  * exactly the values the original travel stylesheet used, so a site on
  * voyage with nothing changed renders that look pixel for pixel; every
  * colour is a token, so any brand can restyle it.
+ *
+ * #4453 §3.1 — a design also carries its motion profile, its image
+ * treatment, the chrome (header and footer) variants it offers, and the
+ * layouts it picks for NEW compositions (`picks`). `variants` keeps every
+ * stored layout's first entry first, so a stored block renders as before;
+ * `picks` is what Ari and the composer choose for a new page.
  */
 import type { DesignTokenDefaults, RampRole, SingleColorRole } from "./tokens.ts";
 import type { FontSlotKey, FontSlots } from "./fontSlots.ts";
@@ -40,6 +46,97 @@ export type DesignUses = {
   font_slots: readonly FontSlotKey[];
 };
 
+/* ---------------- #4453 §3.5 — motion profiles ---------------- */
+export const MOTION_PROFILES = ["bold", "cinematic", "calm"] as const;
+export type MotionProfile = (typeof MOTION_PROFILES)[number];
+export type MotionNumbers = {
+  /** Delay between siblings rising in (ms, ≤ 110). */
+  stagger_ms: number;
+  /** At most this many staggered steps (≤ 6). */
+  stagger_cap: number;
+  /** How far a section rises (px). */
+  rise_px: number;
+  /** One rise (ms). */
+  duration_ms: number;
+  /** The hero picture settles from this scale to 1 (1.03 to 1.2). */
+  hero_scale: number;
+  /** Over this long (ms, ≤ 2,600). */
+  hero_settle_ms: number;
+  /** Scroll-driven drift of the hero picture (% of its height, ≤ 14). */
+  hero_drift_pct: number;
+};
+/** The binding numbers per profile (spec §3.5); `calm` caps every profile when the owner picks calm. */
+export const MOTION_PROFILE_NUMBERS: Readonly<Record<MotionProfile, MotionNumbers>> = {
+  bold: { stagger_ms: 60, stagger_cap: 6, rise_px: 28, duration_ms: 700, hero_scale: 1.08, hero_settle_ms: 1600, hero_drift_pct: 12 },
+  cinematic: { stagger_ms: 110, stagger_cap: 6, rise_px: 40, duration_ms: 1100, hero_scale: 1.2, hero_settle_ms: 2600, hero_drift_pct: 14 },
+  calm: { stagger_ms: 90, stagger_cap: 4, rise_px: 18, duration_ms: 900, hero_scale: 1.03, hero_settle_ms: 2000, hero_drift_pct: 6 },
+};
+/** The motion budget every page holds (spec §3.5); a test pins every profile to it. */
+export const MOTION_BUDGET = {
+  max_stagger_ms: 110,
+  max_stagger_steps: 6,
+  max_hero_settle_ms: 2600,
+  hero_scale_range: [1.03, 1.2] as const,
+  max_hero_drift_pct: 14,
+  max_pinned_sections: 1,
+  max_animating_at_once: 12,
+} as const;
+export type DesignMotion = {
+  profile: MotionProfile;
+  /** At most one signature moment per design (CSS only), or null. */
+  signature: string | null;
+};
+
+/** #4453 §3.1 — how a design treats photographs (filter, frame, scrim strength). */
+export type DesignImage = {
+  /** A CSS filter keyword set the stylesheet applies ("none" = full colour). */
+  filter: "none" | "warm" | "mono" | "soft";
+  /** One line for Studio. */
+  treatment: string;
+};
+
+/* ---------------- #4453 §3.3 + v2.1 §1.4 — chrome variants ---------------- */
+export const HEADER_VARIANTS = ["glass", "center", "pill"] as const;
+export type HeaderVariant = (typeof HEADER_VARIANTS)[number];
+export const FOOTER_VARIANTS = ["giant", "columns"] as const;
+export type FooterVariant = (typeof FOOTER_VARIANTS)[number];
+/**
+ * v2.1 §1.4 — how many menu items a header shows inline at ≥ 1280 px. Between
+ * 1100 and 1279 px it is one less; the rest sit under "More". Below 1100 px
+ * the inline menu hides and the menu button shows.
+ */
+export const HEADER_INLINE_CAPACITY: Readonly<Record<HeaderVariant, number>> = { glass: 6, center: 4, pill: 6 };
+/** The widths the header capacity rule switches at (px). */
+export const HEADER_BREAKPOINTS = { wide: 1280, inline: 1100 } as const;
+export type DesignChrome = {
+  /** Header layouts the design offers, default first. Empty: the design draws its own fixed header. */
+  header: readonly HeaderVariant[];
+  footer: readonly FooterVariant[];
+};
+
+/**
+ * #4453 §3.3 — the shared block library: every layout the runtime draws once
+ * (mingla-sites/src/designs/shared/blocks) for any design, from token
+ * variables only. A design offers a subset in its `variants`. The new block
+ * types' layouts (`availability:strip`, `ticket_tiers:split`,
+ * `process_steps:band`) join this list in the PRs that add those blocks.
+ */
+export const SHARED_LAYOUTS: Readonly<Partial<Record<BlockType, readonly string[]>>> = {
+  hero: ["fullbleed", "editorial", "arch"],
+  marquee: ["ticker"],
+  rich_text: ["manifesto"],
+  offering_grid: ["poster", "list", "cards"],
+  menu_board: ["columns"],
+  feature_cards: ["tiles", "numbered"],
+  gallery: ["pinned", "mosaic", "stagger"],
+  destination_grid: ["tiles"],
+  offering_history: ["ledger-count", "split"],
+  testimonials: ["rail", "wall", "switcher"],
+  hours_location: ["split"],
+  faq: ["split"],
+  newsletter_signup: ["photo"],
+};
+
 export type DesignDefinition = {
   key: DesignKey;
   version: number;
@@ -55,6 +152,14 @@ export type DesignDefinition = {
   templates: readonly string[];
   /** The colour roles and font slots this design draws (A8). */
   uses: DesignUses;
+  /** #4453 — motion profile and its one signature moment. */
+  motion: DesignMotion;
+  /** #4453 — image treatment. */
+  image: DesignImage;
+  /** #4453 — header and footer variants offered (default first). */
+  chrome: DesignChrome;
+  /** #4453 — the layout a NEW composition takes per block type (else `variants[type][0]`). */
+  picks: Readonly<Partial<Record<BlockType, string>>>;
 };
 
 /**
@@ -88,35 +193,35 @@ const ATELIER_VARIANTS: Record<BlockType, readonly string[]> = (() => {
  * design-neutral layout drawn from voyage's tokens.
  */
 export const VOYAGE_VARIANTS: Readonly<Record<BlockType, readonly string[]>> = {
-  hero: ["cover-bottom-search"],
+  hero: ["cover-bottom-search", "fullbleed"],
   page_header: ["cover-center"],
   feature_cards: ["tile-bar", "statement"],
-  offering_grid: ["photo-card"],
-  offering_history: ["ledger"],
-  testimonials: ["quote-wall"],
+  offering_grid: ["photo-card", "poster"],
+  offering_history: ["ledger", "ledger-count"],
+  testimonials: ["quote-wall", "rail"],
   destination_grid: ["badge-tile"],
   story_grid: ["card"],
   media_feature: ["split-panel", "panel-caption"],
-  rich_text: ["prose"],
-  faq: ["accordion-columns"],
+  rich_text: ["prose", "manifesto"],
+  faq: ["accordion-columns", "split"],
   cta: ["dark-panel-glow"],
-  newsletter_signup: ["card"],
+  newsletter_signup: ["card", "photo"],
   video_feature: ["brand-film"],
   contact_form: ["panel"],
   contact_details: ["tiles"],
-  gallery: ["voyage"],
+  gallery: ["voyage", "mosaic"],
   divider: ["voyage"],
   spacer: ["voyage"],
   stats: ["voyage"],
   team: ["voyage"],
   pull_quote: ["voyage"],
   map_embed: ["voyage"],
-  menu_board: ["neutral"],
+  menu_board: ["neutral", "columns"],
   menu_preview: ["neutral"],
   menu_link: ["neutral"],
   venue_reservation: ["neutral"],
-  hours_location: ["neutral"],
-  marquee: ["neutral"],
+  hours_location: ["neutral", "split"],
+  marquee: ["neutral", "ticker"],
   contact_handoff: ["neutral"],
 };
 
@@ -206,84 +311,95 @@ export const ATELIER: DesignDefinition = {
     },
     font_slots: ["display", "body"],
   },
+  // Atelier is kept as it is for gögi (#4453 non-goal): its own header and footer, no new layouts.
+  motion: { profile: "calm", signature: null },
+  image: { filter: "none", treatment: "Full colour under a warm scrim" },
+  chrome: { header: [], footer: [] },
+  picks: {},
 };
 
-const VOYAGE_FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
-
+/*
+ * #4453 §3.4 (D3) — voyage's defaults are the gallery look: Bricolage
+ * Grotesque, DM Sans and JetBrains Mono (labels) on a cool paper canvas with
+ * sky-blue and navy. The accent label role (accent 700) is darkened from the
+ * gallery's #2a7fb0 (4.14:1 on the canvas, 3.92:1 on tinted bands) to
+ * #2674a1 so it passes AA on every surface it is drawn on (§3.8, SC-D3).
+ * Stored sites keep their frozen tokens until they are republished.
+ */
 export const VOYAGE: DesignDefinition = {
   key: "voyage",
   version: 1,
   label: "Voyage",
-  description: "Bright and photographic: full-screen covers, padded cards, pill buttons and a handwritten accent.",
+  description: "Bright, adventurous, sociable: full-bleed photographs, oversized grotesk, sky-blue ink and poster cards.",
   tokens: {
     colors: {
-      canvas: "#ffffff",
+      canvas: "#f6f8fa",
       surface: "#ffffff",
-      surface_sunken: "#eef6fb",
-      surface_deep: "#141c26",
-      surface_inverse: "#131c26",
-      ink_strong: "#131c26",
-      ink_body: "#4f5e71",
-      ink_prose: "#3f4d5d",
-      ink_quiet: "#5d6b7b",
-      ink_on_dark_body: "#c3ccd5",
-      ink_on_photo_body: "#e9edf1",
-      ink_on_photo_quiet: "#dde4ea",
-      accent_ink: "#0b1219",
-      highlight_on_dark: "#ffe4c6",
-      // Voyage draws links from the accent ramp (accent 900), not `action`.
-      action: "#124e70",
+      surface_sunken: "#e9f3f9",
+      surface_deep: "#0b1b2b",
+      surface_inverse: "#0b1b2b",
+      ink_strong: "#0b1b2b",
+      ink_body: "#1c2e40",
+      ink_prose: "#22364a",
+      ink_quiet: "#5b6b7a",
+      ink_on_dark_body: "#ffffff",
+      ink_on_photo_body: "#ffffff",
+      ink_on_photo_quiet: "#e9edf1",
+      accent_ink: "#0b1b2b",
+      highlight_on_dark: "#89cff0",
+      action: "#0b1b2b",
       accent: {
         seed: "#89cff0",
         ramp: {
-          50: "#eaf6fd",
+          50: "#eef8fd",
           100: "#e2f3fc",
           200: "#c6e8fa",
           300: "#aadcf6",
           400: "#89cff0",
           500: "#59b8e6",
           600: "#2f93c9",
-          700: "#1d6f9c",
-          800: "#175f88",
-          900: "#124e70",
-          950: "#0d3a53",
+          700: "#2674a1",
+          800: "#1d5f86",
+          900: "#164a69",
+          950: "#0f354b",
         },
       },
       neutral: {
-        seed: "#4f5e71",
+        seed: "#5b6b7a",
         ramp: {
-          50: "#f2f6f8",
-          100: "#e8eef2",
-          200: "#c3ccd5",
-          300: "#8794a3",
-          400: "#5d6b7b",
-          500: "#4f5e71",
-          600: "#3f4d5d",
-          700: "#2f3a47",
-          800: "#1f2b38",
-          900: "#131c26",
-          950: "#0b1219",
+          50: "#f6f8fa",
+          100: "#e8edf1",
+          200: "#cfd7de",
+          300: "#9aa7b3",
+          400: "#76838f",
+          500: "#5b6b7a",
+          600: "#475663",
+          700: "#34424f",
+          800: "#22303d",
+          900: "#0b1b2b",
+          950: "#06111c",
         },
       },
       highlight: {
-        seed: "#ad5207",
-        ramp: { 50: "#fdf4ec", 200: "#f2d9c0", 600: "#ad5207", 700: "#8c4206" },
+        seed: "#2674a1",
+        ramp: { 50: "#eaf4fa", 200: "#c3deee", 600: "#2674a1", 700: "#1d5f86" },
       },
       paper: {
-        seed: "#eef6fb",
-        ramp: { 50: "#eef6fb", 100: "#dee8ed", 200: "#c6d5dd", 400: "#69818c" },
+        seed: "#e9f3f9",
+        ramp: { 50: "#f6f8fa", 100: "#dfe6ec", 200: "#c9d4dd", 400: "#66798a" },
       },
       danger: { seed: "#b3261e", ramp: { 50: "#fdeceb", 600: "#b3261e" } },
       success: { seed: "#146c43", ramp: { 50: "#e9f4ee", 600: "#146c43" } },
-      scrim_rgb: "11 18 25",
+      scrim_rgb: "11 27 43",
       shadow_rgb: "0 0 0",
     },
     heading_case: "none",
   },
   fonts: {
-    display: { family: "Plus Jakarta Sans", source: "google", weights: [...VOYAGE_FONT_WEIGHTS], italic: false },
-    body: { family: "Plus Jakarta Sans", source: "google", weights: [...VOYAGE_FONT_WEIGHTS], italic: false },
-    accent: { family: "Just Another Hand", source: "google", weights: [400], italic: false },
+    display: { family: "Bricolage Grotesque", source: "google", weights: [500, 700, 800], italic: false },
+    body: { family: "DM Sans", source: "google", weights: [400, 500, 700], italic: false },
+    accent: null,
+    label: { family: "JetBrains Mono", source: "google", weights: [500, 700], italic: false },
   },
   variants: VOYAGE_VARIANTS,
   templates: ["page", "not_found", "destination_detail", "story_detail"],
@@ -293,10 +409,10 @@ export const VOYAGE: DesignDefinition = {
       single: [
         "canvas", "surface", "surface_sunken", "surface_deep", "surface_inverse",
         "ink_strong", "ink_body", "ink_prose", "ink_quiet", "ink_on_dark_body",
-        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
       ],
       ramps: {
-        accent: [50, 100, 200, 300, 400, 500, 600, 800, 900, 950],
+        accent: [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950],
         neutral: [200, 400, 600, 700, 800, 900, 950],
         highlight: [50, 200, 600, 700],
         paper: [50, 100, 200, 400],
@@ -304,7 +420,25 @@ export const VOYAGE: DesignDefinition = {
         success: [50, 600],
       },
     },
-    font_slots: ["display", "body", "accent"],
+    font_slots: ["display", "body", "accent", "label"],
+  },
+  motion: { profile: "bold", signature: null },
+  image: { filter: "none", treatment: "Full colour, full bleed, deep navy gradient for text" },
+  chrome: { header: ["glass"], footer: ["giant"] },
+  picks: {
+    hero: "fullbleed",
+    marquee: "ticker",
+    rich_text: "manifesto",
+    offering_grid: "poster",
+    menu_board: "columns",
+    feature_cards: "tile-bar",
+    gallery: "mosaic",
+    destination_grid: "badge-tile",
+    offering_history: "ledger-count",
+    testimonials: "rail",
+    hours_location: "split",
+    faq: "split",
+    newsletter_signup: "photo",
   },
 };
 
@@ -355,6 +489,25 @@ export function isDesignKey(value: unknown): value is DesignKey {
 
 export function designFor(key: unknown): DesignDefinition | null {
   return isDesignKey(key) ? DESIGNS[key] : null;
+}
+
+/**
+ * #4453 — the layout a NEW composition takes for a block type: the design's
+ * pick when it has one, else its default. Stored blocks keep their variant.
+ */
+export function compositionVariant(design: DesignDefinition, type: BlockType): string {
+  const pick = design.picks[type];
+  return pick && design.variants[type].includes(pick) ? pick : defaultVariant(design, type);
+}
+
+/** The header layout a new composition takes, or null when the design draws its own header. */
+export function compositionHeader(design: DesignDefinition): HeaderVariant | null {
+  return design.chrome.header[0] ?? null;
+}
+
+/** The footer layout a new composition takes, or null when the design draws its own footer. */
+export function compositionFooter(design: DesignDefinition): FooterVariant | null {
+  return design.chrome.footer[0] ?? null;
 }
 
 /** The design's default variant for a block type (its first). */

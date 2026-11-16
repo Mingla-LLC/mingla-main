@@ -16,6 +16,7 @@
  */
 import { sitesJson } from "../_shared/sitesContracts.ts";
 import { PLANNED_PAGE_ORDER, splitBrandDescription } from "../_shared/siteContracts/sitePlan.ts";
+import { isDesignKey } from "../_shared/siteContracts/designs.ts";
 
 type JsonObject = Record<string, unknown>;
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -199,8 +200,8 @@ export async function handleSitePlanRoute(
     const sourceUrl = typeof input.source_url === "string"
       ? input.source_url
       : null;
-    if (!Number.isInteger(revision) ||
-      (designKey !== "atelier" && designKey !== "voyage")) {
+    // #4453 I-SITES-DESIGN-KEYS-ONE-LIST — the generated DESIGN_KEYS, never a literal list.
+    if (!Number.isInteger(revision) || !isDesignKey(designKey)) {
       return planFailure("VALIDATION_FAILED", 400);
     }
     const { data, error } = await ctx.userRpc("brand_site_plan_save_design", {

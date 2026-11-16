@@ -7,6 +7,7 @@ import {
   type FontFallback,
   type FontSlot,
   type FontSlotKey,
+  slotFamilies,
   type FontSlots,
   type FontStyle,
 } from "../contracts/generated/fontSlots.ts";
@@ -210,7 +211,7 @@ export async function resolveSiteFonts(
   const warnings: FontWarning[] = [];
   const assets: FontAsset[] = [];
   const digestBytes = new Map<string, number>();
-  const out: Record<FontSlotKey, FontSlot | null> = { display: null, body: null, accent: null };
+  const out: Record<FontSlotKey, FontSlot | null> = { display: null, body: null, accent: null, label: null };
   const usedBytes = () => [...digestBytes.values()].reduce((sum, bytes) => sum + bytes, 0);
   const tryFaces = async (slot: FontSlot): Promise<CachedFace[]> => {
     const faces = await facesForSlot(deps, slot, subsets);
@@ -229,8 +230,9 @@ export async function resolveSiteFonts(
     }
     return slot;
   };
-  for (const key of ["display", "body", "accent"] as const) {
-    const slot = input.slots[key];
+  // #4453 — the label slot (when the design has one) is downloaded like the others.
+  for (const key of ["display", "body", "accent", "label"] as const) {
+    const slot = input.slots[key] ?? null;
     if (!slot) continue;
     if (slot.source === "system") {
       out[key] = slot;
@@ -243,7 +245,7 @@ export async function resolveSiteFonts(
       const code: FontWarningCode = error instanceof Error && error.message === "FONT_TOO_LARGE"
         ? "FONT_TOO_LARGE"
         : "FONT_FETCH_FAILED";
-      const designSlot = input.designFonts[key];
+      const designSlot = input.designFonts[key] ?? null;
       let used: FontSlot | null = null;
       if (designSlot && designSlot.family !== slot.family) {
         try {
@@ -253,7 +255,7 @@ export async function resolveSiteFonts(
         }
       }
       if (!used) {
-        used = key === "accent" && !designSlot
+        used = (key === "accent" || key === "label") && !designSlot
           ? null
           : systemSlotFor(designSlot ?? slot, findCatalogFont((designSlot ?? slot).family)?.category ?? null);
       }
@@ -266,11 +268,8 @@ export async function resolveSiteFonts(
     body: out.body ?? systemSlotFor(input.designFonts.body, null),
     accent: out.accent,
   };
-  const families = new Set(
-    [slots.display, slots.body, slots.accent]
-      .filter((slot): slot is FontSlot => slot !== null && slot.source === "google")
-      .map((slot) => slot.family),
-  );
+  if (out.label) slots.label = out.label;
+  const families = slotFamilies(slots);
   const fallbacks = [...families]
     .map((family) => fallbackFaceFor(family))
     .filter((face): face is FontFallback => face !== null);

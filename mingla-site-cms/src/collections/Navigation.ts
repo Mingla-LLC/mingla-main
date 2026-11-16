@@ -7,6 +7,7 @@ import {
 } from "../lib/access";
 import { assertTenantPages, bindRequestTenant, singletonPerTenant } from "../lib/tenantIntegrity";
 import { safeText } from "../lib/validation";
+import { HEADER_VARIANTS } from "../contracts/generated/designs.ts";
 import {
   MAX_NAV_CHILDREN,
   MAX_NAV_ITEMS,
@@ -182,6 +183,17 @@ export const Navigation: CollectionConfig = {
       maxLength: 60,
       admin: { description: "Text shown in the header when you have no logo." },
       validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 60)),
+    },
+    /*
+     * #4453 §3.3 — the shared header layout. Empty keeps the design's own
+     * header (every site before #4453). A layout the site's design does not
+     * offer is left out of the published site, never a failed publish.
+     */
+    {
+      name: "header_variant",
+      type: "select",
+      options: HEADER_VARIANTS.map((value) => ({ value, label: { glass: "Glass bar", center: "Centred", pill: "Floating pill" }[value] })),
+      admin: { description: "The header layout. Leave empty for the design's own header." },
     },
   ],
 };

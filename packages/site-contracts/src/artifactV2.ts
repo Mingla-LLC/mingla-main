@@ -12,7 +12,7 @@
  * limits below. A refused artifact never goes live; the last good one stays.
  */
 import { assertSiteBlock, BLOCK_CATALOG, type SiteBlock } from "./blocks.ts";
-import { designFor, type DesignKey } from "./designs.ts";
+import { designFor, FOOTER_VARIANTS, HEADER_VARIANTS, type DesignKey, type FooterVariant, type HeaderVariant } from "./designs.ts";
 import {
   assertFontAssets,
   assertFontFallbacks,
@@ -164,6 +164,11 @@ export type SiteNavigation = {
   items: Array<NavLink & { children?: NavLink[] }>;
   header_cta?: NavLink;
   wordmark?: string;
+  /**
+   * #4453 §3.3 — the shared header layout. Absent: the design draws its own
+   * header (every site published before #4453). Must be one the design offers.
+   */
+  header_variant?: HeaderVariant;
 };
 
 /** #2829 W7 — the social networks a footer may link (drawn by the runtime, never uploaded). */
@@ -188,11 +193,13 @@ export type SiteFooter = {
   columns?: Array<{ heading: string; links: NavLink[] }>;
   socials?: Array<{ network: FooterSocialNetwork; url: string }>;
   copyright?: string;
+  /** #4453 §3.3 — the shared footer layout. Absent: the design's own footer. */
+  footer_variant?: FooterVariant;
 };
 
 const FOOTER_KEYS = [
   "address", "hours_summary", "legal_text", "links",
-  "tagline_lines", "location", "email", "columns", "socials", "copyright",
+  "tagline_lines", "location", "email", "columns", "socials", "copyright", "footer_variant",
 ] as const;
 
 function navLinkShape(link: unknown): boolean {
@@ -216,6 +223,7 @@ export function footerAccepted(footer: unknown): boolean {
     plainObject(social) && hasOnlyKeys(social, ["network", "url"]) &&
     (FOOTER_SOCIAL_NETWORKS as readonly unknown[]).includes(social.network) &&
     isSafeHref(social.url) && String(social.url).startsWith("https://")))) return false;
+  if (f.footer_variant !== undefined && !(FOOTER_VARIANTS as readonly unknown[]).includes(f.footer_variant)) return false;
   return true;
 }
 
@@ -406,7 +414,8 @@ function assertNavigation(navigation: unknown, pages: PageNode[]): void {
   const live = new Set(pages.filter((page) => page.enabled).map((page) => page.path));
   if (
     !plainObject(navigation) ||
-    !hasOnlyKeys(navigation, ["items", "header_cta", "wordmark"]) ||
+    !hasOnlyKeys(navigation, ["items", "header_cta", "wordmark", "header_variant"]) ||
+    (navigation.header_variant !== undefined && !(HEADER_VARIANTS as readonly unknown[]).includes(navigation.header_variant)) ||
     !Array.isArray(navigation.items) ||
     navigation.items.length > MAX_NAV_ITEMS ||
     !boundedText(navigation.wordmark, 60) ||
@@ -548,6 +557,11 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
 
   // Footer.
   if (!footerAccepted(a.footer)) fail("ARTIFACT_FOOTER_MISMATCH");
+  // #4453 — a chrome layout must be one this design offers.
+  const headerVariant = (a.navigation as SiteNavigation).header_variant;
+  const footerVariant = (a.footer as SiteFooter).footer_variant;
+  if (headerVariant !== undefined && !design!.chrome.header.includes(headerVariant)) fail("ARTIFACT_NAVIGATION_MISMATCH");
+  if (footerVariant !== undefined && !design!.chrome.footer.includes(footerVariant)) fail("ARTIFACT_FOOTER_MISMATCH");
 
   // Offerings snapshot (W4).
   assertOfferingsSnapshot(a.offerings_snapshot);

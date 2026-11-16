@@ -26,7 +26,7 @@
  */
 import { BLOCK_CATALOG, BLOCK_TYPES, type BlockType, type FieldSpec } from "./blocks.ts";
 import { DESIGN_KEYS, DESIGNS, type DesignKey } from "./designs.ts";
-import { FONT_SLOT_KEYS } from "./fontSlots.ts";
+import { OWNER_FONT_SLOT_KEYS } from "./fontSlots.ts";
 import { FORBIDDEN_TEXT, isSafeHref, UUID_RE } from "./safety.ts";
 import {
   BUTTON_SHAPES,
@@ -234,7 +234,7 @@ export function fontChoicesSchema(): JsonSchema {
   return {
     type: "object",
     additionalProperties: false,
-    properties: Object.fromEntries(FONT_SLOT_KEYS.map((slot) => [slot, { ...choice, description: `The ${slot} font` }])),
+    properties: Object.fromEntries(OWNER_FONT_SLOT_KEYS.map((slot) => [slot, { ...choice, description: `The ${slot} font` }])),
   };
 }
 

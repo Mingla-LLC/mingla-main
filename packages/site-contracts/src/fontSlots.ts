@@ -12,8 +12,17 @@
  * digits, spaces, hyphens) checked here and again at the point of emission.
  */
 
-export const FONT_SLOT_KEYS = ["display", "body", "accent"] as const;
+/*
+ * #4453 §3.2 — `label` is the fourth slot: the face a design sets labels,
+ * dates and prices in (a mono or a narrow sans). It is optional per design
+ * and falls back to `body` when a design declares none. Owners cannot
+ * override it in #4453: the owner-facing slots stay display, body, accent.
+ */
+export const FONT_SLOT_KEYS = ["display", "body", "accent", "label"] as const;
 export type FontSlotKey = (typeof FONT_SLOT_KEYS)[number];
+/** The slots an owner (Studio, Business, Ari) may choose a family for. */
+export const OWNER_FONT_SLOT_KEYS = ["display", "body", "accent"] as const;
+export type OwnerFontSlotKey = (typeof OWNER_FONT_SLOT_KEYS)[number];
 export type FontSource = "google" | "system";
 export type FontStyle = "normal" | "italic";
 
@@ -30,7 +39,26 @@ export type FontSlots = {
   body: FontSlot;
   /** Optional script/accent face; null when the design or owner uses none. */
   accent: FontSlot | null;
+  /**
+   * #4453 — optional label face (labels, dates, prices). Absent or null means
+   * labels use the body face. Artifacts published before #4453 have no key.
+   */
+  label?: FontSlot | null;
 };
+
+/** The face labels are set in: the label slot, else the body slot. */
+export function labelSlot(slots: FontSlots): FontSlot {
+  return slots.label ?? slots.body;
+}
+
+/** Every Google-hosted family a site's slots name (display, body, accent, label). */
+export function slotFamilies(slots: FontSlots): Set<string> {
+  return new Set(
+    [slots.display, slots.body, slots.accent, slots.label ?? null]
+      .filter((slot): slot is FontSlot => slot !== null && slot.source === "google")
+      .map((slot) => slot.family),
+  );
+}
 
 /** What an owner stores: a family per slot; weights come from the design. */
 export type OwnerFontChoice = { family: string; source: FontSource };
@@ -111,12 +139,18 @@ function assertSlot(value: unknown, path: string): asserts value is FontSlot {
 export function assertFontSlots(value: unknown): asserts value is FontSlots {
   if (!plain(value)) throw new Error("ARTIFACT_FONTS_MISMATCH:fonts");
   const slots = value as Record<string, unknown>;
-  if (Object.keys(slots).length !== 3 || Object.keys(slots).some((key) => !(FONT_SLOT_KEYS as readonly string[]).includes(key))) {
+  const keys = Object.keys(slots);
+  // Exactly display, body and accent, plus (#4453) an optional label.
+  if (
+    keys.some((key) => !(FONT_SLOT_KEYS as readonly string[]).includes(key)) ||
+    !["display", "body", "accent"].every((key) => keys.includes(key))
+  ) {
     throw new Error("ARTIFACT_FONTS_MISMATCH:fonts");
   }
   assertSlot(slots.display, "display");
   assertSlot(slots.body, "body");
   if (slots.accent !== null) assertSlot(slots.accent, "accent");
+  if (slots.label !== undefined && slots.label !== null) assertSlot(slots.label, "label");
 }
 
 export function assertFontAssets(value: unknown, slots: FontSlots): asserts value is FontAsset[] {
@@ -124,11 +158,7 @@ export function assertFontAssets(value: unknown, slots: FontSlots): asserts valu
     throw new Error(`ARTIFACT_FONT_ASSETS_MISMATCH:${path}`);
   };
   if (!Array.isArray(value) || value.length > MAX_FONT_ASSETS) fail("font_assets");
-  const families = new Set(
-    [slots.display, slots.body, slots.accent]
-      .filter((slot): slot is FontSlot => slot !== null && slot.source === "google")
-      .map((slot) => slot.family),
-  );
+  const families = slotFamilies(slots);
   let total = 0;
   const seen = new Set<string>();
   (value as unknown[]).forEach((entry, index) => {
@@ -159,12 +189,8 @@ export function assertFontFallbacks(value: unknown, slots: FontSlots): asserts v
   const fail = (path: string): never => {
     throw new Error(`ARTIFACT_FONT_FALLBACKS_MISMATCH:${path}`);
   };
-  if (!Array.isArray(value) || value.length > 3) fail("font_fallbacks");
-  const families = new Set(
-    [slots.display, slots.body, slots.accent]
-      .filter((slot): slot is FontSlot => slot !== null && slot.source === "google")
-      .map((slot) => slot.family),
-  );
+  if (!Array.isArray(value) || value.length > 4) fail("font_fallbacks");
+  const families = slotFamilies(slots);
   (value as unknown[]).forEach((entry, index) => {
     if (!plain(entry)) fail(String(index));
     const fallback = entry as Record<string, unknown>;
@@ -186,7 +212,7 @@ export function assertOwnerFontOverrides(value: unknown): asserts value is Owner
   if (value == null) return;
   if (!plain(value)) fail("fonts");
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (!(FONT_SLOT_KEYS as readonly string[]).includes(key)) fail(key);
+    if (!(OWNER_FONT_SLOT_KEYS as readonly string[]).includes(key)) fail(key);
     if (key === "accent" && entry === null) continue;
     if (!plain(entry)) fail(key);
     const choice = entry as Record<string, unknown>;
@@ -235,11 +261,14 @@ export function resolveFontSlots(
   else if (accentChoice) {
     accent = resolve(design.accent ?? { family: accentChoice.family, source: accentChoice.source, weights: [400], italic: false }, accentChoice);
   }
-  return {
+  const resolved: FontSlots = {
     display: resolve(design.display, owner?.display),
     body: resolve(design.body, owner?.body),
     accent,
   };
+  // #4453 — the label face is the design's alone (owners cannot change it yet).
+  if (design.label) resolved.label = { ...design.label, weights: [...design.label.weights] };
+  return resolved;
 }
 
 const GENERIC: Readonly<Record<string, string>> = {

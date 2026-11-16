@@ -14,6 +14,8 @@ import {
   failureFromInvokeError,
   invokeBrandSiteControl,
 } from "../services/brandSitesService";
+// #4453 I-SITES-DESIGN-KEYS-ONE-LIST — design keys come from site-contracts (types only).
+import type { DesignKey } from "../../../packages/site-contracts/src/designs.ts";
 import { brandSiteKeys } from "./brandSiteKeys";
 import { normalizeSitePlan, type SitePlanState } from "./sitePlanState";
 import { useEnsureBrandSiteDraft } from "../hooks/useBrandSite";
@@ -73,7 +75,7 @@ export async function saveBrandSitePlan(input: {
 export async function saveBrandSitePlanDesign(input: {
   brandId: string;
   revision: number;
-  designKey: "atelier" | "voyage";
+  designKey: DesignKey;
   /** #2830 — "mingla" when the owner took Mingla's default design. */
   sourceType?: "owner" | "mingla";
 }): Promise<SitePlanState> {
@@ -160,7 +162,7 @@ export function useSaveBrandSitePlan(brandId: string) {
 export function useSaveBrandSitePlanDesign(brandId: string) {
   const apply = useApplyPlan(brandId);
   return useMutation({
-    mutationFn: (input: { revision: number; designKey: "atelier" | "voyage"; sourceType?: "owner" | "mingla" }) =>
+    mutationFn: (input: { revision: number; designKey: DesignKey; sourceType?: "owner" | "mingla" }) =>
       saveBrandSitePlanDesign({ brandId, ...input }),
     onSuccess: apply,
   });

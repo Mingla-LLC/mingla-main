@@ -16,7 +16,7 @@ import {
 import type { ArtifactV2 } from "../contracts/generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "../contracts/generated/upgradeV1ToV2.ts";
 import { parseOfferingsFeed, type SiteOffering } from "../contracts/generated/offerings.ts";
-import { ATELIER, designFor, variantAfterDesignSwitch, type DesignDefinition } from "../contracts/generated/designs.ts";
+import { ATELIER, designFor, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
 import { isBlockType } from "../contracts/generated/blocks.ts";
 import { resolveTokens } from "../contracts/generated/tokens.ts";
 import { resolveFontSlots } from "../contracts/generated/fontSlots.ts";
@@ -1313,6 +1313,16 @@ export async function buildPublicationArtifact(
   const display = siteDisplayOf(settings, content);
   if (display) artifact.site_display = display;
   artifact.design = { key: design.key, version: design.version };
+  // #4453 §3.3 — the shared header and footer layouts, only when the site's
+  // design offers them (a switched design never fails a republish).
+  const headerVariant = (navigationResult.docs[0] as AnyDoc | undefined)?.header_variant;
+  if ((design.chrome.header as readonly unknown[]).includes(headerVariant)) {
+    artifact.navigation.header_variant = headerVariant as HeaderVariant;
+  } else delete artifact.navigation.header_variant;
+  const footerVariant = (footerResult.docs[0] as AnyDoc | undefined)?.footer_variant;
+  if ((design.chrome.footer as readonly unknown[]).includes(footerVariant)) {
+    artifact.footer.footer_variant = footerVariant as FooterVariant;
+  } else delete artifact.footer.footer_variant;
   artifact.tokens = resolveTokens(design.tokens, ownerTokensOf(settings));
   artifact.fonts = fonts.slots;
   artifact.font_assets = fonts.assets;
