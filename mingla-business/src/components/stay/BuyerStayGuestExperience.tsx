@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import type { StayGuestBookingProps } from "@mingla/brand-rendering/StayGuestBooking";
 import {
@@ -24,7 +24,12 @@ import type {
 } from "@mingla/offering-rendering";
 
 import { captureWeb } from "../../analytics/webAnalytics";
-import { stayGuestService } from "../../services/stayGuestService";
+import { SecurePaymentHandoff } from "../checkout/SecurePaymentHandoff";
+import { StayGuestError, stayGuestService } from "../../services/stayGuestService";
+import {
+  stayGuestErrorKnown,
+  stayGuestErrorLine,
+} from "@mingla/brand-rendering/stayGuestErrorCopy";
 import { supabase } from "../../services/supabase";
 
 import { color } from "../../constants/designSystem";
@@ -86,6 +91,27 @@ export function BuyerStayGuestExperience({
   const [groupId, setGroupId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<{ url: string; groupId: string } | null>(null);
+  // issue #4420 wave 2 (D-S6) — a server refusal reads as plain copy with
+  // one next step; an unknown code shows the fallback and reaches analytics,
+  // never the screen.
+  const guestFacingError = (caught: unknown, fallback: string): string => {
+    if (caught instanceof StayGuestError) {
+      if (!stayGuestErrorKnown(caught.code)) {
+        captureWeb("stay_guest_error_shown", {
+          surface: "buyer_web",
+          brand_id: brandId,
+          venue_id: venueId,
+          code: caught.code,
+        });
+      }
+      return stayGuestErrorLine(caught.code, {
+        stayName: detail?.venueName ?? null,
+        brandName: detail?.brandName ?? null,
+      });
+    }
+    return caught instanceof Error && caught.message.length > 0 ? caught.message : fallback;
+  };
   const phoneTheme = React.useMemo<PhoneInputTheme>(() => ({
     backgroundPrimary: palette.page,
     textPrimary: palette.primaryText,
@@ -173,11 +199,7 @@ export function BuyerStayGuestExperience({
         mode: nextQuote.mode,
       });
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Current availability could not be confirmed.",
-      );
+      setError(guestFacingError(caught, "Current availability could not be confirmed."));
       captureWeb("stay_quote_failed", {
         surface: "buyer_web",
         brand_id: brandId,
@@ -202,7 +224,12 @@ export function BuyerStayGuestExperience({
           venue_id: venueId,
           group_id: group.groupId,
         });
-        router.push(`/stay/${group.groupId}` as never);
+        // issue #4420 wave 2 (D-S4) — "Request sent" REPLACES the booking:
+        // the review sheet closes first (its quote clears), then the route
+        // is replaced, so the sheet can never stay mounted over the
+        // confirmation (payments test 05c).
+        setQuote(null);
+        router.replace(`/stay/${group.groupId}` as never);
         return;
       }
       const session = await stayGuestService.createPayment(group);
@@ -215,21 +242,35 @@ export function BuyerStayGuestExperience({
         currency: session.currencyCode,
       });
       if (session.provider === "paystack") {
-        await Linking.openURL(session.authorizationUrl);
-        router.push(`/stay/${group.groupId}` as never);
+        // issue #4420 wave 2 (§2.4) — same-tab handoff with a fallback link.
+        setHandoff({ url: session.authorizationUrl, groupId: group.groupId });
         return;
       }
       setPayment(session);
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "This Stay reservation could not be completed.",
-      );
+      setError(guestFacingError(caught, "This Stay reservation could not be completed."));
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (handoff !== null) {
+    return (
+      <View style={styles.paymentCard}>
+        <SecurePaymentHandoff
+          url={handoff.url}
+          palette={palette}
+          providerName="Paystack"
+          holdLine="Your rooms are held while you pay."
+          onBack={() => {
+            setHandoff(null);
+            router.replace(`/stay/${handoff.groupId}` as never);
+          }}
+          testID="issue-4420-stay-secure-payment"
+        />
+      </View>
+    );
+  }
 
   if (payment?.provider === "stripe" && groupId !== null) {
     return (
@@ -251,6 +292,7 @@ export function BuyerStayGuestExperience({
             session={payment}
             groupId={groupId}
             accent={palette.accent}
+            palette={palette}
             onComplete={() => {
               captureWeb("stay_payment_completed", {
                 surface: "buyer_web",

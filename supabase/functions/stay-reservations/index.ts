@@ -524,6 +524,46 @@ function errorResponse(error: RpcError, requestId: string): Response {
   });
 }
 
+/**
+ * issue #4420 wave 2 (D-S7) — the masked contact of a group the caller may
+ * not read. Service role only, and only ever the mask ("g•••@example.com");
+ * null (fall back to the ordinary refusal) when there is no service key, no
+ * group or no address.
+ */
+async function stayGroupOtherContact(
+  url: string,
+  groupId: unknown,
+  requestId: string,
+  dependencies: StayReservationsDependencies,
+): Promise<Response | null> {
+  if (typeof groupId !== "string" || !UUID.test(groupId)) return null;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!serviceKey) return null;
+  const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+    createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as RpcClient;
+  const { data, error } = await service.rpc(
+    "issue_4420_stay_group_masked_contact",
+    { p_group_id: groupId },
+  );
+  if (error) {
+    console.warn(JSON.stringify({
+      event: "stay_group_other_contact_lookup_failed",
+      requestId,
+    }));
+    return null;
+  }
+  if (typeof data !== "string" || !data.includes("•••@")) return null;
+  return json(403, {
+    kind: "error",
+    code: "stay_group_other_contact",
+    message: "This booking is under another email.",
+    maskedEmail: data,
+    requestId,
+  });
+}
+
 export async function handleStayReservations(
   req: Request,
   dependencies: StayReservationsDependencies = {},
@@ -962,6 +1002,18 @@ export async function handleStayReservations(
       requestId,
       dependencies,
     );
+    // issue #4420 wave 2 (D-S7) — a signed-in guest who is not this
+    // booking's contact gets told whose (masked) email it is under, so the
+    // page can offer "Sign in as …" instead of a dead "not found".
+    if (body.action === "get_group" && (error.message ?? "").includes("forbidden")) {
+      const other = await stayGroupOtherContact(
+        url,
+        payload.groupId,
+        requestId,
+        dependencies,
+      );
+      if (other !== null) return other;
+    }
     return errorResponse(error, requestId);
   }
 

@@ -236,12 +236,6 @@ function CheckoutPaymentScreenContent({
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(
     null,
   );
-  // ORCH-0839-B: declineToast state is retained but dormant. Stripe's hosted
-  // page handles all card-decline UX inside its own surface. The Toast wrap
-  // below preserves the absolute-positioning lesson per
-  // feedback_toast_needs_absolute_wrap.md even though it has no caller in
-  // the new code path.
-  const [declineToast, setDeclineToast] = useState<boolean>(false);
   // ORCH-0852: shown briefly after PaymentSheet success, before navigation.
   // Mirrors consumer's "Ticket secured!" toast in
   // app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx.
@@ -1118,15 +1112,10 @@ function CheckoutPaymentScreenContent({
 
       {/* Toast — top-anchored absolute wrapper (Cycle 8a lesson per
           feedback_toast_needs_absolute_wrap.md). ORCH-0852: success toast
-          fires on PaymentSheet success before navigation; decline toast
-          retained from ORCH-0839-B for parity even though dormant. */}
+          fires on PaymentSheet success before navigation. issue #4420 wave 2
+          (D-C4): the dormant decline toast is gone; a failed payment shows
+          its message in the payment step (paymentError). */}
       <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={declineToast}
-          kind="error"
-          message="Card declined — try another payment method."
-          onDismiss={() => setDeclineToast(false)}
-        />
         <Toast
           visible={successToast}
           kind="success"

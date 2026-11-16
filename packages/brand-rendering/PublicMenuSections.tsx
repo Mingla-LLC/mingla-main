@@ -21,7 +21,7 @@
 // anywhere (SC-7, strict-grep gate).
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -163,6 +163,16 @@ const MenuTab: React.FC<{
                     ) : null}
                   </View>
                 ) : null}
+                {/* issue #4420 wave 2 (D-V5) — the dish photo, when the
+                    venue added one: a 76 square at the row's end. */}
+                {typeof item.photoUrl === "string" && item.photoUrl.length > 0 ? (
+                  <Image
+                    source={{ uri: item.photoUrl }}
+                    style={styles.menuItemPhoto}
+                    accessibilityIgnoresInvertColors
+                    testID={`issue-4420-menu-photo-${item.id}`}
+                  />
+                ) : null}
               </View>
             );
           })}
@@ -193,6 +203,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     padding: 14,
+  },
+  menuItemPhoto: {
+    width: 76,
+    height: 76,
+    borderRadius: 16,
+    marginLeft: 12,
+    flexShrink: 0,
   },
   menuItemRow: {
     flexDirection: "row",

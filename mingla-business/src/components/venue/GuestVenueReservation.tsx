@@ -6,7 +6,6 @@ import {
 } from "@tanstack/react-query";
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   StyleSheet,
   Switch,
@@ -14,6 +13,7 @@ import {
   View,
 } from "react-native";
 
+import { SecurePaymentHandoff } from "../checkout/SecurePaymentHandoff";
 import {
   captureWeb,
   getStoredClickAttribution,
@@ -277,6 +277,12 @@ function GuestVenueReservationBody({
   const [discountCode, setDiscountCode] = useState<string | null>(null);
   const [reviewQuote, setReviewQuote] =
     useState<GuestReservationPreview | null>(null);
+  // issue #4420 wave 2 (§2.4) — the hosted payment page opens in THIS tab;
+  // while it does, the Secure payment step replaces the form.
+  const [handoff, setHandoff] = useState<{
+    url: string;
+    providerName: string;
+  } | null>(null);
   const [completed, setCompleted] = useState<{
     email: string | null;
     phoneLast4: string | null;
@@ -524,7 +530,11 @@ function GuestVenueReservationBody({
       if (redirect === null || redirect.length === 0) {
         throw new Error("The payment page could not open. Try again.");
       }
-      await Linking.openURL(redirect);
+      setHandoff({
+        url: redirect,
+        providerName:
+          result.kind === "requires_web_redirect" ? "Stripe" : "Paystack",
+      });
     } catch (caught) {
       if (caught instanceof GuestReservationReviewError) {
         if (analyticsSurface === "buyer_web") {
@@ -564,6 +574,18 @@ function GuestVenueReservationBody({
       setSubmitting(false);
     }
   };
+
+  if (handoff !== null) {
+    return (
+      <SecurePaymentHandoff
+        url={handoff.url}
+        palette={palette}
+        providerName={handoff.providerName}
+        onBack={() => setHandoff(null)}
+        testID="issue-4420-venue-secure-payment"
+      />
+    );
+  }
 
   if (completed !== null) {
     const claimCode = completed.code;

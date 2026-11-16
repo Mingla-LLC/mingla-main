@@ -41,7 +41,8 @@ export const VenueOrderingStickyBar: React.FC<{
       <OfferingGlassBar
         palette={palette}
         title={total === null ? items : `${items} · ${total}`}
-        subtitle={null}
+        // issue #4420 wave 2 (D-V2) — the bar says how the order is paid.
+        subtitle="Pay on your phone"
         ctaLabel="View order"
         onPress={onPress}
         ctaAccessibilityLabel={label}

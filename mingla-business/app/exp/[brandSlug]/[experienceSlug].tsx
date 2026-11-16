@@ -50,6 +50,7 @@ import {
   type CtaState,
   type SocialProofSummary,
 } from "@mingla/offering-rendering";
+import { premiumDesktopBarDockStyle } from "@mingla/offering-rendering/offeringFrameMetrics";
 import { useResponsiveLayout } from "@mingla/offering-rendering";
 // Deep import — avoid the package barrel (pulls expo-video via EventCoverMedia).
 import { isOpenDailyExperience } from "@mingla/offering-rendering/experienceOpenDaily";
@@ -1084,10 +1085,13 @@ const ResolvedExperiencePage: React.FC<{
           updates live with the inline pick. */}
       {isDesktop || floatingPillVisible ? (
         <View
-          style={[
-            isDesktop ? styles.glassWrapDesktop : styles.glassWrap,
-            { bottom: (isDesktop ? 22 : 12) + insetsBottom },
-          ]}
+          style={
+            // issue #4420 audit — desktop docks the bar in the left flyer
+            // column, never over the right column's text.
+            isDesktop
+              ? premiumDesktopBarDockStyle(22 + insetsBottom)
+              : [styles.glassWrap, { bottom: 12 + insetsBottom }]
+          }
           pointerEvents="box-none"
         >
           <OfferingGlassBar
@@ -1186,18 +1190,11 @@ const styles = StyleSheet.create({
   },
   deskReserveText: { fontSize: 16, fontWeight: "900" },
   deskReassure: { fontSize: 11, textAlign: "center", marginTop: 10 },
-  // issue #4420 — the glass bar wrappers (phone gutter; desktop bottom-right).
+  // issue #4420 — the glass bar wrappers (phone gutter; desktop in the flyer column).
   glassWrap: {
     position: "absolute",
     left: 12,
     right: 12,
-    zIndex: 6,
-  },
-  glassWrapDesktop: {
-    position: "absolute",
-    right: 28,
-    width: 440,
-    maxWidth: "90%",
     zIndex: 6,
   },
 });

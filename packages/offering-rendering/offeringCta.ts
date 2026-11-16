@@ -268,11 +268,16 @@ export const resolveOfferingCta = (
     .filter((t) => !t.isFree)
     .map((t) => formatPrice(t, currency))
     .filter((p): p is string => p !== null);
-  const paidTierCount = considered.filter((t) => !t.isFree).length;
-  // "From" only when >1 priced tier; a single tier shows the bare price.
+  // issue #4420 audit — a free tier on sale beside paid ones is the lowest
+  // price, so the bar reads "From Free" (it read "$75" with a free seat).
+  const anyFree = considered.some((t) => t.isFree);
+  // "From" only when there is more than one distinct price; a single price
+  // (one tier, or several tiers at the same price) shows the bare price.
+  const distinctPaid = new Set(paidPrices).size;
   const lowest = lowestPriceString(considered, currency);
-  const priceText =
-    paidTierCount > 1 && lowest !== null
+  const priceText = anyFree
+    ? "From Free"
+    : distinctPaid > 1 && lowest !== null
       ? `From ${lowest}`
       : (lowest ?? paidPrices[0] ?? "");
 

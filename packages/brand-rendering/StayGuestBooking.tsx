@@ -47,10 +47,9 @@ import { StayDateRangeField } from "./StayDateRangeField";
 // issue #4420 — the quick-pick check-in / check-out strip above the field.
 import { StayDateStrip } from "./StayDateStrip";
 import {
-  addStayDays,
   stayDateBounds,
   stayDateErrorMessage,
-  venueToday,
+  stayDefaultRange,
   type StayDateRange,
 } from "./stayDateRules";
 import {
@@ -185,10 +184,16 @@ export function StayGuestBooking({
   // seeded from `detail.timezone` the moment the read resolves without an
   // effect and without ever clobbering a guest edit. Venue-local tomorrow for
   // one night, matching what the server would call "tomorrow".
+  // issue #4420 wave 2 (D-S5) — open on the first check-in the offerings'
+  // own notice rules allow, never a night they already rule out.
   const seededRange = useMemo<StayDateRange>(() => {
     if (detail === null) return { checkIn: "", checkOut: "" };
-    const firstNight = addStayDays(venueToday(detail.timezone), 1);
-    return { checkIn: firstNight, checkOut: addStayDays(firstNight, 1) };
+    return stayDefaultRange({
+      timezone: detail.timezone,
+      checkInTime: detail.checkInTime,
+      bookingHorizonDays: detail.bookingHorizonDays,
+      offerings: detail.offerings,
+    });
   }, [detail]);
   const range = editedRange ?? seededRange;
   const checkIn = range.checkIn;

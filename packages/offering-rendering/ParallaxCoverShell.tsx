@@ -72,9 +72,11 @@ import {
 } from "./OfferingGlassContext";
 import {
   OfferingCoverIdentity,
+  coverTitleMayClamp,
   type OfferingCoverIdentityData,
 } from "./OfferingCoverIdentity";
 import { boldFontFamily, hexToRgba, paletteAccentGradient } from "./themePalette";
+import { themeFontFace } from "./themeAccentStyle";
 import { useReduceMotionPreference } from "./useReduceMotionPreference";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { CoverGalleryRow } from "./CoverGalleryRow";
@@ -690,7 +692,46 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       </Animated.View>
     ) : null;
 
+  // issue #4420 audit — the phone cover clamps a long title to 3 lines, so
+  // the sheet prints the whole title first (the header shows one line).
+  const premiumFullTitle =
+    identityData !== null && coverTitleMayClamp(identityData.title) ? (
+      <Text
+        accessibilityRole="header"
+        style={[
+          styles.premiumFullTitle,
+          { color: palette.primaryText },
+          themeFontFace(boldFontFamily(theme)),
+        ]}
+        testID={testID !== undefined ? `${testID}-full-title` : "offering-full-title"}
+      >
+        {identityData.title}
+      </Text>
+    ) : null;
+
   if (premium && isDesktop) {
+    // issue #4420 audit — a flyer with no cover shows the host's gradient
+    // with the identity on it (scrim, eyebrow, title, presenter), the same
+    // as the phone cover, never a plain colour block.
+    const flyerIdentity =
+      themedFallback !== null && identityData !== null ? (
+        <>
+          {premiumScrim}
+          <View
+            pointerEvents="none"
+            style={styles.premiumFlyerIdentity}
+            testID={testID !== undefined ? `${testID}-flyer-identity` : "offering-flyer-identity"}
+          >
+            <OfferingCoverIdentity
+              {...identityData}
+              palette={palette}
+              theme={theme}
+              variant="cover"
+              testID={testID !== undefined ? `${testID}-flyer-identity-block` : undefined}
+            />
+          </View>
+        </>
+      ) : null;
     const ambientUri =
       coverMediaType !== "video" && coverMediaUrl !== null && coverMediaUrl.length > 0
         ? coverMediaUrl
@@ -778,6 +819,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
                   ]}
                 >
                   {coverRender}
+                  {flyerIdentity}
                 </View>
                 {galleryRow}
                 {desktopFlyerActions}
@@ -874,6 +916,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             })}
           >
             <View style={[styles.premiumGrabber, { backgroundColor: palette.panelBorder }]} />
+            {premiumFullTitle}
             {stateBanner != null ? (
               <View style={styles.phoneBannerWrap}>{stateBanner}</View>
             ) : null}
@@ -928,6 +971,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             ]}
           >
             <View style={[styles.premiumGrabber, { backgroundColor: palette.panelBorder }]} />
+            {premiumFullTitle}
             {stateBanner != null ? (
               <View style={styles.phoneBannerWrap}>{stateBanner}</View>
             ) : null}
@@ -1475,6 +1519,20 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 0,
+  },
+  // issue #4420 audit — identity on a no-cover desktop flyer.
+  premiumFlyerIdentity: {
+    position: "absolute",
+    left: 28,
+    right: 28,
+    bottom: 28,
+  },
+  // issue #4420 audit — the whole title, when the cover clamps it.
+  premiumFullTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    marginBottom: 20,
   },
   premiumDeskIdentity: {
     paddingTop: 8,

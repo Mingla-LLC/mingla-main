@@ -9,6 +9,11 @@ import {
 } from "react-native";
 import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import {
+  neutralControl,
+  themeTextAccent,
+  type ThemePalette,
+} from "@mingla/offering-rendering/themePalette";
 
 import { radius, color, space } from "../../constants/designSystem";
 import { useCart, type TicketQuoteStatus } from "./CartContext";
@@ -49,6 +54,12 @@ export interface DiscountCodeFieldProps {
    * into the field. Wide desktop keeps the field open in the order summary.
    */
   collapsible?: boolean;
+  /**
+   * issue #4420 wave 2 (D-C3) — the host's palette, COLOURS ONLY: the field
+   * sits on the page's card, borders take the neutral control line and
+   * Apply becomes a tonal button. Absent ⇒ byte-identical to before.
+   */
+  palette?: ThemePalette;
 }
 
 /** W-CODE from the binding #3872 design contract. */
@@ -63,7 +74,24 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
   onApply,
   onRemove,
   collapsible = false,
+  palette,
 }) => {
+  const themed =
+    palette === undefined
+      ? null
+      : {
+          input: {
+            backgroundColor: palette.card,
+            borderColor: neutralControl(palette),
+            color: palette.primaryText,
+          },
+          inputFocused: { borderColor: themeTextAccent(palette) },
+          apply: { backgroundColor: palette.accentWash },
+          applyText: { color: palette.primaryText },
+          label: { color: palette.secondaryText },
+          status: { color: palette.tertiaryText },
+          placeholder: palette.tertiaryText,
+        };
   const [draft, setDraft] = useState(value ?? "");
   const [expanded, setExpanded] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -209,14 +237,14 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
         </View>
       ) : (
         <>
-          <Text style={styles.label}>Discount code</Text>
+          <Text style={[styles.label, themed?.label]}>Discount code</Text>
           <View style={styles.inputRow}>
             <TextInput
               ref={inputRef}
               value={draft}
               onChangeText={(next) => setDraft(next.toUpperCase())}
               placeholder="Enter code"
-              placeholderTextColor={color.text4}
+              placeholderTextColor={themed?.placeholder ?? color.text4}
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={32}
@@ -224,7 +252,12 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
               accessibilityLabel="Discount code"
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              style={[styles.input, focused && styles.inputFocused]}
+              style={[
+                styles.input,
+                themed?.input,
+                focused && styles.inputFocused,
+                focused && themed?.inputFocused,
+              ]}
               onSubmitEditing={() => {
                 if (canApply) onApply(normalizedDraft);
               }}
@@ -236,14 +269,18 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
               onPress={() => onApply(normalizedDraft)}
               style={({ pressed }) => [
                 styles.applyButton,
+                themed?.apply,
                 !canApply && styles.buttonDisabled,
                 pressed && canApply && styles.buttonPressed,
               ]}
             >
               {applying ? (
-                <ActivityIndicator color={color.textStrong} size="small" />
+                <ActivityIndicator
+                  color={themed?.applyText.color ?? color.textStrong}
+                  size="small"
+                />
               ) : (
-                <Text style={styles.applyText}>Apply</Text>
+                <Text style={[styles.applyText, themed?.applyText]}>Apply</Text>
               )}
             </Pressable>
           </View>
@@ -301,6 +338,8 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
 
 export interface CheckoutDiscountCodeFieldProps {
   disabled?: boolean;
+  /** issue #4420 wave 2 (D-C3) — see DiscountCodeFieldProps.palette. */
+  palette?: ThemePalette;
   collapsible?: boolean;
   surface?: BuyerDiscountSurface;
   saleNameByLineRef?: Readonly<Record<string, string | null | undefined>>;

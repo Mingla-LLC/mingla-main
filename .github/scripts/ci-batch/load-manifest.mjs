@@ -310,7 +310,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
 // #4238 rework 5: merged origin/main e4cb2564bd (#4452 rows kept in filename order ahead of the #4238 rows; both #1931 exact-filename skip blocks kept); re-sealed.
 // #4238 W7: merged origin/4420-host-graphite-glass a196ecfd7a (its 20280719004420 migration row kept after the #4238 rows in the #1857, #1931 and #2117 lanes); re-sealed.
-export const BOOTSTRAP_SHA256 = "148014f1a1d65cfe2ec657e67afc1cd0641dc4c4aef31c6484d08a63c36ac9c1";
+// #4420 filtered replay lanes (#1931, #2117) skip the experience venue-line privacy migration by exact filename; re-sealed.
+// #4238 W8: merged origin/4420-host-graphite-glass c37722672d (its 20280718004420 row and the #1931 filtered-replay skip for 20280719004420 kept beside the #4238 rows); re-sealed.
+export const BOOTSTRAP_SHA256 = "0f1ef4310b69465a94d735cc201b1a702056d5e1b47ccecf54467440e436e625";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
