@@ -62,7 +62,8 @@ export default async function PlanPreviewPage({
       ...card,
       dates: "",
       price: null,
-      href: "#",
+      // No link at all (tester P3-4): the grid draws a sample's CTA as plain text.
+      href: "",
       cta: "Sample listing",
       detailHref: null,
       sample: true,

@@ -102,6 +102,8 @@ export function Price({ item, className }: { item: GridItem; className: string }
 }
 
 export function Book({ item, ctx, className }: { item: GridItem; ctx: SharedContext; className: string }) {
+  // #4453 M10 — a plan preview's labelled sample: its CTA is plain text, never a link.
+  if (item.card.sample) return <span className={className} data-sample="1"><span>{item.card.cta}</span></span>;
   return (
     <TrackedLink href={item.card.href} context={ctx.analytics} ctaKind="offering" offeringId={item.card.id} className={className}>
       <span>{item.card.cta}</span><Arrow /><span className="mg-sr">{`: ${item.card.title} on Mingla`}</span>

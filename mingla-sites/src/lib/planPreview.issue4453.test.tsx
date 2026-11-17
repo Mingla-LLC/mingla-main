@@ -71,7 +71,20 @@ describe("#4453 M10 /plan-preview", () => {
       expect(grid).toMatch(/>Sample</);
       // The sample's placeholder address never becomes a link.
       expect(grid).not.toContain('href="https://host.usemingla.com/"');
+      // Rework P3-4: a sample card is not a link at all (no "#"), and never says "on Mingla".
+      expect(grid).not.toMatch(/href="#"/);
+      // Every card that names a sample title carries no link and no "on Mingla" (any design's card markup).
+      const sampleCards = [...grid.matchAll(/<article\b(?:(?!<\/article>)[\s\S])*<\/article>/g)].map((m) => m[0])
+        .filter((card) => card.includes("A long weekend by the sea") || card.includes("Mountains in the spring"));
+      expect(sampleCards.length).toBeGreaterThan(0);
+      for (const card of sampleCards) {
+        expect(card).not.toMatch(/<a\b/);
+        expect(card).not.toContain("on Mingla");
+      }
     }
+    // Rework P3-5: a plan preview is a preview: no analytics consent banner over the frame.
+    expect(html).not.toContain("Your choice");
+    expect(html).not.toContain("Analytics choices");
     for (const href of [...html.matchAll(/<a\b[^>]*\shref="(\/[^"]*)"/g)].map((m) => m[1]!.replace(/&amp;/g, "&"))) {
       if (href.startsWith("/media/") || href.startsWith("/fonts/") || href.startsWith("/om/")) continue;
       expect(href.startsWith("/plan-preview?")).toBe(true);

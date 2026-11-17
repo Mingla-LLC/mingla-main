@@ -52,7 +52,14 @@ export async function loadPlanPreviewArtifact(rawKey: string | null | undefined,
   const { body, samples } = splitPlanArtifact(parsed);
   if (String(body.brand_id).toLowerCase() !== key.brandId || !planPreviewFresh(body.generated_at, now)) throw new Error("NOT_FOUND");
   assertSiteArtifact(body, 2, bytes.byteLength);
-  return { artifact: body as unknown as ArtifactV2, samples, key };
+  /*
+   * A plan preview is a preview: relabel its publication id `preview-<nonce>`
+   * (the team preview's marker) so the runtime treats it as one. Nothing in it
+   * is counted, and the analytics consent banner is not drawn over the frame
+   * (tester P3-5): there is no visitor to ask.
+   */
+  const relabelled = { ...body, publication_id: `preview-${key.previewId.slice("plan-".length)}` };
+  return { artifact: relabelled as unknown as ArtifactV2, samples, key };
 }
 
 /** Stable ids for sample rows (never a real Mingla id: the `5a3p1e` prefix is not hex-random). */
