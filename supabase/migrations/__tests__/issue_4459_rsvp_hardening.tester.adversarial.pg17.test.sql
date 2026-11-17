@@ -272,4 +272,74 @@ BEGIN
     AND NOT pg_temp.member('a', 'w2'));
 END $twostep$;
 
+-- Retest 2 (2026-11-17): variants of the waitlist and approval guard.
+CREATE FUNCTION pg_temp.waitlisted(p_tag text) RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE v uuid;
+BEGIN
+  PERFORM pg_temp.as_server();
+  PERFORM pg_temp.person(p_tag);
+  INSERT INTO public.event_rsvps(event_id, user_id, guest_name, rsvp_status, approval_status, waitlisted_at)
+    VALUES (pg_temp.u('auto'), pg_temp.u(p_tag), p_tag, 'waitlisted', 'approved', now())
+    RETURNING id INTO v;
+  RETURN v;
+END $f$;
+CREATE FUNCTION pg_temp.status(p_rsvp uuid) RETURNS text LANGUAGE sql AS $f$
+  SELECT rsvp_status FROM public.event_rsvps WHERE id = p_rsvp
+$f$;
+DO $variants$
+DECLARE v uuid; r text; n integer;
+BEGIN
+  -- V1 waitlisted -> maybe in one step.
+  v := pg_temp.waitlisted('v1');
+  r := pg_temp.try_as('v1', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'maybe', v));
+  PERFORM pg_temp.ok('T4-V1 waitlisted -> maybe is refused', pg_temp.status(v) = 'waitlisted' AND NOT pg_temp.member('a', 'v1'));
+
+  -- V2 waitlisted -> not_going -> maybe.
+  v := pg_temp.waitlisted('v2');
+  PERFORM pg_temp.try_as('v2', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'not_going', v));
+  r := pg_temp.try_as('v2', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'maybe', v));
+  PERFORM pg_temp.ok('T4-V2 waitlisted -> not_going -> maybe is refused', pg_temp.status(v) <> 'maybe' AND NOT pg_temp.member('a', 'v2'));
+
+  -- V3 leave the waitlist and clear the mark in the same write that rejoins.
+  v := pg_temp.waitlisted('v3');
+  PERFORM pg_temp.try_as('v3', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'not_going', v));
+  r := pg_temp.try_as('v3', format('UPDATE public.event_rsvps SET rsvp_status = %L, waitlisted_at = NULL WHERE id = %L', 'going', v));
+  PERFORM pg_temp.ok('T4-V3 clearing waitlisted_at while rejoining is refused', pg_temp.status(v) <> 'going' AND NOT pg_temp.member('a', 'v3'));
+
+  -- V4 delete the waitlisted row and insert a fresh going row.
+  v := pg_temp.waitlisted('v4');
+  r := pg_temp.try_as('v4', format('DELETE FROM public.event_rsvps WHERE id = %L', v));
+  RAISE NOTICE 'V4 delete=%', r;
+  r := pg_temp.try_as('v4', format('INSERT INTO public.event_rsvps(event_id, user_id, guest_name, rsvp_status, approval_status) VALUES (%L, %L, %L, %L, %L)',
+    pg_temp.u('auto'), pg_temp.u('v4'), 'V4', 'going', 'pending'));
+  RAISE NOTICE 'V4 insert=%', r;
+  PERFORM pg_temp.ok('T4-V4 delete then insert does not reach approved or the chat',
+    NOT EXISTS (SELECT 1 FROM public.event_rsvps WHERE user_id = pg_temp.u('v4') AND approval_status = 'approved' AND rsvp_status = 'going')
+    AND NOT pg_temp.member('a', 'v4'));
+
+  -- V5 hand an approved row to someone else.
+  PERFORM pg_temp.person('v5');
+  r := pg_temp.try_as('sub', format('UPDATE public.event_rsvps SET user_id = %L WHERE user_id = %L', pg_temp.u('v5'), pg_temp.u('sub')));
+  RAISE NOTICE 'V5 transfer=%', r;
+  PERFORM pg_temp.ok('T4-V5 an approved RSVP cannot be handed to another account',
+    NOT EXISTS (SELECT 1 FROM public.event_rsvps WHERE user_id = pg_temp.u('v5')) AND NOT pg_temp.member('a', 'v5'));
+
+  -- V6 a pending row cannot set promoted_at to unlock the rejoin.
+  v := pg_temp.waitlisted('v6');
+  PERFORM pg_temp.try_as('v6', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'not_going', v));
+  r := pg_temp.try_as('v6', format('UPDATE public.event_rsvps SET promoted_at = now(), rsvp_status = %L WHERE id = %L', 'going', v));
+  PERFORM pg_temp.ok('T4-V6 a client cannot stamp promoted_at itself', pg_temp.status(v) <> 'going' AND NOT pg_temp.member('a', 'v6'));
+
+  -- V7 legitimate: after a server promotion the guest may step out and back.
+  v := pg_temp.waitlisted('v7');
+  PERFORM pg_temp.as_server();
+  UPDATE public.events SET rsvp_capacity = rsvp_capacity + 10 WHERE id = pg_temp.u('auto');
+  n := (SELECT count(*) FROM public.event_rsvps WHERE id = v AND promoted_at IS NOT NULL AND rsvp_status = 'going');
+  PERFORM pg_temp.try_as('v7', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'not_going', v));
+  r := pg_temp.try_as('v7', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'going', v));
+  RAISE NOTICE 'V7 promoted=% back=%', n, r;
+  PERFORM pg_temp.ok('T4-V7 a server-promoted guest can step out and back and stays in the chat',
+    n = 1 AND r = 'ok' AND pg_temp.status(v) = 'going' AND pg_temp.member('a', 'v7'));
+END $variants$;
+
 ROLLBACK;
