@@ -24,7 +24,7 @@
  *     record by an address Studio stores as a relation, are not Ari's to
  *     write (ARI_EXCLUDED_FIELDS, each with its reason).
  */
-import { BLOCK_CATALOG, BLOCK_TYPES, type BlockType, type FieldSpec } from "./blocks.ts";
+import { ARI_BLOCK_TYPES, BLOCK_CATALOG, type BlockType, type FieldSpec } from "./blocks.ts";
 import { ARI_DESIGN_KEYS, ariDesignVariants, DESIGNS, type DesignKey } from "./designs.ts";
 import { OWNER_FONT_SLOT_KEYS } from "./fontSlots.ts";
 import { FORBIDDEN_TEXT, isSafeHref, UUID_RE } from "./safety.ts";
@@ -65,6 +65,16 @@ export const ARI_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   "destination_grid.destinations": "destinations are picked in Studio or the Website screen (a stored relation)",
   "story_grid.category": "a category is picked in Studio or the Website screen (a stored relation)",
   "team.members.media_url": "portraits are attached in Studio (a stored relation)",
+  // #4453 milestone 5 — held from Ari until milestone 7 (#3355 frozen declarations).
+  "hero.booking_bar": "the booking bar is offered to Ari with the Ari composition PR",
+  "hero.booking_target_id": "the booking bar is offered to Ari with the Ari composition PR",
+  "hero.show_rating": "the Mingla rating is offered to Ari with the Ari composition PR",
+  "testimonials.show_rating": "the Mingla rating is offered to Ari with the Ari composition PR",
+};
+
+/** #4453 milestone 5 — enum values held from Ari until milestone 7 (the stay grid). */
+export const ARI_HELD_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
+  "offering_grid.kind": ["stay"],
 };
 
 function ariKey(key: string): string {
@@ -101,7 +111,7 @@ function fieldSchema(spec: FieldSpec, path: string): JsonSchema | null {
       return { type: "boolean", description: spec.label };
     case "enum":
     case "icon":
-      return { type: "string", enum: [...spec.values], description: spec.label };
+      return { type: "string", enum: spec.values.filter((value) => !(ARI_HELD_ENUM_VALUES[path] ?? []).includes(value)), description: spec.label };
     case "timezone":
     case "city_timezone": // same declaration as timezone: Ari's frozen tool schema must not change (#3355); blocks.ts still enforces region/city
       return { type: "string", maxLength: 60, description: `${spec.label} (IANA zone, e.g. Europe/London)` };
@@ -169,12 +179,12 @@ export function blockSchema(type: BlockType, design?: DesignKey): JsonSchema {
 
 /** Every block a page may carry (under one design, or any). */
 export function blocksSchema(design?: DesignKey): JsonSchema {
-  return { anyOf: BLOCK_TYPES.map((type) => blockSchema(type, design)) };
+  return { anyOf: ARI_BLOCK_TYPES.map((type) => blockSchema(type, design)) };
 }
 
 /** The catalogue as Ari reads it (get_block_catalog): label, purpose, layouts, fields. */
 export function ariBlockCatalog(design?: DesignKey): Array<{ type: BlockType; label: string; description: string; variants: string[]; fields: string[] }> {
-  return BLOCK_TYPES.map((type) => {
+  return ARI_BLOCK_TYPES.map((type) => {
     const schema = blockSchema(type, design);
     return {
       type,

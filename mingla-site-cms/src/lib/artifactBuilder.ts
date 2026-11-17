@@ -640,6 +640,11 @@ export async function buildPublicationArtifact(
               ? { heading_lines: (raw.heading_lines || []).filter((row: AnyDoc) => typeof row.text === "string" && row.text.trim()).map((row: AnyDoc) => ({ text: row.text })) }
               : {}),
             ...optionalFlag(raw.show_search, "show_search"),
+            // #4453 milestone 5 — the booking bar (with its target) and the Mingla rating.
+            ...(typeof raw.booking_bar === "string" && raw.booking_bar !== "" && raw.booking_bar !== "none"
+              ? { booking_bar: raw.booking_bar, ...optionalText(raw.booking_target_id, "booking_target_id") }
+              : {}),
+            ...optionalFlag(raw.show_rating, "show_rating"),
             subheading: raw.subheading,
             media_url: renderMedia(raw.media, "").url,
             // Optional, and never a replacement for the still above. A hero
@@ -907,6 +912,7 @@ export async function buildPublicationArtifact(
               from_collection: true,
               ...(picked.length ? { testimonial_ids: picked.map((testimonialId: string) => ({ id: testimonialId })) } : {}),
               ...optionalNumber(raw.limit, "limit"),
+              ...optionalFlag(raw.show_rating, "show_rating"),
               ...optionalCta(raw),
             };
           }
@@ -1098,6 +1104,41 @@ export async function buildPublicationArtifact(
               ...optionalText(row.icon, "icon"),
             })),
           };
+        // #4453 milestone 5 — the live booking blocks carry only their target; Mingla fills them at render.
+        case "availability": {
+          const nights = raw.source === "stay_nights";
+          return {
+            type: "availability",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            source: raw.source,
+            ...(nights ? optionalText(raw.stay_offering_id, "stay_offering_id") : optionalText(raw.offering_id, "offering_id")),
+            ...(raw.source === "venue_slots" ? optionalNumber(raw.party_size, "party_size") : {}),
+            ...optionalNumber(raw.days, "days"),
+          };
+        }
+        case "ticket_tiers":
+          return {
+            type: "ticket_tiers",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            offering_id: raw.offering_id,
+            ...(raw.media ? { media_url: renderMedia(raw.media, "").url } : {}),
+          };
+        case "process_steps":
+          return {
+            type: "process_steps",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            items: (raw.items || []).map((row: AnyDoc) => ({
+              title: row.title,
+              ...optionalText(row.text, "text"),
+              ...optionalText(row.time, "time"),
+            })),
+          };
         case "contact_details":
           return {
             type: "contact_details",
@@ -1199,6 +1240,9 @@ export async function buildPublicationArtifact(
       items,
       ...(cta ? { header_cta: cta } : {}),
       ...optionalText(doc?.wordmark, "wordmark"),
+      // #4453 milestone 5 — the sticky phone booking bar.
+      ...optionalFlag(doc?.sticky_booking, "sticky_booking"),
+      ...(doc?.sticky_booking === true ? { ...optionalText(doc?.sticky_title, "sticky_title"), ...optionalText(doc?.sticky_note, "sticky_note") } : {}),
     };
   };
   // #2829 — no address, no build: a site publishes only under the primary

@@ -10,6 +10,8 @@ export * from "./icons.ts";
 export * from "./blocks.ts";
 export * from "./designs.ts";
 export * from "./offerings.ts";
+export * from "./availability.ts";
+export * from "./ratings.ts";
 export * from "./collections.ts";
 export * from "./history.ts";
 export * from "./forms.ts";

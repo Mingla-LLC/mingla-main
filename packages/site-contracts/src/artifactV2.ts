@@ -171,6 +171,15 @@ export type SiteNavigation = {
    * header (every site published before #4453). Must be one the design offers.
    */
   header_variant?: HeaderVariant;
+  /*
+   * #4453 milestone 5 (§5.7) — the sticky phone booking bar: below 721 px,
+   * after the hero, one Mingla action (the page's hero booking target, else
+   * the header button). The title and note are Ari or owner text checked by
+   * the claim check; a "from" price only ever comes from the live feed.
+   */
+  sticky_booking?: boolean;
+  sticky_title?: string;
+  sticky_note?: string;
 };
 
 /** #2829 W7 — the social networks a footer may link (drawn by the runtime, never uploaded). */
@@ -508,7 +517,10 @@ function assertNavigation(navigation: unknown, pages: PageNode[], action: Mingla
   const live = new Set(pages.filter((page) => page.enabled).map((page) => page.path));
   if (
     !plainObject(navigation) ||
-    !hasOnlyKeys(navigation, ["items", "header_cta", "wordmark", "header_variant"]) ||
+    !hasOnlyKeys(navigation, ["items", "header_cta", "wordmark", "header_variant", "sticky_booking", "sticky_title", "sticky_note"]) ||
+    (navigation.sticky_booking !== undefined && typeof navigation.sticky_booking !== "boolean") ||
+    !boundedText(navigation.sticky_title, 40) ||
+    !boundedText(navigation.sticky_note, 60) ||
     (navigation.header_variant !== undefined && !(HEADER_VARIANTS as readonly unknown[]).includes(navigation.header_variant)) ||
     !Array.isArray(navigation.items) ||
     navigation.items.length > MAX_NAV_ITEMS ||

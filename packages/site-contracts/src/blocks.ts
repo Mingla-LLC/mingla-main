@@ -130,6 +130,17 @@ export const BLOCK_CATALOG = {
       },
       subheading: { kind: "text", max: 300, label: "Line under the headline" },
       show_search: { kind: "boolean", label: "Show the trip search" },
+      /*
+       * #4453 milestone 5 (§5.5) — the hero booking bar: blank date, time and
+       * party (a table), dates and guests (a stay), or a date and guests (an
+       * experience), handed to this brand's own Mingla page with the fields
+       * pre-filled. `trip_search` is the stored `show_search`. The target is
+       * the brand's own venue, stay or experience; Core resolves its page.
+       */
+      booking_bar: { kind: "enum", values: ["none", "venue_table", "stay", "experience", "trip_search"], label: "Booking bar" },
+      booking_target_id: { kind: "uuid", label: "What the booking bar books" },
+      /* #4453 milestone 5 (§5.6) — the Mingla rating badge (approved Mingla reviews only; no number is stored). */
+      show_rating: { kind: "boolean", label: "Show the Mingla rating" },
       media_url: { kind: "media_url", required: true, label: "Picture" },
       video_url: { kind: "video_url", label: "Background film" },
       ctas: {
@@ -200,7 +211,7 @@ export const BLOCK_CATALOG = {
        * request time (with the publication's snapshot as fallback), never from
        * copies in the artifact. `mode` marks a live grid.
        */
-      kind: { kind: "enum", values: ["all", "trip", "event", "experience"], label: "Show" },
+      kind: { kind: "enum", values: ["all", "trip", "event", "experience", "stay"], label: "Show" },
       mode: { kind: "enum", values: ["upcoming", "past", "all"], label: "Which dates" },
       offering_ids: {
         kind: "list",
@@ -385,6 +396,8 @@ export const BLOCK_CATALOG = {
         item: { id: { kind: "uuid", required: true, label: "Review" } },
       },
       limit: { kind: "integer", min: 1, max: 24, label: "Show at most" },
+      /* #4453 milestone 5 (§5.6) — the "{score} · {count} reviews on Mingla" line (approved Mingla reviews only). */
+      show_rating: { kind: "boolean", label: "Show the Mingla rating" },
       ...ctaPair,
       /* The original form (gögi): quotes typed into the block. A block is one or the other. */
       items: {
@@ -648,6 +661,67 @@ export const BLOCK_CATALOG = {
       },
     },
   },
+  /*
+   * #4453 milestone 5 (§5.1) — live slots, nights or dates from Mingla, each
+   * open one a link to this brand's Mingla page with the booking pre-filled.
+   * The block holds only which venue, room or offering and how many days; the
+   * slots themselves are read at request time and never stored.
+   */
+  availability: {
+    label: "Live availability",
+    description: "Open times, nights or dates, live from Mingla, each one booking through Mingla.",
+    pageKinds: ANY_PAGE,
+    fields: {
+      eyebrow,
+      heading: heading(),
+      intro: { kind: "text", max: 300, label: "Line under the heading" },
+      source: { kind: "enum", values: ["venue_slots", "experience_slots", "trip_departures", "event_dates", "stay_nights"], required: true, label: "What is shown" },
+      offering_id: { kind: "uuid", label: "Venue or offering" },
+      stay_offering_id: { kind: "uuid", label: "Room" },
+      party_size: { kind: "integer", min: 1, max: 20, label: "Party size (tables)" },
+      days: { kind: "integer", min: 3, max: 14, label: "Days shown" },
+    },
+  },
+  /*
+   * #4453 milestone 5 (§5.4) — one upcoming event's public ticket tiers, in
+   * Mingla's order, read at request time. Hidden, link-only and member-pass
+   * tiers never show; the block renders nothing once the event ends.
+   */
+  ticket_tiers: {
+    label: "Ticket tiers",
+    description: "The tickets on sale for one of your events, live from Mingla.",
+    pageKinds: ANY_PAGE,
+    fields: {
+      eyebrow,
+      heading: heading(),
+      intro: { kind: "text", max: 300, label: "Line under the heading" },
+      offering_id: { kind: "uuid", required: true, label: "Event" },
+      media_url: { kind: "media_url", label: "Picture" },
+    },
+  },
+  /* #4453 milestone 5 (§5.3) — "what happens when someone comes", the owner's own steps (Q7), copied verbatim. */
+  process_steps: {
+    label: "How it works",
+    description: "The three to five steps a guest goes through, in your words.",
+    pageKinds: ANY_PAGE,
+    fields: {
+      eyebrow,
+      heading: heading(),
+      intro: { kind: "text", max: 300, label: "Line under the heading" },
+      items: {
+        kind: "list",
+        min: 3,
+        max: 5,
+        required: true,
+        label: "Steps",
+        item: {
+          title: { kind: "text", max: 80, required: true, label: "Step" },
+          text: { kind: "text", max: 300, label: "What happens" },
+          time: { kind: "text", max: 24, label: "How long" },
+        },
+      },
+    },
+  },
   contact_details: {
     label: "Contact details",
     description: "Your email and where you are, in tiles.",
@@ -688,7 +762,33 @@ export type BlockValidationContext = {
 };
 
 /** #4453 PR 2 — blocks whose every button is a booking action (offerings and booking blocks). */
-export const BOOKING_BLOCK_TYPES: readonly string[] = ["offering_grid", "offering_history", "venue_reservation", "menu_board"];
+export const BOOKING_BLOCK_TYPES: readonly string[] = ["offering_grid", "offering_history", "venue_reservation", "menu_board", "availability", "ticket_tiers"];
+
+/**
+ * #4453 milestone 5 — the block types SITES_BOOKING_BLOCKS offers. They are
+ * NOT offered to Ari until the Ari composition PR (milestone 7), so Ari's
+ * frozen tool declarations stay byte-identical (#3355). Rendering a stored
+ * one is never flagged.
+ * [TRANSITIONAL] booking blocks held from Ari — exit: PR 7 (4453-ari-composer) offers them behind SITES_ARI_DESIGN_PASS.
+ */
+export const BOOKING_BLOCK_NEW_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
+/** #4453 milestone 5 — new fields on existing blocks, offered with the flag and held from Ari the same way. */
+export const BOOKING_BLOCK_NEW_FIELDS: readonly string[] = ["hero.booking_bar", "hero.booking_target_id", "hero.show_rating", "testimonials.show_rating"];
+/** The block types Ari's tools declare (every type minus the held booking blocks). */
+export const ARI_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type));
+
+/**
+ * #4453 milestone 5 — does this block use something SITES_BOOKING_BLOCKS
+ * offers (a new type, a hero booking bar other than the stored trip search, a
+ * rating)? Studio refuses a NEW one while the flag is off; a stored one keeps
+ * rendering.
+ */
+export function usesBookingBlocksFeature(block: { type?: unknown; blockType?: unknown; [key: string]: unknown }): boolean {
+  const type = typeof block.type === "string" ? block.type : block.blockType;
+  if ((BOOKING_BLOCK_NEW_TYPES as readonly unknown[]).includes(type)) return true;
+  if (type === "hero" && typeof block.booking_bar === "string" && !["none", "trip_search"].includes(block.booking_bar)) return true;
+  return (type === "hero" || type === "testimonials") && block.show_rating === true;
+}
 
 /** Whether one action field on one block (or list row) books/pays or only informs. */
 export function actionIntentFor(
@@ -790,6 +890,29 @@ export function assertSiteBlock(value: unknown, ctx: BlockValidationContext): as
   }
   if (value.type === "offering_grid") assertOfferingGridSource(value);
   if (value.type === "testimonials") assertTestimonialsSource(value);
+  if (value.type === "availability") assertAvailabilityTarget(value);
+  if (value.type === "hero") assertHeroBookingBar(value);
+}
+
+/*
+ * #4453 milestone 5 — an availability block names exactly the thing its
+ * source reads: a room for nights, otherwise a venue or offering; a party
+ * size only for table slots.
+ */
+function assertAvailabilityTarget(block: Record<string, unknown>): void {
+  const nights = block.source === "stay_nights";
+  const has = (key: string) => block[key] !== undefined && block[key] !== null;
+  if (nights ? !has("stay_offering_id") || has("offering_id") : !has("offering_id") || has("stay_offering_id")) {
+    throw new Error("ARTIFACT_BLOCK_CONTENT_MISMATCH:availability.target");
+  }
+  if (has("party_size") && block.source !== "venue_slots") throw new Error("ARTIFACT_BLOCK_CONTENT_MISMATCH:availability.party_size");
+}
+
+/* #4453 milestone 5 — a booking bar for a venue, stay or experience names its target; none and the trip search name none. */
+function assertHeroBookingBar(block: Record<string, unknown>): void {
+  const targeted = ["venue_table", "stay", "experience"].includes(String(block.booking_bar));
+  const hasTarget = block.booking_target_id !== undefined && block.booking_target_id !== null;
+  if (targeted !== hasTarget) throw new Error("ARTIFACT_BLOCK_CONTENT_MISMATCH:hero.booking_target_id");
 }
 
 /*
