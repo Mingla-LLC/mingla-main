@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Modal, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { DESIGNS, type DesignKey } from "../../../../../packages/site-contracts/src/designs.ts";
+import { DESIGNS } from "../../../../../packages/site-contracts/src/designs.ts";
 import { planBuildSentence } from "../../../../../packages/site-contracts/src/planPreview.ts";
 import { isFormatKey } from "../../../../../packages/site-contracts/src/formats.ts";
 import { defaultPreviewPreference, type PreviewDevicePreference } from "../../../sites/previewDevice";
