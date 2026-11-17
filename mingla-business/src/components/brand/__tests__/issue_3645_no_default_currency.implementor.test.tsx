@@ -469,6 +469,13 @@ describe("#3645 no currency is saved until a payout country is chosen", () => {
       press(byTestId(tree.root, "brand-payout-country-field-retry")[0]!);
     });
     await settle();
+    // [TEST-MOD-APPROVED #4420] the retry resolves through the lazily loaded
+    // payout field; under full-suite CPU load six fixed ticks were not always
+    // enough (seen red once in the --maxWorkers=2 full run, green alone).
+    // Keep ticking, bounded, until the write lands — the assertion is unchanged.
+    for (let i = 0; i < 40 && !allText(tree.root).includes("Nigeria · NGN"); i += 1) {
+      await settle();
+    }
     expect(selectProvider).toHaveBeenCalledTimes(2);
     expect(allText(tree.root)).toContain("Nigeria · NGN");
     await TestRenderer.act(async () => tree.unmount());

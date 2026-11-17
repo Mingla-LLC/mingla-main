@@ -171,6 +171,10 @@
       "readyBank": "Cont bancar în {{country}}",
       "readyBankAny": "Cont bancar în țara ta",
       "readyTax": "Cod fiscal (doar companii înregistrate)"
+    },
+    "stepper": {
+      "saved": "Salvat",
+      "steps": "Pași"
     }
   },
   "doorMode": {

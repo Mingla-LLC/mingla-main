@@ -43,12 +43,11 @@ import {
 import * as Haptics from "expo-haptics";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  materials,
+  scrim,
 } from "../../../../src/constants/designSystem";
 import {
   useScanStore,
@@ -76,6 +75,7 @@ import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { doorExtrasLine, readDoorExtras } from "../../../../src/components/scanner/doorExtras";
+import { doorBookedLine } from "../../../../src/utils/bookedStart";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -147,6 +147,8 @@ interface ResultOverlayState {
   detail?: string;
   /** issue #3281 — what the guest is still owed; never clipped. */
   extras?: string;
+  /** issue #3281 — "Booked for Sat, Nov 14, 7:30 PM"; never clipped. */
+  booked?: string;
 }
 
 interface ResultOverlaySpec {
@@ -160,14 +162,14 @@ const overlaySpec = (kind: ScanResult): ResultOverlaySpec => {
     case "success":
       return {
         iconName: "check",
-        iconColor: "#34c759",
-        badgeBg: "rgba(52, 199, 89, 0.18)",
+        iconColor: color.successText,
+        badgeBg: color.successTint,
       };
     case "duplicate":
       return {
         iconName: "flag",
-        iconColor: accent.warm,
-        badgeBg: "rgba(235, 120, 37, 0.18)",
+        iconColor: color.text1,
+        badgeBg: color.fill.tabOn,
       };
     case "wrong_event":
     case "not_found":
@@ -175,8 +177,8 @@ const overlaySpec = (kind: ScanResult): ResultOverlaySpec => {
     case "cancelled_order":
       return {
         iconName: "close",
-        iconColor: semantic.error,
-        badgeBg: "rgba(239, 68, 68, 0.18)",
+        iconColor: color.danger,
+        badgeBg: color.errorTint,
       };
     // ORCH-0793 — time-window discriminators. Warning tone (amber/flag)
     // matches "duplicate" because both are recoverable: the ticket stays
@@ -185,8 +187,8 @@ const overlaySpec = (kind: ScanResult): ResultOverlaySpec => {
     case "event_ended":
       return {
         iconName: "flag",
-        iconColor: accent.warm,
-        badgeBg: "rgba(235, 120, 37, 0.18)",
+        iconColor: color.text1,
+        badgeBg: color.fill.tabOn,
       };
     default: {
       const _exhaust: never = kind;
@@ -406,12 +408,17 @@ export default function ScannerCameraRoute(): React.ReactElement {
               ? doorExtrasLine(readDoorExtras(result.extras), admittedId)
               : null;
           const extras = extrasLine ?? undefined;
+          // issue #3281 — the start this guest booked, in the offering's zone.
+          const booked =
+            doorBookedLine(kind, result.bookedStartAt, event.timezone) ??
+            undefined;
           if (kind === "success") {
             showResult({
               kind,
               message: `${result.buyerName ?? "Guest"} checked in`,
               detail: result.ticketName ?? "Ticket",
               extras,
+              booked,
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -438,7 +445,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             } else {
               message = "Ticket not found";
             }
-            showResult({ kind, message, detail, extras });
+            showResult({ kind, message, detail, extras, booked });
             void Haptics.notificationAsync(
               kind === "duplicate" ||
                 kind === "not_yet_open" ||
@@ -569,6 +576,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
               message: copy.message,
               detail: copy.detail,
               extras,
+              booked,
             });
           } catch {
             // Keep the authoritative base overlay.
@@ -696,7 +704,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
           <View style={styles.chromeRightSlot} />
         </View>
         <View style={styles.emptyHost}>
-          <ActivityIndicator color={textTokens.primary} />
+          <ActivityIndicator color={color.text1} />
         </View>
       </View>
     );
@@ -718,7 +726,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         </View>
         <View style={styles.permWrap}>
           <View style={styles.permIconBadge}>
-            <Icon name="qr" size={36} color={textTokens.primary} />
+            <Icon name="qr" size={36} color={color.text1} />
           </View>
           <Text style={styles.permTitle}>
             {askable
@@ -804,7 +812,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
               accessibilityRole="button"
               // issue #3281 — a screen reader hears the result, the ticket and
               // what the guest is still owed, not only how to dismiss it.
-              accessibilityLabel={[overlay.message, overlay.detail, overlay.extras]
+              accessibilityLabel={[overlay.message, overlay.detail, overlay.booked, overlay.extras]
                 .filter((part): part is string => typeof part === "string" && part.length > 0)
                 .join(". ")}
               accessibilityHint="Dismisses the scan result"
@@ -830,6 +838,11 @@ export default function ScannerCameraRoute(): React.ReactElement {
                   {overlay.detail}
                 </Text>
               ) : null}
+              {overlay.booked !== undefined ? (
+                <Text style={styles.overlayDetail} testID="scan-result-booked">
+                  {overlay.booked}
+                </Text>
+              ) : null}
               {overlay.extras !== undefined ? (
                 // issue #3281 — its own line, unclipped: a long ticket or day
                 // label must not hide a count or an "(another day)".
@@ -851,7 +864,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
           style={styles.findPill}
           testID="scanner-find-by-name"
         >
-          <Icon name="search" size={16} color="#ffffff" />
+          <Icon name="search" size={16} color={color.textStrong} />
           <Text style={styles.findPillText}>Find by name</Text>
         </Pressable>
       </View>
@@ -860,7 +873,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
       <View
         style={[
           styles.logHost,
-          { paddingBottom: insets.bottom + spacing.sm },
+          { paddingBottom: insets.bottom + space[2] },
         ]}
       >
         <Pressable
@@ -877,7 +890,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
           <Icon
             name={logExpanded ? "chevD" : "chevU"}
             size={16}
-            color={textTokens.tertiary}
+            color={color.text3}
           />
         </Pressable>
         {logExpanded ? (
@@ -909,6 +922,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             eventId={event.id}
             noun={kindCfg.noun}
             onAdmitted={handleNameAdmitted}
+            timeZone={event.timezone}
           />
         </Suspense>
       ) : null}
@@ -990,22 +1004,22 @@ const SessionLogRow: React.FC<SessionLogRowProps> = ({ scan }) => {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: color.mask,
   },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
+    backgroundColor: scrim.modal,
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: "#ffffff",
+    color: color.textStrong,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -1014,22 +1028,22 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
     justifyContent: "center",
     alignItems: "center",
   },
   loadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   permWrap: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingVertical: space[7],
     justifyContent: "center",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   permIconBadge: {
     width: 96,
@@ -1037,70 +1051,70 @@ const styles = StyleSheet.create({
     borderRadius: 48,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.md,
+    borderColor: color.line,
+    marginBottom: space[4],
   },
   permTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
   permCopy: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
     textAlign: "center",
     maxWidth: 320,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   permActions: {
     alignSelf: "stretch",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   cameraWrap: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: color.mask,
   },
   reticleWrap: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   reticle: {
     width: 240,
     height: 240,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.lineStrong,
   },
   reticleHelper: {
     fontSize: 13,
-    color: "#ffffff",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    paddingHorizontal: spacing.sm,
+    color: color.textStrong,
+    backgroundColor: scrim.modal,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
     borderRadius: 6,
     overflow: "hidden",
   },
   overlayHost: {
     position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.lg,
+    left: space[4],
+    right: space[4],
+    bottom: space[6],
   },
   overlayCard: {
-    backgroundColor: "rgba(15, 17, 22, 0.94)",
+    backgroundColor: materials.sheet.solidFill,
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    padding: spacing.lg,
+    borderColor: color.line,
+    padding: space[6],
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   overlayIconBadge: {
     width: 64,
@@ -1112,76 +1126,76 @@ const styles = StyleSheet.create({
   overlayMessage: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   overlayDetail: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   findWrap: {
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    paddingVertical: space[2],
+    backgroundColor: scrim.modal,
   },
   findPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     minHeight: 44,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.24)",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.pressed,
   },
   findPillText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#ffffff",
+    color: color.textStrong,
   },
   logHost: {
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    backgroundColor: scrim.modal,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
+    borderTopColor: color.line,
   },
   logHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[4],
+    gap: space[2],
   },
   logHeaderText: {
     flex: 1,
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: 0.4,
   },
   logScroll: {
     maxHeight: 220,
   },
   logScrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
+    gap: space[1],
   },
   logEmpty: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
   },
   logEmptyText: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
   },
   logRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   logRowIconBadge: {
     width: 24,
@@ -1198,11 +1212,11 @@ const styles = StyleSheet.create({
   logRowName: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   logRowSubline: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   logRowRight: {
     alignItems: "flex-end",
@@ -1210,18 +1224,18 @@ const styles = StyleSheet.create({
   },
   logRowTime: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   logRowBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
   logRowBadgeText: {
     fontSize: 9,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 0.8,
   },
 });

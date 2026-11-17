@@ -2,12 +2,10 @@ import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandPayoutScreen } from "../../hooks/useBrandPayoutScreen";
 import { formatCurrency } from "../../utils/currency";
@@ -20,6 +18,8 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
+import { DesktopColumns } from "../ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface BrandPayoutOverviewProps {
   brandId: string;
@@ -48,17 +48,17 @@ const formatDate = (iso: string): string => {
 };
 
 const stateTone = (state: HostPayoutState): { bg: string; fg: string } => {
-  if (state === "paid") return { bg: semantic.successTint, fg: semantic.success };
+  if (state === "paid") return { bg: color.successTint, fg: color.success };
   if (state === "couldnt_send") {
-    return { bg: semantic.errorTint, fg: semantic.error };
+    return { bg: color.errorTint, fg: color.errorText };
   }
   if (["late_on_us", "waiting_for_bank", "needs_you"].includes(state)) {
-    return { bg: semantic.warningTint, fg: semantic.warning };
+    return { bg: color.warningTint, fg: color.warning };
   }
   if (state === "paused" || state === "cancelled") {
-    return { bg: glass.tint.profileElevated, fg: textTokens.secondary };
+    return { bg: color.fill.tile, fg: color.text2 };
   }
-  return { bg: semantic.infoTint, fg: semantic.info };
+  return { bg: color.infoTint, fg: color.info };
 };
 
 const amountFor = (release: PayoutScreenReleaseDTO): number =>
@@ -128,7 +128,7 @@ const PayoutRow: React.FC<{
           <Text style={[styles.statePillText, { color: tone.fg }]}>{copy.label}</Text>
         </View>
       </View>
-      <Icon name="chevR" size={18} color={textTokens.tertiary} />
+      <Icon name="chevR" size={18} color={color.text3} />
     </Pressable>
   );
 };
@@ -147,6 +147,7 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
   suppressAttention = false,
 }) => {
   const query = useBrandPayoutScreen(brandId);
+  const { isWideDesktop } = useResponsiveLayout();
   const data = query.data ?? null;
   const unpaid = useMemo(
     () => [...(data?.releases.filter((release) =>
@@ -184,7 +185,7 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
   }
   if (query.isError) {
     return (
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.title}>Couldn’t load payouts</Text>
         <Text style={styles.body}>Your money data is safe. Check your connection and try again.</Text>
         <View style={styles.action}><Button label="Try again" onPress={() => void query.refetch()} variant="secondary" size="md" /></View>
@@ -205,12 +206,74 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
     ? "—"
     : formatCurrency(cents, currency, true);
 
+  const heroCard = (
+    <GlassCard variant="elevated" padding={space[6]} style={styles.hero}>
+      <Text style={styles.eyebrow}>{heroLabel}</Text>
+      <Text style={styles.heroAmount}>
+        {renderMoney(heroAmount)}
+      </Text>
+      {next !== null ? (
+        <Text style={styles.nextDate}>
+          {rowTiming(next)}
+        </Text>
+      ) : <Text style={styles.body}>New sales will appear here.</Text>}
+    </GlassCard>
+  );
+  const kpiTiles = (
+    <View style={[styles.kpis, isWideDesktop ? styles.kpisWideTiles : null]}>
+      <KpiTile label="Coming to you" value={renderMoney(data?.comingToYouCents ?? 0)} sub="Sold, not sent yet" style={styles.kpi} />
+      <KpiTile label="Paid this month" value={renderMoney(data?.paidThisMonthCents ?? 0)} sub="Reached your bank" style={styles.kpi} />
+    </View>
+  );
+  const rateLine = (
+    <Pressable onPress={onOpenExplainer} accessibilityRole="button" accessibilityLabel="How payouts work" style={styles.rateLine}>
+      <Text style={styles.rateText}>Mingla keeps a flat 4.5%. Mingla pays card processing.</Text>
+      <Text style={styles.learnText}>How payouts work</Text>
+    </Pressable>
+  );
+  const payoutsList = (
+    <>
+      <View style={styles.headingRow}>
+        <Text style={styles.eyebrow}>PAYOUTS</Text>
+      </View>
+      {(data?.releases.length ?? 0) === 0 ? (
+        <GlassCard variant="base" padding={space[6]}>
+          <Text style={styles.title}>No payouts yet</Text>
+          <Text style={styles.body}>Your first payout will be scheduled about a day after a payment.</Text>
+        </GlassCard>
+      ) : (
+        <GlassCard variant="base" padding={0}>
+          {data?.releases.map((release, index) => (
+            <View key={release.id} style={index > 0 ? styles.divider : null}>
+              <PayoutRow release={release} onPress={() => onOpenPayout(release.id)} />
+            </View>
+          ))}
+        </GlassCard>
+      )}
+    </>
+  );
+  const bankCard = latestBank !== null ? (
+    <GlassCard variant="base" padding={space[4]}>
+      <Text style={styles.title}>{latestBank}</Text>
+      <Text style={styles.body}>{bankAccountVerified === true || hasSuccessfulPayout ? "Account verified" : "Account on file"}</Text>
+      <View style={styles.bankActions}>
+        <Button label="Change bank account" onPress={onOpenBank} variant="secondary" size="md" />
+        {onDisconnectBank !== undefined ? (
+          <Button label="Disconnect bank" onPress={onDisconnectBank} variant="ghost" size="md" />
+        ) : null}
+      </View>
+    </GlassCard>
+  ) : null;
+  const csvButton = (
+    <Button label="Download payouts CSV" onPress={onDownloadPayouts} variant="secondary" size="md" leadingIcon="chart" fullWidth />
+  );
+
   return (
     <View style={styles.container} testID="payout-overview">
       {shownAttention !== null ? (
         <GlassCard
           variant="base"
-          padding={spacing.md}
+          padding={space[4]}
           style={[
             styles.alertCard,
             shownAttention.kind === "state" && ["needs_you", "couldnt_send"].includes(shownAttention.release.hostState)
@@ -236,99 +299,75 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
           ) : null}
         </GlassCard>
       ) : null}
-      <GlassCard variant="elevated" padding={spacing.lg} style={styles.hero}>
-        <Text style={styles.eyebrow}>{heroLabel}</Text>
-        <Text style={styles.heroAmount}>
-          {renderMoney(heroAmount)}
-        </Text>
-        {next !== null ? (
-          <Text style={styles.nextDate}>
-            {rowTiming(next)}
-          </Text>
-        ) : <Text style={styles.body}>New sales will appear here.</Text>}
-      </GlassCard>
-
-      <View style={styles.kpis}>
-        <KpiTile label="Coming to you" value={renderMoney(data?.comingToYouCents ?? 0)} sub="Sold, not sent yet" style={styles.kpi} />
-        <KpiTile label="Paid this month" value={renderMoney(data?.paidThisMonthCents ?? 0)} sub="Reached your bank" style={styles.kpi} />
+      {/* #4420 — desktop: the next payout and both totals in one row, then
+          payouts (8) beside the bank, CSV and fee line (4). Phone keeps the
+          single column in the same order as before. */}
+      <View style={isWideDesktop ? styles.kpisWide : styles.container}>
+        <View style={isWideDesktop ? styles.heroWide : null}>{heroCard}</View>
+        {kpiTiles}
       </View>
-
-      <Pressable onPress={onOpenExplainer} accessibilityRole="button" accessibilityLabel="How payouts work" style={styles.rateLine}>
-        <Text style={styles.rateText}>Mingla keeps a flat 4.5%. Mingla pays card processing.</Text>
-        <Text style={styles.learnText}>How payouts work</Text>
-      </Pressable>
-
-      <View style={styles.headingRow}>
-        <Text style={styles.eyebrow}>PAYOUTS</Text>
-      </View>
-      {(data?.releases.length ?? 0) === 0 ? (
-        <GlassCard variant="base" padding={spacing.lg}>
-          <Text style={styles.title}>No payouts yet</Text>
-          <Text style={styles.body}>Your first payout will be scheduled about a day after a payment.</Text>
-        </GlassCard>
-      ) : (
-        <GlassCard variant="base" padding={0}>
-          {data?.releases.map((release, index) => (
-            <View key={release.id} style={index > 0 ? styles.divider : null}>
-              <PayoutRow release={release} onPress={() => onOpenPayout(release.id)} />
+      {isWideDesktop ? (
+        <DesktopColumns
+          main={<View style={styles.container}>{payoutsList}</View>}
+          aside={
+            <View style={styles.container}>
+              {bankCard}
+              {csvButton}
+              {rateLine}
             </View>
-          ))}
-        </GlassCard>
+          }
+        />
+      ) : (
+        <>
+          {rateLine}
+          {payoutsList}
+          {bankCard}
+          {csvButton}
+        </>
       )}
-
-      {latestBank !== null ? (
-        <GlassCard variant="base" padding={spacing.md}>
-          <Text style={styles.title}>{latestBank}</Text>
-          <Text style={styles.body}>{bankAccountVerified === true || hasSuccessfulPayout ? "Account verified" : "Account on file"}</Text>
-          <View style={styles.bankActions}>
-            <Button label="Change bank account" onPress={onOpenBank} variant="secondary" size="md" />
-            {onDisconnectBank !== undefined ? (
-              <Button label="Disconnect bank" onPress={onDisconnectBank} variant="ghost" size="md" />
-            ) : null}
-          </View>
-        </GlassCard>
-      ) : null}
-
-      <Button label="Download payouts CSV" onPress={onDownloadPayouts} variant="secondary" size="md" leadingIcon="chart" fullWidth />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.md },
-  loadingBlock: { width: "100%", borderRadius: 16, backgroundColor: glass.tint.profileElevated },
+  container: { gap: space[4] },
+  loadingBlock: { width: "100%", borderRadius: 16, backgroundColor: color.fill.tile },
   loadingHero: { height: 132 },
   loadingRow: { height: 88 },
-  hero: { borderWidth: 1, borderColor: "rgba(244,114,182,0.28)" },
-  alertCard: { borderWidth: 1, borderColor: "rgba(245,158,11,0.45)", backgroundColor: "#362811" },
-  errorAlertCard: { borderColor: "rgba(239,68,68,0.5)", backgroundColor: "#35171B" },
-  alertTitle: { fontSize: typography.bodyLg.fontSize, lineHeight: typography.bodyLg.lineHeight, fontWeight: "700", color: textTokens.primary },
-  eyebrow: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, fontWeight: "700", letterSpacing: 1.2, color: textTokens.tertiary },
-  heroAmount: { marginTop: spacing.xs, fontSize: 34, lineHeight: 40, fontWeight: "800", color: textTokens.primary },
-  title: { fontSize: typography.h3.fontSize, lineHeight: typography.h3.lineHeight, fontWeight: typography.h3.fontWeight, color: textTokens.primary },
-  body: { marginTop: spacing.xs, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.secondary },
-  nextDate: { marginTop: spacing.sm, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, fontWeight: "700", color: textTokens.primary },
-  action: { marginTop: spacing.md, alignSelf: "flex-start" },
-  kpis: { flexDirection: "row", gap: spacing.sm },
+  hero: { borderWidth: 1, borderColor: color.line },
+  alertCard: { borderWidth: 1, borderColor: color.line, backgroundColor: color.card },
+  errorAlertCard: { borderColor: color.errorLine, backgroundColor: color.card },
+  alertTitle: { fontSize: type.row.fontSize, lineHeight: type.row.lineHeight, fontWeight: "700", color: color.text1 },
+  eyebrow: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, fontWeight: "700", letterSpacing: 1.2, color: color.text3 },
+  heroAmount: { marginTop: space[1], fontSize: 34, lineHeight: 40, fontWeight: "800", color: color.text1 },
+  title: { fontSize: type.h1.fontSize, lineHeight: type.h1.lineHeight, fontWeight: type.h1.fontWeight, color: color.text1 },
+  body: { marginTop: space[1], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 },
+  nextDate: { marginTop: space[2], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, fontWeight: "700", color: color.text1 },
+  action: { marginTop: space[4], alignSelf: "flex-start" },
+  kpis: { flexDirection: "row", gap: space[2] },
+  kpisWide: { flexDirection: "row", alignItems: "stretch", gap: space[4] },
+  heroWide: { flex: 1.4, minWidth: 0 },
+  kpisWideTiles: { flex: 2, minWidth: 0, gap: space[4] },
   kpi: { flex: 1 },
-  headingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xs },
-  rateLine: { minHeight: 44, padding: spacing.sm, borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.18)", flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: spacing.sm },
-  rateText: { flex: 1, minWidth: 220, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.secondary },
-  learnText: { fontSize: typography.buttonMd.fontSize, lineHeight: typography.buttonMd.lineHeight, fontWeight: typography.buttonMd.fontWeight, color: accent.warm },
-  payoutRow: { minHeight: 88, padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  pressed: { backgroundColor: glass.tint.profileElevated },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
+  headingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: space[1] },
+  // #4420 — the fee line is a quiet pane (the mockup), not a dashed box.
+  rateLine: { minHeight: 44, paddingVertical: space[3], paddingHorizontal: space[4], borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, backgroundColor: color.card, flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: space[2] },
+  rateText: { flex: 1, minWidth: 220, fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 },
+  learnText: { fontSize: type.btnSm.fontSize, lineHeight: type.btnSm.lineHeight, fontWeight: type.btnSm.fontWeight, color: color.text1 },
+  payoutRow: { minHeight: 88, padding: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
+  pressed: { backgroundColor: color.fill.tile },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
   stateDot: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   payoutText: { flex: 1, minWidth: 0 },
-  payoutTitle: { fontSize: typography.body.fontSize, lineHeight: typography.body.lineHeight, fontWeight: "700", color: textTokens.primary },
-  payoutMeta: { marginTop: 2, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: textTokens.secondary },
-  payoutTiming: { marginTop: 2, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: textTokens.tertiary },
-  olderPricing: { marginTop: 2, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: semantic.info },
+  payoutTitle: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, fontWeight: "700", color: color.text1 },
+  payoutMeta: { marginTop: 2, fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.text2 },
+  payoutTiming: { marginTop: 2, fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.text3 },
+  olderPricing: { marginTop: 2, fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.info },
   amountCol: { alignItems: "flex-end" },
-  amount: { fontSize: typography.body.fontSize, lineHeight: typography.body.lineHeight, fontWeight: "700", color: textTokens.primary },
+  amount: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, fontWeight: "700", color: color.text1 },
   statePill: { alignSelf: "flex-end", marginTop: 3, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   statePillText: { fontSize: 11, lineHeight: 14, fontWeight: "700" },
-  bankActions: { marginTop: spacing.md, flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  bankActions: { marginTop: space[4], flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });
 
 export default BrandPayoutOverview;

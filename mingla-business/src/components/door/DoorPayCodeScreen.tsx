@@ -31,14 +31,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
   durations,
-  glass,
+  motion,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { DoorPayQr } from "./DoorPayQr";
 import { DoorStatusPill } from "./DoorStatusPill";
@@ -348,7 +345,7 @@ export const DoorPayCodeScreen = (): React.ReactElement => {
   if (codeQuery.isLoading || (row === null && !codeQuery.isError)) {
     body = (
       <View style={styles.center}>
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.text2} />
         <Text style={styles.muted}>Loading the pay code…</Text>
       </View>
     );
@@ -631,11 +628,41 @@ const ToneRing: React.FC<{
   busy?: boolean;
 }> = ({ tone, icon, busy = false }) => {
   const style = doorToneStyle(tone);
+  // #4420 (BUILD_DECISIONS 11-14) — Paid: the green tile springs in once
+  // (0.6 → 1) and the check draws on after it (~350ms). Reduce motion: a
+  // static green check. The one success haptic stays in the screen's own
+  // effect, so it still fires exactly once.
+  const reduceMotion = useReduceMotion();
+  const celebrate = tone === "ok" && !busy;
+  const tileScale = useRef(new Animated.Value(celebrate && !reduceMotion ? 0.6 : 1)).current;
+  const check = useRef(new Animated.Value(celebrate && !reduceMotion ? 0 : 1)).current;
+  useEffect(() => {
+    if (!celebrate || reduceMotion) {
+      tileScale.setValue(1);
+      check.setValue(1);
+      return;
+    }
+    Animated.sequence([
+      Animated.spring(tileScale, {
+        toValue: 1,
+        damping: motion.spring.sheet.damping,
+        stiffness: motion.spring.sheet.stiffness,
+        mass: motion.spring.sheet.mass,
+        useNativeDriver: true,
+      }),
+      Animated.timing(check, {
+        toValue: 1,
+        duration: 350,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [celebrate, reduceMotion, tileScale, check]);
   return (
-    <View
+    <Animated.View
       style={[
         styles.ring,
-        { backgroundColor: style.ringFill },
+        { backgroundColor: style.ringFill, transform: [{ scale: tileScale }] },
         style.ringBorder !== null ? { borderWidth: 1, borderColor: style.ringBorder } : null,
       ]}
       testID={`door-pay-tone-${tone}`}
@@ -643,48 +670,55 @@ const ToneRing: React.FC<{
       {busy ? (
         <ActivityIndicator color={style.iconColor} />
       ) : (
-        <Icon name={icon ?? style.defaultIcon} size={style.iconSize + 2} color={style.iconColor} />
+        <Animated.View
+          style={{
+            opacity: check,
+            transform: [{ scale: check.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+          }}
+        >
+          <Icon name={icon ?? style.defaultIcon} size={style.iconSize + 2} color={style.iconColor} />
+        </Animated.View>
       )}
-    </View>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   chromeSlot: { width: 36 },
   center: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: space[6],
+    gap: space[2],
   },
   live: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[2],
+    gap: space[2],
   },
   codeText: {
     fontSize: 15,
     fontWeight: "700",
     letterSpacing: 2,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
     fontVariant: ["tabular-nums"],
   },
@@ -692,28 +726,28 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "800",
     letterSpacing: -0.5,
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
     fontVariant: ["tabular-nums"],
   },
-  muted: { fontSize: 14, lineHeight: 20, color: textTokens.secondary, textAlign: "center" },
-  faint: { fontSize: 12, lineHeight: 17, color: textTokens.tertiary, textAlign: "center" },
-  endTitle: { fontSize: 20, fontWeight: "700", color: textTokens.primary, textAlign: "center" },
+  muted: { fontSize: 14, lineHeight: 20, color: color.text2, textAlign: "center" },
+  faint: { fontSize: 12, lineHeight: 17, color: color.text3, textAlign: "center" },
+  endTitle: { fontSize: 20, fontWeight: "700", color: color.text1, textAlign: "center" },
   card: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    gap: spacing.xs,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    gap: space[1],
   },
   // DoorPayQr draws its own white card; this only carries the dim.
   qrWrap: { alignSelf: "center" },
   sentCard: { alignItems: "center" },
-  kv: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  kvKey: { fontSize: 13, color: textTokens.secondary },
-  kvValue: { fontSize: 13, fontWeight: "600", color: textTokens.primary },
-  kvValueOk: { fontSize: 13, fontWeight: "600", color: semantic.success },
+  kv: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
+  kvKey: { fontSize: 13, color: color.text2 },
+  kvValue: { fontSize: 13, fontWeight: "600", color: color.text1 },
+  kvValueOk: { fontSize: 13, fontWeight: "600", color: color.success },
   ring: {
     width: 72,
     height: 72,
@@ -722,16 +756,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  actions: { marginTop: "auto", gap: spacing.xs, paddingBottom: spacing.md },
+  actions: { marginTop: "auto", gap: space[1], paddingBottom: space[4] },
   error: {
     fontSize: 13,
     lineHeight: 18,
-    color: semantic.errorText,
+    color: color.errorText,
     textAlign: "center",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingBottom: space[2],
   },
-  sheetBody: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
-  sheetTitle: { fontSize: 20, fontWeight: "700", color: textTokens.primary },
-  fieldLabel: { fontSize: 13, fontWeight: "600", color: textTokens.secondary },
+  sheetBody: { paddingHorizontal: space[6], paddingTop: space[4], gap: space[2] },
+  sheetTitle: { fontSize: 20, fontWeight: "700", color: color.text1 },
+  fieldLabel: { fontSize: 13, fontWeight: "600", color: color.text2 },
 });

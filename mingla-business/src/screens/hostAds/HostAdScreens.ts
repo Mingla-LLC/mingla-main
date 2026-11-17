@@ -17,3 +17,8 @@ export * from "../../services/hostAdPlanService";
 // they never ship in the boot chunk.
 export { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
 export { platformName } from "../../components/marketing/ads/hostAdCopy";
+// #4238: Home's Host ads card and Ari's ad card extras load through this same
+// chunk; a second lazy chunk sharing the ad words would hoist them to `__common`.
+export { default as HomeAdsSection } from "../../components/home/HomeAdsSection";
+export { default as AriAdCardExtras } from "../../components/ari/AriAdCardExtras";
+export { hostAdAriRefusalIn } from "../../components/marketing/ads/hostAdManageCopy";

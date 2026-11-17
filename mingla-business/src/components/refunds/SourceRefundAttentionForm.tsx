@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
+import { color } from "../../constants/designSystem";
 export interface RefundBank {
   id: string;
   name: string;
@@ -100,26 +101,26 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 44,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: color.lineOnPaper,
     borderRadius: 10,
     padding: 12,
   },
   bankList: {
     maxHeight: 220,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: color.lineOnPaper,
     borderRadius: 10,
   },
-  bank: { padding: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
-  bankSelected: { backgroundColor: "#e5eefc" },
-  retry: { color: "#1d4ed8", fontWeight: "700" },
+  bank: { padding: 12, borderBottomWidth: 1, borderBottomColor: color.lineOnPaper },
+  bankSelected: { backgroundColor: color.onPaper.selectedFill },
+  retry: { color: color.onPaper.link, fontWeight: "700" },
   button: {
     minHeight: 44,
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 10,
-    backgroundColor: "#111827",
+    backgroundColor: color.ink,
   },
   disabled: { opacity: 0.5 },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  buttonText: { color: color.textStrong, fontWeight: "700" },
 });

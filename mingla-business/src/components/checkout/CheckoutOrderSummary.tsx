@@ -18,21 +18,42 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { Image, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
-import {
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { materials, radius, scrim, space } from "../../constants/designSystem";
+import { activeCheckoutPalette, checkoutStyles, color } from "./checkoutTheme";
+import { CheckoutCoverFallback } from "./CheckoutCoverFallback";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCurrency } from "../../utils/currency";
 import { useCart } from "./CartContext";
 
-const SUMMARY_WIDTH = 380;
+// #4420 §4.1 — the desktop ticket stub is 400 wide, sticky at top 96.
+const SUMMARY_WIDTH = 400;
+const STUB_BAND_HEIGHT = 250;
+
+/**
+ * react-native-web passes `position: sticky`; RN's type has no name for it.
+ * The union keeps RN's own positions so the widening cast below is a legal
+ * comparison (the PublicVenueScreen `WebVenueViewStyle` pattern).
+ */
+interface WebStickyStyle {
+  position: ViewStyle["position"] | "sticky";
+  top: number;
+}
+const stickyStub = (): StyleProp<ViewStyle> => {
+  const sticky: WebStickyStyle = { position: "sticky", top: 96 };
+  return Platform.OS === "web" ? (sticky as StyleProp<ViewStyle>) : null;
+};
+
+/** #4420 — what the stub's flyer band shows: the offering, as on its page. */
+export interface CheckoutStubIdentity {
+  title: string;
+  /** "Sat 19 Dec · 21:00". */
+  eyebrow: string | null;
+  coverUrl: string | null;
+}
 const CONTENT_MAX_WIDTH = 1180;
-const SURFACE = "#14171c";
-const HAIRLINE = "rgba(255, 255, 255, 0.10)";
 
 /** True when the checkout uses the two-column desktop layout. */
 export function useCheckoutWideLayout(): boolean {
@@ -62,6 +83,14 @@ export interface CheckoutOrderSummaryProps {
   /** Narrow only: the safe-area bottom inset the sticky bar pads by. */
   bottomInset: number;
   children: React.ReactNode;
+  /**
+   * issue #4420 audit — narrow only: the sticky bar's measured height, so the
+   * route pads its scroll by the real bar (a fixed 140 left the last ticket
+   * tier under the bar, out of reach).
+   */
+  onBarHeight?: (height: number) => void;
+  /** #4420 — the desktop stub's flyer band. Absent: no band (summary only). */
+  stub?: CheckoutStubIdentity | null;
 }
 
 function QuoteLines(): React.ReactElement | null {
@@ -133,87 +162,190 @@ export const CheckoutOrderSummary: React.FC<CheckoutOrderSummaryProps> = ({
   wide,
   bottomInset,
   children,
+  onBarHeight,
+  stub = null,
 }) => {
   if (!wide) {
-    const pad: ViewStyle = { paddingBottom: bottomInset + spacing.md };
+    const pad: ViewStyle = { paddingBottom: bottomInset + space[4] };
     return (
-      <View style={[styles.bottomBar, pad]} testID="checkout-bottom-bar">
+      <View
+        style={[styles.bottomBar, pad]}
+        testID="checkout-bottom-bar"
+        onLayout={
+          onBarHeight === undefined
+            ? undefined
+            : (e) => onBarHeight(Math.ceil(e.nativeEvent.layout.height))
+        }
+      >
         {children}
       </View>
     );
   }
+  // #4420 §4.1 — the ticket stub: the flyer band with the offering's
+  // identity, a perforation, then the summary and the step's CTA. It owns the
+  // CTA on desktop (there is no floating bar at this width).
   return (
-    <View style={styles.summary} testID="checkout-order-summary">
-      <Text style={styles.heading} accessibilityRole="header">
-        Order summary
-      </Text>
-      <QuoteLines />
-      <View style={styles.divider} />
-      {children}
+    <View style={[styles.summary, stickyStub()]} testID="checkout-order-summary">
+      {stub !== null ? (
+        <>
+          <View style={styles.band} testID="checkout-stub-band">
+            {stub.coverUrl !== null && stub.coverUrl.length > 0 ? (
+              <Image
+                source={{ uri: stub.coverUrl }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <CheckoutCoverFallback style={StyleSheet.absoluteFill} />
+            )}
+            <LinearGradient
+              colors={scrim.cardPhoto.colors}
+              locations={scrim.cardPhoto.locations}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <View style={styles.bandIdentity}>
+              {stub.eyebrow !== null ? (
+                <Text style={styles.bandEyebrow} numberOfLines={1}>
+                  {stub.eyebrow}
+                </Text>
+              ) : null}
+              <Text style={styles.bandTitle} numberOfLines={2} accessibilityRole="header">
+                {stub.title}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.perforation} testID="checkout-stub-perforation">
+            <View style={[styles.notch, styles.notchLeft]} />
+            <View style={styles.perfRule} />
+            <View style={[styles.notch, styles.notchRight]} />
+          </View>
+        </>
+      ) : null}
+      <View style={styles.summaryBody}>
+        <Text style={styles.heading} accessibilityRole="header">
+          Order summary
+        </Text>
+        <QuoteLines />
+        <View style={styles.divider} />
+        {children}
+        <Text style={styles.allIn}>All-in price. Taxes and fees included.</Text>
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+
+const styles = checkoutStyles(() => StyleSheet.create({
   columnsNarrow: { flex: 1 },
   columnsWide: {
     flex: 1,
-    flexDirection: "row",
+    // #4420 — the stub sits LEFT of the step (it is the second child).
+    flexDirection: "row-reverse",
     alignItems: "flex-start",
     alignSelf: "center",
     width: "100%",
     maxWidth: CONTENT_MAX_WIDTH,
-    gap: spacing.xl,
-    paddingHorizontal: spacing.lg,
+    gap: space[7],
+    paddingHorizontal: space[6],
   },
   bottomBar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    // issue #4420 audit — opaque: there is no blur behind this bar, and the
+    // translucent glass let the ticket rows scrolling under it show through.
+    // #4420 D-C1 — the host's page colour (Graphite keeps its chrome fill).
+    backgroundColor:
+      activeCheckoutPalette() === null ? materials.chrome.solidFill : color.canvas,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   summary: {
     width: SUMMARY_WIDTH,
     flexShrink: 0,
-    marginTop: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
+    marginTop: space[4],
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: HAIRLINE,
-    backgroundColor: SURFACE,
-    gap: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.card,
+    overflow: "hidden",
   },
+  summaryBody: {
+    padding: space[6],
+    gap: space[2],
+  },
+  band: {
+    height: STUB_BAND_HEIGHT,
+    justifyContent: "flex-end",
+  },
+  bandIdentity: { padding: space[5], gap: 6 },
+  bandEyebrow: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: color.textOnPhoto2,
+  },
+  bandTitle: {
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: "700",
+    color: color.textOnPhoto,
+    letterSpacing: -0.4,
+  },
+  perforation: {
+    height: 20,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  perfRule: {
+    flex: 1,
+    borderTopWidth: 2,
+    borderStyle: "dashed",
+    borderColor: color.lineStrong,
+    marginHorizontal: 4,
+  },
+  notch: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: color.canvas,
+  },
+  notchLeft: { marginLeft: -10 },
+  notchRight: { marginRight: -10 },
+  allIn: { fontSize: 12.5, color: color.text3, textAlign: "center", marginTop: space[1] },
+
   heading: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
-  lines: { gap: spacing.sm },
+  lines: { gap: space[2] },
   lineRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  lineName: { flex: 1, fontSize: 14, color: textTokens.secondary },
-  lineAmount: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
-  emptyLine: { fontSize: 14, color: textTokens.tertiary },
-  subtotalLabel: { fontSize: 13, color: textTokens.tertiary },
-  subtotalValues: { flexDirection: "row", gap: spacing.sm },
+  lineName: { flex: 1, fontSize: 14, color: color.text2 },
+  lineAmount: { fontSize: 14, fontWeight: "600", color: color.text1 },
+  emptyLine: { fontSize: 14, color: color.text3 },
+  subtotalLabel: { fontSize: 13, color: color.text3 },
+  subtotalValues: { flexDirection: "row", gap: space[2] },
   struck: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     textDecorationLine: "line-through",
   },
   divider: {
     height: 1,
-    backgroundColor: HAIRLINE,
-    marginVertical: spacing.xs,
+    backgroundColor: color.lineStrong,
+    marginVertical: space[1],
   },
-});
+}));

@@ -33,14 +33,23 @@ const root = process.cwd().endsWith("mingla-business")
 const BODY = "packages/offering-rendering/EventOfferingBody.tsx";
 
 // Ordered anchors (string searched in raw source, first-occurrence index).
+//
+// issue #4420 — the Seth-approved public-pages redesign (premium frame) keeps
+// all nine sections and changes only two things, so the anchors follow it:
+//   - the date chips and the pills row became the fact rows and their quiet
+//     tag line (one block, still date first, then the tags);
+//   - "Presented by" moved after "Where you'll be" (design file P.event:
+//     About → Where you'll be → Presented by → Cancellation policy).
+// Every section still exists and the order is still locked; a reorder away
+// from the approved one still trips the gate.
 const ANCHORS = [
-  ["(2) Event name", "(2) Event name lead block"],
-  ["(3) Date & time", "(3) Date & time meta chips"],
-  ["(4) Pills row", 'testID="orch-1167-pills-row"'],
+  ["(2) Event name", "(2) Event name"],
+  ["(3) Date & time", "(3) Date & time"],
+  ["(4) Pills row", "(4) Pills row"],
   ["(5) TICKET BOX", 'testID="orch-1167-ticket-box"'],
-  ["(6) Presented By", "(6) Presented By"],
-  ["(7) About", "(7) About"],
-  ["(8) Where", "(8) Where you'll be"],
+  ["(6) About", "(6) About"],
+  ["(7) Where", "(7) Where you'll be"],
+  ["(8) Presented By", "(8) Presented By"],
   // #3284 — section 9, the shared refund ladder, closes the body.
   ["(9) Cancellation", 'testID="orch-1167-cancellation"'],
 ];
@@ -71,25 +80,25 @@ function runSelfTest() {
   const good = ANCHORS.map(([, n]) => `// ${n}`).join("\n");
   // Swap pills (4) and ticket box (5) to force an out-of-order failure.
   const reordered = [
-    "// (2) Event name lead block",
-    "// (3) Date & time meta chips",
+    "// (2) Event name",
+    "// (3) Date & time",
     '// testID="orch-1167-ticket-box"',
-    '// testID="orch-1167-pills-row"',
-    "// (6) Presented By",
-    "// (7) About",
-    "// (8) Where you'll be",
+    "// (4) Pills row",
+    "// (6) About",
+    "// (7) Where you'll be",
+    "// (8) Presented By",
     '// testID="orch-1167-cancellation"',
   ].join("\n");
-  // #3284 — cancellation (9) placed BEFORE Where you'll be (8) must also trip.
+  // #3284 — cancellation (9) placed BEFORE Where you'll be (7) must also trip.
   const cancellationEarly = [
-    "// (2) Event name lead block",
-    "// (3) Date & time meta chips",
-    '// testID="orch-1167-pills-row"',
+    "// (2) Event name",
+    "// (3) Date & time",
+    "// (4) Pills row",
     '// testID="orch-1167-ticket-box"',
-    "// (6) Presented By",
-    "// (7) About",
+    "// (6) About",
     '// testID="orch-1167-cancellation"',
-    "// (8) Where you'll be",
+    "// (7) Where you'll be",
+    "// (8) Presented By",
   ].join("\n");
   // #3284 — a body with no cancellation anchor at all must trip too.
   const cancellationMissing = ANCHORS.slice(0, -1).map(([, n]) => `// ${n}`).join("\n");
@@ -107,7 +116,7 @@ function runSelfTest() {
     process.exit(1);
   }
   if (!cancellationEarlyFails) {
-    console.error("SELF-TEST FAIL: cancellation placed before (8) Where you'll be did not trip the gate.");
+    console.error("SELF-TEST FAIL: cancellation placed before (7) Where you'll be did not trip the gate.");
     process.exit(1);
   }
   if (!cancellationMissingFails) {

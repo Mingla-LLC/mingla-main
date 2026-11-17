@@ -10,13 +10,10 @@ import { useLocalSearchParams } from "expo-router";
 import { Button } from "../../src/components/ui/Button";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import {
   InstallmentPayLinkError,
@@ -146,7 +143,7 @@ export default function InstallmentPayPage(): React.ReactElement {
     if (page.kind === "loading") {
       return (
         <View accessibilityLabel="Loading payment" style={styles.skeletonCard}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.accent} />
           <View style={styles.skeletonLineWide} />
           <View style={styles.skeletonLine} />
         </View>
@@ -250,7 +247,7 @@ interface StateCardProps {
 
 const StateCard: React.FC<StateCardProps> = ({ title, body, amount, amountLabel, note, action, onAction, busy }) => (
   <View style={styles.card} accessibilityRole="summary">
-    {busy ? <ActivityIndicator color={accent.warm} /> : null}
+    {busy ? <ActivityIndicator color={color.accent} /> : null}
     <Text style={styles.title}>{title}</Text>
     <Text style={styles.body}>{body}</Text>
     {amount ? <Text style={styles.amount} accessibilityLabel={amountLabel}>{amount}</Text> : null}
@@ -269,41 +266,41 @@ const StateCard: React.FC<StateCardProps> = ({ title, body, amount, amountLabel,
 );
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.discover },
+  screen: { flex: 1, backgroundColor: color.canvas },
   content: {
     flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xl,
+    paddingHorizontal: space[4],
+    paddingVertical: space[7],
   },
-  wordmark: { marginBottom: spacing.lg },
-  wordmarkText: { ...typography.h2, color: textTokens.primary },
+  wordmark: { marginBottom: space[6] },
+  wordmarkText: { ...type.h1, color: color.text1 },
   card: {
     width: "100%",
     maxWidth: 480,
-    padding: spacing.lg,
+    padding: space[6],
     borderRadius: radiusTokens.lg,
-    backgroundColor: canvas.profile,
+    backgroundColor: color.canvas,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    gap: spacing.md,
+    borderColor: color.lineStrong,
+    gap: space[4],
   },
-  title: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
-  body: { ...typography.body, color: textTokens.secondary, textAlign: "center" },
-  amount: { ...typography.display, color: textTokens.primary, textAlign: "center" },
-  note: { ...typography.bodySm, color: textTokens.tertiary, textAlign: "center" },
+  title: { ...type.h1, color: color.text1, textAlign: "center" },
+  body: { ...type.body, color: color.text2, textAlign: "center" },
+  amount: { ...type.display, color: color.text1, textAlign: "center" },
+  note: { ...type.small, color: color.text3, textAlign: "center" },
   skeletonCard: {
     width: "100%",
     maxWidth: 480,
     minHeight: 240,
-    padding: spacing.lg,
+    padding: space[6],
     borderRadius: radiusTokens.lg,
-    backgroundColor: canvas.profile,
+    backgroundColor: color.canvas,
     justifyContent: "center",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
-  skeletonLineWide: { height: 18, width: "72%", borderRadius: radiusTokens.full, backgroundColor: glass.border.profileElevated },
-  skeletonLine: { height: 14, width: "48%", borderRadius: radiusTokens.full, backgroundColor: glass.border.profileElevated },
+  skeletonLineWide: { height: 18, width: "72%", borderRadius: radiusTokens.full, backgroundColor: color.lineStrong },
+  skeletonLine: { height: 14, width: "48%", borderRadius: radiusTokens.full, backgroundColor: color.lineStrong },
 });

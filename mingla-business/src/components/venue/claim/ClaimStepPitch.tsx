@@ -16,7 +16,9 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
-import { spacing } from "../../../constants/designSystem";
+import {
+  space,
+} from "../../../constants/designSystem";
 import { provenanceFor, useDraftVenueStore } from "../../../store/draftVenueStore";
 import { venueStepError } from "../venueWizardValidation";
 import { VenuePitchField } from "../VenuePitchField";
@@ -53,8 +55,8 @@ export const ClaimStepPitch: React.FC<ClaimStepPitchProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
 });
 

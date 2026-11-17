@@ -43,10 +43,14 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
     expect(brandPage).not.toContain("const contrastRatio =");
   });
 
-  test("T-1 tab order is About-FIRST + default — I-PROPOSED-1155-ABOUT-FIRST-DEFAULT", () => {
-    // About is seeded as index 0 of the built tab list and is the default state.
+  test("T-1 tab order is About-FIRST; the default is Upcoming when it exists (#4420 D-B2)", () => {
+    // About is seeded as index 0 of the built tab list.
     expect(brandPage).toContain('const tabs: Tab[] = ["about"];');
-    expect(brandPage).toContain('useState<Tab>("about")');
+    // issue #4420 wave 2 (D-B2) — the default tab is Upcoming whenever the
+    // Upcoming tab exists, else About; a guest's own pick wins.
+    expect(brandPage).toContain(
+      'selectedTab ?? (hasUpcomingTab ? "upcoming" : "about")',
+    );
     // offering tabs are pushed AFTER about
     const aboutSeed = brandPage.indexOf('const tabs: Tab[] = ["about"];');
     const firstPush = brandPage.indexOf('tabs.push("upcoming")');
@@ -114,15 +118,18 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
 
   // Issue #679 REWRITE [TEST-MOD-APPROVED #679] — the panel now carries the
   // gated BrandFollowControl between socials and Share (spec insertion point).
-  test("desktop sticky panel carries Follow + Share + Next-up; NO Reserve, NO contact-in-panel", () => {
-    expect(brandPage).toContain("stickyPanel");
+  test("desktop flyer actions carry Follow + Share + Next-up; NO contact-in-panel (#4420 wave 2)", () => {
+    // issue #4420 wave 2 — the boxed sticky panel became the actions under
+    // the premium flyer: Follow, the Share / Message ghost row, the socials,
+    // and the Next-up glass bar.
+    expect(brandPage).not.toContain("stickyPanel=");
     expect(brandPage).toContain("deskShareBtn");
-    expect(brandPage).not.toContain("Reserve");
-    // contact lives in the About pane; the panel must not duplicate mailto/tel
-    const panelStart = brandPage.indexOf("const stickyPanel");
-    const panelEnd = brandPage.indexOf("// Desktop hero overlay");
-    const panelSrc = brandPage.slice(panelStart, panelEnd);
-    expect(panelSrc).toContain("BrandFollowControl");
+    const panelStart = brandPage.indexOf("const flyerActions = isDesktop");
+    expect(panelStart).toBeGreaterThan(-1);
+    const panelSrc = brandPage.slice(panelStart, panelStart + 900);
+    expect(panelSrc).toContain("followControl(true)");
+    expect(panelSrc).toContain("DeskShareRow");
+    expect(panelSrc).toContain("nextUpBar");
     expect(panelSrc).not.toContain("mailto:");
   });
 

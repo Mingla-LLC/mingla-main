@@ -4,12 +4,10 @@ import { useRouter } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
 import type { BrandFollowerSummary } from "../../types/brandFollowers";
@@ -68,7 +66,7 @@ const FollowerSparkline: React.FC<{
         <Path
           d={geometry.line}
           fill="none"
-          stroke={accent.warm}
+          stroke={color.text1}
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -77,8 +75,8 @@ const FollowerSparkline: React.FC<{
           cx={geometry.last.x}
           cy={geometry.last.y}
           r="3"
-          fill={accent.warm}
-          stroke={textTokens.primary}
+          fill={color.text1}
+          stroke={color.text1}
           strokeWidth="2"
         />
       </Svg>
@@ -115,7 +113,7 @@ export const FollowersHomeTile: React.FC<FollowersHomeTileProps> = ({
         <View style={styles.header}>
           <Text style={styles.label}>Followers</Text>
           <View accessible={false}>
-            <Icon name="chevR" size={16} color={textTokens.tertiary} />
+            <Icon name="chevR" size={16} color={color.text3} />
           </View>
         </View>
         {summaryQuery.isLoading ? (
@@ -172,50 +170,50 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   label: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
-  loading: { gap: spacing.sm, marginTop: spacing.md },
+  loading: { gap: space[2], marginTop: space[4] },
   loadingBlock: {
     borderRadius: radius.md,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
   loadingValue: { width: 92, height: 34 },
   loadingChart: { width: "100%", height: 46 },
   loadingCaption: { width: "72%", height: 14 },
-  state: { gap: spacing.xs, marginTop: spacing.md },
-  body: { gap: spacing.sm, marginTop: spacing.md },
+  state: { gap: space[1], marginTop: space[4] },
+  body: { gap: space[2], marginTop: space[4] },
   valueRow: {
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   value: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
-    fontWeight: typography.statValue.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.stat.fontSize,
+    lineHeight: type.stat.lineHeight,
+    fontWeight: type.stat.fontWeight,
+    color: color.text1,
   },
   delta: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    color: semantic.success,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    color: color.success,
   },
   sparkline: { minHeight: 46 },
   sub: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   sources: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
 });
 

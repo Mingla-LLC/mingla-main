@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4459 (20280730004459) item 5: a brand post never tells a guest which team
+-- #4459 (20280805004459) item 5: a brand post never tells a guest which team
 -- member wrote it, on any read path; the brand team still sees the author.
 -- Everything rolls back.
 --

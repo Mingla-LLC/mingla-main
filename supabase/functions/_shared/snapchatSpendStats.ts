@@ -156,12 +156,15 @@ export function snapchatStatsWindow(
 export function snapchatCampaignStatsPath(
   externalCampaignId: string,
   window: SnapchatStatsWindow,
+  /** #4238 W4c: "ad" = per-ad rows under breakdown_stats.ad (Snap docs). */
+  breakdown?: "ad",
 ): string {
   const query = new URLSearchParams({
     granularity: "DAY",
     fields: "impressions,swipes,spend",
     start_time: window.start_time,
     end_time: window.end_time,
+    ...(breakdown ? { breakdown } : {}),
   });
   return `campaigns/${
     encodeURIComponent(externalCampaignId)
@@ -216,14 +219,22 @@ export async function resolveSnapchatAccountTimeZone(
 export async function fetchSnapchatCampaignStats(
   client: SnapchatClient,
   externalCampaignId: string,
-  opts: { now?: Date; timeZoneCache?: Map<string, string | null> } = {},
+  opts: {
+    now?: Date;
+    timeZoneCache?: Map<string, string | null>;
+    breakdown?: "ad";
+  } = {},
 ): Promise<Record<string, unknown>> {
   const timeZone = await resolveSnapchatAccountTimeZone(
     client,
     opts.timeZoneCache,
   );
   const window = snapchatStatsWindow(timeZone, opts.now ?? new Date());
-  const path = snapchatCampaignStatsPath(externalCampaignId, window);
+  const path = snapchatCampaignStatsPath(
+    externalCampaignId,
+    window,
+    opts.breakdown,
+  );
   try {
     return await snapchatApi(client, "GET", path);
   } catch (err) {

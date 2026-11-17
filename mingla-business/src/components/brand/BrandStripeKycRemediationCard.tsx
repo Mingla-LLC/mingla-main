@@ -21,11 +21,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { GlassCard } from "../ui/GlassCard";
 import {
-  spacing,
+  color,
   radius,
-  typography,
-  text as textTokens,
-  semantic,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   getKycRemediationMessage,
@@ -50,19 +49,19 @@ const SEVERITY_PALETTE: Record<
   { borderColor: string; tint: string; ctaColor: string }
 > = {
   blocking: {
-    borderColor: semantic.error,
-    tint: semantic.errorTint,
-    ctaColor: semantic.error,
+    borderColor: color.danger,
+    tint: color.errorTint,
+    ctaColor: color.errorText,
   },
   warning: {
-    borderColor: semantic.warning,
-    tint: semantic.warningTint,
-    ctaColor: semantic.warning,
+    borderColor: color.warning,
+    tint: color.warningTint,
+    ctaColor: color.warning,
   },
   info: {
-    borderColor: semantic.info,
-    tint: semantic.infoTint,
-    ctaColor: semantic.info,
+    borderColor: color.info,
+    tint: color.infoTint,
+    ctaColor: color.info,
   },
 };
 
@@ -93,7 +92,7 @@ export function BrandStripeKycRemediationCard({
   return (
     <GlassCard
       variant="base"
-      padding={spacing.md}
+      padding={space[4]}
       style={[styles.card, { borderColor: palette.borderColor, backgroundColor: palette.tint }]}
     >
       <Text style={styles.title}>{message.title}</Text>
@@ -123,21 +122,21 @@ export function BrandStripeKycRemediationCard({
 
 const styles = StyleSheet.create({
   card: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     borderWidth: 1,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   // #3258 — with no CTA below it the body is the last element in the card, so
   // the button's top gap would read as stray padding.
@@ -145,9 +144,9 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   cta: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
+    borderRadius: radius.sm,
     alignSelf: "flex-start",
     minHeight: 44,
     justifyContent: "center",
@@ -156,9 +155,9 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   ctaText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: "#ffffff",
+    color: color.text1,
     letterSpacing: 0.4,
   },
 });

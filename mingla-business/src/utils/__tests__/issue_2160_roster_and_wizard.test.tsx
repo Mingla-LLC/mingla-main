@@ -569,8 +569,9 @@ describe("issue #2160 §7(a) — the multiplier is visible on the ticket row its
     const page = repoRead("src/components/event/PublicEventPage.tsx");
     expect(page).toMatch(/"for all days"/);
     expect(page).toMatch(/"per day"/);
-    // BOTH surfaces: the phone inline box as well as the desktop panel.
-    expect((page.match(/pricingNote=\{ticketPricingNote\}/g) ?? []).length).toBe(2);
+    // issue #4420 — ONE inline box serves phone and desktop (no sticky panel),
+    // so the wording is passed once, to that box.
+    expect((page.match(/pricingNote=\{ticketPricingNote\}/g) ?? []).length).toBe(1);
   });
 
   test("the chooser says it too, before any total is rendered", () => {

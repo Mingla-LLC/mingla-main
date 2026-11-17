@@ -406,10 +406,20 @@ function loadWrapperUnder(
         "read.",
     );
   }
+  // [TEST-MOD-APPROVED #4420] device round 2: the forwardRef render now reads
+  // the bottom Sheet's keyboard context (hooks), so it cannot run outside
+  // React. The element it returns is built by the exported, hook-free
+  // `smartScrollElement`; execute THAT per branch, outside any sheet (extra 0).
+  const build = (mod as unknown as {
+    smartScrollElement?: (p: Record<string, unknown>, r: null, extra: number) => unknown;
+  }).smartScrollElement;
+  if (typeof build !== "function") {
+    throw new Error("[#1834 TA-2] smartScrollElement is gone — the wrapper could not be EXECUTED.");
+  }
   const renderWith = (
     props: Record<string, unknown> = {},
   ): { type: unknown; props: Record<string, unknown> } =>
-    (component.render as ForwardRefRenderable["render"])(props, null);
+    build(props, null, 0) as { type: unknown; props: Record<string, unknown> };
 
   return { module: mod, element: renderWith({}), renderWith };
 }

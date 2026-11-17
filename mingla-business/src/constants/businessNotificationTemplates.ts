@@ -64,7 +64,17 @@ export type BusinessNotificationType =
   | "business.community_announcement"
   | "business.community_roadmap_updated"
   | "business.support_new_ticket"
-  | "business.brand_group_message";
+  | "business.brand_group_message"
+  // #4238 W6b: the nine Host ad notices (server: _shared/hostAdNotices.ts).
+  | "business.ad_live"
+  | "business.ad_rejected"
+  | "business.ad_part_rejected"
+  | "business.ad_paused"
+  | "business.ad_credit_low"
+  | "business.ad_ended"
+  | "business.ad_slow_sales"
+  | "business.ad_creative_tired"
+  | "business.ad_last_tickets";
 
 /** Severity union — mirrors `NotificationTemplate.severity`. */
 export type NotificationSeverity = "blocking" | "warning" | "info";
@@ -512,6 +522,132 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     defaultPush: true,
     defaultInApp: true,
   },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_live": {
+    type: "business.ad_live",
+    pushTitle: "Your ad is live",
+    pushBody: "{event} is now showing on {app}.",
+    inAppTitle: "Your ad is live",
+    inAppBody: "{event} is now showing on {app}.",
+    severity: "info",
+    family: "audience",
+    icon: "megaphone",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_rejected": {
+    type: "business.ad_rejected",
+    pushTitle: "{app} didn't approve your ad",
+    pushBody: "Open the ad to see what to change.",
+    inAppTitle: "{app} didn't approve your ad",
+    inAppBody: "Nothing was spent. Open the ad to see what to change, then it goes back for review.",
+    severity: "warning",
+    family: "risk",
+    icon: "flag",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_part_rejected": {
+    type: "business.ad_part_rejected",
+    pushTitle: "{app} didn't approve {n} of your ads",
+    pushBody: "Your other ads keep running.",
+    inAppTitle: "{app} didn't approve {n} of your ads",
+    inAppBody: "Your other ads keep running. Open the ad to replace the ones that weren't approved.",
+    severity: "warning",
+    family: "risk",
+    icon: "flag",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_paused": {
+    type: "business.ad_paused",
+    pushTitle: "Your ad is paused",
+    pushBody: "Open the ad to see why and what to do.",
+    inAppTitle: "Your ad is paused",
+    inAppBody: "Open the ad to see the reason and what to do next.",
+    severity: "warning",
+    family: "risk",
+    icon: "pause",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_credit_low": {
+    type: "business.ad_credit_low",
+    pushTitle: "Ad credit is running low",
+    pushBody: "Your ad will stop on {date}. Top up {amount} to keep it running to the end.",
+    inAppTitle: "Ad credit is running low",
+    inAppBody: "Your ad will stop on {date}, before its end date. Top up {amount} to keep it running to the end.",
+    severity: "warning",
+    family: "money",
+    icon: "cash",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_ended": {
+    type: "business.ad_ended",
+    pushTitle: "Your ad has ended",
+    pushBody: "Spent {spend}. Results counted by Mingla: {results}.",
+    inAppTitle: "Your ad has ended",
+    inAppBody: "Spent {spend}. Results counted by Mingla: {results}. Unused credit comes back to your balance.",
+    severity: "info",
+    family: "money",
+    icon: "chart",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_slow_sales": {
+    type: "business.ad_slow_sales",
+    pushTitle: "Sales are slower than expected",
+    pushBody: "{event} is selling fewer tickets than expected.",
+    inAppTitle: "Sales are slower than expected",
+    inAppBody: "{event} is selling fewer tickets than expected. Open the ad for ideas to pick it up.",
+    severity: "info",
+    family: "audience",
+    icon: "trending",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_creative_tired": {
+    type: "business.ad_creative_tired",
+    pushTitle: "Your ad is getting tired",
+    pushBody: "People on {app} have seen it a lot.",
+    inAppTitle: "Your ad is getting tired",
+    inAppBody: "People on {app} have seen it a lot. Add a new video or photo to keep results up.",
+    severity: "info",
+    family: "audience",
+    icon: "video",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #4238 W6b — deep link: mingla-business://brand/{brandId}/ads/{planId}.
+  "business.ad_last_tickets": {
+    type: "business.ad_last_tickets",
+    pushTitle: "Only a few tickets left",
+    pushBody: "Want your ad to say these are the last tickets?",
+    inAppTitle: "Only a few tickets left",
+    inAppBody: "Want your ad to say these are the last tickets for {event}? Open the ad to turn it on.",
+    severity: "info",
+    family: "money",
+    icon: "ticket",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
 };
 
 /**
@@ -664,4 +800,11 @@ const FALLBACK_LITERALS: Readonly<Record<string, string>> = {
   name: "A discount",
   left: "a few",
   reason: "its limit was reached",
+  // #4238 W6b ad notices.
+  event: "Your event",
+  app: "the app",
+  n: "some",
+  date: "soon",
+  spend: "your budget",
+  results: "your results",
 };

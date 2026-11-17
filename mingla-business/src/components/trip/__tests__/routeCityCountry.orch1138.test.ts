@@ -144,7 +144,9 @@ describe("ORCH-1138 route block stays on ONE aligned row (no wrap)", () => {
     // interpolating the raw fields inside the pill. Assert the pill renders the
     // derived label AND that the label is built from the normalized values (still
     // proves normalized-not-raw at the same strength).
-    expect(block).toContain("{routeLabel}");
+    // issue #4420 — each leg is a RoutePill fed the normalized value.
+    expect(block).toContain("label={data.departureCityCountry}");
+    expect(block).toContain("label={data.destinationCityCountry}");
     expect(src).toContain("departureCityCountry");
     expect(src).toContain("destinationCityCountry");
   });

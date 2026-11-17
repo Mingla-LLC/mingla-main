@@ -20,8 +20,9 @@ import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 
 import type { EnquiryPhoneFieldArgs, EnquiryPhoneState } from "./BrandMessageSheet";
 import { replyTimeLabel } from "./replyTime";
-import { accentEdgeOnFill, accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentEdgeOnFill, accentFill, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
+import { neutralControl, neutralHair } from "@mingla/offering-rendering/themePalette";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -133,7 +134,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
     <View style={styles.wrap} testID={testID}>
       {loop !== undefined ? (
         <View
-          style={[styles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
+          style={[styles.card, { backgroundColor: palette.card, borderColor: neutralHair(palette) }]}
           testID={`${testID}-loop`}
         >
           {loop.state === "sent" ? (
@@ -266,15 +267,17 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
                 testID={`${testID}-loop-submit`}
                 style={({ pressed }) => [
                   styles.primaryBtn,
-                  accentFill(palette),
+                  // issue #4420 audit — tonal, not the gradient: the page's one
+                  // gradient is the Follow button.
+                  { backgroundColor: palette.accentWash },
                   loop.state === "sending" && styles.dim,
                   pressed && styles.pressed,
                 ]}
               >
                 {loop.state === "sending" ? (
-                  <ActivityIndicator color={palette.accentText} />
+                  <ActivityIndicator color={palette.primaryText} />
                 ) : (
-                  <Text style={[styles.primaryLabel, { color: palette.accentText }]}>Subscribe</Text>
+                  <Text style={[styles.primaryLabel, { color: palette.primaryText }]}>Subscribe</Text>
                 )}
               </Pressable>
               <Text style={[styles.consent, { color: palette.tertiaryText }]}>
@@ -286,7 +289,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
       ) : null}
       {message !== undefined ? (
         <View
-          style={[styles.card, styles.messageCard, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
+          style={[styles.card, styles.messageCard, { backgroundColor: palette.card, borderColor: neutralHair(palette) }]}
           testID={`${testID}-message`}
         >
           <View style={styles.messageCopy}>
@@ -302,7 +305,7 @@ export const BrandPageFoot = forwardRef<BrandPageFootHandle, BrandPageFootProps>
             accessibilityRole="button"
             accessibilityLabel={`Message ${brandName}`}
             testID={`${testID}-message-button`}
-            style={({ pressed }) => [styles.lineBtn, accentOutline(palette, { opaqueBackground: palette.page }), pressed && styles.pressed]}
+            style={({ pressed }) => [styles.lineBtn, { borderWidth: 1, borderColor: neutralControl(palette) }, pressed && styles.pressed]}
           >
             <Text numberOfLines={2} style={[styles.lineLabel, { color: palette.primaryText }]}>
               {`Message ${brandName}`}
@@ -318,7 +321,7 @@ export default BrandPageFoot;
 
 const styles = StyleSheet.create({
   wrap: { gap: 12, marginTop: 24 },
-  card: { borderWidth: 1, borderRadius: 18, padding: 16 },
+  card: { borderWidth: 1, borderRadius: 20, padding: 16 },
   form: { gap: 10 },
   title: { fontSize: 18, lineHeight: 24, fontWeight: "700" },
   sub: { fontSize: 14, lineHeight: 20 },

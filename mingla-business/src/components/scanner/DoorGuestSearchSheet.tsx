@@ -23,12 +23,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { eventOrdersKeys } from "../../hooks/useEventOrders";
@@ -53,6 +50,7 @@ import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { doorExtrasLine, readDoorExtras } from "./doorExtras";
+import { bookedStartLine, doorBookedLine } from "../../utils/bookedStart";
 
 // issue #3827 — the guest-list client is its own chunk (__common ceiling).
 const loadGuestList = () => import("../../services/guestListService");
@@ -101,6 +99,8 @@ export interface DoorGuestSearchPanelProps {
   /** Called after every admit with the door copy, for overlays, haptics and the session log. */
   onAdmitted?: (copy: ScanResultCopy, response: AdmitResponse) => void;
   autoFocus?: boolean;
+  /** issue #3281 — the offering's zone, for each guest's booked start. */
+  timeZone?: string | null;
 }
 
 export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
@@ -108,6 +108,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   noun,
   onAdmitted,
   autoFocus = false,
+  timeZone = null,
 }) => {
   const queryClient = useQueryClient();
   const network = useNetInfoSafe();
@@ -206,6 +207,16 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
     admittedGuest === undefined || lastAdmitted === null
       ? null
       : doorExtrasLine(readDoorExtras(admittedGuest.extras), lastAdmitted.admittedDateIds);
+  // issue #3281 — the start the admitted guest booked. Not money, so any
+  // answer that holds their row will do (unlike the extras above).
+  const lastBooked =
+    lastAdmitted === null || lastResult === null
+      ? null
+      : doorBookedLine(
+        lastResult.kind,
+        results.find((guest) => guest.orderId === lastAdmitted.orderId)?.bookedStartAt,
+        timeZone,
+      );
 
   return (
     <View style={styles.panel}>
@@ -219,7 +230,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
             setAdmitError(null);
           }}
           placeholder="Search name or email"
-          placeholderTextColor={textTokens.quaternary}
+          placeholderTextColor={color.text4}
           autoCapitalize="words"
           autoCorrect={false}
           autoFocus={autoFocus}
@@ -247,6 +258,9 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
         >
           <Text style={styles.resultMessage}>{lastResult.message}</Text>
           {lastResult.detail !== undefined ? <Text style={styles.resultDetail}>{lastResult.detail}</Text> : null}
+          {lastBooked !== null ? (
+            <Text style={styles.resultDetail} testID="door-admit-booked">{lastBooked}</Text>
+          ) : null}
           {lastExtras !== null ? (
             <Text style={styles.resultDetail} testID="door-admit-extras">{lastExtras}</Text>
           ) : null}
@@ -260,7 +274,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
 
       {enabled && query.isFetching && query.data === undefined ? (
         <View style={styles.stateRow} accessibilityRole="progressbar" accessibilityLabel="Searching">
-          <ActivityIndicator color={textTokens.secondary} />
+          <ActivityIndicator color={color.text2} />
           <Text style={styles.helper}>Searching…</Text>
         </View>
       ) : null}
@@ -289,6 +303,13 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                 <Text style={styles.guestMeta}>{guest.maskedEmail ?? "No email"}</Text>
                 {guest.cameWithName !== null ? <Text style={styles.guestMeta}>{`with ${guest.cameWithName}`}</Text> : null}
                 {guest.viaLinkLabel !== null ? <Text style={styles.guestMeta}>{`via ${guest.viaLinkLabel}`}</Text> : null}
+                {(() => {
+                  // issue #3281 — the start this guest booked, in the offering's zone.
+                  const line = bookedStartLine(guest.bookedStartAt, timeZone);
+                  return line !== null ? (
+                    <Text style={styles.guestMeta} testID={`door-booked-${guest.orderId}`}>{line}</Text>
+                  ) : null;
+                })()}
                 {(() => {
                   // issue #3281 — what this order still has to be handed. Not
                   // from an answer whose refresh failed: it may owe a refund.
@@ -378,20 +399,20 @@ export const DoorGuestSearchSheet: React.FC<DoorGuestSearchSheetProps> = ({ visi
 const styles = StyleSheet.create({
   sheetBody: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[4],
+    paddingBottom: space[6],
   },
   sheetHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   sheetTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   closeHit: {
     minHeight: 44,
@@ -402,23 +423,23 @@ const styles = StyleSheet.create({
   closeText: {
     fontSize: 14,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   scrollFlex: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: spacing.xl,
+    paddingBottom: space[7],
   },
   panel: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   inputWrap: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radiusTokens.md,
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: space[2] + 2,
     paddingVertical: 4,
   },
   inputDisabled: {
@@ -426,110 +447,110 @@ const styles = StyleSheet.create({
   },
   input: {
     fontSize: 16,
-    color: textTokens.primary,
+    color: color.text1,
     minHeight: 44,
   },
   helper: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   errorText: {
     fontSize: 13,
-    color: semantic.error,
+    color: color.danger,
   },
   banner: {
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    padding: spacing.sm + 2,
+    padding: space[2] + 2,
   },
   bannerError: {
-    borderColor: semantic.error,
-    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
   },
   bannerText: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
   },
   stateRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   stateBlock: {
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
   results: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   guestRow: {
     gap: 6,
-    padding: spacing.md - 2,
+    padding: space[4] - 2,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   guestHead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   guestName: {
     flexShrink: 1,
     fontSize: 15,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   guestMeta: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   ticketRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
     minHeight: 44,
   },
   ticketName: {
     flex: 1,
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   ticketState: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   resultCard: {
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    padding: spacing.md,
+    padding: space[4],
     alignItems: "center",
     gap: 4,
   },
   resultOk: {
-    borderColor: "rgba(52, 199, 89, 0.5)",
-    backgroundColor: "rgba(52, 199, 89, 0.14)",
+    borderColor: color.successText,
+    backgroundColor: color.successTint,
   },
   resultWarn: {
-    borderColor: "rgba(235, 120, 37, 0.5)",
-    backgroundColor: "rgba(235, 120, 37, 0.14)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   resultBad: {
-    borderColor: "rgba(239, 68, 68, 0.5)",
-    backgroundColor: "rgba(239, 68, 68, 0.14)",
+    borderColor: color.errorLine,
+    backgroundColor: color.errorTint,
   },
   resultMessage: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   resultDetail: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
 });

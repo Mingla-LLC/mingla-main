@@ -64,7 +64,7 @@ describe("CHANGE 2 — curated intent taxonomy", () => {
   test("wizard makes ≥1 vibe part of the Step-1 Continue gate + publish gate (multi)", () => {
     const src = read("experience/ExperienceCreatorWizard.tsx");
     // Step-1 canContinue requires at least one selected vibe.
-    expect(src).toMatch(/if \(step === 1\)[\s\S]*?intents\.length > 0/);
+    expect(src).toMatch(/if \((?:step|target) === 1\)[\s\S]*?intents\.length > 0/);
     // Publish is blocked when no vibe is selected.
     expect(src).toMatch(/publish &&\s*\(\s*intents\.length === 0/);
     // The picker renders the canonical taxonomy.
@@ -133,10 +133,9 @@ describe("CHANGE 1 — validation errors are gated, never shown on step entry", 
 
   test("PricingStep gates its inline errors on showErrors", () => {
     const src = read("experience/ExperiencePricingStep.tsx");
-    // [TEST-MOD-APPROVED #3281] — R2 lead option row; still gated on showErrors.
-    expect(src).toMatch(
-      /showErrors &&\s*\n?\s*num\(defaultOption\?\.priceMajor \?\? wholePriceMajor\) <= 0/,
-    );
+    // [TEST-MOD-APPROVED #3645] — the whole-price error reads the minor-unit
+    // `unpriced` rule (bundle 2A); still gated on showErrors.
+    expect(src).toMatch(/\{showErrors && unpriced \? \(/);
     expect(src).toMatch(/showErrors && \(parseInt\(capacity, 10\) \|\| 0\) <= 0/);
   });
 

@@ -123,10 +123,9 @@ describe("RT-6 ORCH-1138 — native-only render parity", () => {
     // (boldFace = themeFontFace(boldFamily); fontWeight normal on Android).
     expect(bodySrc).toContain("const boldFace = themeFontFace(boldFamily);");
     expect(bodySrc).toMatch(/surface\.primaryText,\s*boldFace\b/);
-    // the §3 route pills carry the bold family on their value text.
-    expect(bodySrc).toMatch(
-      /styles\.fullPillText,\s*\n?\s*\{ color: palette\.primaryText, \.\.\.boldFace \}/,
-    );
+    // issue #4420 — the §3 dates/route are fact rows; OfferingFactRows draws
+    // their values in the theme's bold family (it is handed the theme).
+    expect(bodySrc).toMatch(/<OfferingFactRows\s+palette=\{palette\}\s+theme=\{theme\}/);
     // the §4 meta pills + brand name apply the bold font family too.
     expect(bodySrc).toContain("...boldFace");
   });

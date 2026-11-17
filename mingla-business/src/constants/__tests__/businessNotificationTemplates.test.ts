@@ -37,8 +37,10 @@ describe("template coverage", () => {
   // [TEST-MOD-APPROVED #4271] business.door_tap_not_completed (a Tap to Pay sale that ended
   // with the app closed): 28. Retest 4 P3-C adds business.door_tap_paid_unseen (a door
   // tap charged while nobody watched it end): 29.
-  test("29 business types include payout, Community, support, Brand groups, discounts and the door taps", () => {
-    expect(TYPES).toHaveLength(29);
+  // #4238 W6b adds the nine business.ad_* Host ad notices: 38.
+  test("38 business types include payout, Community, support, Brand groups, discounts, the door taps and the ad notices", () => {
+    expect(TYPES).toHaveLength(38);
+    expect(isBusinessNotificationType("business.ad_credit_low")).toBe(true);
     expect(isBusinessNotificationType("business.door_tap_not_completed")).toBe(true);
     expect(isBusinessNotificationType("business.door_tap_paid_unseen")).toBe(true);
     expect(isBusinessNotificationType("business.new_follower")).toBe(false);

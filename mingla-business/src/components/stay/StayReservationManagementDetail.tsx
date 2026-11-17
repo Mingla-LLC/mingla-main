@@ -11,13 +11,10 @@ import { formatStayMoney } from "@mingla/brand-rendering/stayGuest";
 import { Check, Square } from "lucide-react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   useCancelStayReservation,
@@ -132,9 +129,9 @@ function LineCard({
         </View>
         {selectable ? (
           selected ? (
-            <Check size={22} color={accent.warm} />
+            <Check size={22} color={color.accent} />
           ) : (
-            <Square size={22} color={textTokens.tertiary} />
+            <Square size={22} color={color.text3} />
           )
         ) : null}
       </View>
@@ -251,7 +248,7 @@ function CancellationReview({
           value={reason}
           onChangeText={onReasonChange}
           placeholder="Why is this being cancelled?"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           accessibilityLabel="Cancellation reason"
           multiline
           style={[styles.input, styles.inputMultiline]}
@@ -446,7 +443,7 @@ export function StayReservationManagementDetail({
 
         {groupQuery.isLoading ? (
           <View style={styles.centerState}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.accent} />
             <Text style={styles.helper}>Loading the reservation truth…</Text>
           </View>
         ) : groupQuery.isError || group === null ? (
@@ -802,157 +799,157 @@ export function StayReservationManagementDetail({
 
 const styles = StyleSheet.create({
   content: {
-    padding: spacing.md,
-    paddingBottom: spacing.xxl * 2,
-    gap: spacing.md,
+    padding: space[4],
+    paddingBottom: space[9] * 2,
+    gap: space[4],
   },
-  title: { ...typography.h2, color: textTokens.primary },
-  sectionTitle: { ...typography.h3, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.secondary },
-  meta: { ...typography.caption, color: textTokens.tertiary },
-  value: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
-  money: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700" },
-  total: { ...typography.h3, color: accent.warm },
+  title: { ...type.h1, color: color.text1 },
+  sectionTitle: { ...type.h1, color: color.text1 },
+  helper: { ...type.small, color: color.text2 },
+  meta: { ...type.caption, color: color.text3 },
+  value: { ...type.small, color: color.text1, fontWeight: "600" },
+  money: { ...type.small, color: color.text1, fontWeight: "700" },
+  total: { ...type.h1, color: color.accent },
   flexOne: { flex: 1, minWidth: 0 },
   rowBetween: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   actionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
   centerState: {
     minHeight: 240,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   statePill: {
     alignSelf: "flex-start",
     borderRadius: radius.full,
-    backgroundColor: semantic.warningTint,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    backgroundColor: color.warningTint,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
   },
   statePillText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   attention: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: semantic.warning,
-    backgroundColor: semantic.warningTint,
-    padding: spacing.md,
-    gap: spacing.xs,
+    borderColor: color.warning,
+    backgroundColor: color.warningTint,
+    padding: space[4],
+    gap: space[1],
   },
   attentionTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   // CONTENT-node measures (#1532 §4): passed as `contentStyle` so the gap
   // reaches the children. On `style` it landed on the chrome node, whose only
   // in-flow child is the clip view, and spaced nothing.
-  card: { gap: spacing.sm },
+  card: { gap: space[2] },
   lineCard: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    gap: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    gap: space[2],
     minHeight: 96,
   },
   lineCardSelected: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235,120,37,0.08)",
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
   },
   lineTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.xs,
+    backgroundColor: color.line,
+    marginVertical: space[1],
   },
   sectionHead: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.md,
+    gap: space[4],
   },
   textAction: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   textActionLabel: {
-    ...typography.bodySm,
-    color: accent.warm,
+    ...type.small,
+    color: color.accent,
     fontWeight: "700",
   },
-  warning: { ...typography.bodySm, color: semantic.warning },
-  error: { ...typography.bodySm, color: semantic.error },
-  reviewCard: { gap: spacing.md },
+  warning: { ...type.small, color: color.warning },
+  error: { ...type.small, color: color.danger },
+  reviewCard: { gap: space[4] },
   // CHROME-node half of the same card: a border belongs on the chrome node.
-  reviewCardChrome: { borderColor: semantic.warning },
-  impactGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  reviewCardChrome: { borderColor: color.warning },
+  impactGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   impact: {
     minWidth: 210,
     flexGrow: 1,
     flexBasis: "45%",
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    gap: spacing.xxs,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    gap: 2,
   },
   impactValue: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
-  field: { gap: spacing.xs },
+  field: { gap: space[1] },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   input: {
     minHeight: 46,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    color: textTokens.primary,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    ...type.body,
+    color: color.text1,
   },
   inputMultiline: { minHeight: 84, textAlignVertical: "top" },
   refundRow: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
-    paddingTop: spacing.sm,
-    gap: spacing.xxs,
+    borderTopColor: color.line,
+    paddingTop: space[2],
+    gap: 2,
   },
   timelineRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   timelineDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     marginTop: 6,
   },
 });

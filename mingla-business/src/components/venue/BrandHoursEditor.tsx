@@ -33,12 +33,11 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import type { BrandHourEntry } from "../../types/brand";
 import { BrandSwitch } from "../ui/BrandSwitch";
@@ -532,7 +531,7 @@ function WebTimeInput({
       value={local}
       editable={!disabled}
       placeholder="--:--"
-      placeholderTextColor={textTokens.quaternary}
+      placeholderTextColor={color.text4}
       accessibilityLabel={ariaLabel}
       onChangeText={(t) => {
         setLocal(t);
@@ -545,29 +544,29 @@ function WebTimeInput({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   err: {
-    fontSize: typography.caption.fontSize,
-    color: "#EF4444",
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
   },
   bulkBar: {
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
   },
   bulkTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   bulkDayRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   bulkDayChip: {
     width: 34,
@@ -576,49 +575,49 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   bulkDayChipOn: {
-    borderColor: accent.warm,
-    backgroundColor: accent.tint,
+    borderColor: color.accent,
+    backgroundColor: color.accentLine,
   },
   bulkDayChipText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   bulkDayChipTextOn: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   bulkQuickRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   bulkQuickBtn: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 6,
     borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   bulkQuickText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     fontWeight: "600",
   },
   bulkHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   dayRow: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    padding: spacing.sm,
-    marginBottom: spacing.xs,
+    borderColor: color.line,
+    padding: space[2],
+    marginBottom: space[1],
   },
   dayHead: {
     flexDirection: "row",
@@ -626,62 +625,62 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   dayName: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   timeRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   timeBtn: {
     flex: 1,
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radiusTokens.sm,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
   },
   timeLbl: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
   timeVal: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginTop: 2,
   },
-  // ORCH-1263 — overnight micro-line (DESIGN §6.3: typography.micro,
+  // ORCH-1263 — overnight micro-line (DESIGN §6.3: type.label,
   // text.tertiary, marginTop 1, inside the Closes control).
   nextDay: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
     marginTop: 1,
   },
   webTimeInput: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginTop: 2,
     paddingVertical: 2,
   },
   iosBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
     justifyContent: "flex-end",
   },
   iosSheet: {
-    backgroundColor: "#1a1a1e",
-    paddingBottom: spacing.lg,
+    backgroundColor: color.canvas,
+    paddingBottom: space[6],
     borderTopLeftRadius: radiusTokens.lg,
     borderTopRightRadius: radiusTokens.lg,
   },
   iosDone: {
     alignItems: "flex-end",
-    padding: spacing.md,
+    padding: space[4],
   },
 });
 

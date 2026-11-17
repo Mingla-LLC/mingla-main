@@ -15,13 +15,14 @@ import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { HomeAriOrb } from "./HomeAriOrb";
+import { FIELD_FOCUS_BOX_PROPS } from "../ui/fieldFocusCss";
 
 /** The orb at rest: AriOrb's own "sm" geometry and colours (24px, 3px halo),
  *  drawn without animation. Shown while the animated orb loads, and wherever
@@ -43,7 +44,7 @@ export function HomeAskAri({
   };
   return (
     <View style={styles.host} testID={testID}>
-      <View style={styles.askRow}>
+      <View style={styles.askRow} {...FIELD_FOCUS_BOX_PROPS}>
         {/* #4304 — the same three-ring orb as Ari's own screen, so the field
             reads as Ari rather than a generic search box. */}
         <View style={styles.mark} testID="home-ask-ari-orb">
@@ -53,7 +54,7 @@ export function HomeAskAri({
           value={text}
           onChangeText={setText}
           placeholder="Ask Ari to do something…"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           style={styles.askInput}
           returnKeyType="send"
           onSubmitEditing={submit}
@@ -79,19 +80,19 @@ export function HomeAskAri({
 
 const styles = StyleSheet.create({
   host: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   askRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
-    backgroundColor: "rgba(30, 33, 39, 0.85)",
-    paddingLeft: spacing.md,
-    paddingRight: spacing.xs,
-    paddingVertical: spacing.xs,
+    borderColor: color.lineStrong,
+    backgroundColor: color.card2,
+    paddingLeft: space[4],
+    paddingRight: space[1],
+    paddingVertical: space[1],
   },
   mark: {
     width: 28,
@@ -102,20 +103,20 @@ const styles = StyleSheet.create({
   askInput: {
     flex: 1,
     minHeight: 36,
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     ...(Platform.OS === "web" ? { outlineStyle: "none" as never } : null),
   },
   send: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
   },
   sendGlyph: {
-    color: "#101216",
+    color: color.ink,
     fontSize: 18,
     lineHeight: 20,
     fontWeight: "800",

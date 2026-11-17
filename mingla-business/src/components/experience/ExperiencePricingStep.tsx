@@ -20,13 +20,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -48,6 +45,7 @@ import type {
 import {
   EXPERIENCE_BLOCK_MINUTES,
   emptyPriceOption,
+  perStopTotalMinor,
 } from "./experienceWizardTypes";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
@@ -174,7 +172,9 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
     ? 0
     : pricingMode === "whole"
       ? num(defaultOption?.priceMajor ?? wholePriceMajor)
-      : stops.reduce((sum, s) => sum + num(s.priceMajor), 0);
+      : // #3645 bundle 2A — the server's per-stop sum: each stop rounded to
+        // minor units first. The summary, Total and costs preview all read it.
+        perStopTotalMinor(stops) / 100;
 
   const updateStopPrice = (i: number, v: string): void => {
     setStops((prev) => prev.map((s, idx) => (idx === i ? { ...s, priceMajor: v } : s)));
@@ -256,11 +256,24 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
     return `${currencySymbol}${major.toFixed(decimals)}`;
   };
 
+  // #3645 bundle 2A — paid but resolving to 0 minor units, exactly as the
+  // server sums it (per stop: each stop rounded first).
+  const unpriced =
+    !isFree &&
+    Math.round(resolvedTotalMajor * 100) <= 0;
+
   const summaryCopy = (): string => {
     const t = formatSummaryTotal(resolvedTotalMajor);
     const stopWord = n === 1 ? "stop" : "stops";
-    if (isFree || resolvedTotalMajor === 0) {
+    if (isFree) {
       return `Free for buyers — they get ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} in one booking.`;
+    }
+    // #3645 bundle 2A — a paid experience at 0 is not free: only the free
+    // switch makes it free (the server refuses it otherwise).
+    if (unpriced) {
+      return pricingMode === "per_stop"
+        ? "No price yet. Give at least one stop a price, or mark the experience free."
+        : "No price yet. Set a price, or mark the experience free.";
     }
     if (priceOptions.filter((o) => !o.isHidden).length > 1) {
       return `From ${t}. Buyers pick a price, then book the whole experience.`;
@@ -321,13 +334,16 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         </Text>
       ) : null}
 
+      {/* #3645 bundle 2A — the free switch shows in both modes: in per-stop
+          mode, stops left at 0 no longer make the experience free. */}
+      <ToggleRow
+        label="This experience is free"
+        value={isFree}
+        onToggle={() => setIsFree(!isFree)}
+      />
+
       {pricingMode === "whole" ? (
         <>
-          <ToggleRow
-            label="This experience is free"
-            value={isFree}
-            onToggle={() => setIsFree(!isFree)}
-          />
           {!isFree ? (
             <>
               {priceOptions.map((opt, idx) => (
@@ -353,13 +369,13 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
                   ]}
                   testID="experience-pricing-add-price"
                 >
-                  <Icon name="plus" size={18} color={accent.warm} />
+                  <Icon name="plus" size={18} color={color.accent} />
                   <Text style={styles.addPriceText}>Add another price</Text>
                 </Pressable>
               ) : null}
-              {showErrors &&
-              num(defaultOption?.priceMajor ?? wholePriceMajor) <= 0 &&
-              !isFree ? (
+              {/* #3645 bundle 2A — the same minor-unit rule the server and the
+                  summary use: a price that rounds to 0 is no price. */}
+              {showErrors && unpriced ? (
                 <Text style={styles.inlineError}>
                   Set a price, or mark the experience free.
                 </Text>
@@ -367,7 +383,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
             </>
           ) : null}
         </>
-      ) : (
+      ) : isFree ? null : (
         <>
           <Text style={styles.sectionLabel}>PER-STOP PRICES</Text>
           {stops.map((s, i) => (
@@ -394,6 +410,11 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValue}>{formatSummaryTotal(resolvedTotalMajor)}</Text>
           </View>
+          {showErrors && unpriced ? (
+            <Text style={styles.inlineError} testID="experience-pricing-per-stop-unpriced">
+              Give at least one stop a price, or mark the experience free.
+            </Text>
+          ) : null}
         </>
       )}
 
@@ -463,7 +484,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
       ) : null}
 
       <View style={styles.summaryCard}>
-        <Icon name="ticket" size={18} color={accent.warm} />
+        <Icon name="ticket" size={18} color={color.accent} />
         <Text style={styles.summaryText}>{summaryCopy()}</Text>
       </View>
 
@@ -485,7 +506,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
       <GlassCard
         variant="base"
         radius="lg"
-        padding={spacing.md}
+        padding={space[4]}
         testID="experience-pricing-refund-card"
       >
         <RefundPolicyEditor
@@ -495,13 +516,13 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         />
       </GlassCard>
       <Text style={styles.refundHelper} testID="experience-pricing-refund-helper">
-        {isFree || resolvedTotalMajor === 0 ? REFUND_HELPER_FREE : REFUND_HELPER_PAID}
+        {isFree ? REFUND_HELPER_FREE : REFUND_HELPER_PAID}
       </Text>
       {liveSoldCount > 0 ? (
         <GlassCard
           variant="base"
           radius="lg"
-          padding={spacing.md}
+          padding={space[4]}
           style={styles.refundSalesBanner}
           testID="experience-pricing-refund-sales-banner"
         >
@@ -509,7 +530,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
             <Icon
               name="bell"
               size={20}
-              color={semantic.warning}
+              color={color.warning}
               strokeWidth={2}
             />
             <Text style={styles.refundSalesText}>
@@ -601,8 +622,9 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
     <GlassCard
       variant="base"
       radius="lg"
-      padding={spacing.md}
+      padding={space[4]}
       style={option.isHidden ? styles.optionHidden : undefined}
+      contentStyle={styles.optionContent}
       testID={`experience-price-option-${index}`}
     >
       <View style={styles.optionHeader}>
@@ -623,7 +645,7 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
             <Icon
               name={option.soldCount > 0 ? "eye" : "trash"}
               size={18}
-              color={semantic.error}
+              color={color.danger}
             />
           </Pressable>
         ) : null}
@@ -837,20 +859,20 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
 );
 
 const styles = StyleSheet.create({
-  stepBody: { gap: spacing.md },
+  stepBody: { gap: space[4] },
   toggleRowDisabled: { opacity: 0.6 },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   modeToggle: {
     flexDirection: "row",
-    gap: spacing.xs,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[1],
+    backgroundColor: color.fill.inset,
     borderRadius: radius.md,
-    padding: spacing.xxs,
+    padding: 2,
   },
   modeSeg: {
     flex: 1,
@@ -858,64 +880,69 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   modeSegActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   modeSegText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
-  modeSegTextActive: { color: textTokens.primary },
+  modeSegTextActive: { color: color.text1 },
   modeSegDisabled: { opacity: 0.4 },
-  modeSegTextDisabled: { color: textTokens.tertiary },
+  modeSegTextDisabled: { color: color.text3 },
+  // #4420 journey: the price card stacked label, field, helper and the next
+  // label with no space between them.
+  optionContent: {
+    gap: space[2],
+  },
   helper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   scopeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
+    gap: space[1],
+    marginBottom: space[1],
   },
   scopeChip: {
     minHeight: 36,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   scopeChipSelected: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.accentLine,
+    borderColor: color.accentLine,
   },
   scopeChipText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  scopeChipTextSelected: { color: textTokens.primary },
+  scopeChipTextSelected: { color: color.text1 },
   optionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   optionTitle: {
     flex: 1,
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   optionRemove: {
     width: 44,
@@ -926,10 +953,10 @@ const styles = StyleSheet.create({
   optionHidden: { opacity: 0.55 },
   basisToggle: {
     flexDirection: "row",
-    gap: spacing.xs,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[1],
+    backgroundColor: color.fill.inset,
     borderRadius: radius.md,
-    padding: spacing.xxs,
+    padding: 2,
   },
   basisSeg: {
     flex: 1,
@@ -937,81 +964,81 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
   basisSegActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   basisSegText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  basisSegTextActive: { color: textTokens.primary },
+  basisSegTextActive: { color: color.text1 },
   addPriceCta: {
     minHeight: 48,
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.lg,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   addPriceText: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   unhideCta: {
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   pressed: { opacity: 0.7 },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   sectionLabel: {
-    fontSize: typography.labelCap.fontSize,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
-  perStopRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  perStopRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   miniBadge: {
     width: 28,
     height: 28,
     borderRadius: radius.full,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
   },
   miniBadgeText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
-  perStopName: { flex: 1, fontSize: typography.body.fontSize, color: textTokens.primary },
+  perStopName: { flex: 1, fontSize: type.body.fontSize, color: color.text1 },
   perStopPrice: { width: 120 },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
   },
   totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  totalLabel: { fontSize: typography.body.fontSize, color: textTokens.secondary },
+  totalLabel: { fontSize: type.body.fontSize, color: color.text2 },
   totalValue: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: accent.warm,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.accent,
   },
   toggleRow: {
     minHeight: 44,
@@ -1019,72 +1046,72 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  toggleLabel: { flex: 1, fontSize: typography.body.fontSize, color: textTokens.primary },
-  toggleLabelCol: { flex: 1, marginRight: spacing.sm },
+  toggleLabel: { flex: 1, fontSize: type.body.fontSize, color: color.text1 },
+  toggleLabelCol: { flex: 1, marginRight: space[2] },
   toggleSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   toggleTrack: {
     width: 44,
     height: 26,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     padding: 3,
     justifyContent: "center",
   },
-  toggleTrackOn: { backgroundColor: accent.warm },
+  toggleTrackOn: { backgroundColor: color.accent },
   toggleThumb: {
     width: 20,
     height: 20,
     borderRadius: radius.full,
-    backgroundColor: textTokens.inverse,
+    backgroundColor: color.textStrong,
   },
   toggleThumbOn: { alignSelf: "flex-end" },
   summaryCard: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.lg,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   summaryText: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text1,
   },
   inlineError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: 2,
   },
   refundHelper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: -spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: -space[1],
   },
   refundSalesBanner: {
-    borderColor: semantic.warning,
+    borderColor: color.warning,
     borderWidth: 1,
-    backgroundColor: semantic.warningTint,
+    backgroundColor: color.warningTint,
   },
   refundSalesRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   refundSalesText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
 });
 

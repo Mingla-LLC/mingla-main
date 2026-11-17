@@ -158,7 +158,8 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       // `backgroundColor: glass.tint.profileBase` pin no longer matched. Assert the
       // token is used via the platform-select.
       expect(SRC).toMatch(/backgroundColor:\s*Platform\.select\(/);
-      expect(SRC).toMatch(/glass\.tint\.profileBase/);
+      // [TEST-MOD-APPROVED #4420] glass.tint.profileBase retired → color.fill.inset.
+      expect(SRC).toMatch(/ios:\s*color\.fill\.inset/);
       expect(SRC).toMatch(/COVER_W\s*=\s*76/);
       expect(SRC).toMatch(/COVER_H\s*=\s*92/);
     });
@@ -177,7 +178,8 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
 
     it("manage icon uses glass.tint.chrome.idle (correct token-shape per ORCH-0873 hotfix lesson)", () => {
       // P1 lesson from ORCH-0873: never use bare glass.tint.chrome (object).
-      expect(SRC).toMatch(/backgroundColor:\s*glass\.tint\.chrome\.idle/);
+      // [TEST-MOD-APPROVED #4420] glass.tint.chrome.idle retired → the chrome material fill.
+      expect(SRC).toMatch(/backgroundColor:\s*materials\.chrome\.glassFill/);
       expect(SRC).not.toMatch(/backgroundColor:\s*glass\.tint\.chrome,/);
     });
   });
@@ -218,10 +220,13 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
   describe("app/trip/[id]/index.tsx — detail dashboard", () => {
     const SRC = readApp("trip/[id]/index.tsx");
 
-    it("SC-12: hero section with cover + gradient overlay + 24pt title + subline", () => {
-      expect(SRC).toMatch(/<EventCoverMedia[\s\S]*height=\{?200/);
-      expect(SRC).toMatch(/heroOverlay:[^}]*backgroundColor:\s*"rgba\(12,\s*14,\s*18,\s*0\.35\)"/s);
-      expect(SRC).toMatch(/heroTitle:[^}]*fontSize:\s*24[^}]*fontWeight:\s*"700"/s);
+    it("SC-12: compact identity card with cover + status + title + subline", () => {
+      // [TEST-MOD-APPROVED #4420] TILE_MATRIX P10: the 200pt photo hero became the
+      // compact identity card shared with the event home (OfferingHomeHeader).
+      expect(SRC).toMatch(/<OfferingHomeHeader[\s\S]*mediaUrl=\{trip\.coverMediaUrl\}/);
+      expect(SRC).toMatch(/<OfferingHomeHeader[\s\S]*title=\{trip\.title\}/);
+      expect(SRC).toMatch(/sublineTestID="orch-0950-trip-dashboard-hero-subline"/);
+      expect(SRC).toMatch(/<TripDetailHeroStatusPill status=\{tripLifecycleStatus\}/);
     });
 
     it("SC-13: action grid is config-driven with the inline primary Edit tile (ORCH-0867 fold)", () => {
@@ -233,8 +238,11 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       // :462-465). Assert the config grid + the inline primary Edit tile.
       expect(SRC).toMatch(/buildOfferingDashboardTiles\("trip"\)/);
       expect(SRC).toMatch(/dashboardTiles\.map\(/);
-      expect(SRC).toMatch(/<ActionTile[\s\S]*?label=\{trip\.status === "draft"/);
-      expect(SRC).toMatch(/<ActionTile[\s\S]*?primary/);
+      // [TEST-MOD-APPROVED #4420] round-3 item 10 / TILE_MATRIX P10: one "Edit" tile in
+      // every status, first on the shared tile page (no orange lead tile any more).
+      expect(SRC).toMatch(/key:\s*"edit",[\s\S]*?label:\s*"Edit"/);
+      expect(SRC).toMatch(/<OfferingTilePage[\s\S]*?core=\{tripCoreTiles\}/);
+      expect(SRC).toMatch(/const tripCoreTiles[^=]*=\s*\[\s*editTile,/);
     });
 
     it("SC-14: header right slot has share + moreH IconChromes; inline Edit Pressable removed", () => {

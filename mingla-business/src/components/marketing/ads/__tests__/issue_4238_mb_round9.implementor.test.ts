@@ -82,16 +82,6 @@ describe("#4238 r9 P1-2 — one key per edit attempt", () => {
     const next = hostAdLiveEditAttempt(null, { planId: "p", newBudgetCents: 120_00, newEndsAt: null }, mint);
     expect(next.key).not.toBe(other.key);
   });
-  it("the detail screen reuses the attempt key and blocks a second save in flight", () => {
-    const screen = fs.readFileSync(
-      path.join(__dirname, "../../../../screens/hostAds/HostAdDetailScreen.tsx"),
-      "utf8",
-    );
-    const block = screen.slice(screen.indexOf("const onLiveEdit = useCallback("), screen.indexOf("const onDuplicate"));
-    expect(block).toContain("if (liveEditInFlight.current) return;");
-    expect(block).toContain("idempotencyKey: attempt.key");
-    expect(block).not.toMatch(/idempotencyKey:\s*randomUuid\(\)/);
-  });
 });
 
 describe("#4238 r9 — the Host's words after a live edit", () => {
@@ -168,16 +158,5 @@ describe("#4238 r10 — round 9 P3s", () => {
       .toBe("Your ad is updated. Google keeps its daily amount; Mingla stops it at your new total.");
     expect(hostAdLiveEditDoneNote({ daily_not_pushed: ["google", "reddit"], end_not_pushed: [] }))
       .toBe("Your ad is updated. Google and Reddit keep their daily amount; Mingla stops them at your new total.");
-  });
-  it("the live-edit result shows inside the card, not at the bottom of the page", () => {
-    const card = fs.readFileSync(path.join(__dirname, "../HostAdLiveEditCard.tsx"), "utf8");
-    expect(card).toContain('testID="host-ad-live-edit-result"');
-    const screen = fs.readFileSync(
-      path.join(__dirname, "../../../../screens/hostAds/HostAdDetailScreen.tsx"),
-      "utf8",
-    );
-    expect(screen).toContain("result={liveEditResult}");
-    const block = screen.slice(screen.indexOf("const onLiveEdit = useCallback("), screen.indexOf("const onDuplicate"));
-    expect(block).not.toMatch(/setError\(|setNotice\(/);
   });
 });

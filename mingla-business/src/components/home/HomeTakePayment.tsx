@@ -12,9 +12,10 @@ import { useRouter } from "expo-router";
 
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { trackBrandSetup } from "../brand/brandSetupAnalytics";
@@ -86,7 +87,7 @@ export const TakePaymentButton: React.FC<TakePaymentButtonProps> = ({
           <TapToPayIcon size={14} />
         </View>
       ) : (
-        <Icon name="qr" size={18} color="#101216" />
+        <Icon name="qr" size={18} color={color.ink} />
       )}
       <Text style={styles.blockLabel}>{label}</Text>
     </Pressable>
@@ -112,22 +113,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
     minHeight: 50,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.full,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: color.paper,
   },
   markDisc: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#101216",
+    backgroundColor: materials.sheet.solidFill,
     alignItems: "center",
     justifyContent: "center",
   },
-  blockLabel: { ...typography.body, color: "#101216", fontWeight: "700" },
-  doorLine: { marginTop: spacing.sm },
-  doorText: { ...typography.bodySm, color: textTokens.secondary },
+  blockLabel: { ...type.body, color: materials.sheet.solidFill, fontWeight: "700" },
+  doorLine: { marginTop: space[2] },
+  doorText: { ...type.small, color: color.text2 },
   pressed: { opacity: 0.72 },
 });

@@ -132,8 +132,8 @@ enabled = false
 port = 55323
 
 [inbucket]
-enabled = false
-port = 55324
+enabled = ${SITES_LOCAL_CORE_MAIL_ENABLED:-false}
+port = ${SITES_LOCAL_CORE_MAIL_PORT:-55324}
 
 [storage]
 enabled = true
@@ -244,6 +244,20 @@ edge_host_gateway_watch() {
         log "edge runtime: added host.docker.internal -> ${ip} (container ${container})"
       else
         log "WARN edge runtime: host.docker.internal is missing and could not be added; see the runbook Traps"
+      fi
+    fi
+    # #4420 — the colima VM's host resolver can stop answering for outside
+    # names while IP traffic still flows; every Stripe and Google call from the
+    # edge functions then fails. Keep Docker's resolver first (it serves kong,
+    # db and the other container names) and add public fallbacks, inside THIS
+    # container only. The VM and the Mac are never touched.
+    if docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -qx true &&
+      ! docker exec "$container" getent hosts api.stripe.com >/dev/null 2>&1; then
+      if docker exec -u root "$container" sh -c "printf 'nameserver 127.0.0.11\nnameserver 1.1.1.1\nnameserver 8.8.8.8\noptions ndots:0 timeout:2 attempts:1\n' > /etc/resolv.conf" 2>/dev/null &&
+        docker exec "$container" getent hosts api.stripe.com >/dev/null 2>&1; then
+        log "edge runtime: outside DNS was failing; added public resolver fallbacks (container ${container})"
+      else
+        log "WARN edge runtime: outside names (api.stripe.com) do not resolve; Stripe and Google calls will fail; see the runbook Traps"
       fi
     fi
     sleep 5

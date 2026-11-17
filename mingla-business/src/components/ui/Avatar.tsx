@@ -12,8 +12,8 @@
  * is universally correct. See INVESTIGATION_ORCH-0807 §3 HIDDEN-FLAW-1.
  *
  * Visual contract (preserved from inline implementations across J-A7/J-A8/
- * J-A9): circular wrap with `accent.tint` background + 1px `accent.border` +
- * first-letter-uppercase initial in `accent.warm`. When `photo` is supplied,
+ * J-A9): circular wrap with `color.fill.tile` background + 1px `color.lineStrong` +
+ * first-letter-uppercase initial in `color.text1` (#4420). When `photo` is supplied,
  * the image fills the wrap (overflow clipped to shape). When `dimmed`, the
  * whole avatar drops to 50% opacity (used for pending-invitation rows).
  *
@@ -32,9 +32,12 @@ import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { accent } from "../../constants/designSystem";
+import {
+  color,
+} from "../../constants/designSystem";
 
-export type AvatarSize = "row" | "hero";
+/** #4420 adds `sm` (36, the top-bar profile button) and `md` (44). */
+export type AvatarSize = "sm" | "md" | "row" | "hero";
 
 export interface AvatarProps {
   /**
@@ -64,6 +67,8 @@ interface SizeTokens {
 }
 
 const SIZE_TOKENS: Record<AvatarSize, SizeTokens> = {
+  sm: { width: 36, height: 36, borderRadius: 999, fontSize: 15 },
+  md: { width: 44, height: 44, borderRadius: 999, fontSize: 18 },
   row: {
     width: 40,
     height: 40,
@@ -125,9 +130,9 @@ export const Avatar: React.FC<AvatarProps> = ({
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tile,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -141,7 +146,7 @@ const styles = StyleSheet.create({
   },
   initial: {
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
   },
 });
 

@@ -22,12 +22,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { supabase } from "../../src/services/supabase";
-import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../src/constants/designSystem";
+import { color, space, type } from "../../src/constants/designSystem";
 
 // The same shape gig-hire initializes (supabase/functions/_shared/gigPaymentCapture.ts).
 const GIG_REFERENCE = /^(ghold|gtop)_[0-9a-f]{32}_v[1-9][0-9]{0,5}$/;
@@ -97,22 +92,22 @@ export default function PayCallback(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.discover },
+  screen: { flex: 1, backgroundColor: color.canvas },
   content: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
 });

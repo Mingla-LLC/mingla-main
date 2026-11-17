@@ -67,6 +67,11 @@ on:
       # payout-release-sweep/index.ts. Listed in BOTH filters so a sweep-only
       # change re-runs them.
       - "supabase/functions/payout-release-sweep/**"
+      # Issue #3281 — the door's booked start and extras suites (deno2-discovered)
+      # guard scan-ticket/index.ts and guest-list/index.ts. Listed in BOTH
+      # filters so a handler-only change re-runs them.
+      - "supabase/functions/scan-ticket/**"
+      - "supabase/functions/guest-list/**"
       - "mingla-business/app/account/**"
       - "mingla-business/app/(tabs)/account.tsx"
       - "mingla-business/src/hooks/useAccountDeletion.ts"
@@ -504,6 +509,11 @@ on:
       # payout-release-sweep/index.ts. Listed in BOTH filters so a sweep-only
       # change re-runs them.
       - "supabase/functions/payout-release-sweep/**"
+      # Issue #3281 — the door's booked start and extras suites (deno2-discovered)
+      # guard scan-ticket/index.ts and guest-list/index.ts. Listed in BOTH
+      # filters so a handler-only change re-runs them.
+      - "supabase/functions/scan-ticket/**"
+      - "supabase/functions/guest-list/**"
       - "mingla-business/app/account/**"
       - "mingla-business/app/(tabs)/account.tsx"
       - "mingla-business/src/hooks/useAccountDeletion.ts"
@@ -1668,6 +1678,9 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     name: "ORCH-1331: mingla-business client leg — earnings NG fork + badge/labels + PartnerPaystackOnboardForm contract (T-15/T-16)"
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     defaults:
       run:
         working-directory: mingla-business
@@ -1709,6 +1722,9 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-865 WP-C — browser ad pixels + consent gate (Stage C)"
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     defaults:
       run:
         working-directory: mingla-business
@@ -1731,6 +1747,9 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-1971 — Business web/iOS/Android share one canonical trip command owner"
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     defaults:
       run:
         working-directory: mingla-business
@@ -1773,6 +1792,9 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     name: "ISSUE-1977 — Business RSVP shares one canonical graph/guest/contribution owner"
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     defaults:
       run:
         working-directory: mingla-business
@@ -1878,6 +1900,9 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     name: "Issue #1363: pinless selected address + context-validated hierarchy"
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AlertCircle, CheckCircle2, FileText, Image as ImageIcon, RotateCw, X } from "lucide-react-native";
 
-import { accent, ariThread, glass, radius, semantic, spacing, text as textTokens } from "../../constants/designSystem";
+import { ariThread, color, materials, radius, space } from "../../constants/designSystem";
 import { openAriAttachment } from "../../services/ariAttachmentService";
 import type { AriAttachmentDraft, AriSentAttachment } from "../../services/ariAttachmentService";
 import { captureAriAttachmentOutcome } from "../../services/ariPolishAnalytics";
@@ -28,8 +28,8 @@ function FileGlyph({ type, uri }: { type: string; uri?: string }): React.ReactEl
     return <Image source={{ uri }} style={styles.thumbnailImage} accessibilityIgnoresInvertColors />;
   }
   return type === "image"
-    ? <ImageIcon size={22} color={accent.warm} strokeWidth={2} />
-    : <FileText size={22} color={accent.warm} strokeWidth={2} />;
+    ? <ImageIcon size={22} color={color.text1} strokeWidth={2} />
+    : <FileText size={22} color={color.text1} strokeWidth={2} />;
 }
 
 export const AriAttachmentTray: React.FC<{
@@ -88,7 +88,7 @@ export const AriAttachmentTray: React.FC<{
               >
                 <Text style={styles.filename} numberOfLines={1}>{middleTruncate(attachment.name)}</Text>
                 <View style={styles.stateRow}>
-                  {failed ? <AlertCircle size={14} color={semantic.error} /> : attachment.state === "ready" ? <CheckCircle2 size={14} color={semantic.success} /> : <RotateCw size={14} color={textTokens.secondary} />}
+                  {failed ? <AlertCircle size={14} color={color.danger} /> : attachment.state === "ready" ? <CheckCircle2 size={14} color={color.success} /> : <RotateCw size={14} color={color.text2} />}
                   <Text style={[styles.fileMeta, failed && styles.failedText]}>{stateCopy} · {formatAriFileSize(attachment.sizeBytes)}</Text>
                 </View>
               </View>
@@ -98,7 +98,7 @@ export const AriAttachmentTray: React.FC<{
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ${attachment.name}`}
               >
-                <X size={18} color={textTokens.secondary} />
+                <X size={18} color={color.text2} />
               </Pressable>
             </View>
           );
@@ -160,7 +160,7 @@ export const AriSentAttachments: React.FC<{
             <Text style={styles.filename} numberOfLines={1}>{middleTruncate(attachment.original_filename)}</Text>
             <Text style={styles.fileMeta}>{attachment.file_type.toUpperCase()} · {formatAriFileSize(attachment.verified_size_bytes)}</Text>
           </View>
-          <CheckCircle2 size={16} color={semantic.success} />
+          <CheckCircle2 size={16} color={color.success} />
         </Pressable>
       ))}
       {openError ? <Text style={styles.openError} accessibilityRole="alert">{openError}</Text> : null}
@@ -168,46 +168,46 @@ export const AriSentAttachments: React.FC<{
   );
 };
 
-const raised = Platform?.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileElevated;
+const raised = Platform?.OS === "android" ? materials.pane.solidFill : color.fill.tile;
 const styles = StyleSheet.create({
-  tray: { gap: spacing.sm },
-  trayHeader: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  trayTitle: { color: textTokens.primary, fontSize: ariThread.labelFont, lineHeight: ariThread.labelLine, fontWeight: "600" },
-  supporting: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
-  textControl: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm },
-  removeAll: { color: accent.warm, fontSize: 14, lineHeight: 20, fontWeight: "600" },
-  trayScroll: { gap: spacing.sm },
+  tray: { gap: space[2] },
+  trayHeader: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] },
+  trayTitle: { color: color.text1, fontSize: ariThread.labelFont, lineHeight: ariThread.labelLine, fontWeight: "600" },
+  supporting: { color: color.text3, fontSize: 12, lineHeight: 16 },
+  textControl: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2] },
+  removeAll: { color: color.text1, fontSize: 14, lineHeight: 20, fontWeight: "600" },
+  trayScroll: { gap: space[2] },
   draftCard: {
     width: ariThread.attachmentCardW,
     minHeight: ariThread.attachmentCardMinH,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: raised,
     overflow: "hidden",
   },
-  failedCard: { borderColor: semantic.error },
-  thumbnail: { width: ariThread.attachmentThumb, height: ariThread.attachmentThumb, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: ariThread.composerSurface, overflow: "hidden" },
+  failedCard: { borderColor: color.danger },
+  thumbnail: { width: ariThread.attachmentThumb, height: ariThread.attachmentThumb, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: color.card, overflow: "hidden" },
   thumbnailImage: { width: "100%", height: "100%" },
   fileCopy: { flex: 1, minWidth: 0 },
-  filename: { color: textTokens.primary, fontSize: ariThread.labelFont, lineHeight: ariThread.labelLine, fontWeight: "600" },
-  fileMeta: { color: textTokens.secondary, fontSize: 12, lineHeight: 16 },
+  filename: { color: color.text1, fontSize: ariThread.labelFont, lineHeight: ariThread.labelLine, fontWeight: "600" },
+  fileMeta: { color: color.text2, fontSize: 12, lineHeight: 16 },
   stateRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  failedText: { color: semantic.error },
+  failedText: { color: color.danger },
   iconControl: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  failureBlock: { width: "100%", gap: spacing.xs, paddingVertical: spacing.xs },
-  failureFilename: { color: textTokens.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600" },
-  failureCopy: { color: semantic.errorText, fontSize: 14, lineHeight: 20 },
-  openError: { color: semantic.errorText, fontSize: 14, lineHeight: 20 },
-  failureActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  footerAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm },
-  footerActionText: { color: accent.warm, fontSize: 14, fontWeight: "600" },
-  privacy: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
-  sentList: { alignSelf: "flex-end", width: "84%", maxWidth: 280, gap: spacing.xs, marginBottom: spacing.xs },
-  sentCard: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: accent.border, backgroundColor: Platform?.OS === "android" ? "#2b1d15" : "rgba(235, 120, 37, 0.12)", overflow: "hidden" },
+  failureBlock: { width: "100%", gap: space[1], paddingVertical: space[1] },
+  failureFilename: { color: color.text2, fontSize: 12, lineHeight: 16, fontWeight: "600" },
+  failureCopy: { color: color.errorText, fontSize: 14, lineHeight: 20 },
+  openError: { color: color.errorText, fontSize: 14, lineHeight: 20 },
+  failureActions: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
+  footerAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[2] },
+  footerActionText: { color: color.text1, fontSize: 14, fontWeight: "600" },
+  privacy: { color: color.text3, fontSize: 12, lineHeight: 16 },
+  sentList: { alignSelf: "flex-end", width: "84%", maxWidth: 280, gap: space[1], marginBottom: space[1] },
+  sentCard: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[2], padding: space[2], borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: Platform?.OS === "android" ? color.card : color.fill.tile, overflow: "hidden" },
   pressed: { opacity: 0.78 },
 });

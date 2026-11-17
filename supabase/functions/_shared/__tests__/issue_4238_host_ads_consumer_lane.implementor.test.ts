@@ -16,6 +16,7 @@ import "../adChannel.ts";
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
@@ -468,9 +469,15 @@ Deno.test("T-F3 #4238 clients never author Host objectives", async () => {
   );
   for (const source of [service, ariPayload]) {
     assert(!/\bobjective:/.test(source));
-    assert(!source.includes("optimization_goal"));
     assert(!source.includes("billing_event"));
   }
+  // #4238 W6a (item 3): the Host client sends the Host's own goal
+  // (sales / sign-ups) as optimization_goal inside canonical_plan, which the
+  // server validates; never a provider objective. Ari's create payload still
+  // never carries it.
+  assert(!ariPayload.includes("optimization_goal"));
+  assertStringIncludes(service, "optimization_goal: input.optimization,");
+  assertStringIncludes(service, '...(input.optimization !== "visits"');
   const create = await read("../../admin-ad-create-campaign/index.ts");
   const derive = create.indexOf("Object.assign(body, hostGoal)");
   const firstRead = create.indexOf("const objective = typeof body.objective");
@@ -516,7 +523,8 @@ Deno.test("T-F6 #4238 sales readiness mirrors the Admin gates and fails closed",
   );
   assertEquals(
     await salesReadiness(connection("google", {}), ready),
-    { ready: false, reason: "not_supported" },
+    // #4238 W4b §6: Google needs its purchase action (and Z-4) first.
+    { ready: false, reason: "needs_setup" },
   );
   const throwing: SalesSignalProbes = {
     ...ready,
@@ -630,7 +638,10 @@ Deno.test("T-A7 #4238 Ari plans on host_setup accounts with a server-checked goa
     },
   } as never;
 
-  const result = await findTool("propose_ad_plan")!.executor(
+  const opensBefore = bodies.filter((row) => row.body.action === "open").length;
+  await assertRejects(
+    () =>
+      findTool("propose_ad_plan")!.executor(
     {
       brand_id: BRAND,
       name: "Deserted Island",
@@ -650,6 +661,34 @@ Deno.test("T-A7 #4238 Ari plans on host_setup accounts with a server-checked goa
     client,
     BRAND,
     {} as never,
+  ),
+    Error,
+    "Tell the Host first: Snapchat will get page visits",
+  );
+  // #4238 W5 adversarial: no yes, no plan opened and nothing saved.
+  assertEquals(bodies.filter((row) => row.body.action === "open").length, opensBefore);
+  const result = await findTool("propose_ad_plan")!.executor(
+    {
+      brand_id: BRAND,
+      name: "Deserted Island",
+      dest_page_type: "event",
+      dest_brand_slug: "femzy",
+      dest_entity_slug: "deserted-island",
+      platforms: ["meta", "snapchat"],
+      budget_cents: 20000,
+      countries: ["NG"],
+      interests: ["live music"],
+      rights_confirmed: true,
+      rights_basis: "owned",
+      ai_generated: true,
+      creative_library_id: CREATIVE,
+      optimize_for: "sales",
+      // #4238 W5 (U-3): the Host agreed Snapchat runs visits for now.
+      acknowledged_visits_fallback: ["snapchat"],
+    },
+    client,
+    BRAND,
+    {} as never,
   ) as { optimization: { sales: string[]; visits: string[] } };
 
   assert(!tables.includes("ad_connections"), "Ari read ad_connections");
@@ -665,6 +704,9 @@ Deno.test("T-A7 #4238 Ari plans on host_setup accounts with a server-checked goa
     snapchat: "visits",
   });
   assertEquals(result.optimization, { sales: ["meta"], visits: ["snapchat"] });
+  // #4238 W5: the goal and the Host's yes ride on the plan like manual plans.
+  assertEquals(canonical.optimization_goal, "sales");
+  assertEquals(canonical.acknowledged_visits_fallback, ["snapchat"]);
   for (const row of bodies) {
     assert(!("lane" in row.body), `${row.name} sent a lane`);
   }

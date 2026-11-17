@@ -167,14 +167,24 @@ describe("#4389 U-9 Home top bar", () => {
     client.clear();
   });
 
-  test("Home still mounts TopBar leftKind=brand with + as extraRightSlot and no rightSlot", () => {
-    const home = fs.readFileSync(path.join(__dirname, "../../../../app/(tabs)/home.tsx"), "utf8");
-    const at = home.indexOf("<TopBar");
-    const block = home.slice(at, home.indexOf("/>\n", home.indexOf("extraRightSlot", at)) + 3);
+  // [TEST-MOD-APPROVED #4420] B5: on phone Create is the centre BottomNav
+  // button, so the tab-root top bar carries no "+"; desktop web keeps one.
+  test.each([
+    ["Home", "../../../../app/(tabs)/home.tsx", "home-universal-creator-button"],
+    ["Hub", "../../../../app/(tabs)/hub/_layout.tsx", "hub-universal-creator-button"],
+    ["Account", "../../../../app/(tabs)/account.tsx", "account-universal-creator-button"],
+  ])("%s mounts TopBar leftKind=brand; the + extraRightSlot is desktop-only", (_name, rel, testID) => {
+    const src = fs.readFileSync(path.join(__dirname, rel), "utf8");
+    const at = src.indexOf("<TopBar");
+    const end = src.indexOf(") : undefined", src.indexOf("extraRightSlot", at));
+    expect(end).toBeGreaterThan(at);
+    const block = src.slice(at, end + ") : undefined".length);
     expect(block).toContain('leftKind="brand"');
-    expect(block).toContain("extraRightSlot=");
+    expect(block).toMatch(/extraRightSlot=\{[\s\S]*?isWideDesktop \? \(\s*<IconChrome/);
     expect(block).toContain('icon="plus"');
+    expect(block).toContain(`testID="${testID}"`);
     expect(block).not.toContain("rightSlot={");
+    expect(src.match(/universal-creator-button"/g)).toHaveLength(1);
   });
 
   test("TopBar's brand slot is the shared BrandChip; the 18-character label stays", () => {

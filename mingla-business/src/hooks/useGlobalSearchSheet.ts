@@ -23,7 +23,7 @@
 
 import { create } from "zustand";
 
-import { pushRecent as pushRecentPure } from "../lib/search/sheetState";
+import { pushRecent as pushRecentPure } from "../lib/search/recents";
 
 const RECENTS_CAP = 6;
 

@@ -14,6 +14,41 @@ export {
 } from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 
+// issue #4420 — the premium public-page frame's shared pieces. Every buyer
+// offering page (event, RSVP, experience, trip) uses them; wave B (venues,
+// stays) reuses the same ones.
+export {
+  OfferingGlassBar,
+  OFFERING_GLASS_BAR_GAP,
+  OFFERING_GLASS_BAR_HEIGHT,
+} from "./OfferingGlassBar";
+export type { OfferingGlassBarProps } from "./OfferingGlassBar";
+// issue #4420 — the host app's optional real-blur material (expo-blur stays out).
+export {
+  OfferingGlassProvider,
+  OfferingGlassBackdrop,
+  useOfferingGlass,
+  glassBlurActive,
+  glassFillAlpha,
+} from "./OfferingGlassContext";
+export type {
+  OfferingGlassMaterial,
+  OfferingGlassBackdropProps,
+} from "./OfferingGlassContext";
+export { OfferingFactRows } from "./OfferingFactRows";
+export type {
+  OfferingFact,
+  OfferingFactIcon,
+  OfferingFactRowsProps,
+} from "./OfferingFactRows";
+export { OfferingSectionTitle, OfferingSubLabel } from "./OfferingSectionTitle";
+export type { OfferingSectionTitleProps } from "./OfferingSectionTitle";
+export { OfferingCoverIdentity } from "./OfferingCoverIdentity";
+export type {
+  OfferingCoverIdentityData,
+  OfferingCoverIdentityProps,
+} from "./OfferingCoverIdentity";
+
 // #3872 — response types + final buyer copy for server-owned discount quotes.
 // Deliberately dependency-free so web and native consume one contract without
 // importing any pricing engine.

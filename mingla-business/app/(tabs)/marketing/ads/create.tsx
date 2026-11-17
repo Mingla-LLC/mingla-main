@@ -5,7 +5,7 @@
 import React, { Suspense } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
-import { accent, canvas } from "../../../../src/constants/designSystem";
+import { color } from "../../../../src/constants/designSystem";
 
 const HostAdCreateScreen = React.lazy(async () => ({
   default: (await import("../../../../src/screens/hostAds/HostAdScreens")).HostAdCreateScreen,
@@ -16,7 +16,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     <Suspense
       fallback={
         <View style={styles.loading}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text2} />
         </View>
       }
     >
@@ -30,6 +30,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
 });

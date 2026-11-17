@@ -244,16 +244,16 @@ export const formatCalendarPeriod = (
   }
   const range = calendarWeek(anchorKey);
   const start = formatCalendarDay(range.startKey, { month: "short", day: "numeric" });
-  const end = formatCalendarDay(range.endKey, {
-    month:
-      parseDayKey(range.startKey).getUTCMonth() ===
-      parseDayKey(range.endKey).getUTCMonth()
-        ? undefined
-        : "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  return `${start}–${end}`;
+  const sameMonth =
+    parseDayKey(range.startKey).getUTCMonth() ===
+    parseDayKey(range.endKey).getUTCMonth();
+  // #4420 — a day + year format with no month renders as "2026 (day: 15)" in
+  // some engines, so a same-month week names the end day and the year apart:
+  // "Nov 9 – 15, 2026".
+  const end = sameMonth
+    ? `${formatCalendarDay(range.endKey, { day: "numeric" })}, ${formatCalendarDay(range.endKey, { year: "numeric" })}`
+    : formatCalendarDay(range.endKey, { month: "short", day: "numeric", year: "numeric" });
+  return `${start} – ${end}`;
 };
 
 export interface MonthDayProjection {

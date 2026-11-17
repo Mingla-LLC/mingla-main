@@ -19,13 +19,10 @@ import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesServ
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 import { GlassCard } from "../ui/GlassCard";
@@ -157,10 +154,10 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
       style={
         intelCityHighlight
           ? {
-              borderColor: accent.warm,
+              borderColor: color.lineStrong,
               borderWidth: 2,
               borderRadius: radiusTokens.md,
-              padding: spacing.xs,
+              padding: space[1],
             }
           : undefined
       }
@@ -310,12 +307,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           {/* Privacy info card */}
           <GlassCard
             variant="base"
-            padding={spacing.md}
+            padding={space[4]}
             style={styles.infoCard}
           >
             <View style={styles.infoRow}>
               <View style={styles.infoIconWrap}>
-                <Icon name="location" size={14} color={accent.warm} />
+                <Icon name="location" size={14} color={color.text1} />
               </View>
               <Text style={styles.infoText}>{addressCopy.infoCard}</Text>
             </View>
@@ -352,40 +349,40 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
 
 const styles = StyleSheet.create({
   field: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   helperError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
   },
   helperHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
   },
   // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
   addrHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.warning,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.warning,
+    marginTop: space[1],
   },
   inputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderWidth: 1,
   },
   onlineSpacer: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 
   // Hide-address toggle (matches Step 6 ToggleRow visual) ---------------
@@ -393,74 +390,76 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.md,
+    borderColor: color.line,
+    marginBottom: space[4],
   },
   toggleLabelCol: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: space[2],
   },
   toggleLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   toggleSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   toggleTrack: {
     width: 44,
     height: 26,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: color.fill.step,
     padding: 3,
   },
   toggleTrackOn: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   toggleThumb: {
     width: 20,
     height: 20,
     borderRadius: 999,
-    backgroundColor: "#fff",
+    backgroundColor: color.text1,
   },
   toggleThumbOff: {
+    backgroundColor: color.text1,
     transform: [{ translateX: 0 }],
   },
   toggleThumbOn: {
+    backgroundColor: color.ink,
     transform: [{ translateX: 18 }],
   },
 
   // Info card ----------------------------------------------------------
   infoCard: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   infoRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
   infoIconWrap: {
     width: 28,
     height: 28,
     borderRadius: 999,
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   infoText: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight * 1.4,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight * 1.4,
+    color: color.text2,
   },
 });

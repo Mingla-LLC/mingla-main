@@ -2,7 +2,10 @@ import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
-import { accent, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../constants/designSystem";
 import type { PublicExperienceCard } from "../../services/publicEventsService";
 import { formatCurrencyRound } from "../../utils/currency";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -115,12 +118,12 @@ const formatNextOccurrence = (iso: string | null): string | null => {
 const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
-    gap: spacing.md,
-    padding: spacing.sm,
+    gap: space[4],
+    padding: space[2],
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: color.line,
   },
   cardPressed: {
     opacity: 0.82,
@@ -146,10 +149,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 9,
     paddingVertical: 4,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: color.fill.tabOn,
   },
   typePillText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 11,
     fontWeight: "800",
   },
@@ -158,20 +161,20 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 9,
     paddingVertical: 4,
-    backgroundColor: "rgba(255,159,64,0.18)",
+    backgroundColor: color.warningTint,
   },
   pricePillText: {
-    color: accent.warm,
+    color: color.text1,
     fontSize: 11,
     fontWeight: "900",
   },
   title: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 16,
     fontWeight: "800",
   },
   subline: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
   },
 });

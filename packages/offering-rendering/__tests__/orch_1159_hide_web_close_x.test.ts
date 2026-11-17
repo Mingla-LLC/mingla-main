@@ -74,8 +74,9 @@ Deno.test("ORCH-1159: OfferingChrome gates ONLY the close button (Share/Mute nev
   assertStringIncludes(src, "{showClose ? (");
   // The guard wraps the CLOSE button (CloseGlyph), not Share/Mute.
   const guardIdx = src.indexOf("{showClose ? (");
-  const closeIdx = src.indexOf("<CloseGlyph />");
-  const shareIdx = src.indexOf("<ShareGlyph />");
+  // issue #4420 — the glyphs take a colour (plain ink in the solid header).
+  const closeIdx = src.search(/<CloseGlyph[\s/]/);
+  const shareIdx = src.search(/<ShareGlyph[\s/]/);
   assert(guardIdx >= 0 && closeIdx > guardIdx, "showClose guard must precede CloseGlyph");
   // Share renders unconditionally and AFTER the close guard block, never inside it.
   assert(shareIdx > closeIdx, "Share must render after the close button");

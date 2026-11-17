@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_4420_public_audit.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4420-public-audit-01",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -29,11 +29,9 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type {
@@ -143,7 +141,7 @@ export const TravelerIntakeAnswerCard: React.FC<
         <Icon
           name={expanded ? "chevU" : "chevD"}
           size={18}
-          color={textTokens.tertiary}
+          color={color.text3}
           strokeWidth={2}
         />
       </Pressable>
@@ -257,77 +255,77 @@ export const TravelerTierChip: React.FC<TravelerTierChipProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: space[2],
+    paddingTop: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
     minHeight: 36,
   },
   headerPressed: {
     opacity: 0.7,
   },
   headerLabel: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
     textTransform: "uppercase",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   body: {
-    marginTop: spacing.sm,
-    gap: spacing.md,
+    marginTop: space[2],
+    gap: space[4],
   },
   pairWrap: {
     gap: 2,
   },
   questionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   answerText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   answerEmpty: {
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   filesRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   filesHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   tierChip: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 2,
     borderRadius: 999,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
     alignSelf: "flex-start",
   },
   tierChipLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });
 

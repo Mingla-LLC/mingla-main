@@ -8,10 +8,17 @@ import {
 
 import type { StayPaymentSession } from "@mingla/brand-rendering/stayGuest";
 
+import type { ThemePalette } from "@mingla/offering-rendering";
+
+import { color } from "../../constants/designSystem";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
+import { stayPaymentAppearance } from "./stayPaymentAppearance";
 interface Props {
   session: Extract<StayPaymentSession, { provider: "stripe" }>;
   groupId: string;
   accent: string;
+  /** issue #4420 wave 2 (D-S1) — the page palette; the element follows it. */
+  palette?: ThemePalette;
   onComplete: () => void;
   returnUrl?: string;
 }
@@ -20,6 +27,7 @@ export function StayStripePayment({
   session,
   groupId,
   accent,
+  palette,
   onComplete,
   returnUrl,
 }: Props): React.ReactElement {
@@ -52,10 +60,13 @@ export function StayStripePayment({
         }
         const elements = stripe.elements({
           clientSecret: session.clientSecret,
-          appearance: {
-            theme: "night",
-            variables: { colorPrimary: accent, borderRadius: "12px" },
-          },
+          appearance:
+            palette !== undefined
+              ? stayPaymentAppearance(palette, accent)
+              : {
+                  theme: "night",
+                  variables: { colorPrimary: accent, borderRadius: "12px" },
+                },
         });
         paymentElement = elements.create("payment");
         paymentElement.on("ready", () => {
@@ -78,7 +89,7 @@ export function StayStripePayment({
       stripeRef.current = null;
       elementsRef.current = null;
     };
-  }, [accent, session.clientSecret, stripePromise]);
+  }, [accent, palette, session.clientSecret, stripePromise]);
 
   const pay = async (): Promise<void> => {
     const stripe = stripeRef.current;
@@ -118,6 +129,9 @@ export function StayStripePayment({
         }}
         style={{
           ...styles.button,
+          ...(palette !== undefined
+            ? { ...accentFill(palette), color: palette.accentText }
+            : null),
           opacity: submitting || !ready ? 0.55 : 1,
         }}
       >
@@ -129,14 +143,14 @@ export function StayStripePayment({
 
 const styles: Record<string, React.CSSProperties> = {
   host: { display: "grid", gap: 16 },
-  error: { color: "#ef4444", fontSize: 13, lineHeight: "18px", margin: 0 },
+  error: { color: color.errorText, fontSize: 13, lineHeight: "18px", margin: 0 },
   button: {
     minHeight: 52,
     borderRadius: 999,
     border: 0,
-    backgroundColor: "#eb7825",
+    backgroundColor: color.accent,
     cursor: "pointer",
-    color: "#ffffff",
+    color: color.textStrong,
     fontSize: 15,
     fontWeight: 900,
     padding: "0 24px",

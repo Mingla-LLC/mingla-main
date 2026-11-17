@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/guest-list/__tests__/issue_3281_booked_start_search.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-guest-list-booked-start-search",
+  "profile": "deno-2-unit"
+}

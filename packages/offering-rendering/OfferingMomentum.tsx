@@ -69,6 +69,8 @@ export interface OfferingMomentumProps {
    * see-row, NO dead tap (Constitution #1).
    */
   onSeeWhosGoing?: () => void;
+  /** issue #4420 — the offering has happened: past-tense copy, no meter. */
+  ended?: boolean;
   testID?: string;
 }
 
@@ -86,6 +88,7 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
   theme,
   socialProof,
   onSeeWhosGoing,
+  ended = false,
   testID,
 }) => {
   // issue #3827 going-box — a private guest list hides the WHOLE box (count,
@@ -97,7 +100,7 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
   ) {
     return null;
   }
-  const momentum = deriveSocialProofMomentum(socialProof);
+  const momentum = deriveSocialProofMomentum(socialProof, { ended });
   if (!momentum.visible) return null;
 
   const boldFamily = boldFontFamily(theme);

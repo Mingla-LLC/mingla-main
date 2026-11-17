@@ -95,29 +95,29 @@ const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 // while in test without a redeploy.
 const RATE_LIMIT_MAX = Number(Deno.env.get("EVENTS_RATE_LIMIT_MAX") ?? "10") || 10;
 
+import {
+  BAND_HIGH,
+  BAND_LOW,
+  LANDING_TO_RSVP,
+  landingToTicket,
+  typicalCpc,
+} from "../_shared/adResultBenchmarks.ts";
+
 // issue #3526 — GEMINI_MODEL_ID is re-exported from the single source so the
 // `model:` field written onto the report meta stays in lockstep with the URL.
 const GEMINI_API_URL = geminiGenerateContentUrl();
 const GEMINI_TEMPERATURE = 0.4;
 
 // ── Conversion + cost model (grounded in INDUSTRY BENCHMARKS, tunable) ────────
+// #4238 item 2: BAND_LOW/HIGH, landingToTicket, LANDING_TO_RSVP and the
+// typical CPC table live in _shared/adResultBenchmarks.ts (values unchanged),
+// shared with the Host budget guidance.
 // Sources (2025 data): Meta entertainment CPC ~$0.40–0.70 (one of the cheapest
 // verticals); event ticketing landing→ticket ~2–10%; free landing→RSVP ~15–25%;
 // paid show-up ~75–90% (no-show 10–25%), free show-up ~45% (no-show 40–60%);
 // a small fee sharply cuts no-shows. Shown to the user in the report, refined
 // per-event by live research. A ±25% band produces the low/high range.
-const BAND_LOW = 0.75;
-const BAND_HIGH = 1.25;
 
-// PAID: an ad click that lands → buys a ticket. Cheaper tickets convert better.
-function landingToTicket(price: number): number {
-  if (price < 20) return 0.08;
-  if (price < 50) return 0.06;
-  if (price < 100) return 0.045;
-  return 0.03;
-}
-// FREE: an ad click that lands → RSVPs (no purchase friction, so far higher).
-const LANDING_TO_RSVP = 0.20;
 // Show-up (attendance) rate — paid buyers mostly show; free RSVPs often don't.
 function showRate(price: number): number {
   if (price <= 0) return 0.45; // free: 40–60% no-show
@@ -129,13 +129,6 @@ function showRate(price: number): number {
 
 // Event-ad CPC in the EVENT'S currency. A stray model estimate is clamped to a
 // band around the currency's typical entertainment link-CPC.
-const FALLBACK_CPC: Record<string, number> = {
-  USD: 0.50, GBP: 0.42, EUR: 0.48, CAD: 0.65, AUD: 0.70,
-  NGN: 55, INR: 11, ZAR: 3.8, AED: 1.9, NZD: 0.75,
-};
-function typicalCpc(currency: string): number {
-  return FALLBACK_CPC[currency] ?? 0.50;
-}
 function resolveCpc(currency: string, cpcResearched: number | null): number {
   // Clamp to [0.4×, 2.2×] the currency's typical entertainment CPC. Event-ad
   // CPCs cluster tightly (~$0.40–0.70); models tend to over-estimate, so the

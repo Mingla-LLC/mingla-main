@@ -243,7 +243,15 @@ test("desktop preserves document scrolling and never mounts the phone reserve ba
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(harness);
-  await expect(page.getByTestId("issue-2729-reserve-bar")).toHaveCount(0);
+  // #4420 — desktop has no boxed panel any more: Reserve lives in the same
+  // glass bar, DOCKED (position: fixed) in the left flyer column. What must
+  // never mount on desktop is the phone band, which sits sticky in the scroll
+  // flow. One bar, docked, never sticky.
+  const desktopBar = page.getByTestId("issue-2729-reserve-bar");
+  await expect(desktopBar).toHaveCount(1);
+  expect(
+    await desktopBar.evaluate((element) => getComputedStyle(element).position),
+  ).toBe("fixed");
   const desktopCta = page.getByTestId("issue-2729-reserve-cta");
   await expect(desktopCta).toHaveCount(1);
   await expect(desktopCta).toBeVisible();

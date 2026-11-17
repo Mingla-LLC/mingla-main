@@ -24,17 +24,12 @@
  */
 
 import React, { useContext, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 import { QueryClientContext } from "@tanstack/react-query";
 
-import {
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, shadow as shadowTokens, space, type } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useAuth } from "../../context/AuthContext";
@@ -43,6 +38,7 @@ import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
 
+import { Avatar } from "./Avatar";
 import { BrandChip } from "./BrandChip";
 import { GlassChrome } from "./GlassChrome";
 import { IconChrome } from "./IconChrome";
@@ -108,11 +104,25 @@ export interface TopBarProps {
    * and not-yet-hydrated windows itself, so every screen is covered without it.
    */
   brandLoading?: boolean;
+  /**
+   * #4420 (B5): show the profile button (Avatar 36 → `/(tabs)/account`) at
+   * the end of the phone top bar. Defaults to true for `leftKind="brand"`
+   * (the tab roots) on phones; desktop keeps its Account icon.
+   */
+  showProfileButton?: boolean;
+  /**
+   * #4420: pushed-screen title alignment on phones. Default `center` (kit
+   * NavBar-m) when the right side is the default cluster or empty; `left`
+   * when a custom right slot is given, so a long title never runs under it.
+   */
+  titleAlign?: "left" | "center";
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
 
 const TOPBAR_HEIGHT = 56;
+/** Room kept clear on each side of a centred title (back button / right icons). */
+const CENTER_TITLE_INSET = 96;
 
 interface ToastState {
   kind: ToastKind;
@@ -127,6 +137,34 @@ interface ToastState {
  */
 /** Stands in when a test replaces react-query without its context. */
 const NO_QUERY_CLIENT = React.createContext<undefined>(undefined);
+
+/**
+ * #4420 B5 — the profile button that replaces the Account tab on phones.
+ * The `/(tabs)/account` route stays, so deep links keep working.
+ */
+export const ProfileButton: React.FC = () => {
+  const router = useRouter();
+  const { user } = useAuth();
+  const metadata = (user as { user_metadata?: { full_name?: unknown; name?: unknown; avatar_url?: unknown } } | null)
+    ?.user_metadata;
+  const name =
+    (typeof metadata?.full_name === "string" && metadata.full_name) ||
+    (typeof metadata?.name === "string" && metadata.name) ||
+    user?.email ||
+    "";
+  const photo = typeof metadata?.avatar_url === "string" && metadata.avatar_url.length > 0 ? metadata.avatar_url : undefined;
+  return (
+    <Pressable
+      onPress={() => router.push("/(tabs)/account" as never)}
+      accessibilityRole="button"
+      accessibilityLabel="Account"
+      hitSlop={4}
+      testID="topbar-profile-button"
+    >
+      <Avatar name={name} size="sm" photo={photo} accessibilityLabel="Account" />
+    </Pressable>
+  );
+};
 
 const MessagesButton: React.FC<{ unread: number }> = ({ unread }) => {
   const router = useRouter();
@@ -231,6 +269,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   unreadCount,
   onBrandTap,
   brandLoading = false,
+  showProfileButton,
+  titleAlign,
   testID,
   style,
 }) => {
@@ -246,6 +286,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   // that fully replaces the right slot — back routes, BrandEdit Save, etc.).
   // Mobile + narrow web + rightSlot consumers: render byte-identical to today.
   const useDesktopLayout = isWideDesktop && rightSlot === undefined;
+  const profileOnPhone = !isWideDesktop && (showProfileButton ?? leftKind === "brand");
+  const centredTitle =
+    leftKind === "back" &&
+    title !== undefined &&
+    !isWideDesktop &&
+    (titleAlign ?? (rightSlot === undefined || rightSlot === null ? "center" : "left")) === "center";
 
   const handleAccountTap = (): void => {
     router.push("/(tabs)/account" as never);
@@ -288,7 +334,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               onPress={onBack}
               accessibilityLabel="Back"
             />
-            {title !== undefined ? (
+            {title !== undefined && !centredTitle ? (
               <Text style={styles.backTitle} numberOfLines={1}>
                 {title}
               </Text>
@@ -304,14 +350,15 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <View testID={testID} style={style}>
-      <GlassChrome
-        intensity="cardElevated"
-        tintColor="rgba(12, 14, 18, 0.55)"
-        shadow={shadows.glassCardElevated}
-        radius="lg"
-        style={styles.bar}
-      >
+      <GlassChrome material="chrome" shadow={shadowTokens.pane} radius="xl" style={styles.bar}>
         <View style={styles.barInner}>
+          {centredTitle ? (
+            <View style={styles.centerTitleWrap} pointerEvents="none">
+              <Text style={styles.centerTitle} numberOfLines={1} accessibilityRole="header">
+                {title}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.leftSlot}>{renderLeft()}</View>
           {/* Centre slot — absolutely positioned + pointerEvents="box-none"
               so it doesn't intercept taps destined for left/right clusters.
@@ -340,6 +387,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 ) : (
                   extraRightSlot
                 )}
+                {profileOnPhone ? <ProfileButton /> : null}
               </View>
             )}
           </View>
@@ -365,11 +413,11 @@ const styles = StyleSheet.create({
   },
   barInner: {
     minHeight: TOPBAR_HEIGHT,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[3],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   leftSlot: {
     flexShrink: 1,
@@ -378,9 +426,6 @@ const styles = StyleSheet.create({
   rightSlot: {
     flexShrink: 0,
   },
-  // Desktop-only centre slot. Absolutely positioned so it spans the full
-  // bar width regardless of left/right cluster widths, guaranteeing the
-  // child renders at the visual horizontal centre of the bar.
   centerSlot: {
     position: "absolute",
     left: 0,
@@ -390,21 +435,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  centerTitleWrap: {
+    position: "absolute",
+    left: CENTER_TITLE_INSET,
+    right: CENTER_TITLE_INSET,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  centerTitle: {
+    ...type.h2,
+    color: color.text1,
+  },
   rightCluster: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   backRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   backTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h2.fontSize,
+    lineHeight: type.h2.lineHeight,
+    fontWeight: type.h2.fontWeight,
   },
   none: {
     width: 36,
@@ -412,7 +470,7 @@ const styles = StyleSheet.create({
   },
   toastWrap: {
     position: "absolute",
-    top: TOPBAR_HEIGHT + spacing.sm,
+    top: TOPBAR_HEIGHT + space[2],
     left: 0,
     right: 0,
     zIndex: 1000,

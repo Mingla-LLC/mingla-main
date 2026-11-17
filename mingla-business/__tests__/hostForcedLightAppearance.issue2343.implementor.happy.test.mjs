@@ -319,7 +319,9 @@ test("PaymentPlanEditor pins its inline iOS picker to the established dark compo
     value: "dark",
     raw: '"dark"',
   });
-  assert.equal(attribute(picker, "textColor")?.value, "textTokens.primary");
+  // [TEST-MOD-APPROVED #4420] textTokens.primary retired; color.text1 is the
+  // same light-on-dark text role.
+  assert.equal(attribute(picker, "textColor")?.value, "color.text1");
   assert.match(picker, /minimumDate=\{new Date\(`/);
   assert.match(picker, /onChange=\{onDateChange\(inst\.ordinal\)\}/);
 });

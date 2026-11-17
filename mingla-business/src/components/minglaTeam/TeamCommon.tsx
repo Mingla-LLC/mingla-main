@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { useRouter } from "expo-router";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { accent, radius, spacing } from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import type { TeamThread } from "../../services/teamChatService";
 import { Icon } from "../ui/Icon";
 import { SafeScreen } from "../ui/SafeScreen";
@@ -62,7 +62,7 @@ export function TeamAccessGate({ children }: { children: (userId: string) => Rea
   if (access.checking) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen} testID="team-checking">
-        <View style={styles.state}><ActivityIndicator color={accent.warm} accessibilityLabel={t("team.loading")} /></View>
+        <View style={styles.state}><ActivityIndicator color={color.text2} accessibilityLabel={t("team.loading")} /></View>
       </SafeScreen>
     );
   }
@@ -84,7 +84,8 @@ export function TeamAccessGate({ children }: { children: (userId: string) => Rea
 
 // ── Avatars and rows ────────────────────────────────────────────────────────
 
-export const PALETTE = ["#1f8a5b", "#7a4fd1", "#2f6fd6", "#c2410c", "#b4235a", "#0e7490"];
+// #4420: monograms sit on the neutral tile tones (Avatar / Monogram = fill.tile).
+export const PALETTE = [color.card3, color.card2, color.card3, color.card2, color.card3, color.card2];
 export function tint(seed: string): string {
   let n = 0;
   for (let i = 0; i < seed.length; i += 1) n = (n * 31 + seed.charCodeAt(i)) % 997;
@@ -111,18 +112,18 @@ export function PersonAvatar({ name, id, size = 32 }: { name: string; id: string
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: brandGroupChat.screenBg },
-  header: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  header: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
   headerTitle: { flex: 1, color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: space[1] },
   iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  state: { padding: spacing.lg, alignItems: "center", justifyContent: "center", gap: spacing.md },
+  state: { padding: space[6], alignItems: "center", justifyContent: "center", gap: space[4] },
   stateText: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
-  locked: { margin: spacing.lg, marginTop: spacing.xl, gap: spacing.sm, alignItems: "center" },
+  locked: { margin: space[6], marginTop: space[7], gap: space[2], alignItems: "center" },
   lockedTitle: { color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700", textAlign: "center" },
-  lockedBody: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center", marginBottom: spacing.sm },
-  chipButton: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised, alignItems: "center", justifyContent: "center" },
+  lockedBody: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center", marginBottom: space[2] },
+  chipButton: { minHeight: 36, paddingHorizontal: space[4], borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised, alignItems: "center", justifyContent: "center" },
   chipButtonText: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "600" },
   avatar: { alignItems: "center", justifyContent: "center" },
-  avatarText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+  avatarText: { color: color.textStrong, fontSize: 15, fontWeight: "700" },
   avatarTextTeam: { color: brandGroupChat.screenBg, fontWeight: "800" },
 });

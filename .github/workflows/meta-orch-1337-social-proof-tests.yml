@@ -84,6 +84,9 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     name: "META-ORCH-1337: Deno suites — social-proof types/reads, momentum cross-entity, guest identity privacy, guest-privacy RPC, guest-list sheet, OneLink guest funnel (1338/1339/1340/1341/1342 + rewritten 1157)"
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v1

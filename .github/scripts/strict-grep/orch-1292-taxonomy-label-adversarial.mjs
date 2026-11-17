@@ -149,6 +149,17 @@ function checkScopedRenderSites(eventSrc, rsvpSrc, momentumSrc) {
   ];
   for (const [name, clean] of bodies) {
     for (const arr of ["vibeTags", "partyTypes", "musicGenres"]) {
+      // #4420 — the premium frame prints the tags as one label line built
+      // from `...<arr>.map((tag: string) => <expr>)`. That form is scope-bound
+      // by construction: the mapped expression itself must be exactly
+      // taxonomyLabel(tag) (a wrong variable or a raw slug fails).
+      const line = new RegExp(`\\.\\.\\.${arr}\\.map\\(\\(tag(?:\\s*:\\s*string)?\\)\\s*=>\\s*([^,\\n]*?)\\)\\s*,`).exec(clean);
+      if (line !== null) {
+        if (line[1].trim() !== "taxonomyLabel(tag)") {
+          failures.push(`${name}: ${arr} label line does NOT resolve via taxonomyLabel(tag) (got ${line[1].trim()}).`);
+        }
+        continue;
+      }
       const seg = pillChildForMap(clean, arr, "tag", "Pill");
       if (seg === null) {
         failures.push(`${name}: could not locate the ${arr}.map((tag …) <Pill> segment.`);
@@ -216,6 +227,16 @@ const evGood = `
     {musicGenres.map((tag, i) => (<Pill key={\`music-\${i}\`}>{taxonomyLabel(tag)}</Pill>))}
   </View>`;
 const rvGood = evGood;
+// #4420 — the premium frame's one label line.
+const evLineGood = `
+  const tagLine: string[] = [
+    formatLabel,
+    ...vibeTags.map((tag: string) => taxonomyLabel(tag)),
+    ...partyTypes.map((tag: string) => taxonomyLabel(tag)),
+    ...musicGenres.map((tag: string) => taxonomyLabel(tag)),
+  ];`;
+const evLineWrongVar = evLineGood.replace("...partyTypes.map((tag: string) => taxonomyLabel(tag))", "...partyTypes.map((tag: string) => taxonomyLabel(formatLabel))");
+const evLineRaw = evLineGood.replace("...musicGenres.map((tag: string) => taxonomyLabel(tag))", "...musicGenres.map((tag: string) => tag)");
 const moGood = `
   <View testID="orch-1157-rsvp-chips">
     {partyTypes.map((slug) => (<View key={slug}><Text>{taxonomyLabel(slug)}</Text></View>))}
@@ -269,6 +290,17 @@ function runSelfTest() {
     else if (!fails.some((f) => f.includes("fallback would MASK"))) {
       problems.push("BAD (fallback-masking drop) failed but was not flagged as fallback-masking.");
     }
+  }
+
+  // #4420 label-line form: GOOD passes; a wrong variable or a raw slug fails.
+  if (checkScopedRenderSites(evLineGood, evLineGood, moGood).length !== 0) {
+    problems.push("GOOD (#4420 label line) scoped render wrongly failed.");
+  }
+  if (checkScopedRenderSites(evLineWrongVar, evLineGood, moGood).length === 0) {
+    problems.push("BAD (#4420 label line, wrong variable) did not fail.");
+  }
+  if (checkScopedRenderSites(evLineGood, evLineRaw, moGood).length === 0) {
+    problems.push("BAD (#4420 label line, raw slug) did not fail.");
   }
 
   // (E) WRONG_VAR must fail THIS gate…

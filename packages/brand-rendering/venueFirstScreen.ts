@@ -345,6 +345,216 @@ export function buildVenueAnswerBar(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// The fact rows (#4420 D-V1) — the same answers, read as a list
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** What a fact row's one action does. The screen owns the handlers. */
+export type VenueFactAction = "hours" | "map" | "reserve";
+
+/** One fact row, as data. `icon` names an `OfferingFactIcon`. */
+export interface VenueFactView {
+  readonly key: "time" | "where" | "price" | "booking";
+  readonly icon: "clock" | "pin" | "price" | "calendar";
+  readonly value: string;
+  readonly detail: string | null;
+  readonly action: VenueFactAction | null;
+}
+
+export interface VenueFactsInput {
+  /** `buildVenueAnswerBar`'s cells: the facts restate them, never re-derive. */
+  cells: readonly VenueAnswerCell[];
+  profile: Pick<VenueCategoryProfile, "timekeeping" | "bookingBody">;
+  /** The street line and the rest of the address (district, city). */
+  place: { street: string | null; area: string | null };
+  /** "Thursday 12:00 – 23:00": today's published row, for the open fact. */
+  todayHoursLine: string | null;
+  /** The page has an hours card to scroll to. */
+  hasHoursCard: boolean;
+  /** The page can open a maps chooser. */
+  hasMap: boolean;
+  /** Stays: how many room types are on sale (null = unknown). */
+  roomTypeCount: number | null;
+}
+
+const capitalise = (s: string): string =>
+  s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+
+/** The nightly half of the Stay qualifier (`venueStayRateQualifier`). */
+const PER_NIGHT_PREFIX = "per night · ";
+
+/** The check-out half of the Stay time cell's note (`check-out 11:00`). */
+const CHECK_OUT_NOTE_PREFIX = "check-out ";
+
+const timeFact = (
+  cell: VenueAnswerCell,
+  input: VenueFactsInput,
+): VenueFactView => {
+  if (input.profile.timekeeping === "checkInOut") {
+    const checkOut =
+      cell.note !== null && cell.note.startsWith(CHECK_OUT_NOTE_PREFIX)
+        ? cell.note.slice(CHECK_OUT_NOTE_PREFIX.length)
+        : null;
+    return {
+      key: "time",
+      icon: "clock",
+      value: `Check-in from ${cell.value}`,
+      detail: checkOut === null ? null : `Check-out by ${checkOut}`,
+      action: null,
+    };
+  }
+  const action: VenueFactAction | null = input.hasHoursCard ? "hours" : null;
+  if (cell.label === "Right now" && cell.value === "Open") {
+    return {
+      key: "time",
+      icon: "clock",
+      value: cell.note === null ? "Open" : `Open · ${cell.note}`,
+      detail: input.todayHoursLine,
+      action,
+    };
+  }
+  if (cell.value === "Closed") {
+    return {
+      key: "time",
+      icon: "clock",
+      value: cell.label === "Today" ? "Closed today" : "Closed now",
+      detail: cell.note === null ? null : capitalise(cell.note),
+      action,
+    };
+  }
+  // "Today" — the published row, with no open-now claim (unknown zone).
+  return {
+    key: "time",
+    icon: "clock",
+    value: `Today · ${cell.value}`,
+    detail: cell.note,
+    action,
+  };
+};
+
+const priceFact = (
+  cell: VenueAnswerCell,
+  input: VenueFactsInput,
+): VenueFactView => {
+  if (cell.label === "Typically") {
+    return {
+      key: "price",
+      icon: "price",
+      value: `Typically ${cell.value}`,
+      detail: cell.note,
+      action: null,
+    };
+  }
+  if (cell.label === "From") {
+    // The qualifier is read from the data (#1562): "per night · before taxes
+    // and fees", or the all-in wording. Its "per night" joins the number.
+    const perNight = cell.note !== null && cell.note.startsWith(PER_NIGHT_PREFIX);
+    const qualifier = perNight
+      ? (cell.note as string).slice(PER_NIGHT_PREFIX.length)
+      : cell.note;
+    const rooms =
+      input.roomTypeCount !== null && input.roomTypeCount > 0
+        ? `${input.roomTypeCount} room ${input.roomTypeCount === 1 ? "type" : "types"}`
+        : null;
+    const detail = [qualifier === null ? null : capitalise(qualifier), rooms]
+      .filter((p): p is string => p !== null)
+      .join(" · ");
+    return {
+      key: "price",
+      icon: "price",
+      value: perNight ? `From ${cell.value} a night` : `From ${cell.value}`,
+      detail: detail.length > 0 ? detail : null,
+      action: null,
+    };
+  }
+  // "Your dates" — the quoted total has taken the slot.
+  return {
+    key: "price",
+    icon: "price",
+    value: cell.value,
+    detail: cell.note === null ? null : capitalise(cell.note),
+    action: null,
+  };
+};
+
+/**
+ * #4420 D-V1 — the answer bar's cells, as the shared fact rows. The bar's
+ * honesty rules all survive because these rows only RESTATE its cells: the
+ * Stay qualifier stays on the price row, the quoted total still takes that
+ * row's place, and an unknown clock still claims nothing. The place row is
+ * the one fact the bar never carried (the chips did).
+ *
+ * Order: trading venues read open state, where, spend, booking; a Stay reads
+ * price, check-in, where (its booking is the Reservations tab itself).
+ */
+export function venueFacts(input: VenueFactsInput): VenueFactView[] {
+  const byId = (id: VenueAnswerCellId): VenueAnswerCell | null =>
+    input.cells.find((cell) => cell.id === id) ?? null;
+  const time = byId("time");
+  const price = byId("price");
+  const booking = byId("booking");
+  const street = input.place.street?.trim() ?? "";
+  const area = input.place.area?.trim() ?? "";
+  const where: VenueFactView | null =
+    street.length === 0 && area.length === 0
+      ? null
+      : {
+          key: "where",
+          icon: "pin",
+          value: street.length > 0 ? street : area,
+          detail: street.length > 0 && area.length > 0 ? area : null,
+          action: input.hasMap ? "map" : null,
+        };
+  const timeRow = time === null ? null : timeFact(time, input);
+  const priceRow = price === null ? null : priceFact(price, input);
+  if (input.profile.bookingBody === "stay") {
+    return [priceRow, timeRow, where].filter(
+      (f): f is VenueFactView => f !== null,
+    );
+  }
+  const bookingRow: VenueFactView | null =
+    booking === null
+      ? null
+      : {
+          key: "booking",
+          icon: "calendar",
+          value:
+            input.profile.bookingBody === "table"
+              ? "Tables through Mingla"
+              : "Visits through Mingla",
+          detail: null,
+          action: "reserve",
+        };
+  return [timeRow, where, priceRow, bookingRow].filter(
+    (f): f is VenueFactView => f !== null,
+  );
+}
+
+/**
+ * #4420 — an address split for the place row: the first comma part is the
+ * street line, the rest (district, city) its detail. With no address, the
+ * city alone is the row.
+ */
+export function venueAddressLines(venue: {
+  address: string | null;
+  city: string | null;
+}): { street: string | null; area: string | null } {
+  const address = venue.address?.trim() ?? "";
+  const city = venue.city?.trim() ?? "";
+  if (address.length === 0) {
+    return { street: null, area: city.length > 0 ? city : null };
+  }
+  const [first = "", ...rest] = address.split(",").map((p) => p.trim());
+  const restLine = rest.filter((p) => p.length > 0).join(", ");
+  const area =
+    restLine.length > 0
+      ? restLine
+      : city.length > 0 && city.toLowerCase() !== first.toLowerCase()
+        ? city
+        : null;
+  return { street: first.length > 0 ? first : null, area };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // The identity chips — "what is this place" and "where is it"
 // ═══════════════════════════════════════════════════════════════════════════
 

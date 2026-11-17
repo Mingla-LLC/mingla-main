@@ -45,8 +45,29 @@ import {
   parseTikTokStageMetrics,
 } from "../_shared/adStageReporting.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
-import { resolveTikTokClient, tiktokApi } from "../_shared/tiktok.ts";
-import { resolveSnapchatClient } from "../_shared/snapchat.ts";
+import {
+  resolveTikTokClient,
+  tiktokApi,
+  tiktokCopyAdWithText,
+} from "../_shared/tiktok.ts";
+import {
+  resolveSnapchatClient,
+  snapchatCopyAdIntoSquad,
+  snapchatCopyAdWithHeadline,
+} from "../_shared/snapchat.ts";
+import {
+  addHostRetargetAdSetLive,
+  HOST_LIVE_RETARGET_ADD_PLATFORMS,
+  hostRetargetLiveAddDecision,
+} from "../_shared/hostRetargetLiveAdd.ts";
+import {
+  hostRetargetReadiness,
+  providerDailyMinimumCents,
+} from "../_shared/adHostPlanRules.ts";
+import {
+  type AdAudienceRow,
+  buildAdStagePlan,
+} from "../_shared/adAudienceStages.ts";
 import {
   fetchSnapchatAdSquadStats,
   fetchSnapchatCampaignStats,
@@ -55,9 +76,34 @@ import { googleAdsRequest, resolveGoogleClient } from "../_shared/google.ts";
 import { redditRequest, resolveRedditClient } from "../_shared/reddit.ts";
 import {
   AdDestinationError,
+  type HostAdStopReason,
+  type OfferingStock,
+  parseOfferingStock,
+  pauseReasonFor,
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
+import {
+  type LastTicketsAdOps,
+  parseMetaResultCounts,
+  runHostAdAutomation,
+} from "../_shared/adGoalPromotion.ts";
+import { loadHostLiveSinceMs } from "../_shared/adHostLiveEdit.ts";
+import {
+  parseMetaAdMetrics,
+  parseSnapchatAdMetrics,
+  parseTikTokAdMetrics,
+} from "../_shared/adCreativeFatigue.ts";
 import { markPlanPaused } from "../_shared/adPlanPauseTransition.ts";
+import {
+  dispatchNotification,
+  formatMoneyCents,
+} from "../_shared/stripeEdgeAuth.ts";
+import {
+  notifyHostAdCreditLow,
+  notifyHostAdEnded,
+  notifyHostAdPause,
+  notifyHostAdSignals,
+} from "../_shared/hostAdNotices.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -109,6 +155,12 @@ async function isActiveAdmin(
   return !!adminRow;
 }
 
+/** #4238 W2: Meta result counts per day, filled by fetchMetaSpendDays. */
+const metaResultCounts = new Map<
+  string,
+  Map<string, { purchase: number; checkout: number; signup: number }>
+>();
+
 async function fetchMetaSpendDays(
   conn: AdConnectionRow,
   externalCampaignId: string,
@@ -123,7 +175,7 @@ async function fetchMetaSpendDays(
     `${externalCampaignId}/insights`,
     {
       fields:
-        "spend,impressions,clicks,inline_link_clicks,account_currency,date_start",
+        "spend,impressions,clicks,inline_link_clicks,account_currency,date_start,actions",
       time_increment: 1,
       time_range: JSON.stringify({
         since: since.toISOString().slice(0, 10),
@@ -133,6 +185,7 @@ async function fetchMetaSpendDays(
       limit: 100,
     },
   );
+  metaResultCounts.set(externalCampaignId, parseMetaResultCounts(payload));
   return parseMetaInsightsSpend(payload);
 }
 
@@ -399,6 +452,14 @@ async function pauseCampaignForReason(
       if (!planPause.ok) {
         return { ok: false, detail: planPause.detail };
       }
+      // #4238 W4b: the true pause reason, to the Host team (Host lane only:
+      // the loader returns nothing for an Admin plan). Keyed by this pause's
+      // ad_status_events row. Never blocks the sweep.
+      await notifyHostAdPause(supabase, {
+        planVersionId: { planId },
+        campaignId: target.id,
+        reason,
+      }, dispatchNotification);
     }
     return { ok: true };
   } catch (err) {
@@ -505,6 +566,333 @@ async function reconcileStoppedCampaign(
     : { settlement: data?.state ?? "ready_to_settle" };
 }
 
+/** #4238 W2: ad_offering_stock; "unavailable" when the read failed. */
+async function readOfferingStock(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  eventId: string | null,
+  occurrenceKey: string | null,
+): Promise<OfferingStock | null | "unavailable"> {
+  if (!eventId || !UUID_REGEX.test(eventId)) return null;
+  const { data, error } = await supabase.rpc("ad_offering_stock", {
+    p_event_id: eventId,
+    p_occurrence_key: occurrenceKey,
+  });
+  if (error) return "unavailable";
+  return parseOfferingStock(data) ?? "unavailable";
+}
+
+/**
+ * #4238 T-4 / W4c: per-ad daily impressions, link clicks and spend for a
+ * live Host campaign, into ad_creative_metrics_daily (the tired-creative
+ * signal reads it). Meta level "ad" (W3); TikTok BASIC report AUCTION_AD by
+ * ad_id + stat_time_day and Snapchat campaign stats with breakdown=ad (W4c,
+ * both from the apps' docs). Each row carries the library creative of its
+ * own ad (Mingla's ads row), so one ad per extra creative is read apart.
+ * Best effort: a failure is reported and never blocks the spend sync.
+ */
+async function syncHostAdMetrics(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    connection: AdConnectionRow;
+    target: CampaignSpendTarget;
+    canonical: Record<string, unknown> | null;
+    snapchatTimeZoneCache?: Map<string, string | null>;
+  },
+): Promise<string> {
+  const platform = input.target.platform;
+  if (platform !== "meta" && platform !== "tiktok" && platform !== "snapchat") {
+    return "not_supported";
+  }
+  try {
+    const { since, until } = spendWindow();
+    let rows: ReturnType<typeof parseMetaAdMetrics>;
+    if (platform === "meta") {
+      const client = resolveMetaClient(input.connection);
+      rows = parseMetaAdMetrics(
+        await metaGraph(
+          client,
+          "GET",
+          `${input.target.external_campaign_id}/insights`,
+          {
+            fields: "ad_id,spend,impressions,inline_link_clicks,date_start",
+            time_increment: 1,
+            time_range: { since, until },
+            level: "ad",
+            limit: 1000,
+          },
+        ),
+      );
+    } else if (platform === "tiktok") {
+      const client = resolveTikTokClient(input.connection);
+      rows = parseTikTokAdMetrics(
+        await tiktokApi(client, "GET", "report/integrated/get/", {
+          advertiser_id: client.advertiserId,
+          report_type: "BASIC",
+          data_level: "AUCTION_AD",
+          dimensions: ["ad_id", "stat_time_day"],
+          metrics: ["spend", "impressions", "clicks"],
+          start_date: since,
+          end_date: until,
+          filtering: { campaign_ids: [input.target.external_campaign_id] },
+          page_size: 1000,
+        }),
+      );
+    } else {
+      const client = await resolveSnapchatClient(input.connection);
+      rows = parseSnapchatAdMetrics(
+        await fetchSnapchatCampaignStats(
+          client,
+          input.target.external_campaign_id,
+          {
+            timeZoneCache: input.snapchatTimeZoneCache,
+            breakdown: "ad",
+          },
+        ),
+      );
+    }
+    if (rows.length === 0) return "none";
+    const creativeByAd = await hostAdCreativeIds(supabase, input.target.id);
+    const fallback = typeof input.canonical?.creative_library_id === "string"
+      ? input.canonical.creative_library_id
+      : null;
+    const currency = String(input.target.provider_currency ?? "").trim()
+      .toUpperCase();
+    const { error } = await supabase.from("ad_creative_metrics_daily").upsert(
+      rows.map((row) => ({
+        ...row,
+        campaign_id: input.target.id,
+        platform,
+        creative_id: creativeByAd.get(row.provider_ad_id) ?? fallback,
+        currency,
+        synced_at: new Date().toISOString(),
+      })),
+      { onConflict: "campaign_id,provider_ad_id,metric_date" },
+    );
+    return error ? `upsert_failed:${error.message}` : `synced:${rows.length}`;
+  } catch (err) {
+    return `failed:${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+/** #4238 W4c: provider ad id → the library creative it runs (ads rows). */
+async function hostAdCreativeIds(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const { data: sets, error } = await supabase.from("ad_sets").select("id")
+    .eq("campaign_id", campaignId);
+  if (error || !Array.isArray(sets) || sets.length === 0) return out;
+  const { data: ads } = await supabase.from("ads")
+    .select("external_ad_id,creative_id")
+    .in("ad_set_id", sets.map((row: Record<string, unknown>) => String(row.id)));
+  for (const ad of (ads ?? []) as Record<string, unknown>[]) {
+    if (typeof ad.external_ad_id === "string" && typeof ad.creative_id === "string") {
+      out.set(ad.external_ad_id, ad.creative_id);
+    }
+  }
+  return out;
+}
+
+/**
+ * #4238 W4c (5c): the provider steps the last-tickets offer takes on
+ * Snapchat and TikTok (new ad with the words, review status, pause). Null on
+ * other apps (Meta uses its Graph path).
+ */
+function hostLastTicketsAdOps(
+  platform: string,
+  connection: AdConnectionRow,
+): LastTicketsAdOps | null {
+  if (platform !== "snapchat" && platform !== "tiktok") return null;
+  const adapter = getAdapter(platform);
+  return {
+    copyAd: (adSetId, adId, text) =>
+      platform === "snapchat"
+        ? snapchatCopyAdWithHeadline(connection, adSetId, adId, text)
+        : tiktokCopyAdWithText(connection, adSetId, adId, text),
+    reviewStatus: async (adId) =>
+      (await adapter.getStatus(connection, "ad", adId)).effectiveStatus,
+    pauseAd: (adId) => adapter.setStatus(connection, "ad", adId, "PAUSED"),
+  };
+}
+
+/**
+ * #4238 W4c (sub-item 3): once per campaign, when the Host's raise crossed
+ * 2F on a one-ad-set Snapchat or TikTok plan and the retarget audience and
+ * buyer exclusion are ready, add the retarget ad set live. A failed try is
+ * retried no sooner than a day later. Returns null when nothing applies.
+ */
+async function maybeAddHostRetargetLive(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    row: Record<string, unknown>;
+    target: CampaignSpendTarget;
+    connection: AdConnectionRow;
+    planId: string;
+    canonical: Record<string, unknown>;
+    eventId: string | null;
+  },
+): Promise<string | null> {
+  const platform = input.target.platform;
+  if (!HOST_LIVE_RETARGET_ADD_PLATFORMS.has(platform)) return null;
+  if (input.row.owner_kind !== "host" || input.row.status !== "ACTIVE") {
+    return null;
+  }
+  const original = Number(input.row.provider_delivery_budget_cents);
+  const amendedRaw = input.row.amended_provider_delivery_budget_cents;
+  const amended = amendedRaw === null || amendedRaw === undefined
+    ? null
+    : Number(amendedRaw);
+  const floor = providerDailyMinimumCents(platform, input.connection, "visits");
+  if (
+    amended === null || floor === null || !(original < 2 * floor) ||
+    amended < 2 * floor
+  ) return null;
+  const { data: moves } = await supabase.from("ad_plan_automation_events")
+    .select("status,created_at").eq("campaign_id", input.target.id)
+    .eq("kind", "retarget_added");
+  const tries = (moves ?? []) as Record<string, unknown>[];
+  if (tries.some((row) => row.status === "applied")) return null;
+  if (
+    tries.some((row) =>
+      Date.now() - Date.parse(String(row.created_at ?? "")) < 86_400_000
+    )
+  ) return "skipped:retry_tomorrow";
+  const intent = (input.canonical.audience_intent ?? {}) as Record<string, unknown>;
+  const countries = Array.isArray(intent.countries)
+    ? (intent.countries as unknown[]).map((code) => String(code).trim().toUpperCase())
+    : [];
+  const brandId = String(input.row.brand_id ?? "");
+  if (countries.length !== 1 || !/^[A-Z]{2}$/.test(countries[0]) || !input.eventId || !brandId) {
+    return "skipped:retarget_single_market_required";
+  }
+  const { data: audienceRows, error } = await supabase.from("ad_audiences")
+    .select(
+      "id,platform,code,scope,market,brand_id,event_id,platform_audience_id,approx_size,status",
+    )
+    .eq("platform", platform).eq("market", countries[0]);
+  if (error) return "skipped:audiences_unavailable";
+  const stagePlan = buildAdStagePlan({
+    platform,
+    rows: (audienceRows ?? []) as AdAudienceRow[],
+    market: countries[0],
+    brandId,
+    eventId: input.eventId,
+    totalBudgetCents: 0,
+  });
+  const { data: sets } = await supabase.from("ad_sets").select("stage")
+    .eq("campaign_id", input.target.id);
+  const decision = hostRetargetLiveAddDecision({
+    platform,
+    ownerKind: "host",
+    originalDailyCents: original,
+    amendedDailyCents: amended,
+    floorCents: floor,
+    hasRetargetAdSet: ((sets ?? []) as Record<string, unknown>[]).some((row) =>
+      row.stage === "retarget"
+    ),
+    lifetime: input.canonical.budget_mode === "total",
+    readiness: hostRetargetReadiness(stagePlan),
+  });
+  if (!decision.add || !stagePlan) {
+    return decision.add ? "skipped:retarget_audience_not_ready" : null;
+  }
+  const warm = stagePlan.stages.filter((stage) =>
+    (stage.stage === "retarget" || stage.stage === "abandoners") &&
+    stage.executable
+  );
+  const include = [...new Set(warm.flatMap((stage) => stage.includeAudienceIds))];
+  const exclude = stagePlan.stages.find((stage) => stage.stage === "prospecting")
+    ?.excludeAudienceIds ?? [];
+  if (include.length === 0 || exclude.length === 0) {
+    return "skipped:retarget_audience_not_ready";
+  }
+  const connection = input.connection;
+  return await addHostRetargetAdSetLive({
+    db: supabase,
+    adapter: getAdapter(platform),
+    connection,
+    copyAdInto: (adSetId, ad) =>
+      platform === "snapchat"
+        ? snapchatCopyAdIntoSquad(connection, adSetId, ad.externalAdId)
+        : tiktokCopyAdWithText(connection, adSetId, ad.externalAdId, null, " — retarget"),
+  }, {
+    campaignId: input.target.id,
+    externalCampaignId: input.target.external_campaign_id,
+    platform,
+    planId: input.planId,
+    decision,
+    include,
+    exclude: [...exclude],
+    audienceCodes: warm.flatMap((stage) => [...stage.audienceCodes]),
+    audienceSizes: Object.assign({}, ...warm.map((stage) => ({ ...stage.audienceSizes }))),
+  });
+}
+
+async function hostAutomation(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: {
+    row: Record<string, unknown>;
+    target: CampaignSpendTarget;
+    connection: AdConnectionRow;
+    planId: string;
+    canonical: Record<string, unknown>;
+    eventId: string | null;
+    occurrenceKey: string | null;
+    destination: Record<string, unknown> | null;
+  },
+): Promise<Record<string, unknown>> {
+  try {
+    const meta = input.target.platform === "meta"
+      ? resolveMetaClient(input.connection)
+      : null;
+    const nextDate = Date.parse(String(input.destination?.next_date ?? ""));
+    const endsAt = Date.parse(String(input.target.ends_at ?? ""));
+    const report = await runHostAdAutomation({
+      db: supabase,
+      graph: meta
+        ? (method, path, params) => metaGraph(meta, method, path, params)
+        : null,
+      adAccountId: meta ? String(meta.config.adAccountId ?? "") || null : null,
+      // #4238 W4c: Snapchat / TikTok last-tickets steps (adapter hooks).
+      adOps: hostLastTicketsAdOps(input.target.platform, input.connection),
+      readStock: async () => {
+        const stock = await readOfferingStock(
+          supabase,
+          input.eventId,
+          input.occurrenceKey,
+        );
+        return stock === "unavailable" ? null : stock;
+      },
+    }, {
+      planId: input.planId,
+      campaignId: input.target.id,
+      platform: input.target.platform,
+      externalCampaignId: input.target.external_campaign_id,
+      canonical: input.canonical,
+      eventId: input.eventId,
+      eventStartMs: Number.isFinite(nextDate) ? nextDate : null,
+      endsAtMs: Number.isFinite(endsAt) ? endsAt : null,
+      liveSinceMs: await loadHostLiveSinceMs(supabase, [input.row]),
+      nowMs: Date.now(),
+    });
+    // #4238 W4c: a raise past 2F on a one-ad-set Snap/TikTok plan adds the
+    // retarget ad set live (hostRetargetLiveAdd).
+    const retarget = await maybeAddHostRetargetLive(supabase, input);
+    return retarget ? { ...report, retarget_live_add: retarget } : report;
+  } catch (error) {
+    return {
+      automation_error: (error instanceof Error ? error.message : String(error))
+        .slice(0, 200),
+    };
+  }
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -532,7 +920,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, plan_version:ad_plan_versions(plan_id)",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_delivery_budget_cents, amended_provider_delivery_budget_cents, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id, owner_kind, brand_id, created_at, plan_version:ad_plan_versions(plan_id, canonical_plan)",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -620,21 +1008,47 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    const planVersion = row.plan_version as
+      | { plan_id?: unknown; canonical_plan?: unknown }
+      | null;
+    const canonical = planVersion?.canonical_plan &&
+        typeof planVersion.canonical_plan === "object"
+      ? planVersion.canonical_plan as Record<string, unknown>
+      : {};
+    const isHost = row.owner_kind === "host";
+    const eventId = typeof row.dest_event_id === "string"
+      ? row.dest_event_id
+      : null;
+    const occurrenceKey = typeof canonical.occurrence_key === "string"
+      ? canonical.occurrence_key
+      : null;
+    let resolvedDestination: Record<string, unknown> | null = null;
     if (target.status === "ACTIVE") {
-      let destinationPause:
-        | "destination_unavailable"
-        | "destination_check_failed"
-        | null = null;
+      let destinationPause: HostAdStopReason | null = null;
       try {
-        await resolveAdDestination(supabase, {
+        resolvedDestination = await resolveAdDestination(supabase, {
           page_type: row.dest_page_type,
           brand_slug: row.dest_brand_slug,
           entity_slug: row.dest_entity_slug,
-        });
+        }) as unknown as Record<string, unknown>;
+        // #4238 5e: a one-date ad stops when THAT date sells out, even while
+        // other dates still have tickets.
+        if (isHost && occurrenceKey) {
+          const keyed = await readOfferingStock(supabase, eventId, occurrenceKey);
+          if (keyed === "unavailable") destinationPause = "destination_check_failed";
+          else if (keyed?.sold_out) destinationPause = "sold_out";
+        }
       } catch (err) {
-        destinationPause = err instanceof AdDestinationError && err.status < 500
-          ? "destination_unavailable"
-          : "destination_check_failed";
+        // #4238 5b (I-4238-TRUE-PAUSE-REASON): the true reason, never
+        // "ended or isn't public" for a sold-out page.
+        if (err instanceof AdDestinationError && err.status < 500) {
+          const stock = err.availability === "nothing_on_sale"
+            ? await readOfferingStock(supabase, eventId, occurrenceKey)
+            : null;
+          destinationPause = pauseReasonFor(err.availability, stock);
+        } else {
+          destinationPause = "destination_check_failed";
+        }
       }
       if (destinationPause) {
         const cumulative = await loadCumulativeSpendCents(supabase, target.id);
@@ -667,10 +1081,36 @@ serve(async (req: Request): Promise<Response> => {
           continue;
         }
         paused += 1;
+        const planIdForEvent = planVersion?.plan_id;
+        // #4238 5b: the event has passed → end the plan; unspent credit comes
+        // back through the existing settlement (unspend_return, fee share
+        // included — F-2 unchanged).
+        let stop: Record<string, unknown> = {};
+        if (destinationPause === "event_ended") {
+          const { error: stopError } = await supabase.rpc(
+            "ad_request_campaign_stop",
+            { p_campaign_id: target.id },
+          );
+          stop = stopError
+            ? { stop_failed: String(stopError.message ?? "").slice(0, 200) }
+            : { stop_requested: true };
+        }
+        if (isHost && typeof planIdForEvent === "string") {
+          await supabase.from("ad_plan_automation_events").insert({
+            plan_id: planIdForEvent,
+            campaign_id: target.id,
+            platform: target.platform,
+            kind: destinationPause === "event_ended" ? "auto_ended" : "auto_paused",
+            status: stop.stop_failed ? "failed" : "applied",
+            applied_at: new Date().toISOString(),
+            detail: { reason: destinationPause, ...stop },
+          });
+        }
         results.push({
           campaign_id: target.id,
           paused: destinationPause,
           total_spend_cents: cumulative.cents,
+          ...stop,
         });
         continue;
       }
@@ -851,6 +1291,22 @@ serve(async (req: Request): Promise<Response> => {
         upserted += safeUpserts.length;
       }
     }
+    // #4238 W2: Meta's own purchases / started checkouts / sign-ups per day
+    // (the ladder reads purchase_events). Best effort; never blocks a pause.
+    const counts = platform === "meta"
+      ? metaResultCounts.get(target.external_campaign_id)
+      : undefined;
+    if (counts && !upsertError) {
+      for (const [day, value] of counts) {
+        await supabase.from("ad_spend_daily").update({
+          purchase_events: value.purchase,
+          checkout_events: value.checkout,
+          signup_events: value.signup,
+        }).eq("campaign_id", target.id).eq("platform", "meta")
+          .eq("spend_date", day);
+      }
+      metaResultCounts.delete(target.external_campaign_id);
+    }
 
     const cumulative = await loadCumulativeSpendCents(supabase, target.id);
     if (!cumulative.ok) {
@@ -876,6 +1332,24 @@ serve(async (req: Request): Promise<Response> => {
         cumulative.cents,
       )
       : null;
+    // #4238 W4b: "your ad has ended" only once the drain has settled the
+    // plan's hold (notifyHostAdEnded re-checks the hold and its ledger row).
+    if (
+      row.owner_kind === "host" &&
+      (settlementResult as { settlement?: unknown } | null)?.settlement ===
+        "settled"
+    ) {
+      const endedPlanId = (row.plan_version as { plan_id?: unknown } | null)
+        ?.plan_id;
+      if (typeof endedPlanId === "string") {
+        await notifyHostAdEnded(
+          supabase,
+          { planId: endedPlanId },
+          dispatchNotification,
+          formatMoneyCents,
+        );
+      }
+    }
 
     // Fail closed on any spend-fetch outage for capped ACTIVE campaigns:
     // stale ad_spend_daily must not keep delivery alive without a fresh read.
@@ -976,9 +1450,42 @@ serve(async (req: Request): Promise<Response> => {
       });
       await touchSpendSyncWatermark(supabase, target.id);
     } else {
+      // #4238 items 4, 5c, 5d: the Host automation, after a clean spend read.
+      let automation: Record<string, unknown> | null = null;
+      if (
+        isHost && target.status === "ACTIVE" && spendConnection &&
+        typeof planVersion?.plan_id === "string"
+      ) {
+        const adMetrics = await syncHostAdMetrics(supabase, {
+          connection: spendConnection,
+          target,
+          canonical,
+          snapchatTimeZoneCache,
+        });
+        if (!adMetrics.startsWith("synced") && adMetrics !== "none") {
+          console.error("[admin-ad-spend-sync] host ad metrics:", adMetrics);
+        }
+        automation = await hostAutomation(supabase, {
+          row,
+          target,
+          connection: spendConnection,
+          planId: planVersion.plan_id,
+          canonical,
+          eventId,
+          occurrenceKey,
+          destination: resolvedDestination,
+        });
+        // #4238 W4b: slow sales, tired creative and last-tickets offers the
+        // automation just recorded, to the Host team once each.
+        await notifyHostAdSignals(supabase, {
+          planId: planVersion.plan_id,
+          sinceIso: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+        }, dispatchNotification);
+      }
       results.push({
         campaign_id: target.id,
         total_spend_cents: decision.total_spend_cents,
+        ...(automation ? { automation } : {}),
         ...(settlementResult ?? {}),
         days: decision.upserts.length,
         stage_metric_days: stageMetrics.length,
@@ -989,6 +1496,22 @@ serve(async (req: Request): Promise<Response> => {
       // Rotate the 80-row sweep: every attempted row advances the watermark.
       await touchSpendSyncWatermark(supabase, target.id);
     }
+  }
+
+  // #4238 W4b: credit low, once per brand with a live Host ad this sweep.
+  const hostBrandIds = new Set(
+    ((campaigns ?? []) as Record<string, unknown>[])
+      .filter((row) => row.owner_kind === "host" && row.status === "ACTIVE")
+      .map((row) => String(row.brand_id ?? ""))
+      .filter((id) => UUID_REGEX.test(id)),
+  );
+  for (const brandId of hostBrandIds) {
+    await notifyHostAdCreditLow(
+      supabase,
+      { brandId, now: new Date() },
+      dispatchNotification,
+      formatMoneyCents,
+    );
   }
 
   return json({

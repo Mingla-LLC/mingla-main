@@ -9,13 +9,11 @@ import {
 import type { UseQueryResult } from "@tanstack/react-query";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../../constants/designSystem";
 import type { VenueOrderMetrics } from "../../../services/venueOrderMetricsService";
 import { formatCurrencyRound } from "../../../utils/currency";
@@ -62,7 +60,7 @@ const withMoneyAccessibility = (
 };
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }): React.ReactElement => (
-  <GlassCard variant="base" padding={spacing.lg}>
+  <GlassCard variant="base" padding={space[6]}>
     <Text style={styles.sectionTitle}>{title}</Text>
     <View style={styles.sectionBody}>{children}</View>
   </GlassCard>
@@ -77,9 +75,9 @@ export function OrderInsightsInstrument({
 
   if (query.isLoading && data === undefined) {
     return (
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <View style={styles.statusRow} accessibilityRole="progressbar" accessibilityLabel="Loading venue order insights">
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.accent} />
           <Text style={styles.body}>Loading venue orders…</Text>
         </View>
       </GlassCard>
@@ -87,7 +85,7 @@ export function OrderInsightsInstrument({
   }
   if ((query.isError || (offline && data === undefined)) && data === undefined) {
     return (
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.sectionTitle}>{offline ? "You're offline" : "Couldn't load venue orders"}</Text>
         <Text style={styles.body}>{offline ? "Reconnect, then try again." : "Your order data is safe. Try the read again."}</Text>
         <Pressable
@@ -231,23 +229,23 @@ export function OrderInsightsInstrument({
 }
 
 const styles = StyleSheet.create({
-  root: { gap: spacing.md },
-  sectionBody: { marginTop: spacing.sm, gap: spacing.xs },
-  sectionTitle: { ...typography.h3, color: textTokens.primary },
-  body: { ...typography.bodySm, color: textTokens.secondary },
-  metricValue: { ...typography.bodyLg, fontWeight: "700", color: textTokens.primary },
-  caption: { ...typography.caption, color: textTokens.tertiary },
-  thinLabel: { ...typography.bodySm, color: textTokens.secondary },
-  statusText: { ...typography.caption, color: textTokens.secondary },
-  statusRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  root: { gap: space[4] },
+  sectionBody: { marginTop: space[2], gap: space[1] },
+  sectionTitle: { ...type.h1, color: color.text1 },
+  body: { ...type.small, color: color.text2 },
+  metricValue: { ...type.row, fontWeight: "700", color: color.text1 },
+  caption: { ...type.caption, color: color.text3 },
+  thinLabel: { ...type.small, color: color.text2 },
+  statusText: { ...type.caption, color: color.text2 },
+  statusRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[2] },
   stack: { gap: 4 },
-  tableRow: { minHeight: 44, flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  rowLabel: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary, flexShrink: 1 },
-  rowValue: { ...typography.caption, color: textTokens.secondary },
-  warning: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: semantic.warning, backgroundColor: glass.tint.badge.idle, padding: spacing.md },
-  warningText: { ...typography.bodySm, color: textTokens.primary },
-  retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center", marginTop: spacing.md, paddingHorizontal: spacing.md, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.badge },
-  retryText: { ...typography.bodySm, fontWeight: "600", color: textTokens.primary },
+  tableRow: { minHeight: 44, flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: space[2] },
+  rowLabel: { ...type.small, fontWeight: "600", color: color.text1, flexShrink: 1 },
+  rowValue: { ...type.caption, color: color.text2 },
+  warning: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: color.warning, backgroundColor: materials.onPhoto.solidFill, padding: space[4] },
+  warningText: { ...type.small, color: color.text1 },
+  retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center", marginTop: space[4], paddingHorizontal: space[4], borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: color.lineStrong },
+  retryText: { ...type.small, fontWeight: "600", color: color.text1 },
   srOnly: { width: 1, height: 1, opacity: 0, position: "absolute" },
 });
 

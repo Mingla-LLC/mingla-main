@@ -9,25 +9,33 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
-import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../constants/designSystem";
+import { color, space, type } from "../../../../constants/designSystem";
 import type { HostAdListSummary } from "../../../../services/hostAdCampaignService";
 import { GlassCard } from "../../../ui/GlassCard";
+import { hostAdPayFromCredit } from "../hostAdBuilderModel";
+import { hm } from "../hostAdManageCopy";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 
+/**
+ * #4238 rework 1 (tester P2-2): every amount is what the Host PAYS (the
+ * server sends Ads credit: spent and budgets are grossed up by the 15% fee
+ * through hostAdPayFromCredit, the same as the detail page), in the Host's
+ * language (hostAds.manage.summary.* in all 29 Host locales).
+ */
 export function hostAdListSummaryLine(summary: HostAdListSummary): string {
   const spent =
     summary.spent_cents !== null
-      ? formatHostAdMoneyCents(summary.spent_cents, summary.currency)
+      ? formatHostAdMoneyCents(hostAdPayFromCredit(summary.spent_cents), summary.currency)
       : null;
-  const budget = formatHostAdMoneyCents(summary.budget_cents, summary.currency);
-  const results = `${summary.results.toLocaleString("en-US")} ${summary.results === 1 ? "result" : "results"}`;
-  if (spent === null) return `This month: ${results}`;
-  return `This month: ${spent}${budget && summary.budget_cents > 0 ? ` of ${budget}` : ""} · ${results}`;
+  const budget =
+    summary.budget_cents > 0 ? formatHostAdMoneyCents(hostAdPayFromCredit(summary.budget_cents), summary.currency) : null;
+  const results = hm(summary.results === 1 ? "summary.resultOne" : "summary.results", {
+    count: summary.results.toLocaleString(),
+  });
+  if (spent === null) return hm("summary.lineNoSpend", { results });
+  return budget
+    ? hm("summary.line", { spent, budget, results })
+    : hm("summary.lineNoBudget", { spent, results });
 }
 
 /** Segments between gaps: a null day breaks the line instead of dropping to 0. */
@@ -59,13 +67,13 @@ export function AdListSummaryCard({
   const line = hostAdListSummaryLine(summary);
   const hasSpend = summary.daily_spend.some((day) => (day.cents ?? 0) > 0);
   return (
-    <GlassCard variant="base" padding={spacing.lg} testID="ads-list-summary">
+    <GlassCard variant="base" padding={space[6]} testID="ads-list-summary">
       <Text style={styles.line}>{line}</Text>
       {hasSpend ? (
         <View
           accessible
           accessibilityRole="image"
-          accessibilityLabel={`Spend over the last 30 days. ${line}.`}
+          accessibilityLabel={hm("summary.chartLabel", { line })}
           style={styles.spark}
         >
           <Svg
@@ -78,13 +86,13 @@ export function AdListSummaryCard({
             <Path
               d={sparklinePath(summary.daily_spend)}
               fill="none"
-              stroke={accent.warm}
+              stroke={color.text1}
               strokeWidth="2.5"
               strokeLinejoin="round"
               strokeLinecap="round"
             />
           </Svg>
-          <Text style={styles.caption}>Last 30 days</Text>
+          <Text style={styles.caption}>{hm("summary.last30")}</Text>
         </View>
       ) : null}
     </GlassCard>
@@ -92,7 +100,7 @@ export function AdListSummaryCard({
 }
 
 const styles = StyleSheet.create({
-  line: { ...typography.body, color: textTokens.primary },
-  spark: { marginTop: spacing.sm },
-  caption: { ...typography.caption, color: textTokens.tertiary, marginTop: spacing.xs },
+  line: { ...type.body, color: color.text1 },
+  spark: { marginTop: space[2] },
+  caption: { ...type.caption, color: color.text3, marginTop: space[1] },
 });

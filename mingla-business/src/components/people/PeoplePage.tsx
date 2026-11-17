@@ -17,14 +17,11 @@ import { Toast } from "../ui/Toast";
 import { createRetryableLazyErrorBoundary, RetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import { useShareNetworkState } from "../ui/useShareNetworkState";
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  shadows,
-  spacing,
-  text,
-  typography,
+  color,
+  space,
+  shadow,
+  type,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { capturePeople } from "../../features/people/peopleAnalytics";
@@ -584,7 +581,7 @@ export function PeoplePage(): React.ReactElement {
                       label="Add"
                       leadingIcon="plus"
                       fullWidth
-                      accentColor={accent.warm}
+                      accentColor={color.accent}
                       disabled={!authorized || !online}
                       onPress={() => {
                         capturePeople("people_add_opened", { surface: "page" });
@@ -675,7 +672,7 @@ export function PeoplePage(): React.ReactElement {
                 caption={manualEnabled ? "Organize people for focused campaigns." : "Buyer groups that update automatically."}
                 testID="people-groups-block"
               >
-                {manualEnabled ? <View style={styles.createGroupRow}><Button label="Create group" leadingIcon="plus" accentColor={accent.warm} fullWidth={width > 0 && width < 352} disabled={!online} onPress={() => { capturePeople("manual_group_create_started", { surface: "page" }); setCreateGroupOpen(true); }} /></View> : null}
+                {manualEnabled ? <View style={styles.createGroupRow}><Button label="Create group" leadingIcon="plus" accentColor={color.accent} fullWidth={width > 0 && width < 352} disabled={!online} onPress={() => { capturePeople("manual_group_create_started", { surface: "page" }); setCreateGroupOpen(true); }} /></View> : null}
                 {(!groups.hasResolved&&!groups.isError) || (manualEnabled && manualGroups.isLoading) ? (
                   <View testID="people-groups-skeleton" style={styles.skeletons}>
                     {[0, 1, 2].map((row) => (
@@ -694,7 +691,7 @@ export function PeoplePage(): React.ReactElement {
                     }}
                   />
                 ) : groups.entries.length === 0 && (manualGroups.data?.length ?? 0) === 0 ? (
-                  manualEnabled ? <View style={styles.emptyGroup}><EmptyState title="No groups yet." description="Create a group to organize people for campaigns." /><Button label="Create group" leadingIcon="plus" accentColor={accent.warm} onPress={() => setCreateGroupOpen(true)} /></View> : <EmptyState title="No buyer groups yet." />
+                  manualEnabled ? <View style={styles.emptyGroup}><EmptyState title="No groups yet." description="Create a group to organize people for campaigns." /><Button label="Create group" leadingIcon="plus" accentColor={color.accent} onPress={() => setCreateGroupOpen(true)} /></View> : <EmptyState title="No buyer groups yet." />
                 ) : (
                   <>
                     {(manualGroups.data ?? []).slice(0, 3).map((entry) => <ManualGroupCard key={entry.groupId} group={entry} onPress={openManualGroup} />)}
@@ -841,7 +838,7 @@ export function PeoplePage(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   workspace: {
     flex: 1,
@@ -850,8 +847,8 @@ const styles = StyleSheet.create({
     flex: 0,
   },
   content: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
     paddingBottom: 120,
   },
   screenReaderHeading: {
@@ -862,22 +859,22 @@ const styles = StyleSheet.create({
   },
   center: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
     justifyContent: "center",
   },
   loadingHost: {
     flexGrow: 1,
-    backgroundColor: canvas.discover,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    backgroundColor: color.canvas,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[4],
   },
   loadingScroll: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   workspaceRow: {
-    gap: spacing.lg,
+    gap: space[6],
   },
   workspaceWide: {
     flexDirection: "row",
@@ -895,83 +892,83 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     flexGrow: 3,
     minWidth: 0,
-    gap: spacing.lg,
+    gap: space[6],
   },
   compactColumn: {
     width: "100%",
     minWidth: 0,
-    gap: spacing.lg,
+    gap: space[6],
   },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   actionsWide: {
     minHeight: 64,
     alignItems: "center",
   },
   exportAction: {
-    backgroundColor: glass.tint.profileElevated,
-    borderColor: accent.warm,
+    backgroundColor: color.fill.tile,
+    borderColor: color.accent,
     borderRadius: radius.full,
     borderWidth: 1,
   },
   createGroupRow: { alignItems: "flex-end" },
-  emptyGroup: { alignItems: "center", gap: spacing.sm },
+  emptyGroup: { alignItems: "center", gap: space[2] },
   skeletonSurface: {
-    padding: spacing.md,
-    gap: spacing.md,
+    padding: space[4],
+    gap: space[4],
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
   skeletonBookSurface: {
     borderRadius: radius.xl,
-    backgroundColor: glass.tint.profileElevated,
-    borderColor: glass.border.profileElevated,
-    ...shadows.glassCardElevated,
+    backgroundColor: color.fill.tile,
+    borderColor: color.lineStrong,
+    ...shadow.menu,
   },
   skeletonGroupsSurface: {
     borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
-    ...shadows.glassCardBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
+    ...shadow.pane,
   },
   skeletonActions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   skeletons: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   skeletonRow: {
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   skeletonCopy: {
     flex: 1,
-    gap: spacing.xs,
+    gap: space[1],
   },
   refreshing: {
     opacity: 0.72,
   },
   status: {
-    ...typography.bodySm,
-    color: text.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   permissionCaption: {
-    ...typography.caption,
-    color: text.tertiary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
   toast: {
     position: "absolute",
-    top: spacing.md,
-    left: spacing.md,
-    right: spacing.md,
+    top: space[4],
+    left: space[4],
+    right: space[4],
     zIndex: 100,
   },
 });

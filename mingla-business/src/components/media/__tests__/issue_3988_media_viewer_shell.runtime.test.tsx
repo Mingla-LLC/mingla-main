@@ -2,7 +2,8 @@ import React from "react";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const mockPlatform = { OS: "web" };
+// [TEST-MOD-APPROVED #4420] wave 6: the shell reads designSystem tokens, which use Platform.select.
+const mockPlatform = { OS: "web", select: (o: Record<string, unknown>) => o.web ?? o.default };
 const mockWindow = { width: 1280, height: 800, fontScale: 2, scale: 2 };
 const mockInsets = { top: 31, bottom: 27, left: 0, right: 0 };
 let mockReduceMotion = true;

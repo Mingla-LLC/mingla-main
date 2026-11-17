@@ -2,12 +2,10 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text,
-  typography,
+  space,
+  type,
+  color,
 } from "../../constants/designSystem";
 import type {
   TurnoutFreePlan,
@@ -247,18 +245,18 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
 };
 
 const styles = StyleSheet.create({
-  root: { gap: spacing.lg, paddingBottom: spacing.xl },
-  section: { gap: spacing.sm },
-  sectionTitle: { ...typography.h3, color: text.primary },
+  root: { gap: space[6], paddingBottom: space[7] },
+  section: { gap: space[2] },
+  sectionTitle: { ...type.h1, color: color.text1 },
   row: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
-  rowTitle: { ...typography.bodySm, color: text.primary, fontWeight: "700" },
-  rowBody: { ...typography.caption, color: text.secondary, marginTop: 4 },
-  narrative: { ...typography.bodySm, color: text.secondary },
-  footer: { ...typography.caption, color: accent.warm, textAlign: "center" },
+  rowTitle: { ...type.small, color: color.text1, fontWeight: "700" },
+  rowBody: { ...type.caption, color: color.text2, marginTop: 4 },
+  narrative: { ...type.small, color: color.text2 },
+  footer: { ...type.caption, color: color.accent, textAlign: "center" },
 });

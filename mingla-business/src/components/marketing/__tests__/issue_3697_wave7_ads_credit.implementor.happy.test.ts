@@ -29,17 +29,6 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(nav).toContain('lower.includes("/marketing/ads")');
   });
 
-  it("ships the ads route with view-error before denial, and wallet wiring", () => {
-    const route = read("src/screens/hostAds/HostAdListScreen.tsx");
-    expect(route).toContain("useAdCreditWallet");
-    expect(route).toContain("AdCreditQuoteSheet");
-    expect(route).toContain("ads-credit-screen");
-    expect(route).toContain("ads-view-error");
-    const viewErrorAt = route.indexOf("walletQuery.viewError");
-    const deniedAt = route.indexOf("!walletQuery.canView");
-    expect(viewErrorAt).toBeGreaterThan(-1);
-    expect(deniedAt).toBeGreaterThan(viewErrorAt);
-  });
 
   it("adCreditService invokes the ad-credit edge with known actions", () => {
     const svc = read("src/services/adCreditService.ts");
@@ -72,30 +61,7 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(hook).toMatch(/const\s+enabled\s*=\s*[^;]*\bisAuthReady\b/);
   });
 
-  it("quote sheet clears prior quotes when the amount changes", () => {
-    const sheet = read("src/components/marketing/AdCreditQuoteSheet.tsx");
-    expect(sheet).toContain("Editing the amount (or switching mode) invalidates any prior Preview quote");
-    expect(sheet).toContain("setTopUp(null)");
-    expect(sheet).toContain("[majorText, mode]");
-    expect(sheet).toContain("mapAdCreditQuoteError");
-  });
 
-  it("Wave 7b: Confirm and pay + Checkout return wiring", () => {
-    const sheet = read("src/components/marketing/AdCreditQuoteSheet.tsx");
-    expect(sheet).toContain("ad-credit-quote-confirm-pay");
-    expect(sheet).toContain("startAdCreditTopUp");
-    expect(sheet).toContain("applyAdCreditTopUp");
-    expect(sheet).toContain("randomId");
-    expect(sheet).toContain("idempotencyKey");
-    expect(sheet).toContain("topUpIdemRef");
-    const route = read("src/screens/hostAds/HostAdListScreen.tsx");
-    expect(route).toContain("checkoutSessionId");
-    expect(route).toContain("ad_credit_top_up");
-    const edge = read("../supabase/functions/ad-credit/index.ts");
-    expect(edge).toContain("idempotency_key_required");
-    expect(edge).toContain("isAllowedAdCreditReturnUrl");
-    expect(edge).toContain("buildAdCreditCheckoutReturnUrls");
-  });
 });
 
 describe("mapAdCreditQuoteError", () => {

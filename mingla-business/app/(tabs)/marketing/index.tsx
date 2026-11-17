@@ -29,13 +29,7 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
 import { OverviewMetricCard } from "../../../src/components/marketing/OverviewMetricCard";
 import { OverviewRecentCampaignRow } from "../../../src/components/marketing/OverviewRecentCampaignRow";
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { color, radius, space, type } from "../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useMarketingOverview } from "../../../src/hooks/marketing/useMarketingOverview";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
@@ -118,7 +112,7 @@ export default function MarketingOverviewRoute(): React.ReactElement {
             </View>
             <View style={[styles.supportColumn, isWideDesktop && styles.supportColumnWide]}>
               <View style={styles.headlineCardSkeleton}>
-                <ActivityIndicator size="small" color={textTokens.secondary} />
+                <ActivityIndicator size="small" color={color.text2} />
               </View>
               <View style={styles.metricGrid}>
                 {[0, 1, 2, 3].map((idx) => (
@@ -201,7 +195,7 @@ export default function MarketingOverviewRoute(): React.ReactElement {
           <View style={[styles.supportColumn, isWideDesktop && styles.supportColumnWide]}>
             <View style={styles.headlineCard}>
               <View style={styles.headlineLabelRow}>
-                <Icon name="send" size={20} color={textTokens.secondary} />
+                <Icon name="send" size={20} color={color.text2} />
                 <Text style={styles.headlineLabel}>CAMPAIGNS SENT</Text>
               </View>
               <Text style={styles.headlineValue}>{snap.campaigns_sent_count.toLocaleString()}</Text>
@@ -282,65 +276,65 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
     paddingBottom: 120,
-    gap: spacing.lg,
+    gap: space[6],
   },
-  workspace: { gap: spacing.lg },
+  workspace: { gap: space[6] },
   workspaceWide: { flexDirection: "row", alignItems: "flex-start" },
-  primaryColumn: { minWidth: 0, gap: spacing.lg },
+  primaryColumn: { minWidth: 0, gap: space[6] },
   primaryColumnWide: { flexBasis: 0, flexGrow: 5 },
-  supportColumn: { minWidth: 0, gap: spacing.md },
+  supportColumn: { minWidth: 0, gap: space[4] },
   supportColumnWide: { flexBasis: 0, flexGrow: 3 },
   promotionOnly: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   centerHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   headlineCard: {
-    padding: spacing.lg,
+    padding: space[6],
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
-    gap: spacing.xs,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
+    gap: space[1],
   },
   headlineCardSkeleton: {
     height: 120,
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
   headlineLabelRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   headlineLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   headlineValue: {
-    ...typography.statValue,
-    color: textTokens.primary,
+    ...type.stat,
+    color: color.text1,
   },
   headlineCaption: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   metricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   metricSkeleton: {
     flexBasis: "47%",
@@ -348,23 +342,23 @@ const styles = StyleSheet.create({
     height: 70,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   sectionLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   trackingDegraded: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: -spacing.md,
+    ...type.small,
+    color: color.text2,
+    marginTop: -space[4],
   },
   recentList: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
 });

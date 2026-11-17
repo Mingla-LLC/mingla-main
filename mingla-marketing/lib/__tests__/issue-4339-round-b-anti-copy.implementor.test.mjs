@@ -52,7 +52,8 @@ test('Content-Security-Policy: enforced script-src allowlist, frame-ancestors ke
   const scriptSrc = /const CSP_SCRIPT_SRC = \[([\s\S]*?)\]/.exec(config)[1].match(/'[^']+'|"[^"]+"/g).map((s) => s.slice(1, -1))
   // #4238 W3-1 added the four ad pixels' script origins (loaded only while ads
   // are on; lib/__tests__/issue-4238-marketing-pixels.implementor.test.mjs).
-  assert.deepEqual(scriptSrc, ["'self'", "'unsafe-inline'", 'https://www.googletagmanager.com', 'https://*.googletagmanager.com', 'https://us-assets.i.posthog.com', 'https://connect.facebook.net', 'https://analytics.tiktok.com', 'https://sc-static.net', 'https://www.redditstatic.com'])
+  // #4238 W7: the Snap pixel config script (tr.snapchat.com/config/...) joined the allowlist.
+  assert.deepEqual(scriptSrc, ["'self'", "'unsafe-inline'", 'https://www.googletagmanager.com', 'https://*.googletagmanager.com', 'https://us-assets.i.posthog.com', 'https://connect.facebook.net', 'https://analytics.tiktok.com', 'https://sc-static.net', 'https://tr.snapchat.com', 'https://www.redditstatic.com'])
   // 'unsafe-eval' is added for `next dev` only, never for a production build.
   assert.match(config, /const CSP_DEV_SCRIPT_SRC = process\.env\.NODE_ENV === 'production' \? '' : " 'unsafe-eval'"/)
   for (const directive of ["\"frame-ancestors 'self'\"", "\"object-src 'none'\"", "\"base-uri 'self'\"", "\"form-action 'self'\""]) assert.ok(config.includes(directive), directive)

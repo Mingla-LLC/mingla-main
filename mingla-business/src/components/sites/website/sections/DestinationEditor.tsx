@@ -17,6 +17,7 @@ import type { RichTextDoc } from "../../../../../../packages/site-contracts/src/
 import { ConflictBanner, DeleteEntry, EditorCrumb, OfferingPicker, RichTextEditor, saveErrorMessage, useEditorChrome } from "./EditorKit";
 
 
+import { color } from "../../../../constants/designSystem";
 type Season = { heading: string; body: string; activities: string[]; image: PictureRef | null };
 type Form = {
   title: string;
@@ -209,7 +210,7 @@ export function DestinationEditor({ entryId }: { entryId: string | "new" }): Rea
         <GalleryEditor rows={f.gallery} onChange={(gallery) => set({ gallery })} disabled={readOnly} />
         {missingAlt > 0 ? (
           <View style={styles.warnLine} role="status">
-            <WebsiteIcon name="alert" size={14} color="#fde2a8" />
+            <WebsiteIcon name="alert" size={14} color={color.warningText} />
             <Text style={styles.warnText}>{`${missingAlt} ${missingAlt === 1 ? "photo needs" : "photos need"} a short description for people using screen readers.`}</Text>
           </View>
         ) : null}
@@ -342,17 +343,17 @@ const styles = StyleSheet.create({
   grid2: { flexDirection: "row", flexWrap: "wrap", columnGap: 12 },
   cell: { flexGrow: 1, flexBasis: 220 },
   label: { fontSize: 13, fontWeight: "600", color: ui.t2, marginTop: 14, marginBottom: 6 },
-  warnLine: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 10, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: "rgba(245, 158, 11, 0.18)" },
-  warnText: { flex: 1, minWidth: 180, fontSize: 12.5, lineHeight: 17, color: "#fde2a8" },
+  warnLine: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 10, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 10, backgroundColor: color.warningTint },
+  warnText: { flex: 1, minWidth: 180, fontSize: 12.5, lineHeight: 17, color: color.warningText },
   spacer: { height: 12 },
   subTitle: { marginTop: 16 },
   factRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
-  input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: "rgba(255,255,255,0.03)", paddingHorizontal: 12, paddingVertical: 8, color: ui.t1, fontSize: 14, flex: 1 },
+  input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: color.fill.tableHead, paddingHorizontal: 12, paddingVertical: 8, color: ui.t1, fontSize: 14, flex: 1 },
   addButton: { alignSelf: "flex-start", marginTop: 8 },
   toggleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   toggleGap: { marginTop: 12 },
   toggleLabel: { fontSize: 14, fontWeight: "700", color: ui.t1 },
-  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.06)" },
+  thumb: { width: 56, height: 42, borderRadius: 8, backgroundColor: color.fill.tile },
   seasonTitle: { fontSize: 14, fontWeight: "600", color: ui.t1 },
   sub: { fontSize: 12.5, color: ui.t3 },
   seasonBody: { paddingHorizontal: 14, paddingBottom: 14 },

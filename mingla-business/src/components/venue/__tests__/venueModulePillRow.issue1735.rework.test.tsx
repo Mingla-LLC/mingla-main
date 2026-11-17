@@ -19,7 +19,7 @@ import {
   VenueModulePillRow,
   pillRevealOffset,
 } from "../VenueModulePillRow";
-import { spacing } from "../../../constants/designSystem";
+import { space } from "../../../constants/designSystem";
 
 interface RenderNode {
   type?: unknown;
@@ -46,7 +46,7 @@ const layoutEvent = (x: number) => ({ nativeEvent: { layout: { x } } });
 
 describe("issue #1735 rework — pill row reveals the active pill (P3-5)", () => {
   it("pillRevealOffset leads with one gutter and clamps at zero", () => {
-    expect(pillRevealOffset(500)).toBe(500 - spacing.lg);
+    expect(pillRevealOffset(500)).toBe(500 - space[6]);
     expect(pillRevealOffset(10)).toBe(0);
     expect(pillRevealOffset(0)).toBe(0);
   });

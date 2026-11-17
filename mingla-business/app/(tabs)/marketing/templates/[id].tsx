@@ -13,13 +13,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { showAlert } from "../../../../src/components/ui/showAlert";
 // ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper.
 // KeyboardAvoidingView removed. Per SPEC_ORCH-0892-B_v2 §7.F.
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
@@ -30,16 +30,7 @@ import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffs
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { TemplateEditor, type TemplateEditorMode } from "../../../../src/components/marketing/TemplateEditor";
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../src/constants/designSystem";
+import { color, radius, shadow, space, type } from "../../../../src/constants/designSystem";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useTemplate } from "../../../../src/hooks/marketing/useTemplate";
@@ -114,7 +105,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
   const performSave = useCallback(async (): Promise<string | null> => {
     if (accountId === null) return null;
     if (subject.trim().length === 0 && body.trim().length === 0) {
-      Alert.alert("Add a name + body", "Subject is optional, but body is required.");
+      showAlert("Add a name + body", "Subject is optional, but body is required.", undefined, { kind: "warn" });
       return null;
     }
     if (isNewMode) {
@@ -159,7 +150,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
       sanctionedExitRef.current = true;
       router.replace(`/marketing/templates/${copy.id}` as never);
     } catch (err) {
-      Alert.alert(
+      showAlert(
         "Couldn't duplicate",
         err instanceof Error ? err.message : "Try again in a moment.",
       );
@@ -168,7 +159,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
 
   const handleDelete = useCallback(() => {
     if (template === null) return;
-    Alert.alert(
+    showAlert(
       "Delete this template?",
       "This can't be undone. Campaigns that used this template keep their saved content.",
       [
@@ -183,7 +174,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
               if (router.canGoBack()) router.back();
               else router.replace("/(tabs)/marketing/templates" as never);
             } catch (err) {
-              Alert.alert(
+              showAlert(
                 "Couldn't delete",
                 err instanceof Error ? err.message : "Try again in a moment.",
               );
@@ -214,7 +205,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
       if (sanctionedExitRef.current) return;
       if (!isDirty) return;
       ev.preventDefault?.();
-      Alert.alert(
+      showAlert(
         "Save changes?",
         "You've edited this template. Save them so you can use them later — or discard.",
         [
@@ -252,7 +243,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
       <View style={styles.host}>
         <Header onBack={handleBack} title="Template" rightSlot={null} />
         <View style={styles.centerHost}>
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       </View>
     );
@@ -308,7 +299,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
       // Read-only mode (starter template): Duplicate lives in the header
       // right slot (the editable-mode Save slot's mirror — never both visible).
       if (duplicateMutation.isPending) {
-        return <ActivityIndicator size="small" color={textTokens.secondary} />;
+        return <ActivityIndicator size="small" color={color.text2} />;
       }
       return (
         <Pressable
@@ -325,7 +316,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
     }
     if (isEditable && (isDirty || isNewMode)) {
       if (saveBusy) {
-        return <ActivityIndicator size="small" color={textTokens.secondary} />;
+        return <ActivityIndicator size="small" color={color.text2} />;
       }
       return (
         <Pressable
@@ -378,7 +369,7 @@ export default function TemplateDetailRoute(): React.ReactElement {
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? (
-                <ActivityIndicator size="small" color={semantic.error} />
+                <ActivityIndicator size="small" color={color.danger} />
               ) : (
                 <Text style={styles.deleteLinkText}>Delete this template</Text>
               )}
@@ -424,7 +415,7 @@ const Header: React.FC<HeaderProps> = ({ onBack, title, rightSlot }) => (
       style={({ pressed }) => [styles.iconBtn, pressed ? styles.iconBtnPressed : null]}
       hitSlop={8}
     >
-      <Icon name="arrowL" size={24} color={textTokens.primary} />
+      <Icon name="arrowL" size={24} color={color.text1} />
     </Pressable>
     <Text style={styles.headerTitle} numberOfLines={1}>
       {title}
@@ -436,7 +427,7 @@ const Header: React.FC<HeaderProps> = ({ onBack, title, rightSlot }) => (
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   kavHost: {
     flex: 1,
@@ -444,9 +435,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[2],
     minHeight: 56,
   },
   iconBtn: {
@@ -455,16 +446,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   iconBtnPressed: {
     opacity: 0.78,
   },
   headerTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "600",
     flex: 1,
     textAlign: "center",
@@ -478,23 +469,23 @@ const styles = StyleSheet.create({
     width: 44,
   },
   headerSave: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     minHeight: 44,
     justifyContent: "center",
   },
   headerSaveText: {
-    ...typography.buttonMd,
-    color: accent.warm,
+    ...type.btnSm,
+    color: color.text1,
   },
   centerHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
     // paddingBottom is set per-render via insets.bottom + 120 to clear the
     // floating FAB and the BottomNav capsule. Templates detail uses the same
     // FAB pattern as Overview / Campaigns / Templates list, NOT a sticky footer.
@@ -503,8 +494,8 @@ const styles = StyleSheet.create({
   // content in editable mode (existing user-template rows only). Mirrors the
   // iOS Settings "Delete account" placement convention. NOT sticky.
   deleteLink: {
-    marginTop: spacing.xl,
-    paddingVertical: spacing.sm,
+    marginTop: space[7],
+    paddingVertical: space[2],
     alignItems: "center",
     justifyContent: "center",
     minHeight: 44,
@@ -513,37 +504,32 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   deleteLinkText: {
-    ...typography.buttonMd,
-    color: semantic.error,
+    ...type.btnSm,
+    color: color.danger,
   },
   // Floating CTA — exact-same shape as the Overview / Campaigns / Templates
   // list FABs (position: absolute, right: spacing.md, bottom from
   // useStickyFooterOffset per ORCH-0889, accent.warm-tinted pill).
   fab: {
     position: "absolute",
-    right: spacing.md,
+    right: space[4],
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[1],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 48,
     borderRadius: radius.full,
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    elevation: 6,
+    // #4420: the one primary of the view is Paper with ink text.
+    backgroundColor: color.paper,
+    ...shadow.pane,
   },
   fabPressed: {
     opacity: 0.85,
   },
   fabLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.ink,
   },
 });

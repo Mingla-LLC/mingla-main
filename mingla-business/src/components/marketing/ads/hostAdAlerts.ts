@@ -28,20 +28,33 @@ export function hostAdRunDay(
   return today - start + 1;
 }
 
-/** "Still learning" for the first week of a live ad. */
+/** What the apps are learning to find, by the ad's goal (#4238 6d). */
+const LEARNING_FINDS: Record<"sales" | "signups" | "visits", string> = {
+  sales: "people likely to buy",
+  signups: "people likely to sign up",
+  visits: "people likely to visit your page",
+};
+
+/**
+ * "Still learning" for the first week of a live ad. The words follow the
+ * goal: never "who buys" on a visits or sign-ups ad (#4238 6d). An unknown
+ * goal reads as visits, the goal that promises the least.
+ */
 export function hostAdLearningAlert(input: {
   name: string;
   live: boolean;
   startedAt: string | null;
   nowIso: string;
   timezone?: string | null;
+  goal?: "sales" | "signups" | "visits" | null;
 }): { title: string; body: string } | null {
   if (!input.live) return null;
   const day = hostAdRunDay(input.startedAt, input.nowIso, input.timezone);
   if (day === null || day > 7) return null;
+  const finds = LEARNING_FINDS[input.goal ?? "visits"] ?? LEARNING_FINDS.visits;
   return {
     title: `${input.name} is still learning`,
-    body: `Day ${day}. The apps are still finding who buys. Leave it running for about a week before changing it.`,
+    body: `Day ${day}. The apps are still finding ${finds}. Leave it running for about a week before changing it.`,
   };
 }
 
@@ -95,7 +108,13 @@ export function hostAdPacingAlert(input: {
 export function hostAdPausedReason(reason: string | null | undefined): string | null {
   switch (reason) {
     case "destination_unavailable":
-      return "Paused because the page it sends people to has ended or isn't public any more. Publish the page again, then resume.";
+      return "Paused because the page it sends people to isn't public any more. Publish the page again, then resume.";
+    case "not_on_sale":
+      return "Paused because nothing is on sale on that page right now. Open ticket sales, then resume.";
+    case "bookings_closed":
+      return "Paused because bookings are closed for that trip.";
+    case "event_ended":
+      return "Stopped because the event has passed. Any unspent credit goes back to your Ads credit.";
     case "destination_check_failed":
       return "Paused because we couldn't check that your page is still public. Your money is safe; we'll try again shortly.";
     case "end_date_passed":

@@ -24,6 +24,18 @@ fi
 
 node "${repo_root}/scripts/sites/local/business-web.mjs" env --port "$port"
 
+# #4420 — the Business app calls Core edge functions for stays, Ads, maps,
+# Website and checkout. Expo can start without them, and then every one of
+# those screens fails quietly: Kong answers 500 (no edge runtime container)
+# and the screens hang, redirect or show "unavailable". Say so up front.
+core_api="$(sed -n 's/^EXPO_PUBLIC_SUPABASE_URL=\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p' "${repo_root}/scripts/sites/local/.state/business-web.env")"
+probe_status="$(curl -s -o /dev/null -m 10 -w '%{http_code}' "${core_api}/functions/v1/app-version-policy?app_id=business&platform=ios" || true)"
+if [[ "$probe_status" != 2* ]]; then
+  echo "WARN business-web: Core edge functions are not being served (probe answered ${probe_status})." >&2
+  echo "WARN business-web: stays, Ads, maps, Website and checkout will fail. In another terminal run:" >&2
+  echo "WARN business-web:   scripts/sites/local/run-local-sites.sh --frozen" >&2
+fi
+
 cd "${repo_root}/mingla-business"
 set -a
 # shellcheck disable=SC1091

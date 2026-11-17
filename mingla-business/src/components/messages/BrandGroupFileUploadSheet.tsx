@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -9,8 +8,9 @@ import {
   Text,
   View,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 
-import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, radius, scrim, space } from "../../constants/designSystem";
 import {
   prepareBrandGroupFiles,
   type PreparedBrandGroupFile,
@@ -77,9 +77,9 @@ export function BrandGroupFileUploadSheet({
       onClose();
     } catch (cause) {
       if (cause instanceof BrandGroupFilePermissionError) {
-        Alert.alert(cause.source === "camera" ? "Camera access is off" : "Photo access is off", "Allow access in device settings, then try again.");
+        showAlert(cause.source === "camera" ? "Camera access is off" : "Photo access is off", "Allow access in device settings, then try again.", undefined, { kind: "warn" });
       } else {
-        Alert.alert("Files not added", cause instanceof Error ? cause.message : "Try again.");
+        showAlert("Files not added", cause instanceof Error ? cause.message : "Try again.");
       }
     } finally {
       setPreparing(false);
@@ -97,7 +97,7 @@ export function BrandGroupFileUploadSheet({
               <Text style={styles.subtitle}>{copy?.subtitle ?? "Up to 10 files, 100 MB each. Access follows this Brand group."}</Text>
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel={copy?.close ?? "Close"} disabled={preparing} onPress={onClose} style={styles.closeButton}>
-              <Icon name="close" size={18} color={preparing ? textTokens.tertiary : textTokens.primary} />
+              <Icon name="close" size={18} color={preparing ? color.text3 : color.text1} />
             </Pressable>
           </View>
 
@@ -105,7 +105,7 @@ export function BrandGroupFileUploadSheet({
             {Platform.OS !== "web" ? <SourceButton icon="scan" label={copy?.camera ?? "Camera"} onPress={() => void choose("camera")} disabled={preparing} /> : null}
             <SourceButton icon="grid" label={copy?.photos ?? "Photos & video"} onPress={() => void choose("photos")} disabled={preparing} />
             <SourceButton icon="upload" label={copy?.files ?? "Browse files"} onPress={() => void choose("files")} disabled={preparing} />
-            {preparing ? <ActivityIndicator color={accent.warm} /> : null}
+            {preparing ? <ActivityIndicator color={color.text2} /> : null}
           </View>
         </View>
       </View>
@@ -116,26 +116,26 @@ export function BrandGroupFileUploadSheet({
 function SourceButton({ icon, label, onPress, disabled }: { icon: "scan" | "grid" | "upload"; label: string; onPress: () => void; disabled: boolean }): React.ReactElement {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={styles.sourceButton}>
-      <View style={styles.sourceIcon}><Icon name={icon} size={20} color={accent.warm} /></View>
+      <View style={styles.sourceIcon}><Icon name={icon} size={20} color={color.text1} /></View>
       <Text style={styles.sourceText}>{label}</Text>
-      <Icon name="chevR" size={18} color={textTokens.tertiary} />
+      <Icon name="chevR" size={18} color={color.text3} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.66)", padding: spacing.md },
+  overlay: { flex: 1, backgroundColor: scrim.modal, padding: space[4] },
   overlayBottom: { justifyContent: "flex-end" },
   overlayCentered: { justifyContent: "center", alignItems: "center" },
-  sheet: { width: "100%", maxHeight: "82%", backgroundColor: canvas.profile, borderRadius: radius.xl, borderWidth: 1, borderColor: glass.border.profileElevated, padding: spacing.lg, gap: spacing.lg },
+  sheet: { width: "100%", maxHeight: "82%", backgroundColor: color.canvas, borderRadius: radius.xl, borderWidth: 1, borderColor: color.lineStrong, padding: space[6], gap: space[6] },
   sheetWeb: { maxWidth: 560 },
-  header: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: space[4] },
   headerCopy: { flex: 1 },
-  title: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
-  subtitle: { color: textTokens.secondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  title: { color: color.text1, fontSize: 20, fontWeight: "800" },
+  subtitle: { color: color.text2, fontSize: 12, lineHeight: 18, marginTop: 4 },
   closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  choices: { gap: spacing.sm },
-  sourceButton: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated },
-  sourceIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.12)" },
-  sourceText: { color: textTokens.primary, fontSize: 15, fontWeight: "700", flex: 1 },
+  choices: { gap: space[2] },
+  sourceButton: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: space[4], paddingHorizontal: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tile },
+  sourceIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
+  sourceText: { color: color.text1, fontSize: 15, fontWeight: "700", flex: 1 },
 });

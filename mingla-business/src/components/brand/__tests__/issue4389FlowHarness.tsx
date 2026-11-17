@@ -179,6 +179,34 @@ jest.mock("../../ui/Button", () => {
       R.createElement(RN.Pressable, { testID: p.testID, accessibilityLabel: p.label, onPress: p.onPress, disabled: p.disabled }),
   };
 });
+// [TEST-MOD-APPROVED #4420] — B7: the flow draws the shared Stepper (its
+// animation runtime is not loaded here). One pressable per step, wired to the
+// flow's own onStepPress, so a suite can press "brand-setup-stepper-step-<i>".
+jest.mock("../../ui/Stepper", () => {
+  const R = jest.requireActual("react") as typeof React;
+  const RN = jest.requireActual("react-native") as typeof import("react-native");
+  return {
+    Stepper: (p: {
+      steps: { id: string; label: string; state?: string }[];
+      currentIndex: number;
+      onStepPress?: (i: number) => void;
+      testID?: string;
+    }) =>
+      R.createElement(
+        RN.View,
+        { testID: p.testID },
+        p.steps.map((step, i) =>
+          R.createElement(RN.Pressable, {
+            key: step.id,
+            testID: `${p.testID ?? "stepper"}-step-${i}`,
+            accessibilityLabel: step.label,
+            accessibilityState: { disabled: step.state === "locked" || i > p.currentIndex },
+            onPress: () => p.onStepPress?.(i),
+          }),
+        ),
+      ),
+  };
+});
 jest.mock("../../ui/Sheet", () => {
   const R = jest.requireActual("react") as typeof React;
   const RN = jest.requireActual("react-native") as typeof import("react-native");

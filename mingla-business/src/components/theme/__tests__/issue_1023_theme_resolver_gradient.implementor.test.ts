@@ -142,10 +142,14 @@ describe("#1024 — small accent text is lightened, fills keep the colour", () =
     // gradient-everywhere scope: fills now paint through accentFill(palette).
     expect(event).toContain("styles.brandTile, accentFill(palette)");
     const brand = await read("packages/brand-rendering/PublicBrandPage.tsx");
-    for (const style of ["verifiedBadge", "eventTypeLabel", "oCardDate", "readMore"]) {
-      expect(brand).toContain(`styles.${style}, { color: themeTextAccent(palette) }`);
-    }
-    expect(brand).toContain("styles.buyPill, accentFill(palette)");
+    // #4420 wave 2 invalidated verifiedBadge, eventTypeLabel, oCardDate and the
+    // accent-filled buyPill: the brand page's cards are the shared
+    // BrandOfferingCard (date eyebrow in the text accent; D-B3 tonal pill), and
+    // the verified mark moved into the premium cover identity.
+    expect(brand).toContain("styles.readMore, { color: themeTextAccent(palette) }");
+    const card = await read("packages/brand-rendering/BrandOfferingCard.tsx");
+    expect(card).toContain("const accent = themeTextAccent(palette);");
+    expect(card).toContain("styles.date, { color: accent }");
     expect(await read("packages/offering-rendering/EventOfferingBody.tsx")).toContain(
       "styles.acquisitionEyebrow, { color: themeTextAccent(palette) }",
     );

@@ -29,7 +29,11 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
-import { spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 import { ClaimMatchCard } from "../brand/ClaimMatchCard";
 import { useVenueAddressPoolMatch } from "../../hooks/useVenueAddressPoolMatch";
 import {
@@ -137,17 +141,17 @@ export const VenueAddressMatchPrompt: React.FC = () => {
 
 const styles = StyleSheet.create({
   host: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   hint: {
-    marginTop: spacing.sm,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    marginTop: space[2],
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   warn: {
-    marginTop: spacing.sm,
-    fontSize: typography.caption.fontSize,
-    color: "#F59E0B",
+    marginTop: space[2],
+    fontSize: type.caption.fontSize,
+    color: color.accentText,
   },
 });
 

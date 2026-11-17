@@ -9,11 +9,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
@@ -92,13 +90,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: spacing.md,
-    backgroundColor: glass.tint.profileBase,
+    padding: space[4],
+    backgroundColor: color.fill.inset,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    gap: spacing.sm,
+    borderColor: color.line,
+    gap: space[2],
   },
   col: {
     flex: 1,
@@ -107,12 +105,12 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   price: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   right: {
     alignItems: "flex-end",
@@ -120,21 +118,21 @@ const styles = StyleSheet.create({
   cap: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   soldBadge: {
     paddingVertical: 3,
     paddingHorizontal: 8,
     borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(239, 68, 68, 0.16)",
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.32)",
+    borderColor: color.errorLine,
   },
   soldText: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.0,
-    color: semantic.error,
+    color: color.danger,
   },
 });

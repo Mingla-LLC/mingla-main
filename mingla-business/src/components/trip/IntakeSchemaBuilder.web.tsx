@@ -33,13 +33,10 @@ import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type as typeToken,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -284,7 +281,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
                 style={styles.questionRow}
                 testID={`intake-builder-question-${item.id}`}
               >
-                <GlassCard variant="base" padding={spacing.md} radius="lg">
+                <GlassCard variant="base" padding={space[4]} radius="lg">
                   <View style={styles.questionRowInner}>
                     <View style={styles.moveButtons}>
                       <Pressable
@@ -297,7 +294,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
                         style={[styles.moveBtn, !canMoveUp && styles.moveBtnDisabled]}
                         testID={`intake-builder-move-up-${item.id}`}
                       >
-                        <Icon name="chevU" size={16} color={textTokens.secondary} />
+                        <Icon name="chevU" size={16} color={color.text2} />
                       </Pressable>
                       <Pressable
                         onPress={() => handleMove(index, index + 1)}
@@ -309,7 +306,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
                         style={[styles.moveBtn, !canMoveDown && styles.moveBtnDisabled]}
                         testID={`intake-builder-move-down-${item.id}`}
                       >
-                        <Icon name="chevD" size={16} color={textTokens.secondary} />
+                        <Icon name="chevD" size={16} color={color.text2} />
                       </Pressable>
                     </View>
                     <Pressable
@@ -340,7 +337,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
                             <Icon
                               name="check"
                               size={12}
-                              color={accent.warm}
+                              color={color.accent}
                               strokeWidth={3}
                             />
                             <Text style={styles.requiredPillLabel}>
@@ -372,7 +369,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
                         name="close"
                         size={16}
                         color={
-                          armed ? textTokens.primary : textTokens.tertiary
+                          armed ? color.text1 : color.text3
                         }
                         strokeWidth={2}
                       />
@@ -440,7 +437,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
         <Icon
           name="plus"
           size={16}
-          color={canAdd ? textTokens.primary : textTokens.quaternary}
+          color={canAdd ? color.text1 : color.text4}
           strokeWidth={2.5}
         />
         <Text
@@ -531,53 +528,53 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   // ORCH-0949 — upfront-clarity banner styles.
   upfrontBanner: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: accent.warm,
+    backgroundColor: color.fill.inset,
+    borderColor: color.accent,
     borderWidth: 1,
     borderRadius: radius.md,
     overflow: "hidden",
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[4],
+    marginBottom: space[2],
+    gap: space[1],
   },
   upfrontBannerTitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   upfrontBannerBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
+    color: color.text2,
   },
   eyebrow: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    fontSize: typeToken.label.fontSize,
+    lineHeight: typeToken.label.lineHeight,
+    fontWeight: typeToken.label.fontWeight,
+    letterSpacing: typeToken.label.letterSpacing,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.xs,
+    color: color.accent,
+    marginBottom: space[1],
   },
   emptyHint: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
-    paddingVertical: spacing.md,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
+    color: color.text3,
+    paddingVertical: space[4],
   },
   questionRow: {
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   questionRowInner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   questionMainPressed: {
     opacity: 0.7,
@@ -598,97 +595,97 @@ const styles = StyleSheet.create({
   },
   questionMain: {
     flex: 1,
-    gap: spacing.xs,
+    gap: space[1],
   },
   questionLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: typeToken.body.fontSize,
+    lineHeight: typeToken.body.lineHeight,
+    color: color.text1,
   },
   questionMeta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     flexWrap: "wrap",
   },
   typePill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 2,
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   typePillLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
     fontWeight: "600",
     letterSpacing: 0.8,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   requiredPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 2,
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   requiredPillLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   optionalText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: typeToken.caption.fontSize,
+    lineHeight: typeToken.caption.lineHeight,
+    color: color.text3,
   },
   removeBtn: {
     width: 32,
     height: 32,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
   removeBtnArmed: {
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   removeBtnPressed: {
     opacity: 0.7,
   },
   confirmRow: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: space[2],
+    paddingTop: space[2],
     borderTopWidth: 1,
-    borderTopColor: semantic.error,
+    borderTopColor: color.danger,
   },
   confirmText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
+    color: color.text1,
+    marginBottom: space[2],
   },
   confirmButtons: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     justifyContent: "flex-end",
   },
   confirmKeep: {
     paddingVertical: 8,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     minHeight: 36,
     minWidth: 72,
@@ -699,18 +696,18 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   confirmKeepLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   confirmDestroy: {
     paddingVertical: 8,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.error,
+    borderColor: color.danger,
+    backgroundColor: color.danger,
     minHeight: 36,
     minWidth: 96,
     alignItems: "center",
@@ -720,73 +717,73 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   confirmDestroyLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     backgroundColor: "transparent",
     minHeight: 44,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   addBtnDisabled: {
     opacity: 0.4,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   addBtnPressed: {
     opacity: 0.7,
   },
   addBtnLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: typeToken.body.fontSize,
+    lineHeight: typeToken.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   addBtnLabelDisabled: {
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   clearAllLink: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     alignSelf: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   clearAllLinkPressed: {
     opacity: 0.7,
   },
   clearAllLinkLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
+    color: color.text3,
   },
   clearAllConfirmRow: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    marginTop: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
   },
   clearAllConfirmText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    fontSize: typeToken.small.fontSize,
+    lineHeight: typeToken.small.lineHeight,
+    color: color.text1,
+    marginBottom: space[2],
   },
   clearAllConfirmButtons: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     justifyContent: "flex-end",
   },
 });

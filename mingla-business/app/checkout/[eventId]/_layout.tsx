@@ -19,6 +19,8 @@
 import React from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 
+import { EventCheckoutPaletteScope } from "../../../src/components/checkout/CheckoutPaletteScope";
+
 // Lazy so CartContext (and byDate cart growth) stays off the eager __common
 // chunk; checkout layouts already Suspense TicketQuoteController the same way.
 const CartProvider = React.lazy(() =>
@@ -47,7 +49,10 @@ const CheckoutStack = (): React.ReactElement => {
         eventId={firstParam(params.eventId)}
         ticketLinkToken={firstParam(params.ticketLink) || null}
       />
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* #4420 D-C1 — every step wears the offering's own colours. */}
+      <EventCheckoutPaletteScope eventId={firstParam(params.eventId)}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </EventCheckoutPaletteScope>
     </React.Suspense>
   );
 };

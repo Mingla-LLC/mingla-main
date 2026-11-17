@@ -59,6 +59,9 @@ const SCAN_EXT = new Set([".ts", ".tsx", ".js", ".jsx"]);
  * must be a visible diff.
  */
 const STATIC_TOKEN_NAMESPACES = new Set([
+  // #4420 Graphite Glass: `color` is the frozen `as const` semantic colour
+  // namespace that replaced `text` / `accent` / `glass` (wave 6 deleted them).
+  "color",
   "text",
   "textTokens",
   "accent",
@@ -332,6 +335,13 @@ export function ComposerV2Editor() {
   };
   if (run(otherToken).length !== 0) {
     selfFailures.push("a design-system token read was wrongly flagged: " + JSON.stringify(run(otherToken)));
+  }
+  // 7b. #4420 — the Graphite `color` namespace is a design-system token too.
+  const graphiteToken = {
+    [MOUNT]: goodMount.replace("color: textTokens.primary,", "color: color.text1,"),
+  };
+  if (run(graphiteToken).length !== 0) {
+    selfFailures.push("a Graphite color token read was wrongly flagged: " + JSON.stringify(run(graphiteToken)));
   }
 
   // 8. A dotted read off a NON-token namespace is not a token — must fail.

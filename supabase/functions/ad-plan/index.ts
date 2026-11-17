@@ -23,7 +23,9 @@ import {
   type CountryAvailabilityRow,
   countriesAppCannotRunIn,
   allocationBelowMinimum,
-  providerDailyMinimumCents,
+  HOST_CREATIVES_SUGGESTED,
+  hostCreativeLibraryIds,
+  hostDailyMinimumCents,
   reachCacheKey,
   reachMeter,
 } from "../_shared/adHostPlanRules.ts";
@@ -73,9 +75,46 @@ import {
 import { HOST_AD_LANE, PLATFORMS } from "../_shared/adChannelCore.ts";
 import {
   hostAllocationLaneError,
+  hostPageIsAllFree,
   validateHostOptimization,
 } from "../_shared/adHostGoal.ts";
-import { cachedSalesReadiness } from "../_shared/adSalesReadiness.ts";
+import { hostAdCapabilities } from "../_shared/hostAdCapabilities.ts";
+import {
+  cachedSalesReadiness,
+  cachedSignupsReadiness,
+} from "../_shared/adSalesReadiness.ts";
+import {
+  calendarDaysBetween,
+  creditCentsFromPay,
+  hostMinimumPayCents,
+} from "../_shared/adMoney.ts";
+import { hostCopyWarnings } from "../_shared/adCopyPolicy.ts";
+import { hostAppsForBudget } from "../_shared/adBudgetSplit.ts";
+import {
+  type AdAudienceRow,
+  buildAdStagePlan,
+} from "../_shared/adAudienceStages.ts";
+import {
+  HOST_LIFETIME_PLATFORMS,
+  hostAdSetSplitAsBuilt,
+  hostBudgetModeFor,
+  hostPastGuestSeedKeys,
+  type HostRetargetReadiness,
+  hostRetargetReadiness,
+  splitDailyWithMinimums,
+} from "../_shared/adHostPlanRules.ts";
+import {
+  hostBudgetGuidance,
+  OWN_RESULTS_MIN,
+  typicalPaidPriceCents,
+} from "../_shared/adResultEstimate.ts";
+import { BAND_HIGH } from "../_shared/adResultBenchmarks.ts";
+import {
+  ariCreativeAiGenerated,
+  ariUnverifiedName,
+} from "../_shared/adAriCreativeRule.ts";
+import { parseOfferingStock } from "../_shared/adDestination.ts";
+import { hostSalesLadderStart } from "../_shared/adGoalLadder.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   audienceCountryMismatch,
@@ -197,8 +236,838 @@ function targetingCityKey(city: Record<string, unknown>): string | null {
  * #4238 P1: each connected app's daily minimum converted to the brand's
  * currency with the active FX rate, rounded up. Visits and sales minimums
  * are both given; an app whose minimum can't be worked out is left out.
+ *
+ * #4238 binding floor rule: the minimum is the price of ONE ad set (Host and
+ * Ari ads are never staged, paidSocialStagesApply). Units, confirmed by trace
+ * (W1): the Host budget the clients send (host_delivery_budget_cents) is ad
+ * CREDIT, the amount the apps spend after the fee — ad_plan_quote_for_brand
+ * converts it 1:1 to the provider budget. So `<goal>_daily_minimum_cents`
+ * stays in credit terms (what the split and the server check compare), and
+ * `<goal>_daily_minimum_pay_cents` is the same minimum in what the Host
+ * pays (F-1: grossed up by HOST_FEE_RATIO through hostMinimumPayCents).
  */
-async function hostDailyMinimums(
+/**
+ * #4238 item 3: the sellable tiers of an event page (the same tier predicates
+ * as ad_offering_destination_by_id, without the sale window so "not on sale
+ * yet" still counts). No event (a brand or venue page): no tiers.
+ */
+export async function loadHostOfferingTiers(
+  db: Db,
+  eventId: unknown,
+): Promise<
+  | {
+    ok: true;
+    rows: { is_free: unknown; price_cents: unknown; currency: unknown }[];
+  }
+  | { ok: false; error: { message?: string; code?: string } }
+> {
+  if (typeof eventId !== "string" || !UUID_RE.test(eventId)) {
+    return { ok: true, rows: [] };
+  }
+  const { data, error } = await db.from("ticket_types")
+    .select("is_free,price_cents,currency")
+    .eq("event_id", eventId)
+    .is("deleted_at", null)
+    .eq("is_hidden", false)
+    .eq("is_disabled", false)
+    .eq("available_online", true)
+    .eq("password_protected", false);
+  if (error) return { ok: false, error };
+  return {
+    ok: true,
+    rows: (data ?? []) as {
+      is_free: unknown;
+      price_cents: unknown;
+      currency: unknown;
+    }[],
+  };
+}
+
+/**
+ * #4238 item 3 / U-3: live readiness for each conversion goal the plan asks
+ * for (the client mirror is never trusted). Only apps on sales or sign-ups
+ * are read; each read fails closed to "not ready".
+ */
+async function hostGoalReadiness(
+  db: Db,
+  allocations: { platform: string; connection_id: string }[],
+  requestedMap: unknown,
+  requestedGoal?: unknown,
+): Promise<Record<string, { sales?: boolean; signups?: boolean }>> {
+  const map = { ...(asRecord(requestedMap) ?? {}) };
+  // #4238 W4b §6: on a sales plan Google's sales readiness is always read,
+  // whatever goal the map gives it (it may never fall back to visits).
+  // #4238 W7: the same on a sign-ups plan, with Google's sign-ups readiness.
+  if (
+    (requestedGoal === "sales" || requestedGoal === "signups") &&
+    allocations.some((row) => row.platform === "google")
+  ) map.google = requestedGoal;
+  const wanted = allocations.filter((row) =>
+    map[row.platform] === "sales" || map[row.platform] === "signups"
+  );
+  const out: Record<string, { sales?: boolean; signups?: boolean }> = {};
+  if (wanted.length === 0) return out;
+  const { data, error } = await db.from("ad_connections").select("*")
+    .in("id", wanted.map((row) => row.connection_id));
+  if (error) {
+    console.error("[ad-plan] goal readiness connections unavailable");
+    return out;
+  }
+  for (const row of wanted) {
+    const conn = ((data ?? []) as AdConnectionRow[]).find((item) =>
+      item.id === row.connection_id
+    );
+    if (!conn) continue;
+    const readiness = map[row.platform] === "sales"
+      ? await cachedSalesReadiness(conn)
+      : await cachedSignupsReadiness(conn);
+    out[row.platform] = { [String(map[row.platform])]: readiness.ready };
+  }
+  return out;
+}
+
+/**
+ * #4238 item 2: Mingla's own cost per result for a Host goal over 90 days,
+ * at the first scope with enough results (brand, then the brand's country).
+ * Host-lane spend (ad_spend_daily) over results (ad_conversions on those
+ * campaigns; page visits count clicks), converted to the brand currency.
+ * Best-effort: any read failure returns null (the benchmark is used).
+ */
+async function hostOwnCostPerResult(
+  db: Db,
+  input: {
+    brandId: string;
+    countryCode: string | null;
+    goal: "sales" | "signups" | "visits";
+    currency: string;
+    snapshotId: string | null;
+  },
+): Promise<{ results: number; costPerResultCents: number } | null> {
+  const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+  const scopes: string[][] = [];
+  const { data: own } = await db.from("ad_campaigns").select("id")
+    .eq("owner_kind", "host").eq("brand_id", input.brandId);
+  scopes.push(((own ?? []) as { id: string }[]).map((row) => row.id));
+  if (input.countryCode) {
+    const { data: brands } = await db.from("brands").select("id")
+      .eq("country_code", input.countryCode);
+    const brandIds = ((brands ?? []) as { id: string }[]).map((row) => row.id);
+    if (brandIds.length > 0) {
+      const { data: wider } = await db.from("ad_campaigns").select("id")
+        .eq("owner_kind", "host").in("brand_id", brandIds);
+      scopes.push(((wider ?? []) as { id: string }[]).map((row) => row.id));
+    }
+  }
+  for (const campaignIds of scopes) {
+    if (campaignIds.length === 0) continue;
+    const { data: spendRows, error: spendError } = await db
+      .from("ad_spend_daily").select("spend_cents,clicks,currency")
+      .in("campaign_id", campaignIds).gte("spend_date", since.slice(0, 10));
+    if (spendError) return null;
+    const rows = (spendRows ?? []) as {
+      spend_cents: number;
+      clicks: number;
+      currency: string;
+    }[];
+    const currencies = new Set(rows.map((row) => row.currency));
+    if (rows.length === 0 || currencies.size !== 1) continue;
+    let results = 0;
+    if (input.goal === "visits") {
+      results = rows.reduce((sum, row) => sum + Number(row.clicks ?? 0), 0);
+    } else {
+      const { count, error } = await db.from("ad_conversions")
+        .select("id", { count: "exact", head: true })
+        .in("campaign_id", campaignIds)
+        .eq("event_type", input.goal === "sales" ? "purchase" : "reservation")
+        .gte("created_at", since);
+      if (error) return null;
+      results = Number(count ?? 0);
+    }
+    if (results < OWN_RESULTS_MIN) continue;
+    let spend = rows.reduce((sum, row) => sum + Number(row.spend_cents), 0);
+    const spendCurrency = [...currencies][0];
+    if (spendCurrency !== input.currency) {
+      if (!input.snapshotId) return null;
+      const { data: converted, error } = await db.rpc("fx_convert_minor", {
+        p_amount: spend,
+        p_source: spendCurrency,
+        p_target: input.currency,
+        p_snapshot: input.snapshotId,
+      });
+      if (error || !Number.isSafeInteger(converted)) return null;
+      spend = Number(converted);
+    }
+    return { results, costPerResultCents: spend / results };
+  }
+  return null;
+}
+
+/**
+ * #4238 item 2 (host_budget_guidance): the minimum, the "enough to learn"
+ * budget and the expected results per app, in pay terms and the brand's
+ * currency. One source (hostBudgetGuidance) for the Host builder and Ari.
+ */
+export async function buildHostBudgetGuidance(
+  db: Db,
+  input: {
+    brandId: string;
+    currency: string;
+    countryCode: string | null;
+    goal: "sales" | "signups" | "visits";
+    dailyPayCents: number;
+    platforms: Platform[];
+    destination: Record<string, unknown> | null;
+    runDays: number | null;
+    occurrenceKey?: string | null;
+    /** #4238 T-6: "mingla" = Let Mingla choose the apps. */
+    appChoice?: "mingla" | "host";
+    /** #4238 T-2: retarget readiness per app (absent = not ready). */
+    retargetReadiness?: Record<string, HostRetargetReadiness>;
+    /** #4238 W4a: "total for the run" was asked for. */
+    lifetime?: boolean;
+  },
+): Promise<Record<string, unknown>> {
+  const { data: connections, error } = await db.from("ad_connections")
+    .select("*").eq("lane", HOST_AD_LANE).eq("connected", true)
+    .eq("status", "connected").in("platform", input.platforms);
+  if (error) return { ok: false, status: 502, detail: "connection_lookup_failed" };
+  const rows = (connections ?? []) as AdConnectionRow[];
+  const missing = input.platforms.find((platform) =>
+    !rows.some((row) => row.platform === platform)
+  );
+  if (missing) {
+    return { ok: false, status: 409, detail: `platform_not_connected:${missing}` };
+  }
+  const minimumRows = await hostDailyMinimums(db, rows, input.currency);
+  // #4238 T-6 + amendment B §3: under "Let Mingla choose", fewer apps for a
+  // small budget, in ad spend; the Host's own pick is kept as chosen.
+  let appsPlan: Record<string, unknown> | null = null;
+  let guidedPlatforms = input.platforms;
+  const floorRows = input.platforms.map((platform) => {
+    const row = minimumRows.find((item) => item.platform === platform);
+    return {
+      platform,
+      floor: row?.[`${input.goal}_daily_minimum_cents`],
+      viability: row?.[`${input.goal}_viability_cents`],
+    };
+  });
+  if (floorRows.some((row) => typeof row.floor !== "number")) {
+    return { ok: false, status: 409, detail: "currency_unavailable" };
+  }
+  if (input.appChoice === "mingla") {
+    const split = hostAppsForBudget({
+      spendCents: creditCentsFromPay(input.dailyPayCents),
+      apps: floorRows.map((row) => ({
+        platform: row.platform,
+        floorCents: Number(row.floor),
+        ...(typeof row.viability === "number"
+          ? { viabilityCents: row.viability }
+          : {}),
+      })),
+    });
+    appsPlan = {
+      fit: split.fit,
+      funded: split.funded.map((row) => ({
+        platform: row.platform,
+        daily_credit_cents: row.dailyCents,
+        daily_pay_cents: hostMinimumPayCents(row.dailyCents),
+      })),
+      // apps_trimmed: every app left off says why and how much more it needs.
+      trimmed: split.trimmed.map((row) => ({
+        platform: row.platform,
+        reason: row.reason,
+        needs_more_pay_cents: hostMinimumPayCents(row.needs_more_cents),
+      })),
+      smallest_overall: split.smallest_overall
+        ? {
+          platform: split.smallest_overall.platform,
+          pay_cents: hostMinimumPayCents(split.smallest_overall.spend_cents),
+        }
+        : null,
+    };
+    if (split.fit === "none") {
+      return {
+        ok: false,
+        status: 422,
+        detail: "host_ad_budget_below_every_minimum",
+        apps_plan: appsPlan,
+        per_app: floorRows.map((row) => ({
+          platform: row.platform,
+          smallest_working_pay_cents: hostMinimumPayCents(Number(row.floor)),
+          learning_pay_cents: hostMinimumPayCents(
+            typeof row.viability === "number"
+              ? row.viability
+              : Math.max(Number(row.floor), 500),
+          ),
+        })),
+      };
+    }
+    guidedPlatforms = split.funded.map((row) => row.platform as Platform);
+  }
+  const apps: { platform: string; minimumCreditCents: number }[] = [];
+  for (const platform of guidedPlatforms) {
+    const row = minimumRows.find((item) => item.platform === platform);
+    const value = row?.[`${input.goal}_daily_minimum_cents`];
+    // No rate to the brand's currency: never show a USD number as local money.
+    if (typeof value !== "number") {
+      return { ok: false, status: 409, detail: "currency_unavailable" };
+    }
+    apps.push({ platform, minimumCreditCents: value });
+  }
+  const { data: snapshot } = await db.from("fx_rate_snapshots")
+    .select("id").eq("status", "active")
+    .order("fetched_at", { ascending: false }).limit(1).maybeSingle();
+  const snapshotId = typeof snapshot?.id === "string" ? snapshot.id : null;
+  let priceUsd: number | null = null;
+  if (input.goal === "sales") {
+    const tiers = await loadHostOfferingTiers(db, input.destination?.event_id);
+    if (!tiers.ok) return { ok: false, status: 502, detail: "tiers_unavailable" };
+    const price = typicalPaidPriceCents(tiers.rows);
+    const tierCurrency = String(tiers.rows[0]?.currency ?? "").trim()
+      .toUpperCase();
+    if (price !== null && tierCurrency === "USD") priceUsd = price / 100;
+    else if (price !== null && tierCurrency && snapshotId) {
+      // X-6: band the ticket on its USD price, never its local number.
+      const { data: converted, error: fxError } = await db.rpc(
+        "fx_convert_minor",
+        {
+          p_amount: price,
+          p_source: tierCurrency,
+          p_target: "USD",
+          p_snapshot: snapshotId,
+        },
+      );
+      if (!fxError && Number.isSafeInteger(converted)) {
+        priceUsd = Number(converted) / 100;
+      }
+    }
+  }
+  const stock = input.goal === "visits"
+    ? { remaining: null, known: false }
+    : await loadOfferingStockCap(
+      db,
+      input.destination?.event_id,
+      input.occurrenceKey ?? null,
+    );
+  const own = await hostOwnCostPerResult(db, {
+    brandId: input.brandId,
+    countryCode: input.countryCode,
+    goal: input.goal,
+    currency: input.currency,
+    snapshotId,
+  });
+  const guidance = hostBudgetGuidance({
+    currency: input.currency,
+    goal: input.goal,
+    dailyPayCents: input.dailyPayCents,
+    priceUsd,
+    apps,
+    own,
+    stock: { remaining: stock.remaining, runDays: input.runDays },
+  });
+  if (!guidance.ok) return { ok: false, status: 422, detail: guidance.detail };
+  // #4238 T-1 + T-2 + amendment B §3: per app, the ad sets the plan will
+  // really run (the same hostAdSetSplit create_version freezes), the smallest
+  // working amount (exactly the minimum) and the learning amount (advice).
+  const dailyCredit = creditCentsFromPay(input.dailyPayCents);
+  const shares = appsPlan
+    ? Object.fromEntries(
+      (appsPlan.funded as { platform: string; daily_credit_cents: number }[])
+        .map((row) => [row.platform, row.daily_credit_cents]),
+    )
+    : Object.fromEntries(
+      guidedPlatforms.map((platform, index) => [
+        platform,
+        splitDailyWithMinimums(
+          dailyCredit,
+          guidedPlatforms,
+          Object.fromEntries(
+            apps.map((app) => [app.platform, app.minimumCreditCents]),
+          ),
+        )[index],
+      ]),
+    );
+  const perApp = guidance.per_app.map((app) => {
+    const floor = floorRows.find((row) => row.platform === app.platform);
+    const split = hostAdSetSplitAsBuilt(
+      app.platform,
+      Number(shares[app.platform] ?? 0),
+      app.minimum_daily_credit_cents,
+      input.retargetReadiness?.[app.platform] ?? null,
+      // #4238 W4a: a lifetime run is the one-ad-set structure.
+      input.lifetime === true && HOST_LIFETIME_PLATFORMS.has(app.platform)
+        ? "lifetime"
+        : "daily",
+    );
+    return {
+      ...app,
+      ad_sets: split.ad_sets,
+      retarget: split.retarget,
+      smallest_working_pay_cents: app.minimum_daily_cents,
+      learning_pay_cents: hostMinimumPayCents(
+        typeof floor?.viability === "number"
+          ? floor.viability
+          : Math.max(app.minimum_daily_credit_cents, 500),
+      ),
+    };
+  });
+  const learningAll = perApp.every((app) => app.learning_ok);
+  return {
+    ...guidance,
+    per_app: perApp,
+    fit: appsPlan ? appsPlan.fit : (learningAll ? "ok" : "slow"),
+    ...(appsPlan ? { apps_plan: appsPlan } : {}),
+    smallest_overall: appsPlan?.smallest_overall ??
+      (perApp.length > 0
+        ? perApp.reduce(
+          (best, app) =>
+            app.minimum_daily_cents < best.pay_cents
+              ? { platform: app.platform, pay_cents: app.minimum_daily_cents }
+              : best,
+          {
+            platform: perApp[0].platform,
+            pay_cents: perApp[0].minimum_daily_cents,
+          },
+        )
+        : null),
+    stock_known: stock.known,
+  };
+}
+
+/**
+ * #4238 W2: what is left to sell (ad_offering_stock), for the guidance cap.
+ * Unlimited or unknown stock is no cap; a read failure is "not known" (never
+ * a cap of zero).
+ */
+export async function loadOfferingStockCap(
+  db: Db,
+  eventId: unknown,
+  occurrenceKey: string | null,
+): Promise<{ remaining: number | null; known: boolean }> {
+  if (typeof eventId !== "string" || !UUID_RE.test(eventId)) {
+    return { remaining: null, known: false };
+  }
+  const { data, error } = await db.rpc("ad_offering_stock", {
+    p_event_id: eventId,
+    p_occurrence_key: occurrenceKey,
+  });
+  const stock = error ? null : parseOfferingStock(data);
+  if (!stock) return { remaining: null, known: false };
+  return { remaining: stock.unlimited ? null : stock.remaining, known: true };
+}
+
+/**
+ * #4238 W2: the Host fields frozen into the plan hash at create_version.
+ *   6b  creative_library_ids: 1–5 brand-owned active videos (the first is
+ *       also creative_library_id, for older readers).
+ *   5e  occurrence_key: one date of a series (null = all dates); the run must
+ *       end by that date's last bookable moment.
+ *   5c  copy.last_tickets: the last-tickets words (drafted from the title when
+ *       absent), length-checked like the rest of the copy. Ticket pages only.
+ *   4   sales_ladder_by_platform + guidance_snapshot: server-computed from the
+ *       budget guidance (a client value is always replaced).
+ */
+export async function freezeHostW2Fields(
+  db: Db,
+  input: {
+    plan: Plan;
+    canonical: Record<string, unknown>;
+    canonicalInput: Record<string, unknown>;
+    platforms: Platform[];
+    destination: Record<string, unknown>;
+    optimizationMap: Record<string, string>;
+    rows: Record<string, unknown>[];
+    hostCurrency: string;
+  },
+): Promise<
+  | { ok: true }
+  | { ok: false; detail?: string; database?: { message?: string; code?: string } }
+> {
+  const { canonical, canonicalInput } = input;
+  // Never client-authored.
+  delete canonical.sales_ladder_by_platform;
+  delete canonical.guidance_snapshot;
+
+  // 6b — the creative list.
+  const list = hostCreativeLibraryIds(
+    canonicalInput.creative_library_ids,
+    canonicalInput.creative_library_id,
+  );
+  if (!list.ok) return { ok: false, detail: list.detail };
+  for (const id of list.ids.slice(1)) {
+    const { data: creative, error } = await db.from("ad_creatives")
+      .select("id,brand_id,kind,status,source,source_brand_id,purged_at")
+      .eq("id", id).maybeSingle();
+    if (error) return { ok: false, database: error };
+    const selection = creativeSelectionError(creative, { frozen: false });
+    if (selection || !creative) {
+      return { ok: false, detail: selection?.error ?? "creative_not_reusable" };
+    }
+    if (creative.kind !== "video" && creative.kind !== "image") {
+      return { ok: false, detail: "host_video_creative_required" };
+    }
+    const refused = hostImageRefusedPlatform(creative.kind, input.platforms);
+    if (refused) {
+      return { ok: false, detail: `host_image_not_supported:${refused}` };
+    }
+    const ownership = adCreativeOwnershipError({
+      ownerKind: input.plan.owner_kind,
+      planBrandId: input.plan.brand_id,
+      creativeBrandId: creative.brand_id,
+      creativeSource: creative.source,
+      creativeSourceBrandId: creative.source_brand_id,
+    });
+    if (ownership) return { ok: false, detail: ownership };
+  }
+  canonical.creative_library_ids = list.ids;
+  canonical.creative_library_id = list.ids[0];
+
+  // 5e — one date of a series.
+  const rawKey = canonicalInput.occurrence_key;
+  if (rawKey === undefined || rawKey === null || rawKey === "") {
+    canonical.occurrence_key = null;
+  } else {
+    const eventId = input.destination.event_id;
+    if (typeof rawKey !== "string" || typeof eventId !== "string") {
+      return { ok: false, detail: "occurrence_key_invalid" };
+    }
+    const { data: date, error } = await db.from("event_dates")
+      .select("start_at,end_at,status,cancelled_at")
+      .eq("event_id", eventId).eq("occurrence_key", rawKey)
+      .is("cancelled_at", null).maybeSingle();
+    if (error) return { ok: false, database: error };
+    const bookable = date
+      ? (input.destination.page_type === "trip" ? date.start_at : date.end_at)
+      : null;
+    const bookableMs = Date.parse(String(bookable ?? ""));
+    if (
+      !date || (date.status ?? "active") !== "active" ||
+      !Number.isFinite(bookableMs) || bookableMs <= Date.now()
+    ) {
+      return { ok: false, detail: "occurrence_key_invalid" };
+    }
+    const schedule = asRecord(canonicalInput.schedule);
+    const endsMs = Date.parse(String(schedule?.ends_at ?? ""));
+    if (Number.isFinite(endsMs) && endsMs > bookableMs) {
+      return { ok: false, detail: "schedule_after_date_end" };
+    }
+    canonical.occurrence_key = rawKey;
+  }
+
+  // 5c — last-tickets words, ticket pages only.
+  const copy = asRecord(canonical.copy) ?? {};
+  if (input.destination.result_kind === "tickets") {
+    const title = String(input.destination.title ?? "").trim();
+    const given = typeof copy.last_tickets === "string"
+      ? copy.last_tickets.trim()
+      : "";
+    const lastTickets = given || (title ? `Last tickets for ${title}` : "Last tickets");
+    const tooLong = hostCopyTooLong(input.platforms, { primary: lastTickets });
+    if (tooLong) {
+      return {
+        ok: false,
+        detail: `copy_too_long:${tooLong.platform}:last_tickets:${tooLong.max}`,
+      };
+    }
+    canonical.copy = { ...copy, last_tickets: lastTickets };
+  } else if ("last_tickets" in copy) {
+    const { last_tickets: _drop, ...rest } = copy;
+    canonical.copy = rest;
+  }
+
+  // 4 — the ladder start and the guidance snapshot (nudge + ladder).
+  const salesApps = input.platforms.filter((platform) =>
+    input.optimizationMap[platform] === "sales"
+  );
+  const goalApps = input.platforms.filter((platform) =>
+    input.optimizationMap[platform] === "sales" ||
+    input.optimizationMap[platform] === "signups"
+  );
+  if (goalApps.length > 0 && input.plan.brand_id) {
+    const totalCredit = input.rows.reduce(
+      (sum, row) => sum + Number(row.host_delivery_budget_cents ?? 0),
+      0,
+    );
+    const goal = salesApps.length > 0 ? "sales" : "signups";
+    const apps = goal === "sales" ? salesApps : goalApps;
+    const { data: brand } = await db.from("brands").select("country_code")
+      .eq("id", input.plan.brand_id).maybeSingle();
+    const country = String(brand?.country_code ?? "").trim().toUpperCase();
+    const schedule = asRecord(canonicalInput.schedule);
+    const endsAt = typeof schedule?.ends_at === "string" ? schedule.ends_at : null;
+    const startsAt = typeof schedule?.starts_at === "string"
+      ? schedule.starts_at
+      : null;
+    const guidance = Number.isSafeInteger(totalCredit) && totalCredit > 0
+      ? await buildHostBudgetGuidance(db, {
+        brandId: input.plan.brand_id,
+        currency: input.hostCurrency,
+        countryCode: /^[A-Z]{2}$/.test(country) ? country : null,
+        goal,
+        dailyPayCents: hostMinimumPayCents(totalCredit),
+        platforms: apps,
+        destination: input.destination,
+        runDays: endsAt ? calendarDaysBetween(startsAt, endsAt) : null,
+        occurrenceKey: (canonical.occurrence_key as string | null) ?? null,
+      })
+      : { ok: false };
+    const perApp = guidance.ok === true && Array.isArray(guidance.per_app)
+      ? guidance.per_app as Record<string, unknown>[]
+      : [];
+    const mid: Record<string, number | null> = {};
+    const snapshot: Record<string, Record<string, number>> = {};
+    for (const app of perApp) {
+      const platform = String(app.platform);
+      const week = asRecord(app.expected_week);
+      const midValue = Number(app.expected_week_mid);
+      mid[platform] = Number.isFinite(midValue) ? midValue : null;
+      snapshot[platform] = {
+        week_low: Number(week?.low ?? 0),
+        week_mid: Number.isFinite(midValue) ? midValue : 0,
+      };
+    }
+    // Unknown guidance (no FX rate, a lookup failure): the ladder starts on
+    // started checkouts — the safe side for a small budget — and promotes
+    // itself once the ad has enough purchases.
+    canonical.sales_ladder_by_platform = hostSalesLadderStart({
+      platforms: input.platforms,
+      optimizationByPlatform: input.optimizationMap,
+      expectedPurchasesWeekMid: mid,
+    });
+    // #4238 W5 (8b): the plan's cost per result (credit terms) is frozen
+    // too, so Ari's suggestion is judged against the guidance the Host saw
+    // and recomputes to the same id until something real changes.
+    const costPerResult = Number(
+      (guidance as Record<string, unknown>).cost_per_result_cents,
+    );
+    canonical.guidance_snapshot = {
+      goal,
+      known: guidance.ok === true,
+      per_app: snapshot,
+      ...(guidance.ok === true && Number.isFinite(costPerResult) &&
+          costPerResult > 0
+        ? {
+          cost_per_result_cents: Math.round(costPerResult),
+          cost_per_result_high_cents: Math.round(costPerResult * BAND_HIGH),
+        }
+        : {}),
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * #4238 W5 (8c): why an Ari plan's media or words are refused, or null.
+ * Reads every chosen creative (the frozen creative_library_ids, else the
+ * first) and the event's own record; a failed read refuses (fails closed).
+ */
+export async function ariCreativeRefusal(
+  db: Db,
+  input: {
+    canonical: Record<string, unknown>;
+    brandId: string | null;
+    eventId: unknown;
+  },
+): Promise<string | null> {
+  const { canonical } = input;
+  const ids = (Array.isArray(canonical.creative_library_ids)
+    ? canonical.creative_library_ids
+    : [canonical.creative_library_id]).filter((id): id is string =>
+      typeof id === "string" && UUID_RE.test(id)
+    );
+  const { data: creatives, error } = ids.length > 0
+    ? await db.from("ad_creatives").select("id,ai_generated").in("id", ids)
+    : { data: [], error: null };
+  if (error) return "ari_creative_check_failed";
+  if (
+    ariCreativeAiGenerated({
+      creatives: (creatives ?? []) as { ai_generated?: unknown }[],
+      mediaRights: asRecord(canonical.media_rights),
+    })
+  ) return "ari_creative_ai_generated";
+  const record: (string | null)[] = [];
+  if (input.brandId) {
+    const { data: brand, error: brandError } = await db.from("brands")
+      .select("name").eq("id", input.brandId).maybeSingle();
+    if (brandError) return "ari_creative_check_failed";
+    record.push(typeof brand?.name === "string" ? brand.name : null);
+  }
+  if (typeof input.eventId === "string" && UUID_RE.test(input.eventId)) {
+    const { data: event, error: eventError } = await db.from("events")
+      .select("title,description,location_text").eq("id", input.eventId)
+      .maybeSingle();
+    if (eventError) return "ari_creative_check_failed";
+    record.push(
+      typeof event?.title === "string" ? event.title : null,
+      typeof event?.description === "string" ? event.description : null,
+      typeof event?.location_text === "string" ? event.location_text : null,
+    );
+  }
+  const name = ariUnverifiedName(asRecord(canonical.copy) ?? {}, record);
+  return name ? `ari_copy_unverified_name:${name}` : null;
+}
+
+/**
+ * #4238 T-9 (decision 9): apps whose Host create path takes a photo from the
+ * creative library. Meta takes the hosted image at create. Snapchat (W4a)
+ * takes the image's READY Snap media ref, uploaded per image by the launch's
+ * prepare step (admin-ad-creative-prepare, image on Snapchat). TikTok
+ * (Pangle only) and Google (Demand Gen video) stay video-only. Reddit takes
+ * a photo since W4c: create_version freezes the photo's public master link
+ * (canonical.creative_image_url) and Reddit's image create reads it from the
+ * reviewed plan.
+ */
+export const HOST_IMAGE_PLATFORMS: ReadonlySet<string> = new Set([
+  "meta",
+  "snapchat",
+  "reddit",
+]);
+
+/** #4238 T-9: the first app in the plan that can't take a photo. */
+export function hostImageRefusedPlatform(
+  kind: unknown,
+  platforms: readonly string[],
+): string | null {
+  if (kind !== "image") return null;
+  return platforms.find((platform) => !HOST_IMAGE_PLATFORMS.has(platform)) ??
+    null;
+}
+
+/**
+ * #4238 T-2: per-app retarget readiness, read-only from ad_audiences through
+ * the existing stage resolver (event → brand → market). Only a one-country
+ * event page can retarget; anything else is "not ready".
+ */
+export async function loadHostRetargetReadiness(
+  db: Db,
+  input: {
+    platforms: readonly string[];
+    countries: readonly string[];
+    brandId: unknown;
+    eventId: unknown;
+  },
+): Promise<Record<string, HostRetargetReadiness>> {
+  const out: Record<string, HostRetargetReadiness> = {};
+  const market = input.countries.length === 1
+    ? String(input.countries[0]).trim().toUpperCase()
+    : "";
+  if (
+    !/^[A-Z]{2}$/.test(market) || typeof input.brandId !== "string" ||
+    typeof input.eventId !== "string" || !input.eventId
+  ) return out;
+  const paid = input.platforms.filter((platform) =>
+    platform === "meta" || platform === "snapchat" || platform === "tiktok"
+  );
+  if (paid.length === 0) return out;
+  const { data, error } = await db.from("ad_audiences")
+    .select(
+      "id,platform,code,scope,market,brand_id,event_id,platform_audience_id,approx_size,status",
+    )
+    .in("platform", paid).eq("market", market);
+  if (error) {
+    // Not ready is the safe side: one ad set, never a retarget without data.
+    console.error("[ad-plan] retarget readiness unavailable");
+    return out;
+  }
+  for (const platform of paid) {
+    out[platform] = hostRetargetReadiness(buildAdStagePlan({
+      platform: platform as Platform,
+      rows: (data ?? []) as AdAudienceRow[],
+      market,
+      brandId: input.brandId,
+      eventId: input.eventId,
+      totalBudgetCents: 0,
+    }));
+  }
+  return out;
+}
+
+/**
+ * #4238 T-6 (W4a): the apps "Let Mingla choose" left off, recorded once per
+ * plan version as `apps_trimmed` automation events. The same hostAppsForBudget
+ * rule guidance uses, over the brand's connected Host-lane apps, in credit
+ * terms; `needs_more_pay_cents` is in what the Host pays. Never throws.
+ */
+export async function recordHostAppsTrimmed(
+  db: Db,
+  input: {
+    planId: string;
+    versionId: string;
+    chosen: readonly string[];
+    currency: string;
+    goal: "sales" | "signups" | "visits";
+    spendCents: number;
+  },
+): Promise<number> {
+  try {
+    const { data: connections, error } = await db.from("ad_connections")
+      .select("*").eq("lane", HOST_AD_LANE).eq("connected", true)
+      .eq("status", "connected");
+    if (error) throw new Error(String(error.message ?? "connections"));
+    const rows = (connections ?? []) as AdConnectionRow[];
+    const left = rows.filter((row) => !input.chosen.includes(row.platform));
+    if (left.length === 0 || !input.versionId) return 0;
+    const minimums = await hostDailyMinimums(db, rows, input.currency);
+    const apps = rows.flatMap((row) => {
+      const minimum = minimums.find((item) => item.platform === row.platform);
+      const floor = minimum?.[`${input.goal}_daily_minimum_cents`];
+      const viability = minimum?.[`${input.goal}_viability_cents`];
+      return typeof floor === "number"
+        ? [{
+          platform: row.platform,
+          floorCents: floor,
+          ...(typeof viability === "number" ? { viabilityCents: viability } : {}),
+        }]
+        : [];
+    });
+    const split = hostAppsForBudget({ spendCents: input.spendCents, apps });
+    const { data: existing } = await db.from("ad_plan_automation_events")
+      .select("platform,detail").eq("plan_id", input.planId)
+      .eq("kind", "apps_trimmed");
+    const done = new Set(
+      ((existing ?? []) as Record<string, unknown>[])
+        .filter((row) =>
+          (row.detail as Record<string, unknown> | null)?.plan_version_id ===
+            input.versionId
+        )
+        .map((row) => String(row.platform)),
+    );
+    const inserts = left.filter((row) => !done.has(row.platform)).map((row) => {
+      const trimmed = split.trimmed.find((item) => item.platform === row.platform);
+      return {
+        plan_id: input.planId,
+        platform: row.platform,
+        kind: "apps_trimmed",
+        status: "applied",
+        applied_at: new Date().toISOString(),
+        detail: {
+          plan_version_id: input.versionId,
+          reason: trimmed?.reason ?? "budget_funds_fewer_apps",
+          needs_more_pay_cents: trimmed
+            ? hostMinimumPayCents(trimmed.needs_more_cents)
+            : null,
+          currency: input.currency,
+        },
+      };
+    });
+    if (inserts.length === 0) return 0;
+    const { error: insertError } = await db.from("ad_plan_automation_events")
+      .insert(inserts);
+    if (insertError) throw new Error(String(insertError.message ?? "insert"));
+    return inserts.length;
+  } catch (error) {
+    console.error("[ad-plan] apps_trimmed not recorded", {
+      plan_id: input.planId,
+      detail: (error instanceof Error ? error.message : String(error)).slice(0, 200),
+    });
+    return 0;
+  }
+}
+
+/** The Host goals setup.minimums carries a minimum for. */
+const HOST_MINIMUM_GOALS = ["visits", "sales", "signups"] as const;
+
+export async function hostDailyMinimums(
   db: Db,
   connections: AdConnectionRow[],
   hostCurrency: string,
@@ -209,27 +1078,57 @@ async function hostDailyMinimums(
   const out: Record<string, unknown>[] = [];
   for (const connection of connections) {
     const row: Record<string, unknown> = { platform: connection.platform };
-    for (const goal of ["visits", "sales"] as const) {
-      const provider = providerDailyMinimumCents(
+    for (const goal of HOST_MINIMUM_GOALS) {
+      const provider = hostDailyMinimumCents(
         connection.platform,
         connection as unknown as Record<string, unknown>,
         goal,
       );
       if (provider === null) continue;
+      let credit: number | null = null;
       if (connection.currency === hostCurrency) {
-        row[`${goal}_daily_minimum_cents`] = provider;
+        credit = provider;
+      } else if (snapshot?.id) {
+        const { data: converted, error } = await db.rpc("fx_convert_minor", {
+          p_amount: provider,
+          p_source: connection.currency,
+          p_target: hostCurrency,
+          p_snapshot: snapshot.id,
+        });
+        if (!error && Number.isSafeInteger(converted)) {
+          // A 2% margin so a small rate move before checking doesn't refuse it.
+          credit = Math.ceil(Number(converted) * 1.02);
+        }
+      }
+      if (credit === null) {
+        // #4238 amendment B §4 (B-F1): no rate to convert with → say so; no
+        // amount is guessed and the row is not silently dropped.
+        row.currency_unavailable = true;
         continue;
       }
-      if (!snapshot?.id) continue;
-      const { data: converted, error } = await db.rpc("fx_convert_minor", {
-        p_amount: provider,
-        p_source: connection.currency,
-        p_target: hostCurrency,
-        p_snapshot: snapshot.id,
-      });
-      if (!error && Number.isSafeInteger(converted)) {
-        // A 2% margin so a small rate move before checking doesn't refuse it.
-        row[`${goal}_daily_minimum_cents`] = Math.ceil(Number(converted) * 1.02);
+      row[`${goal}_daily_minimum_cents`] = credit;
+      row[`${goal}_daily_minimum_pay_cents`] = hostMinimumPayCents(credit);
+      // #4238 T-6 / amendment B §3: the "enough to learn" amount max(F, 500)
+      // in the same money (advice, never a floor).
+      const viabilityProvider = Math.max(provider, 500);
+      let viability: number | null = null;
+      if (viabilityProvider === provider) viability = credit;
+      else if (connection.currency === hostCurrency) {
+        viability = viabilityProvider;
+      } else if (snapshot?.id) {
+        const { data: converted, error } = await db.rpc("fx_convert_minor", {
+          p_amount: viabilityProvider,
+          p_source: connection.currency,
+          p_target: hostCurrency,
+          p_snapshot: snapshot.id,
+        });
+        if (!error && Number.isSafeInteger(converted)) {
+          viability = Math.max(credit, Math.ceil(Number(converted) * 1.02));
+        }
+      }
+      if (viability !== null) {
+        row[`${goal}_viability_cents`] = viability;
+        row[`${goal}_viability_pay_cents`] = hostMinimumPayCents(viability);
       }
     }
     out.push(row);
@@ -1372,6 +2271,125 @@ export async function handleAdPlan(
     return json({ ok: true, estimates: rows });
   }
 
+  if (action === "host_budget_guidance") {
+    // #4238 item 2: read-only numbers for the budget step (Host and Ari).
+    const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
+    const platforms = parsePlatformList(body.platforms);
+    const goal = body.optimization;
+    const daily = body.daily_cents;
+    const total = body.total_cents;
+    if (
+      !UUID_RE.test(brandId) || !platforms ||
+      (goal !== "sales" && goal !== "signups" && goal !== "visits")
+    ) {
+      return json({ error: "validation_error", detail: "guidance_invalid" }, 400);
+    }
+    const { data: allowed } = await db.rpc("ad_can_host_action", {
+      p_brand_id: brandId,
+      p_user_id: actor.id,
+      p_action: "plan",
+    });
+    if (allowed !== true) return json({ error: "forbidden" }, 403);
+    const rate = await checkHostEstimateRate(db, brandId, actor.id);
+    if (!rate.allowed) {
+      return json({ error: rate.error, detail: rate.detail }, rate.status);
+    }
+    const startsAt = typeof body.starts_at === "string" ? body.starts_at : null;
+    const endsAt = typeof body.ends_at === "string" ? body.ends_at : null;
+    const runDays = endsAt ? calendarDaysBetween(startsAt, endsAt) : null;
+    const lifetime = body.budget_mode === "lifetime";
+    const dailyPay = lifetime
+      ? (Number.isSafeInteger(total) && runDays && runDays > 0
+        ? Math.floor(Number(total) / runDays)
+        : null)
+      : (Number.isSafeInteger(daily) ? Number(daily) : null);
+    if (dailyPay === null || dailyPay <= 0) {
+      return json({ error: "validation_error", detail: "budget_invalid" }, 422);
+    }
+    const [authority, brand] = await Promise.all([
+      resolveAdBrandCurrency(db, brandId),
+      db.from("brands").select("country_code").eq("id", brandId).maybeSingle(),
+    ]);
+    if (!authority.ok) {
+      return json({
+        error: "currency_authority_unresolved",
+        detail: authority.detail,
+      }, 409);
+    }
+    const descriptor = asRecord(body.destination);
+    let destination: Record<string, unknown> | null = null;
+    if (descriptor) {
+      const { data: resolved } = await db.rpc("ad_plan_destination_resolve", {
+        p_destination_family: "public_mingla_page",
+        p_destination_key: [
+          descriptor.page_type,
+          descriptor.brand_slug,
+          descriptor.entity_slug,
+        ].filter((part) => typeof part === "string" && part).join(":"),
+        p_platforms: platforms,
+      });
+      destination = asRecord(resolved);
+    }
+    // The same goal rules as create_version: a free page never gets sales.
+    if (goal !== "visits") {
+      const tiers = await loadHostOfferingTiers(db, destination?.event_id);
+      if (!tiers.ok) return databaseFailure(tiers.error);
+      const check = validateHostOptimization(
+        Object.fromEntries(platforms.map((platform) => [platform, "visits"])),
+        platforms,
+        destination,
+        { allFree: hostPageIsAllFree(tiers.rows), requestedGoal: goal, acknowledgedFallback: platforms },
+      );
+      if (!check.ok) {
+        return json({ error: "guidance_refused", detail: check.detail }, 422);
+      }
+    }
+    const rawCountry = typeof brand.data?.country_code === "string"
+      ? brand.data.country_code.trim().toUpperCase()
+      : "";
+    const guidanceCountries = Array.isArray(body.countries)
+      ? body.countries.map((value) => String(value))
+      : (/^[A-Z]{2}$/.test(rawCountry) ? [rawCountry] : []);
+    const result = await buildHostBudgetGuidance(db, {
+      brandId,
+      currency: authority.currency,
+      countryCode: /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null,
+      goal,
+      dailyPayCents: dailyPay,
+      platforms,
+      destination,
+      runDays,
+      occurrenceKey: typeof body.occurrence_key === "string"
+        ? body.occurrence_key
+        : null,
+      appChoice: body.app_choice === "mingla" ? "mingla" : "host",
+      lifetime,
+      retargetReadiness: await loadHostRetargetReadiness(db, {
+        platforms,
+        countries: guidanceCountries,
+        brandId,
+        eventId: destination?.event_id,
+      }),
+    });
+    if (result.ok !== true) {
+      return json({
+        error: result.detail === "host_ad_budget_below_every_minimum"
+          ? "host_ad_budget_below_every_minimum"
+          : "guidance_unavailable",
+        detail: result.detail,
+        ...(result.apps_plan ? { apps_plan: result.apps_plan } : {}),
+        ...(result.per_app ? { per_app: result.per_app } : {}),
+      }, Number(result.status ?? 422));
+    }
+    // #4238 6b: fewer than 3 videos gives the apps less to rotate.
+    const creativeCount = Number(body.creative_count);
+    return json(
+      Number.isSafeInteger(creativeCount) && creativeCount >= 0
+        ? { ...result, creatives_hint: creativeCount < HOST_CREATIVES_SUGGESTED }
+        : result,
+    );
+  }
+
   if (action === "host_setup") {
     const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
     if (!UUID_RE.test(brandId)) {
@@ -1421,7 +2439,9 @@ export async function handleAdPlan(
             .select(
               "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at,width,height,has_audio,mime_type,byte_size,variants",
             )
-            .eq("brand_id", brandId).eq("kind", "video").eq("status", "active")
+            // #4238 T-9: photos and flyers too (Meta only in W3).
+            .eq("brand_id", brandId).in("kind", ["video", "image"])
+            .eq("status", "active")
             .order("created_at", { ascending: false }).limit(100),
           resolveAdBrandCurrency(db, brandId),
           db.from("ad_plans")
@@ -1452,6 +2472,10 @@ export async function handleAdPlan(
     const readiness = await Promise.allSettled(
       connectionRows.map((row) => cachedSalesReadiness(row)),
     );
+    // #4238 item 3: the same, for the sign-ups goal (free and RSVP pages).
+    const signupReadiness = await Promise.allSettled(
+      connectionRows.map((row) => cachedSignupsReadiness(row)),
+    );
     const hostConnections = connectionRows.map((row, index) => {
       const settled = readiness[index];
       return {
@@ -1465,6 +2489,11 @@ export async function handleAdPlan(
         sales: settled.status === "fulfilled"
           ? settled.value
           : { ready: false, reason: "unknown" },
+        signups: signupReadiness[index].status === "fulfilled"
+          ? (signupReadiness[index] as PromiseFulfilledResult<
+            { ready: boolean; reason: string }
+          >).value
+          : { ready: false, reason: "unknown" },
       };
     });
     const rawCountry = typeof brand.data?.country_code === "string"
@@ -1476,8 +2505,12 @@ export async function handleAdPlan(
       brandId,
       hostConnections.map((row) => String(row.platform)),
     );
+    // #4238 W4b §2: what this teammate can do, from the same authority
+    // each action uses, with who to ask when they can't.
+    const capabilities = await hostAdCapabilities(db, brandId, actor.id);
     return json({
       ok: true,
+      capabilities,
       available: hostConnections.length > 0,
       audiences: audiences.ok ? audiences.rows : [],
       ...(audiences.ok ? {} : { audiences_error: "unavailable" }),
@@ -1506,6 +2539,16 @@ export async function handleAdPlan(
       creatives: withHostCreativeFit(
         creatives.data ?? [],
         hostConnections,
+      ).map((creative) =>
+        creative.kind === "image"
+          ? {
+            ...creative,
+            // #4238 T-9: the apps a photo can't run on ("Needs a video").
+            video_only_platforms: hostConnections
+              .map((row) => String(row.platform))
+              .filter((platform) => !HOST_IMAGE_PLATFORMS.has(platform)),
+          }
+          : creative
       ),
       plans: plans.data ?? [],
     });
@@ -2185,6 +3228,13 @@ export async function handleAdPlan(
         detail: spark.detail,
       }, 422);
     }
+    // #4238 6b: Host and Ari ads are one ad set; Spark Ads are Admin-only.
+    if (plan.owner_kind === "host" && spark.present) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: "tiktok_spark_admin_only",
+      }, 422);
+    }
     const sparkOnly = spark.present &&
       requested.every((allocation) => allocation.platform === "tiktok");
     const creativeId = typeof canonicalInput.creative_library_id === "string"
@@ -2196,13 +3246,27 @@ export async function handleAdPlan(
         detail: "creative_library_id_required",
       }, 422);
     }
+    let firstCreativeKind: string | null = null;
+    // #4238 W4c (T-9): a photo's public master link, frozen on the plan so
+    // Reddit's image create reads the reviewed plan, never the request.
+    let firstCreativeImageUrl: string | null = null;
     if (!sparkOnly) {
       const { data: creative, error: creativeError } = await db
         .from("ad_creatives")
-        .select("id,brand_id,status,source,source_brand_id,purged_at")
+        .select(
+          "id,brand_id,kind,status,source,source_brand_id,purged_at,source_url",
+        )
         .eq("id", creativeId)
         .maybeSingle();
       if (creativeError) return databaseFailure(creativeError);
+      firstCreativeKind = typeof creative?.kind === "string"
+        ? creative.kind
+        : null;
+      firstCreativeImageUrl = creative?.kind === "image" &&
+          typeof creative.source_url === "string" &&
+          /^https:\/\//i.test(creative.source_url.trim())
+        ? creative.source_url.trim()
+        : null;
       // #3697 (C-13) — an archived creative stays usable for a plan whose
       // current version already carries it; a new selection refuses it.
       let carriedOver = false;
@@ -2385,16 +3449,41 @@ export async function handleAdPlan(
     if (plan.owner_kind === "host") {
       // #4238: the Host goal lives inside the plan hash. Sales only where the
       // platform has a website-sales path and the page sells tickets.
+      // #4238 item 3: free events can't pick ticket sales; RSVP and all-free
+      // pages may optimise for sign-ups; every conversion app is re-checked
+      // live; a goal that falls back to visits must be acknowledged.
+      const offeringTiers = await loadHostOfferingTiers(
+        db,
+        resolvedDestination.event_id,
+      );
+      if (!offeringTiers.ok) return databaseFailure(offeringTiers.error);
       const optimization = validateHostOptimization(
         canonicalInput.optimization_by_platform,
         platforms,
         resolvedDestination,
+        {
+          allFree: hostPageIsAllFree(offeringTiers.rows),
+          ready: await hostGoalReadiness(
+            db,
+            normalized.rows.map((row) => ({
+              platform: String(row.platform),
+              connection_id: String(row.connection_id),
+            })),
+            canonicalInput.optimization_by_platform,
+            canonicalInput.optimization_goal,
+          ),
+          requestedGoal: canonicalInput.optimization_goal,
+          acknowledgedFallback: canonicalInput.acknowledged_visits_fallback,
+        },
       );
       if (!optimization.ok) {
         return json({
           error: "plan_preflight_failed",
           detail: optimization.detail,
-        }, 422);
+          ...(optimization.platforms
+            ? { platforms: optimization.platforms }
+            : {}),
+        }, optimization.status ?? 422);
       }
       canonical.optimization_by_platform = optimization.map;
       // #4238 P0: an app that runs in none of the chosen countries is refused
@@ -2457,12 +3546,12 @@ export async function handleAdPlan(
           provider_delivery_budget_cents: Number(
             row.provider_delivery_budget_cents,
           ),
-          minimum_cents: providerDailyMinimumCents(
+          // #4238 binding floor rule: one ad set per app (Host and Ari are
+          // never staged), compared in credit terms like the budget itself.
+          minimum_cents: hostDailyMinimumCents(
             String(row.platform),
             connection,
-            optimization.map[String(row.platform)] === "sales"
-              ? "sales"
-              : "visits",
+            optimization.map[String(row.platform)] ?? "visits",
           ),
         };
       }));
@@ -2471,6 +3560,137 @@ export async function handleAdPlan(
           error: "plan_preflight_failed",
           detail: `budget_below_app_minimum:${below.platform}`,
         }, 422);
+      }
+      const w2 = await freezeHostW2Fields(db, {
+        plan,
+        canonical,
+        canonicalInput,
+        platforms,
+        destination: resolvedDestination,
+        optimizationMap: optimization.map,
+        rows: normalized.rows,
+        hostCurrency: normalized.hostCurrency,
+      });
+      if (!w2.ok) {
+        return w2.database
+          ? databaseFailure(w2.database)
+          : json({ error: "plan_preflight_failed", detail: w2.detail }, 422);
+      }
+      // #4238 T-9: a photo runs only where the Host create path takes one;
+      // TikTok and Google say "Needs a video". The kind is frozen so the
+      // launch payload sends the right one.
+      const imageRefused = hostImageRefusedPlatform(
+        firstCreativeKind,
+        platforms,
+      );
+      if (imageRefused) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: `host_image_not_supported:${imageRefused}`,
+        }, 422);
+      }
+      canonical.creative_kind = firstCreativeKind === "image"
+        ? "image"
+        : "video";
+      delete canonical.creative_image_url;
+      if (canonical.creative_kind === "image" && platforms.includes("reddit")) {
+        if (!firstCreativeImageUrl) {
+          return json({
+            error: "plan_preflight_failed",
+            detail: "host_image_link_missing:reddit",
+          }, 422);
+        }
+        canonical.creative_image_url = firstCreativeImageUrl;
+      }
+      // #4238 T-6: whether Mingla chose the apps (frozen; the Host's own
+      // pick is kept as chosen).
+      canonical.app_choice = canonicalInput.app_choice === "mingla"
+        ? "mingla"
+        : "host";
+      // #4238 T-2 (I-4238-RETARGET-NEVER-RAISES-MINIMUM): the ad-set split
+      // per app, from the same hostAdSetSplit guidance shows, frozen in the
+      // hash so create builds exactly this. Never client-authored.
+      delete canonical.retarget_by_platform;
+      const retargetReadiness = await loadHostRetargetReadiness(db, {
+        platforms,
+        countries,
+        brandId: plan.brand_id,
+        eventId: resolvedDestination.event_id,
+      });
+      canonical.retarget_by_platform = Object.fromEntries(
+        normalized.rows.map((row) => {
+          const platform = String(row.platform);
+          const connection = (minimumConnections ?? []).find((
+            item: Record<string, unknown>,
+          ) => item.id === row.connection_id) ?? {};
+          return [
+            platform,
+            hostAdSetSplitAsBuilt(
+              platform,
+              Number(row.provider_delivery_budget_cents),
+              hostDailyMinimumCents(
+                platform,
+                connection,
+                optimization.map[platform] ?? "visits",
+              ),
+              retargetReadiness[platform] ?? null,
+              hostBudgetModeFor(platform, canonical),
+            ),
+          ];
+        }),
+      );
+      // #4238 T-3 (I-4238-PAST-GUEST-SEED-NEEDS-REVIEW): the past-guests
+      // seed only under Mingla's audience choice with every app's staff
+      // switch on; otherwise no list id the Host didn't pick.
+      canonical.audience_choice = canonicalInput.audience_choice === "mingla"
+        ? "mingla"
+        : "host";
+      if (canonical.audience_choice === "mingla" && plan.brand_id) {
+        const { data: seedConnections, error: seedConnectionError } = await db
+          .from("ad_connections").select("platform,extra")
+          .in("id", normalized.rows.map((row) => String(row.connection_id)));
+        if (seedConnectionError) return databaseFailure(seedConnectionError);
+        const switchedOn = (seedConnections ?? []).some((
+          row: Record<string, unknown>,
+        ) =>
+          (row.extra as Record<string, unknown> | null)
+            ?.past_guest_seed_enabled === true
+        );
+        let readyKeys: string[] = [];
+        if (switchedOn) {
+          const { data: lists, error: listError } = await db
+            .from("ad_list_audiences").select("audience_key,host_visible")
+            .eq("owner_kind", "host").eq("brand_id", plan.brand_id)
+            .eq("source", "guests").eq("status", "active");
+          if (listError) return databaseFailure(listError);
+          const excluded = new Set(audienceSelection.selection.exclude_keys);
+          readyKeys = (lists ?? [])
+            .filter((row: Record<string, unknown>) =>
+              row.host_visible !== false &&
+              !excluded.has(String(row.audience_key))
+            )
+            .map((row: Record<string, unknown>) => String(row.audience_key));
+        }
+        const seed = hostPastGuestSeedKeys({
+          audienceChoice: canonical.audience_choice,
+          platforms,
+          connections: (seedConnections ?? []) as {
+            platform: string;
+            extra?: unknown;
+          }[],
+          readyListKeys: readyKeys,
+        });
+        if (seed.length > 0) {
+          canonical.audience_selection = {
+            ...audienceSelection.selection,
+            include_keys: [
+              ...new Set([
+                ...audienceSelection.selection.include_keys,
+                ...seed,
+              ]),
+            ],
+          };
+        }
       }
     }
     const paidSocialPlatforms = platforms.filter((platform) =>
@@ -2526,6 +3746,26 @@ export async function handleAdPlan(
         },
       ]),
     );
+    // #4238 W5 (8c, I-4238-ARI-REAL-ONLY): an Ari plan uses only the brand's
+    // own non-AI media and names only the people and venues in the event's
+    // own record. The Host's own picks and words are never checked here.
+    if (plan.client_kind === "ari") {
+      const refusal = await ariCreativeRefusal(db, {
+        canonical,
+        brandId: plan.brand_id,
+        eventId: resolvedDestination?.event_id,
+      });
+      if (refusal) {
+        return json({ error: "plan_preflight_failed", detail: refusal }, 422);
+      }
+    }
+    // #4238 T-5 (I-4238-COPY-CHECK-WARN-ONLY): the shared pre-launch copy
+    // checker. Warn-only, like Admin: the findings ride on the response and
+    // never refuse the version.
+    const copyWarnings = hostCopyWarnings(
+      asRecord(canonical.copy) ?? {},
+      platforms,
+    );
     const { data, error } = await db.rpc("ad_plan_create_version", {
       p_plan_id: plan.id,
       p_canonical_plan: canonical,
@@ -2535,10 +3775,30 @@ export async function handleAdPlan(
       p_actor_id: actor.id,
     });
     if (error) return databaseFailure(error);
+    // #4238 T-6: under "Let Mingla choose", every connected app left off is
+    // recorded on the plan with its reason (best effort; never refuses).
+    if (canonical.app_choice === "mingla" && plan.owner_kind === "host") {
+      await recordHostAppsTrimmed(db, {
+        planId: String(plan.id),
+        versionId: String((data as Record<string, unknown> | null)?.id ?? ""),
+        chosen: platforms,
+        currency: normalized.hostCurrency,
+        goal: canonicalInput.optimization_goal === "sales"
+          ? "sales"
+          : canonicalInput.optimization_goal === "signups"
+          ? "signups"
+          : "visits",
+        spendCents: normalized.rows.reduce(
+          (sum, row) => sum + Number(row.host_delivery_budget_cents ?? 0),
+          0,
+        ),
+      });
+    }
     return json({
       ok: true,
       version: data,
       provider_allocations: normalized.rows,
+      copy_warnings: copyWarnings,
     }, 201);
   }
 

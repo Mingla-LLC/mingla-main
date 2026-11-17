@@ -1,4 +1,6 @@
-import { metaBudgetCategoryForGoal } from "./adChannelCore.ts";
+import { metaBudgetCategoryForBillingEvent } from "./adChannelCore.ts";
+import { hostAdGoalFields, type HostAdOptimization } from "./adHostGoal.ts";
+import { AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY } from "./adMoney.ts";
 
 /**
  * #4238 — Host ad plan rules checked by ad-plan before any money moves.
@@ -85,35 +87,66 @@ export function reachCacheKey(input: unknown): string {
 }
 
 /**
- * #4238 P1: each app's daily minimum in the provider account's currency
- * (USD floors from adMoney; Meta from the connection's own floors). Null
- * when the account bills in a currency the floors are not written in.
+ * #4238 P1: each app's daily minimum for ONE ad set / ad group / ad squad, in
+ * the provider account's currency (USD floors from adMoney; Meta from the
+ * connection's own floors). Null when the account bills in a currency the
+ * floors are not written in.
+ *
+ * #4238 I-4238-META-FLOOR-FOLLOWS-BILLING: Meta's category comes from the
+ * billing event the Host goal really sends (hostAdGoalFields), the same rule
+ * admin-ad-create-campaign checks.
  */
 export function providerDailyMinimumCents(
   platform: string,
   connection: { currency?: unknown; extra?: unknown },
-  optimization: "visits" | "sales",
+  optimization: HostAdOptimization,
 ): number | null {
   const currency = String(connection.currency ?? "").toUpperCase();
   if (currency !== "USD") return null;
   if (platform === "meta") {
     const floors = (connection.extra as Record<string, unknown> | null)
       ?.minimum_budgets as Record<string, unknown> | undefined;
-    // The same category the create path checks (metaBudgetCategoryForGoal).
-    const category = metaBudgetCategoryForGoal(
-      optimization === "sales" ? "OFFSITE_CONVERSIONS" : "LANDING_PAGE_VIEWS",
-    );
+    const billingEvent = hostAdGoalFields("meta", optimization)?.billing_event;
+    const category = metaBudgetCategoryForBillingEvent(billingEvent ?? "");
     const raw = floors?.[category];
     // Same fallback as perDayFloorCents until the connection floors load.
     return typeof raw === "number" && raw > 0 ? Math.ceil(raw) : 500;
   }
-  const table: Record<string, number> = {
-    tiktok: 5000,
-    snapchat: 2000,
-    reddit: 500,
-    google: 0,
-  };
-  return table[platform] ?? null;
+  if (platform in AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY) {
+    return AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY[
+      platform as keyof typeof AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY
+    ];
+  }
+  return null;
+}
+
+/**
+ * #4238 item 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads (owner_kind
+ * "host") are built as ONE ad set / ad group / ad squad per app. Only Admin
+ * (owner_kind "mingla") event ads are split into staged ad sets at create.
+ * admin-ad-create-campaign calls this at every paid-social stage branch.
+ */
+export function paidSocialStagesApply(
+  ownerKind: string,
+  eventId: unknown,
+): boolean {
+  return ownerKind !== "host" && typeof eventId === "string" &&
+    eventId.trim() !== "";
+}
+
+/**
+ * #4238 binding floor rule (16 Nov): the daily minimum a Host plan must clear
+ * on one app is the price of ONE ad set, in the provider account's money
+ * (ad credit, after the fee). Nothing is added on top: no staged worst case
+ * (Host ads are one ad set, paidSocialStagesApply) and no retargeting share.
+ * The pay-terms figure the Host sees is hostMinimumPayCents of this.
+ */
+export function hostDailyMinimumCents(
+  platform: string,
+  connection: { currency?: unknown; extra?: unknown },
+  optimization: HostAdOptimization,
+): number | null {
+  return providerDailyMinimumCents(platform, connection, optimization);
 }
 
 /** The first allocation whose provider daily budget is under its app minimum. */
@@ -160,16 +193,23 @@ export function splitDailyWithMinimums(
 }
 
 /** Split a total in proportion to weights (largest remainder, exact sum). */
-export function splitProportional(total: number, weights: readonly number[]): number[] {
+export function splitProportional(
+  total: number,
+  weights: readonly number[],
+): number[] {
   const sum = weights.reduce((a, b) => a + b, 0);
   if (weights.length === 0 || total <= 0 || sum <= 0) {
     const base = weights.length ? Math.floor(total / weights.length) : 0;
-    return weights.map((_, i) => base + (i < total - base * weights.length ? 1 : 0));
+    return weights.map((_, i) =>
+      base + (i < total - base * weights.length ? 1 : 0)
+    );
   }
   const raw = weights.map((w) => (total * w) / sum);
   const out = raw.map(Math.floor);
   let rest = total - out.reduce((a, b) => a + b, 0);
-  raw.map((v, i) => ({ i, f: v - out[i] })).sort((a, b) => b.f - a.f || a.i - b.i)
+  raw.map((v, i) => ({ i, f: v - out[i] })).sort((a, b) =>
+    b.f - a.f || a.i - b.i
+  )
     .forEach(({ i }) => {
       if (rest > 0) {
         out[i] += 1;
@@ -187,12 +227,547 @@ export function minimumsFromSetup(
   const out: Record<string, number> = {};
   if (!Array.isArray(rows)) return out;
   for (const raw of rows) {
-    const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const row = raw && typeof raw === "object"
+      ? raw as Record<string, unknown>
+      : {};
     const platform = String(row.platform ?? "");
-    const value = goals[platform] === "sales"
-      ? row.sales_daily_minimum_cents
+    const goal = goals[platform];
+    const value = goal === "sales" || goal === "signups"
+      ? row[`${goal}_daily_minimum_cents`]
       : row.visits_daily_minimum_cents;
     if (platform && typeof value === "number") out[platform] = value;
   }
   return out;
+}
+
+/** #4238 6b: a Host or Ari ad set carries 1–5 videos (photos come in W3). */
+export const HOST_CREATIVES_MAX = 5;
+/** The builder suggests at least this many videos (the creatives_hint). */
+export const HOST_CREATIVES_SUGGESTED = 3;
+
+const CREATIVE_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #4238 6b: the canonical creative list. Absent = the single
+ * `creative_library_id` (older clients). Present = 1–5 distinct ids, and
+ * `creative_library_id` (kept for older readers) must be the first.
+ */
+export function hostCreativeLibraryIds(
+  raw: unknown,
+  first: unknown,
+): { ok: true; ids: string[] } | { ok: false; detail: string } {
+  const single = typeof first === "string" ? first : "";
+  if (raw === undefined || raw === null) {
+    return CREATIVE_UUID.test(single)
+      ? { ok: true, ids: [single] }
+      : { ok: false, detail: "creative_library_id_required" };
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, detail: "creative_library_ids_invalid" };
+  }
+  if (raw.length > HOST_CREATIVES_MAX) {
+    return { ok: false, detail: "creative_library_ids_too_many" };
+  }
+  const ids: string[] = [];
+  for (const value of raw) {
+    if (typeof value !== "string" || !CREATIVE_UUID.test(value)) {
+      return { ok: false, detail: "creative_library_ids_invalid" };
+    }
+    if (ids.includes(value)) {
+      return { ok: false, detail: "creative_library_ids_duplicate" };
+    }
+    ids.push(value);
+  }
+  if (single && single !== ids[0]) {
+    return { ok: false, detail: "creative_library_id_not_first" };
+  }
+  return { ok: true, ids };
+}
+
+/**
+ * #4238 6c + amendment A decision 4: Meta's Advantage+ audience is on for a
+ * Host ad set unless a list or lookalike audience is attached, or the Host
+ * set a top age, a gender or a language (their explicit choice is kept).
+ * The age minimum stays a hard limit either way.
+ */
+export function hostMetaAdvantageAudience(input: {
+  listOrLookalikeAttached: boolean;
+  targeting: Record<string, unknown> | null | undefined;
+}): 0 | 1 {
+  if (input.listOrLookalikeAttached) return 0;
+  const t = input.targeting ?? {};
+  // Meta keeps only a minimum age up to 25 as a hard limit under Advantage+.
+  const ageMin = Number(t.age_min);
+  if (Number.isFinite(ageMin) && ageMin > 25) return 0;
+  const ageMax = Number(t.age_max);
+  if (Number.isFinite(ageMax) && ageMax > 0 && ageMax < 65) return 0;
+  const genders = t.genders;
+  if (Array.isArray(genders) && genders.length > 0 && genders.length < 2) {
+    return 0;
+  }
+  const locales = t.locales ?? t.languages;
+  if (Array.isArray(locales) && locales.length > 0) return 0;
+  return 1;
+}
+
+/**
+ * #4238 5a: apps whose create path sends a lifetime (total-for-the-run)
+ * budget for the one-ad-set structure. Every other app runs daily plus
+ * Mingla's cap (the spend sync stops it at the total).
+ *
+ * Meta only in W2: the Meta adapter and create path already send a CBO
+ * `lifetime_budget` with the ad set end time. TikTok's adapter knows
+ * BUDGET_MODE_TOTAL and Snap's knows lifetime_budget_micro (Z-2 confirmed),
+ * but admin-ad-create-campaign still hard-codes daily on both paths.
+ *
+ * W4c docs check (recorded on #4238): the fields exist (Snap ad squad
+ * lifetime_budget_micro; TikTok ad group BUDGET_MODE_TOTAL with
+ * SCHEDULE_START_END, adgroup/budget/update), but neither doc states the
+ * minimum for a total budget, so Mingla can't check the floor before the
+ * provider write as the binding floor rule requires. Snap and TikTok keep the
+ * approved fallback: daily plus Mingla's cap. A "total" never becomes a
+ * per-day budget of the total.
+ */
+export const HOST_LIFETIME_PLATFORMS: ReadonlySet<string> = new Set(["meta"]);
+
+/** The provider budget mode a Host plan's app runs on. */
+export function hostBudgetModeFor(
+  platform: string,
+  canonicalPlan: Record<string, unknown> | null | undefined,
+): "daily" | "lifetime" {
+  return canonicalPlan?.budget_mode === "total" &&
+      HOST_LIFETIME_PLATFORMS.has(platform)
+    ? "lifetime"
+    : "daily";
+}
+
+/**
+ * #4238 6c: frequency caps only where the app accepts them on the goal used.
+ * Meta, TikTok and Snap refuse caps on conversion goals (Spec v2 correction),
+ * so the only Host cap is Snap visits-type goals: 3 impressions per 7 days.
+ * `capGoals` is the adapter's own list (SNAPCHAT_FREQUENCY_CAP_GOALS).
+ */
+export function hostFrequencyCap(
+  platform: string,
+  optimizationGoal: string,
+  capGoals: readonly string[],
+): { impressions: number; days: number } | null {
+  return platform === "snapchat" && capGoals.includes(optimizationGoal)
+    ? { impressions: 3, days: 7 }
+    : null;
+}
+
+/**
+ * #4238 T-2 (amendment A decisions 1–2): the ONE Host/Ari ad-set split.
+ * One prospecting ad set always. One retarget ad set (page viewers and
+ * checkout starters, codes M1–M5 / S1–S3 / T1–T3) is added on Meta, Snap or
+ * TikTok only when the app's daily ad spend S is at least 2F (F = the
+ * one-ad-set floor) AND the retarget audience is ready (≥ 1,000 people,
+ * event → brand → market) AND the pixel buyer exclusion (M6/S4/T4) is ready.
+ * Retarget R = max(F, floor(0.2·S)), prospecting S − R; both stay ≥ F.
+ *
+ * Setup/guidance, create_version (preflight) and create all call this, so
+ * create never refuses a split preflight accepted (X-1). It never changes the
+ * Host minimum: the minimum stays the one-ad-set price (binding floor rule).
+ *
+ * MINGLA-INVARIANT: I-4238-RETARGET-NEVER-RAISES-MINIMUM | issue #4238 | hostAdSetSplit adds the retarget ad set only at S >= 2F with a ready >=1,000 audience and a ready buyer exclusion, keeps every ad set >= F, and the Host minimum is never derived from it (hostDailyMinimumCents is the one-ad-set floor).
+ */
+export const HOST_RETARGET_PLATFORMS: ReadonlySet<string> = new Set([
+  "meta",
+  "snapchat",
+  "tiktok",
+]);
+export const HOST_RETARGET_SHARE = 0.2;
+export const HOST_RETARGET_MIN_AUDIENCE = 1000;
+
+export type HostRetargetReadiness = {
+  /** The page-viewer / checkout-starter audience has ≥ 1,000 people. */
+  audienceReady: boolean;
+  /** The pixel buyer exclusion exists for this app. */
+  buyerExclusionReady: boolean;
+};
+
+export type HostAdSetSplit = {
+  ad_sets: 1 | 2;
+  prospecting_cents: number;
+  retarget_cents: number;
+  retarget: {
+    added: boolean;
+    reason:
+      | null
+      | "retarget_not_supported"
+      | "budget_below_retarget_threshold"
+      | "retarget_audience_not_ready"
+      | "retarget_needs_daily_budget";
+  };
+};
+
+export function hostAdSetSplit(
+  platform: string,
+  spendCents: number,
+  floorCents: number | null,
+  readiness: HostRetargetReadiness | null,
+  /**
+   * #4238 W4a: a "total for the run" (lifetime) budget is the one-ad-set
+   * structure (lifetime budgets are pushed for one ad set only), so it never
+   * gets a retarget ad set.
+   */
+  budgetMode: "daily" | "lifetime" = "daily",
+): HostAdSetSplit {
+  const spend = Number.isSafeInteger(spendCents) && spendCents > 0
+    ? spendCents
+    : 0;
+  const one = (
+    reason: HostAdSetSplit["retarget"]["reason"],
+  ): HostAdSetSplit => ({
+    ad_sets: 1,
+    prospecting_cents: spend,
+    retarget_cents: 0,
+    retarget: { added: false, reason },
+  });
+  if (!HOST_RETARGET_PLATFORMS.has(platform)) {
+    return one("retarget_not_supported");
+  }
+  if (budgetMode === "lifetime") return one("retarget_needs_daily_budget");
+  const floor = floorCents !== null && Number.isFinite(floorCents) &&
+      floorCents > 0
+    ? Math.ceil(floorCents)
+    : null;
+  // Retargeting never runs without leaving out buyers (SC-T2.2).
+  if (
+    !readiness || readiness.audienceReady !== true ||
+    readiness.buyerExclusionReady !== true
+  ) {
+    return one("retarget_audience_not_ready");
+  }
+  if (floor === null || spend < 2 * floor) {
+    return one("budget_below_retarget_threshold");
+  }
+  const retarget = Math.max(floor, Math.floor(HOST_RETARGET_SHARE * spend));
+  return {
+    ad_sets: 2,
+    prospecting_cents: spend - retarget,
+    retarget_cents: retarget,
+    retarget: { added: true, reason: null },
+  };
+}
+
+/**
+ * #4238 T-2: readiness from the existing stage resolver's plan
+ * (buildAdStagePlan, read-only): not blocked (buyer exclusion ready) and the
+ * retarget or checkout-starter stage has a ≥ 1,000-person audience.
+ */
+export function hostRetargetReadiness(
+  plan:
+    | {
+      blocked: boolean;
+      stages: readonly { stage: string; executable: boolean }[];
+    }
+    | null,
+): HostRetargetReadiness {
+  if (!plan) return { audienceReady: false, buyerExclusionReady: false };
+  const warm = plan.stages.some((stage) =>
+    (stage.stage === "retarget" || stage.stage === "abandoners") &&
+    stage.executable
+  );
+  return {
+    audienceReady: !plan.blocked && warm,
+    buyerExclusionReady: !plan.blocked,
+  };
+}
+
+/**
+ * #4238 T-3 (amendment A decision 3): the past-guests starting audience for
+ * "Let Mingla choose". It is added ONLY when the audience choice is Mingla's,
+ * EVERY chosen app has the staff switch on (ad_connections.extra
+ * .past_guest_seed_enabled === true, set only through
+ * admin_set_ad_past_guest_seed with a privacy-review reference), and the brand
+ * has a ready past-guests list or lookalike. With the switch off, no list id
+ * enters a Host plan unless the Host picked it (SC-T3).
+ */
+export function hostPastGuestSeedKeys(input: {
+  audienceChoice: unknown;
+  platforms: readonly string[];
+  connections: readonly { platform: string; extra?: unknown }[];
+  readyListKeys: readonly string[];
+}): string[] {
+  if (input.audienceChoice !== "mingla") return [];
+  if (input.platforms.length === 0 || input.readyListKeys.length === 0) {
+    return [];
+  }
+  const on = input.platforms.every((platform) => {
+    const row = input.connections.find((item) => item.platform === platform);
+    const extra = row?.extra && typeof row.extra === "object"
+      ? row.extra as Record<string, unknown>
+      : {};
+    return extra.past_guest_seed_enabled === true;
+  });
+  return on ? [...new Set(input.readyListKeys)] : [];
+}
+
+/**
+ * #4238 W4a T-2 (create): the ad sets a Host plan's app is built with. The
+ * frozen split (canonical.retarget_by_platform) asks for one or two; the
+ * split is recomputed here from the same hostAdSetSplit with the audiences
+ * read at create. If anything changed (the audience shrank, the buyer list
+ * went away, the budget is lifetime) the plan folds back to ONE prospecting
+ * ad set: one ad set at the full spend is always at or above the floor
+ * preflight checked, so create never refuses a split preflight accepted.
+ *
+ * MINGLA-INVARIANT: I-4238-RETARGET-FOLDS-BACK | issue #4238 | hostAdSetUnits builds a retarget ad set only when the frozen split asked for it AND the create-time hostAdSetSplit still gives two ad sets each >= F; otherwise one prospecting ad set at the full daily spend.
+ */
+export type HostAdSetUnit = {
+  stage: "prospecting" | "retarget";
+  budgetCents: number;
+  targeting: Record<string, unknown>;
+  audienceCodes: string[];
+  audienceSizes: Record<string, number | null>;
+};
+
+type HostStagePlanLike = {
+  blocked: boolean;
+  stages: readonly {
+    stage: string;
+    executable: boolean;
+    includeAudienceIds: readonly string[];
+    excludeAudienceIds: readonly string[];
+    audienceCodes: readonly string[];
+    audienceSizes: Readonly<Record<string, number | null>>;
+  }[];
+};
+
+function idList(value: unknown, key?: string): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) =>
+    key && item && typeof item === "object"
+      ? String((item as Record<string, unknown>)[key] ?? "")
+      : String(item ?? "")
+  ).map((id) => id.trim()).filter(Boolean);
+}
+
+/** The retarget ad set's targeting: the warm audiences in, buyers out. */
+export function hostRetargetTargeting(
+  platform: string,
+  base: Record<string, unknown>,
+  include: readonly string[],
+  exclude: readonly string[],
+): Record<string, unknown> {
+  const unique = (values: string[]) => [...new Set(values)];
+  if (platform === "meta") {
+    const out = unique([
+      ...idList(base.excluded_custom_audiences, "id"),
+      ...exclude,
+    ]);
+    return {
+      ...base,
+      custom_audiences: unique([...include]).map((id) => ({ id })),
+      excluded_custom_audiences: out.map((id) => ({ id })),
+      // A warm audience is attached: Advantage+ must not widen past it.
+      targeting_automation: { advantage_audience: 0 },
+    };
+  }
+  if (platform === "snapchat") {
+    return {
+      ...base,
+      segment_include_ids: unique([...include]),
+      segment_exclude_ids: unique([
+        ...idList(base.segment_exclude_ids),
+        ...exclude,
+      ]),
+    };
+  }
+  if (platform === "tiktok") {
+    return {
+      ...base,
+      audience_ids: unique([...include]),
+      excluded_audience_ids: unique([
+        ...idList(base.excluded_audience_ids),
+        ...exclude,
+      ]),
+    };
+  }
+  throw new Error(`host_retarget_platform_unsupported:${platform}`);
+}
+
+export function hostAdSetUnits(input: {
+  platform: string;
+  frozen: unknown;
+  dailySpendCents: number;
+  floorCents: number | null;
+  budgetMode: "daily" | "lifetime";
+  stagePlan: HostStagePlanLike | null;
+  baseTargeting: Record<string, unknown>;
+}): { units: HostAdSetUnit[]; folded: string | null } {
+  const one: HostAdSetUnit[] = [{
+    stage: "prospecting",
+    budgetCents: input.dailySpendCents,
+    targeting: input.baseTargeting,
+    audienceCodes: [],
+    audienceSizes: {},
+  }];
+  const frozen = input.frozen && typeof input.frozen === "object"
+    ? input.frozen as Record<string, unknown>
+    : null;
+  if (!frozen || frozen.ad_sets !== 2) return { units: one, folded: null };
+  const split = hostAdSetSplit(
+    input.platform,
+    input.dailySpendCents,
+    input.floorCents,
+    hostRetargetReadiness(input.stagePlan),
+    input.budgetMode,
+  );
+  if (split.ad_sets !== 2 || !input.stagePlan) {
+    return {
+      units: one,
+      folded: split.retarget.reason ?? "retarget_audience_not_ready",
+    };
+  }
+  const warm = input.stagePlan.stages.filter((stage) =>
+    (stage.stage === "retarget" || stage.stage === "abandoners") &&
+    stage.executable
+  );
+  const include = [
+    ...new Set(warm.flatMap((stage) => stage.includeAudienceIds)),
+  ];
+  const buyers =
+    input.stagePlan.stages.find((stage) => stage.stage === "prospecting")
+      ?.excludeAudienceIds ?? [];
+  if (include.length === 0 || buyers.length === 0) {
+    return { units: one, folded: "retarget_audience_not_ready" };
+  }
+  return {
+    units: [
+      { ...one[0], budgetCents: split.prospecting_cents },
+      {
+        stage: "retarget",
+        budgetCents: split.retarget_cents,
+        targeting: hostRetargetTargeting(
+          input.platform,
+          input.baseTargeting,
+          include,
+          [...buyers],
+        ),
+        audienceCodes: warm.flatMap((stage) => [...stage.audienceCodes]),
+        audienceSizes: Object.assign(
+          {},
+          ...warm.map((stage) => ({ ...stage.audienceSizes })),
+        ),
+      },
+    ],
+    folded: null,
+  };
+}
+
+/**
+ * #4238 W4a T-2 (live edit): the budget each live Host ad set gets for a new
+ * daily spend S. The retarget ad set runs only while S >= 2F (R = max(F,
+ * floor(0.2·S)), prospecting S − R); below that it is paused and its budget
+ * moves to prospecting (retarget_removed); a rise back to 2F resumes it
+ * (retarget_added). Every running ad set is always >= F. Pure.
+ *
+ * MINGLA-INVARIANT: I-4238-LIVE-EDIT-NEVER-BELOW-AD-SET-FLOOR | issue #4238 | hostLiveAdSetBudgets never gives a running ad set less than the one-ad-set floor F; below 2F the retarget ad set is paused and prospecting carries the whole daily spend.
+ */
+export type HostLiveAdSet = {
+  id: string;
+  stage: "prospecting" | "retarget";
+  paused: boolean;
+};
+
+export type HostLiveAdSetBudget = {
+  id: string;
+  stage: "prospecting" | "retarget";
+  cents: number;
+  /** "pause" / "resume" the retarget ad set; null = keep its status. */
+  status: "pause" | "resume" | null;
+};
+
+export function hostLiveAdSetBudgets(input: {
+  platform: string;
+  dailySpendCents: number;
+  floorCents: number | null;
+  adSets: readonly HostLiveAdSet[];
+}): HostLiveAdSetBudget[] {
+  const prospecting = input.adSets.find((row) => row.stage === "prospecting");
+  const retarget = input.adSets.find((row) => row.stage === "retarget");
+  if (!prospecting) throw new Error("host_prospecting_ad_set_missing");
+  if (!retarget) {
+    return [{
+      id: prospecting.id,
+      stage: "prospecting",
+      cents: input.dailySpendCents,
+      status: null,
+    }];
+  }
+  // The retarget ad set already exists, so its audience was ready at create.
+  const split = hostAdSetSplit(
+    input.platform,
+    input.dailySpendCents,
+    input.floorCents,
+    { audienceReady: true, buyerExclusionReady: true },
+  );
+  if (split.ad_sets === 2) {
+    return [
+      {
+        id: prospecting.id,
+        stage: "prospecting",
+        cents: split.prospecting_cents,
+        status: null,
+      },
+      {
+        id: retarget.id,
+        stage: "retarget",
+        cents: split.retarget_cents,
+        status: retarget.paused ? "resume" : null,
+      },
+    ];
+  }
+  return [
+    {
+      id: prospecting.id,
+      stage: "prospecting",
+      cents: input.dailySpendCents,
+      status: null,
+    },
+    {
+      id: retarget.id,
+      stage: "retarget",
+      cents: 0,
+      status: retarget.paused ? null : "pause",
+    },
+  ];
+}
+
+/**
+ * #4238 W4a/W4c: the apps whose create path builds the retarget ad set.
+ * Meta (W4a), Snapchat and TikTok (W4c: their Host branches call
+ * prepareHostAdSets). Guidance and create_version promise a second ad set
+ * only here (the X-1 lesson: what the Host is shown is what create builds).
+ */
+export const HOST_RETARGET_BUILT_PLATFORMS: ReadonlySet<string> = new Set([
+  "meta",
+  "snapchat",
+  "tiktok",
+]);
+
+/** hostAdSetSplit, limited to the apps whose create builds the split. */
+export function hostAdSetSplitAsBuilt(
+  platform: string,
+  spendCents: number,
+  floorCents: number | null,
+  readiness: HostRetargetReadiness | null,
+  budgetMode: "daily" | "lifetime" = "daily",
+): HostAdSetSplit {
+  if (!HOST_RETARGET_BUILT_PLATFORMS.has(platform)) {
+    const spend = Number.isSafeInteger(spendCents) && spendCents > 0
+      ? spendCents
+      : 0;
+    return {
+      ad_sets: 1,
+      prospecting_cents: spend,
+      retarget_cents: 0,
+      retarget: { added: false, reason: "retarget_not_supported" },
+    };
+  }
+  return hostAdSetSplit(platform, spendCents, floorCents, readiness, budgetMode);
 }

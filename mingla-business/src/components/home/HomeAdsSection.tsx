@@ -1,17 +1,13 @@
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
   trafficAnalytics,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useHostAdCampaigns } from "../../hooks/marketing/useHostAdCampaigns";
 import { useBrandTrafficRollup } from "../../hooks/useTrafficAnalytics";
@@ -20,9 +16,13 @@ import {
   pauseHostAdCampaign,
   type HostAdCampaign,
 } from "../../services/hostAdCampaignService";
-import { currencyCodeOrNull, formatCurrencyRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import { hostAdPayFromCredit } from "../marketing/ads/hostAdBuilderModel";
+import { hostAdListSummaryLine } from "../marketing/ads/results/AdListSummaryCard";
+import { hm, hostAdPauseConfirmWords } from "../marketing/ads/hostAdManageCopy";
 import {
-  homeAdAttentionCopy,
+  campaignCurrencies,
+  homeAdAttentionReason,
   homeAdCanPause,
   homeAdNetworkList,
   homeAdStatusLabel,
@@ -30,6 +30,7 @@ import {
   selectHomeAdCampaigns,
 } from "../../utils/homeAdLifecycle";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
@@ -37,8 +38,6 @@ import { Skeleton } from "../ui/Skeleton";
 interface HomeAdsSectionProps {
   brandId: string;
 }
-
-type CurrencyTotals = Map<string, { spent: number; budget: number }>;
 
 const dateLabel = (value: string | null): string | null => {
   if (value === null) return null;
@@ -49,41 +48,6 @@ const dateLabel = (value: string | null): string | null => {
     day: "numeric",
     month: "short",
   }).format(date);
-};
-
-const campaignCurrencies = (
-  campaign: HostAdCampaign,
-): { currency: string; spent: number; budget: number }[] => {
-  const currency = currencyCodeOrNull(campaign.currency);
-  const budget = campaign.cap_cents ?? campaign.lifetime_budget_cents ?? 0;
-  if (currency !== null && campaign.host_spend_equivalent_cents !== null) {
-    return [{
-      currency,
-      spent: campaign.host_spend_equivalent_cents,
-      budget,
-    }];
-  }
-  const byCurrency = campaign.spend_by_currency.map((row) => ({
-    currency: row.currency.toUpperCase(),
-    spent: row.spend_cents,
-    budget: row.currency.toUpperCase() === currency ? budget : 0,
-  }));
-  if (byCurrency.length > 0) return byCurrency;
-  return currency === null ? [] : [{ currency, spent: 0, budget }];
-};
-
-const summaryTotals = (campaigns: readonly HostAdCampaign[]): CurrencyTotals => {
-  const totals: CurrencyTotals = new Map();
-  for (const campaign of campaigns) {
-    for (const row of campaignCurrencies(campaign)) {
-      const current = totals.get(row.currency) ?? { spent: 0, budget: 0 };
-      totals.set(row.currency, {
-        spent: current.spent + row.spent,
-        budget: current.budget + row.budget,
-      });
-    }
-  }
-  return totals;
 };
 
 const currencyLines = (values: Record<string, number>, suffix: string) =>
@@ -165,7 +129,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const start = dateLabel(campaign.starts_at);
     const cap = campaign.cap_cents ?? campaign.lifetime_budget_cents;
     const scheduled = start !== null && cap !== null && campaign.currency !== null
-      ? `Starts ${start} · ${formatCurrencyRound(cap, campaign.currency, true)} budget`
+      ? `Starts ${start} · ${formatCurrencyRound(hostAdPayFromCredit(cap), campaign.currency, true)} budget`
       : null;
     const compactResult = resultCount === null
       ? null
@@ -173,7 +137,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const line = compactResult !== null
       ? [compactResult, ...salesLines].join(" · ")
       : attention
-        ? homeAdAttentionCopy(campaign.next_action)
+        ? homeAdAttentionReason(campaign)
         : scheduled;
     return line === null ? null : (
       <Text
@@ -198,7 +162,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
       ))}
       {attention ? (
         <Text style={styles.attentionText}>
-          {homeAdAttentionCopy(campaign.next_action)}
+          {homeAdAttentionReason(campaign)}
         </Text>
       ) : null}
     </View>
@@ -209,7 +173,12 @@ const Budget: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
   campaign,
   compact = false,
 }) => {
-  const rows = campaignCurrencies(campaign);
+  // Pay terms, the same unit as the card total and Promote.
+  const rows = campaignCurrencies(campaign).map((row) => ({
+    ...row,
+    spent: hostAdPayFromCredit(row.spent),
+    budget: hostAdPayFromCredit(row.budget),
+  }));
   const hasSpend = rows.some((row) => row.spent > 0);
   if (!hasSpend) {
     if (compact) return null;
@@ -217,7 +186,7 @@ const Budget: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const cap = campaign.cap_cents ?? campaign.lifetime_budget_cents;
     return start !== null && cap !== null && campaign.currency !== null ? (
       <Text style={styles.budgetLine}>
-        {`Starts ${start} · ${formatCurrencyRound(cap, campaign.currency, true)} budget`}
+        {`Starts ${start} · ${formatCurrencyRound(hostAdPayFromCredit(cap), campaign.currency, true)} budget`}
       </Text>
     ) : null;
   }
@@ -267,22 +236,17 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
     [ads.campaigns],
   );
   const campaigns = activeCampaigns.slice(0, 4);
-  const totals = useMemo(() => summaryTotals(campaigns), [campaigns]);
+  // #4238 rework 4 (retest 4 P2-1): the card's total is Promote's "This month"
+  // line, from the same server summary and the same helper (pay terms, ended
+  // ads included), so the two never show different figures for the same data.
+  const monthLine = ads.summary === null ? null : hostAdListSummaryLine(ads.summary);
   const [busyCampaignId, setBusyCampaignId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const adSales = traffic.data?.sources.find((row) =>
     row.source === "mingla_ads"
   )?.valueByCurrency ?? {};
   const salesLines = currencyLines(adSales, "");
-  const spendLines = [...totals.entries()]
-    .filter(([, total]) => total.spent > 0)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([currency, total]) =>
-      total.budget > 0
-        ? `${formatCurrencyRound(total.spent, currency, true)} spent of ${formatCurrencyRound(total.budget, currency, true)} budget`
-        : `${formatCurrencyRound(total.spent, currency, true)} spent`
-    );
+  const spendLines = monthLine === null ? [] : [monthLine];
 
   const openAds = useCallback((): void => {
     router.push("/(tabs)/marketing/ads" as never);
@@ -290,19 +254,42 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
   const openCampaign = useCallback((campaignId: string): void => {
     router.push(`/(tabs)/marketing/ads/${campaignId}` as never);
   }, [router]);
-  const pause = useCallback(async (campaign: HostAdCampaign): Promise<void> => {
+  // #4238 rework 5 (native P2-1): the tile's Pause asks first with the SAME
+  // money-stating confirm as the ad detail page (hostAdPauseConfirmWords).
+  // The confirm holds the ad it was opened for, and only that ad is paused.
+  const [pauseTarget, setPauseTarget] = useState<HostAdCampaign | null>(null);
+  const [pauseError, setPauseError] = useState<string | null>(null);
+  useEffect(() => {
+    setPauseTarget(null);
+    setPauseError(null);
+  }, [brandId]);
+  const askPause = useCallback((campaign: HostAdCampaign): void => {
     if (!permissions.canPause) return;
+    setPauseError(null);
+    setPauseTarget(campaign);
+  }, [permissions.canPause]);
+  const pause = useCallback(async (): Promise<void> => {
+    const campaign = pauseTarget;
+    if (campaign === null || !permissions.canPause || busyCampaignId !== null) return;
     setBusyCampaignId(campaign.id);
-    setActionError(null);
+    setPauseError(null);
     try {
       await pauseHostAdCampaign({ brandId, campaignId: campaign.id });
+      setPauseTarget(null);
       await ads.refetch();
     } catch {
-      setActionError(`Could not pause ${campaign.name}. Try again from Ads.`);
+      setPauseError(hm("detail.actionFailed"));
     } finally {
       setBusyCampaignId(null);
     }
-  }, [ads, brandId, permissions.canPause]);
+  }, [ads, brandId, busyCampaignId, pauseTarget, permissions.canPause]);
+  const pauseWords = pauseTarget === null
+    ? null
+    : hostAdPauseConfirmWords({
+      capCredit: pauseTarget.cap_cents,
+      spentCredit: pauseTarget.host_spend_equivalent_cents,
+      currency: pauseTarget.currency,
+    });
 
   if (permissions.isLoading || permissions.isError || !permissions.canRead) {
     return null;
@@ -362,7 +349,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
         padding={0}
         testID="home-ads-card"
       >
-        <View style={[
+        <View testID="home-ads-summary" style={[
           styles.summary,
           hasSummaryData
             ? isWideDesktop
@@ -454,14 +441,14 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                     </Pressable>
                     {pauseVisible ? (
                       <Pressable
-                        onPress={() => void pause(campaign)}
+                        onPress={() => askPause(campaign)}
                         disabled={busyCampaignId !== null}
                         accessibilityRole="button"
                         accessibilityLabel={`Pause ${campaign.name}`}
                         style={[styles.pauseButton, styles.desktopActionOverlay]}
                         testID={`home-ad-pause-${campaign.id}`}
                       >
-                        <Icon name="pause" size={15} color={textTokens.primary} />
+                        <Icon name="pause" size={15} color={color.text1} />
                         <Text style={styles.actionText}>{isBusy ? "…" : "Pause"}</Text>
                       </Pressable>
                     ) : attention ? (
@@ -499,7 +486,12 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                       ) : null}
                       <View style={styles.phoneMiddle}>
                         <View style={styles.phoneTitleRow}>
-                          <Text style={styles.name} numberOfLines={1}>{campaign.name}</Text>
+                          {/* #4238 W7 (native P3-3): two lines on a phone, so
+                              ads with a shared start ("Rooftop Test Night ·")
+                              stay told apart. */}
+                          <Text style={styles.name} numberOfLines={2} testID={`home-ad-name-${campaign.id}`}>
+                            {campaign.name}
+                          </Text>
                           <StatusPill campaign={campaign} />
                         </View>
                         <Results campaign={campaign} compact />
@@ -508,19 +500,19 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                       {pauseVisible || attention ? (
                         <View style={styles.phoneActionSpacer} />
                       ) : (
-                        <Icon name="chevR" size={18} color={textTokens.tertiary} />
+                        <Icon name="chevR" size={18} color={color.text3} />
                       )}
                     </Pressable>
                     {pauseVisible ? (
                       <Pressable
-                        onPress={() => void pause(campaign)}
+                        onPress={() => askPause(campaign)}
                         disabled={busyCampaignId !== null}
                         accessibilityRole="button"
                         accessibilityLabel={`Pause ${campaign.name}`}
                         style={[styles.iconButton, styles.phoneActionOverlay]}
                         testID={`home-ad-pause-${campaign.id}`}
                       >
-                        <Icon name="pause" size={18} color={textTokens.primary} />
+                        <Icon name="pause" size={18} color={color.text1} />
                       </Pressable>
                     ) : attention ? (
                       <Pressable
@@ -548,130 +540,150 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
             </Pressable>
           ) : null}
         </View>
-        {actionError === null ? null : (
-          <Text accessibilityRole="alert" style={styles.actionError}>
-            {actionError}
-          </Text>
-        )}
       </GlassCard>
+      {permissions.canPause && pauseWords !== null ? (
+        <ConfirmDialog
+          visible
+          onClose={() => {
+            if (busyCampaignId === null) {
+              setPauseTarget(null);
+              setPauseError(null);
+            }
+          }}
+          onConfirm={pause}
+          variant="simple"
+          title={pauseWords.title}
+          description={pauseWords.description}
+          confirmLabel={pauseWords.confirmLabel}
+          cancelLabel={pauseWords.cancelLabel}
+          confirmLoading={busyCampaignId !== null}
+          closeDisabled={busyCampaignId !== null}
+          errorMessage={pauseError}
+          confirmTestID="home-ad-pause-confirm"
+          cancelTestID="home-ad-pause-keep"
+          testID="home-ad-pause-dialog"
+        />
+      ) : null}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  section: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
-  sectionNarrow: { paddingHorizontal: spacing.sm + spacing.xs },
+  section: { paddingHorizontal: space[4], marginBottom: space[4] },
+  // #4420 (device round 2): one gutter with the rest of Home (section's space[4]).
+  sectionNarrow: {},
   summary: {
     minHeight: 72,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[6],
+    paddingVertical: space[4],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   summaryCopy: { flex: 1, minWidth: 0 },
   summaryWithDataWide: { minHeight: 120 },
-  summaryWithDataNarrow: { minHeight: 138 },
+  // Phone/tablet: the summary sizes to its content, top-aligned (no fixed
+  // minHeight + centring, which left ~47dp empty above "ADS").
+  summaryWithDataNarrow: { alignItems: "flex-start", minHeight: 0, paddingVertical: space[5] },
   summaryCompact: { minHeight: 51, paddingVertical: 0 },
-  eyebrow: { ...typography.labelCap, color: textTokens.tertiary },
+  eyebrow: { ...type.label, color: color.text3 },
   salesSummaryRow: {
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   salesSummary: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 24,
     lineHeight: 30,
     fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
-  summarySuffix: { ...typography.bodySm, color: textTokens.secondary },
-  spendSummary: { ...typography.caption, color: textTokens.secondary },
+  summarySuffix: { ...type.small, color: color.text2 },
+  spendSummary: { ...type.caption, color: color.text2 },
   viewAll: { minHeight: 44, justifyContent: "center" },
-  link: { ...typography.bodySm, color: accent.warm, fontWeight: "600" },
-  tiles: { borderTopWidth: 1, borderTopColor: glass.border.profileBase },
+  link: { ...type.small, color: color.text1, fontWeight: "600" },
+  tiles: { borderTopWidth: 1, borderTopColor: color.line },
   tilesWide: { flexDirection: "row", alignItems: "stretch" },
   tile: {
     minWidth: 0,
     position: "relative",
     borderRightWidth: 1,
     borderBottomWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   quietTile: { height: 118 },
-  attentionTile: { backgroundColor: semantic.warningTint },
+  attentionTile: { backgroundColor: color.warningTint },
   pressed: { opacity: 0.72 },
-  desktopTile: { flex: 1, minHeight: 255, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  singleTile: { minHeight: 124, flexDirection: "row", alignItems: "stretch", gap: spacing.lg },
+  desktopTile: { flex: 1, minHeight: 255, paddingHorizontal: space[6], paddingVertical: space[4] },
+  singleTile: { minHeight: 124, flexDirection: "row", alignItems: "stretch", gap: space[6] },
   quietDesktopTile: { minHeight: 118, height: 118, flex: 0 },
   tileSection: { flex: 1, minWidth: 0 },
-  tileFoot: { marginTop: "auto", paddingTop: spacing.md },
-  identity: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  tileFoot: { marginTop: "auto", paddingTop: space[4] },
+  identity: { flexDirection: "row", alignItems: "center", gap: space[2] },
   thumbnail: { width: 40, height: 40, borderRadius: radius.md, flexShrink: 0 },
   identityCopy: { flex: 1, minWidth: 0 },
-  name: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700", flexShrink: 1 },
-  networks: { ...typography.caption, color: textTokens.tertiary },
+  name: { ...type.small, color: color.text1, fontWeight: "700", flexShrink: 1 },
+  networks: { ...type.caption, color: color.text3 },
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    gap: space[1],
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
-  attentionPill: { backgroundColor: semantic.warningTint },
-  livePill: { backgroundColor: semantic.successTint },
-  statusDot: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: textTokens.tertiary },
-  attentionDot: { backgroundColor: semantic.warning },
-  liveDot: { backgroundColor: semantic.success },
-  statusLabel: { ...typography.micro, color: textTokens.primary },
-  results: { marginTop: spacing.md, gap: spacing.xs },
-  resultLine: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: spacing.xs },
-  resultCount: { color: textTokens.primary, fontSize: 20, lineHeight: 26, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  resultSuffix: { ...typography.bodySm, color: textTokens.secondary },
-  salesLine: { ...typography.bodySm, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
-  attentionText: { ...typography.bodySm, color: semantic.warning, marginTop: spacing.xs },
-  budgetBlock: { gap: spacing.sm },
-  budgetCurrency: { gap: spacing.xs },
-  budgetLabelRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  budgetLine: { ...typography.caption, color: textTokens.secondary, flexShrink: 1 },
-  percent: { ...typography.caption, color: textTokens.secondary, fontVariant: ["tabular-nums"] },
-  track: { height: 5, borderRadius: radius.full, overflow: "hidden", backgroundColor: glass.border.profileElevated },
-  fill: { height: "100%", borderRadius: radius.full, backgroundColor: accent.warm },
-  actions: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  attentionPill: { backgroundColor: color.warningTint },
+  livePill: { backgroundColor: color.successTint },
+  statusDot: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: color.text3 },
+  attentionDot: { backgroundColor: color.warning },
+  liveDot: { backgroundColor: color.success },
+  statusLabel: { ...type.label, color: color.text1 },
+  results: { marginTop: space[4], gap: space[1] },
+  resultLine: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: space[1] },
+  resultCount: { color: color.text1, fontSize: 20, lineHeight: 26, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  resultSuffix: { ...type.small, color: color.text2 },
+  salesLine: { ...type.small, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
+  attentionText: { ...type.small, color: color.warning, marginTop: space[1] },
+  budgetBlock: { gap: space[2] },
+  budgetCurrency: { gap: space[1] },
+  budgetLabelRow: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
+  budgetLine: { ...type.caption, color: color.text2, flexShrink: 1 },
+  percent: { ...type.caption, color: color.text2, fontVariant: ["tabular-nums"] },
+  track: { height: 5, borderRadius: radius.full, overflow: "hidden", backgroundColor: color.lineStrong },
+  fill: { height: "100%", borderRadius: radius.full, backgroundColor: color.accent },
+  actions: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] },
   desktopActionSpacer: { width: 72, height: 44 },
-  desktopActionOverlay: { position: "absolute", right: spacing.lg, bottom: spacing.md },
-  footnote: { ...typography.caption, color: textTokens.tertiary, flex: 1 },
-  pauseButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderRadius: radius.md, backgroundColor: glass.tint.profileElevated },
-  actionText: { ...typography.caption, color: textTokens.primary, fontWeight: "700" },
-  fixButton: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: radius.md, backgroundColor: semantic.warning },
-  fixText: { ...typography.caption, color: canvas.discover, fontWeight: "700" },
+  desktopActionOverlay: { position: "absolute", right: space[6], bottom: space[4] },
+  footnote: { ...type.caption, color: color.text3, flex: 1 },
+  pauseButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[1], paddingHorizontal: space[2], borderRadius: radius.md, backgroundColor: color.fill.tile },
+  actionText: { ...type.caption, color: color.text1, fontWeight: "700" },
+  fixButton: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], borderRadius: radius.md, backgroundColor: color.warning },
+  fixText: { ...type.caption, color: color.canvas, fontWeight: "700" },
   phoneRow: {
     minHeight: 80,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + spacing.xs,
-    padding: spacing.md,
+    gap: space[2] + space[1],
+    padding: space[4],
   },
   attentionPhoneRow: { minHeight: 135 },
   resultsPhoneRow: { minHeight: 115 },
   phoneMiddle: { flex: 1, minWidth: 0 },
   phoneActionSpacer: { width: 44, height: 44 },
-  phoneActionOverlay: { position: "absolute", right: spacing.md, top: "50%", marginTop: -22 },
-  phoneTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  compactLine: { ...typography.caption, color: textTokens.secondary, marginTop: spacing.xs },
-  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: glass.tint.profileElevated },
+  phoneActionOverlay: { position: "absolute", right: space[4], top: "50%", marginTop: -22 },
+  phoneTitleRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  compactLine: { ...type.caption, color: color.text2, marginTop: space[1] },
+  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: color.fill.tile },
   phoneViewAll: { minHeight: 52, alignItems: "center", justifyContent: "center" },
-  actionError: { ...typography.bodySm, color: semantic.errorText, padding: spacing.md },
-  errorText: { ...typography.bodySm, color: textTokens.primary },
+  errorText: { ...type.small, color: color.text1 },
   retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center" },
-  skeletonRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  skeletonCopy: { flex: 1, gap: spacing.sm },
+  skeletonRow: { flexDirection: "row", alignItems: "center", gap: space[4] },
+  skeletonCopy: { flex: 1, gap: space[2] },
 });
 
 export default HomeAdsSection;

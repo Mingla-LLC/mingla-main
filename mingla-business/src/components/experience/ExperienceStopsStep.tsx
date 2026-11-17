@@ -21,13 +21,10 @@ import React, { useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import { ExperienceStopPhotoSheet } from "./ExperienceStopPhotoSheet";
@@ -248,7 +245,7 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
           accessibilityLabel="Add stop"
           style={({ pressed }) => [styles.addStopCta, pressed && styles.pressed]}
         >
-          <Icon name="plus" size={18} color={accent.warm} />
+          <Icon name="plus" size={18} color={color.accent} />
           <Text style={styles.addStopText}>Add stop</Text>
         </Pressable>
       ) : null}
@@ -272,24 +269,24 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
 };
 
 const styles = StyleSheet.create({
-  stepBody: { gap: spacing.md },
+  stepBody: { gap: space[4] },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   modeToggle: {
     flexDirection: "row",
-    gap: spacing.xs,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[1],
+    backgroundColor: color.fill.inset,
     borderRadius: radius.md,
-    padding: spacing.xxs,
+    padding: 2,
   },
   modeSeg: {
     flex: 1,
@@ -297,43 +294,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   modeSegActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   modeSegText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
-  modeSegTextActive: { color: textTokens.primary },
+  modeSegTextActive: { color: color.text1 },
   // NOTE: per-stop-card styles (badge / fields / thumbnails / etc.) moved to
   // ExperienceStopCard.tsx with the memoized card extraction (perf bug #2).
   helper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
-  helperError: { color: semantic.error },
+  helperError: { color: color.danger },
   addStopCta: {
     minHeight: 56,
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.lg,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   addStopText: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   pressed: { opacity: 0.7 },
 });

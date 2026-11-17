@@ -14,11 +14,10 @@ import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import {
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  type,
+  space,
 } from "../../constants/designSystem";
 
 import { GlassCard } from "./GlassCard";
@@ -49,10 +48,10 @@ export const KpiTile: React.FC<KpiTileProps> = ({
 }) => {
   const deltaColor =
     deltaUp === true
-      ? semantic.success
+      ? color.success
       : deltaUp === false
-        ? semantic.error
-        : textTokens.tertiary;
+        ? color.errorText
+        : color.text3;
 
   return (
     <GlassCard variant="base" testID={testID} style={style}>
@@ -89,43 +88,43 @@ export const KpiTile: React.FC<KpiTileProps> = ({
 
 const styles = StyleSheet.create({
   stack: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   label: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
   value: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
-    fontWeight: typography.statValue.fontWeight,
-    letterSpacing: typography.statValue.letterSpacing,
-    color: textTokens.primary,
-    marginTop: spacing.xxs,
+    fontSize: type.stat.fontSize,
+    lineHeight: type.stat.lineHeight,
+    fontWeight: type.stat.fontWeight,
+    letterSpacing: type.stat.letterSpacing,
+    color: color.text1,
+    marginTop: 2,
   },
   valueSkeleton: {
     width: 72,
     height: 24,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    marginTop: spacing.xxs,
+    backgroundColor: color.fill.tile,
+    marginTop: 2,
   },
   delta: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    marginTop: space[1],
   },
   sub: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
+    color: color.text2,
+    marginTop: space[1],
   },
 });
 

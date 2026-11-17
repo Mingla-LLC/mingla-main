@@ -44,16 +44,14 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  androidOpaque,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
+import type { IconName } from "../ui/Icon";
 import { Button } from "../ui/Button";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -1097,6 +1095,7 @@ export function VenueMenuModule({
               style={[
                 styles.itemRow,
                 stackItemRows && styles.itemRowStacked,
+                itemIndex > 0 && styles.itemRowDivided,
                 !item.isAvailable && styles.itemHidden,
               ]}
               accessibilityLabel={`${item.name}, ${
@@ -1181,7 +1180,12 @@ export function VenueMenuModule({
                             : styles.dotUnavailable,
                         ]}
                       />
-                      <Text style={styles.availabilityLabel}>
+                      <Text
+                        style={[
+                          styles.availabilityLabel,
+                          item.isAvailable && styles.availabilityLabelOn,
+                        ]}
+                      >
                         {item.isAvailable ? "On" : "86'd"}
                       </Text>
                     </Pressable>
@@ -1286,7 +1290,8 @@ export function VenueMenuModule({
               ]}
               testID={`venue-menu-add-item-${menu.id}`}
             >
-              <Text style={styles.addItemLabel}>+ Add item</Text>
+              <Icon name="plus" size={16} color={color.text2} />
+              <Text style={styles.addItemLabel}>Add item</Text>
             </Pressable>
           ) : null}
         </GlassCard>
@@ -1408,10 +1413,18 @@ function ArrowControl({
       ]}
       testID={testID}
     >
-      <Text style={styles.iconGlyph}>{glyph}</Text>
+      {/* #4420 (round-3 item 16) — chevron icons in the 44pt box, not text
+          triangles. */}
+      <Icon
+        name={GLYPH_ICON[glyph] ?? "chevD"}
+        size={18}
+        color={color.text2}
+      />
     </Pressable>
   );
 }
+
+const GLYPH_ICON: Record<string, IconName> = { "▲": "chevU", "▼": "chevD" };
 
 function TextControl({
   label,
@@ -1427,67 +1440,83 @@ function TextControl({
       style={({ pressed }) => [styles.textControl, pressed && styles.pressed]}
       testID={testID}
     >
-      <Text style={styles.textControlLabel}>{glyph}</Text>
+      {/* #4420 (round-3 item 16) — a pencil in a quiet well, not the word
+          "Edit" (its accessibility label still says "Edit <name>"). */}
+      {glyph === "Edit" ? (
+        <View style={styles.editWell}>
+          <Icon name="edit" size={16} color={color.text1} />
+        </View>
+      ) : (
+        <Text style={styles.textControlLabel}>{glyph}</Text>
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   intro: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    ...type.small,
+    color: color.text2,
+    marginBottom: space[1],
   },
   // ---- category card ----
   categoryCard: {
     // ORCH-1190 R2 — full-width category card on WEB (see emptyCard).
     width: "100%",
-    gap: spacing.sm,
+    gap: space[2],
   },
   categoryHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   categoryHeaderText: {
     flex: 1,
     minWidth: 0,
   },
   categoryName: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   categoryDesc: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   categorySchedule: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    ...type.small,
+    color: color.text3,
+    marginTop: 2,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.xs,
+    backgroundColor: color.line,
+    marginVertical: space[1],
   },
   // ---- item row ----
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
   },
   itemRowStacked: {
     flexDirection: "column",
     alignItems: "stretch",
+    gap: space[1],
+  },
+  // #4420 (round-3 item 16) — a hairline between dishes so each row reads as
+  // one unit (name, price, on/86, order, edit).
+  itemRowDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+    paddingTop: space[2],
   },
   itemHidden: {
     opacity: 0.5,
@@ -1495,58 +1524,62 @@ const styles = StyleSheet.create({
   itemLeft: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.xxs,
+    gap: 2,
   },
   itemLeftStacked: {
     width: "100%",
   },
   itemName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   itemDesc: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   itemRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   itemRightStacked: {
     width: "100%",
     alignSelf: "stretch",
     justifyContent: "space-between",
     flexWrap: "wrap",
-    rowGap: spacing.xs,
+    rowGap: space[1],
   },
   itemStatusGroup: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   itemPrice: {
-    ...typography.body,
-    fontWeight: "600",
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   priceOnRequest: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   spotsEntry: {
     alignSelf: "flex-start",
   },
+  // #4420 (round-3 item 16) — the one-tap 86 reads as a chip; the Pressable
+  // keeps its 44pt height for the touch target.
   availabilityToggle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xxs,
+    gap: space[1],
     minHeight: 44,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
   availabilityLabel: {
-    ...typography.micro,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
+  },
+  availabilityLabelOn: {
+    color: color.text2,
   },
   availabilityDot: {
     width: 8,
@@ -1554,31 +1587,31 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   dotAvailable: {
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   dotUnavailable: {
-    backgroundColor: textTokens.quaternary,
+    backgroundColor: color.text4,
   },
   reorderFeedback: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    gap: spacing.sm,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
+    gap: space[2],
   },
   reorderFeedbackError: {
     minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
+    gap: space[4],
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderRadius: radius.md,
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
   },
   reorderFeedbackErrorAndroid: {
-    backgroundColor: androidOpaque.errorFill,
+    backgroundColor: color.solidTint.error,
     overflow: "hidden",
     elevation: 0,
   },
@@ -1590,40 +1623,40 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   reorderFeedbackPendingText: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   reorderFeedbackSuccessText: {
-    ...typography.bodySm,
-    color: semantic.success,
+    ...type.small,
+    color: color.success,
   },
   reorderFeedbackErrorText: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     fontWeight: "600",
   },
   reorderRetry: {
     minHeight: 44,
     minWidth: 88,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     alignItems: "center",
     justifyContent: "center",
   },
   reorderRetryText: {
-    ...typography.buttonMd,
-    color: accent.warm,
+    ...type.btnSm,
+    color: color.accent,
   },
   unassignedReorderNotice: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    ...type.caption,
+    color: color.text3,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
   },
   // ---- controls ----
   actionCluster: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   iconControl: {
     width: 44,
@@ -1631,9 +1664,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  iconGlyph: {
-    ...typography.body,
-    color: textTokens.secondary,
+  editWell: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.fill.tile,
   },
   iconDisabled: {
     opacity: 0.3,
@@ -1641,47 +1678,49 @@ const styles = StyleSheet.create({
   textControl: {
     minWidth: 44,
     minHeight: 44,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     alignItems: "center",
     justifyContent: "center",
   },
   textControlLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   pressed: {
     opacity: 0.6,
   },
   // ---- add item ----
+  // #4420 (round-3 item 16) — a quiet "+ Add item" row, not an orange
+  // dashed box.
   addItemRow: {
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: "rgba(235,120,37,0.55)",
-    borderStyle: "dashed",
-    borderRadius: radius.md,
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: spacing.xs,
+    gap: space[2],
+    minHeight: 44,
+    paddingHorizontal: space[1],
+    marginTop: space[1],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
   },
   addItemLabel: {
-    ...typography.bodySm,
-    fontWeight: "600",
-    color: "#eb7825",
+    ...type.btnSm,
+    color: color.text2,
   },
   addCategoryBtn: {
     alignSelf: "stretch",
   },
   // ---- read-only ----
   readOnlyNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     textAlign: "center",
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   // ---- error ----
   errorNote: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
   // ---- skeleton ----
   // ORCH-1190 R4 — full-width loading skeleton on WEB, matching the proven
@@ -1693,10 +1732,10 @@ const styles = StyleSheet.create({
   skeletonCard: {
     width: "100%",
     alignSelf: "stretch",
-    gap: spacing.sm,
+    gap: space[2],
   },
   skelBar: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderRadius: radius.sm,
   },
   skelHead: {

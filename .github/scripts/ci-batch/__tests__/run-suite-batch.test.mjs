@@ -301,3 +301,58 @@ test("#3643 a Phase 3D suite runs every step after a failure; a sealed primary s
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// [#4420] The reviewed 4 GB heap raise reaches only the pinned jest commands,
+// as one fixed literal, and can never be requested through a step's env.
+test("#4420 heap raise: only the pinned jest commands get the one NODE_OPTIONS literal", async () => {
+  const { minimalChildEnvironment } = await import("../run-suite-batch.mjs");
+  const { HEAP_RAISED_COMMAND_IDS, HEAP_RAISED_ENV, validateHeapRaisedCommands } = await import("../validate-manifest-v2.mjs");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "heap-raise-"));
+  try {
+    assert.equal(minimalChildEnvironment({}, home, { heapRaised: true }).NODE_OPTIONS, "--max-old-space-size=4096");
+    assert.equal(minimalChildEnvironment({}, home).NODE_OPTIONS, undefined);
+    assert.throws(() => minimalChildEnvironment({ NODE_OPTIONS: "--max-old-space-size=4096" }, home),
+      /undeclared child environment capability: NODE_OPTIONS/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+  assert.deepEqual(HEAP_RAISED_ENV, { NODE_OPTIONS: "--max-old-space-size=4096" });
+  const manifest = loadManifest();
+  assert.deepEqual(validateHeapRaisedCommands(manifest), []);
+  const steps = new Map(manifest.suites.flatMap((suite) => suite.steps.map((step) => [step.commandId, step])));
+  for (const id of HEAP_RAISED_COMMAND_IDS) assert.match(steps.get(id).run, /^npx jest\b/, id);
+  // A non-jest step slipped into the list is refused by the gate.
+  const playwright = structuredClone(manifest);
+  const step = playwright.suites.flatMap((suite) => suite.steps).find((s) => s.commandId === HEAP_RAISED_COMMAND_IDS[0]);
+  step.run = "npx playwright test";
+  assert.ok(validateHeapRaisedCommands(playwright).some((message) => message.includes("plain mingla-business jest step")));
+  // The one reviewed NODE_PATH literal may ride along; any other step env is refused.
+  const withEnv = structuredClone(manifest);
+  const envStep = withEnv.suites.flatMap((suite) => suite.steps).find((s) => s.commandId === HEAP_RAISED_COMMAND_IDS[0]);
+  envStep.env = { NODE_PATH: "./node_modules" };
+  assert.deepEqual(validateHeapRaisedCommands(withEnv), []);
+  envStep.env = { NODE_OPTIONS: "--max-old-space-size=8192" };
+  assert.ok(validateHeapRaisedCommands(withEnv).some((message) => message.includes("plain mingla-business jest step")));
+  // The runner's rule: every plain mingla-business jest step, nothing else.
+  const { isHeapRaisedStep } = await import("../validate-manifest-v2.mjs");
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest --runInBand a.test.ts" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest a", env: { NODE_PATH: "./node_modules" } }), true);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest a", env: { FOO: "1" } }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx playwright test" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-admin", run: "npx jest a" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest a", children: [{}] }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npm test -- --runInBand a" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: ".", run: "node gate.mjs\ncd mingla-business\nnpx jest --runInBand a" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: ".", run: "cd mingla-admin\nnpx jest a" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: ".", run: "node .github/scripts/strict-grep/x.mjs" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "set +e\nnpx tsc --noEmit --pretty false" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-admin", run: "npx tsc --noEmit" }), false);
+  const home2 = fs.mkdtempSync(path.join(os.tmpdir(), "heap-raise-"));
+  try {
+    const env = minimalChildEnvironment({ NODE_PATH: "./node_modules" }, home2, { allowNodePath: true, heapRaised: true });
+    assert.equal(env.NODE_OPTIONS, "--max-old-space-size=4096");
+    assert.equal(env.NODE_PATH, "./node_modules");
+  } finally {
+    fs.rmSync(home2, { recursive: true, force: true });
+  }
+});

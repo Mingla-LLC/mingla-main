@@ -37,7 +37,8 @@ describe("issue #3697 Host server draft resume", () => {
     expect(service).toContain('action: "save_draft"');
     expect(service).toContain('action: "get_draft"');
     expect(service).toContain("expected_revision: input.expectedRevision");
-    expect(route).toContain("Saved to Mingla");
+    // #4238 W6a: a failed save is said in words (hostAds.json "saveFailed").
+    expect(route).toContain('hb("saveFailed")');
   });
 
   it("never persists typed LAUNCH authority", () => {
@@ -45,7 +46,9 @@ describe("issue #3697 Host server draft resume", () => {
       route.indexOf("const draftSnapshot"),
       route.indexOf("const persistDraft"),
     );
-    expect(snapshot).toContain("Typed LAUNCH is fresh authorization");
+    // #4238 W6a: the typed LAUNCH is gone from the builder (one confirm
+    // states the money); nothing like it is ever saved in the draft.
     expect(snapshot).not.toContain("launchPhrase");
+    expect(snapshot).not.toContain("LAUNCH");
   });
 });

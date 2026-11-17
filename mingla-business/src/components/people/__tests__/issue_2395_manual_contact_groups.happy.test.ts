@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 import fs from "node:fs";
 import path from "node:path";
 
@@ -61,7 +62,7 @@ describe("#2395 Manual contact groups happy-path surface", () => {
 
   test("new warm controls explicitly receive the dark-readable warm treatment", () => {
     for (const file of ["src/components/people/PeoplePage.tsx", "src/components/people/PeoplePrimitives.tsx", "src/components/people/ManualGroupFlow.tsx", "src/components/people/ManualGroupDetail.tsx"]) {
-      expect(read(file)).toContain("accentColor={accent.warm}");
+      expect(read(file)).toContain("accentColor={color.accent}");
     }
   });
 });

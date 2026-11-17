@@ -22,7 +22,7 @@
 // the web bundle. The runtime module is still loaded lazily via require() below.
 import type ReactNativeVideoTrim from "react-native-video-trim";
 
-import { accent, colors } from "../../constants/designSystem";
+import { color } from "../../constants/designSystem";
 
 import type { VideoTrimFinishPayload } from "./coverPickerVideoTrimUpload";
 
@@ -322,7 +322,7 @@ export const trimVideoWithDedicatedEditor = (
         // from the cap actually enforced by the editor.
         headerText: trimWindowHint(maxDurationMs),
         headerTextSize: TRIM_HINT_TEXT_SIZE,
-        headerTextColor: colors.text.inverse,
+        headerTextColor: color.paper,
         // issue #2968 — `trimmerColor` paints the whole window frame (iOS
         // VideoTrimmerThumb.updateTrimmerColor: leading + trailing + top +
         // bottom). Painting it Mingla warm makes the window read as OUR
@@ -330,8 +330,8 @@ export const trimVideoWithDedicatedEditor = (
         // and gives the top/bottom bars — the press-and-hold surface — the same
         // brand weight as the chevrons. `handleIconColor` tints only the two
         // chevron glyphs; Mingla ink on warm keeps them legible.
-        trimmerColor: accent.warm,
-        handleIconColor: colors.text.primary,
+        trimmerColor: color.accent,
+        handleIconColor: color.ink,
         // issue #2968 — feedback at the cap. Both platforms fire a HEAVY impact
         // haptic on the clamp transition (iOS VideoTrimmer.swift:1019-1022 /
         // 1078-1081 `impactFeedbackGenerator?.impactOccurred()`), which is the

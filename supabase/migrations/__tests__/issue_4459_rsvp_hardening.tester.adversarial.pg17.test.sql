@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4459 (20280730004459) tester adversarial suite for the rework (D4/D8):
+-- #4459 (20280805004459) tester adversarial suite for the rework (D4/D8):
 -- every real server approval path still stamps Guest chat eligibility (host
 -- approve and deny RPCs, public submit on an auto-approve event, waitlist
 -- promotion by a capacity raise, the migration's seed of existing approvals),

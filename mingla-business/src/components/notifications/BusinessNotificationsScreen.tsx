@@ -55,16 +55,12 @@ import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSw
 
 import { Icon } from "../ui/Icon";
 import {
-  spacing,
-  radius,
-  typography,
-  text as textTokens,
-  accent,
-  semantic,
-  glass,
-  shadows,
-  canvas,
+  color,
   durations,
+  radius,
+  materials,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useShimmer } from "../../hooks/useShimmer";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -77,6 +73,7 @@ import {
   type NotificationFamily,
   type NotificationSeverity,
 } from "../../constants/businessNotificationTemplates";
+import { formatRelativeSpoken } from "./formatRelativeSpoken";
 
 interface BusinessNotificationsScreenProps {
   userId: string | null;
@@ -96,39 +93,41 @@ interface FamilyStyle {
 
 const FAMILY_STYLE: Record<NotificationFamily, FamilyStyle> = {
   money: {
-    accent: accent.warm,
-    tint: "rgba(235, 120, 37, 0.14)",
-    unreadFill: "rgba(235, 120, 37, 0.08)",
-    unreadBorder: "rgba(235, 120, 37, 0.22)",
-    rail: accent.warm,
+    accent: color.text1,
+    tint: color.fill.tabOn,
+    unreadFill: color.fill.tabOn,
+    unreadBorder: color.lineStrong,
+    rail: color.text2,
   },
   risk: {
-    accent: semantic.warning,
-    tint: "rgba(245, 158, 11, 0.14)",
-    unreadFill: "rgba(245, 158, 11, 0.08)",
-    unreadBorder: "rgba(245, 158, 11, 0.22)",
-    rail: semantic.warning,
+    accent: color.warning,
+    tint: color.warningTint,
+    unreadFill: color.warningTint,
+    unreadBorder: color.line,
+    rail: color.warning,
   },
   audience: {
-    accent: semantic.warning,
-    tint: "rgba(245, 158, 11, 0.14)",
-    unreadFill: "rgba(245, 158, 11, 0.08)",
-    unreadBorder: "rgba(245, 158, 11, 0.22)",
-    rail: semantic.warning,
+    accent: color.warning,
+    tint: color.warningTint,
+    unreadFill: color.warningTint,
+    unreadBorder: color.line,
+    rail: color.warning,
   },
   team: {
-    accent: semantic.info,
-    tint: "rgba(59, 130, 246, 0.14)",
-    unreadFill: "rgba(59, 130, 246, 0.08)",
-    unreadBorder: "rgba(59, 130, 246, 0.22)",
-    rail: semantic.info,
+    accent: color.info,
+    tint: color.infoTint,
+    unreadFill: color.infoTint,
+    unreadBorder: color.line,
+    rail: color.info,
   },
 };
 
 const ICON_CIRCLE = 40;
 const UNREAD_RAIL_WIDTH = 3;
 const UNREAD_DOT = 8;
-const WEB_MAX_WIDTH = 640;
+/** #4420 — the desktop list column (the route header shares it). */
+export const NOTIFICATIONS_COLUMN_MAX = 720;
+const WEB_MAX_WIDTH = NOTIFICATIONS_COLUMN_MAX;
 
 // ORCH-1142 deliberate sub-grid accents (DESIGN §5), declared alongside the
 // existing ICON_CIRCLE/UNREAD_RAIL_WIDTH/UNREAD_DOT.
@@ -290,7 +289,7 @@ const WebTrashButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
       <Icon
         name="trash"
         size={16}
-        color={active ? semantic.error : textTokens.tertiary}
+        color={active ? color.errorText : color.text3}
       />
     </Pressable>
   );
@@ -345,7 +344,7 @@ const NotificationRowInner: React.FC<RowProps> = ({
     onDelete(notification);
   }, [notification, onDelete]);
 
-  const a11yLabel = `${notification.title}. ${notification.body}. ${unread ? "Unread" : "Read"}. ${formatRelative(notification.created_at)} ago. ${expanded ? "Expanded." : "Collapsed."}`;
+  const a11yLabel = `${notification.title}. ${notification.body}. ${unread ? "Unread" : "Read"}. ${formatRelativeSpoken(notification.created_at)}. ${expanded ? "Expanded." : "Collapsed."}`;
 
   // Title with the bold entity span emboldened (port of consumer
   // renderTitleWithBoldActor, generalised to data.boldToken). When expanded,
@@ -389,24 +388,14 @@ const NotificationRowInner: React.FC<RowProps> = ({
       onAccessibilityAction={(e): void => {
         if (e.nativeEvent.actionName === "delete") onDelete(notification);
       }}
+      // #4420 — a flat row inside its section's grouped pane (the mockup):
+      // unread reads from the rail and the dot, not a tinted card.
       style={({ pressed }) => [
         styles.card,
-        {
-          backgroundColor: unread ? fam.unreadFill : glass.tint.profileBase,
-          borderColor: unread ? fam.unreadBorder : glass.border.profileBase,
-        },
-        !isWeb && !unread ? shadows.glassCardBase : null,
         pressed ? styles.cardPressed : null,
       ]}
     >
-      {/* unread rail */}
-      {unread ? (
-        <View
-          style={[styles.rail, { backgroundColor: fam.rail }]}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        />
-      ) : null}
+      {/* #4420 — unread is the trailing dot (the mockup); no side rail. */}
 
       {/* icon circle */}
       <View style={[styles.iconCircle, { backgroundColor: fam.tint }]}>
@@ -430,7 +419,7 @@ const NotificationRowInner: React.FC<RowProps> = ({
           <View style={styles.respondRow}>
             {blockingRisk ? (
               <Text
-                style={[styles.respondBtn, { color: semantic.warning }]}
+                style={[styles.respondBtn, { color: color.warning }]}
                 accessibilityRole="button"
                 accessibilityLabel="Respond to dispute"
               >
@@ -457,11 +446,8 @@ const NotificationRowInner: React.FC<RowProps> = ({
       </View>
 
       {/* trailing affordance + unread dot */}
-      {!blockingRisk ? (
-        <Reanimated.View style={[styles.chev, chevronStyle]}>
-          <Icon name="chevR" size={16} color={textTokens.quaternary} />
-        </Reanimated.View>
-      ) : null}
+      {/* #4420 — no trailing chevron (the mockup): a tap still expands the
+          row and shows Open; the width goes to the title. */}
       {/* Web delete fallback: always-visible trailing trash (DESIGN §2.6). */}
       {isWeb ? <WebTrashButton onPress={handleWebDelete} /> : null}
       {unread ? (
@@ -626,7 +612,7 @@ const SwipeRightAction: React.FC<SwipeRightActionProps> = ({
       accessibilityLabel="Delete notification"
       style={styles.swipeAction}
     >
-      <Icon name="trash" size={22} color={textTokens.inverse} />
+      <Icon name="trash" size={22} color={color.textStrong} />
     </Pressable>
   );
 };
@@ -638,7 +624,7 @@ const SkeletonRow: React.FC<{ opacity: Animated.Value }> = ({ opacity }) => (
     <View style={[styles.iconCircle, styles.skeletonBlock]} />
     <View style={styles.content}>
       <View style={[styles.skeletonBar, { width: "70%" }]} />
-      <View style={[styles.skeletonBar, { width: "90%", marginTop: spacing.sm }]} />
+      <View style={[styles.skeletonBar, { width: "90%", marginTop: space[2] }]} />
     </View>
   </Animated.View>
 );
@@ -659,7 +645,7 @@ const SkeletonList: React.FC = () => {
 const EmptyState: React.FC = () => (
   <View style={styles.centerState}>
     <View style={styles.emptyCircle}>
-      <Icon name="bell" size={40} color={textTokens.tertiary} />
+      <Icon name="bell" size={40} color={color.text3} />
     </View>
     <Text style={styles.stateTitle}>{"You're all caught up"}</Text>
     <Text style={styles.stateBody}>
@@ -674,7 +660,7 @@ const ErrorState: React.FC<{ onRetry: () => void; offline: boolean }> = ({
 }) => (
   <View style={styles.centerState}>
     <View style={[styles.emptyCircle, styles.errorCircle]}>
-      <Icon name="flag" size={40} color={semantic.error} />
+      <Icon name="flag" size={40} color={color.errorText} />
     </View>
     <Text style={styles.stateTitle}>{"Couldn't load your notifications"}</Text>
     <Text style={styles.stateBody}>
@@ -700,7 +686,7 @@ const ErrorState: React.FC<{ onRetry: () => void; offline: boolean }> = ({
 
 const OfflineBanner: React.FC = () => (
   <View style={styles.offlineBanner}>
-    <Icon name="globe" size={14} color={textTokens.secondary} />
+    <Icon name="globe" size={14} color={color.text2} />
     <Text style={styles.offlineText}>
       Showing your latest saved notifications.
     </Text>
@@ -786,7 +772,7 @@ export function BusinessNotificationsScreen({
             onRefresh={() => {
               void query.refetch();
             }}
-            tintColor={accent.warm}
+            tintColor={color.text1}
           />
         }
       >
@@ -808,7 +794,7 @@ export function BusinessNotificationsScreen({
           onRefresh={() => {
             void query.refetch();
           }}
-          tintColor={accent.warm}
+          tintColor={color.text1}
         />
       }
     >
@@ -824,16 +810,19 @@ export function BusinessNotificationsScreen({
           >
             {section.label.toUpperCase()}
           </Text>
-          {section.rows.map((n) => (
-            <NotificationRow
-              key={n.id}
-              notification={n}
-              onPress={handlePress}
-              onOpenDeepLink={handleOpen}
-              onDelete={handleDelete}
-              expanded={expandedIds.has(n.id)}
-            />
-          ))}
+          <View style={styles.sectionPane}>
+            {section.rows.map((n, rIdx) => (
+              <View key={n.id} style={rIdx > 0 ? styles.rowDivider : null}>
+                <NotificationRow
+                  notification={n}
+                  onPress={handlePress}
+                  onOpenDeepLink={handleOpen}
+                  onDelete={handleDelete}
+                  expanded={expandedIds.has(n.id)}
+                />
+              </View>
+            ))}
+          </View>
         </View>
       ))}
     </ScrollView>
@@ -843,12 +832,12 @@ export function BusinessNotificationsScreen({
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xl,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[7],
+    gap: space[2],
   },
   webColumn: {
     maxWidth: WEB_MAX_WIDTH,
@@ -861,29 +850,28 @@ const styles = StyleSheet.create({
 
   // Section header
   sectionHeader: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
-    marginLeft: spacing.xs,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
+    marginLeft: space[1],
+    marginTop: space[6],
+    marginBottom: space[2],
   },
   sectionHeaderFirst: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 
   // Card
   card: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingLeft: spacing.md + UNREAD_RAIL_WIDTH,
-    paddingRight: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
+    gap: space[4],
+    paddingVertical: space[4],
+    paddingLeft: space[4],
+    paddingRight: space[4],
+    backgroundColor: color.transparent,
     // overflow:'hidden' is load-bearing TWICE (ORCH-1142 §4.1): (a) Android
     // glass clip (existing, SUB-C_DESIGN §7) and (b) clipping the swipe red
     // panel to the rounded corners. Keep on BOTH the card and the wrapper.
@@ -894,25 +882,35 @@ const styles = StyleSheet.create({
   // layout + clips the red action panel to the rounded corners. marginBottom
   // preserves the exact list rhythm the collapsed row had.
   rowWrapper: {
-    borderRadius: radius.lg,
     overflow: "hidden",
-    marginBottom: spacing.sm,
   },
   cardPressed: {
-    opacity: 0.85,
+    backgroundColor: color.fill.rowHover,
+  },
+  // #4420 — one grouped pane per day section; rows split by a hairline.
+  sectionPane: {
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    backgroundColor: materials.pane.solidFill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
   },
   rail: {
     position: "absolute",
     left: 0,
-    top: spacing.sm,
-    bottom: spacing.sm,
+    top: space[2],
+    bottom: space[2],
     width: UNREAD_RAIL_WIDTH,
     borderRadius: 2,
   },
   iconCircle: {
     width: ICON_CIRCLE,
     height: ICON_CIRCLE,
-    borderRadius: radius.full,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -924,14 +922,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   title: {
     flex: 1,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   titleBold: {
     fontWeight: "700",
@@ -940,48 +938,48 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     fontSize: 13,
     fontWeight: "500",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   body: {
     fontSize: 14,
     lineHeight: 19,
     fontWeight: "400",
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    color: color.text2,
+    marginTop: space[1],
   },
   respondRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   respondBtn: {
     fontSize: 14,
     fontWeight: "600",
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[1],
+    paddingHorizontal: space[2],
   },
   // ORCH-1142 — expanded "Open" secondary button (DESIGN §1.3). Text affordance
   // mirroring `respondBtn` grammar; accent.warm; ≥44pt via padding + hitSlop.
   openBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
   },
   openBtnPressed: {
     opacity: 0.7,
   },
   openLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-    color: accent.warm,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
+    letterSpacing: type.btnSm.letterSpacing,
+    color: color.text1,
   },
   // ORCH-1142 — native swipe destructive panel (DESIGN §2.2). 80pt, solid red
   // (opaque by construction — satisfies the Android opaque-glass policy), white
   // trash glyph centered, no text label.
   swipeAction: {
     width: SWIPE_ACTION_WIDTH,
-    backgroundColor: semantic.error,
+    backgroundColor: color.danger,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -990,17 +988,17 @@ const styles = StyleSheet.create({
   // shift).
   webTrash: {
     alignSelf: "center",
-    marginLeft: spacing.sm,
-    padding: spacing.xs,
+    marginLeft: space[2],
+    padding: space[1],
   },
   chev: {
     alignSelf: "center",
-    marginLeft: spacing.sm,
+    marginLeft: space[2],
   },
   dot: {
     position: "absolute",
-    top: spacing.md,
-    right: spacing.md,
+    top: space[4],
+    right: space[4],
     width: UNREAD_DOT,
     height: UNREAD_DOT,
     borderRadius: UNREAD_DOT / 2,
@@ -1008,16 +1006,16 @@ const styles = StyleSheet.create({
 
   // Skeleton
   skeletonCard: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   skeletonBlock: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
   skeletonBar: {
     height: 12,
-    borderRadius: radius.sm,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: radius.xs,
+    backgroundColor: color.fill.tile,
   },
 
   // Center states
@@ -1026,60 +1024,60 @@ const styles = StyleSheet.create({
     minHeight: 360,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: canvas.discover,
+    paddingHorizontal: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   emptyCircle: {
     width: 80,
     height: 80,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
   errorCircle: {
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
   },
   stateTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   stateBody: {
     fontSize: 14,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   retryBtn: {
-    marginTop: spacing.sm,
-    backgroundColor: accent.warm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radius.md,
+    marginTop: space[2],
+    backgroundColor: color.paper,
+    paddingHorizontal: space[6],
+    paddingVertical: space[2] + 2,
+    borderRadius: radius.sm,
   },
   retryLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: color.ink,
   },
 
   // Offline banner
   offlineBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: glass.tint.profileBase,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    backgroundColor: color.fill.inset,
+    borderRadius: radius.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    marginTop: space[2],
   },
   offlineText: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     flexShrink: 1,
   },
 });

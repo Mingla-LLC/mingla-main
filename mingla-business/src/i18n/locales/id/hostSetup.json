@@ -171,6 +171,10 @@
       "readyBank": "Rekening bank di {{country}}",
       "readyBankAny": "Rekening bank di negara Anda",
       "readyTax": "NPWP (khusus perusahaan terdaftar)"
+    },
+    "stepper": {
+      "saved": "Tersimpan",
+      "steps": "Langkah"
     }
   },
   "doorMode": {

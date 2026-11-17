@@ -6,13 +6,14 @@
 import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+
 import type { BrandHourEntry } from "../../types/brand";
 
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 const WEEKDAY_LABELS = [
   "Monday",
   "Tuesday",
@@ -73,29 +74,29 @@ export const VenueHoursTable: React.FC<VenueHoursTableProps> = ({ hours }) => {
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xs,
+    gap: space[1],
     width: "100%",
   },
   title: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
     paddingVertical: 4,
   },
   day: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   time: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
     textAlign: "right",
   },
 });

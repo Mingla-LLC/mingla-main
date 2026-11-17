@@ -10,7 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
+import { HEAP_RAISED_ENV, isHeapRaisedStep, decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
 import { changedPathDigest, deriveChangedPaths, pathMatches, validateDecision } from "./select-phase3b-suites.mjs";
 import { loadEffectiveManifest } from "./load-manifest.mjs";
 import { POSTGRES_CHILD_ENV_NAMES, POSTGRES_WAVE, isPostgresBatchSuite, isUnfilteredPostgresSuite, postgresEvidencePath } from "./postgres-batch-contract.mjs";
@@ -34,6 +34,8 @@ const PHASE3C_AUTHORISED_ENV_NAMES = new Set([
 // The validator pins which Phase 3D steps may carry env and the exact literal on
 // each; this set is the runner's lock on the names, as PHASE3C's is for #1326.
 const PHASE3D_AUTHORISED_ENV_NAMES = new Set([...PHASE3C_AUTHORISED_ENV_NAMES, "ISSUE_2240_LIVE"]);
+// [#4420] Which steps get the reviewed heap raise is decided by one predicate
+// in validate-manifest-v2 (isHeapRaisedStep): plain mingla-business jest steps.
 const PHASE3B_WAVE = "phase3b-postgres-wave";
 const PHASE3C_WAVE = "phase3c-deno-wave";
 const PHASE3D_WAVE = "phase3d-fold-wave";
@@ -765,7 +767,7 @@ function signalProcessGroup(child, signal) {
 const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
 
 export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false, allowReviewedEnv = false,
-  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, offline = true } = {}) {
+  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, offline = true, heapRaised = false } = {}) {
   for (const name of Object.keys(requested)) {
     const reviewedEnv = allowReviewedEnv && reviewedEnvNames.has(name) && typeof requested[name] === "string"
       && !/\$\{\{|\$\(|`|secrets\./.test(requested[name]);
@@ -792,6 +794,7 @@ export function minimalChildEnvironment(requested = {}, home, { allowNodePath = 
     TZ: "UTC",
     LANG: "C.UTF-8",
     LC_ALL: "C.UTF-8",
+    ...(heapRaised ? HEAP_RAISED_ENV : {}),
     ...requested,
   };
 }
@@ -850,7 +853,7 @@ function pipeRedacted(stream, destination, env) {
 }
 
 export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn, allowNodePath = false, allowReviewedEnv = false,
-  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, offline = true, stdout = process.stdout, stderr = process.stderr, home } = {}) {
+  reviewedEnvNames = PHASE3C_AUTHORISED_ENV_NAMES, pathPrefix = null, offline = true, stdout = process.stdout, stderr = process.stderr, home, heapRaised = false } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
@@ -859,7 +862,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
     const ownsHome = !home;
     const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
-    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv, reviewedEnvNames, pathPrefix, offline }); }
+    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv, reviewedEnvNames, pathPrefix, offline, heapRaised }); }
     catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
@@ -1073,6 +1076,10 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
             if (leafRemaining <= 0) { deadlineHit = true; break; }
             leafResult = await execute(leafInvocation, { cwd: leafCwd, env: child.env || step.env, timeoutMs: leafRemaining, graceMs, home: suiteHome,
               allowNodePath: suite.id === "issue-1902-public-event-lifecycle-tests" && step.commandId.endsWith(":03"),
+              // [#4420] The leaf path runs the same jest steps as the outer path,
+              // so it gets the same reviewed heap raise (only for the implicit
+              // single leaf of a plain jest step; declared children never do).
+              heapRaised: !step.children && isHeapRaisedStep(step),
               // Only a migrated suite whose registry record DECLARES the env may
               // receive it; the validator pins which suites and which literals.
               allowReviewedEnv: isMigratedSuite(suite) && Boolean(step.env) });
@@ -1110,6 +1117,7 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         const command = postgresRuntime && invocation.command === "bash" && invocation.argv[0] === "-c"
           ? { ...invocation, argv: ["-e", "-o", "pipefail", ...invocation.argv] } : invocation;
         const result = await execute(command, { cwd, env: runtimeEnv, timeoutMs: remaining, graceMs, home: suiteHome,
+          heapRaised: isHeapRaisedStep(step),
           // [#3643] Only a Phase 3D step whose registry record DECLARES env may
           // receive it; the validator pins which steps and which literals.
           ...(postgresRuntime ? { allowReviewedEnv: true, reviewedEnvNames: new Set([...POSTGRES_CHILD_ENV_NAMES, ...PHASE3D_AUTHORISED_ENV_NAMES, ...suite.envNames, "RUNNER_TEMP"]),

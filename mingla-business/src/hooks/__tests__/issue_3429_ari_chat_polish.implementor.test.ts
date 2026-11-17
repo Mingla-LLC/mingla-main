@@ -179,7 +179,10 @@ describe("#3429 approved cross-surface polish remains shared", () => {
     expect(design).toContain("bodyLine: 24");
     expect(design).toContain("composerMinH: 60");
     expect(design).toContain("controlSize: 44");
-    expect(design).toContain("onUserBubble: canvas.depth");
+    // [TEST-MOD-APPROVED #4420] wave 6: the onUserBubble alias is gone; the
+    // dark glyph on the orange user bubble reads the Graphite ink directly.
+    expect(design).not.toContain("onUserBubble:");
+    expect(fs.readFileSync(path.join(__dirname, "../../components/ari/ChatBubble.tsx"), "utf8")).toMatch(/color: color\.ink/);
     expect(reveal).toContain("useReducedMotion");
     expect(reveal).toContain("Math.min(1200");
   });

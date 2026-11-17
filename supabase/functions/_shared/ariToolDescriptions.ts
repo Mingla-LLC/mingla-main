@@ -119,6 +119,8 @@ export const TOOL_CAPABILITY_KEYS: Readonly<Record<string, string>> = Object
     pause_ad_campaign: "marketing-host-ads",
     end_ad_campaign: "marketing-host-ads",
     get_ad_campaign_report: "marketing-host-ads",
+    get_ad_budget_guidance: "marketing-host-ads",
+    apply_ad_suggestion: "marketing-host-ads",
     get_brand_analytics: "marketing-analytics",
     get_listing_conversion: "marketing-analytics",
     list_referral_offers: "programs-creators",

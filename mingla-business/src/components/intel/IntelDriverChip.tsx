@@ -2,28 +2,25 @@ import React from "react";
 import { Platform, Pressable, StyleSheet, Text } from "react-native";
 
 import {
-  androidOpaque,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 export type IntelDriverTone = "help" | "watch" | "hurt" | "info";
 
 const fill = (tone: IntelDriverTone): string => {
   if (Platform.OS === "android") {
-    if (tone === "help") return androidOpaque.successFill;
-    if (tone === "watch") return androidOpaque.warningFill;
-    if (tone === "hurt") return androidOpaque.errorFill;
-    return androidOpaque.infoFill;
+    if (tone === "help") return color.solidTint.success;
+    if (tone === "watch") return color.solidTint.warning;
+    if (tone === "hurt") return color.solidTint.error;
+    return color.solidTint.info;
   }
-  if (tone === "help") return semantic.successTint;
-  if (tone === "watch") return semantic.warningTint;
-  if (tone === "hurt") return semantic.errorTint;
-  return semantic.infoTint;
+  if (tone === "help") return color.successTint;
+  if (tone === "watch") return color.warningTint;
+  if (tone === "hurt") return color.errorTint;
+  return color.infoTint;
 };
 
 export interface IntelDriverChipProps {
@@ -55,10 +52,10 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 32,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
-  label: { ...typography.caption, color: text.primary },
+  label: { ...type.caption, color: color.text1 },
 });

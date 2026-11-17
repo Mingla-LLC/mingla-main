@@ -1,53 +1,21 @@
 /**
- * DesktopCanvas — ORCH-0885-A Tier 1 ambient gradient canvas + max-width
- * content column for the desktop web surface (viewport width ≥ 1024px).
+ * DesktopCanvas — the wide-desktop (>= 1024) page canvas (ORCH-0885-A, #4420).
  *
- * # What it does
- * - On `isWideDesktop === false` → renders `<>{children}</>` (passthrough
- *   Fragment, zero layout cost on mobile / narrow web).
- * - On `isWideDesktop === true` → paints the Tier-1 ambient gradient
- *   (#0c0e12 base + 3 soft radial washes per `01-tier1-container-rail.html`
- *   `.canvas-bg`) and centres the children inside a desktop-width column
- *   with horizontal padding.
- *
- * # Gradient stack (SPEC §7, values verbatim from mock 01 `.canvas-bg`)
- * Base: solid `#0c0e12`. On top of that, three CSS `radial-gradient(...)`
- * layers applied via web-only `backgroundImage` (this branch only renders
- * when `Platform.OS === "web"` — guaranteed DOM context):
- *   - 80% × 50% at (50%, 0%) — `rgba(235,120,37,0.08)` accent-warm top centre
- *   - 60% × 60% at (10%, 100%) — `rgba(120,80,200,0.06)` indigo bottom-left
- *   - 60% × 60% at (90%, 100%) — `rgba(50,180,200,0.05)` cyan bottom-right
- *
- * The rework (ORCH-0885-A rework, 2026-05-19) swapped from
- * `react-native-svg` `<RadialGradient gradientUnits="objectBoundingBox">`
- * to CSS `background-image: radial-gradient(...)` because the SVG approach
- * rendered invisibly on RN-web Chrome at 1440 (objectBoundingBox unit
- * handling on RN-web is unreliable). CSS gradients are the same renderer
- * the brainstorm mock uses, so visual parity is guaranteed.
- *
- * All colours are hex / rgba only — per I-RN-COLOR-FORMATS
- * (`feedback_rn_color_formats.md`). No `oklch`, `lab`, `lch`, `color-mix`.
- *
- * # Why a separate component (not inline in `(tabs)/_layout.tsx`)
- * - Keeps `_layout.tsx` small + readable.
- * - The desktop branch becomes unit-testable in isolation.
- * - Future routes outside `(tabs)/` can mount the canvas directly.
- *
- * # Invariants honoured
- * - I-DESKTOP-GATE-VIA-HOOK — gates exclusively via `useResponsiveLayout()`.
- * - I-RN-COLOR-FORMATS — every colour is hex or rgba (CSS rgba inside the
- *   gradient string also resolves to rgba — no oklch/lab/lch/color-mix).
- * - I-CROSS-SURFACE-IMPACT — guarded behind `isWideDesktop`; native is a
- *   Fragment passthrough (no extra `<View>`, no gradient layer). The
- *   web-only `backgroundImage` style key is unreachable on native because
- *   `isWideDesktop` requires `Platform.OS === "web"`.
- *
- * Per SPEC_ORCH-0885-A §3.
+ * Native: a Fragment passthrough. Web: ONE tree on both sides of the
+ * breakpoint (#4273). Wide desktop: the flat Graphite `color.canvas` (the old
+ * ambient gradient is retired, spec §3.6), padded clear of the sidebar (248,
+ * or the 80 rail when collapsed / on wizard routes, from desktopSidebarState)
+ * plus the 12 bezel. `template` sets the column max width; `DesktopColumns`
+ * lays out the 8/4 or 340/1fr split. The desktop gate stays in
+ * `useResponsiveLayout` (I-DESKTOP-GATE-VIA-HOOK).
  */
 
 import React from "react";
-import { Platform, StyleSheet, View, type ViewStyle } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
+import { usePathname } from "expo-router";
 
+import { color, size, space } from "../../constants/designSystem";
 import {
   DESKTOP_BEZEL_MARGIN,
   DESKTOP_RAIL_WIDTH,
@@ -55,16 +23,44 @@ import {
 } from "../../constants/desktopLayout";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
-export interface DesktopCanvasProps {
-  children: React.ReactNode;
-  /** Optional max content-column width for future constrained routes. */
-  maxWidth?: number;
-}
+import { desktopSidebarWidth, useDesktopSidebarStore } from "./desktopSidebarState";
+import { HostShellInsetContext } from "./hostShellContext";
 
 /**
- * Canvas base solid fill — `--canvas` in mock 01 line 9. Hex only.
+ * #4420 (spec §3.6) desktop page templates, 12-col / 24 gutter / max 1680:
+ *   dashboard (T1 8/4), list (T2, row → 400 inspector), detail (T3 8/4),
+ *   wizard (T4 280 / 720 / summary), settings (T5 8/4), twopane (T6 340 / 1fr),
+ *   public (1120 max), status (1040 max). The template sets the column's
+ *   max width; `DesktopColumns` lays out the main / aside split inside it.
  */
-export const CANVAS_BASE_COLOR = "#0c0e12";
+export type DesktopTemplate =
+  | "dashboard"
+  | "list"
+  | "detail"
+  | "wizard"
+  | "settings"
+  | "twopane"
+  | "public"
+  | "status";
+
+export const DESKTOP_TEMPLATE_MAX_WIDTH: Record<DesktopTemplate, number> = {
+  dashboard: size.pageMax,
+  list: size.pageMax,
+  detail: size.pageMax,
+  wizard: size.pageMax,
+  settings: size.pageMax,
+  twopane: size.pageMax,
+  public: 1120,
+  status: 1040,
+};
+
+export interface DesktopCanvasProps {
+  children: React.ReactNode;
+  /** Optional max content-column width for constrained routes (wins over `template`). */
+  maxWidth?: number;
+  /** #4420: the page template (sets the column's max width). */
+  template?: DesktopTemplate;
+}
 
 export {
   DESKTOP_BEZEL_MARGIN,
@@ -72,44 +68,18 @@ export {
   DESKTOP_TOP_INSET,
 };
 
-/**
- * Three CSS `radial-gradient(...)` declarations, comma-separated, sourced
- * VERBATIM from `Mingla_Artifacts/design/desktop-redesign/01-tier1-container-rail.html`
- * `.canvas-bg` rule (lines 28–35). The browser's native CSS engine paints
- * these additively over the `#0c0e12` `backgroundColor` base — same
- * renderer + same syntax as the mock, so visual parity is exact.
- *
- * Layered top-to-bottom (first declaration paints on top):
- *   1. Warm accent wash from top-centre (rgba(235,120,37,0.08))
- *   2. Indigo wash from bottom-left   (rgba(120,80,200,0.06))
- *   3. Cyan wash from bottom-right    (rgba( 50,180,200,0.05))
- *
- * All colours are rgba — I-RN-COLOR-FORMATS compliant.
- */
-const CANVAS_GRADIENT_BACKGROUND_IMAGE = [
-  "radial-gradient(80% 50% at 50% 0%, rgba(235, 120, 37, 0.08) 0%, transparent 60%)",
-  "radial-gradient(60% 60% at 10% 100%, rgba(120, 80, 200, 0.06) 0%, transparent 50%)",
-  "radial-gradient(60% 60% at 90% 100%, rgba(50, 180, 200, 0.05) 0%, transparent 50%)",
-].join(", ");
+/** The left inset the canvas keeps clear of the sidebar (or rail). */
+const useSidebarInset = (): number => {
+  const collapsed = useDesktopSidebarStore((s) => s.collapsed);
+  const pathname = usePathname() ?? "";
+  // Outside (tabs) the root HostDesktopShell already reserves the sidebar.
+  const shellReserves = React.useContext(HostShellInsetContext);
+  return shellReserves ? 0 : desktopSidebarWidth(collapsed, pathname);
+};
 
-/**
- * Web-only `backgroundImage` style. The wide-desktop branch only runs
- * when `Platform.OS === "web"` (the `isWideDesktop` gate requires it),
- * so this never reaches the native StyleSheet validator. We still guard
- * on `Platform.OS === "web"` for defence in depth + to keep the type
- * cast honest. The cast to `ViewStyle` is required because
- * `backgroundImage` is not in the RN core `ViewStyle` type — it's a
- * react-native-web extension.
- */
-const gradientBackgroundStyle: ViewStyle =
-  Platform.OS === "web"
-    ? ({ backgroundImage: CANVAS_GRADIENT_BACKGROUND_IMAGE } as ViewStyle)
-    : ({} as ViewStyle);
-
-export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({ children, maxWidth }) => {
-  // Hook is called unconditionally at the top of render — branch on the
-  // returned boolean, not on whether the hook ran. Per SPEC §3.
+export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({ children, maxWidth, template }) => {
   const { isWideDesktop } = useResponsiveLayout();
+  const sidebarInset = useSidebarInset();
 
   // Native never crosses the breakpoint and stays a passthrough.
   if (Platform.OS !== "web") {
@@ -120,18 +90,62 @@ export const DesktopCanvas: React.FC<DesktopCanvasProps> = ({ children, maxWidth
   // Views remounted every route under this canvas, so resizing a browser or
   // turning a tablet threw away an open composer: its text, ticks and picker.
   //
-  // Desktop web gets the full usable workspace to the right of the fixed
-  // rail, with a compact bezel margin. The CSS radial gradients sit on
-  // the canvas View itself — no separate layer.
+  // #4420: the canvas is the flat Graphite `color.canvas` (the ambient
+  // gradient is retired) and the page sits to the right of the sidebar.
+  const columnMax = maxWidth ?? (template !== undefined ? DESKTOP_TEMPLATE_MAX_WIDTH[template] : undefined);
   return (
-    <View style={isWideDesktop ? [styles.canvas, gradientBackgroundStyle] : styles.narrow}>
-      <View
-        style={isWideDesktop
-          ? [styles.column, maxWidth !== undefined ? { maxWidth } : null]
-          : styles.narrow}
-      >
+    <View
+      style={
+        isWideDesktop
+          ? [styles.canvas, { paddingLeft: sidebarInset + DESKTOP_BEZEL_MARGIN }]
+          : styles.narrow
+      }
+    >
+      <View style={isWideDesktop ? [styles.column, columnMax !== undefined ? { maxWidth: columnMax } : null] : styles.narrow}>
         {children}
       </View>
+    </View>
+  );
+};
+
+export interface DesktopColumnsProps {
+  /** The main column (8 of 12, or the form in a wizard). */
+  main: React.ReactNode;
+  /** The aside (4 of 12; the summary / next-action panel). */
+  aside?: React.ReactNode;
+  /** `split` 8/4 (T1, T3, T5), `twopane` 340 / 1fr (T6). Default `split`. */
+  layout?: "split" | "twopane";
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * #4420 — the main / aside split inside a template column. Tracks are
+ * `minmax(0, 1fr)` in RN terms (`flex` + `minWidth: 0`), so content never
+ * bleeds out of its column; the gap is the kit gutter (24).
+ */
+export const DesktopColumns: React.FC<DesktopColumnsProps> = ({ main, aside, layout = "split", style }) => {
+  const { isWideDesktop } = useResponsiveLayout();
+  if (!isWideDesktop || aside === undefined) {
+    return (
+      <View style={[styles.stack, style]}>
+        {main}
+        {aside}
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.split, style]}>
+      {layout === "twopane" ? (
+        <>
+          <View style={styles.twopaneList}>{aside}</View>
+          <View style={styles.main}>{main}</View>
+        </>
+      ) : (
+        <>
+          <View style={styles.main}>{main}</View>
+          <View style={styles.aside}>{aside}</View>
+        </>
+      )}
     </View>
   );
 };
@@ -140,9 +154,8 @@ const styles = StyleSheet.create({
   narrow: { flex: 1 },
   canvas: {
     flex: 1,
-    backgroundColor: CANVAS_BASE_COLOR,
+    backgroundColor: color.canvas,
     alignItems: "stretch",
-    paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
     paddingRight: DESKTOP_BEZEL_MARGIN,
     paddingTop: DESKTOP_TOP_INSET,
     position: "relative",
@@ -151,6 +164,11 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
   },
+  stack: { gap: space[4] },
+  split: { flexDirection: "row", alignItems: "flex-start", gap: size.gutter },
+  main: { flex: 2, minWidth: 0 },
+  aside: { flex: 1, minWidth: 0 },
+  twopaneList: { width: 340, flexShrink: 0 },
 });
 
 export default DesktopCanvas;

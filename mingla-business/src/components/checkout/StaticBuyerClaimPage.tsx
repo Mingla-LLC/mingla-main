@@ -22,6 +22,7 @@ import {
 } from "../../services/guestFunnelLink";
 import { SafeScreen } from "../ui/SafeScreen";
 
+import { color } from "../../constants/designSystem";
 type StaticBuyerClaimKind = Extract<BuyerClaimNoun, "ticket" | "pass">;
 
 export interface StaticBuyerClaimPageProps {
@@ -146,7 +147,7 @@ export const StaticBuyerClaimPage: React.FC<StaticBuyerClaimPageProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   scroll: { flex: 1, alignSelf: "stretch" },
   scrollContent: {
@@ -161,21 +162,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,.12)",
+    borderColor: color.lineStrong,
     borderRadius: 22,
-    backgroundColor: "#15181f",
+    backgroundColor: color.card,
     padding: 24,
   },
-  brand: { color: "#ff6b2c", fontSize: 24, fontWeight: "900" },
+  brand: { color: color.accentText, fontSize: 24, fontWeight: "900" },
   title: {
-    color: "#fff",
+    color: color.textStrong,
     fontSize: 22,
     lineHeight: 29,
     fontWeight: "800",
     textAlign: "center",
   },
   body: {
-    color: "rgba(255,255,255,.72)",
+    color: color.text2,
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center",
@@ -186,12 +187,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 14,
-    backgroundColor: "#ff6b2c",
+    backgroundColor: color.accent,
     paddingHorizontal: 18,
   },
   buttonPressed: { opacity: 0.82 },
   buttonDisabled: { opacity: 0.55 },
-  buttonText: { color: "#0c0e12", fontSize: 15, fontWeight: "900" },
+  buttonText: { color: color.ink, fontSize: 15, fontWeight: "900" },
 });
 
 export default StaticBuyerClaimPage;

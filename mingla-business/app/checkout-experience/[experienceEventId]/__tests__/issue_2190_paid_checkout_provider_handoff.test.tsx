@@ -104,6 +104,9 @@ jest.mock("../../../../src/hooks/usePublicExperience", () => ({
         brandSlug: "minglanigeria",
         currency: "NGN",
         tickets: [],
+        dates: [],
+        whenMode: "single",
+        recurrenceRule: null,
       },
       brand: { theme: null },
     },
@@ -145,6 +148,11 @@ jest.mock("../../../../src/components/ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../../src/components/ui/Toast", () => ({ Toast: () => null }));
 jest.mock("../../../../src/components/checkout/CheckoutHeader", () => ({
   CheckoutHeader: () => null,
+  CheckoutStatusBanner: ({ body }: { body: string }) => {
+    const { Text } = jest.requireActual("react-native");
+    const { createElement } = jest.requireActual("react");
+    return createElement(Text, null, body);
+  },
 }));
 
 import {

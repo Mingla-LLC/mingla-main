@@ -15,6 +15,7 @@ import {
 import type { RichTextDoc } from "../../../../../../packages/site-contracts/src/richText.ts";
 import { ConflictBanner, DeleteEntry, EditorCrumb, RichTextEditor, saveErrorMessage, useEditorChrome } from "./EditorKit";
 
+import { color } from "../../../../constants/designSystem";
 type Form = {
   title: string;
   category: string | null;
@@ -140,7 +141,7 @@ export function StoryEditor({ entryId }: { entryId: string | "new" }): React.Rea
                   "aria-label": "Date",
                   "data-testid": "story-date",
                   onChange: (event: { target: { value: string } }) => set({ date: event.target.value }),
-                  style: { minHeight: 44, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.96)", padding: "0 12px", fontSize: 14, colorScheme: "dark" },
+                  style: { minHeight: 44, borderRadius: 12, border: `1px solid ${color.lineStrong}`, background: color.fill.tableHead, color: color.text1, padding: "0 12px", fontSize: 14, colorScheme: "dark" },
                 })}
               </View>
             ) : (

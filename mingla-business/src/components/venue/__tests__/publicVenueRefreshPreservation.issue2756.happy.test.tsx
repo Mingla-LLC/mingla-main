@@ -82,8 +82,24 @@ jest.mock("@mingla/offering-rendering", () => {
     __esModule: true,
     ...themeResolver,
     ...themePalette,
-    ParallaxCoverShell: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement("ParallaxCoverShell", null, children),
+    // [TEST-MOD-APPROVED #4420] Harness only: the premium frame prints the
+    // venue's name on the cover (the shell's coverIdentity), so the stand-in
+    // renders that title the way the real shell does. No assertion changed.
+    ParallaxCoverShell: ({
+      children,
+      coverIdentity,
+    }: {
+      children?: React.ReactNode;
+      coverIdentity?: { title?: string } | null;
+    }) =>
+      React.createElement(
+        "ParallaxCoverShell",
+        null,
+        coverIdentity?.title !== undefined
+          ? React.createElement("CoverTitle", null, coverIdentity.title)
+          : null,
+        children,
+      ),
     buildStaticMapUrl: () => null,
     normalizeMapsGeo: () => null,
     canOpenMapsTarget: () => false,

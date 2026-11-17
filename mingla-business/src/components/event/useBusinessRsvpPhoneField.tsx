@@ -18,6 +18,7 @@ import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
 import { Icon } from "../ui/Icon";
 
+import { color } from "../../constants/designSystem";
 const CURRENCY_DEFAULT_COUNTRY: Record<string, string> = {
   NGN: "NG",
   GBP: "GB",
@@ -192,7 +193,7 @@ export const businessRsvpPhoneTheme = (
   textTertiary: palette.tertiaryText,
   borderDefault: palette.panelBorder,
   borderFocused: palette.accent,
-  borderError: "#ef4444",
+  borderError: color.danger,
   searchBackground: palette.card,
   rowPressedBackground: palette.accentWash,
   divider: palette.panelBorder,

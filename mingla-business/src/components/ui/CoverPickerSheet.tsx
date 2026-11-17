@@ -34,10 +34,10 @@ import {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
   ariPalette,
+  color,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "./Button";
@@ -300,7 +300,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             hitSlop={12}
             style={({ pressed }) => [pressed && styles.closePressed]}
           >
-            <Icon name="close" size={24} color={textTokens.secondary} />
+            <Icon name="close" size={24} color={color.text2} />
           </Pressable>
         </View>
 
@@ -313,7 +313,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
           <Suspense
             fallback={
               <View style={styles.pickerLoading} testID="cover-picker-loading">
-                <ActivityIndicator color={textTokens.secondary} />
+                <ActivityIndicator color={color.text2} />
               </View>
             }
           >
@@ -403,13 +403,13 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
                 />
               ) : (
                 <View style={[styles.confirmThumb, styles.confirmThumbVideo]}>
-                  <Icon name="play" size={16} color={textTokens.inverse} />
+                  <Icon name="play" size={16} color={color.textStrong} />
                 </View>
               )}
               <Text style={styles.confirmLabel} numberOfLines={1}>
                 {confirmLabel}
               </Text>
-              <Icon name="check" size={20} color={textTokens.inverse} />
+              <Icon name="check" size={20} color={color.textStrong} />
             </Pressable>
           ) : (
             <Button
@@ -450,21 +450,21 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[2],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     height: 44,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   headerTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   closePressed: {
     opacity: 0.7,
@@ -473,7 +473,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bodyContent: {
-    paddingBottom: spacing.lg,
+    paddingBottom: space[6],
   },
   // issue #868 — Suspense fallback while the deferred CoverPicker web chunk loads
   // (native resolves instantly). Keeps the sheet body from collapsing mid-load.
@@ -483,8 +483,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   footer: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingTop: space[2],
+    paddingBottom: space[4],
   },
   // META-ORCH-1059: confirm CTA with selection thumbnail. Primary-filled,
   // 52px tall to match Button size="lg".
@@ -492,14 +492,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     height: 52,
-    paddingLeft: spacing.xs,
-    paddingRight: spacing.md,
+    paddingLeft: space[1],
+    paddingRight: space[4],
     borderRadius: radiusTokens.full,
     // ORCH-1103: contrast + Ari parity — white-on-accent.warm (#eb7825) is
     // 2.90:1 (fails even the 3:1 large bar). ariPalette.userBubble (#a85a44)
     // is 4.99:1. Same correction ORCH-1101 applied to the Confirm button.
     backgroundColor: ariPalette.userBubble,
-    gap: spacing.sm,
+    gap: space[2],
   },
   confirmButtonPressed: {
     opacity: 0.85,
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: color.fill.step,
   },
   confirmThumbVideo: {
     alignItems: "center",
@@ -516,10 +516,10 @@ const styles = StyleSheet.create({
   },
   confirmLabel: {
     flex: 1,
-    fontSize: typography.buttonLg.fontSize,
-    lineHeight: typography.buttonLg.lineHeight,
-    fontWeight: typography.buttonLg.fontWeight,
-    letterSpacing: typography.buttonLg.letterSpacing,
-    color: textTokens.inverse,
+    fontSize: type.btn.fontSize,
+    lineHeight: type.btn.lineHeight,
+    fontWeight: type.btn.fontWeight,
+    letterSpacing: type.btn.letterSpacing,
+    color: color.textStrong,
   },
 });

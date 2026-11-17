@@ -273,7 +273,11 @@ const findWhere = (root: HostNode, pred: (n: HostNode) => boolean, what: string)
  * ancestor with a numeric paddingBottom, always 0) does not carry.
  */
 const findComposerRow = (input: HostNode): HostNode => {
-  let node: HostNode | null = input;
+  // [TEST-MOD-APPROVED #4420] the floating composer pads the reply field
+  // itself (its own text padding, not a bottom spacer), so the walk starts at
+  // the field's PARENT: the spacer under test is on an ancestor, never on the
+  // input. The flexDirection:"row" proof in the caller still applies.
+  let node: HostNode | null = input.parent;
   while (node != null) {
     const pb = flatten(node.props.style).paddingBottom;
     if (typeof pb === "number") return node;

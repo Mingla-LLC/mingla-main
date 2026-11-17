@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4459 (20280730004459) rework: RSVP approval hardening, a hidden Guest chat
+-- #4459 (20280805004459) rework: RSVP approval hardening, a hidden Guest chat
 -- coming back with the next post, and RLS helpers that answer only about the
 -- signed-in caller. Everything rolls back.
 --

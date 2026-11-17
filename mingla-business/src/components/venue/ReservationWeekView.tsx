@@ -2,12 +2,10 @@ import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   reservationCalendarLayout,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Reservation } from "../../types/venueReservation";
 import { GlassCard } from "../ui/GlassCard";
@@ -106,42 +104,42 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: reservationCalendarLayout.weekDayMinWidth,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: glass.border.profileBase,
+    borderRightColor: color.line,
   },
   header: {
     minHeight: 56,
-    padding: spacing.sm,
-    gap: spacing.xxs,
+    padding: space[2],
+    gap: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   todayHeader: {
-    borderBottomWidth: spacing.xxs,
-    borderBottomColor: accent.warm,
+    borderBottomWidth: 2,
+    borderBottomColor: color.accent,
   },
   weekday: {
-    ...typography.micro,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
   date: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   count: {
-    ...typography.micro,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   bookingStack: {
-    padding: spacing.xs,
-    gap: spacing.xs,
+    padding: space[1],
+    gap: space[1],
     minHeight: 112,
   },
   noBookings: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 });
 

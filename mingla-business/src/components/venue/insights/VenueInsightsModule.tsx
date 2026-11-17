@@ -38,9 +38,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import {
   captureIntelCardShown,
@@ -293,7 +293,7 @@ export function VenueInsightsModule({
                     style={styles.instrumentPressable}
                     testID="insights-orders-entry"
                   >
-                    <GlassCard variant="base" padding={spacing.lg}>
+                    <GlassCard variant="base" padding={space[6]}>
                       <Text style={styles.instrumentTitle}>Orders</Text>
                       <Text style={styles.quiet}>
                         {orderData === undefined
@@ -329,7 +329,7 @@ export function VenueInsightsModule({
               hitSlop={8}
               testID="venue-insights-back"
             >
-              <ArrowLeft size={20} color={textTokens.secondary} />
+              <ArrowLeft size={20} color={color.text2} />
               <Text style={styles.backLabel}>Insights</Text>
             </Pressable>
             {/* G-2 binding: header at top, G-8 report sections below, SAME
@@ -346,7 +346,7 @@ export function VenueInsightsModule({
               hitSlop={8}
               testID="venue-order-insights-back"
             >
-              <ArrowLeft size={20} color={textTokens.secondary} />
+              <ArrowLeft size={20} color={color.text2} />
               <Text style={styles.backLabel}>Insights</Text>
             </Pressable>
             <Text style={styles.headerTitle}>Venue orders</Text>
@@ -370,7 +370,7 @@ export function VenueInsightsModule({
               accessibilityLabel="Back to Insights"
               hitSlop={8}
             >
-              <ArrowLeft size={20} color={textTokens.secondary} />
+              <ArrowLeft size={20} color={color.text2} />
               <Text style={styles.backLabel}>Insights</Text>
             </Pressable>
           </View>
@@ -386,47 +386,47 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   centerFill: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.xxl,
+    paddingVertical: space[9],
   },
   column: {
-    gap: spacing.md,
+    gap: space[4],
   },
   headerTitle: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   quiet: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   ariFooter: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   instrumentPressable: {
     minHeight: 44,
   },
   instrumentTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   backRow: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   backLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
 });
 

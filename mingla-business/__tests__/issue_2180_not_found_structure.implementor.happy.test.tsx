@@ -622,11 +622,18 @@ describe("#2180 T-9 P2-1 — the Go home label survives the largest Dynamic Type
   // shared with the D-1 branch matrix, so the two can never drift apart.
   /** Button SIZE_HEIGHT.md — a fixed pill that cannot grow to fit its label. */
   const BUTTON_PILL_HEIGHT = 44;
-  /** typography.buttonMd — the primitive's own label metrics. */
-  const BASE_FONT_SIZE = 14;
-  const BASE_LINE_HEIGHT = 20;
+  /**
+   * The primitive's own label metrics. [TEST-MOD-APPROVED #4420] Graphite
+   * Glass: the md label is `type.btnSm` (14 / 18; was typography.buttonMd
+   * 14 / 20), so the base is read from the token the clamp scales.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { type: typeTokens } = require("../src/constants/designSystem") as typeof import("../src/constants/designSystem");
+  const BASE_FONT_SIZE = typeTokens.btnSm.fontSize;
+  const BASE_LINE_HEIGHT = typeTokens.btnSm.lineHeight;
 
   it("leaves the business label byte-identical at ordinary type sizes", () => {
+    expect([BASE_FONT_SIZE, BASE_LINE_HEIGHT]).toEqual([14, 18]);
     // The cap must be invisible until it is needed, or this becomes a redesign.
     expect(ctaLabelStyle(1)).toEqual({
       fontSize: BASE_FONT_SIZE,

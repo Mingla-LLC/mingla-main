@@ -21,12 +21,11 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import { buildStaticMapUrl, StaticMapImage } from "../../utils/staticMapImage";
 import { Icon } from "../ui/Icon";
@@ -54,7 +53,7 @@ export const AddressMapPreview: React.FC<AddressMapPreviewProps> = ({
   const mapUrl = buildStaticMapUrl({
     lat: lat ?? null,
     lng: lng ?? null,
-    accentHex: accent.warm,
+    accentHex: color.accent,
     height: 160,
     zoom: approximate ? 11 : 14,
   });
@@ -69,7 +68,7 @@ export const AddressMapPreview: React.FC<AddressMapPreviewProps> = ({
     >
       {approximate ? (
         <View style={styles.approxBadge}>
-          <Icon name="location" size={12} color={textTokens.primary} />
+          <Icon name="location" size={12} color={color.text1} />
           <Text style={styles.approxBadgeText}>Approximate location</Text>
         </View>
       ) : null}
@@ -79,7 +78,7 @@ export const AddressMapPreview: React.FC<AddressMapPreviewProps> = ({
       style={[styles.mapWrap, styles.mapEmpty]}
       testID={testID !== undefined ? `${testID}-empty` : undefined}
     >
-      <Icon name="location" size={22} color={textTokens.quaternary} />
+      <Icon name="location" size={22} color={color.text4} />
       <Text style={styles.mapEmptyText}>{ADDRESS_MAP_PREVIEW_EMPTY_COPY}</Text>
     </View>
   );
@@ -90,37 +89,37 @@ const styles = StyleSheet.create({
     height: 160,
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
     position: "relative",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
     alignItems: "center",
     justifyContent: "center",
   },
   mapEmpty: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   mapEmptyText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
+    fontSize: type.caption.fontSize,
+    color: color.text4,
   },
   // Issue #1363 — "Approximate location" badge over an approximate-precision map.
   approxBadge: {
     position: "absolute",
-    top: spacing.xs,
-    left: spacing.xs,
+    top: space[1],
+    left: space[1],
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: scrim.modal,
   },
   approxBadgeText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.primary,
+    fontSize: type.caption.fontSize,
+    color: color.text1,
     fontWeight: "500",
   },
 });

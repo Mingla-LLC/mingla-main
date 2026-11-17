@@ -45,6 +45,9 @@ const CSP_SCRIPT_SRC = [
   'https://connect.facebook.net',
   'https://analytics.tiktok.com',
   'https://sc-static.net',
+  // The Snap loader then fetches its pixel config as a script from
+  // tr.snapchat.com/config/... (blocked live on usemingla.com without this).
+  'https://tr.snapchat.com',
   'https://www.redditstatic.com',
 ]
 // #4238 W3-1 — where the four pixels send their beacons (report-only connect-src;

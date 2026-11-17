@@ -198,11 +198,7 @@ jest.mock("../../../hooks/useBrandDiscoveryCurrency", () => ({
   }),
 }));
 
-import {
-  spacing,
-  stayFieldNumMaxWidth,
-  stayProseMaxWidth,
-} from "../../../constants/designSystem";
+import { stayFieldNumMaxWidth, stayProseMaxWidth } from "../../../constants/designSystem";
 import { STAY_SPACING } from "../stayLayoutContracts";
 import { StayInventoryManager } from "../StayInventoryManager";
 

@@ -7,11 +7,10 @@ import type { LiveEvent } from "../../store/liveEventStore";
 import type { UpcomingItem } from "../../hooks/useUpcomingForBrand";
 import type { EventSalesSummary } from "../../utils/eventSalesSummary";
 import {
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { formatRelativeTime } from "../../utils/relativeTime";
@@ -178,13 +177,13 @@ const styles = StyleSheet.create({
   eventRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   eventCoverWrap: {
     width: 56,
@@ -200,16 +199,16 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   eventTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   eventWhen: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   eventSoldCol: {
     alignItems: "flex-end",
@@ -217,20 +216,20 @@ const styles = StyleSheet.create({
     minWidth: 74,
   },
   eventSoldValue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   eventRevenueValue: {
     fontSize: 11,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
     marginTop: 2,
   },
   eventSoldLabel: {
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });
 

@@ -10,14 +10,11 @@ import { formatStayMoney } from "@mingla/brand-rendering/stayGuest";
 import { CalendarDays, ChevronRight } from "lucide-react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
   stayReservationsMaxWidth,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useStayStaffReservationList } from "../../hooks/useStayStaffReservations";
@@ -161,7 +158,7 @@ function ReservationCard({
           <View style={styles.statePill}>
             <Text style={styles.statePillText}>{stateLabel(group)}</Text>
           </View>
-          <ChevronRight size={18} color={textTokens.tertiary} />
+          <ChevronRight size={18} color={color.text3} />
         </View>
         <View style={styles.rowBetween}>
           <Text style={styles.helper}>
@@ -238,13 +235,10 @@ export function StayReservationsModule({
         <View style={styles.headerRow}>
           <View style={styles.flexOne}>
             <Text style={styles.title}>Stay reservations</Text>
-            <Text style={styles.helper}>
-              Respond, track payment and manage Room-and-Place groups.
-            </Text>
           </View>
           <View style={styles.headerActions}>
             {list.isFetching && !list.isLoading ? (
-              <ActivityIndicator color={accent.warm} />
+              <ActivityIndicator color={color.accent} />
             ) : null}
             {list.data?.permissions.canCreate ? (
               <Button
@@ -290,7 +284,7 @@ export function StayReservationsModule({
 
         {list.isLoading ? (
           <View style={styles.centerState}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.accent} />
             <Text style={styles.helper}>Loading Stay reservations…</Text>
           </View>
         ) : list.isError && list.data === undefined ? (
@@ -309,7 +303,7 @@ export function StayReservationsModule({
           </GlassCard>
         ) : visible.length === 0 ? (
           <GlassCard variant="elevated" contentStyle={styles.emptyCard}>
-            <CalendarDays size={28} color={textTokens.primary} />
+            <CalendarDays size={28} color={color.text1} />
             <Text style={styles.emptyTitle}>{EMPTY_COPY[view].title}</Text>
             <Text style={styles.helper}>{EMPTY_COPY[view].body}</Text>
           </GlassCard>
@@ -371,7 +365,7 @@ export function StayReservationsModule({
 /** Geometry shared by both content measures below (see the note on `content`). */
 const CONTENT_BASE = {
   width: "100%",
-  padding: spacing.md,
+  padding: space[4],
   // #1532 §4 — was 144pt of dead scroll for a bottom nav this route does not
   // render; now exactly what a pinned action bar occupies, plus one gutter.
   paddingBottom: STAY_PAGE_BOTTOM_PAD,
@@ -401,104 +395,104 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: space[4],
   },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   flexOne: { flex: 1, minWidth: 0 },
-  title: { ...typography.h2, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.secondary },
-  meta: { ...typography.caption, color: textTokens.tertiary },
+  title: { ...type.h1, color: color.text1 },
+  helper: { ...type.small, color: color.text2 },
+  meta: { ...type.caption, color: color.text3 },
   // CONTENT-container measure for `StayChipRow`. It declares its own
   // `flexDirection`, so its gaps are read against that one axis
   // (I-AXIS-SCOPED-FLEX). `alignItems` is deliberately absent — the row
   // re-applies `center` after this merge so no caller can restore `stretch`.
   tabs: {
     flexDirection: "row",
-    columnGap: spacing.xs,
-    paddingVertical: spacing.xxs,
+    columnGap: space[1],
+    paddingVertical: 2,
   },
   tab: {
     minHeight: 44,
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
   },
-  tabSelected: { borderColor: accent.warm, backgroundColor: accent.warm },
+  tabSelected: { borderColor: color.accent, backgroundColor: color.accent },
   tabText: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
-  tabTextSelected: { color: "#0c0e12", fontWeight: "700" },
+  tabTextSelected: { color: color.ink, fontWeight: "700" },
   centerState: {
     minHeight: 260,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   emptyCard: {
     minHeight: 220,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   emptyTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
-  list: { gap: spacing.sm },
+  list: { gap: space[2] },
   cardPressable: { width: "100%" },
   pressed: { opacity: 0.78 },
-  card: { gap: spacing.sm },
+  card: { gap: space[2] },
   cardTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   rowBetween: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   statePill: {
     maxWidth: 190,
     borderRadius: radius.full,
-    backgroundColor: semantic.warningTint,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    backgroundColor: color.warningTint,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
   },
   statePillText: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     fontWeight: "700",
     textTransform: "capitalize",
   },
-  money: { ...typography.body, color: textTokens.primary, fontWeight: "700" },
+  money: { ...type.body, color: color.text1, fontWeight: "700" },
   deadline: {
-    ...typography.bodySm,
-    color: semantic.warning,
+    ...type.small,
+    color: color.warning,
     fontWeight: "600",
   },
   offlineBanner: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: semantic.warning,
-    backgroundColor: semantic.warningTint,
-    padding: spacing.md,
-    gap: spacing.sm,
+    borderColor: color.warning,
+    backgroundColor: color.warningTint,
+    padding: space[4],
+    gap: space[2],
   },
-  warning: { ...typography.bodySm, color: semantic.warning },
+  warning: { ...type.small, color: color.warning },
 });
 
 export default StayReservationsModule;

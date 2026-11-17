@@ -82,9 +82,17 @@ export function creativePreparationBindingError(
       !plan.brand_id || plan.brand_id !== binding.requestedBrandId
     ) return "plan_brand_mismatch";
   }
+  // #4238 W4a (6b): a Host plan runs one ad per frozen creative (1–5), so
+  // each of them is prepared per app; anything outside the frozen list is
+  // still refused.
+  const frozenIds = Array.isArray(version.canonical_plan.creative_library_ids)
+    ? (version.canonical_plan.creative_library_ids as unknown[]).map(String)
+    : [];
   if (
     version.canonical_plan.creative_library_id !==
-      binding.requestedCreativeId
+      binding.requestedCreativeId &&
+    !(plan.owner_kind === "host" &&
+      frozenIds.includes(binding.requestedCreativeId))
   ) return "plan_creative_mismatch";
   if (
     !allocation || allocation.platform !== binding.requestedPlatform

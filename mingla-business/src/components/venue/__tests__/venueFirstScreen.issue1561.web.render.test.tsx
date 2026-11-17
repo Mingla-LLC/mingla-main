@@ -190,11 +190,14 @@ describe("#1561 — the hero cap survives react-native-web's style compiler", ()
     expect(html).not.toContain(">COVER<");
   });
 
-  test("a shell given NO label still says COVER — the guard is not vacuous", () => {
-    expect.assertions(2);
-    // The SAME render path without the new prop. If this did not still say
-    // COVER, the assertion above would be passing because nothing renders a
-    // label at all, rather than because the label changed.
+  test("a shell given NO label shows the host's colour, never COVER — the guard is not vacuous", () => {
+    expect.assertions(3);
+    // The SAME render path without the new prop. #4420 (commit 0bcad84d2e,
+    // approved Graphite Glass redesign) replaced the "COVER" authoring
+    // placeholder with the host's themed cover when a public offering has no
+    // cover and no label. The guard stays non-vacuous: the bare shell must
+    // render the themed cover (a real, different output), so the labelled
+    // test above passes because the label renders, not because nothing does.
     function BareShell(): React.ReactElement {
       return (
         <ParallaxCoverShell
@@ -222,7 +225,8 @@ describe("#1561 — the hero cap survives react-native-web's style compiler", ()
     }
     const { html } = renderWeb(BareShell);
     expect(html).toContain("issue-1561-body-sentinel"); // positive control
-    expect(html).toContain("COVER");
+    expect(html).toContain('data-testid="offering-themed-cover"');
+    expect(html).not.toContain(">COVER<");
   });
 });
 

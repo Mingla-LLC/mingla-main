@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4459 (20280730004459) tester adversarial suite. Angles the implementor
+-- #4459 (20280805004459) tester adversarial suite. Angles the implementor
 -- suites do not cover: exclusions surviving every later writer (a new RSVP,
 -- an email claim, a team join and leave, a backfill re-run), history
 -- restarting at a rejoin or restore, cross-brand isolation for every guest

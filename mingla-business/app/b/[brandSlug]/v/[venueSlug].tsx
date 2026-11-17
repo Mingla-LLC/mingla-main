@@ -73,11 +73,7 @@ import {
 } from "../../../../src/services/offeringEngagementCapture";
 import { copyAddressText } from "../../../../src/utils/copyAddressText";
 
-import {
-  colors,
-  spacing,
-  text as textTokens,
-} from "../../../../src/constants/designSystem";
+import { color, space } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
 import {
@@ -121,6 +117,7 @@ import {
   settleBuyerVenueOrganicCapture,
   type VenueOrganicAnalyticsSurface,
 } from "../../../../src/services/venueOrganicCapturePolicy";
+import { PublicGlassProvider } from "../../../../src/components/offering/PublicGlassProvider";
 
 // #1390: Stay booking includes its own renderer and Stripe Payment Element.
 // Keep that product-specific bulk off the shared buyer-web boot path and load it
@@ -188,7 +185,7 @@ const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
   googlePlaceId: venue.googlePlaceId ?? null,
 });
 
-export default function PublicVenueRoute(): React.ReactElement {
+function PublicVenueRouteBody(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [shareModalVisible, setShareModalVisible] = React.useState(false);
@@ -565,6 +562,8 @@ export default function PublicVenueRoute(): React.ReactElement {
           // Stay branch two lines up already used it); the table branch simply
           // never read it, and painted Mingla orange on every brand's page.
           palette={context.palette}
+          // issue #4420 wave 2 (D-V3) — the Reservations tab's live bar.
+          onReservationBarChange={context.onReservationBarChange}
         />
       ),
     [],
@@ -606,9 +605,9 @@ export default function PublicVenueRoute(): React.ReactElement {
           <PublicVenueRetryAction
             busy={coldRetryBusy}
             accessibleLabel="Try loading the venue again"
-            backgroundColor={colors.primary[700]}
-            textColor={colors.text.inverse}
-            focusColor={colors.text.inverse}
+            backgroundColor={color.accent}
+            textColor={color.paper}
+            focusColor={color.paper}
             focusOffset={3}
             fontWeight="700"
             onPress={handleRetryVenue}
@@ -761,6 +760,10 @@ export default function PublicVenueRoute(): React.ReactElement {
               timezone={venue.timezone}
               // issue #3380 — "Who's ordering?" starts on the venue's country.
               countryCode={venue.countryCode}
+              // issue #4420 D-V2 — the basket bar docks at the screen's foot.
+              isDesktop={context.isDesktop ?? false}
+              bottomInset={context.bottomInset ?? 0}
+              onBottomBarChange={context.onBottomBarChange}
             />
           </React.Suspense>
         ),
@@ -809,23 +812,23 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
-    backgroundColor: "#0c0e12",
+    padding: space[6],
+    backgroundColor: color.canvas,
   },
   stateTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   stateText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
   },
   stateBody: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
@@ -834,3 +837,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
 });
+
+// issue #4420 — the Host app's real glass for the shared public page.
+export default function PublicVenueRoute(): React.ReactElement {
+  return (
+    <PublicGlassProvider>
+      <PublicVenueRouteBody />
+    </PublicGlassProvider>
+  );
+}

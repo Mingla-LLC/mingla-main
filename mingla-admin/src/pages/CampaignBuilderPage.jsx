@@ -47,10 +47,7 @@ import {
   runPreflight,
   saveAdminAdPlanDraft,
 } from "../services/adEngineService";
-import {
-  resolveGoalForPayload,
-  resolveMetaObjective,
-} from "../lib/adBuilder/objectiveResolver";
+import { resolveGoalForPayload } from "../lib/adBuilder/objectiveResolver";
 import { classifyCreateResult } from "../lib/adBuilder/createResult";
 import {
   applyChannelSelection,
@@ -84,6 +81,7 @@ import {
 } from "../lib/adBuilder/audienceRules";
 import { DEFAULT_RADIUS_MI } from "../lib/adBuilder/targeting";
 import {
+  ADMIN_META_BILLING_EVENT,
   allocateLifetimeCents,
   calendarDaysBetween,
   validateBudget,
@@ -822,12 +820,10 @@ export function CampaignBuilderPage() {
   );
 
   // ── The channel plan (the A4.0(1) output) ──
-  // ISSUE-979 Bug 1: Meta's optimization_goal comes from the SAME coherent
-  // resolution the create payload uses (objectiveResolver) — one Meta goal in
-  // play, so the per-category budget floor here and the create pair never
-  // disagree. (Traffic wins over awareness for the two live goals, in any click
-  // order — the valid OUTCOME_TRAFFIC / LINK_CLICKS pair.)
-  const metaGoal = resolveMetaObjective(goalIds, goalSignals).optimization_goal;
+  // #4238 I-4238-META-FLOOR-FOLLOWS-BILLING: Meta's per-category floor follows
+  // the billing event the create payload sends (payload.js: always
+  // IMPRESSIONS), not the optimisation goal.
+  const metaBillingEvent = ADMIN_META_BILLING_EVENT;
   // Lifetime: plan floors against the daily equivalent so channel eligibility
   // matches create-time D1 checks (not a zero daily while the total is large).
   const planningDailyCents = useMemo(() => {
@@ -853,7 +849,7 @@ export function CampaignBuilderPage() {
         totalDailyCents: planningDailyCents,
         allowlist: budget.allowlist,
         connections,
-        metaGoal,
+        metaBillingEvent,
         goalSignals,
       }),
     [
@@ -863,7 +859,7 @@ export function CampaignBuilderPage() {
       planningDailyCents,
       budget.allowlist,
       connections,
-      metaGoal,
+      metaBillingEvent,
       goalSignals,
     ],
   );
@@ -913,7 +909,7 @@ export function CampaignBuilderPage() {
           countries: audience.countries,
           allowlist: budget.allowlist,
           connections,
-          metaGoal,
+          metaBillingEvent,
           goalSignals,
         },
         selectedPlatforms,
@@ -925,7 +921,7 @@ export function CampaignBuilderPage() {
       audience.countries,
       budget.allowlist,
       connections,
-      metaGoal,
+      metaBillingEvent,
       goalSignals,
       selectedPlatforms,
       complianceExcluded,

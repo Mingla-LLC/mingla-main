@@ -23,12 +23,8 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import {
-  accent,
-  spacing,
-  text as textTokens,
-  radius as radiusTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, space } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 import { buildQrPayload } from "../../utils/stubOrderId";
 
 export interface CarouselTicket {
@@ -135,7 +131,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
               accessibilityLabel="Ticket QR code"
             />
           ) : (
-            <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />
+            <View style={{ width: qrSize, height: qrSize, backgroundColor: color.paper }} />
           )}
         </View>
         <Text style={styles.caption}>Show this at the door</Text>
@@ -181,7 +177,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
                   accessibilityLabel={`Ticket ${p.index + 1} of ${total} QR code`}
                 />
               ) : (
-                <View style={{ width: qrSize, height: qrSize, backgroundColor: "#ffffff" }} />
+                <View style={{ width: qrSize, height: qrSize, backgroundColor: color.paper }} />
               )}
             </View>
             <Text style={styles.label} numberOfLines={2}>
@@ -217,13 +213,13 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
 const HOST_MIN_HEIGHT = 320;
 const PAGE_MIN_HEIGHT = 260;
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     alignSelf: "stretch",
     width: "100%",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
     minHeight: HOST_MIN_HEIGHT,
   },
   scrollWeb: {
@@ -233,29 +229,29 @@ const styles = StyleSheet.create({
   },
   singleWrap: {
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
   },
   page: {
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
     minHeight: PAGE_MIN_HEIGHT,
   },
   qrInner: {
-    padding: spacing.sm,
-    backgroundColor: "#ffffff",
+    padding: space[2],
+    backgroundColor: color.paper,
     borderRadius: radiusTokens.md,
   },
   caption: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "500",
   },
   label: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "500",
     textAlign: "center",
     maxWidth: 280,
@@ -269,14 +265,14 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: color.fill.step,
   },
   dotActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   swipeHint: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
   },
-});
+}));

@@ -42,7 +42,7 @@ import React from "react";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
-import { ariThread, spacing } from "../../../constants/designSystem";
+import { ariThread, space } from "../../../constants/designSystem";
 
 // ───────────────── the FlatList emulator (independent derivation) ────────────
 /**
@@ -536,8 +536,8 @@ describe("#2649 T-9 — the content padding is pre-transform and renders the ORC
     // clearance above the composer. Asserted as what the user sees, not as the
     // raw style — so deleting `inverted` (which flips the container back and
     // makes the same style render 32/8) turns this red.
-    expect(visualTop).toBe(spacing.sm);
-    expect(visualBottom).toBe(spacing.xl);
+    expect(visualTop).toBe(space[2]);
+    expect(visualBottom).toBe(space[7]);
     expect(visualTop).toBe(8);
     expect(visualBottom).toBe(32);
   });
@@ -545,10 +545,10 @@ describe("#2649 T-9 — the content padding is pre-transform and renders the ORC
   it("carries the swapped values in the style itself, which is what makes it correct inverted", () => {
     const list = renderThread({ ...baseProps, messages: [msg("user", "u1")] });
     const style = (list.props.contentContainerStyle ?? {}) as Record<string, number>;
-    expect(style.paddingTop).toBe(spacing.xl);
-    expect(style.paddingBottom).toBe(spacing.sm);
+    expect(style.paddingTop).toBe(space[7]);
+    expect(style.paddingBottom).toBe(space[2]);
     // Horizontal padding is transform-invariant and must be left alone.
-    expect(style.paddingHorizontal).toBe(spacing.md);
+    expect(style.paddingHorizontal).toBe(space[4]);
   });
 });
 

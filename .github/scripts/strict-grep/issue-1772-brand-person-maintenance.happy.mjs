@@ -256,7 +256,9 @@ export function audit(base = repoRoot) {
     'announce("Merging people…")',
     'announce("Splitting merge…")',
     "fontScale >= 2",
-    "androidOpaque",
+    // #4420 retired androidOpaque; the Android branch now takes an opaque
+    // Graphite fill (materials.*.solidFill / color.solidTint.*).
+    'Platform.OS === "android" ? materials.pane.solidFill',
     "result.survivorPersonId",
   ]) required(flow, needle, `A6 maintenance flow ${needle}`, failures);
   for (const needle of [
@@ -270,9 +272,9 @@ export function audit(base = repoRoot) {
   ]) required(sections, needle, `A6 history state ${needle}`, failures);
   for (const source of [comparison, receipt]) {
     required(source, "fontScale >= 2", "A6 200-percent text stacking", failures);
-    required(source, "androidOpaque", "A6 Android opaque surface", failures);
+    required(source, 'Platform.OS === "android" ? ', "A6 Android opaque surface", failures);
   }
-  required(receipt, 'backgroundColor: Platform.OS === "android" ? androidOpaque.successFill', "Android opaque receipt fill", failures);
+  required(receipt, 'backgroundColor: Platform.OS === "android" ? color.solidTint.success', "Android opaque receipt fill", failures);
   required(flow, "candidate.personId === mergeResult.survivorPersonId", "returned-survivor receipt facts", failures);
   for (const needle of [
     'AccessibilityInfo.announceForAccessibility("Making primary…")',

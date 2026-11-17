@@ -33,8 +33,8 @@
  * - Reverting the handle to not carry `dismissGesture` FAILS T-2.
  * - Reverting BrandSwitcherSheet to `Animated.ScrollView`/`useTopSheetScroll`
  *   FAILS T-4.
- * - Lowering `FALLBACK_BACKGROUND` back below alpha 1.0 (a translucent
- *   `rgba(...,0.92)` fill) FAILS T-5.
+ * - Lowering the sheet material's Android/non-blur fill below alpha 1.0 (a
+ *   translucent `rgba(...,0.92)` fill) FAILS T-5.
  */
 
 import * as fs from "fs";
@@ -114,13 +114,22 @@ describe("ORCH-1173 R2 brand-switcher handle-only dismiss + opaque panel", () =>
   });
 
   // ---- T-5: the Android/non-blur fallback fill is FULLY OPAQUE ---------------
-  test("T-5 — FALLBACK_BACKGROUND is fully opaque (no alpha bleed-through)", () => {
+  // [TEST-MOD-APPROVED #4420] Graphite Glass: the per-file FALLBACK_BACKGROUND
+  // is gone; the panel is <Material kind="sheet">, whose Android / non-blur
+  // resolution must still be a fully opaque fill (no alpha bleed-through).
+  test("T-5 — the TopSheet panel's Android/non-blur fill is fully opaque (no alpha bleed-through)", () => {
     const code = stripComments(fs.readFileSync(TOPSHEET_PATH, "utf8"));
-    // Solid rgb(...) (or #hex) — NOT a translucent rgba(...,0.xx).
-    expect(code).toMatch(
-      /FALLBACK_BACKGROUND\s*=\s*"(?:rgb\(\s*20\s*,\s*22\s*,\s*26\s*\)|#14161[Aa])"/,
-    );
-    // Guard against any rgba(...) (alpha) fallback sneaking back.
-    expect(code).not.toMatch(/FALLBACK_BACKGROUND\s*=\s*"rgba\(/);
+    expect(code).toMatch(/<Material kind="sheet"/);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { resolveMaterial } = require("../components/ui/Material") as typeof import("../components/ui/Material");
+    for (const env of [
+      { platform: "android", reduceTransparency: false, realBlur: false },
+      { platform: "web", reduceTransparency: false, realBlur: false },
+      { platform: "windows", reduceTransparency: false, realBlur: false },
+    ]) {
+      const out = resolveMaterial("sheet", env);
+      expect(out.mode).toBe("solid");
+      expect(out.fill).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
   });
 });

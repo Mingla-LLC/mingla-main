@@ -92,7 +92,8 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
     // it reads on a LIGHT brand page. issue #1023: the fill paints through
     // accentFill(palette) and the hairline through accentOutline (gradient-aware). fails-on-revert: deleting the SECONDARY_FILL /
     // borderColor wiring flips this case red.
-    expect(reserveBarSrc).toMatch(/const SECONDARY_FILL = "#FFFFFF"/);
+    // [TEST-MOD-APPROVED #4420] solid white is the paper token.
+    expect(reserveBarSrc).toMatch(/const SECONDARY_FILL = color\.paper/);
     expect(reserveBarSrc).toMatch(
       /isPrimary\s*\?\s*accentFill\(palette\)\s*:\s*\{\s*backgroundColor:\s*SECONDARY_FILL\s*\}/,
     );
@@ -108,9 +109,10 @@ describe("ORCH-1138 — trip Reserve UNIFIED seam-split CTA (business/web)", () 
 
   test("SP-U4 there is a crisp fold-SEAM (dark crease + light highlight) between the segments", () => {
     expect(reserveBarSrc).toMatch(/const renderSeam =/);
-    expect(reserveBarSrc).toMatch(/seam:\s*\{[^}]*rgba\(0,0,0,0\.22\)/);
+    // [TEST-MOD-APPROVED #4420] crease + highlight read tokens, not literals.
+    expect(reserveBarSrc).toMatch(/seam:\s*\{[^}]*color\.spinnerTrackOnPaper/);
     expect(reserveBarSrc).toMatch(
-      /seamHighlight:\s*\{[^}]*rgba\(255,255,255,0\.10\)/,
+      /seamHighlight:\s*\{[^}]*color\.fill\.tabOn/,
     );
   });
 

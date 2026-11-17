@@ -7,9 +7,10 @@ import { assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 const read = (rel: string): string =>
   Deno.readTextFileSync(new URL(`../../../${rel}`, import.meta.url));
 
+// [TEST-MOD-APPROVED #4420] the discover canvas alias retired; the Graphite canvas token is color.canvas.
 Deno.test("Host Dates screen uses discover canvas + pull-to-refresh (no Refresh button)", () => {
   const text = read("mingla-business/app/event/[id]/dates.tsx");
-  assert(text.includes("canvas.discover"));
+  assert(text.includes("color.canvas"));
   assert(text.includes("RefreshControl"));
   assert(!text.includes('accessibilityLabel="Refresh dates"'));
   assert(text.includes("Past dates are read-only"));

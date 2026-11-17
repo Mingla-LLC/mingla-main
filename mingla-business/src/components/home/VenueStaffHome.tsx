@@ -11,12 +11,10 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useVenueListings } from "../../hooks/useVenueListings";
 import type { Brand } from "../../store/currentBrandStore";
@@ -78,7 +76,7 @@ export function VenueStaffHomeBoundary({
         />
       </View>
       <View style={styles.roleGate} testID="home-role-gate">
-        {mode === "resolving" ? <ActivityIndicator color={accent.warm} /> : null}
+        {mode === "resolving" ? <ActivityIndicator color={color.text2} /> : null}
         <Text style={styles.roleGateTitle}>
           {mode === "resolving" ? "Checking your access…" : "Brand access unavailable"}
         </Text>
@@ -153,7 +151,7 @@ export function VenueStaffHome({
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: spacing.xxl * 3 + insets.bottom },
+          { paddingBottom: space[9] * 3 + insets.bottom },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -168,7 +166,7 @@ export function VenueStaffHome({
 
         {venuesQuery.isLoading ? (
           <View style={styles.state} accessibilityRole="progressbar">
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.text2} />
             <Text style={styles.helper}>Loading assigned venues…</Text>
           </View>
         ) : venuesQuery.isError ? (
@@ -184,7 +182,7 @@ export function VenueStaffHome({
           </View>
         ) : venues.length === 0 ? (
           <View style={styles.state} testID="venue-staff-empty">
-            <Icon name="shield" size={24} color={textTokens.tertiary} />
+            <Icon name="shield" size={24} color={color.text3} />
             <Text style={styles.stateTitle}>No venue access yet</Text>
             <Text style={styles.helper}>
               Ask a brand owner or admin to assign a Stay or restaurant to you.
@@ -209,7 +207,7 @@ export function VenueStaffHome({
                   <Icon
                     name={venue.venueCategory === "stay" ? "home" : "notebook"}
                     size={20}
-                    color={accent.warm}
+                    color={color.text1}
                   />
                 </View>
                 <View style={styles.cardCopy}>
@@ -219,7 +217,7 @@ export function VenueStaffHome({
                     {venue.city ? ` · ${venue.city}` : ""}
                   </Text>
                 </View>
-                <Icon name="chevR" size={18} color={textTokens.tertiary} />
+                <Icon name="chevR" size={18} color={color.text3} />
               </Pressable>
             ))}
           </View>
@@ -231,25 +229,25 @@ export function VenueStaffHome({
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
-  topBarWrap: { paddingHorizontal: spacing.md },
-  content: { padding: spacing.md, gap: spacing.xl },
-  intro: { gap: spacing.xs },
-  eyebrow: { fontSize: 11, letterSpacing: 1.2, fontWeight: "800", color: accent.warm },
-  title: { ...typography.h1, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.secondary, lineHeight: 20 },
-  sectionTitle: { fontSize: 11, letterSpacing: 1, fontWeight: "800", color: textTokens.tertiary },
-  list: { gap: spacing.sm },
-  card: { minHeight: 76, padding: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase, flexDirection: "row", alignItems: "center", gap: spacing.md },
+  topBarWrap: { paddingHorizontal: space[4] },
+  content: { padding: space[4], gap: space[7] },
+  intro: { gap: space[1] },
+  eyebrow: { fontSize: 11, letterSpacing: 1.2, fontWeight: "800", color: color.text1 },
+  title: { ...type.title, color: color.text1 },
+  helper: { ...type.small, color: color.text2, lineHeight: 20 },
+  sectionTitle: { fontSize: 11, letterSpacing: 1, fontWeight: "800", color: color.text3 },
+  list: { gap: space[2] },
+  card: { minHeight: 76, padding: space[4], borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, borderRadius: radius.lg, backgroundColor: color.fill.inset, flexDirection: "row", alignItems: "center", gap: space[4] },
   cardPressed: { opacity: 0.76 },
-  cardIcon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235, 120, 37, 0.12)" },
+  cardIcon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tabOn },
   cardCopy: { flex: 1, minWidth: 0 },
-  cardTitle: { ...typography.body, color: textTokens.primary, fontWeight: "700" },
-  cardMeta: { ...typography.bodySm, color: textTokens.secondary, marginTop: 3 },
-  state: { padding: spacing.xl, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase, alignItems: "center", gap: spacing.sm },
-  stateTitle: { ...typography.h3, color: textTokens.primary, textAlign: "center" },
-  roleGate: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.sm },
-  roleGateTitle: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
-  roleGateBody: { ...typography.bodySm, color: textTokens.secondary, textAlign: "center", maxWidth: 420 },
-  roleGateActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm },
-  toastWrap: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end", alignItems: "center", padding: spacing.md },
+  cardTitle: { ...type.body, color: color.text1, fontWeight: "700" },
+  cardMeta: { ...type.small, color: color.text2, marginTop: 3 },
+  state: { padding: space[7], borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, borderRadius: radius.lg, backgroundColor: color.fill.inset, alignItems: "center", gap: space[2] },
+  stateTitle: { ...type.h1, color: color.text1, textAlign: "center" },
+  roleGate: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[7], gap: space[2] },
+  roleGateTitle: { ...type.h1, color: color.text1, textAlign: "center" },
+  roleGateBody: { ...type.small, color: color.text2, textAlign: "center", maxWidth: 420 },
+  roleGateActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: space[2] },
+  toastWrap: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end", alignItems: "center", padding: space[4] },
 });

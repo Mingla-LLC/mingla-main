@@ -262,6 +262,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/m/",
       // #3645 — token-authenticated instalment pay/approve page.
       "/pay/",
+      // #4420 — token-authorized staff-made Stay payment link.
+      "/stay/pay/",
     ]);
   });
 

@@ -15,10 +15,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 
 import { Icon } from "../ui/Icon";
@@ -26,7 +25,7 @@ import { Icon } from "../ui/Icon";
 export const EditAfterPublishTripBanner: React.FC = () => (
   <View style={styles.host}>
     <View style={styles.iconBadge}>
-      <Icon name="flag" size={18} color={accent.warm} />
+      <Icon name="flag" size={18} color={color.accent} />
     </View>
     <View style={styles.textCol}>
       <Text style={styles.heading}>You're editing a live trip</Text>
@@ -44,14 +43,14 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm + 4,
-    padding: spacing.md,
+    gap: space[2] + 4,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
-    marginBottom: spacing.lg,
+    borderColor: color.accentLine,
+    marginBottom: space[6],
   },
   iconBadge: {
     width: 32,
@@ -59,9 +58,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    backgroundColor: color.accentTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.42)",
+    borderColor: color.accentLine,
     flexShrink: 0,
   },
   textCol: {
@@ -71,13 +70,13 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   body: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 });
 

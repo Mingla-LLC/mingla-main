@@ -19,12 +19,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { RefundPolicy } from "../../services/refundPolicyService";
 import { BookingDeadlinePicker } from "./BookingDeadlinePicker";
@@ -108,14 +106,14 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
   const hideRemainingLocked = draft.privateGuestList && draft.hideRemainingCount;
   return (
     <View style={styles.container}>
-      <GlassCard variant="base" padding={spacing.md} radius="lg">
+      <GlassCard variant="base" padding={space[4]} radius="lg">
         <RefundPolicyEditor
           value={draft.refundPolicy}
           onChange={(next) => onChange({ refundPolicy: next })}
         />
       </GlassCard>
 
-      <GlassCard variant="base" padding={spacing.md} radius="lg">
+      <GlassCard variant="base" padding={space[4]} radius="lg">
         <BookingDeadlinePicker
           value={draft.bookingDeadline}
           tripStartIso={tripStartIso}
@@ -127,7 +125,7 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
       {/* ORCH-1339 — Guest privacy (D2 display gates). Persisted by the wizard
           parent via biz_set_event_guest_privacy (leaf write; never the big
           trip RPCs). Copy per SPEC §4.8 — byte-exact. */}
-      <GlassCard variant="base" padding={spacing.md} radius="lg">
+      <GlassCard variant="base" padding={space[4]} radius="lg">
         <Text style={styles.sectionLabel}>Guest privacy</Text>
         <ToggleRow
           label="Private guest list"
@@ -170,60 +168,60 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.md,
+    gap: space[4],
   },
   // ORCH-1339 — Guest-privacy section (ToggleRow styles mirror
   // CreatorStep6Settings.tsx's ToggleRow block).
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
     letterSpacing: 0.2,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    marginBottom: space[2],
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
   },
   toggleLabelCol: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: space[2],
   },
   toggleLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   toggleSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   toggleTrack: {
     width: 44,
     height: 26,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: color.fill.step,
     padding: 3,
   },
   toggleTrackOn: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   toggleThumb: {
     width: 20,
     height: 20,
     borderRadius: 999,
-    backgroundColor: "#fff",
+    backgroundColor: color.paper,
   },
   toggleThumbOff: {
     transform: [{ translateX: 0 }],

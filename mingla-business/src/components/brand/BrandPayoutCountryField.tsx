@@ -28,13 +28,7 @@ import { QueryClientContext, type QueryClient } from "@tanstack/react-query";
 
 import { Button } from "../ui/Button";
 import { PayoutCountryTriggerRow } from "./PayoutCountryTriggerRow";
-import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+
 import { STRIPE_SUPPORTED_COUNTRIES } from "../../constants/stripeSupportedCountries";
 import { useAuth } from "../../context/AuthContext";
 import { brandKeys } from "../../hooks/brandKeys";
@@ -60,6 +54,11 @@ import {
   type PayoutCountrySwitchFailure,
 } from "../../utils/payoutCountrySwitchCopy";
 
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 export const PAYOUT_COUNTRY_FIELD_COPY = {
   label: "PAYOUT COUNTRY",
   empty: "Choose a country",
@@ -361,7 +360,7 @@ export function BrandPayoutCountryField({
           accessibilityLabel="Updating your payout country"
           testID={`${testID}-saving`}
         >
-          <ActivityIndicator size="small" color={accent.warm} />
+          <ActivityIndicator size="small" color={color.text1} />
           <Text style={styles.statusText}>
             {PAYOUT_COUNTRY_FIELD_COPY.saving}
           </Text>
@@ -392,26 +391,26 @@ export function BrandPayoutCountryField({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   statusText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   failure: {
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
   failureText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: semantic.error,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.errorText,
   },
 });
 

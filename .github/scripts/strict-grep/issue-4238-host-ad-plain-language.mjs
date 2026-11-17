@@ -58,14 +58,23 @@ const HOST_AD_FILES = [
   "src/components/marketing/ads/HostAdInterestsEditor.tsx",
   "src/components/marketing/ads/hostAdTargeting.ts",
   "src/components/marketing/ads/HostAdReachMeter.tsx",
-  "src/components/marketing/ads/HostAdBudgetPanel.tsx",
+  // #4238 W6a: the v9 builder's own parts (the budget panel is gone, U-2).
+  "src/components/marketing/ads/HostAdBuilderBits.tsx",
+  "src/components/marketing/ads/HostAdTopUpSheet.tsx",
+  "src/components/marketing/ads/HostAdWordsSheet.tsx",
+  "src/components/marketing/ads/hostAdBuilderModel.ts",
+  "src/components/marketing/ads/hostAdBuilderCopy.ts",
   "src/components/marketing/ads/HostAdCreativeExtras.tsx",
   "src/components/marketing/ads/hostAdBudget.ts",
   "src/components/marketing/ads/hostAdCreativeRules.ts",
   "src/components/marketing/ads/HostAdLiveEditCard.tsx",
   "src/components/marketing/ads/hostAdAlerts.ts",
-  "src/components/marketing/AdCreditLedgerRow.tsx",
-  "src/components/marketing/AdCreditQuoteSheet.tsx",
+  // #4238 W6b: ad detail and Promote home sheets, rules and words, and the
+  // Ari ad card lines (AdCreditQuoteSheet / AdCreditLedgerRow were removed).
+  "src/components/marketing/ads/HostAdManageSheets.tsx",
+  "src/components/marketing/ads/hostAdManageModel.ts",
+  "src/components/marketing/ads/hostAdManageCopy.ts",
+  "src/components/ari/AriAdCardExtras.tsx",
   "src/services/hostAdPlanService.ts",
   "src/services/hostAdCampaignService.ts",
   "src/services/hostAdLifecycle.ts",
@@ -372,15 +381,96 @@ function main() {
 
   // 6. The typed confirmations stay, and are explained.
   const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
+  // #4238 W6a (design v9, question 8 approved): the builder asks once, with
+  // the money in one line, instead of a typed LAUNCH / CANCEL PLAN. The
+  // server still checks the typed constant (D-7), which the service sends.
   if (create !== null) {
-    for (const needle of ['launchPhrase !== "LAUNCH"', "Type LAUNCH to start your ad.", 'confirmText="CANCEL PLAN"']) {
-      if (!create.includes(needle)) fail(`create.tsx lost the typed confirmation ${JSON.stringify(needle)}`);
+    for (const needle of ['hb("review.confirmBody", { amount: money(holdPayCents) })', "onConfirm={handleLaunchConfirmed}", 'hb("review.cancelBody")']) {
+      if (!create.includes(needle)) fail(`create.tsx lost the one launch / cancel confirm ${JSON.stringify(needle)}`);
     }
   }
+  if (service !== null && !service.includes('phrase: "LAUNCH"')) {
+    fail('hostAdPlanService no longer sends the confirm_launch constant phrase: "LAUNCH"');
+  }
+  // #4238 W6b (design v9, the same one-confirm rule as question 8): pause,
+  // end and cancel each ask once, naming the money that stays held or comes
+  // back; the server takes no typed phrase for them.
   if (detail !== null) {
-    for (const needle of ['confirmText={destructiveAction === "end" ? "END" : "CANCEL"}', "Type END to stop your ad on every app."]) {
-      if (!detail.includes(needle)) fail(`[id].tsx lost the typed confirmation ${JSON.stringify(needle)}`);
+    // #4238 rework 5 (native P2-1): Pause states its money through the ONE
+    // shared helper (hostAdPauseConfirmWords), the same one the Home tile uses.
+    for (const needle of ['hm("confirm.endBody", { amount: money(held) })', 'hm("confirm.cancelBody", { amount: money(budget.totalPay) })', "hostAdPauseConfirmWords({ capCredit, spentCredit, currency })", "description={pauseWords.description}", "onConfirm={onStop}"]) {
+      if (!detail.includes(needle)) fail(`[id].tsx lost the one money confirm ${JSON.stringify(needle)}`);
     }
+  }
+  const homeAds = read("src/components/home/HomeAdsSection.tsx");
+  if (homeAds !== null) {
+    for (const needle of ["hostAdPauseConfirmWords({", "onPress={() => askPause(campaign)}", "description={pauseWords.description}"]) {
+      if (!homeAds.includes(needle)) fail(`HomeAdsSection lost the shared pause confirm ${JSON.stringify(needle)}`);
+    }
+    if (homeAds.includes("onPress={() => void pause(campaign)}")) fail("HomeAdsSection pauses straight from the tile again (no confirm)");
+  }
+
+  // 7. #4238 rework 1 — structural money and wiring rules re-homed here from
+  // Jest readFileSync pins (I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN): the
+  // builder does no money maths of its own; the detail page's daily is the
+  // server's plan figure (never ad_campaigns.daily_budget_cents, tester P1-2 /
+  // P1-3); a notice for another brand switches before the ad is looked up;
+  // Share results never calls Share.share directly (#1615, tester P1-1).
+  if (create !== null) {
+    for (const needle of ["hostAdPlanBudget({", "hostAdMinimumPayCents(setup?.minimums, platform", "hostAdLaunchBlocker({", "disabled={blocker !== null}"]) {
+      if (!create.includes(needle)) fail(`create.tsx no longer uses the money model ${JSON.stringify(needle)}`);
+    }
+    if (/\* 0\.85|0\.85 \*|\/ 0\.85/.test(create)) fail("create.tsx does its own 0.85 money maths again");
+  }
+  if (detail !== null) {
+    if (/daily_budget_cents/.test(detail.replace(/\/\/[^\n]*/g, ""))) {
+      fail("[id].tsx reads daily_budget_cents again (use the server's plan_daily_credit_cents)");
+    }
+    for (const needle of ["hostAdDetailDailyCredit(payload.plan_daily_credit_cents)", "setCurrentBrandId(linkBrandId)", 'testID="ads-detail-not-on-team"', 'linkDecision !== "stay"']) {
+      if (!detail.includes(needle)) fail(`[id].tsx lost ${JSON.stringify(needle)}`);
+    }
+  }
+  const sheets = read("src/components/marketing/ads/HostAdManageSheets.tsx");
+  if (sheets !== null) {
+    if (/\bShare\.share\s*\(/.test(sheets.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, ""))) fail("HostAdManageSheets calls Share.share directly (use sharePublicUrl)");
+    if (!sheets.includes("row.ad_name?.trim()")) fail("HostAdManageSheets no longer names statement rows by the ad's name");
+  }
+
+  // 8. #4238 W7 (native verdict P3-5, P3-1, P3-3, P3-4, P4-3) — structural
+  // wiring kept here instead of Jest readFileSync pins (#1047). The helpers
+  // these name are tested for behaviour in Jest (issue_4238_w7_*).
+  if (create !== null) {
+    for (const id of ["host-ad-age-min", "host-ad-age-max"]) {
+      const at = create.indexOf(`testID="${id}"`);
+      const block = at < 0 ? "" : create.slice(create.lastIndexOf("<Input", at), at);
+      if (!block.includes('variant="integer"')) fail(`create.tsx ${id} is not the integer number pad (variant="integer")`);
+    }
+    if (!create.includes("!hostAdAgeRangeValid(ageMin, ageMax)")) fail("create.tsx no longer validates ages with hostAdAgeRangeValid");
+    if (!/useEffect\(\(\) => \{\s*scrollRef\.current\?\.scrollTo\?\.\(\{ y: 0, animated: false \}\);\s*\}, \[activeStepId\]\);/.test(create)) {
+      fail("create.tsx no longer opens each step at its top");
+    }
+  }
+  const bits = read("src/components/marketing/ads/HostAdBuilderBits.tsx");
+  if (bits !== null) {
+    for (const needle of ["hostAdMarksCollide(pct(markValues[0]), pct(markValues[1]), trackWidth)", "setTrackWidth(event.nativeEvent.layout.width)"]) {
+      if (!bits.includes(needle)) fail(`HostAdBuilderBits lost the measured mark stacking ${JSON.stringify(needle)}`);
+    }
+  }
+  const list = read("src/screens/hostAds/HostAdListScreen.tsx");
+  if (list !== null) {
+    for (const needle of ["hostAdListUsesTable(isWideDesktop, deskMainWidth)", ") : showTable ? (", "setDeskMainWidth(event.nativeEvent.layout.width)"]) {
+      if (!list.includes(needle)) fail(`HostAdListScreen lost the table-fits rule ${JSON.stringify(needle)}`);
+    }
+  }
+  if (homeAds !== null) {
+    const at = homeAds.indexOf("testID={`home-ad-name-${campaign.id}`}");
+    if (at < 0 || !homeAds.slice(homeAds.lastIndexOf("<Text", at), at).includes("numberOfLines={2}")) {
+      fail("HomeAdsSection phone tile name is back to one line");
+    }
+  }
+  const notices = read("src/components/notifications/BusinessNotificationsScreen.tsx");
+  if (notices !== null && notices.includes("${formatRelative(notification.created_at)} ago")) {
+    fail('BusinessNotificationsScreen reads "<short time> ago" again (use formatRelativeSpoken)');
   }
 
   if (failures.length) {

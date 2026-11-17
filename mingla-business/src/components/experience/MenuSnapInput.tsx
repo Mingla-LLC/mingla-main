@@ -6,12 +6,10 @@ import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { MenuFilePayload } from "../../services/experienceGenerationService";
 import {
@@ -142,7 +140,7 @@ export const MenuSnapInput: React.FC<MenuSnapInputProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Take photo of menu"
         >
-          <Icon name="flash" size={22} color={textTokens.primary} />
+          <Icon name="flash" size={22} color={color.text1} />
           <Text style={styles.rowLabel}>Take photo</Text>
         </Pressable>
         <Pressable
@@ -152,7 +150,7 @@ export const MenuSnapInput: React.FC<MenuSnapInputProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Choose menu photo from library"
         >
-          <Icon name="plus" size={22} color={textTokens.primary} />
+          <Icon name="plus" size={22} color={color.text1} />
           <Text style={styles.rowLabel}>Choose from library</Text>
         </Pressable>
         <Pressable
@@ -162,7 +160,7 @@ export const MenuSnapInput: React.FC<MenuSnapInputProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Upload menu PDF"
         >
-          <Icon name="list" size={22} color={textTokens.primary} />
+          <Icon name="list" size={22} color={color.text1} />
           <Text style={styles.rowLabel}>Upload PDF</Text>
         </Pressable>
         {isBusy && (
@@ -175,49 +173,49 @@ export const MenuSnapInput: React.FC<MenuSnapInputProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   sheetTitle: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
+    marginBottom: space[1],
   },
   hint: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
+    marginBottom: space[2],
   },
   error: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
-    marginBottom: spacing.xs,
+    fontSize: type.caption.fontSize,
+    color: color.danger,
+    marginBottom: space[1],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    gap: space[4],
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radius.lg,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   rowPressed: {
     opacity: 0.85,
   },
   rowLabel: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   busy: {
     textAlign: "center",
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
+    color: color.text2,
+    marginTop: space[2],
   },
 });

@@ -3,7 +3,7 @@ import React from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import { accent } from "../../../src/constants/designSystem";
+import { color } from "../../../src/constants/designSystem";
 
 // #4111 — the thread loads with this route, never in the boot chunk. Same
 // module as the Messages list section, so the two share one lazy chunk.
@@ -19,7 +19,7 @@ export default function BrandEnquiryThreadRoute(): React.ReactElement {
     <React.Suspense
       fallback={(
         <View style={styles.loading}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text2} />
         </View>
       )}
     >

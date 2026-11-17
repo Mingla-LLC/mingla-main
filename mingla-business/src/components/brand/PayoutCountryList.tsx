@@ -9,7 +9,12 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { accent, radius, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 import { BRAND_SETUP_COPY } from "./brandSetupCopy";
 // Text-only state: this list stays free of the icon (svg) runtime.
 import { CenteredState } from "../ui/CenteredState";
@@ -80,7 +85,7 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
         value={query}
         onChangeText={setQuery}
         placeholder={BRAND_SETUP_COPY.f2.search}
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         accessibilityLabel={BRAND_SETUP_COPY.f2.search}
         autoCorrect={false}
         style={styles.search}
@@ -100,7 +105,7 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
           testID={`${testID}-no-match`}
         />
       ) : (
-        <View style={[styles.group, { marginTop: spacing.sm }]}>{rows.map(renderRow)}</View>
+        <View style={[styles.group, { marginTop: space[2] }]}>{rows.map(renderRow)}</View>
       )}
     </View>
   );
@@ -109,43 +114,43 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
 const styles = StyleSheet.create({
   search: {
     minHeight: 48,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    borderRadius: radius.sm,
+    paddingHorizontal: space[4],
+    backgroundColor: color.fill.tile,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   groupLabel: {
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    marginTop: space[4],
+    marginBottom: space[1],
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   group: {
-    borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   row: {
     minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    gap: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    borderBottomColor: color.line,
   },
-  rowSelected: { backgroundColor: accent.faint },
+  rowSelected: { backgroundColor: color.fill.tabOn },
   flag: { fontSize: 20, width: 28 },
-  name: { flex: 1, fontSize: typography.body.fontSize, color: textTokens.primary },
-  currency: { fontSize: typography.bodySm.fontSize, color: textTokens.tertiary },
+  name: { flex: 1, fontSize: type.body.fontSize, color: color.text1 },
+  currency: { fontSize: type.small.fontSize, color: color.text3 },
   radio: {
     width: 20,
     height: 20,
     borderRadius: radius.full,
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.32)",
+    borderColor: color.lineStrong,
   },
-  radioOn: { borderColor: accent.warm, backgroundColor: accent.warm },
+  radioOn: { borderColor: color.paper, backgroundColor: color.paper },
   root: { flexGrow: 1 },
 });

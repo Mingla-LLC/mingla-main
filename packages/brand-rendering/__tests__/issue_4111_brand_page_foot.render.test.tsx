@@ -93,13 +93,15 @@ jest.mock("@mingla/offering-rendering", () => {
     useResponsiveLayout: () => ({ isDesktop: mockIsDesktop }),
     EventCoverMedia: () => React.createElement(View),
     FollowerCountLine: () => null,
+    // issue #4420 wave 2 — the brand page's desktop actions moved from the
+    // sticky panel to the premium flyer's `desktopFlyerActions`.
     ParallaxCoverShell: ({
       children,
-      stickyPanel,
+      desktopFlyerActions,
     }: {
       children: React.ReactNode;
-      stickyPanel?: React.ReactNode;
-    }) => React.createElement(View, null, children, stickyPanel ?? null),
+      desktopFlyerActions?: React.ReactNode;
+    }) => React.createElement(View, null, children, desktopFlyerActions ?? null),
   };
 });
 

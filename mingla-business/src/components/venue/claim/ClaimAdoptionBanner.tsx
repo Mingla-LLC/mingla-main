@@ -23,11 +23,10 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
   durations,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { CLAIM_FILLABLE_TOTAL } from "../venueWizardValidation";
 import { GlassCard } from "../../ui/GlassCard";
@@ -90,7 +89,7 @@ export const ClaimAdoptionBanner: React.FC<ClaimAdoptionBannerProps> = ({
         style={[styles.host, styles.collapsedRow, animStyle]}
         testID={testID}
       >
-        <Icon name="sparkle" size={14} color={accent.warm} />
+        <Icon name="sparkle" size={14} color={color.accent} />
         <Text style={styles.collapsedText} numberOfLines={1}>
           {filledCount} of {CLAIM_FILLABLE_TOTAL} filled from your listing
         </Text>
@@ -104,9 +103,9 @@ export const ClaimAdoptionBanner: React.FC<ClaimAdoptionBannerProps> = ({
       testID={testID}
       accessibilityLiveRegion="polite"
     >
-      <GlassCard variant="base" radius="lg" padding={spacing.md}>
+      <GlassCard variant="base" radius="lg" padding={space[4]}>
         <View style={styles.titleRow}>
-          <Icon name="sparkle" size={18} color={accent.warm} />
+          <Icon name="sparkle" size={18} color={color.accent} />
           <Text style={styles.title} numberOfLines={1}>
             We already know {venueName}
           </Text>
@@ -119,39 +118,39 @@ export const ClaimAdoptionBanner: React.FC<ClaimAdoptionBannerProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    marginHorizontal: space[6],
+    marginBottom: space[2],
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: space[2],
+    marginBottom: space[1],
   },
   title: {
     flex: 1,
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   collapsedRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
   },
   collapsedText: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text2,
   },
 });
 

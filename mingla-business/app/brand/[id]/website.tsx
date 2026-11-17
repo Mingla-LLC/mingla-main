@@ -3,8 +3,9 @@ import React from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import { accent, canvas } from "../../../src/constants/designSystem";
 
+
+import { color } from "../../../src/constants/designSystem";
 /*
  * #2829 W9r — the Website section. Every Website address renders the ONE
  * Website app (overview here; sections, editors and the full-screen preview
@@ -18,12 +19,12 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const studioResult = Array.isArray(params.studioResult) ? params.studioResult[0] : params.studioResult;
   return (
-    <React.Suspense fallback={<View style={styles.loading}><ActivityIndicator color={accent.warm} accessibilityLabel="Loading your website" /></View>}>
+    <React.Suspense fallback={<View style={styles.loading}><ActivityIndicator color={color.text1} accessibilityLabel="Loading your website" /></View>}>
       <LazyWebsiteApp brandId={typeof brandId === "string" ? brandId : ""} segments={[]} search={{ studioResult }} />
     </React.Suspense>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: canvas.discover },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.canvas },
 });

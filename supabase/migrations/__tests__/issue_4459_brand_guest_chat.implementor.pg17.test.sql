@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- #4459 (20280730004459): one brand-wide Guest chat per brand. Runs on the
+-- #4459 (20280805004459): one brand-wide Guest chat per brand. Runs on the
 -- fully replayed PG17 schema; everything rolls back.
 --
 -- INVARIANT issue-4459-brand-guests: one brand_guests conversation per brand; membership = brand team ∪ eligible guests − exclusions; written only by issue_4459_* definer functions; never merged with linked_entity_type='brand'; Explorer renders it as the only brand_channel row (no client fold).

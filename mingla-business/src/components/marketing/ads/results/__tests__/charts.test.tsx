@@ -158,7 +158,9 @@ describe("#4238 T14 results charts", () => {
       daily_spend: [{ day: "2026-11-01", cents: 100 }, { day: "2026-11-02", cents: null }, { day: "2026-11-03", cents: 300 }],
     };
     const r = render(<AdListSummaryCard summary={summary} />);
-    expect(texts(r)).toContain("This month: NGN 4,200.00 of NGN 100,000.00 · 3 results");
+    // #4238 rework 1 (tester P2-2): what the Host PAYS (credit ÷ 0.85), never the credit.
+    expect(texts(r)).toContain("This month: NGN 4,941.18 of NGN 117,647.06 · 3 results");
+    expect(texts(r)).not.toContain("NGN 100,000.00");
     expect(sparklinePath(summary.daily_spend)).toBe("M0,41.333333333333336 M300,8");
     const empty = render(<AdListSummaryCard summary={null} />);
     expect(byTestId(empty, "ads-list-summary")).toHaveLength(0);

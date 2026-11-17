@@ -31,12 +31,10 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  materials,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
@@ -373,7 +371,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
     return (
       <GlassCard
         variant="elevated"
-        padding={spacing.md}
+        padding={space[4]}
         style={styles.card}
         testID="payment-plan-editor-locked"
       >
@@ -559,7 +557,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.md}
+      padding={space[4]}
       style={styles.card}
       testID="payment-plan-editor"
     >
@@ -702,7 +700,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 mode="date"
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 themeVariant="dark"
-                textColor={textTokens.primary}
+                textColor={color.text1}
                 minimumDate={new Date(`${todayPlusDays(1)}T00:00:00Z`)}
                 onChange={onDateChange(inst.ordinal)}
               />
@@ -769,15 +767,15 @@ const styles = StyleSheet.create({
     // GlassCard owns radius / blur / border / shadow.
   },
   section: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   helperText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
-    marginTop: spacing.xxs,
-    marginLeft: spacing.xs,
+    marginTop: 2,
+    marginLeft: space[1],
   },
   // Stepper
   stepperRow: {
@@ -787,7 +785,7 @@ const styles = StyleSheet.create({
   },
   stepperLabel: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "500",
   },
@@ -800,9 +798,9 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: materials.chrome.glassFill,
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -810,7 +808,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   stepperBtnText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 20,
     fontWeight: "600",
   },
@@ -818,10 +816,10 @@ const styles = StyleSheet.create({
     minWidth: 56,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   stepperValueText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 17,
     fontWeight: "600",
   },
@@ -830,17 +828,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   installmentTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "600",
   },
   removeBtn: {
     minHeight: 44,
     minWidth: 44,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -848,18 +846,18 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   removeBtnText: {
-    color: semantic.error,
+    color: color.danger,
     fontSize: 14,
     fontWeight: "500",
   },
   // Segmented control
   segmentedHost: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: materials.chrome.glassFill,
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
     overflow: "hidden",
   },
   segmentedBtn: {
@@ -867,99 +865,99 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   segmentedBtnActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   segmentedBtnText: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     fontWeight: "500",
   },
   segmentedBtnTextActive: {
-    color: textTokens.inverse,
+    color: color.textStrong,
     fontWeight: "600",
   },
   // Days input
   daysInputRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   daysInput: {
     width: 72,
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
-    color: textTokens.primary,
+    borderColor: color.lineStrong,
+    backgroundColor: materials.chrome.glassFill,
+    color: color.text1,
     fontSize: 15,
     textAlign: "center",
   },
   daysSuffix: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
-    marginLeft: spacing.sm,
+    marginLeft: space[2],
   },
   // Date input
   dateInputRow: {
     minHeight: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
-    marginTop: spacing.sm,
+    borderColor: color.lineStrong,
+    backgroundColor: materials.chrome.glassFill,
+    marginTop: space[2],
     justifyContent: "center",
   },
   dateInputText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
   },
   // Row error
   rowError: {
-    color: semantic.error,
+    color: color.danger,
     fontSize: 13,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   // Add button
   addBtn: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     minHeight: 44,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: accent.warm,
+    borderColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   addBtnDisabled: {
     opacity: 0.5,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   addBtnText: {
-    color: accent.warm,
+    color: color.accent,
     fontSize: 15,
     fontWeight: "600",
   },
   // Sticky footer
   stickyFooter: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    marginTop: space[4],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
   },
   stickyFooterOk: {
-    backgroundColor: semantic.successTint,
+    backgroundColor: color.successTint,
   },
   stickyFooterError: {
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
   },
   stickyFooterText: {
     fontSize: 14,
@@ -967,39 +965,39 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   stickyFooterTextOk: {
-    color: semantic.success,
+    color: color.success,
   },
   stickyFooterTextError: {
-    color: semantic.error,
+    color: color.danger,
   },
   // Locked banner
   lockedBanner: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: semantic.warningTint,
-    marginBottom: spacing.md,
+    backgroundColor: color.warningTint,
+    marginBottom: space[4],
   },
   lockedBannerText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 14,
     lineHeight: 20,
   },
   lockedPreview: {
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
   lockedRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   lockedLabel: {
     flex: 1,
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
   },
   lockedAmount: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "600",
   },

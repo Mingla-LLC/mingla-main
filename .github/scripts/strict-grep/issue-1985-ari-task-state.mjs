@@ -486,7 +486,11 @@ export function check(s) {
     !s.storageReaper.includes("mingla-business.ariConversationSelection.v1") ||
     !s.screen.includes("conversationSelectionReady") ||
     !s.screen.includes("Restoring your chat…") ||
-    !s.screen.includes("!conversationSelectionReady ? (") ||
+    // #4420: restoring the selected conversation still gates the thread. It
+    // is now one opening state (restore or message load) with a timeout and
+    // Try again, so the gate reads that gate, not the old ternary.
+    !s.screen.includes("!conversationSelectionReady || Boolean(chat.conversationId && chat.isLoadingMessages)") ||
+    !s.screen.includes("{threadOpening ? (") ||
     !s.hook.includes("onConversationIdChange?.(id)") ||
     !s.clearStores.includes("useAriConversationSelectionStore.getState().reset()")
   ) {

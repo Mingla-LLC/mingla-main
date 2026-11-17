@@ -132,6 +132,50 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
 // #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
 const LOCKED_PHASE3D_CONTRACT_SHA256 = "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc";
+// [#4420] Reviewed heap raise, approved by Seth on #4420. ts-jest type-checks
+// every file it transforms, and on these jest steps that program outgrew the
+// runner's ~2 GB default V8 heap ("JavaScript heap out of memory", exit 134).
+// Only these exact assertion commands get the one literal below; nothing reads
+// it from the job, the registry or a step, and no other step's env changes.
+// validateHeapRaisedCommands pins that every id names a real jest step.
+export const HEAP_RAISED_ENV = Object.freeze({ NODE_OPTIONS: "--max-old-space-size=4096" });
+export const HEAP_RAISED_COMMAND_IDS = Object.freeze([
+  "assert:issue-948-w2-bank-route-web-tests:01",
+  "assert:orch-1404-invite-error-recovery-tests:01",
+  "assert:issue-2399-multiday-picker-ticket-box:01",
+  "assert:issue-1985-ari-task-state:06",
+  "assert:issue-1972-ari-event-lifecycle:03",
+  "assert:issue-1973-ari-experience-lifecycle:02",
+  "assert:issue-1974-ari-ticket-pricing:04",
+  "assert:issue-1995-contact-book-blast:25",
+  "assert:issue-1995-contact-book-blast:26",
+  "assert:issue-1995-contact-book-blast:27",
+  "assert:issue-1421-venue-organic-insights-tests:02",
+  "assert:issue-873-guest-status-roster-tests:02",
+  "assert:issue-873-guest-status-roster-tests:03",
+  "assert:issue-873-guest-status-roster-tests:04",
+  "assert:issue-873-guest-status-roster-tests:05",
+  "assert:issue-1902-public-event-lifecycle-tests:03",
+]);
+// A heap-raised step may carry no env except this one reviewed literal, which
+// the runner already admits for jest steps (allowNodePath).
+const HEAP_RAISED_ALLOWED_STEP_ENV = JSON.stringify({ NODE_PATH: "./node_modules" });
+// [#4420] The raise reaches every plain mingla-business jest step, not only the
+// ids above (the ones first seen running out of memory): those lanes sit near
+// the 2 GB default on main too, and one-by-one listing kept missing the next.
+// A step qualifies when it runs mingla-business jest or tsc: from that cwd, a script
+// that calls `npx jest` / `npm test` / `npx tsc`, or a script that `cd mingla-business` and
+// then calls one of those. Any other step (no business jest, children, or any
+// other env) never gets it.
+const BUSINESS_JEST_RUN = /\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
+const BUSINESS_JEST_AFTER_CD = /(?:^|\n|&&\s*|;\s*)cd mingla-business\b[\s\S]*\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
+export function isHeapRaisedStep(step) {
+  if (!step || step.children || typeof step.run !== "string") return false;
+  const runsBusinessJest = (step.cwd === "mingla-business" && BUSINESS_JEST_RUN.test(step.run))
+    || BUSINESS_JEST_AFTER_CD.test(step.run);
+  if (!runsBusinessJest) return false;
+  return !step.env || JSON.stringify(step.env) === HEAP_RAISED_ALLOWED_STEP_ENV;
+}
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -502,24 +546,48 @@ export function phase3dContractDigest(manifest) {
 // #4238 order after production: renamed the three #4238 migrations (M-1, M-3, M-2) from 20280707*4238 to 20280708014238/20280708024238/20280708034238 (after 20280708004339, already applied in production), same relative order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4430 Local review owner-read RLS test (after merging origin/main ad97118a28): re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 integration 3: merged origin/main f512401461 (#4438 #4430 local review owner-read pg17 suite kept beside the #4238 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 experience venue-line privacy and Stay other-contact migrations listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4435 Phase 0 characterization: listed the four new pg17 suites and their sidecars in the #1931 and #2117 replay inventories beside the #4436 rows; re-sealed.
 // #4436 follow-up 20280708046436 (invited self-join, own prefs): listed the migration after the #4436 guard migration in the #1857, #1931 and #2117 lanes and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 W2: listed migrations 20280708054435 (group lifecycle) and 20280708064435 (chat reopen and clear) after 20280708046436 in the #1857, #1931 and #2117 lanes, and their four pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 CI fix: re-sealed after skipping 20280708054435 by exact filename in the #1931 filtered replay; MANIFEST.json phase3eContractSha256 matches.
 // #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4238 W4c: re-sealed after the W2, W3 and W4b migrations (ads follow event, builder intelligence, Host ad notices and roles) were listed after 20280709004435 in the #1857, #1931 and #2117 lanes and their three pg17 proofs with sidecars joined the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
+// #4238 W6a: merged origin/4420-host-graphite-glass (its MANIFEST row change kept beside the #4238 W2/W3/W4b rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4238 rework 1 (tester P1-4): re-sealed after the three #4238 W2/W3/W4b migrations were skipped by exact filename in the #1931 filtered replay and the tester's host_ad_roles adversarial pg17 suite and sidecar joined the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
 // #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4238 rework 2: merged origin/main 3c6bbd0d81 (#4435 leftovers row 20280710004435 kept in filename order between the #4238 rows); re-sealed.
+// #4238 rework 3: re-sealed after the three #4238 migrations were renumbered to 20280715004238 / 20280716004238 / 20280717004238 (lane inventories and the #1931 exact-filename skip list); MANIFEST.json phase3eContractSha256 matches.
 // #4452 rework 1: registered the tester adversarial pg17 suite and the rework SQL suite (with sidecars) in the #1931 and #2117 inventories; re-sealed.
 // #4452 retest 1: registered the tester rework adversarial pg17 suite (with its sidecar) in the #1931 and #2117 inventories; re-sealed.
 // #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
 // #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
+// #4238 rework 5: merged origin/main e4cb2564bd (#4452 rows kept in filename order ahead of the #4238 rows; both #1931 exact-filename skip blocks kept); re-sealed.
+// #4238 W7: merged origin/4420-host-graphite-glass a196ecfd7a (its 20280719004420 migration row kept after the #4238 rows); re-sealed.
+// #4420 experience venue-line privacy and Stay other-contact migrations listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4238 W8: re-sealed after merging origin/4420-host-graphite-glass c37722672d; MANIFEST.json phase3eContractSha256 matches.
+// #4238 rework 6: merged origin/main (#4452 B8 row and skip kept beside the #4238/#4420 rows); re-sealed.
+// #4420 merge of main after #4455: kept the #4420 Stay other-contact and experience venue-line privacy migrations after the #4452 migrations in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 Stay other-contact recovery migration 20280721004420 and its pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4238 rework 7: merged origin/4420-host-graphite-glass 33f59ce94a (its 20280721/22/23004420 rows kept beside the #4238 and #4452 B8 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
+// #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
-// #4459: listed migration 20280730004459 (brand Guest chat) and its pg17 suite and sidecar; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9a08510f2e436b1c4b51769e47ed2fd2412eb3e7387ccbdaea4ac9b533f14127";
+// #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4420 Stay pay link brand theme: listed migration 20280731104420 after 20280725004452 in the #1857, #1931 and #2117 lanes (plpgsql body, no filtered-replay skip needed; both filtered replays verified) and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
+// #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
+// #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459) after 20280803004238 and kept its pg17 suites and sidecars; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "fbc270d67aeaee867adad903ccd1bfd60ac6918196a85c639c8dbb09f2469730";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1100,6 +1168,24 @@ export function decodeManifestTextRepresentations(rawManifest) {
   const origin = (manifest.legacyOrigins || []).find((item) => item.stem === "issue-994-ota-env-resolution" && item.extension === "yml");
   if (origin?.workflowMetadata?.pathScope) origin.workflowMetadata.pathScope = origin.workflowMetadata.pathScope.map(decodeReviewedText);
   return manifest;
+}
+
+// [#4420] Every heap-raised command must be a real mingla-business jest step in
+// the registry, listed once, so the raise can never drift onto another command.
+export function validateHeapRaisedCommands(manifest) {
+  const errors = [];
+  const steps = new Map();
+  for (const suite of manifest.suites || []) for (const step of suite.steps || []) steps.set(step.commandId, step);
+  if (new Set(HEAP_RAISED_COMMAND_IDS).size !== HEAP_RAISED_COMMAND_IDS.length) errors.push("heap-raised command ids must be unique");
+  if (JSON.stringify(HEAP_RAISED_ENV) !== JSON.stringify({ NODE_OPTIONS: "--max-old-space-size=4096" })) errors.push("heap-raised env must be exactly the reviewed NODE_OPTIONS literal");
+  for (const id of HEAP_RAISED_COMMAND_IDS) {
+    const step = steps.get(id);
+    if (!step) { errors.push(`${id}: heap-raised command is not in the registry`); continue; }
+    if (!isHeapRaisedStep(step)) {
+      errors.push(`${id}: heap-raised command must be a plain mingla-business jest step`);
+    }
+  }
+  return errors;
 }
 
 export function validateManifestTextRepresentations(rawManifest) {
@@ -1816,6 +1902,7 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
   if (JSON.stringify(manifest.runnerContract) !== JSON.stringify(requiredRunnerContract)) {
     fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
   }
+  for (const message of validateHeapRaisedCommands(manifest)) fail(errors, message);
   for (const suite of manifest.suites || []) {
     const maximumTimeoutSeconds = suite.migrationWave === POSTGRES_WAVE ? 2400 : 1500;
     if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > maximumTimeoutSeconds) {

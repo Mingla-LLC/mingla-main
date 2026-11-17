@@ -67,7 +67,10 @@ describe("issue #3281 Round 1 PR 1a — Host wording / zone / money", () => {
 
   it("ExperienceReservePicker uses experienceTimeZone (no getHours)", () => {
     const picker = read("src/components/experience/ExperienceReservePicker.tsx");
-    expect(picker).toMatch(/experienceTimeChoices/);
+    // [TEST-MOD-APPROVED #4420] the time grid lives in the shared hook the
+    // sheet now reads (one owner for the sheet and the inline picker).
+    expect(picker).toMatch(/useExperienceReserveState\(/);
+    expect(read("../packages/offering-rendering/useExperienceReserveState.ts")).toMatch(/experienceTimeChoices/);
     expect(picker).toMatch(/unitAllInCents/);
     expect(picker).not.toMatch(/\.getHours\s*\(/);
   });

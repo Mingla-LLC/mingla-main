@@ -1,6 +1,6 @@
 import type { BrandStripeStatus } from "../store/currentBrandStore";
 import type { IconName } from "../components/ui/Icon";
-import { accent, semantic } from "../constants/designSystem";
+import { color } from "../constants/designSystem";
 // #3258 — imported from the sentence's OWN module, never from
 // `stripeKycRemediationMessages`. This file is in the eager boot payload; that
 // one is a ~245-entry remediation table whose only renderer is a lazy leaf of
@@ -343,7 +343,7 @@ export const BRAND_STRIPE_BANNER_CONFIG: Record<
 > = {
   not_connected: {
     icon: "bank",
-    iconColor: accent.warm,
+    iconColor: color.accent,
     title: "Connect your bank to get paid",
     sub: "Get paid for what you sell. Setup takes 5 minutes.",
     ctaLabel: "Connect bank",
@@ -352,7 +352,7 @@ export const BRAND_STRIPE_BANNER_CONFIG: Record<
   },
   onboarding: {
     icon: "bank",
-    iconColor: accent.warm,
+    iconColor: color.accent,
     title: "Onboarding submitted — verifying",
     sub: "We're reviewing your details. We'll email you when verified.",
     ctaLabel: "Finish onboarding",
@@ -364,7 +364,7 @@ export const BRAND_STRIPE_BANNER_CONFIG: Record<
   // re-open a completed form and return them here — the reported loop.
   pending_verification: {
     icon: "bank",
-    iconColor: accent.warm,
+    iconColor: color.accent,
     title: "Onboarding submitted — verifying",
     sub: STRIPE_PENDING_VERIFICATION_FALLBACK_SUB,
     ctaLabel: null,
@@ -373,7 +373,7 @@ export const BRAND_STRIPE_BANNER_CONFIG: Record<
   },
   active: {
     icon: "check",
-    iconColor: semantic.success,
+    iconColor: color.success,
     title: ACTIVE_STRIPE_BANNER_TITLE,
     sub: "Payments are ready for this brand.",
     ctaLabel: null,
@@ -383,7 +383,7 @@ export const BRAND_STRIPE_BANNER_CONFIG: Record<
   },
   restricted: {
     icon: "flag", // W-1: alert/info absent in kit; flag = action-needed
-    iconColor: semantic.error,
+    iconColor: color.danger,
     title: "Action required — your account is limited",
     sub: "We need additional information before you can take payments.",
     ctaLabel: "Continue verification",
@@ -397,7 +397,7 @@ export const BRAND_STRIPE_BANNER_CONFIG: Record<
   // with a tap target on it.
   status_unresolved: {
     icon: "bank",
-    iconColor: accent.warm,
+    iconColor: color.accent,
     title: STRIPE_STATUS_UNRESOLVED_TITLE,
     sub: STRIPE_STATUS_UNRESOLVED_SUB,
     ctaLabel: null,

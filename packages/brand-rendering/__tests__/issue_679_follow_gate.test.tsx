@@ -34,9 +34,10 @@ describe("Issue #679 — Follow is callback-gated, honest, and doubly inserted",
       !(onToggleFollow === undefined);
     expect(rendersFollow(undefined)).toBe(false);
     expect(rendersFollow(() => {})).toBe(true);
+    // issue #4420 wave 2 — one mount (`followControl`) serves both sites.
     expect(
       brandPage.split("onToggleFollow={callbacks.onToggleFollow}").length - 1,
-    ).toBe(2);
+    ).toBe(1);
   });
 
   test("G-2 SharedFollowButton maps server-truth Following / Follow labels", () => {
@@ -51,25 +52,23 @@ describe("Issue #679 — Follow is callback-gated, honest, and doubly inserted",
   });
 
   test("G-3 BOTH insertion sites reference BrandFollowControl at the spec'd points", () => {
-    // Mount tags only — `React.FC<BrandFollowControlProps>` also contains the prefix.
-    expect(brandPage.match(/<BrandFollowControl[\s>]/g)?.length ?? 0).toBe(2);
+    // issue #4420 wave 2 — one mount, `followControl(desktop)`, used twice:
+    // first in the phone sheet (before the socials), then under the desktop
+    // flyer (before Share).
+    expect(brandPage.match(/<BrandFollowControl[\s>]/g)?.length ?? 0).toBe(1);
 
     const phoneWrap = brandPage.indexOf("styles.phoneIdentityWrap");
     expect(phoneWrap).toBeGreaterThan(-1);
-    const phoneIdentity = brandPage.indexOf("{identityBlock}", phoneWrap);
-    const phoneFollow = brandPage.indexOf("<BrandFollowControl", phoneWrap);
+    const phoneFollow = brandPage.indexOf("followControl(false)", phoneWrap);
     const phoneSocials = brandPage.indexOf("{socialsBlock}", phoneWrap);
-    expect(phoneIdentity).toBeGreaterThan(-1);
-    expect(phoneFollow).toBeGreaterThan(phoneIdentity);
+    expect(phoneFollow).toBeGreaterThan(-1);
     expect(phoneSocials).toBeGreaterThan(phoneFollow);
 
-    const panelStart = brandPage.indexOf("const stickyPanel = isDesktop");
+    const panelStart = brandPage.indexOf("const flyerActions = isDesktop");
     expect(panelStart).toBeGreaterThan(-1);
-    const deskSocials = brandPage.indexOf("{socialsBlock}", panelStart);
-    const deskFollow = brandPage.indexOf("<BrandFollowControl", panelStart);
+    const deskFollow = brandPage.indexOf("followControl(true)", panelStart);
     const deskShare = brandPage.indexOf("callbacks.onShare", panelStart);
-    expect(deskSocials).toBeGreaterThan(panelStart);
-    expect(deskFollow).toBeGreaterThan(deskSocials);
+    expect(deskFollow).toBeGreaterThan(panelStart);
     expect(deskShare).toBeGreaterThan(deskFollow);
   });
 

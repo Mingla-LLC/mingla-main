@@ -155,7 +155,8 @@ describe("ORCH-1103 Surface 2 — delete-variant card", () => {
   });
 
   it("Delete button wears semantic.error (destructive), NOT userBubble", () => {
-    expect(proposalCard).toMatch(/deleteBtn:\s*\{[^}]*backgroundColor:\s*semantic\.error/s);
+    // [TEST-MOD-APPROVED #4420] semantic.error → color.danger (same destructive red).
+    expect(proposalCard).toMatch(/deleteBtn:\s*\{[^}]*backgroundColor:\s*color\.danger/s);
   });
 
   it("Delete label stays >=14/600 to clear the 3:1 large-text contrast bar", () => {

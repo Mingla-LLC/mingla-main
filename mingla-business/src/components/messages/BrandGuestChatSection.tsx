@@ -8,7 +8,7 @@ import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { spacing } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import type { BrandGuestChatSummary } from "../../services/groupChatService";
 import { Icon } from "../ui/Icon";
 import { BrandGroupTile } from "./BrandGroupTile";
@@ -37,7 +37,7 @@ export function BrandGuestChatRow({
       <View>
         <BrandGroupTile name={chat.brand_name} photoUrl={chat.brand_logo_url} seed={chat.brand_id} size={TILE} />
         <View style={styles.guestsBadge} testID="brand-guest-chat-badge">
-          <Icon name="users" size={11} color="#101216" />
+          <Icon name="users" size={11} color={color.onAccent} />
         </View>
       </View>
       <View style={styles.copy}>
@@ -96,8 +96,8 @@ export function BrandGuestChatSection({
 const styles = StyleSheet.create({
   section: { gap: 2 },
   heading: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    marginHorizontal: space[4],
+    marginTop: space[2],
     color: brandGroupChat.textSoft,
     fontSize: 12,
     fontWeight: "700",
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   rowPressed: { backgroundColor: brandGroupChat.strip },
   rowSelected: { backgroundColor: brandGroupChat.accentSoft },
@@ -129,8 +129,8 @@ const styles = StyleSheet.create({
   line: { flexDirection: "row", alignItems: "center", gap: 6 },
   name: { flexShrink: 1, color: brandGroupChat.textPrimary, fontSize: 16, fontWeight: "600" },
   tag: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, backgroundColor: brandGroupChat.accentSoft },
-  tagText: { color: "#F6B27A", fontSize: 11, fontWeight: "700" },
+  tagText: { color: color.accentText, fontSize: 11, fontWeight: "700" },
   sub: { color: brandGroupChat.textSoft, fontSize: 13 },
-  error: { marginHorizontal: spacing.md, paddingVertical: spacing.sm },
+  error: { marginHorizontal: space[4], paddingVertical: space[2] },
   errorText: { color: brandGroupChat.textSecondary, fontSize: 13 },
 });

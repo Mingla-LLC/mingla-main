@@ -19,7 +19,7 @@
       "op": "add_member",
       "field": "allowed_identifier_references",
       "key": "getToken",
-      "value": "supabase/functions/_shared/adConversionFire.ts@57702:deps.getToken:grouped_reference:deps.getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@60701:deps.getToken:grouped_reference:deps.getToken",
       "expectedAbsent": true
     },
     {
@@ -33,7 +33,7 @@
       "op": "add_member",
       "field": "allowed_identifier_references",
       "key": "getToken",
-      "value": "supabase/functions/_shared/adConversionFire.ts@75406:deps.getToken:grouped_reference:deps.getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@78507:deps.getToken:grouped_reference:deps.getToken",
       "expectedAbsent": true
     },
     {
@@ -65,6 +65,6 @@
       "expectedAbsent": true
     }
   ],
-  "resultPolicySha256": "efb2eafcfbaca0a5284720b729d2209c30137edacfa85af3f62a77f1d7bcaf50",
+  "resultPolicySha256": "11cf1ebb24110f6d234d57bdb9243c6232614eb81200616fc62427d511cbc1d0",
   "reason": "Issue #4452 adds the lead-label fields to the four senders and the host-funnel identity read, which moves the existing deps.getToken / metaApiVersion(getToken) references; the same references are re-declared at their new offsets."
 }

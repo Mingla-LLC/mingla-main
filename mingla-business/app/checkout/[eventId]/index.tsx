@@ -34,12 +34,8 @@ import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import {
   decodeCartSeed,
   eventPublicPath,
@@ -75,6 +71,7 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
 import {
@@ -123,6 +120,8 @@ const EMPTY_OCCURRENCES: readonly PublicEventOccurrence[] = [];
 
 export default function CheckoutTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  // issue #4420 audit — the sticky bar's real height pads the scroll.
+  const [barHeight, setBarHeight] = useState(0);
   // #4304 — wide desktop: tickets left, a static order summary right.
   const wide = useCheckoutWideLayout();
   const router = useRouter();
@@ -552,6 +551,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
       : ticketLink.ticket === null
         ? []
         : [ticketLink.ticket];
+  // #4420 — an empty cart totals zero in the event's own currency (the cart
+  // has no currency until a ticket is in it). A lone dash read as a bar.
+  const emptyTotalCurrency =
+    visibleTickets.find((ticket) => typeof ticket.currency === "string" && ticket.currency.length > 0)
+      ?.currency ??
+    (typeof event.currency === "string" && event.currency.length > 0 ? event.currency : null);
+  const emptyTotalLabel =
+    emptyTotalCurrency === null ? "—" : formatCurrency(0, emptyTotalCurrency);
 
   const checkoutLifecycle = resolveEventCheckoutLifecycleGate(
     event,
@@ -658,20 +665,30 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: wide ? spacing.xl : insets.bottom + 140 },
+            {
+              paddingBottom: wide
+                ? space[7]
+                : Math.max(insets.bottom + 140, barHeight + space[4]),
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
           {/* Event mini-card: cover hue band + name + date line */}
-          <View style={styles.miniCard}>
-            <EventCoverMedia
-              hue={event.coverHue}
-              mediaUrl={event.coverMediaUrl}
-              mediaType={event.coverMediaType}
-              radius={0}
-              label=""
-              style={styles.miniCover}
-            />
+          {/* #4420 — on desktop the ticket stub carries this. */}
+          <View style={[styles.miniCard, wide ? styles.hiddenOnWide : null]}>
+            {/* #4420 — no cover: the host's colour, as on the public page. */}
+            {typeof event.coverMediaUrl === "string" && event.coverMediaUrl.trim().length > 0 ? (
+              <EventCoverMedia
+                hue={event.coverHue}
+                mediaUrl={event.coverMediaUrl}
+                mediaType={event.coverMediaType}
+                radius={0}
+                label=""
+                style={styles.miniCover}
+              />
+            ) : (
+              <CheckoutCoverFallback style={styles.miniCover} />
+            )}
             <Text style={styles.miniTitle} numberOfLines={2}>
               {event.name.trim().length > 0 ? event.name : "Untitled event"}
             </Text>
@@ -858,7 +875,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
-        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom}>
+        <CheckoutOrderSummary
+          wide={wide}
+          bottomInset={insets.bottom}
+          onBarHeight={setBarHeight}
+          // #4420 §4.1 — the desktop ticket stub carries the offering.
+          stub={{ title: event.name.trim().length > 0 ? event.name : "Untitled event", eyebrow: dayLine.length > 0 ? dayLine : null, coverUrl: event.coverMediaUrl ?? null }}
+        >
           <React.Suspense fallback={null}>
             <CheckoutDiscountCodeField
               collapsible={!wide}
@@ -878,7 +901,9 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           <View style={styles.subtotalRow}>
             <Text style={styles.subtotalLabel}>Total</Text>
             <Text style={styles.subtotalValue}>
-              {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
+              {/* #4420 — an empty cart totals zero in the event's currency
+                  (a lone dash read as a bar). */}
+              {totals.isEmpty ? emptyTotalLabel : totals.isFree ? "Free" : headlineAllIn}
             </Text>
           </View>
           <Button
@@ -914,84 +939,85 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
+  hiddenOnWide: { display: "none" },
   extrasRefusal: {
-    color: semantic.error,
+    color: color.danger,
     fontSize: 14,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
   },
   miniCard: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   miniCover: {
     height: 64,
     borderRadius: radiusTokens.md,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   miniTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.3,
   },
   miniSubtitle: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   sameTicketsRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.md,
-    paddingVertical: spacing.xs,
+    marginBottom: space[4],
+    paddingVertical: space[1],
   },
   sameTicketsLabel: {
     flex: 1,
-    paddingRight: spacing.md,
+    paddingRight: space[4],
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   perDateBlock: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   perDateHeading: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   perDateHint: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginBottom: 4,
   },
   emptyWrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   emptyTitle: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     textAlign: "center",
   },
@@ -999,34 +1025,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   // ORCH-1147R2 — quiet combined "Fees & tax" line above the prominent Total.
   feesTaxRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   feesTaxLabel: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   feesTaxValue: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "600",
   },
   subtotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   subtotalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

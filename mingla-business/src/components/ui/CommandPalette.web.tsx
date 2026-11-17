@@ -52,6 +52,7 @@ import { useCampaigns } from "../../hooks/marketing/useCampaigns";
 import { useUserTemplates } from "../../hooks/marketing/useUserTemplates";
 import { useCommandPalette } from "../../hooks/useCommandPaletteState";
 
+import { color, shadow, scrim } from "../../constants/designSystem";
 const RECENT_LIMIT = 5;
 
 /**
@@ -232,10 +233,10 @@ const DIALOG_STYLE: React.CSSProperties = {
   minWidth: 480,
   width: "calc(100vw - 96px)",
   maxHeight: "60vh",
-  background: "#0c0e12",
-  border: "1px solid rgba(255, 255, 255, 0.12)",
+  background: color.canvas,
+  border: `1px solid ${color.lineStrong}`,
   borderRadius: 24,
-  boxShadow: "0 16px 40px rgba(0, 0, 0, 0.48)",
+  boxShadow: `0 ${shadow.menu.shadowOffset.height}px ${shadow.menu.shadowRadius * 2}px ${scrim.modal}`,
   zIndex: 200, // Higher than Sheet.web (100/101) — palette is top-level chrome
   overflow: "hidden",
   display: "flex",
@@ -253,7 +254,7 @@ const INPUT_WRAPPER_STYLE: React.CSSProperties = {
 
 const INPUT_ICON_STYLE: React.CSSProperties = {
   fontSize: 16,
-  color: "rgba(255, 255, 255, 0.52)",
+  color: color.text3,
   flexShrink: 0,
 };
 
@@ -262,7 +263,7 @@ const INPUT_STYLE: React.CSSProperties = {
   background: "transparent",
   border: "none",
   outline: "none",
-  color: "rgba(255, 255, 255, 0.96)",
+  color: color.text1,
   fontSize: 16,
   lineHeight: 1.4,
   fontFamily: "inherit",
@@ -272,9 +273,9 @@ const INPUT_ESC_HINT_STYLE: React.CSSProperties = {
   fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
   fontSize: 11,
   fontWeight: 500,
-  color: "rgba(255, 255, 255, 0.52)",
-  background: "rgba(255, 255, 255, 0.04)",
-  border: "1px solid rgba(255, 255, 255, 0.08)",
+  color: color.text3,
+  background: color.fill.inset,
+  border: `1px solid ${color.line}`,
   borderRadius: 4,
   padding: "2px 6px",
   flexShrink: 0,
@@ -282,7 +283,7 @@ const INPUT_ESC_HINT_STYLE: React.CSSProperties = {
 
 const DIVIDER_STYLE: React.CSSProperties = {
   height: 1,
-  background: "rgba(255, 255, 255, 0.08)",
+  background: color.fill.pressed,
   flexShrink: 0,
 };
 
@@ -301,7 +302,7 @@ const ITEM_STYLE: React.CSSProperties = {
   padding: "0 16px",
   display: "flex",
   alignItems: "center",
-  color: "rgba(255, 255, 255, 0.96)",
+  color: color.text1,
   fontSize: 14,
   cursor: "pointer",
   userSelect: "none",
@@ -310,7 +311,7 @@ const ITEM_STYLE: React.CSSProperties = {
 const EMPTY_STYLE: React.CSSProperties = {
   padding: "20px 16px",
   textAlign: "center",
-  color: "rgba(255, 255, 255, 0.52)",
+  color: color.text3,
   fontSize: 14,
 };
 
@@ -336,11 +337,11 @@ const CommandPaletteCss: React.FC = () => (
           font-weight: 600;
           letter-spacing: 1.2px;
           text-transform: uppercase;
-          color: rgba(255, 255, 255, 0.52);
+          color: ${color.text3};
         }
         [cmdk-item][data-selected="true"] {
-          background: rgba(235, 120, 37, 0.28);
-          color: #eb7825;
+          background: ${color.fill.railOn};
+          color: ${color.textStrong};
         }
         [cmdk-item][data-disabled="true"] {
           opacity: 0.4;
@@ -349,7 +350,7 @@ const CommandPaletteCss: React.FC = () => (
         [cmdk-overlay] {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.7);
+          background: ${scrim.modal};
           z-index: 199;
         }
         [cmdk-dialog] {

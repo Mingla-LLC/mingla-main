@@ -466,7 +466,7 @@ export const formatDraftDateLine = (draft: EventDateLike): string => {
     );
   }
   // multi_date
-  const first = draft.multiDates !== null ? draft.multiDates[0] : undefined;
+  const first = draft.multiDates?.[0];
   if (first === undefined) return "Date TBD";
   return formatSingleDateLine(
     first.date,

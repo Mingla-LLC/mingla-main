@@ -77,14 +77,15 @@ import {
   isPlatform,
   META_OBJECTIVE_GOAL_MATRIX,
   META_PIXEL_GATED_GOALS,
-  metaBudgetCategoryForGoal,
+  metaBudgetCategoryForBillingEvent,
   REDDIT_CTA_MAP,
   TIKTOK_CTA_MAP,
 } from "../_shared/adChannel.ts";
-import type {
-  AdAudienceRow,
-  AdStage,
-  PaidSocialPlatform,
+import {
+  type AdAudienceRow,
+  type AdStage,
+  buildAdStagePlan,
+  type PaidSocialPlatform,
 } from "../_shared/adAudienceStages.ts";
 import {
   buildPaidSocialStageRuntime,
@@ -200,6 +201,7 @@ import {
   validateSnapchatOptimizationGoal,
   validateSnapchatVideoDuration,
   validateSnapchatWebViewUrl,
+  SNAPCHAT_FREQUENCY_CAP_GOALS,
 } from "../_shared/snapchat.ts";
 import {
   AdDestinationError,
@@ -214,9 +216,25 @@ import {
 import { type Platform, resolveOwnerLane } from "../_shared/adChannelCore.ts";
 import {
   hostAdGoalFields,
+  hostMetaCustomEventType,
   hostGoalBodyError,
   hostOptimizationFor,
 } from "../_shared/adHostGoal.ts";
+import {
+  HOST_LIFETIME_PLATFORMS,
+  type HostAdSetUnit,
+  hostAdSetUnits,
+  hostBudgetModeFor,
+  hostCreativeLibraryIds,
+  hostFrequencyCap,
+  hostMetaAdvantageAudience,
+  paidSocialStagesApply,
+  providerDailyMinimumCents,
+} from "../_shared/adHostPlanRules.ts";
+import {
+  ladderMetaCustomEventType,
+  ladderStageFor,
+} from "../_shared/adGoalLadder.ts";
 import { PURCHASE_SIGNAL_MIN_28D } from "../_shared/adSalesReadiness.ts";
 import {
   frozenAudienceBinding,
@@ -699,6 +717,136 @@ async function preparePaidSocialStages(
   return { runtime, creativeRows: creativeRows ?? [] };
 }
 
+/**
+ * #4238 W4a (T-2 + 6b): what a Host/Ari plan's app is built with on Meta,
+ * Snapchat or TikTok — the ad sets (one prospecting, plus the retarget ad set
+ * the frozen split asked for while it still holds, else folded back to one)
+ * and one ad per frozen creative (1–5), every creative's media prepared for
+ * this app. Null = the plain one-ad-set, one-ad path (unchanged). Reads only
+ * the reviewed plan version and server tables, never the request body.
+ */
+type HostAdSetPreparation = {
+  units: HostAdSetUnit[];
+  creativeIds: string[];
+  media: Map<string, PaidSocialCreativeMedia>;
+  folded: string | null;
+};
+
+async function prepareHostAdSets(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  input: {
+    platform: PaidSocialPlatform;
+    connection: AdConnectionRow;
+    lane: "consumer" | "business";
+    canonicalPlan: Record<string, unknown> | null;
+    markets: string[];
+    brandId: string | null;
+    eventId: string | null;
+    dailySpendCents: number;
+    floorCents: number | null;
+    budgetMode: "daily" | "lifetime";
+    baseTargeting: Record<string, unknown>;
+  },
+): Promise<HostAdSetPreparation | null> {
+  const canonical = input.canonicalPlan ?? {};
+  const ids = hostCreativeLibraryIds(
+    canonical.creative_library_ids,
+    canonical.creative_library_id,
+  );
+  if (!ids.ok) throw new Error(ids.detail);
+  const frozen = objectRecord(canonical.retarget_by_platform)?.[
+    input.platform
+  ];
+  const wantsTwo = objectRecord(frozen)?.ad_sets === 2;
+  let stagePlan: ReturnType<typeof buildAdStagePlan> = null;
+  const market = input.markets.length === 1
+    ? input.markets[0].trim().toUpperCase()
+    : "";
+  if (
+    wantsTwo && /^[A-Z]{2}$/.test(market) && input.brandId && input.eventId
+  ) {
+    const { data, error } = await db.from("ad_audiences")
+      .select(
+        "id,platform,code,scope,market,brand_id,event_id,platform_audience_id,approx_size,status",
+      )
+      .eq("platform", input.platform).eq("market", market);
+    // Not ready is the safe side: one ad set, never a retarget without data.
+    if (!error) {
+      stagePlan = buildAdStagePlan({
+        platform: input.platform,
+        rows: (data ?? []) as AdAudienceRow[],
+        market,
+        brandId: input.brandId,
+        eventId: input.eventId,
+        totalBudgetCents: 0,
+      });
+    }
+  }
+  const built = hostAdSetUnits({
+    platform: input.platform,
+    frozen,
+    dailySpendCents: input.dailySpendCents,
+    floorCents: input.floorCents,
+    budgetMode: input.budgetMode,
+    stagePlan,
+    baseTargeting: input.baseTargeting,
+  });
+  if (built.units.length === 1 && ids.ids.length === 1 && !wantsTwo) {
+    return null;
+  }
+  const { data: rows, error: rowError } = await db.from("ad_creatives")
+    .select(
+      "id,brand_id,kind,name,status,purged_at,content_hash,source_url,poster_url,aspect_ratio,variants,duration_seconds,has_audio,ai_generated",
+    )
+    .in("id", ids.ids);
+  if (rowError) throw rowError;
+  const creativeRows = (rows ?? []) as Record<string, unknown>[];
+  for (const id of ids.ids) {
+    const row = creativeRows.find((item) => item.id === id);
+    if (!row || row.purged_at || (input.brandId && row.brand_id !== input.brandId)) {
+      throw new Error(`host_creative_not_found:${id}`);
+    }
+  }
+  let media: Map<string, PaidSocialCreativeMedia>;
+  try {
+    media = await resolvePaidSocialCreativeMedia(db, {
+      platform: input.platform,
+      connection: input.connection,
+      lane: input.lane,
+      creativeRows,
+      creativeIds: ids.ids,
+    });
+  } catch (error) {
+    // Every creative is prepared for this app at launch; one that isn't is
+    // refused by name, never silently dropped.
+    throw new Error(
+      `host_creative_not_prepared:${
+        (error instanceof Error ? error.message : String(error)).slice(0, 120)
+      }`,
+    );
+  }
+  return { units: built.units, creativeIds: ids.ids, media, folded: built.folded };
+}
+
+/**
+ * #4238 W4c: the one-ad-set floor F that create recomputes the Snapchat or
+ * TikTok split with — the same figure preflight froze it with
+ * (hostDailyMinimumCents → providerDailyMinimumCents; Snap and TikTok floors
+ * do not depend on the goal). Null (a non-USD account) folds back to one ad
+ * set, exactly like preflight.
+ */
+function hostAdSetFloorCents(
+  platform: "snapchat" | "tiktok",
+  connection: AdConnectionRow,
+): number | null {
+  return providerDailyMinimumCents(
+    platform,
+    connection as unknown as { currency?: unknown; extra?: unknown },
+    "visits",
+  );
+}
+
 async function persistStageSnapshots(
   // deno-lint-ignore no-explicit-any
   db: any,
@@ -956,6 +1104,13 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "lane_invalid" }, 400);
   }
 
+  // #4238 item 3: the Meta conversion event a Host goal optimises for
+  // (PURCHASE for sales, COMPLETE_REGISTRATION for sign-ups); null = Admin.
+  let hostMetaCustomEvent:
+    | "PURCHASE"
+    | "INITIATE_CHECKOUT"
+    | "COMPLETE_REGISTRATION"
+    | null = null;
   if (requestedOwnerKind === "host") {
     let hostDestination;
     try {
@@ -1031,8 +1186,15 @@ serve(async (req: Request): Promise<Response> => {
         planHash: body.plan_hash,
         creativeId: hostCreativeId,
       });
+    // #4238 T-9 (W4a): a Host photo runs on Meta and Snapchat (Snapchat
+    // through the image's READY media ref from the launch's prepare step;
+    // ad-plan create_version refused it elsewhere, HOST_IMAGE_PLATFORMS);
+    // every other app is video.
+    const hostKindAllowed = hostCreativeRow.kind === "video" ||
+      (hostCreativeRow.kind === "image" &&
+        (platform === "meta" || platform === "snapchat"));
     if (
-      hostCreativeRow.kind !== "video" ||
+      !hostKindAllowed ||
       creativeSelectionError(hostCreativeRow, { frozen: hostCreativeFrozen })
     ) {
       return json({
@@ -1099,6 +1261,17 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     Object.assign(body, hostGoal);
+    hostMetaCustomEvent = hostOptimization
+      ? hostMetaCustomEventType(hostOptimization)
+      : null;
+    // #4238 item 4: a sales app frozen on the ladder's first step optimises
+    // for started checkouts until the sweep switches it (one new ad set).
+    if (
+      hostMetaCustomEvent === "PURCHASE" &&
+      ladderStageFor(hostCanonical, platform) === "checkout_first"
+    ) {
+      hostMetaCustomEvent = ladderMetaCustomEventType("checkout_first");
+    }
     // #4238 P1: the Host's button comes from the plan, mapped to this app's
     // own value; a client value is never used for a Host ad.
     const frozenCta = hostCanonical.call_to_action;
@@ -1164,7 +1337,8 @@ serve(async (req: Request): Promise<Response> => {
       detail: "budget_type_unsupported",
     }, 422);
   }
-  const budgetType = budgetTypeRaw as BudgetMode;
+  // #4238 5a: a bound Host plan may switch this to lifetime (see below).
+  let budgetType = budgetTypeRaw as BudgetMode;
   const amountCents = budget.amount_cents;
   if (!Number.isInteger(amountCents) || (amountCents as number) <= 0) {
     return json({
@@ -1195,7 +1369,7 @@ serve(async (req: Request): Promise<Response> => {
   // Lifetime is Meta-only until Google/Snap/TikTok/Reddit adapters send a
   // lifetime provider budget AND the spend feed covers those platforms. A
   // "$350 total" must never become $350/day with no working cap.
-  if (budgetType === "lifetime" && platform !== "meta") {
+  if (budgetType === "lifetime" && !HOST_LIFETIME_PLATFORMS.has(platform)) {
     return json({
       error: "validation_error",
       detail: "lifetime_budget_meta_only",
@@ -1271,6 +1445,8 @@ serve(async (req: Request): Promise<Response> => {
   }
   let customerCurrency = providerCurrency;
   let providerAmountCents = amountCents as number;
+  // #4238 5a: the Host cap a Host lifetime budget carries (brand money).
+  let hostLifetimeCapCents: number | null = null;
   let frozenExecutionTargeting: Record<string, unknown> | null = null;
   let boundPlanVersionId: string | null = null;
   let boundCanonicalPlan: Record<string, unknown> | null = null;
@@ -1524,6 +1700,27 @@ serve(async (req: Request): Promise<Response> => {
       planHash,
       providerDeliveryBudgetCents: providerAmountCents,
     });
+    // #4238 5a: a Host "total for the whole run" plan runs on a lifetime
+    // budget (the frozen cap) where the app supports it for one ad set; the
+    // daily delivery amount stays the recorded pace.
+    if (
+      boundPlanOwnership.owner_kind === "host" &&
+      hostBudgetModeFor(platform, canonicalPlan) === "lifetime"
+    ) {
+      if (!schedule.ends_at || schedule.days == null) {
+        return json({
+          error: "plan_conflict",
+          detail: "lifetime_budget_requires_valid_schedule",
+        }, 409);
+      }
+      const providerCap = Number(allocation.provider_budget_cents);
+      if (!Number.isSafeInteger(providerCap) || providerCap <= 0) {
+        return json({ error: "plan_conflict", detail: "plan_budget_mismatch" }, 409);
+      }
+      budgetType = "lifetime";
+      providerAmountCents = providerCap;
+      hostLifetimeCapCents = capCents;
+    }
   } else {
     // #4238 (I-4238-AUDIENCE-SERVER-BOUND): validate_only runs the same
     // frozen-audience binding guard before any provider call.
@@ -1560,7 +1757,7 @@ serve(async (req: Request): Promise<Response> => {
     owner_kind: requestedOwnerKind,
     cap_cents: capCents,
     lifetime_budget_cents: budgetType === "lifetime"
-      ? amountCents as number
+      ? hostLifetimeCapCents ?? amountCents as number
       : null,
     starts_at: schedule.starts_at,
     ends_at: schedule.ends_at,
@@ -3404,6 +3601,18 @@ serve(async (req: Request): Promise<Response> => {
       optimizationGoal: optimizationGoalS,
       billingEvent: "IMPRESSION",
       ...(budgetLevelS === "adset" ? { budgetCents: providerAmountCents } : {}),
+      // #4238 6c: Host visits-type ad squads take 3 per 7 days; never on a
+      // conversion goal (Snap refuses it there). Admin is unchanged.
+      ...(requestedOwnerKind === "host"
+        ? (() => {
+          const cap = hostFrequencyCap(
+            "snapchat",
+            optimizationGoalS,
+            SNAPCHAT_FREQUENCY_CAP_GOALS,
+          );
+          return cap ? { frequencyCap: cap } : {};
+        })()
+        : {}),
       targeting: {
         countries: countryCodesS,
         demographics: demographicsS,
@@ -3447,7 +3656,8 @@ serve(async (req: Request): Promise<Response> => {
 
     let snapStages: PaidSocialStagePreparation | null = null;
     let snapStageMedia = new Map<string, PaidSocialCreativeMedia>();
-    if (destEventIdS) {
+    // #4238 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads are one ad set.
+    if (paidSocialStagesApply(requestedOwnerKind, destEventIdS)) {
       if (countryCodesS.length !== 1 || !/^[A-Z]{2}$/.test(countryCodesS[0])) {
         return json({
           error: "validation_error",
@@ -3502,6 +3712,49 @@ serve(async (req: Request): Promise<Response> => {
             "admin-ad-create-campaign stage",
             "stage_preflight_failed",
           ),
+        }, 422);
+      }
+    }
+
+    // #4238 W4c: Host ad squads (prospecting + retarget when the frozen split
+    // still holds) and one ad per frozen creative, as on Meta. ABO only: each
+    // ad squad carries its own budget, every one at or above Snap's floor.
+    let hostSnap: HostAdSetPreparation | null = null;
+    if (
+      requestedOwnerKind === "host" && !snapStages && budgetLevelS === "adset"
+    ) {
+      try {
+        hostSnap = await prepareHostAdSets(supabase, {
+          platform: "snapchat",
+          connection: sconn,
+          lane,
+          canonicalPlan: boundCanonicalPlan,
+          markets: countryCodesS.map((country) => String(country)),
+          brandId: boundPlanOwnership?.brand_id ?? null,
+          eventId: destEventIdS,
+          dailySpendCents: providerAmountCents,
+          floorCents: hostAdSetFloorCents("snapchat", sconn),
+          budgetMode: "daily",
+          baseTargeting: adSetInputS.targeting,
+        });
+      } catch (error) {
+        return json({
+          error: "host_ad_set_preflight_failed",
+          detail: hostSafeDatabaseDetail(
+            error,
+            "admin-ad-create-campaign host ad squads",
+            "host_ad_set_preflight_failed",
+          ),
+        }, 422);
+      }
+      const lowS = hostSnap?.units.find((unit) =>
+        unit.budgetCents * 10_000 < SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO
+      );
+      if (lowS) {
+        return json({
+          error: "stage_budget_below_platform_minimum",
+          detail: `${lowS.stage}:${lowS.budgetCents}`,
+          message: `${lowS.stage} is below Snapchat's minimum ad-squad budget.`,
         }, 422);
       }
     }
@@ -3576,6 +3829,61 @@ serve(async (req: Request): Promise<Response> => {
             })),
           };
         });
+      } else if (hostSnap) {
+        const planS = hostSnap;
+        const unitsS = planS.units.map((unit) => ({
+          unit,
+          adSet: {
+            ...adSetInputS,
+            name: `${name} — ${unit.stage}`,
+            targeting: unit.targeting,
+            budgetCents: unit.budgetCents,
+          } as CreateAdSetInput,
+        }));
+        const adNameS = (stage: string, index: number) =>
+          `${name} — ${stage} — ${index + 1}`;
+        const stagedS = await createStagedCampaignAtomic(adapterS, sconn, {
+          campaign: campaignInputS,
+          stages: unitsS.map(({ unit, adSet }) => ({
+            key: unit.stage,
+            adSet,
+            ads: planS.creativeIds.map((creativeId, index) => {
+              const media = planS.media.get(creativeId);
+              if (!media?.snapMediaId) {
+                throw new Error(`stage_creative_media_missing:${creativeId}`);
+              }
+              return {
+                creative: {
+                  ...creativeInputS,
+                  topSnapMediaId: media.snapMediaId,
+                  adName: adNameS(unit.stage, index),
+                },
+                ad: { ...adInputS, name: adNameS(unit.stage, index) },
+              };
+            }),
+          })),
+        });
+        externalCampaignIdS = stagedS.externalCampaignId;
+        createdUnitsS = stagedS.stages.map((stageResult) => {
+          const item = unitsS.find(({ unit }) =>
+            unit.stage === stageResult.key
+          )!;
+          return {
+            stage: item.unit.stage,
+            audienceCodes: item.unit.audienceCodes,
+            audienceSizes: item.unit.audienceSizes,
+            budgetCents: item.unit.budgetCents,
+            adSetInput: item.adSet,
+            externalAdSetId: stageResult.externalAdSetId,
+            ads: stageResult.ads.map((ad, index) => ({
+              creativeId: planS.creativeIds[index] ?? null,
+              name: adNameS(item.unit.stage, index),
+              externalCreativeId: ad.externalCreativeId,
+              externalAdId: ad.externalAdId,
+              reviewStatus: ad.reviewStatus,
+            })),
+          };
+        });
       } else {
         const created = await createFullCampaignAtomic(adapterS, sconn, {
           campaign: campaignInputS,
@@ -3585,7 +3893,9 @@ serve(async (req: Request): Promise<Response> => {
         });
         externalCampaignIdS = created.externalCampaignId;
         createdUnitsS = [{
-          stage: null,
+          // #4238 T-2/T-4: a Host ad set is the prospecting stage, so the
+          // stage-metrics sync reports its frequency.
+          stage: requestedOwnerKind === "host" ? "prospecting" : null,
           audienceCodes: [],
           audienceSizes: {},
           budgetCents: budgetLevelS === "adset" ? amountCents as number : null,
@@ -3859,6 +4169,9 @@ serve(async (req: Request): Promise<Response> => {
           ),
           external_media_ids: snapStages
             ? [...snapStageMedia.values()].map((media) => media.snapMediaId)
+              .filter(Boolean)
+            : hostSnap
+            ? [...hostSnap.media.values()].map((media) => media.snapMediaId)
               .filter(Boolean)
             : [topSnapMediaIdS],
         },
@@ -4343,6 +4656,14 @@ serve(async (req: Request): Promise<Response> => {
         detail: landingCheckT.message,
       }, 422);
     }
+    // #4238 6b: Spark Ads exist only on Admin's staged path; a Host ad is one
+    // ad set built from the brand's own video, so a Host Spark plan is refused.
+    if (usesTikTokSparkT && requestedOwnerKind === "host") {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_admin_only",
+      }, 422);
+    }
     if (usesTikTokSparkT && !destEventIdT) {
       return json({
         error: "validation_error",
@@ -4603,7 +4924,8 @@ serve(async (req: Request): Promise<Response> => {
       let tiktokStages: PaidSocialStagePreparation | null = null;
       let tiktokStageMedia = new Map<string, PaidSocialCreativeMedia>();
       let tiktokSparkPostIds: string[] = [];
-      if (destEventIdT) {
+      // #4238 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads are one ad set.
+      if (paidSocialStagesApply(requestedOwnerKind, destEventIdT)) {
         if (
           countryCodesT.length !== 1 ||
           !/^[A-Z]{2}$/.test(countryCodesT[0])
@@ -4683,9 +5005,58 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
+      // #4238 W4c: Host ad groups (prospecting + retarget when the frozen
+      // split still holds) and one ad per frozen creative, as on Meta. ABO
+      // only: each ad group carries its own budget, every one >= TikTok's
+      // ad-group floor. Spark posts keep the one-ad path.
+      let hostTikTok: HostAdSetPreparation | null = null;
+      if (
+        requestedOwnerKind === "host" && !tiktokStages &&
+        budgetLevelT === "adset" && !usesTikTokSparkT
+      ) {
+        try {
+          hostTikTok = await prepareHostAdSets(supabase, {
+            platform: "tiktok",
+            connection: tconn,
+            lane,
+            canonicalPlan: boundCanonicalPlan,
+            markets: countryCodesT.map((country) => String(country)),
+            brandId: boundPlanOwnership?.brand_id ?? null,
+            eventId: destEventIdT,
+            dailySpendCents: providerAmountCents,
+            floorCents: hostAdSetFloorCents("tiktok", tconn),
+            budgetMode: "daily",
+            baseTargeting: baseTargetingT,
+          });
+        } catch (error) {
+          return json({
+            error: "host_ad_set_preflight_failed",
+            detail: hostSafeDatabaseDetail(
+              error,
+              "admin-ad-create-campaign host ad groups",
+              "host_ad_set_preflight_failed",
+            ),
+          }, 422);
+        }
+        const lowT = hostTikTok?.units.find((unit) =>
+          !validateTikTokBudgetFloor({
+            level: "ad_group",
+            mode: "daily",
+            dollars: centsToPlatformBudget("tiktok", unit.budgetCents),
+          }).ok
+        );
+        if (lowT) {
+          return json({
+            error: "stage_budget_below_platform_minimum",
+            detail: `${lowT.stage}:${lowT.budgetCents}`,
+            message: `${lowT.stage} is below TikTok's minimum ad-group budget.`,
+          }, 422);
+        }
+      }
+
       // (7) Image upload when the create-time URL path is used (GR-58:
       // UPLOAD_BY_URL, unique per-advertiser file name, both ids captured).
-      if (!tiktokStages && !imageIdT) {
+      if (!tiktokStages && !hostTikTok && !imageIdT) {
         const uploaded = await tiktokUploadImage(tconn, imageUrlT);
         imageIdT = uploaded.imageId;
       }
@@ -4706,6 +5077,11 @@ serve(async (req: Request): Promise<Response> => {
         name: `${name} — ad group`,
         optimizationGoal: optimizationGoalT,
         billingEvent: billingEventT,
+        // #4238 W4c (Z-6): Host website-conversion ad groups: 7-day click,
+        // view-through off (the builder sends them only with WEBSITE).
+        ...(requestedOwnerKind === "host" && objectiveT === "WEB_CONVERSIONS"
+          ? { clickOnlyAttributionDays: 7 as const }
+          : {}),
         ...(budgetLevelT === "adset"
           ? { budgetCents: providerAmountCents }
           : {}),
@@ -4846,6 +5222,76 @@ serve(async (req: Request): Promise<Response> => {
             }),
           };
         });
+      } else if (hostTikTok) {
+        const planT = hostTikTok;
+        const unitsT = planT.units.map((unit) => ({
+          unit,
+          adSet: {
+            ...adSetInputT,
+            name: `${name} — ${unit.stage}`,
+            targeting: {
+              ...(adSetInputT.targeting as Record<string, unknown>),
+              ...unit.targeting,
+            },
+            budgetCents: unit.budgetCents,
+          } as CreateAdSetInput,
+        }));
+        const adNameT = (stage: string, index: number) =>
+          `${name} — ${stage} — ${index + 1}`;
+        const stagedT = await createStagedCampaignAtomic(adapterT, tconn, {
+          campaign: campaignInputT,
+          stages: unitsT.map(({ unit, adSet }) => ({
+            key: unit.stage,
+            adSet,
+            ads: planT.creativeIds.map((creativeId, index) => {
+              const media = planT.media.get(creativeId);
+              if (!media?.tiktokImageId) {
+                throw new Error(`stage_creative_media_missing:${creativeId}`);
+              }
+              return {
+                creative: creativeInputT,
+                ad: {
+                  ...adInputT,
+                  name: adNameT(unit.stage, index),
+                  adFormat: media.kind === "video"
+                    ? "SINGLE_VIDEO" as const
+                    : "SINGLE_IMAGE" as const,
+                  imageIds: [media.tiktokImageId],
+                  ...(media.tiktokVideoId
+                    ? { videoId: media.tiktokVideoId }
+                    : {}),
+                },
+              };
+            }),
+          })),
+        });
+        externalCampaignIdT = stagedT.externalCampaignId;
+        createdUnitsT = stagedT.stages.map((stageResult) => {
+          const item = unitsT.find(({ unit }) =>
+            unit.stage === stageResult.key
+          )!;
+          return {
+            stage: item.unit.stage,
+            audienceCodes: item.unit.audienceCodes,
+            audienceSizes: item.unit.audienceSizes,
+            budgetCents: item.unit.budgetCents,
+            adSetInput: item.adSet,
+            externalAdSetId: stageResult.externalAdSetId,
+            ads: stageResult.ads.map((ad, index) => {
+              const creativeId = planT.creativeIds[index] ?? null;
+              const media = creativeId ? planT.media.get(creativeId) : null;
+              return {
+                creativeId,
+                externalCreativeId: null,
+                name: adNameT(item.unit.stage, index),
+                externalAdId: ad.externalAdId,
+                reviewStatus: ad.reviewStatus,
+                imageId: media?.tiktokImageId ?? null,
+                videoId: media?.tiktokVideoId ?? null,
+              };
+            }),
+          };
+        });
       } else {
         const createdT = await createFullCampaignAtomic(adapterT, tconn, {
           campaign: campaignInputT,
@@ -4855,7 +5301,9 @@ serve(async (req: Request): Promise<Response> => {
         });
         externalCampaignIdT = createdT.externalCampaignId;
         createdUnitsT = [{
-          stage: null,
+          // #4238 T-2/T-4: a Host ad set is the prospecting stage, so the
+          // stage-metrics sync reports its frequency.
+          stage: requestedOwnerKind === "host" ? "prospecting" : null,
           audienceCodes: [],
           audienceSizes: {},
           budgetCents: budgetLevelT === "adset" ? amountCents as number : null,
@@ -5235,7 +5683,22 @@ serve(async (req: Request): Promise<Response> => {
       }, 400);
     }
 
-    const creativeR = (body.creative ?? {}) as Record<string, unknown>;
+    // #4238 W4c (T-9): a Host plan's kind and photo link come from the
+    // reviewed plan version (frozen at create_version), never the request.
+    const hostFrozenR = requestedOwnerKind === "host"
+      ? (boundCanonicalPlan ?? {}) as Record<string, unknown>
+      : null;
+    const creativeR = {
+      ...((body.creative ?? {}) as Record<string, unknown>),
+      ...(hostFrozenR
+        ? {
+          kind: hostFrozenR.creative_kind === "image" ? "image" : "video",
+          image_url: typeof hostFrozenR.creative_image_url === "string"
+            ? hostFrozenR.creative_image_url
+            : null,
+        }
+        : {}),
+    } as Record<string, unknown>;
     // ISSUE-1185 [Reddit video Phase B]: Reddit VIDEO create. Unlike
     // Meta/Snap/TikTok/Google — which PREPARE-upload the video to the platform and
     // consume a READY ref — Reddit downloads and rehosts from a PUBLIC master URL
@@ -6056,6 +6519,19 @@ serve(async (req: Request): Promise<Response> => {
   if (specialAdCategories.length > 0) {
     targeting = applySpecialAdCategoryRestrictions(targeting);
   }
+  // #4238 6c + amendment A decision 4: a Host ad set lets Meta widen the
+  // audience (Advantage+) unless a list or lookalike is attached or the Host
+  // set a top age, a gender or a language. Admin keeps its own rule.
+  if (requestedOwnerKind === "host" && specialAdCategories.length === 0) {
+    targeting.targeting_automation = {
+      advantage_audience: hostMetaAdvantageAudience({
+        listOrLookalikeAttached: boundProspectingAudienceIds.length > 0 ||
+          (Array.isArray(targetingInput.custom_audiences) &&
+            targetingInput.custom_audiences.length > 0),
+        targeting: targetingInput,
+      }),
+    };
+  }
 
   // ── 4. Per-category budget floor (A4.g / PROOF M-P8 — never hardcoded). ──────
   const extra = (connection.extra ?? {}) as Record<string, unknown>;
@@ -6073,7 +6549,7 @@ serve(async (req: Request): Promise<Response> => {
     ? extra.dataset_id.trim()
     : "";
   if (
-    objective === "OUTCOME_SALES" &&
+    (objective === "OUTCOME_SALES" || hostMetaCustomEvent !== null) &&
     optimizationGoal === "OFFSITE_CONVERSIONS" &&
     !metaDatasetId
   ) {
@@ -6087,7 +6563,9 @@ serve(async (req: Request): Promise<Response> => {
     | Record<string, number>
     | null
     | undefined;
-  const category = metaBudgetCategoryForGoal(optimizationGoal);
+  // #4238 I-4238-META-FLOOR-FOLLOWS-BILLING: Meta's minimum follows what the
+  // ad set is charged for (billing_event), not its optimisation goal.
+  const category = metaBudgetCategoryForBillingEvent(billingEvent);
   if (!floors || typeof floors[category] !== "number") {
     return json({
       error: `${platform}_not_connected`,
@@ -6107,11 +6585,12 @@ serve(async (req: Request): Promise<Response> => {
         ? "budget_below_platform_minimum"
         : "budget_below_minimum",
       detail: budgetType === "lifetime"
-        ? `Lifetime provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢/day × ${schedule.days} days (= ${minCents}¢) for ${optimizationGoal}.`
-        : `Daily provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢ for ${optimizationGoal} (per-category minimum_budgets — PROOF M-P8).`,
+        ? `Lifetime provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢/day × ${schedule.days} days (= ${minCents}¢) for billing event ${billingEvent}.`
+        : `Daily provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢ for billing event ${billingEvent} (per-category minimum_budgets).`,
       floor_cents: floorCents,
       min_budget_cents: minCents,
       category,
+      billing_event: billingEvent,
       days: schedule.days,
     }, 422);
   }
@@ -6177,14 +6656,22 @@ serve(async (req: Request): Promise<Response> => {
     optimizationGoal,
     billingEvent,
     targeting,
-    ...(objective === "OUTCOME_SALES" &&
-        optimizationGoal === "OFFSITE_CONVERSIONS"
+    // #4238 item 3 / I-4238-NO-PURCHASE-GOAL-WITHOUT-PURCHASE: a Host ad's
+    // conversion event follows its goal; Admin keeps PURCHASE on Sales.
+    ...(optimizationGoal === "OFFSITE_CONVERSIONS" &&
+        (hostMetaCustomEvent !== null || objective === "OUTCOME_SALES")
       ? {
         promotedObject: {
           pixel_id: metaDatasetId,
-          custom_event_type: "PURCHASE",
+          custom_event_type: hostMetaCustomEvent ?? "PURCHASE",
         },
       }
+      : {}),
+    // #4238 W4c (Z-6): a Host conversion ad set counts a sale within 7 days
+    // of a tap, with no view-through (how Mingla counts it).
+    ...(requestedOwnerKind === "host" &&
+        optimizationGoal === "OFFSITE_CONVERSIONS"
+      ? { clickOnlyAttributionDays: 7 as const }
       : {}),
     ...(schedule.starts_at ? { startTime: schedule.starts_at } : {}),
     ...(schedule.ends_at ? { endTime: schedule.ends_at } : {}),
@@ -6294,7 +6781,8 @@ serve(async (req: Request): Promise<Response> => {
 
   let metaStages: PaidSocialStagePreparation | null = null;
   let metaStageMedia = new Map<string, PaidSocialCreativeMedia>();
-  if (destEventId) {
+  // #4238 6b / I-4238-HOST-ONE-ADSET: Host and Ari ads are one ad set.
+  if (paidSocialStagesApply(requestedOwnerKind, destEventId)) {
     const marketCodes = (countries as string[]).map((country) =>
       country.trim().toUpperCase()
     );
@@ -6359,6 +6847,36 @@ serve(async (req: Request): Promise<Response> => {
       }, 422);
     }
   }
+
+  // #4238 W4a: Host ad sets (prospecting + retarget) and one ad per creative.
+  let hostMeta: HostAdSetPreparation | null = null;
+  if (requestedOwnerKind === "host" && !metaStages) {
+    try {
+      hostMeta = await prepareHostAdSets(supabase, {
+        platform: "meta",
+        connection,
+        lane,
+        canonicalPlan: boundCanonicalPlan,
+        markets: (countries as string[]).map((country) => String(country)),
+        brandId: boundPlanOwnership?.brand_id ?? null,
+        eventId: destEventId,
+        dailySpendCents: providerAmountCents,
+        floorCents,
+        budgetMode: budgetType,
+        baseTargeting: targeting as Record<string, unknown>,
+      });
+    } catch (error) {
+      return json({
+        error: "host_ad_set_preflight_failed",
+        detail: hostSafeDatabaseDetail(
+          error,
+          "admin-ad-create-campaign host ad sets",
+          "host_ad_set_preflight_failed",
+        ),
+      }, 422);
+    }
+  }
+  const hostMetaAbo = (hostMeta?.units.length ?? 0) > 1;
 
   // ── The atomic create (§4.4b — no orphans; everything PAUSED). ───────────────
   try {
@@ -6437,6 +6955,74 @@ serve(async (req: Request): Promise<Response> => {
           })),
         };
       });
+    } else if (hostMeta) {
+      // #4238 W4a: CBO with one ad set; ABO (ad-set budgets) only with the
+      // retarget ad set, so both budgets are the reviewed split.
+      const plan = hostMeta;
+      const units = plan.units.map((unit) => ({
+        unit,
+        adSet: {
+          ...adSetInput,
+          name: `${name} — ${unit.stage}`,
+          targeting: unit.targeting,
+          ...(hostMetaAbo ? { budgetCents: unit.budgetCents } : {}),
+        } as CreateAdSetInput,
+      }));
+      const adName = (stage: string, index: number) =>
+        `${name} — ${stage} — ${index + 1}`;
+      const staged = await createStagedCampaignAtomic(adapter, connection, {
+        campaign: hostMetaAbo
+          ? {
+            name: campaignInput.name,
+            objective: campaignInput.objective,
+            bidStrategy: campaignInput.bidStrategy,
+            specialAdCategories: campaignInput.specialAdCategories,
+            specialAdCategoryCountry: campaignInput.specialAdCategoryCountry,
+          }
+          : campaignInput,
+        stages: units.map(({ unit, adSet }) => ({
+          key: unit.stage,
+          adSet,
+          ads: plan.creativeIds.map((creativeId, index) => {
+            const media = plan.media.get(creativeId);
+            if (!media?.metaPlacementAssets) {
+              throw new Error(`stage_creative_media_missing:${creativeId}`);
+            }
+            return {
+              creative: {
+                ...creativeInput,
+                imageUrl: undefined,
+                imageHash: undefined,
+                videoId: undefined,
+                videoThumbnailImageHash: undefined,
+                metaPlacementAssets: media.metaPlacementAssets,
+                aiGenerated: media.aiGenerated || creativeInput.aiGenerated,
+                adName: adName(unit.stage, index),
+              },
+              ad: { ...adInput, name: adName(unit.stage, index) },
+            };
+          }),
+        })),
+      });
+      externalCampaignId = staged.externalCampaignId;
+      createdUnits = staged.stages.map((stageResult) => {
+        const item = units.find(({ unit }) => unit.stage === stageResult.key)!;
+        return {
+          stage: item.unit.stage,
+          audienceCodes: item.unit.audienceCodes,
+          audienceSizes: item.unit.audienceSizes,
+          budgetCents: hostMetaAbo ? item.unit.budgetCents : null,
+          adSetInput: item.adSet,
+          externalAdSetId: stageResult.externalAdSetId,
+          ads: stageResult.ads.map((ad, index) => ({
+            creativeId: plan.creativeIds[index] ?? null,
+            name: adName(item.unit.stage, index),
+            externalCreativeId: ad.externalCreativeId,
+            externalAdId: ad.externalAdId,
+            reviewStatus: ad.reviewStatus,
+          })),
+        };
+      });
     } else {
       const created = await createFullCampaignAtomic(adapter, connection, {
         campaign: campaignInput,
@@ -6446,7 +7032,9 @@ serve(async (req: Request): Promise<Response> => {
       });
       externalCampaignId = created.externalCampaignId;
       createdUnits = [{
-        stage: null,
+        // #4238 T-2/T-4: a Host ad set is the prospecting stage, so the
+          // stage-metrics sync reports its frequency.
+          stage: requestedOwnerKind === "host" ? "prospecting" : null,
         audienceCodes: [],
         audienceSizes: {},
         budgetCents: null,
@@ -6504,7 +7092,9 @@ serve(async (req: Request): Promise<Response> => {
         status: "PAUSED",
         // Staged paid social is ABO: the reviewed 70/20/10 money lives on
         // ad sets, never silently duplicated at campaign level.
-        daily_budget_cents: metaStages ? null : dailyBudgetForPersist,
+        daily_budget_cents: metaStages || hostMetaAbo
+          ? null
+          : dailyBudgetForPersist,
         delivery_status: deliveryStatus,
         status_synced_at: new Date().toISOString(),
         targeting,

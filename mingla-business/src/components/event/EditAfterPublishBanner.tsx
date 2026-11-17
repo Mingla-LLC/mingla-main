@@ -16,11 +16,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  semantic,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 
 import { Icon } from "../ui/Icon";
@@ -35,7 +33,7 @@ export const EditAfterPublishBanner: React.FC<EditAfterPublishBannerProps> = ({
 }) => (
   <View style={styles.host}>
     <View style={styles.iconBadge}>
-      <Icon name="flag" size={18} color={accent.warm} />
+      <Icon name="flag" size={18} color={color.text1} />
     </View>
     <View style={styles.textCol}>
       <Text style={styles.heading}>You're editing a live event</Text>
@@ -61,14 +59,14 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm + 4,
-    padding: spacing.md,
+    gap: space[2] + 4,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
-    marginBottom: spacing.lg,
+    borderColor: color.lineStrong,
+    marginBottom: space[6],
   },
   iconBadge: {
     width: 32,
@@ -76,9 +74,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.42)",
+    borderColor: color.lineStrong,
     flexShrink: 0,
   },
   textCol: {
@@ -88,23 +86,23 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   body: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   lastNotice: {
     fontSize: 12,
     lineHeight: 17,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 6,
     fontVariant: ["tabular-nums"],
   },
   lastNoticeFailed: {
-    color: semantic.error,
+    color: color.danger,
     fontWeight: "600",
   },
 });

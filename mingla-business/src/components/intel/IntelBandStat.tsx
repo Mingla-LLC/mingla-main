@@ -2,11 +2,11 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
   radius,
-  spacing,
-  text,
-  typography,
+  space,
+  type,
+  color,
+  materials,
 } from "../../constants/designSystem";
 import { formatCount } from "../../utils/currency";
 
@@ -38,22 +38,22 @@ export const IntelBandStat: React.FC<IntelBandStatProps> = ({
 );
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  row: { flexDirection: "row", alignItems: "center", gap: space[2] },
   copy: { flex: 1 },
   label: {
-    ...typography.labelCap,
-    color: text.secondary,
+    ...type.label,
+    color: color.text2,
     textTransform: "uppercase",
   },
-  value: { ...typography.statValue, color: text.primary, marginTop: 2 },
-  context: { ...typography.bodySm, color: text.secondary },
+  value: { ...type.stat, color: color.text1, marginTop: 2 },
+  context: { ...type.small, color: color.text2 },
   pill: {
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.badge,
-    backgroundColor: glass.tint.badge.idle,
-    paddingHorizontal: spacing.sm,
+    borderColor: color.lineStrong,
+    backgroundColor: materials.onPhoto.solidFill,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
   },
-  pillText: { ...typography.micro, color: text.secondary },
+  pillText: { ...type.label, color: color.text2 },
 });

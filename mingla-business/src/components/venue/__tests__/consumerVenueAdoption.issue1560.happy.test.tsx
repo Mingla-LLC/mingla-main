@@ -161,11 +161,12 @@ jest.mock("@mingla/offering-rendering", () => {
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
-    const { children, heroEyebrow, heroTitle, stickyPanel, ...rest } = props as {
+    const { children, heroEyebrow, heroTitle, stickyPanel, desktopFlyerActions, ...rest } = props as {
       children?: React.ReactNode;
       heroEyebrow?: React.ReactNode;
       heroTitle?: React.ReactNode;
       stickyPanel?: React.ReactNode;
+      desktopFlyerActions?: React.ReactNode;
     };
     return ReactLocal.createElement(
       "ParallaxCoverShell",
@@ -789,7 +790,8 @@ describe("#1560 the consumer app adopts the shared venue page", () => {
     // strength: it is still a string ONLY the shared module can emit, and the
     // gate `issue-1550-venue-page-single-owner.mjs` still forbids the route
     // from containing venue-body JSX.
-    expect(mounted.json).toContain('"testID":"issue-1561-answer-bar"');
+    // [TEST-MOD-APPROVED #4420 D-V1] the answer bar now reads as fact rows.
+    expect(mounted.json).toContain('"testID":"issue-4420-venue-facts"');
     // ...and the route still mirrors the shared screen's analytics into the
     // organic-engagement capture, which is the wiring the deleted screen owned.
     expect(organicEvents).toContain("page_view");

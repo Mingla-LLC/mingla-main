@@ -17,6 +17,7 @@ import { Input, PHONE_COUNTRIES } from "../../ui/Input";
 import type { AriFlowUploadCopy, AriFlowUploadKind } from "../../ari/ariFlowCards";
 import { Chip, Field, Hint, WButton, ui } from "../website/ui";
 
+import { color } from "../../../constants/designSystem";
 /**
  * The brand contact email rule, word for word from `utils/brandContactEmail`
  * (its owner; a test pins the two together). Kept here so this lazy screen does
@@ -599,9 +600,9 @@ const styles = StyleSheet.create({
   hot: { borderLeftWidth: 2, borderLeftColor: ui.accent, paddingLeft: 10 },
   labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" },
   label: { fontSize: 13, fontWeight: "600", color: ui.t1 },
-  saved: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: "rgba(255, 255, 255, 0.04)" },
-  tick: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#7ee2a3", alignItems: "center", justifyContent: "center" },
-  tickMark: { fontSize: 12, fontWeight: "800", color: "#0c2417" },
+  saved: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: color.fill.inset },
+  tick: { width: 20, height: 20, borderRadius: 10, backgroundColor: color.success, alignItems: "center", justifyContent: "center" },
+  tickMark: { fontSize: 12, fontWeight: "800", color: color.ink },
   savedLabel: { fontSize: 14, color: ui.t1 },
   savedValue: { flex: 1, textAlign: "right", fontSize: 14, color: ui.t3 },
   row: { flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" },

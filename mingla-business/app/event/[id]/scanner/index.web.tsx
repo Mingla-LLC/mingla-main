@@ -34,8 +34,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  scrim,
 } from "../../../../src/constants/designSystem";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import {
@@ -110,7 +111,7 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <EmptyState
-          illustration={<Icon name="qr" size={48} color={textTokens.primary} />}
+          illustration={<Icon name="qr" size={48} color={color.text1} />}
           title="Scan tickets in the app"
           description={`Door scanning uses your phone camera, which works in the Mingla Host app. Open the app on your phone to scan tickets for this ${kindCfg.noun}. You can manage everything else for this ${kindCfg.noun} here on the web.`}
         />
@@ -132,7 +133,7 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
               {`No QR? Search this ${kindCfg.noun}'s guest list and ticket holders, then tap Admit.`}
             </Text>
             <Suspense fallback={<Text style={styles.findCopy}>Loading guest search…</Text>}>
-              <DoorGuestSearchPanel eventId={event.id} noun={kindCfg.noun} />
+              <DoorGuestSearchPanel eventId={event.id} noun={kindCfg.noun} timeZone={event.timezone} />
             </Suspense>
           </View>
         ) : null}
@@ -144,22 +145,22 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: color.mask,
   },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
+    backgroundColor: scrim.modal,
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: "#ffffff",
+    color: color.textStrong,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -171,31 +172,31 @@ const styles = StyleSheet.create({
   },
   body: {
     flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingVertical: space[7],
     justifyContent: "center",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
   findPanel: {
     alignSelf: "stretch",
     maxWidth: 560,
     width: "100%",
     marginHorizontal: "auto",
-    gap: spacing.sm,
+    gap: space[2],
   },
   findTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   findCopy: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
   actions: {
     alignSelf: "stretch",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
 });

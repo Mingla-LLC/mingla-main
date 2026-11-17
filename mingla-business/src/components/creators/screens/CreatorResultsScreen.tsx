@@ -36,7 +36,7 @@ import {
   resultsSince,
   type ResultsPeriod,
 } from "../../../utils/creatorProgramFormat";
-import { text as textTokens } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 
 export default function CreatorResults({
   embedded = false,
@@ -98,6 +98,7 @@ export default function CreatorResults({
   return (
     <ProgramScreen
       title="Results"
+      desktopWidth="detail"
       fallback={blastHubHref("creators")}
       embedded={embedded}
       refreshing={false}
@@ -172,5 +173,5 @@ export default function CreatorResults({
 }
 
 const styles = StyleSheet.create({
-  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+  tiny: { color: color.text3, fontSize: 12, lineHeight: 16 },
 });

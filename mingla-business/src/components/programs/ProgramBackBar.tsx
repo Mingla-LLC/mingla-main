@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { Icon } from "../ui/Icon";
-import { spacing, text as textTokens } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 
 type Props = {
   title: string;
@@ -48,7 +48,7 @@ export function ProgramBackBar({
         <Icon
           name={leading === "close" ? "close" : "chevL"}
           size={22}
-          color={textTokens.primary}
+          color={color.text1}
         />
       </Pressable>
       <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
@@ -63,9 +63,9 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
   },
   back: {
     width: 40,
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 18,
     fontWeight: "700",
     textAlign: "center",

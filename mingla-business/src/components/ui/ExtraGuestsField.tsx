@@ -13,12 +13,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { space, type, color } from "../../constants/designSystem";
 import {
   EXTRA_GUESTS_ERROR,
   EXTRA_GUESTS_LABEL,
@@ -75,21 +70,21 @@ export const ExtraGuestsField: React.FC<ExtraGuestsFieldProps> = ({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   helper: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
+    paddingHorizontal: space[1],
   },
   error: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
+    paddingHorizontal: space[1],
   },
 });
 

@@ -40,7 +40,8 @@ describe("RsvpStep5Setup — chip-in bank callout is payout-aware (ORCH-1335)", 
   });
 
   it("renders the positive confirmation with the semantic success token + check icon", () => {
-    expect(source).toContain("semantic.success");
+    // [TEST-MOD-APPROVED #4420] semantic.success retired → color.success.
+    expect(source).toContain("color.success");
     expect(source).toContain('name="check"');
   });
 });

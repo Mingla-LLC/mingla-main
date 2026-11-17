@@ -17,9 +17,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../../src/constants/designSystem";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
@@ -128,7 +128,7 @@ export default function TripTravelersRoute(): React.ReactElement {
           <ActivityIndicator />
         ) : (ordersQuery.data ?? []).length === 0 ? (
           <View style={styles.emptyState}>
-            <Icon name="users" size={32} color={textTokens.tertiary} />
+            <Icon name="users" size={32} color={color.text3} />
             <Text style={styles.emptyText}>
               No travelers yet. Share the trip link to start taking bookings.
             </Text>
@@ -193,72 +193,72 @@ export default function TripTravelersRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   stateHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: "#0c0e12",
+    padding: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    color: color.text1,
   },
   body: {
     flex: 1,
   },
   bodyContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: space[6],
+    gap: space[4],
   },
   emptyState: {
-    padding: spacing.xl,
+    padding: space[7],
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   emptyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
   travelerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: space[4],
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: color.fill.tableHead,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.line,
   },
   travelerTextCol: {
     flex: 1,
   },
   travelerName: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   travelerEmail: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 2,
   },
   travelerMeta: {
     alignItems: "flex-end",
   },
   travelerStatus: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     textTransform: "capitalize",
   },
   travelerAmount: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginTop: 2,
   },
 });

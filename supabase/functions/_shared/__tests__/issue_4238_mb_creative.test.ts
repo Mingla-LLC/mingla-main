@@ -57,15 +57,17 @@ Deno.test("C4 over-limit words are refused per app, never cut", () => {
   assertEquals(hostCopyTooLong(["tiktok"], { primary: "🎉".repeat(100) }), null);
 });
 
+// [TEST-MOD #4238 Fix 1 + D-1] Meta follows the billing event (sales bills on
+// IMPRESSIONS ⇒ imp); TikTok/Snap are the per-ad-group / ad-squad limits.
 Deno.test("C1 each app's daily minimum is checked in the account's money", () => {
-  assertEquals(providerDailyMinimumCents("tiktok", { currency: "USD" }, "visits"), 5000);
-  assertEquals(providerDailyMinimumCents("snapchat", { currency: "USD" }, "visits"), 2000);
+  assertEquals(providerDailyMinimumCents("tiktok", { currency: "USD" }, "visits"), 2000);
+  assertEquals(providerDailyMinimumCents("snapchat", { currency: "USD" }, "visits"), 500);
   assertEquals(
     providerDailyMinimumCents("meta", {
       currency: "USD",
-      extra: { minimum_budgets: { high_freq: 120, low_freq: 4000 } },
+      extra: { minimum_budgets: { imp: 100, high_freq: 120, low_freq: 4000 } },
     }, "sales"),
-    4000,
+    100,
   );
   assertEquals(providerDailyMinimumCents("tiktok", { currency: "EUR" }, "visits"), null);
   assertEquals(

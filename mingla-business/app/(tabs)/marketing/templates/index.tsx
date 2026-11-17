@@ -18,11 +18,7 @@ import { useRouter } from "expo-router";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { TemplateCard } from "../../../../src/components/marketing/TemplateCard";
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../src/constants/designSystem";
+import { color, space, type } from "../../../../src/constants/designSystem";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useStarterTemplates } from "../../../../src/hooks/marketing/useStarterTemplates";
 import { useUserTemplates } from "../../../../src/hooks/marketing/useUserTemplates";
@@ -48,7 +44,7 @@ export default function MarketingTemplatesRoute(): React.ReactElement {
     return (
       <View style={styles.host}>
         <View style={styles.centerHost}>
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       </View>
     );
@@ -119,12 +115,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
     paddingBottom: 120,
-    gap: spacing.sm,
+    gap: space[2],
   },
-  templateGrid: { gap: spacing.sm },
+  templateGrid: { gap: space[2] },
   templateGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
   templateCell: { width: "100%" },
   templateCellWide: { flexBasis: "48%", flexGrow: 1, minWidth: 360 },
@@ -132,24 +128,24 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   sectionLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   sectionCaption: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-    marginBottom: spacing.xs,
+    ...type.small,
+    color: color.text3,
+    marginBottom: space[1],
   },
   sectionSpacer: {
-    height: spacing.md,
+    height: space[4],
   },
   userErrorText: {
-    ...typography.bodySm,
-    color: "#f59e0b",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    ...type.small,
+    color: color.warningText,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
 });

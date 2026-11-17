@@ -16,7 +16,11 @@ import React, { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
 
-import { accent, durations } from "../../constants/designSystem";
+import {
+  durations,
+  color,
+  scrim,
+} from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 
 export interface DraftSelectCheckboxProps {
@@ -89,7 +93,7 @@ export const DraftSelectCheckbox: React.FC<DraftSelectCheckboxProps> = ({
         },
       ]}
     >
-      {selected ? <Icon name="check" size={14} color="#ffffff" /> : null}
+      {selected ? <Icon name="check" size={14} color={color.text1} /> : null}
     </Animated.View>
   );
 };
@@ -104,12 +108,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   boxUnchecked: {
-    backgroundColor: "rgba(12, 14, 18, 0.55)",
-    borderColor: "rgba(255, 255, 255, 0.85)",
+    backgroundColor: scrim.modal,
+    borderColor: color.lineStrong,
   },
   boxChecked: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
 });
 

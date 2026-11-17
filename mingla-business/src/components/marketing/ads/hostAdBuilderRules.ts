@@ -50,6 +50,45 @@ export function hostAdScrollBottomPadding(stickyFooterOffset: number): number {
   return scrollPaddingClearOfFloatingAction(stickyFooterOffset);
 }
 
+/**
+ * #4238 rework 6 (P1-1): Android does not resize the window for the keyboard,
+ * so the pinned dock sits behind it and the field being typed in ends up under
+ * it. The dock steps aside on Android while the keyboard is open. iOS keeps it.
+ */
+export function shouldHideHostAdDock(platform: string, keyboardOpen: boolean): boolean {
+  return platform === "android" && keyboardOpen;
+}
+
+/**
+ * #4238 (P3-1, iOS then Android): the keyboard-aware scroll aligns the focused
+ * field's caret line above the keyboard, not the helper line under it, so an
+ * age error line sat behind the Done bar on both phones. When that line is
+ * showing, the field's bottom offset grows by the Done bar the keyboard
+ * carries, the caret residual and the clear gap, plus the error line's own
+ * footprint (the stack gap above it and its caption line), so field and line
+ * both show above the bar. Web has no Done bar. Returns null when the default
+ * offset should stand.
+ *
+ * The caret residuals mirror CARET_LINE_TO_FIELD_BOTTOM in
+ * wrappers/SmartScrollView.native.tsx (13.5 iOS, 3.16 Android, measured by #1834).
+ */
+export const HOST_AD_CARET_BELOW_FIELD: Readonly<Record<"ios" | "android", number>> = {
+  ios: 13.5,
+  android: 3.16,
+};
+/** Stack gap (space[4] = 16) plus one caption line (18). */
+export const HOST_AD_ERROR_LINE_ROOM = 16 + 18;
+export function hostAdErrorLineBottomOffset(
+  platform: string,
+  doneBarOccupied: number,
+  clearance: number,
+  errorLineShown: boolean,
+): number | null {
+  if (!errorLineShown) return null;
+  if (platform !== "ios" && platform !== "android") return null;
+  return doneBarOccupied + HOST_AD_CARET_BELOW_FIELD[platform] + clearance + HOST_AD_ERROR_LINE_ROOM;
+}
+
 /** The router calls the back link needs (expo-router's router fits). */
 export type HostAdBackRouter = {
   canGoBack: () => boolean;
@@ -271,4 +310,43 @@ export function hostAdScheduleIsos(
       endDate,
     ),
   };
+}
+
+/** The Host age range Mingla accepts (whole years, 18 to 65). */
+export const HOST_AD_AGE_FLOOR = 18;
+export const HOST_AD_AGE_CEILING = 65;
+
+/**
+ * #4238 W7 (native P3-5): the age fields use the Input `integer` variant
+ * (number pad, no decimal key), but the primitive does not validate, so the
+ * builder keeps its own whole-number rule: both ages are whole numbers
+ * written as digits only, 18 ≤ min ≤ max ≤ 65. A pasted "21.5", "2e1" or an
+ * empty field is refused.
+ */
+export function hostAdAgeRangeValid(ageMin: string, ageMax: string): boolean {
+  const whole = (value: string): number | null =>
+    /^\d{1,3}$/.test(value.trim()) ? Number(value.trim()) : null;
+  const min = whole(ageMin);
+  const max = whole(ageMax);
+  if (min === null || max === null) return false;
+  return min >= HOST_AD_AGE_FLOOR && max <= HOST_AD_AGE_CEILING && min <= max;
+}
+
+/** Width a mark's label may take under the track (s.mark). */
+export const HOST_AD_MARK_LABEL_WIDTH = 120;
+
+/**
+ * #4238 W7 (native P3-4): two marks stack (the second drops a row) when
+ * their labels would touch. Measured in points on the real track width, so
+ * a phone track (~330 pt) stacks "Minimum" and "Recommended" where a
+ * desktop track would not; before the first layout the old 22% rule holds.
+ */
+export function hostAdMarksCollide(
+  pctA: number,
+  pctB: number,
+  trackWidth: number,
+): boolean {
+  const apart = Math.abs(pctA - pctB);
+  if (!(trackWidth > 0)) return apart < 22;
+  return (apart / 100) * trackWidth < HOST_AD_MARK_LABEL_WIDTH + 8;
 }

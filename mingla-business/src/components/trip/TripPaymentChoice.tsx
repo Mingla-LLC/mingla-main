@@ -38,7 +38,10 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../constants/designSystem";
 import type { ThemePalette } from "@mingla/offering-rendering";
 import { GlassCard } from "../ui/GlassCard";
 import { formatCurrency } from "../../utils/currency";
@@ -174,7 +177,7 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
     <GlassCard
       variant="base"
       radius="lg"
-      padding={spacing.md}
+      padding={space[4]}
       style={styles.card}
       testID={testID}
     >
@@ -516,7 +519,7 @@ function formatScheduleDate(iso: string, isCalendarDate: boolean): string {
 
 const mock = StyleSheet.create({
   card: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
     borderRadius: 20,
     borderWidth: 1,
     overflow: "hidden",
@@ -529,7 +532,8 @@ const mock = StyleSheet.create({
   },
   seg: {
     flexDirection: "row",
-    backgroundColor: "rgba(0,0,0,0.28)",
+    // #4420 — the dark track over the host palette: a black wash token.
+    backgroundColor: color.spinnerTrackOnPaper,
     borderRadius: 12,
     padding: 4,
     gap: 4,
@@ -624,94 +628,94 @@ const mock = StyleSheet.create({
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   label: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   segmentGroup: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   segment: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     minHeight: 44,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.tableHead,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   segmentSelected: {
-    borderColor: "rgba(235, 120, 37, 0.75)",
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    borderColor: color.accentLine,
+    backgroundColor: color.accentTint,
   },
   segmentTitle: {
     flexShrink: 1,
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   segmentTitleSelected: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   dot: {
     width: 18,
     height: 18,
     borderRadius: 9,
     borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.28)",
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
   dotSelected: {
-    borderColor: "rgba(235, 120, 37, 0.95)",
+    borderColor: color.accent,
   },
   dotInner: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "rgba(235, 120, 37, 0.95)",
+    backgroundColor: color.accent,
   },
   block: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   amountRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    gap: spacing.sm,
+    gap: space[2],
   },
   amountLabel: {
     flexShrink: 1,
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   amountValue: {
     fontSize: 15,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
   termsCopy: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "400",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   scheduleWrap: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     width: "100%",
   },
 });

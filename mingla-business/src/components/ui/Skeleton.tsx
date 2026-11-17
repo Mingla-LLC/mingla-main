@@ -19,17 +19,17 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { radius as radiusTokens } from "../../constants/designSystem";
+import { color, radius as radiusTokens } from "../../constants/designSystem";
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const SHIMMER_WIDTH_RATIO = 0.6;
-const BASE_BACKGROUND = "rgba(255, 255, 255, 0.06)";
+const BASE_BACKGROUND = color.skeleton;
 const SWEEP_COLORS: readonly [string, string, string, string] = [
-  "rgba(255,255,255,0)",
-  "rgba(255,255,255,0.04)",
-  "rgba(255,255,255,0.08)",
-  "rgba(255,255,255,0)",
+  color.transparent,
+  color.fill.inset,
+  color.skeletonHi,
+  color.transparent,
 ];
 
 export type SkeletonRadius = keyof typeof radiusTokens;
