@@ -304,7 +304,11 @@ if (process.env.MINGLA_CAPTURE_SURFACE === "host") {
 // even a redirect stub). `expo start` (development) still serves it for testers.
 // Expo CLI sets NODE_ENV before it loads this file (export / export:embed /
 // EAS release builds are "production").
-const DEV_ONLY_ROUTES = [path.join(__dirname, "app", "b", "__dev-plan-preview.tsx")];
+// #4453 milestone 11 — the add-a-page-with-Ari DEV harness (app/b/__dev-ari-add-page.tsx) is kept out the same way.
+const DEV_ONLY_ROUTES = [
+  path.join(__dirname, "app", "b", "__dev-plan-preview.tsx"),
+  path.join(__dirname, "app", "b", "__dev-ari-add-page.tsx"),
+];
 if (process.env.NODE_ENV === "production") {
   const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const existing = config.resolver.blockList;

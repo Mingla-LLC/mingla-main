@@ -49,4 +49,28 @@ describe("#4453 milestone 11 Add a page with Ari (Host app)", () => {
     expect(pages).toContain("Those rows stay hidden.");
     expect(pages).toContain('label="Publish this page"');
   });
+
+  it("the add-a-page walk-through harness is dev-only: production Metro never sees it, a release build redirects, no auth", () => {
+    const root = join(__dirname, "../../..");
+    const harnessPath = join(root, "app/b/__dev-ari-add-page.tsx");
+    const blocked = (env: string): boolean => {
+      const vars = process.env as Record<string, string | undefined>;
+      const previous = vars.NODE_ENV;
+      vars.NODE_ENV = env;
+      try {
+        jest.resetModules();
+        const config = jest.requireActual(join(root, "metro.config.js")) as { resolver: { blockList?: RegExp | RegExp[] } };
+        const list = config.resolver.blockList;
+        return (Array.isArray(list) ? list : list ? [list] : []).some((re) => re.test(harnessPath));
+      } finally {
+        vars.NODE_ENV = previous;
+        jest.resetModules();
+      }
+    };
+    expect(blocked("production")).toBe(true);
+    expect(blocked("development")).toBe(false);
+    const harness = readFileSync(harnessPath, "utf8");
+    expect(harness).toMatch(/if \(!__DEV__\) return <Redirect href="\/" \/>;/);
+    expect(harness).not.toMatch(/useAuth/);
+  });
 });

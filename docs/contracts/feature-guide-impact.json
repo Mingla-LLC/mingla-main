@@ -1141,6 +1141,7 @@
         "mingla-business/src/components/sites/plan/ProofPart.tsx",
         "mingla-business/src/components/sites/website/sections/DraftReviewCard.tsx",
         "mingla-business/src/components/sites/website/sections/PagesSection.tsx",
+        "mingla-business/app/b/__dev-ari-add-page.tsx",
         "mingla-business/src/components/sites/website/sections/PastTripsSection.tsx",
         "mingla-business/src/sites/contentApi.ts",
         "mingla-business/src/sites/proofForms.ts",
