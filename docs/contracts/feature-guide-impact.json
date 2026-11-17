@@ -102,6 +102,7 @@
         "supabase/functions/claim-link/index.ts",
         "supabase/functions/attendance-claim-identity/index.ts",
         "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql",
+        "supabase/migrations/20280804004473_issue_4473_claim_clears_operator_closure.sql",
         "mingla-business/src/constants/buyerClaimCopy.ts"
       ]
     },
