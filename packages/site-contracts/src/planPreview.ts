@@ -70,9 +70,9 @@ export type PlanPreviewPick = { key: DesignKey; rank: 1 | 2 | 3; reason: string 
  */
 export function planPreviewPicks(format: FormatKey, signals: StyleSignals = {}): PlanPreviewPick[] {
   return topStylePicks(format, signals, 10)
-    .filter((fit: StyleFit) => isDesignKey(fit.key) && fit.fit !== "avoid")
+    .filter((fit: StyleFit) => isDesignKey(fit.style) && fit.fit !== "avoid")
     .slice(0, PLAN_PREVIEW_MAX_STYLES)
-    .map((fit: StyleFit, index: number) => ({ key: fit.key, rank: (index + 1) as 1 | 2 | 3, reason: fit.reason }));
+    .map((fit: StyleFit, index: number) => ({ key: fit.style, rank: (index + 1) as 1 | 2 | 3, reason: fit.reason }));
 }
 
 /** The requested styles, or Ari's picks when none were named. A ✕ style is never composed here. */

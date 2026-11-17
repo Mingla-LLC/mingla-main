@@ -77,7 +77,12 @@ export type ComposeFacts = {
 };
 
 /** The facts, from the offerings feed rows Core already read plus the booking reads. */
-export async function composeFacts(rpc: ServiceRpc, siteId: string, feed: readonly FeedRow[], now = new Date()): Promise<ComposeFacts> {
+/**
+ * #4453 milestone 10 — `siteId` is null for a plan preview of a brand with no
+ * site yet: only the feed counts are known, and every site-scoped booking read
+ * is skipped (those facts stay 0 / absent, so the sections are left out).
+ */
+export async function composeFacts(rpc: ServiceRpc, siteId: string | null, feed: readonly FeedRow[], now = new Date()): Promise<ComposeFacts> {
   const facts: ComposeFacts = {
     upcoming: { trip: 0, event: 0, experience: 0 },
     ended: { trip: 0, event: 0, experience: 0 },
@@ -119,6 +124,7 @@ export async function composeFacts(rpc: ServiceRpc, siteId: string, feed: readon
     }
   }
 
+  if (siteId === null) return facts;
   const reads: Promise<void>[] = [];
   const base = await rpc("brand_site_compose_facts", { p_site_id: siteId });
   if (!base.error && base.data && typeof base.data === "object") {
