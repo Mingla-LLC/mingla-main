@@ -36,6 +36,9 @@ export const ARI_UNDERSTAND_FIRST_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "get_site_design_brief",
   "propose_site_design_pass",
   "propose_site_chrome",
+  // #4453 milestone 11 — "Add a page with Ari" (Core also needs SITES_ARI_ADD_PAGE for the brand).
+  "propose_site_page",
+  "answer_site_page_question",
 ]);
 
 /**

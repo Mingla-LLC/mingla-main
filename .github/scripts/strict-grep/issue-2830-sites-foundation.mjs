@@ -183,6 +183,9 @@ const ARI_TOOL_ROLES = {
   get_site_design_brief: "marketing_manager",
   propose_site_design_pass: "marketing_manager",
   propose_site_chrome: "marketing_manager",
+  // #4453 milestone 11 — "Add a page with Ari" (on-path only; Core checks SITES_ARI_ADD_PAGE).
+  propose_site_page: "marketing_manager",
+  answer_site_page_question: "marketing_manager",
   confirm_site_review: "brand_admin",
   propose_trip_guide_update: "event_manager",
   create_site_preview: "marketing_manager",
@@ -740,7 +743,7 @@ export function violations(files) {
   ) failures.push("slot 88: exact manifest contract missing");
 
   const ariTools = files.ariTools ?? "";
-  const toolNames = [...ariTools.matchAll(/publicationTool\("([^"]+)"\)|^\s*"((?:get|list|start|record|propose|attach|validate|save|update|create|run|confirm)_[^"]+)"/gm)]
+  const toolNames = [...ariTools.matchAll(/publicationTool\("([^"]+)"\)|^\s*"((?:get|list|start|record|propose|attach|validate|save|update|create|run|confirm|answer)_[^"]+)"/gm)]
     .map((match) => match[1] || match[2])
     .filter((name, index, names) => name && names.indexOf(name) === index);
   for (const name of ARI_TOOLS) {

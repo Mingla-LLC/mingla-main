@@ -30,7 +30,7 @@ export const DESIGN_PASS_ACTIONS: ReadonlySet<string> = new Set([
   "propose_site_chrome",
 ]);
 
-export async function brandFlagOn(rpc: ServiceRpc, flag: "SITES_ARI_DESIGN_PASS" | "SITES_STYLE_LIBRARY", brandId: string): Promise<boolean> {
+export async function brandFlagOn(rpc: ServiceRpc, flag: "SITES_ARI_DESIGN_PASS" | "SITES_STYLE_LIBRARY" | "SITES_ARI_ADD_PAGE", brandId: string): Promise<boolean> {
   const { data, error } = await rpc("brand_site_flag_on", { p_flag: flag, p_brand_id: brandId });
   return !error && data === true;
 }

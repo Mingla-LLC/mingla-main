@@ -185,8 +185,10 @@ export async function handleSitePlanRoute(
     if (joined.error) return planFailureFromRpc(joined.error.message);
     // #4453 — SITES_STYLE_LIBRARY for this brand (Core's value): which styles the look picker offers.
     const styleLibrary = await brandFlagOn(ctx.serviceRpc, "SITES_STYLE_LIBRARY", brandId);
+    // #4453 milestone 11 — SITES_ARI_ADD_PAGE for this brand: the Host app shows "Add a page with Ari" only while it is on.
+    const ariAddPage = await brandFlagOn(ctx.serviceRpc, "SITES_ARI_ADD_PAGE", brandId);
     const body = joined.data && typeof joined.data === "object" && !Array.isArray(joined.data)
-      ? { ...(joined.data as JsonObject), style_library: styleLibrary }
+      ? { ...(joined.data as JsonObject), style_library: styleLibrary, ari_add_page: ariAddPage }
       : joined.data;
     return sitesJson({ ok: true, data: body });
   }

@@ -18,6 +18,9 @@
  */
 import { sitesJson } from "../_shared/sitesContracts.ts";
 import { siteEvidence } from "./siteAri.ts";
+import { OWNER_ARI_PAGE_ACTIONS } from "./ariPage.ts";
+import { brandFlagOn } from "./designPass.ts";
+import { ARI_PAGE_MESSAGES } from "../_shared/siteContracts/ariPage.ts";
 
 type JsonObject = Record<string, unknown>;
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -52,6 +55,8 @@ const STUDIO_ACTIONS = new Set([
   "work_log", "design_checks",
   // #4453 — Draft review: "N sections to review" and "Looks right".
   "review_status", "mark_reviewed",
+  // #4453 milestone 11 — the owner's Draft page from Ari: answer, Publish this page, Remove.
+  ...OWNER_ARI_PAGE_ACTIONS,
 ]);
 export const CONTENT_ACTIONS: ReadonlySet<string> = new Set([...CORE_ONLY_ACTIONS, ...STUDIO_ACTIONS]);
 
@@ -74,6 +79,12 @@ export type ContentFailureCode =
   | "VIDEO_TOO_LONG"
   | "NOT_ENTITLED"
   | "NO_ADMIN"
+  // #4453 milestone 11 — the owner's Draft page from Ari.
+  | "ARI_ADD_PAGE_OFF"
+  | "QUESTION_NOT_FOUND"
+  | "PAGE_NOT_ARI_DRAFT"
+  | "UNSELLABLE_OFFER"
+  | "BOOKING_THROUGH_ENQUIRY"
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 const MESSAGES: Record<ContentFailureCode, string> = {
@@ -95,6 +106,11 @@ const MESSAGES: Record<ContentFailureCode, string> = {
   VIDEO_TOO_LONG: "Cover videos can be up to 15 seconds. Choose a shorter one.",
   NOT_ENTITLED: "Websites are opening brand by brand, and this brand doesn't have one yet.",
   NO_ADMIN: "This brand has no admin to ask yet.",
+  ARI_ADD_PAGE_OFF: ARI_PAGE_MESSAGES.ARI_ADD_PAGE_OFF,
+  QUESTION_NOT_FOUND: ARI_PAGE_MESSAGES.QUESTION_NOT_FOUND,
+  PAGE_NOT_ARI_DRAFT: ARI_PAGE_MESSAGES.PAGE_NOT_ARI_DRAFT,
+  UNSELLABLE_OFFER: ARI_PAGE_MESSAGES.UNSELLABLE_OFFER,
+  BOOKING_THROUGH_ENQUIRY: "That answer reads as taking bookings. Bookings and payments always go through Mingla.",
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 
@@ -117,6 +133,11 @@ const STATUS: Record<ContentFailureCode, number> = {
   VIDEO_TOO_LONG: 409,
   NOT_ENTITLED: 403,
   NO_ADMIN: 409,
+  ARI_ADD_PAGE_OFF: 409,
+  QUESTION_NOT_FOUND: 409,
+  PAGE_NOT_ARI_DRAFT: 409,
+  UNSELLABLE_OFFER: 409,
+  BOOKING_THROUGH_ENQUIRY: 409,
   SERVICE_TEMPORARILY_UNAVAILABLE: 503,
 };
 
@@ -223,6 +244,22 @@ export async function handleSiteContentRoute(
     return sitesJson({ ok: true, data });
   }
 
+  /*
+   * #4453 milestone 11 (spec v2.1 §3.2) — the owner answers one of Ari's
+   * questions: POST /v1/sites/:id/pages/:pageId/answers { operation_id,
+   * question_key, answer }. The same gate as the content route (rank ≥ the
+   * content minimum, #3381 hold on deploys), as the action `ari_page_answer`.
+   */
+  const answers = path.match(/^\/v1\/sites\/([^/]+)\/pages\/([^/]+)\/answers$/);
+  if (answers && method === "POST") {
+    if (!UUID.test(answers[1]!) || !/^[0-9a-f-]{1,64}$/i.test(answers[2]!)) return contentFailure("VALIDATION_FAILED");
+    return handleSiteContentRoute(`/v1/sites/${answers[1]}/content`, "POST", {
+      action: "ari_page_answer",
+      operation_id: input.operation_id,
+      args: { page_id: answers[2], question_key: input.question_key, answer: input.answer },
+    }, ctx);
+  }
+
   const match = path.match(/^\/v1\/sites\/([^/]+)\/content$/);
   if (!match || method !== "POST") return null;
   const siteId = match[1];
@@ -239,6 +276,11 @@ export async function handleSiteContentRoute(
   const rank = Number(grant.rank);
   if (!UUID.test(brandId) || !Number.isInteger(rank) || String(grant.user_id) !== ctx.userId) {
     return contentFailure("FORBIDDEN");
+  }
+  // #4453 milestone 11 — answering Ari's questions needs SITES_ARI_ADD_PAGE (Core's value). Publish and
+  // Remove do not: a Draft page from Ari must always be clearable.
+  if (action === "ari_page_answer" && !(await brandFlagOn(ctx.serviceRpc, "SITES_ARI_ADD_PAGE", brandId))) {
+    return contentFailure("ARI_ADD_PAGE_OFF");
   }
   const now = (ctx.now ?? Date.now)();
   const args = input.args && typeof input.args === "object" && !Array.isArray(input.args) ? input.args as JsonObject : {};

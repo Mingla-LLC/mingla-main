@@ -74,16 +74,17 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // #4304: end_discount + resume_discount; 183→185.
   // #3355 Wave B: search_mingla_guide (Feature Guide read); #4389: start_payments_onboarding + start_door_sale; 185→188.
   // #4453 milestone 7: get_site_design_brief, propose_site_design_pass, propose_site_chrome (on-path only); 188→191.
+  // #4453 milestone 11: propose_site_page, answer_site_page_question (on-path only); 191→193.
   assert(
-    AGENT_TOOLS.length === 191,
-    `expected 191 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 193,
+    `expected 193 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 191,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 193,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 191,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 193,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -154,7 +155,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // #4304: end_discount + resume_discount; 183→185.
   // #3355 Wave B: search_mingla_guide; #4389: start_payments_onboarding + start_door_sale; 185→188.
   // #4453 milestone 7: the three design-pass tools; 188→191.
-  assert(rows.length === 191, `expected 191 ledger rows, got ${rows.length}`);
+  // #4453 milestone 11: the two add-a-page tools; 191→193.
+  assert(rows.length === 193, `expected 193 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

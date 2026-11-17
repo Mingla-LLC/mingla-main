@@ -208,6 +208,8 @@ ari.sites.propose_collection_entry
 ari.sites.read_design_brief
 ari.sites.propose_design_pass
 ari.sites.propose_chrome
+ari.sites.propose_page
+ari.sites.answer_page_question
 ari.sites.confirm_review
 ari.sites.propose_trip_guide
 ari.research.search_public_web

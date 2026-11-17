@@ -105,6 +105,9 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
       "get_site_design_brief",
       "propose_site_design_pass",
       "propose_site_chrome",
+      // #4453 milestone 11 — "Add a page with Ari" (on-path only).
+      "propose_site_page",
+      "answer_site_page_question",
       "confirm_site_review",
       "propose_trip_guide_update",
       "create_site_preview",

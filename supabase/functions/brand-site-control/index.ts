@@ -23,6 +23,7 @@ import { handleSiteContentRoute } from "./siteContent.ts";
 import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
 import { brandFlagOn, composeFacts, DESIGN_PASS_ACTIONS, liveFingerprints, planFormat } from "./designPass.ts";
+import { ARI_PAGE_ACTIONS } from "./ariPage.ts";
 import { BOOKING_IDENTITY_CAPABILITY, bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
 import { unreviewedRefusal } from "./reviewGate.ts";
 
@@ -949,6 +950,16 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
           style_library: await brandFlagOn(serviceRpc, "SITES_STYLE_LIBRARY", brandId),
           live_fingerprints: await liveFingerprints(serviceRpc, planFormat(planInputs), brandId),
         };
+        payload.review_drafts = true;
+      }
+      // #4453 milestone 11 — "Add a page with Ari": only while SITES_ARI_ADD_PAGE
+      // covers this brand (Core's value, never the caller's). Every block Ari
+      // adds starts Draft; the page itself is written hidden (Draft by Ari).
+      if (ARI_PAGE_ACTIONS.has(action)) {
+        if (!(await brandFlagOn(serviceRpc, "SITES_ARI_ADD_PAGE", String(auth.brand_id)))) {
+          return ariFailureFrom({ error: { code: "ARI_ADD_PAGE_OFF" } }, 409);
+        }
+        payload.add_page = true;
         payload.review_drafts = true;
       }
       const studio = await callCmsRaw(db.service, {

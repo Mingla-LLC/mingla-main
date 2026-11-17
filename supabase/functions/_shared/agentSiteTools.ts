@@ -224,6 +224,18 @@ const SITES_NAMED_CODES: Readonly<Record<string, string>> = {
   DESIGN_PASS_OFF: "DOMAIN_ACTION_REFUSED",
   DESIGN_PASS_ALREADY_RUN: "CONFLICT",
   DESIGN_PASS_TRY_AGAIN: "SERVICE_TEMPORARILY_UNAVAILABLE",
+  // #4453 milestone 11 — "Add a page with Ari" (siteAri.ts, ARI_PAGE_MESSAGES). Each carries
+  // Core's plain sentence (and the nearest page Ari may write) to the owner.
+  ARI_ADD_PAGE_OFF: "DOMAIN_ACTION_REFUSED",
+  ARI_PAGE_LIMIT: "DOMAIN_ACTION_REFUSED",
+  ARI_DRAFT_PAGES_OPEN: "DOMAIN_ACTION_REFUSED",
+  ARI_PAGE_RATE_LIMITED: "SERVICE_TEMPORARILY_UNAVAILABLE",
+  HAVE_WITHOUT_SOURCE: "VALIDATION_FAILED",
+  UNSELLABLE_OFFER: "VALIDATION_FAILED",
+  ARI_PAGE_NOT_ALLOWED: "DOMAIN_ACTION_REFUSED",
+  ARI_PAGE_DUPLICATE: "CONFLICT",
+  QUESTION_NOT_FOUND: "VALIDATION_FAILED",
+  PAGE_NOT_ARI_DRAFT: "VALIDATION_FAILED",
 };
 
 const SITE_SERVICE_UNAVAILABLE_MESSAGE =
@@ -1927,6 +1939,80 @@ const proposeSiteChrome = tool(
   designerWrite("propose_site_chrome"),
 );
 
+/*
+ * #4453 milestone 11 (spec v2.1 §3) — "Add a page with Ari". On the "Ari
+ * understands first" path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS), and Core
+ * refuses both unless SITES_ARI_ADD_PAGE covers the brand, so the frozen
+ * off-path declarations stay origin/main's (#3355). The plan IS the
+ * confirm card: nothing is written before the owner says "Add as a Draft".
+ */
+const ARI_PAGE_SLUG = { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 60 };
+
+const proposeSitePage = tool(
+  "propose_site_page",
+  "Propose a NEW page the owner asked for (for example private hire, our team, weddings and celebrations, group bookings), as a plan the owner confirms. The page is added hidden, as a Draft by Ari with a Draft menu entry, and goes live only after the owner reviews it and taps Publish this page. Quote the owner's request word for word in request and cite it as owner_words. Use only catalogue blocks in the site's layouts. List every piece of content you have with its source (have) and ask the owner, in questions, only for OPTIONAL text fields or list rows you don't know; never guess prices, people, dates, ratings, reviews or policies, and never propose a block whose required field you don't know (ask in chat first). Never propose gift cards, vouchers, memberships or passes, a page that takes bookings or payments off Mingla, legal text you write yourself, a copy of another site, or a page that already exists (offer to change that page instead). Up to 12 blocks.",
+  {
+    brand_id: UUID,
+    site_id: UUID,
+    expected_site_revision: {
+      ...DIGEST,
+      description: "The draft digest from validate_site_draft (the whole draft's revision)",
+    },
+    request: { type: "string", minLength: 1, maxLength: 500, description: "The owner's request, word for word" },
+    page: closedObject({
+      title: plainText(80),
+      menu_label: plainText(16),
+      slug: ARI_PAGE_SLUG,
+      parent_path: { ...PAGE_PATH, description: "Optional: an existing TOP-LEVEL page to sit under" },
+      menu_after: { ...PAGE_PATH, description: "Optional: the menu entry this page follows (default: before About)" },
+      seo: closedObject({ title: plainText(70), description: plainText(160) }, []),
+    }, ["title", "menu_label", "slug"]),
+    blocks: { type: "array", minItems: 1, maxItems: 12, items: blocksSchema() },
+    have: {
+      type: "array",
+      maxItems: 10,
+      description: "The content you already have, each with where it came from",
+      items: closedObject({
+        text: plainText(120),
+        source: { type: "string", enum: ["mingla_record", "owner_words", "owner_material"] },
+        ref: { type: "string", maxLength: 200, description: "The Mingla record id or media id (not needed for owner_words)" },
+      }, ["text", "source"]),
+    },
+    questions: {
+      type: "array",
+      maxItems: 6,
+      description: "What you still need from the owner; shown only to the owner, never to visitors",
+      items: closedObject({
+        key: { type: "string", pattern: "^[a-z][a-z0-9_]{0,31}$" },
+        question: plainText(160),
+        block_index: { type: "integer", minimum: 0, maximum: 11 },
+        field_path: { type: "string", maxLength: 90, description: "An optional text field (\"caption\") or a list row's text field (\"members.0.role\")" },
+        placeholder: plainText(80),
+      }, ["key", "question", "block_index", "field_path"]),
+    },
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "site_id", "expected_site_revision", "request", "page", "blocks", "why", "cites"],
+  designerWrite("propose_site_page"),
+);
+
+const answerSitePageQuestion = tool(
+  "answer_site_page_question",
+  "Put the owner's answer to one of your questions on a Draft page from Ari, word for word (cite it as owner_words). The page stays a Draft for the owner to review. Never answer for the owner.",
+  {
+    brand_id: UUID,
+    site_id: UUID,
+    page_path: PAGE_PATH,
+    question_key: { type: "string", pattern: "^[a-z][a-z0-9_]{0,31}$" },
+    answer: { type: "string", minLength: 1, maxLength: 500 },
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "site_id", "page_path", "question_key", "answer", "why", "cites"],
+  designerWrite("answer_site_page_question"),
+);
+
 const createSitePreview = publicationTool("create_site_preview");
 const publishSite = publicationTool("publish_site");
 const rollbackSite = publicationTool("rollback_site");
@@ -1957,6 +2043,9 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getSiteDesignBrief,
   proposeSiteDesignPass,
   proposeSiteChrome,
+  // #4453 milestone 11 — on-path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS).
+  proposeSitePage,
+  answerSitePageQuestion,
   confirmSiteReview,
   proposeTripGuideUpdate,
   createSitePreview,
