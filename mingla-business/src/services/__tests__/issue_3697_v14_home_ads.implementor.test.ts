@@ -94,7 +94,7 @@ describe("#3697 Host Home Ads lifecycle", () => {
     );
     const placements = source.match(
       // #4389 HT added the Take a payment pill and door line props to the panel.
-      /<BusinessPulsePanel[\s\S]*?onOpenOffering=\{handleOpenPulseOffering\}(?:\s+\w+=\{\w+\})*\s*\/>\s*<HomeAdsSection brandId=\{currentBrand\.id\} \/>/g,
+      /<BusinessPulsePanel[\s\S]*?onOpenOffering=\{handleOpenPulseOffering\}(?:\s+\w+=\{\w+\})*\s*\/>\s*<Suspense fallback=\{null\}>\s*<LazyHomeAdsSection brandId=\{currentBrand\.id\} \/>\s*<\/Suspense>/g,
     );
     expect(placements).toHaveLength(2);
   });

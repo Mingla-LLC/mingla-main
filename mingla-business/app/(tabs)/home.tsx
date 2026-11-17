@@ -42,7 +42,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { BusinessPulsePanel } from "../../src/components/home/BusinessPulsePanel";
-import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
 import type { LiveCardMetrics } from "../../src/components/home/LiveOfferingCard";
 import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
@@ -146,6 +145,13 @@ import { doorEventIdsToday, homeTapCardMode } from "../../src/utils/homeTakePaym
 const LazyBrandSwitcherSheet = React.lazy(async () => {
   const mod = await import("../../src/components/brand/BrandSwitcherSheet");
   return { default: mod.BrandSwitcherSheet };
+});
+
+// #4238 — the Host ads card (copy, models, 33 KB of English) loads after first
+// paint; a static import kept it in `__common`.
+const LazyHomeAdsSection = React.lazy(async () => {
+  const mod = await import("../../src/screens/hostAds/HostAdScreens");
+  return { default: mod.HomeAdsSection };
 });
 
 // #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
@@ -1039,7 +1045,9 @@ export default function HomeTab(): React.ReactElement {
                 hasOtherSales={hasDoorSalesToday}
                 moneyFootnote={doorTodayLine}
               />
-              <HomeAdsSection brandId={currentBrand.id} />
+              <Suspense fallback={null}>
+                <LazyHomeAdsSection brandId={currentBrand.id} />
+              </Suspense>
 
               <View style={styles.desktopUpcomingPane}>
                 <View style={styles.sectionHeaderRow}>
@@ -1157,7 +1165,9 @@ export default function HomeTab(): React.ReactElement {
                 hasOtherSales={hasDoorSalesToday}
                 moneyFootnote={doorTodayLine}
               />
-              <HomeAdsSection brandId={currentBrand.id} />
+              <Suspense fallback={null}>
+                <LazyHomeAdsSection brandId={currentBrand.id} />
+              </Suspense>
               <View style={styles.mobileRecentHeaderWrap}>
                 <View style={styles.mobileSectionHeaderRow}>
                   <Text accessibilityRole="header" style={styles.sectionTitle}>

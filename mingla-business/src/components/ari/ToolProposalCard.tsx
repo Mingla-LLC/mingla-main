@@ -76,7 +76,9 @@ import { BRAND_DELETE_SHARED_COPY } from "../brand/brandDeleteSharedCopy";
 // Premium proposal-card metrics — tighter than the default kit values.
 // #4238 W6b — the Host ad lines (goal, visits-for-now apps, media count;
 // the apply_ad_suggestion money) load lazily with the Host Ads words.
-const AriAdCardExtras = React.lazy(() => import("./AriAdCardExtras"));
+const AriAdCardExtras = React.lazy(async () => ({
+  default: (await import("../../screens/hostAds/HostAdScreens")).AriAdCardExtras,
+}));
 const AD_EXTRAS_TOOLS = new Set(["propose_ad_plan", "apply_ad_suggestion"]);
 
 /** #4238 W6b — Ari's refusal codes in the Host's words (lazy, same chunk). */
@@ -85,7 +87,7 @@ async function plainAdRefusal(message: string): Promise<string> {
     return message;
   }
   try {
-    const { hostAdAriRefusalIn } = await import("../marketing/ads/hostAdManageCopy");
+    const { hostAdAriRefusalIn } = await import("../../screens/hostAds/HostAdScreens");
     return hostAdAriRefusalIn(message) ?? message;
   } catch {
     return message;
