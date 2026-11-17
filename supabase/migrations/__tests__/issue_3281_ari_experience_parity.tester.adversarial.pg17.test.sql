@@ -17,6 +17,10 @@
 --       ticket_types ids; without ids every option is re-created.
 --   P2  once an option has sold, dropping it or changing its price terms by id
 --       is refused (price_change_with_sales); renaming it by id is not.
+--   R1  the get_experience contract: on a live experience with a sale, the
+--       read-back graph (issue_1973_current_experience_payload) sent back
+--       verbatim through manage_experience_stops (one offset changed) and
+--       update_experience (one option renamed) keeps stop and option ids.
 --
 -- Every check RAISEs on failure. One transaction, ends in ROLLBACK.
 
@@ -312,5 +316,64 @@ BEGIN
       = 'General admission',
     'P2 a sold option renamed by id keeps its id and its sales');
 END $p2$;
+
+-- ─── R1 read, then send back what was read ──────────────────────────────────
+DO $r1$
+DECLARE
+  f record;
+  v_order uuid := gen_random_uuid();
+  v_graph jsonb;
+  v_stops jsonb;
+  v_options jsonb;
+  v_stop_ids uuid[];
+BEGIN
+  SELECT * INTO f FROM pg_temp.b3_experience('r1', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  INSERT INTO public.orders(
+    id, event_id, event_date_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
+    payment_method, payment_status, source
+  ) VALUES (
+    v_order, f.o_event, f.o_date_id, 'r1@example.test', 'Guest', '+15550003281', 0,
+    'free', 'paid', 'online_checkout'
+  );
+  INSERT INTO public.order_line_items(order_id, ticket_type_id, quantity, unit_price_cents)
+    VALUES (v_order, f.o_tier, 1, 0);
+  INSERT INTO public.tickets(
+    id, order_id, ticket_type_id, event_id, qr_code, qr_token_hash, status, approval_status
+  ) VALUES (
+    gen_random_uuid(), v_order, f.o_tier, f.o_event,
+    'mingla:v1:ticket:' || gen_random_uuid()::text,
+    md5(gen_random_uuid()::text), 'valid', 'auto'
+  );
+  PERFORM set_config('request.jwt.claim.sub', f.o_user::text, true);
+  SELECT array_agg(id ORDER BY stop_order) INTO v_stop_ids
+    FROM public.experience_stops WHERE event_id = f.o_event;
+
+  -- What get_experience returns as `experience`.
+  v_graph := public.issue_1973_current_experience_payload(f.o_event);
+  v_stops := jsonb_set(v_graph->'stops', '{1,start_offset_minutes}', '60'::jsonb);
+  PERFORM pg_temp.b3_ari(f.o_user, f.o_brand, 'manage_experience_stops', jsonb_build_object(
+    'event_id', f.o_event, 'expected_revision', pg_temp.b3_revision(f.o_event),
+    'edit_reason', 'Host asked Ari to start the second room an hour in',
+    'experience_intents', v_graph->'experience_intents',
+    'stops', v_stops));
+  PERFORM pg_temp.b3_assert(
+    pg_temp.b3_offsets(f.o_event) = ARRAY[0, 60], 'R1 stops sent back with one offset changed save it');
+  PERFORM pg_temp.b3_assert(
+    (SELECT array_agg(id ORDER BY stop_order) FROM public.experience_stops
+      WHERE event_id = f.o_event) = v_stop_ids,
+    'R1 the live stops keep their ids');
+
+  v_graph := public.issue_1973_current_experience_payload(f.o_event);
+  v_options := jsonb_set(v_graph->'price_options', '{0,name}', '"General admission"'::jsonb);
+  PERFORM pg_temp.b3_ari(f.o_user, f.o_brand, 'update_experience', jsonb_build_object(
+    'event_id', f.o_event, 'expected_revision', pg_temp.b3_revision(f.o_event),
+    'edit_reason', 'Host asked Ari to rename the ticket option',
+    'price_options', v_options));
+  PERFORM pg_temp.b3_assert(
+    (SELECT name FROM public.ticket_types WHERE id = f.o_tier AND deleted_at IS NULL)
+      = 'General admission',
+    'R1 the sold option read back and renamed keeps its id');
+END $r1$;
 
 ROLLBACK;

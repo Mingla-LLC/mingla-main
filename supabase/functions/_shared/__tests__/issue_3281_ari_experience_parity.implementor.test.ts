@@ -7,8 +7,11 @@
  *     carries its name, price and basis (a partial option would be re-priced
  *     to 0 by the server);
  *   - manage_experience_stops has a typed stop schema; the proposal is
- *     canonicalized (stop_order = position, offset always said) BEFORE the
- *     #1972 receipt binds it, and the executor never rewrites args;
+ *     numbered by position BEFORE the #1972 receipt binds it; a stop that
+ *     does not say its offset goes back to the model (agent-chat
+ *     validateProposal), and the executor refuses in plain words only when a
+ *     saved offset would be lost; it never rewrites args;
+ *   - get_experience is offered whenever an experience edit is;
  *   - get_experience reads the editable graph: revision first, verbatim.
  *   - the flow's experience row counts every live ticket option.
  */
@@ -23,8 +26,20 @@ import {
   canonicalizeAgentProposalArgs,
   ToolError,
 } from "../agentTools.ts";
-import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "../agentDomainTools.ts";
-import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
+import {
+  DOMAIN_READ_ONLY,
+  DOMAIN_TOOLS,
+  EXPERIENCE_STOP_OFFSET_REFUSAL,
+  experienceStopsOffsetIssue,
+} from "../agentDomainTools.ts";
+import {
+  AGENT_TOOL_AUTHORIZATION,
+  authorizeAgentTool,
+} from "../agentToolAuthorization.ts";
+import { selectAriTools } from "../agentToolsets.ts";
+import { DOMAIN_REFUSED_CODE } from "../ariRefusalCopy.ts";
+import { ARI_TOOL_RULES, ARI_CAPABILITY_INDEX } from "../agentSystemPrompt.ts";
+import { ariToolDeclarations } from "../ariToolDescriptions.ts";
 import { buildFlowProbeDeps } from "../ariFlows/edge.ts";
 
 const BRAND = "11111111-1111-4111-8111-111111111111";
@@ -58,17 +73,21 @@ function fakeClient(tables: Record<string, Json[]>, rpcResult: Json = {}) {
     reads,
     from(table: string) {
       reads.push(table);
-      const rows = tables[table] ?? [];
-      const result = { data: rows, error: null };
+      let rows = tables[table] ?? [];
       const builder: Json = {
         select: () => builder,
         eq: () => builder,
         is: () => builder,
         not: () => builder,
         order: () => builder,
-        limit: () => builder,
+        // Honoured, so a query that reads only the first row is caught.
+        limit: (n: number) => {
+          rows = rows.slice(0, n);
+          return builder;
+        },
         maybeSingle: () => Promise.resolve({ data: rows[0] ?? null, error: null }),
-        then: (resolve: (v: Json) => unknown) => Promise.resolve(result).then(resolve),
+        then: (resolve: (v: Json) => unknown) =>
+          Promise.resolve({ data: rows, error: null }).then(resolve),
       };
       return builder;
     },
@@ -144,18 +163,141 @@ Deno.test("manage_experience_stops proposals are numbered by position, idempoten
   assert(canonicalizeAgentProposalArgs("update_experience", other) === other);
 });
 
-Deno.test("a stop that does not say its offset is refused before it can lose it", () => {
-  const err = assertThrows(
+Deno.test("a stop that does not say its offset goes back to the model, never to the owner", () => {
+  // Set-date stops carry a clock start_time and no offset: still not a throw.
+  const setDate = {
+    event_id: EVENT,
+    stops: [{ place_name: "A", start_time: "18:00" }],
+  };
+  assertEquals(
+    canonicalizeAgentProposalArgs("manage_experience_stops", setDate),
+    { ...setDate, stops: [{ place_name: "A", start_time: "18:00", stop_order: 0 }] },
+  );
+  const issue = experienceStopsOffsetIssue({
+    stops: [{ place_name: "A", start_offset_minutes: 30 }, { place_name: "B" }],
+  });
+  assert(issue?.startsWith("stops[1].start_offset_minutes is missing"));
+  assert(issue?.includes("get_experience"));
+  assertEquals(
+    experienceStopsOffsetIssue({
+      stops: [
+        { place_name: "A", start_offset_minutes: null },
+        { place_name: "B", startOffsetMinutes: 30 },
+      ],
+    }),
+    null,
+  );
+  assertEquals(experienceStopsOffsetIssue({ event_id: EVENT }), null);
+});
+
+Deno.test("agent-chat returns the offset issue to the model in validateProposal", async () => {
+  const chat = await Deno.readTextFile(
+    new URL("../../agent-chat/index.ts", import.meta.url),
+  );
+  const at = chat.indexOf("validateProposal: (call) => {");
+  assert(at > 0);
+  const hook = chat.slice(at, chat.indexOf('if (call.name !== "draft_campaign") return null;', at));
+  assert(hook.includes('call.name === "manage_experience_stops"'));
+  assert(hook.includes("experienceStopsOffsetIssue(call.args)"));
+  assert(hook.includes('code: "EXPERIENCE_STOP_OFFSET_MISSING"'));
+});
+
+Deno.test("the executor refuses in plain words only when a saved offset would be lost", async () => {
+  const args = canonicalizeAgentProposalArgs("manage_experience_stops", {
+    event_id: EVENT,
+    expected_revision: REVISION,
+    experience_intents: ["romantic"],
+    stops: [{ place_name: "A" }],
+  });
+  const context = { operationId: "55555555-5555-4555-8555-555555555555" } as Json;
+  // A saved offset would be cleared: refused, nothing sent.
+  const saved = fakeClient({
+    events: [{ id: EVENT, brand_id: BRAND }],
+    experience_stops: [{ start_offset_minutes: 45 }],
+  });
+  const err = await assertRejects(
+    () => rawTool("manage_experience_stops").executor(args, saved as Json, USER, context),
+    ToolError,
+  );
+  assertEquals(err.code, DOMAIN_REFUSED_CODE);
+  assertEquals(err.message, EXPERIENCE_STOP_OFFSET_REFUSAL);
+  assert(!/[a-z]+_[a-z_]+/.test(err.message), "no code words for the owner");
+  assertEquals(saved.rpcCalls.length, 0);
+  // Nothing saved to lose (set-date, or a proposal from before this change).
+  const none = fakeClient({ events: [{ id: EVENT, brand_id: BRAND }], experience_stops: [] }, { ok: true });
+  await rawTool("manage_experience_stops").executor(args, none as Json, USER, context);
+  assertEquals(none.rpcCalls.map((c) => c.fn), ["ari_execute_experience_operation"]);
+});
+
+Deno.test("stops and options read by get_experience validate when sent back", async () => {
+  // The read-back shape (issue_1973_current_experience_payload): nulls,
+  // stored image URLs, a Postgres time, and every option field.
+  const stops = [
+    {
+      stop_order: 0, place_id: null, place_name: "A very long stop name ".repeat(8),
+      address: null, city: null, region: null, country_code: null, lat: null, lng: null,
+      coordinate_precision: null, image_urls: null, start_time: "18:00:00",
+      start_offset_minutes: null, price_cents: 0, ai_description: "First room.",
+    },
+  ];
+  const options = [{
+    id: OPTION, name: "Standard", price_cents: 2_500_000, price_basis: "person",
+    block_minutes: null, min_blocks: null, max_blocks: null, group_max: null,
+    capacity: null, is_hidden: false,
+  }];
+  const refusesClient = {
+    from() { throw new Error("schema passed; role lookup reached"); },
+    rpc() { throw new Error("schema passed; role lookup reached"); },
+  };
+  for (const [name, args] of [
+    ["manage_experience_stops", {
+      event_id: EVENT, expected_revision: REVISION, stops,
+      experience_intents: ["romantic"],
+    }],
+    ["update_experience", { event_id: EVENT, expected_revision: REVISION, price_options: options }],
+  ] as const) {
+    const tool = AGENT_TOOLS.find((t) => t.name === name)!;
+    const err = await assertRejects(() =>
+      authorizeAgentTool(tool, args as Json, refusesClient as Json, USER)
+    );
+    assert(!(err instanceof ToolError && err.code === "INVALID_ARGS"), `${name}: ${String(err)}`);
+  }
+  // A partial option is refused by the schema (it would be re-priced to 0).
+  const err = await assertRejects(
     () =>
-      canonicalizeAgentProposalArgs("manage_experience_stops", {
-        event_id: EVENT,
-        stops: [{ place_name: "A", start_offset_minutes: 30 }, { place_name: "B" }],
-      }),
+      authorizeAgentTool(
+        AGENT_TOOLS.find((t) => t.name === "update_experience")!,
+        { event_id: EVENT, expected_revision: REVISION, price_options: [{ id: OPTION, is_hidden: true }] },
+        refusesClient as Json,
+        USER,
+      ),
     ToolError,
   );
   assertEquals(err.code, "INVALID_ARGS");
-  assert(err.message.includes("stops[1].start_offset_minutes"));
-  assert(err.message.includes("get_experience"));
+});
+
+Deno.test("get_experience is offered whenever an experience edit is, and not otherwise", () => {
+  const names = (keys: string[], query: string) =>
+    selectAriTools(AGENT_TOOLS, keys as Json, 12, query).map((t) => t.name);
+  for (
+    const query of [
+      "change the price to $40",
+      "make the second one start 30 minutes later",
+      "Move the second stop of my wine walk experience to 7pm",
+      "update my sunset tour",
+    ]
+  ) {
+    const picked = names(["core", "listings"], query);
+    const edits = picked.some((n) => n === "update_experience" || n === "manage_experience_stops");
+    assertEquals(picked.includes("get_experience"), edits, `${query}: ${picked.join(",")}`);
+    assert(picked.length <= 12, query);
+    if (edits) {
+      const at = picked.indexOf("get_experience");
+      const edit = picked.findIndex((n) => n === "update_experience" || n === "manage_experience_stops");
+      assert(at < edit, `${query}: the read sits before its edit`);
+    }
+  }
+  assert(!names(["core", "listings"], "How do I add a ticket tier?").includes("get_experience"));
 });
 
 Deno.test("the manage_experience_stops executor sends the bound args unchanged", async () => {
@@ -280,4 +422,29 @@ Deno.test("the flow row's ticket price is the highest live option, not the first
   assertEquals(row.is_free, true);
   assertEquals(row.whole_price_cents, null);
   assertEquals(row.ticket_price_cents, 2_500_000);
+});
+
+Deno.test("Ari is told to read first and to say every offset (current prompt)", () => {
+  for (const tool of ["update_experience", "manage_experience_stops"]) {
+    assert(
+      ARI_TOOL_RULES[tool].some((rule) => rule.includes("get_experience first")),
+      `${tool} rule: read first`,
+    );
+  }
+  assert(ARI_TOOL_RULES.manage_experience_stops.some((rule) =>
+    rule.includes("start_offset_minutes") && rule.includes("or null")
+  ));
+  assert(ARI_TOOL_RULES.update_experience.some((rule) => rule.includes("Keep each stored option's id")));
+  assert(ARI_TOOL_RULES.create_experience.some((rule) => rule.includes("start_offset_minutes")));
+  assert(/^- get_experience — /m.test(ARI_CAPABILITY_INDEX));
+});
+
+Deno.test("get_experience is described and catalogued with the experience tools", async () => {
+  const declared = ariToolDeclarations(AGENT_TOOLS).find((d) => d.name === "get_experience");
+  assert(declared, "declared to the model");
+  // The onboarding "schedule" step lists it beside update_experience.
+  const ari10x = await Deno.readTextFile(new URL("../agentAri10xTools.ts", import.meta.url));
+  const at = ari10x.indexOf('key: "schedule"');
+  const step = ari10x.slice(at, ari10x.indexOf("human_owned", at));
+  assert(step.includes('"get_experience"') && step.includes('"update_experience"'));
 });

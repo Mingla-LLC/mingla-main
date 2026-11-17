@@ -538,26 +538,11 @@ const publishExperience = writeTool(
 // issue #3281 bundle 3 — manage_experience_stops proposal canonicalization
 // (agentTools.ts canonicalizeAgentProposalArgs calls it before the receipt
 // binds the args).
-/**
- * Every stop's stop_order is its array position. Idempotent. Refuses a stop
- * that does not say start_offset_minutes (null when it has none): on a draft
- * the stops are re-created, so an omitted offset would be lost.
- */
+/** Every stop's stop_order is its array position. Idempotent; never refuses. */
 export function canonicalizeExperienceStopsArgs(
   args: Record<string, unknown>,
 ): Record<string, unknown> {
   if (!Array.isArray(args.stops)) return args;
-  args.stops.forEach((stop, index) => {
-    if (
-      stop !== null && typeof stop === "object" && !Array.isArray(stop) &&
-      !("start_offset_minutes" in stop) && !("startOffsetMinutes" in stop)
-    ) {
-      throw new ToolError(
-        "INVALID_ARGS",
-        `stops[${index}].start_offset_minutes must be sent (null when the stop has none); read the experience with get_experience first`,
-      );
-    }
-  });
   return {
     ...args,
     stops: args.stops.map((stop, index) =>
@@ -567,6 +552,30 @@ export function canonicalizeExperienceStopsArgs(
     ),
   };
 }
+
+function stopSaysOffset(stop: unknown): boolean {
+  return stop !== null && typeof stop === "object" && !Array.isArray(stop) &&
+    ("start_offset_minutes" in stop || "startOffsetMinutes" in stop);
+}
+
+/**
+ * The model-facing repair note for a manage_experience_stops proposal whose
+ * stops do not each say start_offset_minutes (null when none). agent-chat's
+ * validateProposal returns it to the model, which reads get_experience and
+ * proposes again; the owner never sees it.
+ */
+export function experienceStopsOffsetIssue(
+  args: Record<string, unknown>,
+): string | null {
+  if (!Array.isArray(args.stops)) return null;
+  const missing = args.stops.findIndex((stop) => !stopSaysOffset(stop));
+  if (missing < 0) return null;
+  return `stops[${missing}].start_offset_minutes is missing. Read the experience with get_experience, then send every stop with its start_offset_minutes (null when it has none) and all its other fields.`;
+}
+
+/** Owner sentence when a stop edit would drop a stop's saved start offset. */
+export const EXPERIENCE_STOP_OFFSET_REFUSAL =
+  "That change would clear when a stop starts, so nothing was saved. Ask me again and I'll keep each stop's start time.";
 
 // issue #3281 bundle 3 — the current editable experience, so Ari can edit
 // price options by id and stops without losing what it did not mean to change.
@@ -719,10 +728,11 @@ const manageExperienceStops = writeTool(
         "The complete ordered stop list, replacing the stored stops. Read them with get_experience first and send every stop with all its fields; a field left out may be cleared. stop_order is set from each stop's position.",
       // issue #3281 bundle 3 — the stop fields the Host wizard sends
       // (ExperienceCreatorWizard buildPayload stops[]), typed for Ari.
-      // Every stop must say start_offset_minutes (null allowed): a draft stop
-      // edit re-creates the stops, and a stop sent without it would lose its
-      // offset. canonicalizeExperienceStopsArgs refuses a stop that omits it
-      // (nested `required` treats null as missing, so it is not listed here).
+      // Every stop should say start_offset_minutes (null allowed): a draft
+      // stop edit re-creates the stops, and a stop sent without it loses its
+      // offset. agent-chat returns experienceStopsOffsetIssue to the model;
+      // the executor refuses when a saved offset would be lost. (Nested
+      // `required` treats null as missing, so it is not listed here.)
       items: {
         type: "object",
         required: ["place_name"],
@@ -734,7 +744,7 @@ const manageExperienceStops = writeTool(
             description: "Set from the stop's position; any value sent is replaced.",
           },
           place_id: { type: "string" },
-          place_name: { type: "string", maxLength: 120 },
+          place_name: { type: "string" },
           address: { type: "string" },
           city: { type: "string", nullable: true },
           region: { type: "string", nullable: true },
@@ -783,10 +793,22 @@ const manageExperienceStops = writeTool(
   },
   ["event_id", "expected_revision", "stops", "experience_intents"],
   async (args, client, userId, context) => {
-    await requireEvent(args, client, userId);
-    // Defense in depth for direct executor calls. Deliberately do not replace
-    // `args`: #1972 binds the exact already-canonical pending payload.
-    canonicalizeExperienceStopsArgs(args);
+    const { eventId } = await requireEvent(args, client, userId);
+    // #3281 bundle 3: a stop sent without start_offset_minutes loses its
+    // saved offset (a draft re-creates its stops). Refuse only when the
+    // experience has one to lose, so set-date stops and older proposals still
+    // go through. Never rewrites `args`: #1972 binds the exact payload.
+    if (experienceStopsOffsetIssue(args) !== null) {
+      const { data: saved, error } = await client.from("experience_stops")
+        .select("start_offset_minutes")
+        .eq("event_id", eventId)
+        .not("start_offset_minutes", "is", null)
+        .limit(1);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if ((saved ?? []).length > 0) {
+        throw new ToolError(DOMAIN_REFUSED_CODE, EXPERIENCE_STOP_OFFSET_REFUSAL);
+      }
+    }
     return await executeExperienceWrite(
       "manage_experience_stops",
       args,

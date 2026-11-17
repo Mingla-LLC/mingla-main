@@ -202,11 +202,6 @@ export function selectAriTools(
   const eventMoneyReadRequested =
     /\b(?:order|orders|sales|revenue|refund|payment|payments|payout|money|transaction|transactions)\b/i
       .test(query);
-  // #3281 bundle 3: the editable-experience read joins the compact window only
-  // for an experience conversation, so a generic listings question keeps its
-  // tools (request_tools still reaches it).
-  const experienceEditRequested =
-    /\b(?:experiences?|stops?|price options?|itinerary)\b/i.test(query);
   // Follow-up turns often omit "trip" but still say "per-person package".
   // Treat that as trip pricing intent so a mention of the brand's currency
   // does not route a package write into brand settings.
@@ -237,9 +232,7 @@ export function selectAriTools(
           .test(tool.name) ||
       keys.includes("listings") && !eventMoneyReadRequested &&
         /^(list_event_orders|get_event_order_reconciliation)$/
-          .test(tool.name) ||
-      keys.includes("listings") && !experienceEditRequested &&
-        tool.name === "get_experience"
+          .test(tool.name)
     )
   );
   const core = all.filter((tool) => toolBelongsTo(tool.name, "core"));
@@ -328,8 +321,46 @@ export function selectAriTools(
         directIntentScore + tripPricingScore + venueListScore,
     };
   }).sort((a, b) => b.score - a.score || a.index - b.index);
-  for (const { tool } of ranked) unique.set(tool.name, tool);
-  return [...unique.values()].slice(0, Math.max(8, Math.min(maxTools, 60)));
+  // #3281 bundle 3: get_experience travels with the experience edits. It is
+  // ranked out of the window on its own (so a generic listings question keeps
+  // its tools) and joins whenever update_experience or manage_experience_stops
+  // is offered, taking the last slot, because those edits send back what it
+  // reads (option ids, stop offsets).
+  const experienceRead = unique.get("get_experience") ??
+    ranked.find(({ tool }) => tool.name === "get_experience")?.tool;
+  for (const { tool } of ranked) {
+    if (tool.name !== "get_experience") unique.set(tool.name, tool);
+  }
+  const limit = Math.max(8, Math.min(maxTools, 60));
+  const window = [...unique.values()].filter((tool) =>
+    tool.name !== "get_experience"
+  ).slice(0, limit);
+  if (
+    experienceRead &&
+    window.some((tool) =>
+      tool.name === "update_experience" ||
+      tool.name === "manage_experience_stops"
+    )
+  ) {
+    if (window.length >= limit) {
+      // Drop the lowest-ranked slot that is not an experience edit.
+      for (let i = window.length - 1; i >= 0; i -= 1) {
+        if (
+          window[i].name !== "update_experience" &&
+          window[i].name !== "manage_experience_stops"
+        ) {
+          window.splice(i, 1);
+          break;
+        }
+      }
+    }
+    const editAt = window.findIndex((tool) =>
+      tool.name === "update_experience" ||
+      tool.name === "manage_experience_stops"
+    );
+    window.splice(editAt, 0, experienceRead);
+  }
+  return window;
 }
 
 /** Keep brand setup turns on their read/plan lane until a specific write is requested. */

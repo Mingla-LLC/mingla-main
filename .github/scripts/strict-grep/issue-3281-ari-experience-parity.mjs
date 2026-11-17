@@ -492,8 +492,8 @@ if (process.argv.includes("--self-test")) {
     }, base, "price_options[].id -> update_experience:price_options[].id is not in"],
     ["Ari stop updates go untyped again", {
       ...sources,
-      domain: replaceOnce(sources.domain, "        required: [\"place_name\", \"start_offset_minutes\"],\n        properties: {\n          stop_order:",
-        "        required: [\"place_name\", \"start_offset_minutes\"],\n        notProperties: {\n          stop_order:"),
+      domain: replaceOnce(sources.domain, "        required: [\"place_name\"],\n        properties: {\n          stop_order:",
+        "        required: [\"place_name\"],\n        notProperties: {\n          stop_order:"),
     }, base, "update: stops[].place_id -> manage_experience_stops:stops[].place_id is not in"],
     ["payload read-back drops a key", {
       ...sources,

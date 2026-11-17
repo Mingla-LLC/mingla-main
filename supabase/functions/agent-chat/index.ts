@@ -106,6 +106,7 @@ import {
 } from "../_shared/agentFollowupProposal.ts";
 import {
   bindTripStandardPlaceholderProposal,
+  experienceStopsOffsetIssue,
   preflightDiscountProposal,
   preflightMoneyProposal,
 } from "../_shared/agentDomainTools.ts";
@@ -4160,6 +4161,14 @@ ${boundedAgentContext}
               message:
                 "The user asked to add a ticket tier to an existing event. Do not create or edit an event. Use the canonical list_events result to identify the named event, then return upsert_ticket_tier for that event. If the event is missing or ambiguous, ask one precise question.",
             };
+          }
+          // #3281 bundle 3: a stop that does not say its offset would lose a
+          // saved one; the model reads get_experience and proposes again.
+          if (call.name === "manage_experience_stops") {
+            const offsetIssue = experienceStopsOffsetIssue(call.args);
+            if (offsetIssue) {
+              return { code: "EXPERIENCE_STOP_OFFSET_MISSING", message: offsetIssue };
+            }
           }
           if (call.name !== "draft_campaign") return null;
           try {
