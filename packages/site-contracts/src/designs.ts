@@ -1369,7 +1369,7 @@ export const SUNSET_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string
 
 /*
  * #4453 6c — Sunset: warm retro 70s. Cream paper, chocolate ink, a burnt
- * orange / tomato / mustard sunset; soft Fraunces (SOFT 100 pinned) over a
+ * orange / tomato / mustard sunset; Fraunces at its sharp cut (SOFT 0 pinned, as the gallery's headline draws) over a
  * rounded Nunito, Shrikhand for the accent words; chunky sticker shadows, a
  * striped retro sun hero drawn in CSS whose rays turn slowly (its one
  * signature moment). Light only by design.
@@ -1445,7 +1445,8 @@ export const SUNSET: DesignDefinition = {
     heading_case: "none",
   },
   fonts: {
-    display: { family: "Fraunces", source: "google", weights: [600, 700, 800], italic: false, axes: { opsz: [9, 144], SOFT: [100, 100] } },
+    // #4453 final pass (designer call, comment 6935515341): SOFT 0 for the display slot, the gallery's sharp, high-contrast headline cut.
+    display: { family: "Fraunces", source: "google", weights: [600, 700, 800], italic: false, axes: { opsz: [9, 144], SOFT: [0, 0] } },
     body: { family: "Nunito", source: "google", weights: [400, 600, 700, 800], italic: false },
     accent: { family: "Shrikhand", source: "google", weights: [400], italic: false },
     label: null,

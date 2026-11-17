@@ -485,8 +485,8 @@ describe("#4453 6c SC-D5 font budget, variable axes and no off-origin requests",
   const BUDGET: Readonly<Record<string, { files: Readonly<Record<string, number>>; firstView: readonly string[] }>> = {
     // Pop's Fraunces is the accent face only (italic words, no opsz: inside the 180 KB page total).
     pop: { files: { "Unbounded/normal": 50_892, "Figtree/normal": 20_184, "Fraunces/normal": 36_560, "Fraunces/italic": 45_624 }, firstView: ["Unbounded/normal", "Figtree/normal"] },
-    // Sunset's Fraunces carries opsz with its soft instance pinned (SOFT 100); Shrikhand is static.
-    sunset: { files: { "Fraunces/normal": 62_200, "Nunito/normal": 39_152, "Shrikhand/normal": 15_736 }, firstView: ["Fraunces/normal", "Nunito/normal"] },
+    // Sunset's Fraunces carries opsz with its sharp instance pinned (SOFT 0, as the gallery's headline); Shrikhand is static.
+    sunset: { files: { "Fraunces/normal": 67_388, "Nunito/normal": 39_152, "Shrikhand/normal": 15_736 }, firstView: ["Fraunces/normal", "Nunito/normal"] },
     // Space Mono is static (one file per weight).
     pulse: { files: { "Unbounded/normal": 50_892, "Space Grotesk/normal": 23_472, "Space Mono/400": 9_464, "Space Mono/700": 9_552 }, firstView: ["Unbounded/normal", "Space Grotesk/normal"] },
   };
@@ -556,8 +556,8 @@ describe("#4453 6c SC-D5 font budget, variable axes and no off-origin requests",
         }
       }
     }
-    // Sunset: optical size with its soft instance pinned (the gallery sets SOFT 100 on the whole page).
-    expect(SUNSET.fonts.display.axes).toEqual({ opsz: [9, 144], SOFT: [100, 100] });
+    // Sunset: optical size with its sharp instance pinned (the gallery's headline draws at SOFT 0; designer call on comment 6935515341).
+    expect(SUNSET.fonts.display.axes).toEqual({ opsz: [9, 144], SOFT: [0, 0] });
     expect(POP.fonts.accent!.axes).toBeUndefined();
     expect([PULSE.fonts.display.axes, PULSE.fonts.body.axes, PULSE.fonts.label?.axes]).toEqual([undefined, undefined, undefined]);
     // One family, one axis set per design (two slots of one family share their files).
