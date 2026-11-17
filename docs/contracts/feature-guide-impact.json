@@ -1176,7 +1176,11 @@
         "mingla-business/src/components/scanner/doorExtras.ts",
         "mingla-business/src/services/guestListService.ts",
         "supabase/functions/guest-list/index.ts",
-        "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql"
+        "supabase/migrations/20280404003281_issue_3281_door_order_extras.sql",
+        "mingla-business/app/event/[id]/scanner/index.web.tsx",
+        "supabase/functions/scan-ticket/index.ts",
+        "mingla-business/src/utils/bookedStart.ts",
+        "supabase/functions/_shared/doorBookedStart.ts"
       ]
     },
     {

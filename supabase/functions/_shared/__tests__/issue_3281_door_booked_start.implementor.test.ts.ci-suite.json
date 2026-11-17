@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3281_door_booked_start.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-door-booked-start-implementor",
+  "profile": "deno-2-unit"
+}

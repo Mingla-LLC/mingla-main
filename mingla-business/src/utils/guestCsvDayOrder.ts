@@ -116,8 +116,10 @@ const daySourceForRow = (row: ExportGuestRow): GuestCsvDayCellOrder => {
 export const serializeGuestsToCsvByOccurrence = (
   rows: ExportGuestRow[],
   dayLabels: ReadonlyMap<string, string> = new Map(),
+  /** issue #3281 — the offering's zone, for the "Booked start" column. */
+  timeZone: string | null = null,
 ): string => {
-  const raw = serializeGuestsToCsv(rows, undefined, dayLabels);
+  const raw = serializeGuestsToCsv(rows, undefined, dayLabels, timeZone);
   const records = splitCsvRecords(raw);
   if (records.length === 0) return raw;
   const out: string[] = [];
@@ -153,6 +155,7 @@ export const exportGuestsCsvByOccurrence = async (args: {
   const csv = serializeGuestsToCsvByOccurrence(
     args.rows,
     args.dayLabels ?? new Map(),
+    args.event.timezone,
   );
   const ymd = new Date().toISOString().slice(0, 10);
   const filename = `${args.event.eventSlug}-guest-list-${ymd}.csv`;

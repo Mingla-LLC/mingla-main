@@ -40,6 +40,7 @@ import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../src/utils/permissionGates";
 import { BRAND_ROLE_RANK } from "../../../../src/utils/brandRole";
 import { isCompOrder } from "../../../../src/utils/compOrders";
+import { bookedStartLine } from "../../../../src/utils/bookedStart";
 import type { DoorSaleRecord } from "../../../../src/types/doorSales";
 import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
 import { formatCurrency } from "../../../../src/utils/currency";
@@ -592,6 +593,10 @@ export default function GuestDetailRoute(): React.ReactElement {
 
   const isOrder = parsed.kind === "order" && order !== null;
   const isGuestList = isOrder && isCompOrder(order);
+  // issue #3281 — the start this guest booked, in the offering's zone.
+  const bookedLine = isOrder
+    ? bookedStartLine(order.bookedStartAt, event?.timezone ?? null)
+    : null;
   const isCancelled = isOrder && order.status === "cancelled";
   // The server refuses a cancel once ANY ticket has a first admission.
   const anyCheckedIn = ticketRows.some((t) => t.usedAt !== null);
@@ -713,6 +718,9 @@ export default function GuestDetailRoute(): React.ReactElement {
           </View>
           {isGuestList ? (
             <Text style={styles.heroAdded}>{`Added ${formatRelativeTime(order.paidAt)}`}</Text>
+          ) : null}
+          {bookedLine !== null ? (
+            <Text style={styles.heroAdded} testID="guest-booked-start">{bookedLine}</Text>
           ) : null}
         </View>
 

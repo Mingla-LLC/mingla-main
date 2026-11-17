@@ -37,6 +37,7 @@ import {
 import { useGuestStore } from "../../../../src/store/guestStore";
 import type { OrderRecord } from "../../../../src/store/orderStore";
 import { isCompOrder } from "../../../../src/utils/compOrders";
+import { formatBookedStart } from "../../../../src/utils/bookedStart";
 import {
   addTicketTypeForLinkRoute,
   isTicketLinkable,
@@ -978,6 +979,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
                 key={`${row.kind}-${row.id}`}
                 row={row}
                 plusOneCount={row.kind === "order" ? plusOneCountByLead.get(row.id) ?? 0 : 0}
+                timeZone={event?.timezone ?? null}
                 onPress={() => handleOpenRow(row)}
               />
             ))}
@@ -1009,6 +1011,8 @@ interface GuestRowCardProps {
   row: GuestRow;
   /** issue #3827 — named plus-ones who came with this guest-list guest. */
   plusOneCount: number;
+  /** issue #3281 — the offering's zone, for the guest's booked start. */
+  timeZone: string | null;
   onPress: () => void;
 }
 
@@ -1034,6 +1038,7 @@ export const serverCheckInCounts = (order: OrderRecord): { live: number; checked
 const GuestRowCard: React.FC<GuestRowCardProps> = ({
   row,
   plusOneCount,
+  timeZone,
   onPress,
 }) => {
   const isOrder = row.kind === "order";
@@ -1075,6 +1080,9 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     if (plusOneCount > 0) partyFragments.push(`+${plusOneCount} plus-one${plusOneCount === 1 ? "" : "s"}`);
   }
   if (isOrder && row.order.viaLinkLabel) partyFragments.push(`via ${row.order.viaLinkLabel}`);
+  // issue #3281 — the start this guest booked, in the offering's zone.
+  const booked = isOrder ? formatBookedStart(row.order.bookedStartAt, timeZone) : null;
+  if (booked !== null) partyFragments.push(`booked for ${booked}`);
   const subline = [`${sublineLeft}${ticketSummary}`, ...partyFragments, relativeTime].join(" · ");
 
   // Cycle 11 J-S6 + Cycle 12 — derived check-in pill state.

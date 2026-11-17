@@ -25,6 +25,7 @@ import { isCompOrder } from "./compOrders";
 import { PAYMENT_METHOD_LABELS } from "./paymentMethodLabels";
 import { doorSaleMoney } from "./moneySummary";
 import { isDoorOrder } from "./isDoorOrder";
+import { bookedStartCsvCell } from "./bookedStart";
 import type { ReconciliationSummary } from "./reconciliation";
 import type {
   DoorPaymentMethod,
@@ -178,6 +179,11 @@ export const serializeGuestsToCsv = (
    * parsing this file by position.
    */
   dayLabels: ReadonlyMap<string, string> = new Map(),
+  /**
+   * issue #3281 — the offering's IANA zone, for the "Booked start" column.
+   * Absent => UTC (never the phone's zone, so two exports always agree).
+   */
+  timeZone: string | null = null,
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
@@ -206,6 +212,10 @@ export const serializeGuestsToCsv = (
     // "Day" so the first 17 columns keep their index and "Day" stays last.
     "Via link",
     "Came with",
+    // issue #3281 — the start the guest booked on an open-daily experience,
+    // as the offering's wall clock. Inserted BEFORE "Day" like #3827: "Day"
+    // must stay last (guestCsvDayOrder rewrites the last cell).
+    "Booked start",
     // issue #2160 — APPENDED LAST so every existing column keeps its index.
     // Blank for door sales and any pass that is not day-scoped.
     "Day",
@@ -259,6 +269,7 @@ export const serializeGuestsToCsv = (
         "",
         o.viaLinkLabel ?? "",
         o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
+        bookedStartCsvCell(o.bookedStartAt, timeZone),
         orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -287,6 +298,7 @@ export const serializeGuestsToCsv = (
         o.currency,
         o.viaLinkLabel ?? "",
         "",
+        bookedStartCsvCell(o.bookedStartAt, timeZone),
         orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -316,6 +328,8 @@ export const serializeGuestsToCsv = (
         s.currency,
         // A door sale is rung up on the night, so its day is the night it was
         // rung up on — not a chosen occurrence. Left blank rather than guessed.
+        // Via link, Came with, Booked start, Day.
+        "",
         "",
         "",
         "",
@@ -434,7 +448,12 @@ export const exportCsvText = async (
 export const exportGuestsCsv = async (
   args: ExportGuestsCsvArgs,
 ): Promise<ExportResult> => {
-  const csv = serializeGuestsToCsv(args.rows, undefined, args.dayLabels);
+  const csv = serializeGuestsToCsv(
+    args.rows,
+    undefined,
+    args.dayLabels,
+    args.event.timezone,
+  );
   const filename = `${args.event.eventSlug}-guest-list-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);

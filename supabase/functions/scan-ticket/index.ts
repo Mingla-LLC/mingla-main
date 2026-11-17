@@ -5,77 +5,103 @@ import {
   serviceClient,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
+import {
+  type DoorReadClient,
+  readBookedStart,
+  readScanExtras,
+  withDoorFields,
+} from "../_shared/doorBookedStart.ts";
 
-// issue #3281 — how long a scan waits for its optional extras before the
-// door gets the recorded scan without them.
-const DOOR_EXTRAS_DEADLINE_MS = 1500;
+// issue #3281 — how long a scan waits for its optional door fields (extras
+// still owed, the booked start) before the door gets the recorded scan
+// without them.
+export const DOOR_EXTRAS_DEADLINE_MS = 1500;
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+/** The service client, as narrowly as this function uses it. */
+export type ScanTicketClient = DoorReadClient & {
+  auth: {
+    getUser: (token: string) => Promise<{
+      data: { user: { id: string } | null };
+      error: unknown;
+    }>;
+  };
+};
 
-  const authorization = req.headers.get("authorization");
-  if (!authorization) return jsonResponse({ error: "auth_required" }, 401);
+export type ScanTicketDeps = {
+  client: () => ScanTicketClient;
+  pepper: () => string;
+  deadlineMs?: number;
+};
 
-  const supabase = serviceClient();
-  const token = authorization.replace(/^Bearer\s+/i, "").trim();
-  const { data: userData, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !userData.user) return jsonResponse({ error: "auth_required" }, 401);
+export function createHandler(deps: ScanTicketDeps) {
+  return async (req: Request): Promise<Response> => {
+    if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
+    if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
-  const body = await req.json().catch(() => ({}));
-  const eventId = typeof body.eventId === "string" ? body.eventId : "";
-  const qrPayload = typeof body.qrPayload === "string" ? body.qrPayload : "";
-  if (!eventId || !qrPayload) return jsonResponse({ error: "scan_payload_required" }, 400);
+    const authorization = req.headers.get("authorization");
+    if (!authorization) return jsonResponse({ error: "auth_required" }, 401);
 
-  let qrPepper: string;
-  try {
-    qrPepper = qrTokenPepper();
-  } catch {
-    return jsonResponse({ error: "qr_token_pepper_missing" }, 500);
-  }
+    const supabase = deps.client();
+    const token = authorization.replace(/^Bearer\s+/i, "").trim();
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !userData.user) return jsonResponse({ error: "auth_required" }, 401);
 
-  const { data, error } = await supabase.rpc("biz_ticket_scan", {
-    p_event_id: eventId,
-    p_qr_payload: qrPayload,
-    p_scanner_user_id: userData.user.id,
-    p_qr_token_pepper: qrPepper,
-  });
-  if (error) {
-    const status = error.message.includes("scanner_not_authorized") ? 403 : 400;
-    return jsonResponse({ error: "scan_failed", detail: error.message }, status);
-  }
+    const body = await req.json().catch(() => ({}));
+    const eventId = typeof body.eventId === "string" ? body.eventId : "";
+    const qrPayload = typeof body.qrPayload === "string" ? body.qrPayload : "";
+    if (!eventId || !qrPayload) return jsonResponse({ error: "scan_payload_required" }, 400);
 
-  // issue #3281 — the extras this order still owes, for the door. Optional:
-  // the scan is already recorded, so a slow or failed read never changes the
-  // answer (it gets DOOR_EXTRAS_DEADLINE_MS, then the scan goes back as is),
-  // and an order without extras keeps the body byte-identical.
-  const scan = data as Record<string, unknown> | null;
-  const orderId = typeof scan?.orderId === "string" ? scan.orderId : null;
-  if (scan !== null && orderId !== null) {
-    const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), DOOR_EXTRAS_DEADLINE_MS);
+    let qrPepper: string;
     try {
-      const extras = await supabase
-        .rpc("issue_3281_door_order_extras", {
-          p_actor_id: userData.user.id,
-          p_event_id: eventId,
-          p_order_ids: [orderId],
-        })
-        .abortSignal(deadline.signal);
-      if (extras.error) {
-        console.error("[scan-ticket] door extras unavailable");
-      } else {
-        const items = (extras.data as Record<string, unknown> | null)?.[orderId];
-        if (Array.isArray(items) && items.length > 0) {
-          return jsonResponse({ ...scan, extras: items });
-        }
-      }
+      qrPepper = deps.pepper();
     } catch {
-      console.error("[scan-ticket] door extras unavailable");
-    } finally {
-      clearTimeout(timer);
+      return jsonResponse({ error: "qr_token_pepper_missing" }, 500);
     }
-  }
 
-  return jsonResponse(data);
+    const { data, error } = await supabase.rpc("biz_ticket_scan", {
+      p_event_id: eventId,
+      p_qr_payload: qrPayload,
+      p_scanner_user_id: userData.user.id,
+      p_qr_token_pepper: qrPepper,
+    });
+    if (error) {
+      const message = String((error as { message?: unknown }).message ?? "");
+      const status = message.includes("scanner_not_authorized") ? 403 : 400;
+      return jsonResponse({ error: "scan_failed", detail: message }, status);
+    }
+
+    // issue #3281 — the extras this order still owes and the start the guest
+    // booked, for the door. Both optional, read side by side and each failing
+    // on its own (the readers never throw): the scan is already recorded, so a
+    // slow or failed read never changes the answer, and an order with neither
+    // keeps the body byte-identical. The booked-start read is pinned to this
+    // event: on `wrong_event` the RPC names another event's order.
+    const scan = data as Record<string, unknown> | null;
+    const orderId = typeof scan?.orderId === "string" ? scan.orderId : null;
+    if (scan !== null && orderId !== null) {
+      const deadline = new AbortController();
+      const timer = setTimeout(
+        () => deadline.abort(),
+        deps.deadlineMs ?? DOOR_EXTRAS_DEADLINE_MS,
+      );
+      try {
+        const [extras, booked] = await Promise.all([
+          readScanExtras(supabase, userData.user.id, eventId, orderId, deadline.signal),
+          readBookedStart(supabase, eventId, orderId, deadline.signal),
+        ]);
+        return jsonResponse(withDoorFields(scan, extras, booked));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    return jsonResponse(data);
+  };
+}
+
+export const handler = createHandler({
+  client: () => serviceClient() as unknown as ScanTicketClient,
+  pepper: qrTokenPepper,
 });
+
+if (import.meta.main) serve(handler);

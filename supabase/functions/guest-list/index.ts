@@ -20,6 +20,7 @@ import {
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
 import { writeAudit } from "../_shared/audit.ts";
+import { bookedStartValue, readBookedStarts } from "../_shared/doorBookedStart.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -83,6 +84,15 @@ export type GuestListDeps = {
   rpc: (fn: string, args: Record<string, unknown>) => Promise<RpcResult>;
   pepper: () => string;
   dispatch: (orderId: string) => Promise<void>;
+  /**
+   * issue #3281 — orderId -> the start the guest booked, for orders the
+   * door search already returned for this event. Optional: {} on failure.
+   */
+  bookedStarts?: (
+    eventId: string,
+    orderIds: string[],
+    signal: AbortSignal,
+  ) => Promise<Record<string, string>>;
   audit: (entry: {
     user_id: string;
     event_id: string | null;
@@ -384,6 +394,10 @@ export function projectDoorOrders(orders: unknown): Record<string, unknown>[] {
     isGuestList: o.isGuestList === true,
     cameWithName: typeof o.cameWithName === "string" ? o.cameWithName : null,
     viaLinkLabel: typeof o.viaLinkLabel === "string" ? o.viaLinkLabel : null,
+    // issue #3281 — present only for an order whose guest booked a start.
+    ...(bookedStartValue(o.bookedStartAt) !== null
+      ? { bookedStartAt: o.bookedStartAt }
+      : {}),
     tickets: Array.isArray(o.tickets)
       ? o.tickets.filter(isObject).map((t) => ({
         ticketId: t.ticketId,
@@ -629,15 +643,36 @@ export function createHandler(
         } catch {
           console.error("[guest-list] door extras unavailable");
         }
+        // issue #3281 — the start each guest booked, optional the same way.
+        let bookedByOrder: Record<string, string> = {};
+        if (deps.bookedStarts && orderIds.length > 0) {
+          const deadline = new AbortController();
+          try {
+            const booked = await withDeadline(
+              deps.bookedStarts(body.eventId, orderIds, deadline.signal),
+              DOOR_EXTRAS_DEADLINE_MS,
+            );
+            if (booked === null) {
+              deadline.abort();
+              console.error("[guest-list] booked start unavailable");
+            } else if (isObject(booked)) {
+              bookedByOrder = booked as Record<string, string>;
+            }
+          } catch {
+            console.error("[guest-list] booked start unavailable");
+          }
+        }
         const attributedOrders = Array.isArray(out.orders)
           ? out.orders.map((order) => {
             if (!isObject(order) || !isUuid(order.orderId)) return order;
             const label = labels[order.orderId];
             const extras = extrasByOrder[order.orderId];
+            const bookedStartAt = bookedByOrder[order.orderId];
             return {
               ...order,
               viaLinkLabel: typeof label === "string" ? label : null,
               ...(Array.isArray(extras) && extras.length > 0 ? { extras } : {}),
+              ...(typeof bookedStartAt === "string" ? { bookedStartAt } : {}),
             };
           })
           : [];
@@ -698,6 +733,8 @@ function defaultDeps(): GuestListDeps {
     },
     pepper: qrTokenPepper,
     dispatch: dispatchTicketConfirmation,
+    bookedStarts: (eventId, orderIds, signal) =>
+      readBookedStarts(service(), eventId, orderIds, signal),
     audit: async (entry) => {
       await writeAudit(service(), { ...entry, brand_id: null, before: null });
     },
