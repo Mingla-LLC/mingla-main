@@ -8,6 +8,7 @@ import { conversationChannelKey, conversationRealtimeFilter } from '../utils/con
 import type { ChatLiveChange } from '../utils/chatLiveModel';
 import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
 import { markConversationLeft, markConversationRejoined } from '../utils/presenceMembership';
+import { announceBrandGuestLeft } from '../utils/brandGuestLeave';
 import { UNREAD_MESSAGES_SELECT, applyUnreadFilters, countUnreadRows } from '../components/connections/chatListLoad';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
@@ -1864,6 +1865,8 @@ export class MessagingService {
     }
     // #4459: stop presence writes for the chat just left (they would 42501).
     markConversationLeft(conversationId);
+    // #4459: the booking card's status for this brand is stale now.
+    announceBrandGuestLeft(conversationId);
     return { error: null };
   }
 

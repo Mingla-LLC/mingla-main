@@ -8,6 +8,8 @@
 //
 // FAILS-ON-REVERT: remove the pending-target branch or its resolver from
 // ConnectionsPage and both cases land on the Chats list (no thread opens).
+// Retest 3 (P3): drop the leave listener or the removed-row effect and the
+// booking status cases fail (the brand's status stays fresh for 30 s).
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -52,6 +54,7 @@ const mockState: { user: { id: string } | null } = { user: { id: "me" } };
 const mockGetMessages = jest.fn();
 const mockGetConversations = jest.fn();
 const mockGetConversation = jest.fn();
+const mockRemoved = jest.fn(() => Promise.resolve([] as unknown[]));
 const mockSubscribe = jest.fn(() => ({ state: "joined" }));
 const mockUnsubscribe = jest.fn();
 
@@ -178,7 +181,7 @@ jest.mock("../../services/messagingService", () => mockModule({
     getConversations: (...args: unknown[]) => mockGetConversations(...args),
     getConversation: (...args: unknown[]) => mockGetConversation(...args),
     fetchBrandMeta: () => Promise.resolve(new Map()),
-    listRemovedBrandGuestChats: () => Promise.resolve([]),
+    listRemovedBrandGuestChats: () => mockRemoved(),
     findExistingDirectConversation: () => Promise.resolve({
       conversation: { id: "conv-1", created_by: "me", created_at: "2026-01-01T00:00:00Z", participants: [{ user_id: "friend-1", username: "f", display_name: "F" }], unread_count: 0 },
     }),
@@ -280,5 +283,69 @@ describe("#4459: a deep link to a chat the list has not loaded yet opens the thr
     expect(openedIds()).toContain("bg-1");
     for (let i = 0; i < 4; i += 1) await flush();
     expect(mockGetConversation).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #4459 retest 3 (P3): the booking card's Guest chat status (30 s staleTime)
+// is refetched as soon as you leave or the list shows the brand removed you.
+describe("#4459: leaving or being removed refreshes that brand's booking status", () => {
+  const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+  const log = jest.spyOn(console, "log").mockImplementation(() => {});
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { announceBrandGuestLeft } = require("../../utils/brandGuestLeave") as typeof import("../../utils/brandGuestLeave");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { chatKeys } = require("../../hooks/queryKeys") as typeof import("../../hooks/queryKeys");
+  let renderer: any;
+  let client: QueryClient;
+
+  const seedStatus = (brandId: string) =>
+    client.setQueryData(chatKeys.brandGuestStatus(brandId), { status: "member", conversationId: "x", canRejoin: false });
+  const isStale = (brandId: string) => client.getQueryState(chatKeys.brandGuestStatus(brandId))?.isInvalidated === true;
+
+  beforeEach(async () => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    mockGetMessages.mockReset().mockResolvedValue({ messages: [], error: null, hasMore: false });
+    mockGetConversations.mockReset().mockResolvedValue({ conversations: [GUEST_CHAT], error: null });
+    mockRemoved.mockReset().mockResolvedValue([]);
+  });
+  afterEach(async () => {
+    await TestRenderer.act(async () => renderer?.unmount());
+    client.clear();
+  });
+  afterAll(() => {
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  const mountPage = async (): Promise<void> => {
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <ConnectionsPage isTabVisible />
+        </QueryClientProvider>,
+      );
+    });
+    for (let i = 0; i < 8; i += 1) await flush();
+  };
+
+  it("a successful leave invalidates that brand's status, and only that brand's", async () => {
+    await mountPage();
+    seedStatus("brand-1");
+    seedStatus("brand-other");
+    await TestRenderer.act(async () => {
+      announceBrandGuestLeft("bg-1");
+    });
+    expect(isStale("brand-1")).toBe(true);
+    expect(isStale("brand-other")).toBe(false);
+  });
+
+  it("a removal the list shows invalidates that brand's status", async () => {
+    mockGetConversations.mockResolvedValue({ conversations: [], error: null });
+    mockRemoved.mockResolvedValue([
+      { brandId: "brand-2", brandName: "Night Owls", brandSlug: null, brandLogoUrl: null, brandAccountId: null, removedAt: "2026-11-16T10:00:00Z" },
+    ]);
+    seedStatus("brand-2");
+    await mountPage();
+    expect(isStale("brand-2")).toBe(true);
   });
 });

@@ -301,3 +301,11 @@ Deno.test("#4459 retest: every enquiries channel is unique per mount", () => {
   assert(hooks.includes(".channel(`explorer-enquiry:${enquiryId}:${suffix}`)"), "the thread channel");
   assert(!/\.channel\(`explorer-enquir(?:y|ies):\$\{(?:userId|enquiryId)\}`\)/.test(hooks), "no fixed topic left");
 });
+
+Deno.test("#4459 retest 3: every successful Guest chat leave is announced (the booking status refreshes)", () => {
+  const service = read("services/messagingService.ts");
+  const leave = service.slice(service.indexOf("async leaveBrandGuestChat("), service.indexOf("async rejoinBrandGuestChat("));
+  const failure = leave.indexOf("return { error: error.message };");
+  const announce = leave.indexOf("announceBrandGuestLeft(conversationId);");
+  assert(failure > 0 && announce > failure, "announced after the failure return, so only a successful leave");
+});

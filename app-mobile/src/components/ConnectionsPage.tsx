@@ -36,6 +36,7 @@ import {
 import { applyChatLiveChange, type ChatLiveChange } from "../utils/chatLiveModel";
 import { brandGuestRateLimitedUntil } from "./chat/brandGuestRateLimit";
 import { onBrandGuestRejoined } from "./chat/brandGuestRejoin";
+import { onBrandGuestLeft } from "../utils/brandGuestLeave";
 import { openAfterKeyboardHides } from "../utils/openAfterKeyboard";
 import {
   conversationChannelKey,
@@ -177,7 +178,7 @@ import {
   settleChatPeerRead,
 } from "./connections/chatPeerState";
 import { useChatList } from "../hooks/useChatList";
-import { chatListKeys } from "../hooks/queryKeys";
+import { chatKeys, chatListKeys } from "../hooks/queryKeys";
 import { cleanupSharedSessions as cleanupSharedSessionsShared } from "../utils/sharedSessionCleanup";
 import { refreshChatListAfterConversationChange } from "../services/chatListRefresh";
 import type { PlanQuoteSnapshot } from "../types/chatPlans";
@@ -1660,6 +1661,22 @@ function ConnectionsPageRefactored({
     void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
     return true;
   }, [queryClient, showToast, t, transformMessage, user?.id, writeConversationMessages]);
+
+  // #4459: a booking's Guest chat status changes when you leave the chat or
+  // the brand removes you, so that brand's status query is refetched at once
+  // (it is otherwise fresh for 30 s and would still offer "Open guest chat").
+  useEffect(() => onBrandGuestLeft((conversationId) => {
+    const brandId = (conversationsRef.current.find((conv) => conv.id === conversationId) as ChatListItemConversation | undefined)?.brand_id;
+    if (brandId) void queryClient.invalidateQueries({ queryKey: chatKeys.brandGuestStatus(brandId) });
+  }), [queryClient]);
+  const removedStatusSeenRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const conv of conversations as ChatListItemConversation[]) {
+      if (!isRemovedBrandGuestsRow(conv) || !conv.brand_id || removedStatusSeenRef.current.has(conv.brand_id)) continue;
+      removedStatusSeenRef.current.add(conv.brand_id);
+      void queryClient.invalidateQueries({ queryKey: chatKeys.brandGuestStatus(conv.brand_id) });
+    }
+  }, [conversations, queryClient]);
 
   // #4459: after a Guest chat rejoin the server shows history only from the
   // rejoin time; drop the in-memory and saved copy and reload from the server
