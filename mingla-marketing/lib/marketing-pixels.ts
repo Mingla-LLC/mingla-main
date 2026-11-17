@@ -60,6 +60,20 @@ export const MARKETING_PIXEL_SCRIPTS: Readonly<Record<Provider, string>> = {
   reddit: 'https://www.redditstatic.com/ads/pixel.js',
 }
 
+/**
+ * #4238 W7: every origin a pixel runs a script from — its loader above plus
+ * any script the loader fetches next. Snap's scevent.min.js loads its pixel
+ * config from tr.snapchat.com/config/...; Meta (signals/config), TikTok
+ * (pixel/static) and Reddit (ads/v2) stay on their loader's origin. The CSP
+ * test fails if script-src misses any of these.
+ */
+export const MARKETING_PIXEL_SCRIPT_ORIGINS: Readonly<Record<Provider, readonly string[]>> = {
+  meta: ['https://connect.facebook.net'],
+  tiktok: ['https://analytics.tiktok.com'],
+  snap: ['https://sc-static.net', 'https://tr.snapchat.com'],
+  reddit: ['https://www.redditstatic.com'],
+}
+
 /** First-party cookies the four pixels write (expired on a turn-off). */
 export const MARKETING_PIXEL_COOKIES = ['_fbp', '_fbc', '_ttp', '_scid', '_rdt_uuid'] as const
 

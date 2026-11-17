@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4238_mingla_count_window.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-mingla-count-window",
+  "profile": "deno-2-unit"
+}

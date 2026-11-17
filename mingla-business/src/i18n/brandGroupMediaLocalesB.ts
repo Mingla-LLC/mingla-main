@@ -20,16 +20,28 @@ import plSetup from "./locales/pl/hostSetup.json";
 import ptSetup from "./locales/pt/hostSetup.json";
 import roSetup from "./locales/ro/hostSetup.json";
 
+// #4238 W6a — the Promote builder words ride in the same lazy language file.
+import idAds from "./locales/id/hostAds.json";
+import igAds from "./locales/ig/hostAds.json";
+import itAds from "./locales/it/hostAds.json";
+import jaAds from "./locales/ja/hostAds.json";
+import koAds from "./locales/ko/hostAds.json";
+import msAds from "./locales/ms/hostAds.json";
+import nlAds from "./locales/nl/hostAds.json";
+import plAds from "./locales/pl/hostAds.json";
+import ptAds from "./locales/pt/hostAds.json";
+import roAds from "./locales/ro/hostAds.json";
+
 // #4389 — the host setup words ride in the same lazy language file.
 export default {
-  id: { ...id, ...idSetup },
-  ig: { ...ig, ...igSetup },
-  it: { ...it, ...itSetup },
-  ja: { ...ja, ...jaSetup },
-  ko: { ...ko, ...koSetup },
-  ms: { ...ms, ...msSetup },
-  nl: { ...nl, ...nlSetup },
-  pl: { ...pl, ...plSetup },
-  pt: { ...pt, ...ptSetup },
-  ro: { ...ro, ...roSetup },
+  id: { ...id, ...idSetup, ...idAds },
+  ig: { ...ig, ...igSetup, ...igAds },
+  it: { ...it, ...itSetup, ...itAds },
+  ja: { ...ja, ...jaSetup, ...jaAds },
+  ko: { ...ko, ...koSetup, ...koAds },
+  ms: { ...ms, ...msSetup, ...msAds },
+  nl: { ...nl, ...nlSetup, ...nlAds },
+  pl: { ...pl, ...plSetup, ...plAds },
+  pt: { ...pt, ...ptSetup, ...ptAds },
+  ro: { ...ro, ...roSetup, ...roAds },
 };

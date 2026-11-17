@@ -82,7 +82,8 @@ describe("#4389 host setup words in every shipped language", () => {
     for (const group of ["A", "B", "C"]) {
       const source = fs.readFileSync(path.resolve(__dirname, `../brandGroupMediaLocales${group}.ts`), "utf8");
       for (const [, language] of source.matchAll(/import (\w+)Setup from "\.\/locales\/\w+\/hostSetup\.json";/g)) {
-        expect(source).toContain(`${language}: { ...${language}, ...${language}Setup },`);
+        // #4238 W6a: the same lazy file may also carry hostAds.json after it.
+        expect(source).toMatch(new RegExp(`${language}: \\{ \\.\\.\\.${language}, \\.\\.\\.${language}Setup(, \\.\\.\\.${language}Ads)? \\},`));
       }
     }
     const all = ["A", "B", "C"].map((g) => fs.readFileSync(path.resolve(__dirname, `../brandGroupMediaLocales${g}.ts`), "utf8")).join("\n");

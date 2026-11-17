@@ -123,7 +123,7 @@ describe("#4238 countries (T-C1..C4)", () => {
     expect(createRoute).not.toContain("Country codes");
     expect(createRoute).not.toContain("countriesText");
     expect(createRoute).toContain("<HostAdCountryPicker");
-    expect(createRoute).toContain("Choose at least one country.");
+    expect(createRoute).toContain('hb("audience.noCountry")');
     // #4238 media-buyer: the places editor asks for a country before search.
     expect(
       fs.readFileSync(
@@ -154,7 +154,8 @@ describe("#4238 honest states and copy (T-D1, T-D2, T-E1, SC-12)", () => {
   it("T-D1 shows one 'Ads aren't available yet' state before any step UI", () => {
     const gate = createRoute.indexOf("setup.available === false");
     const unavailable = createRoute.indexOf('testID="host-ad-unavailable"');
-    const steps = createRoute.indexOf('accessibilityLabel="Ad builder steps"');
+    // #4238 W6a: the step bodies are built after every early return.
+    const steps = createRoute.indexOf("const pickBody = (");
     expect(gate).toBeGreaterThan(-1);
     expect(unavailable).toBeGreaterThan(gate);
     expect(steps).toBeGreaterThan(unavailable);
@@ -331,19 +332,22 @@ describe("#4238 ticket-sales goal (T-F3, T-F4, SC-14)", () => {
   it("T-F3 the client never authors provider objectives", () => {
     const service = read("src/services/hostAdPlanService.ts");
     expect(service).not.toMatch(/\bobjective:/);
-    expect(service).not.toContain("optimization_goal");
+    // #4238 W6a (item 3): the Host goal travels as optimization_goal, only
+    // for sales or sign-ups, from the Host's own choice — never a provider
+    // objective or billing event.
+    expect(service).toContain('...(input.optimization !== "visits"');
+    expect(service).toContain("optimization_goal: input.optimization,");
     expect(service).not.toContain("billing_event");
     expect(service).toContain("optimization_by_platform: hostOptimizationByPlatform(");
   });
 
-  it("SC-14 the builder offers Ticket sales only on ticket pages with a ready platform", () => {
-    expect(createRoute).toContain("const pageSellsTickets = hostAdPageSellsTickets(page);");
-    expect(createRoute).toContain("{pageSellsTickets ? (");
-    expect(createRoute).toContain("disabled={salesReadyPlatforms.length === 0}");
-    expect(createRoute).toContain("Not enough ticket sales on these platforms yet.");
-    expect(createRoute).toContain('testID="host-ad-goal-summary"');
-    // #4238 wave 2: the audience keys travel with the goal.
-    expect(createRoute).toContain("optimization,\n        audienceKeys,\n      });");
+  it("SC-14 the goal follows the page; the Host never picks one (#4238 W6a)", () => {
+    // Design v9: Sell tickets or Get sign-ups comes from the page; an app
+    // that can only count visits asks for a yes on Review.
+    expect(createRoute).toContain("setOptimization(hostAdPageGoal(item));");
+    expect(createRoute).toContain("acknowledgedVisitsFallback: acknowledgedFallback,");
+    expect(createRoute).toContain('code === "host_ad_goal_fallback_unacknowledged"');
+    expect(createRoute).toContain("optimization: goal,");
   });
 
   it("SC-3 search works before any platform is ticked", () => {

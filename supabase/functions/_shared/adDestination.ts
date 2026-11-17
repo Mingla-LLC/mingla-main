@@ -280,13 +280,105 @@ export interface ResolvedAdDestination {
 export class AdDestinationError extends Error {
   readonly code: string;
   readonly status: number;
+  /** #4238 X-5: the resolver's availability (ended, nothing_on_sale, …). */
+  readonly availability: string | null;
 
-  constructor(code: string, status: number, message: string) {
+  constructor(
+    code: string,
+    status: number,
+    message: string,
+    availability: string | null = null,
+  ) {
     super(message);
     this.name = "AdDestinationError";
     this.code = code;
     this.status = status;
+    this.availability = availability;
   }
+}
+
+/** #4238 item 5b: the true reason the hourly sweep stops a Host ad. */
+export type HostAdStopReason =
+  | "sold_out"
+  | "not_on_sale"
+  | "event_ended"
+  | "bookings_closed"
+  | "destination_unavailable"
+  | "destination_check_failed";
+
+/** The slice of ad_offering_stock the stop and low-stock rules read. */
+export type OfferingStock = {
+  ok: true;
+  kind: "tickets" | "rsvp";
+  total: number | null;
+  remaining: number | null;
+  unlimited: boolean;
+  sold_out: boolean;
+};
+
+/** Parses ad_offering_stock; anything unexpected is null (a read failure). */
+export function parseOfferingStock(raw: unknown): OfferingStock | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  if (row.ok !== true) return null;
+  if (row.kind !== "tickets" && row.kind !== "rsvp") return null;
+  const count = (value: unknown): number | null =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : null;
+  if (typeof row.sold_out !== "boolean" || typeof row.unlimited !== "boolean") {
+    return null;
+  }
+  return {
+    ok: true,
+    kind: row.kind,
+    total: count(row.total),
+    remaining: count(row.remaining),
+    unlimited: row.unlimited,
+    sold_out: row.sold_out,
+  };
+}
+
+/**
+ * #4238 item 5b (I-4238-TRUE-PAUSE-REASON): maps the destination refusal to
+ * the reason the Host is told. "Nothing on sale" is sold out only when the
+ * stock read says so; a stock read that failed never becomes a false sold
+ * out. An event whose dates have all passed ENDS the plan (the caller runs
+ * the stop path); every other reason pauses.
+ */
+export function pauseReasonFor(
+  availability: string | null,
+  stock: OfferingStock | null | "unavailable",
+): HostAdStopReason {
+  switch (availability) {
+    case "nothing_on_sale":
+      if (stock === "unavailable" || stock === null) {
+        return "destination_check_failed";
+      }
+      return stock.sold_out ? "sold_out" : "not_on_sale";
+    case "ended":
+      return "event_ended";
+    case "bookings_closed":
+      return "bookings_closed";
+    default:
+      return "destination_unavailable";
+  }
+}
+
+/** Tickets left at or under this count as "last tickets" (A5). */
+export function lowStockThreshold(total: number): number {
+  return Math.max(20, Math.ceil(0.1 * total));
+}
+
+/**
+ * #4238 item 5c: true when few are left (10% or fewer, or 20 or fewer), the
+ * stock is limited and something is still left. Unlimited never is.
+ */
+export function isLowStock(stock: OfferingStock | null): boolean {
+  if (!stock || stock.unlimited || stock.sold_out) return false;
+  if (stock.total === null || stock.remaining === null) return false;
+  if (stock.total <= 0 || stock.remaining <= 0) return false;
+  return stock.remaining <= lowStockThreshold(stock.total);
 }
 
 interface QueryResult {
@@ -540,7 +632,7 @@ function mapResolveFailure(payload: Record<string, unknown>): never {
     : availability === "not_live"
     ? "This Site isn't live at its address yet."
     : "That page is not currently advertisable.";
-  throw new AdDestinationError(code, 422, message);
+  throw new AdDestinationError(code, 422, message, availability || null);
 }
 
 /** True when PostgREST/hermetic mocks report the SQL function is not wired. */

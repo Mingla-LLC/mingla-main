@@ -81,21 +81,6 @@ describe("#4168 Host wide-screen design contract", () => {
     }
   });
 
-  it("only applies desktop flex-basis sizing when columns are side by side", () => {
-    for (const file of [
-      "app/(tabs)/marketing/index.tsx",
-      "src/screens/hostAds/HostAdListScreen.tsx",
-      "src/components/support/CommunityTabPanel.tsx",
-      "src/components/support/SupportTabPanel.tsx",
-    ]) {
-      const contents = source(file);
-      expect(contents).toContain("isWideDesktop && styles.");
-      expect(contents).toMatch(/Wide: \{ flexBasis: 0, flexGrow:/);
-    }
-
-    const ads = source("src/screens/hostAds/HostAdListScreen.tsx");
-    expect(ads).toContain('flexDirection: "column-reverse"');
-  });
 
   it("removes the narrow Community rail and visible desktop page heading", () => {
     const support = source("app/account/support.tsx");

@@ -16,7 +16,10 @@ import {
   ToolError,
 } from "./agentToolHelpers.ts";
 import { canonicalizeCreateDiscountArgs } from "./ariDiscountArgs.ts";
-import { DISCOUNT_WRITE_REFUSAL_COPY } from "./ariRefusalCopy.ts";
+import {
+  DISCOUNT_WRITE_REFUSAL_COPY,
+  DOMAIN_REFUSED_CODE,
+} from "./ariRefusalCopy.ts";
 import {
   applyTierPatch,
   loadEventTicketState,
@@ -40,6 +43,7 @@ import {
 import { formatHostAdMoneyCents } from "./adMoneyFormat.ts";
 import {
   HOST_SALES_GOAL_PLATFORMS,
+  HOST_SIGNUPS_GOAL_PLATFORMS,
   hostPageSellsTickets,
 } from "./adHostGoal.ts";
 import {
@@ -4250,7 +4254,7 @@ const listAdAudiences = writeTool(
 // verified brand settlement currency and provider-account currency.
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales (optimize_for). Distinct from draft_campaign (Blast email/SMS).",
+  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Each platform can optimise for page visits or, where the platform has enough sales data and the page sells tickets, ticket sales; a free event or RSVP page can optimise for sign-ups instead (optimize_for). Never pick ticket sales for a free event. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -4333,7 +4337,20 @@ const proposeAdPlan = writeTool(
       enum: ["owned", "licensed", "authorized_by_brand"],
     },
     ai_generated: { type: "boolean" },
-    optimize_for: { type: "string", enum: ["visits", "sales"] },
+    optimize_for: { type: "string", enum: ["visits", "sales", "signups"] },
+    // #4238 W5 (U-3): apps the Host agreed may run page visits instead.
+    acknowledged_visits_fallback: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 5,
+    },
+    // #4238 W5 (6b): 1–5 of the brand's own videos or photos.
+    creative_library_ids: {
+      type: "array",
+      items: UUID,
+      minItems: 1,
+      maxItems: 5,
+    },
     // #4238: keys from list_ad_audiences only; the server checks ownership.
     audience_keys: {
       type: "array",
@@ -4495,7 +4512,10 @@ const proposeAdPlan = writeTool(
       .maybeSingle();
     if (
       creativeError || !creative || creative.brand_id !== args.brand_id ||
-      creative.kind !== "video" || creative.status !== "active"
+      // #4238 W5 (T-9): an active photo is allowed too, where the app takes
+      // one (the server refuses it on an app that doesn't).
+      ((creative.kind !== "video" || creative.status !== "active") &&
+        !(creative.kind === "image" && creative.status === "active"))
     ) {
       throw new ToolError(
         "INVALID_ARGS",
@@ -4513,6 +4533,7 @@ const proposeAdPlan = writeTool(
         id?: string;
         platform?: string;
         sales?: { ready?: boolean };
+        signups?: { ready?: boolean };
       }>;
       pages?: Array<Record<string, unknown>>;
     };
@@ -4568,11 +4589,7 @@ const proposeAdPlan = writeTool(
     const goalsForSplit = Object.fromEntries(
       platforms.map((platform, index) => [
         platform,
-        args.optimize_for === "sales" &&
-          connections[index]?.sales?.ready === true &&
-          (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
-          ? "sales"
-          : "visits",
+        ariConversionGoal(args.optimize_for, platform, connections[index]),
       ]),
     );
     const dailyShares = splitDailyWithMinimums(
@@ -4602,6 +4619,60 @@ const proposeAdPlan = writeTool(
       languages,
     );
     const targetingRefs = targeting.refs;
+    const destinationPage = (Array.isArray(setup.pages) ? setup.pages : [])
+      .find((page) =>
+        page.page_type === destination.page_type &&
+        page.brand_slug === destination.brand_slug &&
+        (destination.page_type === "brand" ||
+          (page.entity_slug ?? undefined) === destination.entity_slug)
+      );
+    // #4238 item 3: sales only on a page that sells tickets (the server
+    // refuses sales on an all-free page); sign-ups only on an RSVP page or a
+    // ticket page (the server checks the tiers are all free).
+    const pageGoalOk = args.optimize_for === "sales"
+      ? hostPageSellsTickets(destinationPage)
+      : args.optimize_for === "signups"
+      ? destinationPage?.page_type === "rsvp" ||
+        hostPageSellsTickets(destinationPage)
+      : false;
+    const optimizationByPlatform = Object.fromEntries(
+      platforms.map((platform, index) => [
+        platform,
+        pageGoalOk
+          ? ariConversionGoal(args.optimize_for, platform, connections[index])
+          : "visits",
+      ]),
+    );
+    // #4238 W5 (U-3, like the Host builder): an app that will only get page
+    // visits on a sales or sign-ups plan needs the Host's yes first. Refused
+    // here before any plan opens; the server re-checks it at create_version.
+    // A page that can't take the goal at all (a website or brand page) runs
+    // visits as before, with no goal sent.
+    const fallbackApps = pageGoalOk
+      ? ariVisitsFallbackApps(
+        args.optimize_for,
+        platforms,
+        optimizationByPlatform,
+      )
+      : [];
+    const acknowledged = Array.isArray(args.acknowledged_visits_fallback)
+      ? args.acknowledged_visits_fallback.map((v) =>
+        String(v).trim().toLowerCase()
+      )
+      : [];
+    const unacknowledged = fallbackApps.filter((p) =>
+      !acknowledged.includes(p)
+    );
+    if (unacknowledged.length > 0) {
+      throw new ToolError(
+        DOMAIN_REFUSED_CODE,
+        `Tell the Host first: ${
+          unacknowledged.map((p) => HOST_AD_PLATFORM_NAMES[p] ?? p).join(", ")
+        } will get page visits, not ${
+          args.optimize_for === "sales" ? "ticket sales" : "sign-ups"
+        }, until its signal is ready. If they agree, propose again with those apps in acknowledged_visits_fallback; or remove them.`,
+      );
+    }
     const opened = await invokeFn(client, "ad-plan", {
       action: "open",
       client_kind: "ari",
@@ -4621,30 +4692,20 @@ const proposeAdPlan = writeTool(
         "I couldn't start this ad just now. Try again in a minute.",
       );
     }
-    const destinationPage = (Array.isArray(setup.pages) ? setup.pages : [])
-      .find((page) =>
-        page.page_type === destination.page_type &&
-        page.brand_slug === destination.brand_slug &&
-        (destination.page_type === "brand" ||
-          (page.entity_slug ?? undefined) === destination.entity_slug)
-      );
-    const wantsSales = args.optimize_for === "sales" &&
-      hostPageSellsTickets(destinationPage);
-    const optimizationByPlatform = Object.fromEntries(
-      platforms.map((platform, index) => [
-        platform,
-        wantsSales && connections[index]?.sales?.ready === true &&
-          (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
-          ? "sales"
-          : "visits",
-      ]),
-    );
     const pastGuestsKey = `brand:${String(args.brand_id).toLowerCase()}:guests`;
     const pastGuestsExclusion = { exclude_keys: [pastGuestsKey] };
     const canonicalPlan = {
       name: String(args.name),
       destination,
       optimization_by_platform: optimizationByPlatform,
+      // #4238 W5: the goal and the Host's fallback yes, like manual plans.
+      ...(pageGoalOk &&
+          (args.optimize_for === "sales" || args.optimize_for === "signups")
+        ? {
+          optimization_goal: args.optimize_for,
+          acknowledged_visits_fallback: fallbackApps,
+        }
+        : {}),
       schedule: {
         ...(typeof args.starts_at === "string"
           ? { starts_at: args.starts_at }
@@ -4718,6 +4779,20 @@ const proposeAdPlan = writeTool(
         headline: String(args.name),
       },
       creative_library_id: args.creative_library_id,
+      // #4238 W5 (6b): up to 5 of the brand's own videos or photos, the first
+      // always creative_library_id; the server checks each one (brand, ready,
+      // photo only where the app takes one) and, for Ari, never AI-made.
+      ...(Array.isArray(args.creative_library_ids) &&
+          args.creative_library_ids.length > 0
+        ? {
+          creative_library_ids: [
+            ...new Set([
+              String(args.creative_library_id),
+              ...args.creative_library_ids.map((v) => String(v)),
+            ]),
+          ].slice(0, 5),
+        }
+        : {}),
       creative_url: null,
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
@@ -4753,6 +4828,7 @@ const proposeAdPlan = writeTool(
       })),
     }) as {
       version?: { id?: string; plan_hash?: string; host_currency?: string };
+      copy_warnings?: unknown[];
     };
     const versionId = versioned.version?.id;
     const planHash = versioned.version?.plan_hash;
@@ -4792,6 +4868,32 @@ const proposeAdPlan = writeTool(
         visits: platforms.filter((p) => optimizationByPlatform[p] === "visits"),
       },
       targeting_snapshots: frozen.targeting_snapshots ?? [],
+      // #4238 T-5: the shared copy checker's warnings (warn-only).
+      copy_warnings: Array.isArray(versioned.copy_warnings)
+        ? versioned.copy_warnings
+        : [],
+      // #4238 T-5 / U-3: what Ari does with this result (the tool
+      // declarations are digest-pinned, so the rule rides on the result).
+      ari_next: [
+        ...(Array.isArray(versioned.copy_warnings) &&
+            versioned.copy_warnings.length > 0
+          ? [
+            "Rewrite the ad words to clear each copy warning and propose again before showing the plan; the warnings never block.",
+          ]
+          : []),
+        ...((args.optimize_for === "sales" || args.optimize_for === "signups")
+          ? platforms.filter((p) => optimizationByPlatform[p] === "visits")
+            .map((p) =>
+              `Tell the Host first: ${
+                HOST_AD_PLATFORM_NAMES[p] ?? p
+              } will get page visits, not ${
+                args.optimize_for === "sales" ? "ticket sales" : "sign-ups"
+              }, until its ${
+                args.optimize_for === "sales" ? "sales" : "sign-up"
+              } signal is ready. Offer to keep it or remove that app.`
+            )
+          : []),
+      ],
       // #4238: each app's own answer, in plain words.
       ...(targeting.notes.length > 0
         ? { note: targeting.notes.join(" ") }
@@ -4892,7 +4994,7 @@ const approveAdPlan = writeTool(
       plan_hash: args.plan_hash,
       phrase: "LAUNCH",
     });
-    const creativeId = String(
+    const firstCreativeId = String(
       aggregate.version.canonical_plan.creative_library_id ?? "",
     );
     const selectedPlatforms = new Set(
@@ -4900,65 +5002,76 @@ const approveAdPlan = writeTool(
         String(allocation.platform)
       ),
     );
-    for (const platform of ARI_AD_PREPARATION_ORDER) {
-      if (!selectedPlatforms.has(platform)) continue;
-      let action: "start" | "status" | "retry" = "status";
-      let retried = false;
-      try {
-        for (let attempt = 0; attempt < 60; attempt += 1) {
-          const row = await invokeFn<AriAdPreparationEnvelope>(
-            client,
-            "admin-ad-creative-prepare",
-            {
-              action,
-              creative_library_id: creativeId,
-              platform,
-              brand_id: args.brand_id,
-              plan_version_id: args.plan_version_id,
-              plan_hash: args.plan_hash,
-            },
-          );
-          if (row.state === "ready") break;
-          if (row.state === "failed" || row.state === "timed_out") {
-            if (retried) {
+    // #4238 W4a (6b): one ad per frozen creative, each prepared per app.
+    const frozenCreativeIds = aggregate.version.canonical_plan
+      .creative_library_ids;
+    const creativeIds = Array.isArray(frozenCreativeIds) &&
+        frozenCreativeIds.length > 0
+      ? [...new Set(frozenCreativeIds.map((id) => String(id)))]
+      : [firstCreativeId];
+    for (const creativeId of creativeIds) {
+      for (const platform of ARI_AD_PREPARATION_ORDER) {
+        if (!selectedPlatforms.has(platform)) continue;
+        let action: "start" | "status" | "retry" = "status";
+        let retried = false;
+        try {
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            const row = await invokeFn<AriAdPreparationEnvelope>(
+              client,
+              "admin-ad-creative-prepare",
+              {
+                action,
+                creative_library_id: creativeId,
+                platform,
+                brand_id: args.brand_id,
+                plan_version_id: args.plan_version_id,
+                plan_hash: args.plan_hash,
+              },
+            );
+            if (row.state === "ready") break;
+            if (row.state === "failed" || row.state === "timed_out") {
+              if (retried) {
+                throw new ToolError(
+                  "EDGE_FAILED",
+                  `${HOST_AD_PLATFORM_NAMES[platform] ?? platform}: ${
+                    row.error?.message ??
+                      "couldn't get your video ready. Try again, or use a different video."
+                  }`,
+                );
+              }
+              action = "retry";
+              retried = true;
+            } else if (row.state === "not_started") {
+              action = "start";
+            } else {
+              action = "status";
+            }
+            if (attempt === 59) {
               throw new ToolError(
                 "EDGE_FAILED",
-                `${HOST_AD_PLATFORM_NAMES[platform] ?? platform}: ${
-                  row.error?.message ??
-                    "couldn't get your video ready. Try again, or use a different video."
-                }`,
+                `${
+                  HOST_AD_PLATFORM_NAMES[platform] ?? platform
+                } is still getting your video ready. Try again in a few minutes.`,
               );
             }
-            action = "retry";
-            retried = true;
-          } else if (row.state === "not_started") {
-            action = "start";
-          } else {
-            action = "status";
-          }
-          if (attempt === 59) {
-            throw new ToolError(
-              "EDGE_FAILED",
-              `${
-                HOST_AD_PLATFORM_NAMES[platform] ?? platform
-              } is still getting your video ready. Try again in a few minutes.`,
+            const seconds = Math.min(
+              10,
+              Math.max(1, Number(row.retry_after_seconds) || 2),
             );
+            await waitForAdPreparation(seconds * 1000);
           }
-          const seconds = Math.min(
-            10,
-            Math.max(1, Number(row.retry_after_seconds) || 2),
-          );
-          await waitForAdPreparation(seconds * 1000);
+        } catch (cause) {
+          await invokeFn(client, "ad-plan", {
+            action: "record_create_failure",
+            plan_version_id: args.plan_version_id,
+            plan_hash: args.plan_hash,
+            platform,
+            error_detail: cause instanceof Error
+              ? cause.message
+              : String(cause),
+          });
+          throw cause;
         }
-      } catch (cause) {
-        await invokeFn(client, "ad-plan", {
-          action: "record_create_failure",
-          plan_version_id: args.plan_version_id,
-          plan_hash: args.plan_hash,
-          platform,
-          error_detail: cause instanceof Error ? cause.message : String(cause),
-        });
-        throw cause;
       }
     }
     for (const allocation of aggregate.provider_allocations) {
@@ -5079,6 +5192,187 @@ const getAdCampaignReport = writeTool(
     });
   },
 );
+
+// #4238 W5 (item 2 / SC-2.5): the same budget guidance the Host builder
+// reads (ad-plan host_budget_guidance, one source: adResultEstimate). Every
+// amount is in what the Host pays, the 15% fee included.
+const getAdBudgetGuidance = writeTool(
+  "get_ad_budget_guidance",
+  "Read a Host ad's budget guidance ahead of proposing it: each app's smallest working amount, the amount the apps learn best at, and the tickets or sign-ups to expect a week, all in what the Host pays (fee included) in the brand's currency. The same numbers the Host's budget step shows. Repeat them as given; never invent a number.",
+  {
+    brand_id: UUID,
+    dest_page_type: { type: "string" },
+    dest_brand_slug: STR,
+    dest_entity_slug: { type: "string" },
+    platforms: {
+      type: "array",
+      items: { type: "string" },
+      minItems: 1,
+      maxItems: 5,
+    },
+    optimize_for: { type: "string", enum: ["visits", "sales", "signups"] },
+    daily_budget_cents: { type: "integer", minimum: 1 },
+    budget_cents: { type: "integer", minimum: 1 },
+    budget_mode: { type: "string", enum: ["total", "daily"] },
+    starts_at: { type: "string" },
+    ends_at: { type: "string" },
+    app_choice: { type: "string", enum: ["host", "mingla"] },
+    countries: {
+      type: "array",
+      items: { type: "string", minLength: 2, maxLength: 2 },
+    },
+  },
+  [
+    "brand_id",
+    "dest_page_type",
+    "dest_brand_slug",
+    "platforms",
+    "optimize_for",
+  ],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(client, "ad-plan", ariBudgetGuidanceRequest(args));
+  },
+);
+
+/** #4238 W5: the exact ad-plan host_budget_guidance body Ari sends. */
+export function ariBudgetGuidanceRequest(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const platforms = Array.isArray(args.platforms)
+    ? [...new Set(args.platforms.map((v) => String(v).trim().toLowerCase()))]
+    : [];
+  if (
+    platforms.length === 0 ||
+    platforms.some((platform) => !HOST_AD_PLATFORMS.has(platform))
+  ) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "platforms must contain meta, google, tiktok, snapchat, or reddit",
+    );
+  }
+  const lifetime = args.budget_mode !== "daily" &&
+    typeof args.budget_cents === "number" && typeof args.ends_at === "string";
+  return {
+    action: "host_budget_guidance",
+    brand_id: args.brand_id,
+    destination: {
+      page_type: String(args.dest_page_type),
+      brand_slug: String(args.dest_brand_slug),
+      ...(typeof args.dest_entity_slug === "string" &&
+          args.dest_entity_slug.trim()
+        ? { entity_slug: args.dest_entity_slug.trim() }
+        : {}),
+    },
+    platforms,
+    optimization: args.optimize_for,
+    budget_mode: lifetime ? "lifetime" : "daily",
+    ...(lifetime
+      ? { total_cents: args.budget_cents }
+      : { daily_cents: args.daily_budget_cents }),
+    ...(typeof args.starts_at === "string"
+      ? { starts_at: args.starts_at }
+      : {}),
+    ...(typeof args.ends_at === "string" ? { ends_at: args.ends_at } : {}),
+    ...(args.app_choice === "mingla" ? { app_choice: "mingla" } : {}),
+    ...(Array.isArray(args.countries)
+      ? { countries: args.countries.map((v) => String(v).toUpperCase()) }
+      : {}),
+  };
+}
+
+// #4238 W5 (item 8b + amendment B item 8): Ari applies the ONE suggestion the
+// report shows, with one tap on the proposal card. The card's confirm is the
+// tap; the server recomputes the suggestion, refuses a stale id, applies only
+// its own amount (at most +20% in pay terms), and every live-edit rule
+// (once a day, learning, minimums, caps, the credit hold) still runs. There is
+// no other Ari path to change_live, so Ari can never send a budget of its own.
+const applyAdSuggestion = writeTool(
+  "apply_ad_suggestion",
+  "Apply the one suggestion get_ad_campaign_report shows for a running Host ad (raise or lower the budget by up to 20%, run it until the last day people can book, or accept the last-tickets ad). Pass the suggestion_id exactly as the report gave it, and show the Host the money first: what they pay now, what they will pay, and the change with Mingla's 15% fee. Mingla re-checks it; if anything changed it is refused and you read the report again.",
+  { brand_id: UUID, campaign_id: UUID, suggestion_id: STR },
+  ["brand_id", "campaign_id", "suggestion_id"],
+  async (args, client, userId, context) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    const report = await invokeFn(client, "host-ad-campaign", {
+      action: "get",
+      brand_id: args.brand_id,
+      campaign_id: args.campaign_id,
+    }) as Record<string, unknown>;
+    const request = ariSuggestionRequest(
+      args,
+      report,
+      requireAgentOperationId(context),
+    );
+    return await invokeFn(client, "host-ad-campaign", request, undefined, {
+      refusals: AD_SUGGESTION_REFUSALS,
+    });
+  },
+);
+
+const AD_SUGGESTION_REFUSALS: Record<string, string> = {
+  ad_suggestion_stale:
+    "That suggestion changed since I read it. I'll read the ad again and show you the new one.",
+  ad_suggestion_over_cap:
+    "Mingla only lets me move a live ad's budget by up to 20% at a time.",
+  ad_suggestion_learning:
+    "The apps are still learning this ad (its first 7 days), so I'll leave it as it is for now.",
+  host_ad_live_edit_once_a_day:
+    "This ad was already changed in the last day. You can change it again tomorrow.",
+};
+
+/**
+ * #4238 W5: the exact host-ad-campaign body for a suggestion. Only the id
+ * and the plan go to the server (never an amount); a suggestion the report
+ * no longer shows, or an information-only one, is refused here first.
+ */
+export function ariSuggestionRequest(
+  args: Record<string, unknown>,
+  report: Record<string, unknown>,
+  operationId: string,
+): Record<string, unknown> {
+  const suggestion = report.suggestion as Record<string, unknown> | null;
+  if (
+    !suggestion || typeof args.suggestion_id !== "string" ||
+    suggestion.suggestion_id !== args.suggestion_id
+  ) {
+    throw new ToolError(
+      DOMAIN_REFUSED_CODE,
+      AD_SUGGESTION_REFUSALS.ad_suggestion_stale,
+    );
+  }
+  const planId = typeof report.plan_id === "string" ? report.plan_id : "";
+  if (!isUuid(planId)) {
+    throw new ToolError(
+      DOMAIN_REFUSED_CODE,
+      "This ad has no live plan to change.",
+    );
+  }
+  if (suggestion.apply_action === "accept_last_tickets") {
+    return {
+      action: "accept_last_tickets",
+      brand_id: args.brand_id,
+      plan_id: planId,
+      suggestion_id: args.suggestion_id,
+    };
+  }
+  if (suggestion.apply_action !== "change_live") {
+    throw new ToolError(
+      "DOMAIN_REFUSED",
+      "That one is advice only: there is nothing to apply. A new video is a new ad.",
+    );
+  }
+  return {
+    action: "change_live",
+    brand_id: args.brand_id,
+    plan_id: planId,
+    suggestion_id: args.suggestion_id,
+    idempotency_key: `ari_suggest_${operationId}`.slice(0, 120),
+  };
+}
 
 /** #1980 — same channel_payload shape as draft_campaign / Host compose. */
 function buildCampaignChannelPayload(
@@ -9676,6 +9970,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   pauseAdCampaign,
   endAdCampaign,
   getAdCampaignReport,
+  getAdBudgetGuidance,
+  applyAdSuggestion,
   runGrowthTool,
   getGrowthToolReport,
   getPayoutStatus,
@@ -9748,6 +10044,8 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_campaign_report",
   "get_campaign_draft",
   "get_ad_campaign_report",
+  // #4238 W5 — the Host builder's budget guidance (inline read).
+  "get_ad_budget_guidance",
   // #4238 — the brand's own audience names and sizes (inline read).
   "list_ad_audiences",
   // #1980 — Growth Tool report read (growth-tools-report app lane).
@@ -9777,6 +10075,9 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   // review; end requests provider-final settlement and never refunds inline.
   "approve_ad_plan",
   "end_ad_campaign",
+  // #4238 W5 — one tap on the proposal card moves a live ad's budget (±20%,
+  // server-recomputed) or accepts the last-tickets ad. Confirmed, never inline.
+  "apply_ad_suggestion",
   "disconnect_partner",
   "refund_order",
   "cancel_order",
@@ -9796,3 +10097,39 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   // #1972 reopen — recording a door sale is money; list stays read-only above.
   "manage_event_door_sale",
 ]);
+
+/**
+ * #4238 W5 (U-3): the apps a sales or sign-ups plan runs on page visits
+ * instead (the Host must agree to each, as in the builder).
+ */
+export function ariVisitsFallbackApps(
+  optimizeFor: unknown,
+  platforms: readonly string[],
+  optimizationByPlatform: Record<string, string>,
+): string[] {
+  if (optimizeFor !== "sales" && optimizeFor !== "signups") return [];
+  return platforms.filter((p) => optimizationByPlatform[p] === "visits");
+}
+
+/**
+ * #4238 item 3: the goal Ari asks for on one app — sales or sign-ups only
+ * where that app has the path and its setup readiness says ready; anything
+ * else runs page visits (the server re-checks every cell).
+ */
+function ariConversionGoal(
+  optimizeFor: unknown,
+  platform: string,
+  connection:
+    | { sales?: { ready?: boolean }; signups?: { ready?: boolean } }
+    | undefined,
+): "visits" | "sales" | "signups" {
+  if (
+    optimizeFor === "sales" && connection?.sales?.ready === true &&
+    (HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform)
+  ) return "sales";
+  if (
+    optimizeFor === "signups" && connection?.signups?.ready === true &&
+    (HOST_SIGNUPS_GOAL_PLATFORMS as readonly string[]).includes(platform)
+  ) return "signups";
+  return "visits";
+}

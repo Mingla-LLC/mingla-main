@@ -132,8 +132,8 @@ enabled = false
 port = 55323
 
 [inbucket]
-enabled = false
-port = 55324
+enabled = ${SITES_LOCAL_CORE_MAIL_ENABLED:-false}
+port = ${SITES_LOCAL_CORE_MAIL_PORT:-55324}
 
 [storage]
 enabled = true

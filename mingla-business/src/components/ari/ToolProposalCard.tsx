@@ -17,7 +17,7 @@
 
 // #4389 A3 — create_brand shows where funds are collected.
 import { ARI_SETUP_COPY, payoutCountryLabel } from "./ariSetupCopy";
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -74,6 +74,26 @@ import {
 import { BRAND_DELETE_SHARED_COPY } from "../brand/brandDeleteSharedCopy";
 
 // Premium proposal-card metrics — tighter than the default kit values.
+// #4238 W6b — the Host ad lines (goal, visits-for-now apps, media count;
+// the apply_ad_suggestion money) load lazily with the Host Ads words.
+const AriAdCardExtras = React.lazy(async () => ({
+  default: (await import("../../screens/hostAds/HostAdScreens")).AriAdCardExtras,
+}));
+const AD_EXTRAS_TOOLS = new Set(["propose_ad_plan", "apply_ad_suggestion"]);
+
+/** #4238 W6b — Ari's refusal codes in the Host's words (lazy, same chunk). */
+async function plainAdRefusal(message: string): Promise<string> {
+  if (!/ad_suggestion_|host_ad_live_edit_once_a_day|ari_creative_ai_generated|ari_copy_unverified_name:/.test(message)) {
+    return message;
+  }
+  try {
+    const { hostAdAriRefusalIn } = await import("../../screens/hostAds/HostAdScreens");
+    return hostAdAriRefusalIn(message) ?? message;
+  } catch {
+    return message;
+  }
+}
+
 const CARD_PADDING = ariThread.cardPad; // 12
 const IDENTITY_FONT = ariThread.cardTitleFont; // 15
 const IDENTITY_LINE = ariThread.cardTitleLine; // 21
@@ -1235,7 +1255,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     try {
       const outcome = await onConfirm(nextArgs, keepPending);
       if (!outcome.ok && outcome.error && outcome.terminal !== "expired") {
-        setProposalError(outcome.error);
+        setProposalError(await plainAdRefusal(outcome.error));
       }
       return outcome;
     } catch {
@@ -1615,6 +1635,12 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               </Text>
             ) : null}
           </View>
+        ) : null}
+
+        {AD_EXTRAS_TOOLS.has(toolName) ? (
+          <Suspense fallback={null}>
+            <AriAdCardExtras toolName={toolName} args={liveArgs} />
+          </Suspense>
         ) : null}
 
         {editing && !isTypeConfirm ? (

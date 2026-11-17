@@ -120,13 +120,24 @@ export function isAdCreditPaystackReference(reference: string): boolean {
     reference.startsWith(AD_CREDIT_PAYSTACK_REF_PREFIX);
 }
 
+/**
+ * #4238 rework 1 (tester P2-3): the reference names the brand, the client's
+ * attempt key AND the amount. The same attempt for the same amount is the
+ * same reference (a transport retry stays idempotent); a new amount, or a new
+ * attempt after a cancel, is a new reference, so the payment provider never
+ * refuses the next payment as a duplicate.
+ */
 export function buildAdCreditPaystackReference(input: {
   brandId: string;
   clientIdem: string;
+  payCents: number;
 }): string {
   const compact = input.clientIdem.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
+  const amount = Number.isSafeInteger(input.payCents) && input.payCents > 0
+    ? String(input.payCents)
+    : "0";
   return `${AD_CREDIT_PAYSTACK_REF_PREFIX}${
     input.brandId.replace(/-/g, "").slice(0, 12)
-  }_${compact}`
+  }_${compact}_${amount}`
     .slice(0, 100);
 }

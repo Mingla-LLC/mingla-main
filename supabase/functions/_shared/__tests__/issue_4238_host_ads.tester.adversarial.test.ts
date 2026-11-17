@@ -437,7 +437,8 @@ Deno.test("#4238 ADV-E sales readiness never claims ready on a hang, NaN, truthy
     await salesReadiness(conn("google", { pixel_id: "px" }), silent),
     {
       ready: false,
-      reason: "not_supported",
+      // #4238 W4b §6: Google is "needs setup" for sales, never ready silently.
+      reason: "needs_setup",
     },
   );
   assertEquals(
@@ -470,6 +471,11 @@ function setupDb(tables: Record<string, Row[]>, currency = "NGN") {
       select: () => chain,
       eq: (column: string, value: unknown) => {
         filters.push((row) => row[column] === value);
+        return chain;
+      },
+      // #4238 W3 T-9: host_setup reads videos and photos (kind in [...]).
+      in: (column: string, values: unknown[]) => {
+        filters.push((row) => values.includes(row[column]));
         return chain;
       },
       order: () => chain,
@@ -693,6 +699,8 @@ Deno.test("#4238 ADV-F host_setup returns only consumer accounts, projected, wit
         "id",
         "platform",
         "sales",
+        // #4238 W1 item 3: sign-ups readiness (a ready/reason pair, no ids).
+        "signups",
         "status",
         "updated_at",
       ],
@@ -702,7 +710,8 @@ Deno.test("#4238 ADV-F host_setup returns only consumer accounts, projected, wit
     assertEquals(sales.ready, false);
   }
   const google = body.connections.find((row) => row.platform === "google")!;
-  assertEquals((google.sales as Row).reason, "not_supported");
+  // #4238 W4b §6: Google sales readiness is "needs setup" (no probe runs).
+  assertEquals((google.sales as Row).reason, "needs_setup");
   const text = JSON.stringify(result.body);
   for (
     const secret of [

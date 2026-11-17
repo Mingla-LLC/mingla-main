@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -16,9 +16,13 @@ import {
   pauseHostAdCampaign,
   type HostAdCampaign,
 } from "../../services/hostAdCampaignService";
-import { currencyCodeOrNull, formatCurrencyRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import { hostAdPayFromCredit } from "../marketing/ads/hostAdBuilderModel";
+import { hostAdListSummaryLine } from "../marketing/ads/results/AdListSummaryCard";
+import { hm, hostAdPauseConfirmWords } from "../marketing/ads/hostAdManageCopy";
 import {
-  homeAdAttentionCopy,
+  campaignCurrencies,
+  homeAdAttentionReason,
   homeAdCanPause,
   homeAdNetworkList,
   homeAdStatusLabel,
@@ -26,6 +30,7 @@ import {
   selectHomeAdCampaigns,
 } from "../../utils/homeAdLifecycle";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
@@ -33,8 +38,6 @@ import { Skeleton } from "../ui/Skeleton";
 interface HomeAdsSectionProps {
   brandId: string;
 }
-
-type CurrencyTotals = Map<string, { spent: number; budget: number }>;
 
 const dateLabel = (value: string | null): string | null => {
   if (value === null) return null;
@@ -45,41 +48,6 @@ const dateLabel = (value: string | null): string | null => {
     day: "numeric",
     month: "short",
   }).format(date);
-};
-
-const campaignCurrencies = (
-  campaign: HostAdCampaign,
-): { currency: string; spent: number; budget: number }[] => {
-  const currency = currencyCodeOrNull(campaign.currency);
-  const budget = campaign.cap_cents ?? campaign.lifetime_budget_cents ?? 0;
-  if (currency !== null && campaign.host_spend_equivalent_cents !== null) {
-    return [{
-      currency,
-      spent: campaign.host_spend_equivalent_cents,
-      budget,
-    }];
-  }
-  const byCurrency = campaign.spend_by_currency.map((row) => ({
-    currency: row.currency.toUpperCase(),
-    spent: row.spend_cents,
-    budget: row.currency.toUpperCase() === currency ? budget : 0,
-  }));
-  if (byCurrency.length > 0) return byCurrency;
-  return currency === null ? [] : [{ currency, spent: 0, budget }];
-};
-
-const summaryTotals = (campaigns: readonly HostAdCampaign[]): CurrencyTotals => {
-  const totals: CurrencyTotals = new Map();
-  for (const campaign of campaigns) {
-    for (const row of campaignCurrencies(campaign)) {
-      const current = totals.get(row.currency) ?? { spent: 0, budget: 0 };
-      totals.set(row.currency, {
-        spent: current.spent + row.spent,
-        budget: current.budget + row.budget,
-      });
-    }
-  }
-  return totals;
 };
 
 const currencyLines = (values: Record<string, number>, suffix: string) =>
@@ -161,7 +129,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const start = dateLabel(campaign.starts_at);
     const cap = campaign.cap_cents ?? campaign.lifetime_budget_cents;
     const scheduled = start !== null && cap !== null && campaign.currency !== null
-      ? `Starts ${start} · ${formatCurrencyRound(cap, campaign.currency, true)} budget`
+      ? `Starts ${start} · ${formatCurrencyRound(hostAdPayFromCredit(cap), campaign.currency, true)} budget`
       : null;
     const compactResult = resultCount === null
       ? null
@@ -169,7 +137,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const line = compactResult !== null
       ? [compactResult, ...salesLines].join(" · ")
       : attention
-        ? homeAdAttentionCopy(campaign.next_action)
+        ? homeAdAttentionReason(campaign)
         : scheduled;
     return line === null ? null : (
       <Text
@@ -194,7 +162,7 @@ const Results: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
       ))}
       {attention ? (
         <Text style={styles.attentionText}>
-          {homeAdAttentionCopy(campaign.next_action)}
+          {homeAdAttentionReason(campaign)}
         </Text>
       ) : null}
     </View>
@@ -205,7 +173,12 @@ const Budget: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
   campaign,
   compact = false,
 }) => {
-  const rows = campaignCurrencies(campaign);
+  // Pay terms, the same unit as the card total and Promote.
+  const rows = campaignCurrencies(campaign).map((row) => ({
+    ...row,
+    spent: hostAdPayFromCredit(row.spent),
+    budget: hostAdPayFromCredit(row.budget),
+  }));
   const hasSpend = rows.some((row) => row.spent > 0);
   if (!hasSpend) {
     if (compact) return null;
@@ -213,7 +186,7 @@ const Budget: React.FC<{ campaign: HostAdCampaign; compact?: boolean }> = ({
     const cap = campaign.cap_cents ?? campaign.lifetime_budget_cents;
     return start !== null && cap !== null && campaign.currency !== null ? (
       <Text style={styles.budgetLine}>
-        {`Starts ${start} · ${formatCurrencyRound(cap, campaign.currency, true)} budget`}
+        {`Starts ${start} · ${formatCurrencyRound(hostAdPayFromCredit(cap), campaign.currency, true)} budget`}
       </Text>
     ) : null;
   }
@@ -263,22 +236,17 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
     [ads.campaigns],
   );
   const campaigns = activeCampaigns.slice(0, 4);
-  const totals = useMemo(() => summaryTotals(campaigns), [campaigns]);
+  // #4238 rework 4 (retest 4 P2-1): the card's total is Promote's "This month"
+  // line, from the same server summary and the same helper (pay terms, ended
+  // ads included), so the two never show different figures for the same data.
+  const monthLine = ads.summary === null ? null : hostAdListSummaryLine(ads.summary);
   const [busyCampaignId, setBusyCampaignId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const adSales = traffic.data?.sources.find((row) =>
     row.source === "mingla_ads"
   )?.valueByCurrency ?? {};
   const salesLines = currencyLines(adSales, "");
-  const spendLines = [...totals.entries()]
-    .filter(([, total]) => total.spent > 0)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([currency, total]) =>
-      total.budget > 0
-        ? `${formatCurrencyRound(total.spent, currency, true)} spent of ${formatCurrencyRound(total.budget, currency, true)} budget`
-        : `${formatCurrencyRound(total.spent, currency, true)} spent`
-    );
+  const spendLines = monthLine === null ? [] : [monthLine];
 
   const openAds = useCallback((): void => {
     router.push("/(tabs)/marketing/ads" as never);
@@ -286,19 +254,42 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
   const openCampaign = useCallback((campaignId: string): void => {
     router.push(`/(tabs)/marketing/ads/${campaignId}` as never);
   }, [router]);
-  const pause = useCallback(async (campaign: HostAdCampaign): Promise<void> => {
+  // #4238 rework 5 (native P2-1): the tile's Pause asks first with the SAME
+  // money-stating confirm as the ad detail page (hostAdPauseConfirmWords).
+  // The confirm holds the ad it was opened for, and only that ad is paused.
+  const [pauseTarget, setPauseTarget] = useState<HostAdCampaign | null>(null);
+  const [pauseError, setPauseError] = useState<string | null>(null);
+  useEffect(() => {
+    setPauseTarget(null);
+    setPauseError(null);
+  }, [brandId]);
+  const askPause = useCallback((campaign: HostAdCampaign): void => {
     if (!permissions.canPause) return;
+    setPauseError(null);
+    setPauseTarget(campaign);
+  }, [permissions.canPause]);
+  const pause = useCallback(async (): Promise<void> => {
+    const campaign = pauseTarget;
+    if (campaign === null || !permissions.canPause || busyCampaignId !== null) return;
     setBusyCampaignId(campaign.id);
-    setActionError(null);
+    setPauseError(null);
     try {
       await pauseHostAdCampaign({ brandId, campaignId: campaign.id });
+      setPauseTarget(null);
       await ads.refetch();
     } catch {
-      setActionError(`Could not pause ${campaign.name}. Try again from Ads.`);
+      setPauseError(hm("detail.actionFailed"));
     } finally {
       setBusyCampaignId(null);
     }
-  }, [ads, brandId, permissions.canPause]);
+  }, [ads, brandId, busyCampaignId, pauseTarget, permissions.canPause]);
+  const pauseWords = pauseTarget === null
+    ? null
+    : hostAdPauseConfirmWords({
+      capCredit: pauseTarget.cap_cents,
+      spentCredit: pauseTarget.host_spend_equivalent_cents,
+      currency: pauseTarget.currency,
+    });
 
   if (permissions.isLoading || permissions.isError || !permissions.canRead) {
     return null;
@@ -358,7 +349,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
         padding={0}
         testID="home-ads-card"
       >
-        <View style={[
+        <View testID="home-ads-summary" style={[
           styles.summary,
           hasSummaryData
             ? isWideDesktop
@@ -450,7 +441,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                     </Pressable>
                     {pauseVisible ? (
                       <Pressable
-                        onPress={() => void pause(campaign)}
+                        onPress={() => askPause(campaign)}
                         disabled={busyCampaignId !== null}
                         accessibilityRole="button"
                         accessibilityLabel={`Pause ${campaign.name}`}
@@ -495,7 +486,12 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                       ) : null}
                       <View style={styles.phoneMiddle}>
                         <View style={styles.phoneTitleRow}>
-                          <Text style={styles.name} numberOfLines={1}>{campaign.name}</Text>
+                          {/* #4238 W7 (native P3-3): two lines on a phone, so
+                              ads with a shared start ("Rooftop Test Night ·")
+                              stay told apart. */}
+                          <Text style={styles.name} numberOfLines={2} testID={`home-ad-name-${campaign.id}`}>
+                            {campaign.name}
+                          </Text>
                           <StatusPill campaign={campaign} />
                         </View>
                         <Results campaign={campaign} compact />
@@ -509,7 +505,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                     </Pressable>
                     {pauseVisible ? (
                       <Pressable
-                        onPress={() => void pause(campaign)}
+                        onPress={() => askPause(campaign)}
                         disabled={busyCampaignId !== null}
                         accessibilityRole="button"
                         accessibilityLabel={`Pause ${campaign.name}`}
@@ -544,12 +540,30 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
             </Pressable>
           ) : null}
         </View>
-        {actionError === null ? null : (
-          <Text accessibilityRole="alert" style={styles.actionError}>
-            {actionError}
-          </Text>
-        )}
       </GlassCard>
+      {permissions.canPause && pauseWords !== null ? (
+        <ConfirmDialog
+          visible
+          onClose={() => {
+            if (busyCampaignId === null) {
+              setPauseTarget(null);
+              setPauseError(null);
+            }
+          }}
+          onConfirm={pause}
+          variant="simple"
+          title={pauseWords.title}
+          description={pauseWords.description}
+          confirmLabel={pauseWords.confirmLabel}
+          cancelLabel={pauseWords.cancelLabel}
+          confirmLoading={busyCampaignId !== null}
+          closeDisabled={busyCampaignId !== null}
+          errorMessage={pauseError}
+          confirmTestID="home-ad-pause-confirm"
+          cancelTestID="home-ad-pause-keep"
+          testID="home-ad-pause-dialog"
+        />
+      ) : null}
     </View>
   );
 };
@@ -569,7 +583,9 @@ const styles = StyleSheet.create({
   },
   summaryCopy: { flex: 1, minWidth: 0 },
   summaryWithDataWide: { minHeight: 120 },
-  summaryWithDataNarrow: { minHeight: 138 },
+  // Phone/tablet: the summary sizes to its content, top-aligned (no fixed
+  // minHeight + centring, which left ~47dp empty above "ADS").
+  summaryWithDataNarrow: { alignItems: "flex-start", minHeight: 0, paddingVertical: space[5] },
   summaryCompact: { minHeight: 51, paddingVertical: 0 },
   eyebrow: { ...type.label, color: color.text3 },
   salesSummaryRow: {
@@ -664,7 +680,6 @@ const styles = StyleSheet.create({
   compactLine: { ...type.caption, color: color.text2, marginTop: space[1] },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: color.fill.tile },
   phoneViewAll: { minHeight: 52, alignItems: "center", justifyContent: "center" },
-  actionError: { ...type.small, color: color.errorText, padding: space[4] },
   errorText: { ...type.small, color: color.text1 },
   retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center" },
   skeletonRow: { flexDirection: "row", alignItems: "center", gap: space[4] },

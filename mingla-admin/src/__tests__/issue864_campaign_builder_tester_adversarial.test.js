@@ -53,7 +53,7 @@ import {
   frequencyCapAllowed,
   launchConfirmCopy,
   learningLimitedWarning,
-  metaBudgetCategoryForGoal,
+  metaBudgetCategoryForBillingEvent,
   metaFloorCents,
   validateBudget,
 } from "../lib/adBuilder/budgetRules.js";
@@ -450,36 +450,38 @@ describe("channel plan — budget floor dollar boundaries", () => {
       connections: { meta: METACONN },
     });
 
-  it("$4.99 in a Meta-only frame → NO eligible channel + the cheapest-floor message names $5.00", () => {
-    const rows = frame(499, ["meta"]);
+  // [TEST-MOD #4238 Fix 1] Admin Meta bills on IMPRESSIONS ⇒ the $1 imp floor
+  // (I-4238-META-FLOOR-FOLLOWS-BILLING); the boundary moves from $5 to $1.
+  it("$0.99 in a Meta-only frame → NO eligible channel + the cheapest-floor message names $1.00", () => {
+    const rows = frame(99, ["meta"]);
     assert.equal(
       rows.filter((r) => r.eligible).length,
       0,
-      "$4.99 < the $5 link-clicks floor",
+      "$0.99 < the $1 impressions floor",
     );
     const errors = validateBudget({
-      totalDailyCents: 499,
+      totalDailyCents: 99,
       channelRows: rows,
       currency: "USD",
     });
     assert.ok(
       errors.some(
         (e) =>
-          e.includes("$4.99/day is below every channel's minimum") &&
-          e.includes("$5.00/day"),
+          e.includes("$0.99/day is below every channel's minimum") &&
+          e.includes("$1.00/day"),
       ),
     );
   });
 
-  it("$5.00 exactly in the Meta-only frame → Meta eligible (floor is inclusive)", () => {
-    const rows = frame(500, ["meta"]);
+  it("$1.00 exactly in the Meta-only frame → Meta eligible (floor is inclusive)", () => {
+    const rows = frame(100, ["meta"]);
     assert.deepEqual(
       rows.filter((r) => r.eligible).map((r) => r.platform),
       ["meta"],
     );
     assert.equal(
       validateBudget({
-        totalDailyCents: 500,
+        totalDailyCents: 100,
         channelRows: rows,
         currency: "USD",
       }).length,
@@ -488,9 +490,10 @@ describe("channel plan — budget floor dollar boundaries", () => {
   });
 
   // [TEST-MOD-APPROVED #3697] Wave 2 D1: Google floor is $0 (not null); Reddit $5.
-  // $4.99 still clears Google-only; Meta stays excluded by its $5 floor.
-  it("$4.99 with Google present → Google-only (Google $0 money floor — D1); truth pinned", () => {
-    const rows = frame(499, ["meta", "google"]);
+  // [TEST-MOD #4238 Fix 1] $0.99 still clears Google-only; Meta stays excluded
+  // by its $1 impressions floor.
+  it("$0.99 with Google present → Google-only (Google $0 money floor — D1); truth pinned", () => {
+    const rows = frame(99, ["meta", "google"]);
     assert.deepEqual(
       rows.filter((r) => r.eligible).map((r) => r.platform),
       ["google"],
@@ -545,11 +548,13 @@ describe("channel plan — budget floor dollar boundaries", () => {
 // ── A4.e budget rules — formula boundaries + unknown-goal fail-safety ────────
 
 describe("budget rules — edges", () => {
-  it("unknown optimization goals fall to the LOW_FREQ (highest, $40) floor — conservative, never $1", () => {
-    assert.equal(metaBudgetCategoryForGoal("SOME_FUTURE_GOAL"), "low_freq");
-    assert.equal(metaFloorCents(METACONN, "SOME_FUTURE_GOAL"), 4000);
+  // [TEST-MOD #4238 Fix 1] the category now follows the billing event.
+  it("unknown billing events fall to the LOW_FREQ (highest, $40) floor — conservative, never $1", () => {
+    assert.equal(metaBudgetCategoryForBillingEvent("SOME_FUTURE_EVENT"), "low_freq");
+    assert.equal(metaBudgetCategoryForBillingEvent("impressions"), "low_freq", "case matters: never a cheaper guess");
+    assert.equal(metaFloorCents(METACONN, "SOME_FUTURE_EVENT"), 4000);
     assert.equal(
-      metaFloorCents(null, "LINK_CLICKS"),
+      metaFloorCents(null, "IMPRESSIONS"),
       null,
       "no connection → null, server 424s",
     );

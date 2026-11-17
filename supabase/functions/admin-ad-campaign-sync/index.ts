@@ -66,6 +66,14 @@ import {
   redditReviewStatusFromEffectiveStatus,
 } from "../_shared/reddit.ts";
 import { buildSnapchatReviewDetail } from "../_shared/snapchat.ts";
+import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
+import {
+  decideReviewNotices,
+  loadHostAdPlanRef,
+  loadHostAdReviewRows,
+  notifyHostAdPause,
+  sendHostAdNotices,
+} from "../_shared/hostAdNotices.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -256,6 +264,34 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
+      // #4238 W4b: Host ad notices after the review update — live, rejected
+      // or part rejected, once per recipient (idempotency keys). Host lane
+      // only; never blocks the sweep.
+      if (campaign.owner_kind === "host" && campaign.plan_version_id) {
+        try {
+          const plan = await loadHostAdPlanRef(
+            supabase,
+            campaign.plan_version_id,
+          );
+          if (plan) {
+            const rows = await loadHostAdReviewRows(
+              supabase,
+              String(campaign.plan_version_id),
+            );
+            await sendHostAdNotices(
+              supabase,
+              decideReviewNotices({ plan, ads: rows }),
+              dispatchNotification,
+            );
+          }
+        } catch (noticeErr) {
+          console.error(
+            "[admin-ad-campaign-sync] host ad notice failed:",
+            noticeErr instanceof Error ? noticeErr.message : String(noticeErr),
+          );
+        }
+      }
+
       await supabase.from("ad_status_events").insert({
         campaign_id: campaign.id,
         platform: campaign.platform,
@@ -316,6 +352,13 @@ serve(async (req: Request): Promise<Response> => {
             external_ids: { external_campaign_id: campaign.external_campaign_id },
             provider_response: { reason: "destination_not_public" },
           });
+          if (campaign.owner_kind === "host") {
+            await notifyHostAdPause(supabase, {
+              planVersionId: campaign.plan_version_id,
+              campaignId: String(campaign.id),
+              reason: "destination_not_public",
+            }, dispatchNotification);
+          }
         } catch (pauseErr) {
           errors.push({
             campaign_id: campaign.id,

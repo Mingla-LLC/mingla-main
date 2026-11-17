@@ -250,6 +250,28 @@ const REVIEW_REASON_LABELS: Record<string, string> = {
     "Mingla checks a brand's first three ads before they run",
 };
 
+/**
+ * #4238 U-4: the In review line comes from the plan's `review_required`, so
+ * it never claims the apps check every ad when Mingla checks it first.
+ */
+export function hostAdInReviewCopy(reviewRequired: boolean | null | undefined): string {
+  return reviewRequired === true
+    ? "Mingla checks your first 3 ads, then the apps check them. Nothing is spent until they're approved."
+    : "The apps check every new ad before it runs. Nothing is spent until it's approved.";
+}
+
+/**
+ * #4238 U-3: the line Review shows for each app whose goal fell back to page
+ * visits (the Host keeps it or removes the app; create_version needs it
+ * acknowledged).
+ */
+export function hostAdVisitsFallbackCopy(
+  appName: string,
+  goal: "sales" | "signups",
+): string {
+  return `${appName} will get page visits, not ${goal === "sales" ? "ticket sales" : "sign-ups"}, until its ${goal === "sales" ? "sales" : "sign-up"} signal is ready`;
+}
+
 export function hostAdReviewReason(reason: string | null | undefined): string {
   const raw = String(reason ?? "").trim();
   if (/\s/.test(raw)) return raw;

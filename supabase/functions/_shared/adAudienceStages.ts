@@ -156,7 +156,11 @@ function anyAudience(
   return null;
 }
 
-function stageBudgetShares(
+/**
+ * The 70/20/10 split the create path sends to the provider (exported so the
+ * Host minimum in adHostPlanRules uses the same arithmetic, #4238 X-1).
+ */
+export function stageBudgetShares(
   enabled: Record<AdStage, boolean>,
   executable: Record<AdStage, boolean>,
   totalCents: number,

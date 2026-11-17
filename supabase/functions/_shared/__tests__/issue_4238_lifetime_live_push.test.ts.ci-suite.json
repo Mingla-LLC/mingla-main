@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4238_lifetime_live_push.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4238-lifetime-live-push",
+  "profile": "deno-2-unit"
+}

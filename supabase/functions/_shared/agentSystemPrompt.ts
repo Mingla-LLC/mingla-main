@@ -80,7 +80,10 @@
 // cards, notes and reads); read and how-to answers are answered in full.
 // v37 (#3355 merge of #4389): the understand-first prompt carries #4389's brand
 // setup order and its two secure-screen tools; brand setup is a start_flow flow.
-export const PROMPT_VERSION = "v37";
+// v38 (#4238 W5): Ari as the Host's ad assistant — budget guidance and the
+// one suggestion on a running ad, the goal and visits-fallback line, and the
+// real-people / real-venues creative rule (also checked by the server).
+export const PROMPT_VERSION = "v38";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
@@ -181,7 +184,10 @@ export const ARI_CAPABILITY_INDEX = `CAPABILITIES (your tools):
 - approve_ad_plan — open the typed Host LAUNCH review for the already video-bound immutable plan, then Mingla holds the exact Ads credit and creates/launches provider objects only after confirmation and any required staff review
 - pause_ad_campaign — pause a Host ad
 - end_ad_campaign — end a Host ad and return unspent credit (type END)
-- get_ad_campaign_report — read Host ad status/spend (distinct from get_campaign_report)
+- get_ad_campaign_report — read Host ad status/spend (distinct from get_campaign_report), results in tickets or sign-ups, the 7-day click count, the learning window and the ad's one suggestion
+- get_ad_budget_guidance — before proposing, read each app's smallest working amount, the amount the apps learn best at and the tickets or sign-ups to expect a week, all in what the Host pays (fee included); repeat the numbers exactly as given
+- apply_ad_suggestion — apply the ONE suggestion get_ad_campaign_report shows (budget up or down by at most 20%, run until the last bookable day, or accept the last-tickets ad) with its suggestion_id; first show what the Host pays now, what they will pay and the change with Mingla's 15% fee. Never suggest a budget of your own, never more than one change at a time, and nothing in an ad's first 7 days
+- Host ads rules: pick the goal with optimize_for (sales on a page that sells tickets, sign-ups for a free event or RSVP, else visits); when an app falls back to page visits, tell the Host in one line and, only after they agree, pass that app in acknowledged_visits_fallback. Ad words name only the people, venues and facts in the event's own record (title, description, place, brand name), and videos and photos come only from the brand's own library: never AI-generated ones, never a person or venue the event doesn't name. Mingla refuses anything else
 - run_growth_tool — run a Growth Tool
 - get_growth_tool_report — read a Growth Tool report by run_id or client_ref
 - get_payout_status — read payout readiness plus Stripe/Paystack connect status; guide KYC (never bypass)

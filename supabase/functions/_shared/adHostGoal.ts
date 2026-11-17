@@ -10,13 +10,34 @@
 
 import { HOST_AD_LANE, type Platform } from "./adChannelCore.ts";
 
-export type HostAdOptimization = "visits" | "sales";
+export type HostAdOptimization = "visits" | "sales" | "signups";
+
+export const HOST_AD_OPTIMIZATIONS: readonly HostAdOptimization[] = [
+  "visits",
+  "sales",
+  "signups",
+];
 
 /** Platforms with a website-sales path a Host ad may use (= Admin Sales). */
 export const HOST_SALES_GOAL_PLATFORMS: readonly Platform[] = [
   "meta",
   "snapchat",
   "tiktok",
+];
+
+/**
+ * #4238 item 3: platforms where a Host ad may optimise for sign-ups (a free
+ * RSVP or an all-free ticket page). Step 0 doc gate (W1): Meta fires
+ * CompleteRegistration and Snapchat SIGN_UP for free bookings already, and
+ * Snap's ad-squad docs pair PIXEL_SIGNUP with the SALES objective (Z-2 pass).
+ * TikTok (Z-1: the ON_WEB_REGISTER event name could not be confirmed from
+ * official docs), Reddit (Z-3: conversion ad-group fields not confirmed) and
+ * Google (needs a buyer sign-up conversion action, #4452) take the spec's
+ * fallback: page visits, which the Host must acknowledge (amendment A U-3).
+ */
+export const HOST_SIGNUPS_GOAL_PLATFORMS: readonly Platform[] = [
+  "meta",
+  "snapchat",
 ];
 
 /**
@@ -44,12 +65,54 @@ export function hostPageSellsTickets(
     HOST_SALES_PAGE_TYPES.includes(destination.page_type);
 }
 
+/**
+ * #4238 item 3: a ticket page whose every sellable tier is free. A tier
+ * counts as free only when BOTH is_free is true AND price_cents is 0; an
+ * empty tier list is not "all free" (nothing to sign up for).
+ */
+export function hostPageIsAllFree(
+  tiers: readonly { is_free?: unknown; price_cents?: unknown }[] | null,
+): boolean {
+  if (!Array.isArray(tiers) || tiers.length === 0) return false;
+  return tiers.every((tier) =>
+    tier.is_free === true && Number(tier.price_cents) === 0
+  );
+}
+
+/** Sign-ups fit an RSVP page, or a ticket page whose tiers are all free. */
+export function hostPageAcceptsSignups(
+  destination:
+    | { page_type?: unknown; result_kind?: unknown }
+    | null
+    | undefined,
+  allFree: boolean,
+): boolean {
+  if (destination?.page_type === "rsvp") return true;
+  return hostPageSellsTickets(destination) && allFree;
+}
+
 /** The provider objective fields a Host body may never carry itself. */
 export const HOST_GOAL_BODY_FIELDS = [
   "objective",
   "optimization_goal",
   "billing_event",
+  // #4238 item 3: the conversion event is the plan's too.
+  "custom_event_type",
+  "promoted_object",
 ] as const;
+
+/**
+ * #4238 item 3 / I-4238-NO-PURCHASE-GOAL-WITHOUT-PURCHASE: the Meta
+ * promoted-object event follows the Host goal (never a hard-coded PURCHASE
+ * on a sign-ups ad). Null for a goal with no conversion event.
+ */
+export function hostMetaCustomEventType(
+  optimization: HostAdOptimization,
+): "PURCHASE" | "COMPLETE_REGISTRATION" | null {
+  if (optimization === "sales") return "PURCHASE";
+  if (optimization === "signups") return "COMPLETE_REGISTRATION";
+  return null;
+}
 
 /**
  * The provider objective fields for a Host ad. "visits" is byte-equal to the
@@ -83,6 +146,20 @@ export function hostAdGoalFields(
     }
     return null;
   }
+  if (optimization === "signups") {
+    switch (platform) {
+      case "meta":
+        return {
+          objective: "OUTCOME_LEADS",
+          optimization_goal: "OFFSITE_CONVERSIONS",
+          billing_event: "IMPRESSIONS",
+        };
+      case "snapchat":
+        return { objective: "SALES", optimization_goal: "PIXEL_SIGNUP" };
+      default:
+        return null;
+    }
+  }
   switch (platform) {
     case "meta":
       return {
@@ -113,21 +190,44 @@ export function hostOptimizationFor(
   if (typeof map !== "object" || Array.isArray(map)) return null;
   const value = (map as Record<string, unknown>)[platform];
   if (value === undefined) return "visits";
-  return value === "visits" || value === "sales" ? value : null;
+  return (HOST_AD_OPTIMIZATIONS as readonly unknown[]).includes(value)
+    ? value as HostAdOptimization
+    : null;
 }
 
 export type HostOptimizationValidation =
   | { ok: true; map: Record<string, HostAdOptimization> }
   | {
     ok: false;
-    detail: "optimization_invalid" | "optimization_sales_unsupported";
+    detail: string;
+    /** Set only on the 409 acknowledgement refusal; every other one is 422. */
+    status?: 409;
+    platforms?: string[];
   };
+
+/** What create_version knows about the page and each app beyond the map. */
+export type HostOptimizationContext = {
+  /** Every sellable tier is free (hostPageIsAllFree). */
+  allFree?: boolean;
+  /** Live readiness per app and goal; an app missing here is not ready. */
+  ready?: Readonly<
+    Record<string, Readonly<Partial<Record<HostAdOptimization, boolean>>>>
+  >;
+  /** The goal the Host asked for (canonical_plan.optimization_goal). */
+  requestedGoal?: unknown;
+  /** Apps the Host accepted running page visits (acknowledged_visits_fallback). */
+  acknowledgedFallback?: unknown;
+};
 
 /**
  * create_version authority for a Host plan's goal. The map's keys must equal
- * the plan's platforms; "sales" is allowed only on Meta, Snapchat and TikTok
- * for a page that sells tickets (hostPageSellsTickets). A missing map becomes all "visits" so the
- * plan hash always carries the goal.
+ * the plan's platforms. "sales" needs a platform with a website-sales path
+ * and a page that sells tickets and is not all free. "signups" needs a
+ * sign-ups platform and an RSVP or all-free page. With a context, each
+ * conversion app must be live-ready, and when the Host asked for sales or
+ * sign-ups every app that runs visits instead must be acknowledged (409
+ * host_ad_goal_fallback_unacknowledged). A missing map becomes all "visits"
+ * so the plan hash always carries the goal.
  */
 export function validateHostOptimization(
   input: unknown,
@@ -136,37 +236,110 @@ export function validateHostOptimization(
     | { page_type?: unknown; result_kind?: unknown }
     | null
     | undefined,
+  context: HostOptimizationContext = {},
 ): HostOptimizationValidation {
+  const refuse = (detail: string): HostOptimizationValidation => ({
+    ok: false,
+    detail,
+  });
   const sellsTickets = hostPageSellsTickets(destination);
+  const allFree = context.allFree === true;
+  const acceptsSignups = hostPageAcceptsSignups(destination, allFree);
+  const requested = context.requestedGoal;
+  if (requested !== undefined && requested !== null) {
+    if (!(HOST_AD_OPTIMIZATIONS as readonly unknown[]).includes(requested)) {
+      return refuse("optimization_invalid");
+    }
+    if (requested === "sales" && sellsTickets && allFree) {
+      return refuse("optimization_sales_free_event");
+    }
+    if (requested === "sales" && !sellsTickets) {
+      return refuse("optimization_sales_unsupported");
+    }
+    if (requested === "signups" && !acceptsSignups) {
+      return refuse("optimization_signups_unsupported");
+    }
+  }
+  let map: Record<string, HostAdOptimization>;
   if (input === undefined || input === null) {
+    map = Object.fromEntries(platforms.map((p) => [p, "visits" as const]));
+  } else {
+    if (typeof input !== "object" || Array.isArray(input)) {
+      return refuse("optimization_invalid");
+    }
+    const entries = Object.entries(input as Record<string, unknown>);
+    const keys = new Set(entries.map(([key]) => key));
+    if (
+      keys.size !== platforms.length || !platforms.every((p) => keys.has(p))
+    ) {
+      return refuse("optimization_invalid");
+    }
+    map = {};
+    for (const [platform, value] of entries) {
+      if (!(HOST_AD_OPTIMIZATIONS as readonly unknown[]).includes(value)) {
+        return refuse("optimization_invalid");
+      }
+      if (value === "sales") {
+        if (sellsTickets && allFree) {
+          return refuse("optimization_sales_free_event");
+        }
+        if (
+          !(HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(
+            platform,
+          ) || !sellsTickets
+        ) return refuse("optimization_sales_unsupported");
+      }
+      if (value === "signups") {
+        if (!acceptsSignups) return refuse("optimization_signups_unsupported");
+        if (
+          !(HOST_SIGNUPS_GOAL_PLATFORMS as readonly string[]).includes(
+            platform,
+          )
+        ) return refuse(`optimization_signups_unsupported:${platform}`);
+      }
+      map[platform] = value as HostAdOptimization;
+    }
+  }
+  if (context.ready) {
+    for (const [platform, value] of Object.entries(map)) {
+      if (value === "visits") continue;
+      if (context.ready[platform]?.[value] !== true) {
+        return refuse(`optimization_${value}_not_ready:${platform}`);
+      }
+    }
+  }
+  // #4238 W4b §6: on a ticket-sales plan Google must be set up for sales.
+  // It can never fall back to page visits quietly, and the visits
+  // acknowledgement does not apply to it. #4238 W7: the same for a sign-ups
+  // plan (a free event): Google needs its free_signup action and Z-4.
+  if (
+    (requested === "sales" || requested === "signups") &&
+    platforms.includes("google") &&
+    context.ready?.google?.[requested] !== true
+  ) {
     return {
-      ok: true,
-      map: Object.fromEntries(platforms.map((p) => [p, "visits" as const])),
+      ok: false,
+      detail: "host_ad_google_needs_setup",
+      platforms: ["google"],
     };
   }
-  if (typeof input !== "object" || Array.isArray(input)) {
-    return { ok: false, detail: "optimization_invalid" };
-  }
-  const entries = Object.entries(input as Record<string, unknown>);
-  const keys = new Set(entries.map(([key]) => key));
-  if (
-    keys.size !== platforms.length || !platforms.every((p) => keys.has(p))
-  ) {
-    return { ok: false, detail: "optimization_invalid" };
-  }
-  const map: Record<string, HostAdOptimization> = {};
-  for (const [platform, value] of entries) {
-    if (value !== "visits" && value !== "sales") {
-      return { ok: false, detail: "optimization_invalid" };
+  if (requested === "sales" || requested === "signups") {
+    const acknowledged = new Set(
+      Array.isArray(context.acknowledgedFallback)
+        ? context.acknowledgedFallback.map((value) => String(value))
+        : [],
+    );
+    const fellBack = platforms.filter((platform) =>
+      map[platform] === "visits" && !acknowledged.has(platform)
+    );
+    if (fellBack.length > 0) {
+      return {
+        ok: false,
+        status: 409,
+        detail: "host_ad_goal_fallback_unacknowledged",
+        platforms: fellBack,
+      };
     }
-    if (
-      value === "sales" &&
-      (!(HOST_SALES_GOAL_PLATFORMS as readonly string[]).includes(platform) ||
-        !sellsTickets)
-    ) {
-      return { ok: false, detail: "optimization_sales_unsupported" };
-    }
-    map[platform] = value;
   }
   return { ok: true, map };
 }

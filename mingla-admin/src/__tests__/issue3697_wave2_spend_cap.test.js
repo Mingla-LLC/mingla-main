@@ -18,23 +18,24 @@ import { buildLaunchSummary } from "../lib/adBuilder/launchSummary.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("D1 floors: TikTok $50, Snap $20, Reddit $5, Google $0", () => {
-  assert.equal(channelFloorCents("tiktok"), 5000);
-  assert.equal(channelFloorCents("snapchat"), 2000);
+// [TEST-MOD #4238 D-1] Seth approved the per-ad-set limits Mingla builds at.
+test("D1 floors: TikTok $20, Snap $5, Reddit $5, Google $0", () => {
+  assert.equal(channelFloorCents("tiktok"), 2000);
+  assert.equal(channelFloorCents("snapchat"), 500);
   assert.equal(channelFloorCents("reddit"), 500);
   assert.equal(channelFloorCents("google"), 0);
 });
 
-test("D1 sum Meta+TikTok+Snap × 7 days = $525", () => {
+test("D1 sum Meta+TikTok+Snap × 7 days = $182", () => {
   const r = computeAdminMinimumCents({
     platforms: ["meta", "tiktok", "snapchat"],
     mode: "lifetime",
     startsAt: "2026-10-01T00:00:00Z",
     endsAt: "2026-10-07T23:00:00Z",
-    connection: { extra: { minimum_budgets: { high_freq: 500 } } },
-    metaGoal: "LINK_CLICKS",
+    connection: { extra: { minimum_budgets: { imp: 100, high_freq: 500 } } },
   });
-  assert.equal(r.minBudgetCents, 52500);
+  // (Meta imp $1 + TikTok $20 + Snap $5) × 7 days.
+  assert.equal(r.minBudgetCents, 18200);
   assert.equal(r.days, 7);
 });
 

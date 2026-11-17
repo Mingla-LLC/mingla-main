@@ -3,6 +3,7 @@ import type { HostAdDraft, HostAdPlanAggregate } from "./hostAdPlanService";
 import {
   hostAdReviewReason,
   hostAdStepLabel,
+  platformNames,
 } from "../components/marketing/ads/hostAdCopy";
 import { formatHostAdMoneyCents } from "../components/marketing/ads/hostAdMoney";
 
@@ -205,7 +206,7 @@ function campaignItem(campaign: HostAdCampaign): HostAdListItem {
     nextAction: campaign.next_action,
     route: `/(tabs)/marketing/ads/${campaign.id}`,
     reason: campaign.creative?.review_status?.toUpperCase().includes("REJECT")
-      ? "An app turned down your video"
+      ? "An app didn't approve this ad"
       : null,
     updatedAt: campaign.updated_at ?? campaign.created_at,
     pauseReason:
@@ -336,4 +337,19 @@ export function hostAdMatchesFilter(
   filter: HostAdFilter,
 ): boolean {
   return filter === "all" || item.lifecycle === filter;
+}
+
+/**
+ * #4238 rework 3 (tester P3-4): what tells two ads for the same page apart in
+ * the desktop table — the apps and the day it started ("Facebook & Instagram
+ * · 4 Nov"). Null when neither is known.
+ */
+export function hostAdRowIdentity(item: HostAdListItem, locale?: string): string | null {
+  const apps = item.platforms.length > 0 ? platformNames(item.platforms) : "";
+  const started = item.kind === "campaign" && item.startedAt ? Date.parse(item.startedAt) : Number.NaN;
+  const day = Number.isFinite(started)
+    ? new Date(started).toLocaleDateString(locale, { day: "numeric", month: "short" })
+    : "";
+  const line = [apps, day].filter((part) => part.length > 0).join(" · ");
+  return line.length > 0 ? line : null;
 }

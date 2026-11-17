@@ -67,6 +67,12 @@ import {
   type ServerHostFunnelKind,
 } from "./adEventCatalog.ts";
 import { identityHashes } from "./adIdentity.ts";
+// #4238 W7 (amendment B decision 6, I-4238-CLICK-WINDOW-7D): the one 7-day
+// window, shared with Mingla's count on read and the browser TTL.
+import {
+  HOST_AD_CLICK_WINDOW_DAYS,
+  HOST_AD_CLICK_WINDOW_MS,
+} from "./hostAdAttribution.ts";
 
 // ── Shared contract types (imported by the 4 senders, type-only — no cycle) ───
 
@@ -585,6 +591,45 @@ interface TouchContext {
   consentAllowsShare: boolean;
   /** pending | granted | rejected | none (no touch / legacy). */
   consentState: "pending" | "granted" | "rejected" | "none";
+  /**
+   * #4238 W7: set when a touch exists but is outside the 7-day window, so the
+   * conversion is not attributed and nothing tied to that click is sent.
+   */
+  windowExpired?: TouchWindowExpiry | null;
+}
+
+/** #4238 W7: why a stored ad tap was not credited with a conversion. */
+export interface TouchWindowExpiry {
+  reason:
+    | "click_older_than_window"
+    | "click_after_conversion"
+    | "click_time_missing";
+  /** conversion time minus tap time, or null when either is unreadable. */
+  touchAgeMs: number | null;
+}
+
+/**
+ * #4238 W7 (I-4238-CLICK-WINDOW-7D): a tap is credited only when the
+ * conversion happened at most 7 days AFTER it (no view-through). A tap dated
+ * after the conversion, or with no readable time, counts as expired. The
+ * same rule as countedByMingla (hostAdAttribution.ts) on the read side.
+ */
+export function touchWindowExpiry(
+  touchCreatedAt: unknown,
+  conversionAtMs: number,
+): TouchWindowExpiry | null {
+  const touchMs = typeof touchCreatedAt === "string" && touchCreatedAt.trim()
+    ? Date.parse(touchCreatedAt)
+    : NaN;
+  if (!Number.isFinite(touchMs) || !Number.isFinite(conversionAtMs)) {
+    return { reason: "click_time_missing", touchAgeMs: null };
+  }
+  const age = conversionAtMs - touchMs;
+  if (age < 0) return { reason: "click_after_conversion", touchAgeMs: age };
+  if (age > HOST_AD_CLICK_WINDOW_MS) {
+    return { reason: "click_older_than_window", touchAgeMs: age };
+  }
+  return null;
 }
 
 /** #4238 W3-3: the host kind an ad_conversions.event_type stands for. */
@@ -1239,6 +1284,8 @@ async function resolveHostContext(
 async function resolveTouch(
   supabase: SupabaseClient,
   clickId: string | null,
+  /** #4238 W7: the conversion's action time; the 7-day window is from it. */
+  conversionAtMs: number,
 ): Promise<TouchContext> {
   const empty: TouchContext = {
     touchId: null,
@@ -1271,6 +1318,24 @@ async function resolveTouch(
   const consentState = typeof t.consent_state === "string"
     ? t.consent_state
     : "granted";
+  const normalizedConsent: TouchContext["consentState"] =
+    consentState === "pending" || consentState === "rejected" ||
+      consentState === "granted"
+      ? consentState
+      : "granted";
+  // #4238 W7 (I-4238-CLICK-WINDOW-7D): an expired tap credits nothing. No
+  // touch, campaign or connection on the row, and no click id or Meta fbc
+  // from that tap on any send. Its consent answer still holds (a Reject is
+  // never widened by the tap being old).
+  const windowExpired = touchWindowExpiry(t.created_at, conversionAtMs);
+  if (windowExpired) {
+    return {
+      ...empty,
+      consentAllowsShare: consentState === "granted",
+      consentState: normalizedConsent,
+      windowExpired,
+    };
+  }
   return {
     touchId: (t.id as string | null) ?? null,
     connectionId: (t.connection_id as string | null) ?? null,
@@ -1290,10 +1355,18 @@ async function resolveTouch(
     // toward #3697 / #3703: outbound only when granted. Reject and pre-consent
     // pending stay first-party-only (shared_with_platforms=false).
     consentAllowsShare: consentState === "granted",
-    consentState: consentState === "pending" || consentState === "rejected" ||
-        consentState === "granted"
-      ? consentState
-      : "granted",
+    consentState: normalizedConsent,
+    windowExpired: null,
+  };
+}
+
+/** #4238 W7: the provider_response note that says why a tap was not credited. */
+function windowExpiryNote(expiry: TouchWindowExpiry): Record<string, unknown> {
+  return {
+    status: "not_attributed",
+    reason: expiry.reason,
+    touch_age_ms: expiry.touchAgeMs,
+    window_days: HOST_AD_CLICK_WINDOW_DAYS,
   };
 }
 
@@ -1448,11 +1521,16 @@ export async function fireAdCheckoutStart(
         results: [],
       };
     }
+    // #4238 W7: checkout start happened when the session was created.
+    const startedMs = typeof row.created_at === "string"
+      ? Date.parse(row.created_at)
+      : NaN;
     const touch = await resolveTouch(
       supabase,
       typeof row.attribution_click_id === "string"
         ? row.attribution_click_id
         : null,
+      Number.isFinite(startedMs) ? startedMs : (deps.now ?? (() => Date.now()))(),
     );
     const storedResponse = checkoutStartResponse(
       row.ad_checkout_start_provider_response,
@@ -1606,7 +1684,8 @@ export async function fireAdCheckoutStart(
         eventSourceUrl: checkoutPage,
         hashedEmail: null,
         hashedPhone: null,
-        fbc: channel === "meta"
+        // #4238 W7: an expired tap sends no fbc (it is that tap's click id).
+        fbc: channel === "meta" && !touch.windowExpired
           ? (typeof row.fbc === "string" ? row.fbc : touch.fbc)
           : null,
         fbp: channel === "meta" && typeof row.fbp === "string" ? row.fbp : null,
@@ -2215,8 +2294,28 @@ export async function fireAdConversion(
       });
     }
 
+    // #4238 W1-5: the action time, never the send time. A retry carries the
+    // same event_time as the first send. #4238 W7: the 7-day window counts
+    // back from this same time.
+    const firstFireMs = typeof existingRow?.created_at === "string"
+      ? Date.parse(existingRow.created_at)
+      : NaN;
+    const eventTimeMs = typeof input.eventTimeMs === "number" &&
+        Number.isFinite(input.eventTimeMs)
+      ? input.eventTimeMs
+      : Number.isFinite(firstFireMs)
+      ? firstFireMs
+      : now();
+
     // 3. Resolve the attributed touch (click_id → campaign/connection/fbc).
-    const touch = await resolveTouch(supabase, ctx.clickId);
+    const touch = await resolveTouch(supabase, ctx.clickId, eventTimeMs);
+    if (touch.windowExpired) {
+      // #4238 W7: record why this conversion credits no ad.
+      existingResponse = {
+        ...existingResponse,
+        attribution: windowExpiryNote(touch.windowExpired),
+      };
+    }
     const shareWithPlatforms = touch.consentAllowsShare &&
       !ctx.trackingOptOut;
 
@@ -2330,17 +2429,6 @@ export async function fireAdConversion(
 
     // 6. Fan out to each channel whose status is still pending (parallel,
     //    bounded, fail-open). Non-Meta channels never receive fbc/fbp.
-    // #4238 W1-5: the action time, never the send time. A retry carries the
-    // same event_time as the first send.
-    const firstFireMs = typeof existingRow?.created_at === "string"
-      ? Date.parse(existingRow.created_at)
-      : NaN;
-    const eventTimeMs = typeof input.eventTimeMs === "number" &&
-        Number.isFinite(input.eventTimeMs)
-      ? input.eventTimeMs
-      : Number.isFinite(firstFireMs)
-      ? firstFireMs
-      : now();
     const attempts: { channel: Channel; run: Promise<SenderResult> }[] = [];
     for (
       const channel of [
@@ -2390,7 +2478,10 @@ export async function fireAdConversion(
         hashedPhoneE164: ctx.hashedPhoneE164 ?? null,
         hashedEmailGoogle: ctx.hashedEmailGoogle ?? null,
         ...labelFields(ctx),
-        fbc: channel === "meta" ? (ctx.fbc ?? touch.fbc) : null,
+        // #4238 W7: an expired tap sends no fbc (it is that tap's click id).
+        fbc: channel === "meta" && !touch.windowExpired
+          ? (ctx.fbc ?? touch.fbc)
+          : null,
         fbp: channel === "meta" ? ctx.fbp : null,
         externalId: ctx.externalId,
         ttp: channel === "tiktok" ? ctx.ttp : null,

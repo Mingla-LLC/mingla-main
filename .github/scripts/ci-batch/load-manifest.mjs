@@ -299,15 +299,28 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4435 W3c: registered the concurrent-add cap race suite (issue_4435_group_cap_race) and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 CI fix: skip 20280708054435 (group lifecycle; re-emits the plan RPCs over chat_plans, chat_plan_place_options and chat_plan_place_votes, which only the skipped #4261 migrations create) by exact filename in the #1931 filtered replay; re-sealed.
 // #4435 QA follow-up: listed migration 20280709004435 (group QA fixes) after 20280708064435 in the #1857, #1931 and #2117 lanes, skipped it by exact filename in the #1931 filtered replay (it re-emits functions over chat_plans, which only the skipped #4261 migrations create), and registered the group-edges tester suite and the group QA fixes suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4238 W4c: listed the three W2/W3/W4b migrations after 20280709004435 in the #1857, #1931 and #2117 lanes and registered their three pg17 proofs with sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4238 W6a: merged origin/4420-host-graphite-glass (its MANIFEST row change kept beside the #4238 W2/W3/W4b rows); re-sealed.
+// #4238 rework 1 (tester P1-4): skipped the three #4238 W2/W3/W4b migrations by exact filename in the #1931 filtered replay (the #2492 closure guard keys on the plan_id and platform column names, which only skipped migrations also define on that lane) and registered the tester's host_ad_roles adversarial pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4435 leftovers: listed migration 20280710004435 (leftovers) after 20280709004435 in the #1857, #1931 and #2117 lanes (the #1931 filtered replay runs it: it passes there), and registered the group QA fixes tester suite, the leftovers suite and the leftovers tester suite with their sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4238 rework 2: merged origin/main 3c6bbd0d81 (#4435 leftovers row 20280710004435 kept in filename order between the #4238 rows); re-sealed.
+// #4238 rework 3: renumbered the three #4238 migrations to 20280715004238 / 20280716004238 / 20280717004238 (after origin/main 20280710004435 and the sibling #4452 20280714004452) in the #1857, #1931 and #2117 lanes and the #1931 exact-filename skip list; re-sealed.
 // #4452 retest 1: registered the tester rework adversarial pg17 suite and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4452 merge of main after #4454: kept the #4435 leftovers migration ahead of the #4452 migrations in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4452 PR checks: skipped the five #4452 migrations the #2492 closure gate cannot prove on the filtered #1931 template replay, by exact filename; re-sealed.
 // #4452 PR checks round 2: also skipped the #4452 tool follow-ups migration (it seeds the skipped forms tables at run time) on the #1931 template replay, by exact filename; re-sealed.
+// #4238 rework 5: merged origin/main e4cb2564bd (#4452 rows kept in filename order ahead of the #4238 rows; both #1931 exact-filename skip blocks kept); re-sealed.
+// #4238 W7: merged origin/4420-host-graphite-glass a196ecfd7a (its 20280719004420 migration row kept after the #4238 rows in the #1857, #1931 and #2117 lanes); re-sealed.
+// #4420 filtered replay lanes (#1931, #2117) skip the experience venue-line privacy migration by exact filename; re-sealed.
+// #4238 W8: merged origin/4420-host-graphite-glass c37722672d (its 20280718004420 row and the #1931 filtered-replay skip for 20280719004420 kept beside the #4238 rows); re-sealed.
 // #4420 merge of main after #4455: kept the #4420 Stay other-contact and experience venue-line privacy migrations after the #4452 migrations in the #1857, #1931 and #2117 lanes, and the #4420 venue-line privacy skip after the #4452 skips in the #1931 filtered replay; re-sealed.
 // #4420 Stay other-contact recovery: listed migration 20280721004420 (recovery view + rate-limited resend) after 20280719004420 in the #1857, #1931 and #2117 lanes, and its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
 // #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
+// #4238 rework 7: merged origin/4420-host-graphite-glass 33f59ce94a (its 20280721/22/23004420 rows and the #1931 filtered-replay skips for 20280722/23004420 kept beside the #4238 and #4452 B8 rows); re-sealed.
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
 // #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
@@ -315,7 +328,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 Stay pay link brand theme: listed migration 20280731104420 after 20280725004452 in the #1857, #1931 and #2117 lanes (plpgsql body, no filtered-replay skip needed; both filtered replays verified) and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "f62ed6ea10ce1b0e31cd77170293058cbdaeb8c2da3bdf3aeb33c5e074bde9a8";
+// #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
+export const BOOTSTRAP_SHA256 = "13049b1a9e1e5f685f052656cefc149004511ea929f61bbc0d6cb128cb985a2c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

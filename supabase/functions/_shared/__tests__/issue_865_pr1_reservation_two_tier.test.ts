@@ -199,7 +199,8 @@ Deno.test("WP-2 threading: an INLINE clickId resolves the touch; the conversion 
       campaign_id: "cmp-1",
       network: "meta",
       external_click_id: "fbclidX",
-      created_at: "2026-07-20T00:00:00Z",
+      // #4238 W7: a tap inside the 7-day window of the reservation (now).
+      created_at: new Date().toISOString(),
     },
     ...AD_CONNECTIONS,
   });
@@ -240,7 +241,8 @@ Deno.test("WP-2 threading: with no inline clickId, the reservation checkout sess
       campaign_id: "cmp-2",
       network: "meta",
       external_click_id: "fbY",
-      created_at: "2026-07-20T00:00:00Z",
+      // #4238 W7: a tap inside the 7-day window of the reservation (now).
+      created_at: new Date().toISOString(),
     },
     ...AD_CONNECTIONS,
   });

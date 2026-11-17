@@ -123,17 +123,6 @@ export function hostAdProportionalCents(total: number, weights: readonly number[
   return floors;
 }
 
-/**
- * A starting point that clears every app's minimum with room to learn:
- * 1.6 × the minimums, rounded up to a round step.
- */
-export function hostAdRecommendedDaily(minimumTotalCents: number): number {
-  if (minimumTotalCents <= 0) return 0;
-  const raw = minimumTotalCents * 1.6;
-  const step = raw >= 10_000_000 ? 1_000_000 : raw >= 1_000_000 ? 100_000 : raw >= 100_000 ? 10_000 : 1_000;
-  return Math.ceil(raw / step) * step;
-}
-
 export type HostAdBudgetMode = "total" | "daily";
 
 /**

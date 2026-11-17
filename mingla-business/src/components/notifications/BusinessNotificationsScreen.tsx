@@ -73,6 +73,7 @@ import {
   type NotificationFamily,
   type NotificationSeverity,
 } from "../../constants/businessNotificationTemplates";
+import { formatRelativeSpoken } from "./formatRelativeSpoken";
 
 interface BusinessNotificationsScreenProps {
   userId: string | null;
@@ -343,7 +344,7 @@ const NotificationRowInner: React.FC<RowProps> = ({
     onDelete(notification);
   }, [notification, onDelete]);
 
-  const a11yLabel = `${notification.title}. ${notification.body}. ${unread ? "Unread" : "Read"}. ${formatRelative(notification.created_at)} ago. ${expanded ? "Expanded." : "Collapsed."}`;
+  const a11yLabel = `${notification.title}. ${notification.body}. ${unread ? "Unread" : "Read"}. ${formatRelativeSpoken(notification.created_at)}. ${expanded ? "Expanded." : "Collapsed."}`;
 
   // Title with the bold entity span emboldened (port of consumer
   // renderTitleWithBoldActor, generalised to data.boldToken). When expanded,

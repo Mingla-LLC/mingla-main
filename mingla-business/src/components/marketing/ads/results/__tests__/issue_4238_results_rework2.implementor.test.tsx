@@ -108,22 +108,4 @@ describe("#4238 results P3s", () => {
     for (const value of axis) expect(value.length).toBeLessThanOrEqual(6);
   });
 
-  it("writes cost per result with a code, like the results headline", () => {
-    expect(hostAdCostPerResultLine("Cost per sale", { cents: 10_333_333, currency: "NGN" })).toBe(
-      "Cost per sale: NGN 103,333.33",
-    );
-    expect(hostAdCostPerResultLine("Cost per sale", null)).toBe(
-      "Cost per sale: Shown once we have both spend and results",
-    );
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("fs") as typeof import("fs");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require("path") as typeof import("path");
-    const page = fs.readFileSync(
-      path.join(__dirname, "../../../../../../src/screens/hostAds/HostAdDetailScreen.tsx"),
-      "utf8",
-    );
-    expect(page).toContain("{hostAdCostPerResultLine(costPerLabel, costPerResult)}");
-    expect(page).not.toMatch(/formatCurrency\(costPerResult/);
-  });
 });

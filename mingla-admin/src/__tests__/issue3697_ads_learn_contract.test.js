@@ -49,7 +49,9 @@ test("#3697 1.4 Meta refuses create without a linked Instagram account", () => {
 
 test("#3697 2.1 Meta Sales carries PURCHASE promoted_object", () => {
   const source = read("supabase/functions/admin-ad-create-campaign/index.ts");
-  assert.match(source, /promotedObject:[\s\S]*?pixel_id: metaDatasetId[\s\S]*?custom_event_type: "PURCHASE"/);
+  // #4238 W1: Admin (no Host goal) still sends PURCHASE; a Host sign-ups ad
+  // sends COMPLETE_REGISTRATION through hostMetaCustomEvent.
+  assert.match(source, /promotedObject:[\s\S]*?pixel_id: metaDatasetId[\s\S]*?custom_event_type: hostMetaCustomEvent \?\? "PURCHASE"/);
 });
 
 test("#3697 2.2 Sales spans all three paid-social platforms with live gates", () => {

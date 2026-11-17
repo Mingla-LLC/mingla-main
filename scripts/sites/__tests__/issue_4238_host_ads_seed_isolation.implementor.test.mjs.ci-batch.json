@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4238",
+  "suite": {
+    "id": "issue-4238-host-ads-seed-isolation",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "scripts/sites/local/**",
+      "scripts/sites/__tests__/issue_4238_host_ads_seed_isolation.implementor.test.mjs"
+    ],
+    "steps": [
+      {
+        "name": "Host ads local seed writes only to this worktree's own stack (reserved ports, clean PG env, identity token)",
+        "cwd": "scripts/sites",
+        "run": "node --test __tests__/issue_4238_host_ads_seed_isolation.implementor.test.mjs",
+        "commandId": "assert:issue-4238-host-ads-seed-isolation:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test __tests__/issue_4238_host_ads_seed_isolation.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4238",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "scripts/sites",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "scripts/sites/__tests__/issue_4238_host_ads_seed_isolation.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 2,
+      "p95": 5,
+      "evidence": "Local targeted run 2026-11-16"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell runs the reviewed node:test file directly; self-registering suite, no workflow edit.",
+    "timeoutSeconds": 60
+  }
+}
