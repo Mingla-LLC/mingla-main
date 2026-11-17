@@ -222,4 +222,47 @@ describe("#4453 M7 Young and Stamped composed in Voyage, through the real builde
       writeFileSync(join(process.env.YS_COMPOSED_OUT, "ys-feed.json"), JSON.stringify(FEED));
     }
   });
+  /*
+   * m7c tester (adversarial, P2-1 through the REAL builder): a story's inline
+   * picture that cannot render (still processing, unknown/deleted, or another
+   * brand's media id) leaves only THAT card photo-less; the publish succeeds,
+   * the artifact validates, and no other record's or brand's picture is borrowed.
+   */
+  it("m7c tester: an inline story picture that cannot render never blocks the publish and nothing is borrowed", async () => {
+    const composed = compose();
+    const ids = new Map(composed.pages.map((page, i) => [page.slug, `page-${i}`]));
+    const pages = composed.pages.map((page) => ({ id: ids.get(page.slug), tenant: "t1", slug: page.slug, title: page.title, kind: page.kind, enabled: true, blocks: page.blocks, ...(page.collection_kind ? { collection_kind: page.collection_kind } : {}) }));
+    const navigation = { id: "nav-1", tenant: "t1", wordmark: composed.wordmark, header_variant: composed.header_variant, items: composed.menu.items.map((item) => ({ label: item.label, target_type: "page", page: ids.get(item.slug) })) };
+    const settings = { id: "settings-1", tenant: "t1", display_name: "Young and Stamped", design: "voyage" };
+    const footer = { id: "footer-1", tenant: "t1" };
+    const PROCESSING = { ...picture(mediaId(90)), state: "PROCESSING" };
+    const OTHER_BRAND = mediaId(91); // a real id in another tenant's library, never in this tenant's media
+    const upload = (value: string) => ({ type: "upload", version: 1, relationTo: "media", value: { id: value } });
+    const story = (n: number, slug: string, inline: string) => ({
+      id: `44444444-4444-4444-8444-${String(n).padStart(12, "0")}`, slug, title: slug, published_at: "2026-09-0" + (n % 9 + 1) + "T00:00:00.000Z",
+      content: lexical([paragraph("Notes."), upload(inline)]), featured_image: null, enabled: true,
+    });
+    const stories = [
+      story(11, "processing", PROCESSING.id), story(12, "deleted", mediaId(99)), story(13, "other-brand", OTHER_BRAND), story(14, "ready", mediaId(7)),
+    ];
+    // The builder loads only the tenant's READY media (artifactBuilder.ts, state = READY), so a processing picture is absent from its map.
+    const tenantMedia = media;
+    const collections: Record<string, unknown[]> = { pages, navigation: [navigation], footer: [footer], "site-settings": [settings], media: tenantMedia, destinations: DEST, stories, categories: [], testimonials: REVIEWS };
+    const sourceDigest = await publicationDraftDigest({ pages, navigation, footer, settings, media: tenantMedia, content: { destinations: DEST, stories, categories: [], testimonials: REVIEWS } } as never);
+    const req = { context: {}, payload: { find: async ({ collection }: { collection: string }) => ({ docs: collections[collection] ?? [] }) } } as never;
+    const built = await buildPublicationArtifact(req, {
+      tenant: { id: "t1", core_site_id: SITE, core_brand_id: BRAND, primary_hostname: "youngandstamped.sites.localhost" } as never,
+      operationId: "op-m7c", publicationId: PUBLICATION, sourceRevisionId: "rev-m7c", sourceDigest, generatedAt: new Date().toISOString(),
+      fontPipeline: offlineFonts, actionScope: { brand_slug: "youngandstamped", contact_email: "hello@youngandstamped.example" },
+    });
+    const artifact = JSON.parse(built.serialized);
+    expect(() => assertArtifactV2(artifact)).not.toThrow();
+    const text = built.serialized;
+    // Never published: the processing picture, the unknown one, the other brand's.
+    for (const banned of [PROCESSING.id, mediaId(99), OTHER_BRAND]) expect(text).not.toContain(banned);
+    // The READY inline picture is the story's own (used), so the fallback still works.
+    expect(text).toContain(mediaId(7));
+    const storyRows = JSON.stringify(artifact).match(/"slug":"(processing|deleted|other-brand|ready)"/g) ?? [];
+    expect(new Set(storyRows).size).toBe(4); // every card still published
+  });
 });
