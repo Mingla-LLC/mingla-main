@@ -26,7 +26,8 @@ const inputs = {
 };
 const READS = new Set(["brand_site_plan_preview_on", "brand_site_plan_preview_inputs", "brand_site_live_fingerprints",
   "brand_site_plan_preview_take", "brand_site_offerings_feed_for_brand", "brand_site_plan_get", "brand_site_flag_on",
-  "brand_context_completeness", "brand_site_compose_facts"]);
+  "brand_context_completeness", "brand_site_compose_facts", "brand_site_compose_facts_for_brand",
+  "brand_site_offering_dates_for_brand", "brand_site_venue_slots_for_brand", "brand_site_ticket_tiers_for_brand"]);
 
 function ctx(opts: { on: boolean; allowed?: boolean }, calls: Call[], sent: Record<string, unknown>[]): SitePlanContext {
   const rpc = async (fn: string, args: Record<string, unknown>) => {
@@ -40,6 +41,11 @@ function ctx(opts: { on: boolean; allowed?: boolean }, calls: Call[], sent: Reco
       return { data: { generated_at: "2026-11-16T10:00:00.000Z", brand: { slug: "youngandstamped" }, offerings: [{ id: TRIP, kind: "trip", start_at: "2099-01-01T00:00:00Z", end_at: "2099-01-08T00:00:00Z" }] }, error: null };
     }
     if (fn === "brand_site_plan_get") return { data: { plan: { brand_id: BRAND } }, error: null };
+    // The brand twins answer exactly what the site reads would once the site exists.
+    if (fn === "brand_site_compose_facts_for_brand") return { data: { venues: {}, published_menu: false, mingla_reviews: 12 }, error: null };
+    if (fn === "brand_site_offering_dates_for_brand") {
+      return { data: { days: [{ local_date: "2099-01-01", slots: [{ state: "open" }, { state: "few" }, { state: "full" }] }] }, error: null };
+    }
     return { data: null, error: null };
   };
   return {
@@ -107,7 +113,15 @@ Deno.test("#4453 M10 a preview reads by brand, writes nothing, and sends Studio 
   assertEquals(args.payload.kind, "plan_preview");
   assertEquals(args.payload.styles, ["voyage", "terra", "journal"]);
   assertEquals((args.payload.facts as { upcoming: { trip: number } }).upcoming.trip, 1);
-  assert(!calls.some((call) => call.fn === "brand_site_compose_facts"), "no site yet: no site-scoped reads");
+  // SC-PP4 (tester P1-2): no site yet, so the BRAND twins of Build's fact reads run,
+  // and the facts Studio composes with equal what Build will read once the site exists.
+  assert(!calls.some((call) => "p_site_id" in call.args), "no site yet: no site-scoped reads");
+  assert(calls.some((call) => call.fn === "brand_site_compose_facts_for_brand" && call.args.p_brand_id === BRAND), "brand compose facts read");
+  const dates = calls.find((call) => call.fn === "brand_site_offering_dates_for_brand");
+  assertEquals(dates?.args, { p_brand_id: BRAND, p_offering_id: TRIP, p_source: "trip_departures", p_days: 14 });
+  const facts = args.payload.facts as { bookable: { trip?: number }; mingla_reviews: number };
+  assertEquals(facts.bookable.trip, 2, "open dates counted exactly as Build counts them (openCount)");
+  assertEquals(facts.mingla_reviews, 12);
 });
 
 Deno.test("#4453 M10 the picks are deterministic and never a ✕ style, for every format", () => {

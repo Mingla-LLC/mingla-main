@@ -93,8 +93,9 @@ export async function handlePlanPreviewRoute(
   const rows = feed.error ? null : (feed.data as { offerings?: unknown } | null)?.offerings;
   if (!Array.isArray(rows)) return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503);
   const siteId = typeof inputs.site_id === "string" && UUID.test(inputs.site_id) ? inputs.site_id : null;
-  // Site-scoped booking reads only when a site exists; otherwise those facts are 0 (sections left out).
-  const facts = await composeFacts(ctx.serviceRpc, siteId, rows as JsonObject[]);
+  // The facts Build will compose with (SC-PP4): the site's reads when a site
+  // exists, else the brand twins of the same reads (one body, same answers).
+  const facts = await composeFacts(ctx.serviceRpc, siteId ?? { brandId }, rows as JsonObject[]);
   const brand = (inputs.brand ?? {}) as JsonObject;
   const words = splitBrandDescription(typeof brand.description === "string" ? brand.description : null);
   const picks = planPreviewPicks(format, signals);

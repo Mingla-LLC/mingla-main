@@ -76,13 +76,16 @@ export type ComposeFacts = {
   mingla_reviews: number;
 };
 
-/** The facts, from the offerings feed rows Core already read plus the booking reads. */
 /**
- * #4453 milestone 10 — `siteId` is null for a plan preview of a brand with no
- * site yet: only the feed counts are known, and every site-scoped booking read
- * is skipped (those facts stay 0 / absent, so the sections are left out).
+ * Whose facts: a site (Build, the design pass) or, before any site exists, the
+ * brand (the #4453 M10 plan preview). A bare string is a site id. The brand
+ * reads are the `_for_brand` twins holding the one body the site reads call,
+ * so a plan preview and the Build that follows it see the same facts (SC-PP4).
  */
-export async function composeFacts(rpc: ServiceRpc, siteId: string | null, feed: readonly FeedRow[], now = new Date()): Promise<ComposeFacts> {
+export type FactsScope = string | { siteId: string } | { brandId: string } | null;
+
+/** The facts, from the offerings feed rows Core already read plus the booking reads. */
+export async function composeFacts(rpc: ServiceRpc, scope: FactsScope, feed: readonly FeedRow[], now = new Date()): Promise<ComposeFacts> {
   const facts: ComposeFacts = {
     upcoming: { trip: 0, event: 0, experience: 0 },
     ended: { trip: 0, event: 0, experience: 0 },
@@ -124,9 +127,14 @@ export async function composeFacts(rpc: ServiceRpc, siteId: string | null, feed:
     }
   }
 
-  if (siteId === null) return facts;
+  const siteId = typeof scope === "string" ? scope : scope && "siteId" in scope ? scope.siteId : null;
+  const brandId = scope && typeof scope === "object" && "brandId" in scope ? scope.brandId : null;
+  if (siteId === null && brandId === null) return facts;
+  // The same read, by site or by brand (same arguments otherwise).
+  const read = (fn: string, args: JsonObject) =>
+    siteId !== null ? rpc(fn, { p_site_id: siteId, ...args }) : rpc(`${fn}_for_brand`, { p_brand_id: brandId, ...args });
   const reads: Promise<void>[] = [];
-  const base = await rpc("brand_site_compose_facts", { p_site_id: siteId });
+  const base = await read("brand_site_compose_facts", {});
   if (!base.error && base.data && typeof base.data === "object") {
     const raw = base.data as JsonObject;
     facts.published_menu = raw.published_menu === true;
@@ -141,7 +149,7 @@ export async function composeFacts(rpc: ServiceRpc, siteId: string | null, feed:
         facts.venue_reservations_on[format] = row.reservations_on === true;
         if (row.reservations_on === true && format !== "hotels") {
           const venue = row.venue_id;
-          reads.push(rpc("brand_site_venue_slots", { p_site_id: siteId, p_venue_id: venue, p_party_size: 2, p_days: 7 })
+          reads.push(read("brand_site_venue_slots", { p_venue_id: venue, p_party_size: 2, p_days: 7 })
             .then((slots) => { facts.open_venue_slots[format] = slots.error ? 0 : openCount(slots.data); }));
         }
       }
@@ -150,11 +158,11 @@ export async function composeFacts(rpc: ServiceRpc, siteId: string | null, feed:
   for (const kind of KINDS) {
     const id = facts.next_offering[kind];
     if (!id) continue;
-    reads.push(rpc("brand_site_offering_dates", { p_site_id: siteId, p_offering_id: id, p_source: DATE_SOURCE[kind], p_days: 14 })
+    reads.push(read("brand_site_offering_dates", { p_offering_id: id, p_source: DATE_SOURCE[kind], p_days: 14 })
       .then((dates) => { facts.bookable[kind] = dates.error ? 0 : openCount(dates.data); }));
   }
   if (facts.next_offering.event) {
-    reads.push(rpc("brand_site_ticket_tiers", { p_site_id: siteId, p_event_id: facts.next_offering.event })
+    reads.push(read("brand_site_ticket_tiers", { p_event_id: facts.next_offering.event })
       .then((tiers) => {
         const list = !tiers.error && tiers.data && typeof tiers.data === "object" ? (tiers.data as JsonObject).tiers : null;
         facts.public_ticket_tiers = Array.isArray(list) ? (list as JsonObject[]).filter((tier) => tier?.state === "on_sale").length : 0;
