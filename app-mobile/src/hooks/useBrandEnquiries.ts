@@ -86,6 +86,21 @@ export function useMyEnquiryRows(userId: string | null) {
   return query;
 }
 
+/**
+ * #4459: the same rows as useMyEnquiryRows, read through the shared query only.
+ * It never opens a realtime channel: the one live `explorer-enquiries:<user>`
+ * channel belongs to useMyEnquiryRows (the Chats page). A second subscriber on
+ * the same topic made supabase-js throw and crashed the Guest chat thread.
+ */
+export function useMyEnquiryRowsSnapshot(userId: string | null) {
+  return useQuery<MyEnquiryRow[]>({
+    queryKey: brandEnquiryKeys.list(userId ?? ""),
+    queryFn: () => listMyEnquiries(userId as string),
+    enabled: userId !== null,
+    staleTime: 15_000,
+  });
+}
+
 /** One thread, kept live with the Wave C pattern (realtime filtered on conversation_id). */
 export function useEnquiryThread(userId: string | null, enquiryId: string | null) {
   const queryClient = useQueryClient();

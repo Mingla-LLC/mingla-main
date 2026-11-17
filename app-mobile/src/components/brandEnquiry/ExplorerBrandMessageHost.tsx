@@ -108,6 +108,8 @@ export default function ExplorerBrandMessageHost({
     void queryClient.invalidateQueries({ queryKey: brandEnquiryKeys.list(userId) });
     const enquiryId = lastEnquiryId.current;
     if (enquiryId === null) return;
+    // #4459 D7: the sheet closes as the thread opens (it used to stay on top).
+    setVisible(false);
     router.push(`/enquiry/${encodeURIComponent(enquiryId)}` as never);
   }, [queryClient, router, userId]);
 

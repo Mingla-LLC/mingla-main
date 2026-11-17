@@ -213,3 +213,38 @@ Deno.test("#4459 a brand post (no sender) is never drawn as a system line", () =
   const service = read("services/messagingService.ts");
   assert(/if \(message\.sender_id == null\) return message\.sender_kind !== 'brand';/.test(service), "thread rows too");
 });
+
+// QA rework (D3, D5, rate-limit first refusal). MessageInterface is too heavy
+// to mount in this lane, so these guard the exact wiring; each fails when the
+// fix is reverted.
+Deno.test("#4459 D3: a Guest chat offers no attachments (both the page and the thread say so)", () => {
+  const page = read("components/ConnectionsPage.tsx");
+  assert(page.includes("allowAttachments={!activeChat.brandGuest}"), "the page turns attachments off for brand_guests");
+  const chat = read("components/MessageInterface.tsx");
+  assert(chat.includes("const attachmentsAllowed = allowAttachments && !brandGuest;"), "the thread turns them off itself too");
+  assert(!/\{allowAttachments \?/.test(chat), "no attach control reads the raw prop");
+  eq((chat.match(/\{attachmentsAllowed \?/g) ?? []).length, 2, "the paperclip and its separator both read attachmentsAllowed");
+});
+
+Deno.test("#4459 D5: the Guest chat header counts the server's member total", () => {
+  const chat = read("components/MessageInterface.tsx");
+  assert(chat.includes("queryFn: () => messagingService.listBrandGuestMembers(conversationId as string)"), "reads the member RPC");
+  assert(
+    chat.includes("t('chat:brandGuestsSubtitle', { count: brandGuestMemberTotal ?? headerParticipantCount })"),
+    "the subtitle uses the server total",
+  );
+});
+
+Deno.test("#4459 rate limit: the first refused send keeps the words in the composer (no 'Not sent')", () => {
+  const page = read("components/ConnectionsPage.tsx");
+  const branch = page.indexOf('if (sendError === "brand_guests_rate_limited") {');
+  const generic = page.indexOf("if (sendError || !sentMessage) {");
+  assert(branch > 0 && generic > branch, "the rate-limit branch runs before the generic failure");
+  const body = page.slice(branch, generic);
+  assert(body.includes("failed: true, unsent: true"), "the refused bubble is hidden, not marked Not sent");
+  assert(body.includes("setRestoreDraft(") && body.includes("text: current.content"), "the words go back");
+  assert(/return;\s*\}\s*$/.test(body), "and it stops before markFailed");
+  assert(page.includes("restoreDraft={restoreDraft && restoreDraft.conversationId === currentConversationId ? restoreDraft : null}"), "passed to the open thread");
+  const chat = read("components/MessageInterface.tsx");
+  assert(chat.includes("if (!chatController.readText().trim()) chatController.setDraftText(restoreDraft.text);"), "the composer takes them back");
+});

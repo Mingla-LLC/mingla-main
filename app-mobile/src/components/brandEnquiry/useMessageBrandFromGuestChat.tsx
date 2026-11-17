@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 // DEEP specifier: suites mock the offering barrel.
 import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
 
-import { useBrandEnquiryProfile, useBrandIdentity, useMyEnquiryRows } from "../../hooks/useBrandEnquiries";
+import { useBrandEnquiryProfile, useBrandIdentity, useMyEnquiryRowsSnapshot } from "../../hooks/useBrandEnquiries";
 import { useAppStore } from "../../store/appStore";
 import { toastManager } from "../ui/Toast";
 import { enquiryThreadHref, latestEnquiryForBrand } from "./brandGuestEnquiry";
@@ -24,7 +24,8 @@ export function useMessageBrandFromGuestChat(target: {
   const { t } = useTranslation("enquiry");
   const router = useRouter();
   const userId = useAppStore((s) => s.user?.id ?? null);
-  const rows = useMyEnquiryRows(userId);
+  // No second realtime channel: the Chats page owns the live one (#4459 D1).
+  const rows = useMyEnquiryRowsSnapshot(userId);
   const [armed, setArmed] = useState(false);
   const identity = useBrandIdentity({ brandId: target.brandId, brandSlug: target.brandSlug }, armed);
   const brand = useMemo(

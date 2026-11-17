@@ -41,7 +41,7 @@ import {
 } from "./chat/CollabSessionChatBanners";
 import { PlanMatchesSheet } from "./chat/PlanMatchesSheet";
 import { PlansSheet } from "./chat/PlansSheet";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatKeys, planKeys } from "../hooks/queryKeys";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
@@ -522,6 +522,8 @@ interface MessageInterfaceProps {
   onDismissRemovedBrandGuests?: () => void;
   /** #4459: the Guest chat rate limit tripped; posting opens again at this time (ms). */
   rateLimitedUntil?: number | null;
+  /** #4459: a refused send's words, put back in the composer (once per nonce). */
+  restoreDraft?: { text: string; nonce: number } | null;
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
@@ -603,6 +605,7 @@ function MessageInterfaceInner({
   conversationId = null,
   onDismissRemovedBrandGuests,
   rateLimitedUntil = null,
+  restoreDraft = null,
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
@@ -726,6 +729,17 @@ function MessageInterfaceInner({
     const timer = setInterval(() => setRateNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [rateLimitedUntil]);
+  // #4459 D5: a guest sees only the team and their own roster row, so the
+  // header counts the server's total from the member sheet RPC.
+  const brandGuestMembers = useQuery({
+    queryKey: chatKeys.brandGuestMembers(conversationId ?? null),
+    queryFn: () => messagingService.listBrandGuestMembers(conversationId as string),
+    enabled: Boolean(brandGuest) && !brandGuest?.removed && Boolean(conversationId),
+    staleTime: 60_000,
+  });
+  const brandGuestMemberTotal = brandGuestMembers.data?.total ?? null;
+  // #4459 D3: Guest chats are text only in v1.
+  const attachmentsAllowed = allowAttachments && !brandGuest;
   const audienceIsTrip = isTripChat;
   const audienceTitle = eventAudienceTitle;
   const audienceSubtitle = eventAudienceSubtitle;
@@ -1381,6 +1395,16 @@ function MessageInterfaceInner({
     // the controlled reset above alone races it on a multiline input.
     inputRef.current?.clear();
   };
+
+  // #4459: a send the rate limit refused comes back into an empty composer.
+  const restoredNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!restoreDraft || restoredNonceRef.current === restoreDraft.nonce) return;
+    restoredNonceRef.current = restoreDraft.nonce;
+    if (!chatController.readText().trim()) chatController.setDraftText(restoreDraft.text);
+    // chatController is stable per chat; the nonce is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreDraft?.nonce]);
 
   const handleSendMessage = () => {
     if (!chatController.readText().trim()) return;
@@ -3378,7 +3402,7 @@ function MessageInterfaceInner({
         title={brandGuest ? t('chat:brandGuestsTitle', { brand: brandGuest.brandName || headerTitle }) : headerTitle}
         subtitle={
           brandGuest
-            ? (brandGuest.removed ? t('chat:brandGuestsRemovedSubtitle') : t('chat:brandGuestsSubtitle', { count: headerParticipantCount }))
+            ? (brandGuest.removed ? t('chat:brandGuestsRemovedSubtitle') : t('chat:brandGuestsSubtitle', { count: brandGuestMemberTotal ?? headerParticipantCount }))
             : isGroupChat ? headerSubtitle : isDmCollabActive ? (
             // Issue #4114 Wave 5 (D12): "Collaborating · Active now".
             <View style={styles.dmCollabSubtitle} testID="chat-header-collaborating">
@@ -3977,7 +4001,7 @@ function MessageInterfaceInner({
           <View style={styles.inputContainer}>
           {/* Attachment Menu — official program chats use this same canonical
               media rail, with view-once and arbitrary files disabled. */}
-          {allowAttachments ? <View style={styles.attachmentContainer}>
+          {attachmentsAllowed ? <View style={styles.attachmentContainer}>
             <TouchableOpacity
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
@@ -3992,7 +4016,7 @@ function MessageInterfaceInner({
           </View> : null}
 
           {/* Separator — cutout between attach and text field */}
-          {allowAttachments ? <View style={styles.capsuleSeparator} /> : null}
+          {attachmentsAllowed ? <View style={styles.capsuleSeparator} /> : null}
 
           {/* Message Input */}
           <TouchableOpacity

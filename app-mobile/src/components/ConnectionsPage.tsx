@@ -721,6 +721,8 @@ function ConnectionsPageRefactored({
   }, []);
   // #4459: the Guest chat rate limit (the composer shows the amber countdown).
   const [brandGuestRateLimit, setBrandGuestRateLimit] = useState<{ conversationId: string; until: number } | null>(null);
+  // #4459: the words of a send the rate limit refused, put back in the composer.
+  const [restoreDraft, setRestoreDraft] = useState<{ conversationId: string; text: string; nonce: number } | null>(null);
   const refreshListIfMissing = useCallback((conversationId: string) => {
     if (!listedConversationIdsRef.current.has(conversationId)) refreshChatListAfterConversationChange();
   }, []);
@@ -2847,6 +2849,14 @@ function ConnectionsPageRefactored({
           },
         );
 
+      // #4459: a refused Guest chat send over the rate limit is not "Not sent":
+      // the bubble goes and the words go back into the composer, under the
+      // amber countdown.
+      if (sendError === "brand_guests_rate_limited") {
+        writeConversationMessages(conversationId, [{ ...current, failed: true, unsent: true }]);
+        setRestoreDraft((prev) => ({ conversationId, text: current.content, nonce: (prev?.nonce ?? 0) + 1 }));
+        return;
+      }
       if (sendError || !sentMessage) {
         console.error("Error sending message:", sendError);
 
@@ -3998,7 +4008,7 @@ function ConnectionsPageRefactored({
           onSendMedia={(items, caption, viewOnce, replyToId) => {
             void handleSendMedia(items, caption, viewOnce, replyToId);
           }}
-          allowAttachments
+          allowAttachments={!activeChat.brandGuest}
           allowViewOnce={!activeChat.programKind}
           allowFiles={!activeChat.programKind}
           uploadProgress={mediaUploadProgress}
@@ -4028,6 +4038,7 @@ function ConnectionsPageRefactored({
           conversationId={currentConversationId}
           onDismissRemovedBrandGuests={handleDismissRemovedFromThread}
           rateLimitedUntil={brandGuestRateLimit && brandGuestRateLimit.conversationId === currentConversationId ? brandGuestRateLimit.until : null}
+          restoreDraft={restoreDraft && restoreDraft.conversationId === currentConversationId ? restoreDraft : null}
           currentUserId={user?.id || null}
           currentUserName={currentUserDisplayName}
           broadcastSeenIds={broadcastSeenIds}
