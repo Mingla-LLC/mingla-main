@@ -1,4 +1,5 @@
 import type { Endpoint, PayloadRequest } from "payload";
+import { pageReviewSummary } from "../lib/reviewStamp";
 import { sitesJsonResponse } from "../lib/http";
 import { observeCmsEndpoint } from "../lib/observability";
 import { verifyCoreRequest } from "../lib/gateway";
@@ -58,6 +59,9 @@ export type ContentCollection = (typeof CONTENT_COLLECTIONS)[number];
 
 /** The same minimum ranks as Core's brand_site_content_min_rank (defence in depth). */
 export const CONTENT_ACTION_MIN_RANK: Readonly<Record<string, number>> = {
+  // #4453 — "N sections to review" and "Looks right" (content rank).
+  review_status: 20,
+  mark_reviewed: 20,
   list: 20,
   get: 20,
   create: 20,
@@ -922,6 +926,59 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
           created_at: String(doc.createdAt ?? ""),
         })),
       };
+    }
+    // #4453 — review_status and mark_reviewed are deliberately NOT behind
+    // SITES_PROOF_PART: only creating Drafts is flagged, and Drafts that exist
+    // must always be clearable (the publish gate refuses them regardless).
+    case "review_status": {
+      // #4453 — each page's Draft sections (spec v1 §4.3): the Pages screen's
+      // "N sections to review" and the Publish screen's blocking list.
+      const pages = await findAllTenantPages(ctx.scoped, ctx.tenantId);
+      const { tenantPagePaths } = await import("../lib/pageTree");
+      let paths = new Map<string, string>();
+      try {
+        paths = tenantPagePaths(pages as never);
+      } catch {
+        // An unresolvable tree still lists its pages.
+      }
+      const rows = (pages as AnyDoc[]).map((page) => {
+        const summary = pageReviewSummary(Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : []);
+        return {
+          id: String(page.id),
+          title: String(page.title ?? "Page"),
+          path: paths.get(String(page.id)) ?? null,
+          enabled: page.enabled !== false,
+          count: summary.count,
+          blocks: summary.blocks,
+        };
+      }).filter((row) => row.count > 0);
+      return {
+        total: rows.filter((row) => row.enabled).reduce((sum, row) => sum + row.count, 0),
+        pages: rows,
+      };
+    }
+    case "mark_reviewed": {
+      // #4453 — "Looks right" on one section, or "Mark all on this page as reviewed".
+      const pageId = entryIdOf(args.page_id);
+      const blockIds = args.block_ids === "all"
+        ? "all" as const
+        : Array.isArray(args.block_ids) && args.block_ids.length > 0 && args.block_ids.length <= 100 &&
+            args.block_ids.every((id) => typeof id === "string" && id.length > 0 && id.length <= 64)
+          ? args.block_ids as string[]
+          : fail("VALIDATION_FAILED");
+      const page = (await findAllTenantPages(ctx.scoped, ctx.tenantId)).find((doc) => String(doc.id) === pageId) as AnyDoc | undefined;
+      if (!page) fail("NOT_FOUND");
+      const marking = { ...ctx.scoped, context: { ...ctx.scoped.context, minglaMarkReviewed: blockIds } } as PayloadRequest;
+      const updated = await ctx.req.payload.update({
+        collection: "pages",
+        id: pageId,
+        req: marking,
+        overrideAccess: false,
+        draft: true,
+        depth: 0,
+        data: { blocks: page.blocks } as never,
+      }) as unknown as AnyDoc;
+      return { page_id: pageId, ...pageReviewSummary(Array.isArray(updated.blocks) ? updated.blocks as AnyDoc[] : []) };
     }
     case "pages": {
       // The site's pages in menu order (the header menu is Navigation's

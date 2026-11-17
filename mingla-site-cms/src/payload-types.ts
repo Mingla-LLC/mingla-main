@@ -240,6 +240,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame' | 'journal-front' | 'grid-index' | 'terra-pebble') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hero';
@@ -270,6 +279,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'prose' | 'manifesto') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'rich_text';
@@ -316,6 +334,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'split-panel' | 'panel-caption' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'media_feature';
@@ -333,6 +360,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'dark-panel-glow' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'cta';
@@ -381,6 +417,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows' | 'journal-columns') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_grid';
@@ -396,6 +441,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'venue_reservation';
@@ -412,6 +466,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_link';
@@ -430,6 +493,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral' | 'columns') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_board';
@@ -474,6 +546,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_preview';
@@ -500,6 +581,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'brand-film' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'video_feature';
@@ -539,6 +629,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'team';
@@ -561,6 +660,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates' | 'journal-essay') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'gallery';
@@ -592,6 +700,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hours_location';
@@ -630,6 +747,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher' | 'journal-letters') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'testimonials';
@@ -651,6 +777,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'accordion-columns' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'faq';
@@ -668,6 +803,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'contact_handoff';
@@ -684,6 +828,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral' | 'ticker') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'marquee';
@@ -728,6 +881,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'stats';
@@ -745,6 +907,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'pull_quote';
@@ -776,6 +947,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'map_embed';
@@ -805,6 +985,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'badge-tile' | 'tiles') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'destination_grid';
@@ -827,6 +1016,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'card') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'story_grid';
@@ -881,6 +1079,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'ledger' | 'ledger-count' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_history';
@@ -916,6 +1123,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'panel') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'contact_form';
@@ -934,6 +1150,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'card' | 'photo' | 'journal-coupon') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'newsletter_signup';
@@ -952,6 +1177,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'cover-center') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'page_header';
@@ -969,6 +1203,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'tile-bar' | 'statement' | 'numbered' | 'tiles') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'feature_cards';
@@ -982,6 +1225,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'tiles') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'contact_details';
@@ -991,6 +1243,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'divider';
@@ -1001,6 +1262,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'spacer';
@@ -1119,6 +1389,7 @@ export interface Testimonial {
    * Ari drafted this from the owner's own words or material.
    */
   drafted_by?: 'ari' | null;
+  setup_ref?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1212,6 +1483,7 @@ export interface Destination {
    * Ari drafted this from the owner's own words or material.
    */
   drafted_by?: 'ari' | null;
+  setup_ref?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1484,6 +1756,7 @@ export interface Story {
    * Ari drafted this from the owner's own words or material.
    */
   drafted_by?: 'ari' | null;
+  setup_ref?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1795,6 +2068,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1806,6 +2080,7 @@ export interface PagesSelect<T extends boolean = true> {
               content?: T;
               width?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1826,6 +2101,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1838,6 +2114,7 @@ export interface PagesSelect<T extends boolean = true> {
               label?: T;
               href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1863,6 +2140,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1873,6 +2151,7 @@ export interface PagesSelect<T extends boolean = true> {
               heading?: T;
               body?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1884,6 +2163,7 @@ export interface PagesSelect<T extends boolean = true> {
               label?: T;
               href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1894,6 +2174,7 @@ export interface PagesSelect<T extends boolean = true> {
               heading?: T;
               note?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1915,6 +2196,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1930,6 +2212,7 @@ export interface PagesSelect<T extends boolean = true> {
               video?: T;
               poster?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1952,6 +2235,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1968,6 +2252,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1988,6 +2273,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2015,6 +2301,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2031,6 +2318,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2043,6 +2331,7 @@ export interface PagesSelect<T extends boolean = true> {
               label?: T;
               href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2056,6 +2345,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2076,6 +2366,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2085,6 +2376,7 @@ export interface PagesSelect<T extends boolean = true> {
               quote?: T;
               attribution?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2099,6 +2391,7 @@ export interface PagesSelect<T extends boolean = true> {
               place_label?: T;
               directions_url?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2117,6 +2410,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2131,6 +2425,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2168,6 +2463,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2186,6 +2482,7 @@ export interface PagesSelect<T extends boolean = true> {
               success_text?: T;
               fallback_email?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2199,6 +2496,7 @@ export interface PagesSelect<T extends boolean = true> {
               button_label?: T;
               small_print?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2209,6 +2507,7 @@ export interface PagesSelect<T extends boolean = true> {
               subheading?: T;
               media?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2226,6 +2525,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2237,6 +2537,7 @@ export interface PagesSelect<T extends boolean = true> {
               email?: T;
               location?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2244,6 +2545,7 @@ export interface PagesSelect<T extends boolean = true> {
           | T
           | {
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2252,6 +2554,7 @@ export interface PagesSelect<T extends boolean = true> {
           | {
               size?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2514,6 +2817,7 @@ export interface DestinationsSelect<T extends boolean = true> {
   sort_order?: T;
   updated_by?: T;
   drafted_by?: T;
+  setup_ref?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -2556,6 +2860,7 @@ export interface StoriesSelect<T extends boolean = true> {
   sort_order?: T;
   updated_by?: T;
   drafted_by?: T;
+  setup_ref?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -2579,6 +2884,7 @@ export interface TestimonialsSelect<T extends boolean = true> {
   sort_order?: T;
   updated_by?: T;
   drafted_by?: T;
+  setup_ref?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;

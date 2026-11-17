@@ -203,7 +203,11 @@ describe("#4453 6a §3.3 the neutral and Maison layouts draw every field their b
       const { block, expected } = sentinelBlock(type, artifact);
       const skipped = new Set((RUNTIME_OWNED[type] ?? []).map((key) => block[key]).filter((v): v is string => typeof v === "string"));
       const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
-      const html = renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={ctx} />);
+      // #4453 (milestone 3) — the sentinel grid is empty (only ended trips): its designed empty
+      // state, with every field, is drawn in a Draft preview; publicly the section is left out.
+      const drawCtx = type === "offering_grid" ? { ...ctx, analytics: { ...ctx.analytics, publicationId: "preview-sentinel" } } : ctx;
+      const html = renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={drawCtx} />);
+      if (type === "offering_grid") expect(renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={ctx} />)).toBe("");
       const missing = expected.filter((v) => !skipped.has(v) && !html.includes(v.replaceAll("&", "&amp;")));
       expect(missing, `${type}:${variant} drops ${missing.join(", ")}`).toEqual([]);
       expect(html).not.toMatch(/mingla:\/\//);
@@ -227,13 +231,24 @@ describe("#4453 6a SC-D2 each design's Home validates and renders on fixture dat
     it(`${design.key}: validates, draws the shared chrome, one h1, and its structure is pinned (375 and 1440 share one markup)`, () => {
       assertArtifactV2(artifact);
       const { Page } = DESIGN_RENDERERS[design.key];
-      const html = renderToStaticMarkup(<Page artifact={artifact} page={homePage(artifact) as ArtifactPage} live={live} forms={forms} nonce="n" notFound={false} />);
-      expect(html).toContain(`mg-hd--${design.chrome.header[0]}`);
-      expect(html).toContain(`mg-foot--${design.chrome.footer[0]}`);
-      expect(html).toContain('data-mg-look="gallery"');
-      expect((html.match(/<h1\b/g) ?? []).length).toBe(1);
-      expect(html).toContain("Wake up");
-      expect(structure(html)).toMatchSnapshot();
+      const draw = (publicationId: string) => renderToStaticMarkup(<Page artifact={{ ...artifact, publication_id: publicationId }} page={homePage(artifact) as ArtifactPage} live={live} forms={forms} nonce="n" notFound={false} />);
+      // #4453 (milestone 3, I-SITES-NO-PUBLIC-EMPTY-STATE) — the fixture's upcoming grid is empty: the
+      // public Home leaves it out entirely; a Draft preview draws it with the owner's hint. The pinned
+      // structure is the Draft preview's, so every other section is still held to the 6a snapshot.
+      const html = draw(artifact.publication_id);
+      const preview = draw(`preview-${artifact.publication_id}`);
+      for (const page of [html, preview]) {
+        expect(page).toContain(`mg-hd--${design.chrome.header[0]}`);
+        expect(page).toContain(`mg-foot--${design.chrome.footer[0]}`);
+        expect(page).toContain('data-mg-look="gallery"');
+        expect((page.match(/<h1\b/g) ?? []).length).toBe(1);
+        expect(page).toContain("Wake up");
+      }
+      expect(html).not.toContain("mg-empty");
+      expect(html).not.toContain("will appear here as soon as they are on sale");
+      expect(preview).toContain("mg-empty");
+      expect(html.length).toBeLessThan(preview.length);
+      expect(structure(preview)).toMatchSnapshot();
     });
   }
 

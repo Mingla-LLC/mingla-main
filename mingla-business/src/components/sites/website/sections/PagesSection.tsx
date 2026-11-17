@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
+import { DraftReviewCard } from "./DraftReviewCard";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
 import { Body, Card, CardTitle, Chip, Hint, ListBox, MiniButton, Row, RowText, SectionHead, Toggle, WButton, ui } from "../ui";
@@ -104,6 +105,8 @@ export function PagesSection(): React.ReactElement {
           </>
         )}
       />
+      {/* #4453 — Draft sections and "Looks right". */}
+      <DraftReviewCard siteId={siteId} proofEnabled={ctx.plan?.proofEnabled === true} readOnly={readOnly} mode="pages" toast={toast} />
       {pages.isLoading ? <Hint>Loading your pages…</Hint> : pages.isError ? (
         <Card>
           <CardTitle>Your pages couldn&apos;t be loaded</CardTitle>

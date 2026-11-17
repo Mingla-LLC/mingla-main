@@ -50,6 +50,8 @@ const STUDIO_ACTIONS = new Set([
   "pages", "set_menu", "cover", "set_cover",
   // #2829 W9b — "Why it looks like this" and the six design checks (Publish review).
   "work_log", "design_checks",
+  // #4453 — Draft review: "N sections to review" and "Looks right".
+  "review_status", "mark_reviewed",
 ]);
 export const CONTENT_ACTIONS: ReadonlySet<string> = new Set([...CORE_ONLY_ACTIONS, ...STUDIO_ACTIONS]);
 

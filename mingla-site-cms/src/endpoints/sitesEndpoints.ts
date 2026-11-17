@@ -68,7 +68,8 @@ import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
 import { actionScopeFromCore, coreSendsBookingIdentity, OutboundActionLinkError } from "../lib/bookingLock";
-import { BOOKING_LINK_UNVERIFIED_MESSAGE, OUTBOUND_ACTION_LINK_MESSAGE } from "../contracts/generated/publishChecks.ts";
+import { BOOKING_LINK_UNVERIFIED_MESSAGE, OUTBOUND_ACTION_LINK_MESSAGE, UNREVIEWED_SECTIONS_MESSAGE } from "../contracts/generated/publishChecks.ts";
+import { UnreviewedSectionsError } from "../lib/reviewStamp";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return sitesJsonResponse(data, status, headers);
@@ -130,6 +131,8 @@ function safeFailure(error: unknown, returnUrl?: string) {
       // #4453 PR 2 — a button points outside Mingla (the publish is blocked).
       "OUTBOUND_ACTION_LINK",
       "BOOKING_LINK_UNVERIFIED",
+      // #4453 — Draft sections must be reviewed first (the publish is blocked).
+      "UNREVIEWED_SECTIONS",
       "PATH_COLLISION",
       // #2829 W9b — a first publish waits until the design checks have run.
       "DESIGN_CHECKS_REQUIRED",
@@ -169,6 +172,8 @@ function safeFailure(error: unknown, returnUrl?: string) {
                   ? OUTBOUND_ACTION_LINK_MESSAGE
                   : code === "BOOKING_LINK_UNVERIFIED"
                     ? BOOKING_LINK_UNVERIFIED_MESSAGE
+                  : code === "UNREVIEWED_SECTIONS"
+                    ? UNREVIEWED_SECTIONS_MESSAGE
                   : "Website tools are temporarily unavailable.",
         retryable: [
           "MEDIA_PROCESSING",
@@ -187,6 +192,10 @@ function safeFailure(error: unknown, returnUrl?: string) {
                 problem: link.problem,
               })),
             }
+          : {}),
+        // #4453 — which pages hold Draft sections (address, title, count).
+        ...(error instanceof UnreviewedSectionsError
+          ? { pages: error.pages.slice(0, 50).map((page) => ({ path: page.path, title: page.title, count: page.count })) }
           : {}),
       },
     },
@@ -636,6 +645,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 // #4453 PR 2 — Core's signed brand; every button must resolve to it.
                 actionScope: actionScopeFromCore(body.action_scope),
                 enforceActionLinks: true,
+                enforceReview: true,
                 coreSendsIdentity: coreSendsBookingIdentity(body),
               });
           await req.payload.update({
@@ -709,6 +719,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
         "DESIGN_CHECKS_REQUIRED",
         "OUTBOUND_ACTION_LINK",
         "BOOKING_LINK_UNVERIFIED",
+        "UNREVIEWED_SECTIONS",
       ].includes(error.message);
     let failureRecorded = false;
     if (definitiveFailure && callbackContext) {
@@ -774,6 +785,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 "DESIGN_CHECKS_REQUIRED",
                 "OUTBOUND_ACTION_LINK",
                 "BOOKING_LINK_UNVERIFIED",
+                "UNREVIEWED_SECTIONS",
               ].includes(error.message)
                 ? error.message
                 : "SERVICE_TEMPORARILY_UNAVAILABLE",
@@ -1403,6 +1415,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
       "args",
       // #2829 W9b — the Mingla facts Core signed in (offerings, brand words).
       "evidence",
+      // #4453 — SITES_PROOF_PART on: the sections Ari writes start Draft.
+      "review_drafts",
     ]);
     if (Object.keys(body).some((key) => !allowedOuter.has(key))) {
       throw new Error("VALIDATION_FAILED");
@@ -1432,6 +1446,7 @@ async function ari(req: PayloadRequest): Promise<Response> {
       userId,
       rank,
     });
+    if (body.review_drafts === true) scoped.context = { ...scoped.context, minglaReviewSource: "ari" };
     const tenantWhere = { tenant: { equals: tenant.id } };
 
     if (ARI_DESIGNER_ACTIONS.has(action)) {

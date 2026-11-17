@@ -517,7 +517,7 @@ export function phase3dContractDigest(manifest) {
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4453 6a: added the 6a design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
 // #4453 6b: added the 6b design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "d7eef67352ffc709986a826b786481d79d6d63a2b3c0468ee564e2794cdccdc6";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ca8228c888b871294e0acf185dbef38ce02803b33ecf6beca16482acc6d90892";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

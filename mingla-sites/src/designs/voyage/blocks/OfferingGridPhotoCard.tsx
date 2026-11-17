@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- covers are served by the token-bound /om route (immutable, same origin). */
 import { localDate, offeringTimeZone, selectGridOfferings, type OfferingGridConfig, type SiteOffering } from "../../../contracts/generated/offerings.ts";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
-import type { SiteEventContext } from "../../../lib/clientAnalytics";
+import { isPreviewPublication, type SiteEventContext } from "../../../lib/clientAnalytics";
 import type { OfferingCard } from "../../../lib/offeringCards";
 import { hrefForPage } from "../../../lib/pageRouting";
 import { TrackedLink } from "../../../components/TrackedLink";
@@ -134,6 +134,9 @@ export function OfferingGridPhotoCard({ block, index, ctx }: VoyageBlockProps) {
     />
   );
   const source = live?.source ?? "none";
+  // #4453 I-SITES-NO-PUBLIC-EMPTY-STATE — an empty upcoming list is left out
+  // of the public site; only a Draft preview keeps the owner's hint.
+  const preview = isPreviewPublication(ctx.analytics.publicationId);
 
   if (result.kind === "check_dates") {
     return (
@@ -165,6 +168,7 @@ export function OfferingGridPhotoCard({ block, index, ctx }: VoyageBlockProps) {
     );
   }
   if (config.mode === "upcoming") {
+    if (!entries.length && !preview) return null;
     return (
       <Section tinted labelledBy={id} source={source}>
           <HeadRow id={id} heading={heading} intro={intro} link={headLink} />
@@ -176,16 +180,21 @@ export function OfferingGridPhotoCard({ block, index, ctx }: VoyageBlockProps) {
   // "all": upcoming first (white, with the search), then what has already run (tinted).
   const upcoming = entries.filter(({ state }) => state.phase !== "ended");
   const past = entries.filter(({ state }) => state.phase === "ended");
+  if (!upcoming.length && !past.length && !preview) return null;
   return (
     <>
-      <Section labelledBy={`${id}-upcoming`} source={source}>
-        <HeadRow id={`${id}-upcoming`} heading={`Upcoming ${noun}`} intro={intro} link={headLink} />
-        {filterPanel}
-        {upcoming.length ? cards(upcoming) : noUpcoming}
-      </Section>
+      {upcoming.length || preview ? (
+        <Section labelledBy={`${id}-upcoming`} source={source}>
+          <HeadRow id={`${id}-upcoming`} heading={`Upcoming ${noun}`} intro={intro} link={headLink} />
+          {filterPanel}
+          {upcoming.length ? cards(upcoming) : noUpcoming}
+        </Section>
+      ) : null}
       {past.length ? (
         <Section tinted labelledBy={`${id}-past`}>
           <HeadRow id={`${id}-past`} heading={`Past ${noun}`} intro="Where we’ve already been." />
+          {/* With the upcoming list left out, the search stays with what is shown. */}
+          {upcoming.length || preview ? null : filterPanel}
           {cards(past)}
         </Section>
       ) : null}

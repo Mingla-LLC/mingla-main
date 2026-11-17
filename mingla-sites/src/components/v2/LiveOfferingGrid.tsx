@@ -66,6 +66,12 @@ export function LiveOfferingGrid({ block, live, context, clearHref, eyebrow }: {
     ? selectGridOfferings(live.offerings, config, live.now, block.show_filters === true ? live.filters : { where: null, from: null, to: null })
     : { kind: "empty" as const };
   const filters = live?.filters;
+  /*
+   * #4453 I-SITES-NO-PUBLIC-EMPTY-STATE (spec v1 §4.2.3) — a grid with no
+   * live offering is not rendered at all: no heading, no message, no wrapper.
+   * `empty_text` stays in the schema for stored blocks; it is never printed.
+   */
+  if (result.kind === "empty") return null;
   return (
     <section className="editorial-grid offering-grid" data-offering-source={live?.source ?? "none"}>
       {eyebrow}
@@ -82,8 +88,6 @@ export function LiveOfferingGrid({ block, live, context, clearHref, eyebrow }: {
         <p className="offering-grid-message" role="status">Check your dates: the end comes before the start. <SiteAnchor href={clearHref}>Clear search</SiteAnchor></p>
       ) : result.kind === "no_match" ? (
         <p className="offering-grid-message" role="status">No {noun} match those dates. <SiteAnchor href={clearHref}>Clear search</SiteAnchor></p>
-      ) : result.kind === "empty" ? (
-        <p className="offering-grid-message">{text(block.empty_text) || `No ${noun} to show right now.`}</p>
       ) : (
         <div className="grid">
           {result.offerings.map(({ offering }) => {

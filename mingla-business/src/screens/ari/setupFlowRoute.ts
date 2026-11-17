@@ -1,5 +1,5 @@
 /** #2830 — only the Ari chat uses this, so it stays in the chat's own chunk. */
-const SETUP_STEPS = new Set(["offer", "brand", "look", "story", "approve", "build", "first_offering", "publish"]);
+const SETUP_STEPS = new Set(["offer", "brand", "look", "story", "proof", "approve", "build", "first_offering", "publish"]);
 
 /**
  * #2830 — Ari's cards route to Brand details or the old plan address. Beside the

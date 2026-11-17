@@ -680,3 +680,29 @@ export function useSetSiteCover(siteId: string | null) {
     },
   });
 }
+
+/* ── #4453 Draft review ("N sections to review", "Looks right") ─────────── */
+export type DraftBlock = { id: string; type: string; source: "ari" | "composer" | "person" };
+export type ReviewPageRow = { id: string; title: string; path: string | null; enabled: boolean; count: number; blocks: DraftBlock[] };
+export type ReviewStatus = { total: number; pages: ReviewPageRow[] };
+
+export function useReviewStatus(siteId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: brandSiteKeys.reviewStatus(siteId),
+    queryFn: () => contentCall<ReviewStatus>(siteId!, "review_status"),
+    enabled: siteId !== null && enabled,
+  });
+}
+
+export function useMarkReviewed(siteId: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { pageId: string; blockIds: string[] | "all" }) =>
+      contentCall<{ page_id: string; count: number }>(siteId!, "mark_reviewed", { page_id: input.pageId, block_ids: input.blockIds }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: brandSiteKeys.reviewStatus(siteId) });
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
+    },
+  });
+}

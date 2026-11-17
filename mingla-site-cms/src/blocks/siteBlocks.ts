@@ -11,6 +11,7 @@ import {
 } from "@payloadcms/richtext-lexical";
 import { buttonUrl, safeActionUrl, safeCityTimeZone, safeText, safeUrl } from "../lib/validation";
 import { statsIconOptions } from "../lib/statsIcons";
+import { reviewField } from "../lib/reviewStamp";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
 import { ATELIER, DESIGNS, DESIGN_KEYS } from "../contracts/generated/designs.ts";
@@ -1292,7 +1293,8 @@ function variantField(type: BlockType): Field {
 /** #2829 — the Studio block configs: one per catalogue type, each with its layout. */
 export const siteBlocks: Block[] = BLOCK_CONFIGS.map((block) => ({
   ...block,
-  fields: [...block.fields, variantField(block.slug as BlockType)],
+  // #4453 — the Studio-only Draft stamp (set by Pages' stampBlockReview hook only).
+  fields: [...block.fields, variantField(block.slug as BlockType), reviewField()],
 }));
 
 /** Every catalogue type has exactly one Studio block (checked by a drift test). */

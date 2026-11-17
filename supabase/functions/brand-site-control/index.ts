@@ -23,6 +23,7 @@ import { handleSiteContentRoute } from "./siteContent.ts";
 import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
 import { BOOKING_IDENTITY_CAPABILITY, bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
+import { unreviewedRefusal } from "./reviewGate.ts";
 
 type JsonObject = Record<string, unknown>;
 const CUSTOMER_FAILURE_CODES = new Set<string>(SITES_SAFE_CUSTOMER_CODES);
@@ -171,6 +172,9 @@ async function callCms(
       // #4453 PR 2 — the booking lock is owner-fixable (a link to change).
       const bookingLock = bookingLockRefusal(payload?.error, args.operationId);
       if (bookingLock) return bookingLock;
+      // #4453 — Draft sections block the publish until the owner reviews them.
+      const unreviewed = unreviewedRefusal(payload?.error, args.operationId);
+      if (unreviewed) return unreviewed;
       // #2829 W2 — an owner-fixable refusal is neither an outage nor ambiguous.
       const ownerFixable = sitesOwnerFixableRefusal(reportedCode, args.operationId);
       if (ownerFixable) return ownerFixable;
@@ -895,6 +899,9 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         if (evidence === null) return ariFailureFrom(null, 503);
         payload.evidence = evidence;
       }
+      // #4453 — while SITES_PROOF_PART is on, the sections Ari writes start Draft.
+      const proofFlag = await db.service.rpc("brand_site_proof_part_enabled");
+      if (!proofFlag.error && proofFlag.data === true) payload.review_drafts = true;
       const studio = await callCmsRaw(db.service, {
         siteId,
         operationId,

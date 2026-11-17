@@ -227,7 +227,11 @@ describe("#4453 6b §3.3 every signature layout draws every field its block defi
           expect(design.variants[type as BlockType][0]).toBe(variant);
           const { block, expected } = sentinelBlock(type as BlockType, artifact);
           const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
-          const html = renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={ctx} />);
+          // #4453 (milestone 3) — the sentinel grid is empty (only ended trips): its designed empty state,
+          // with every field, is drawn in a Draft preview; publicly the section is left out.
+          const drawCtx = type === "offering_grid" ? { ...ctx, analytics: { ...ctx.analytics, publicationId: "preview-sentinel" } } : ctx;
+          const html = renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={drawCtx} />);
+          if (type === "offering_grid") expect(renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={ctx} />)).toBe("");
           const missing = expected.filter((v) => !html.includes(v.replaceAll("&", "&amp;")));
           expect(missing, `${type}:${variant} drops ${missing.join(", ")}`).toEqual([]);
           expect(html).not.toMatch(/mingla:\/\//);
@@ -265,7 +269,13 @@ describe("#4453 6b SC-D2 each design's Home validates and renders on fixture dat
       expect(html).toContain('data-mg-look="gallery"');
       expect((html.match(/<h1\b/g) ?? []).length).toBe(1);
       expect(html).toContain("Wake up");
+      // The fixture's upcoming grid is empty (I-SITES-NO-PUBLIC-EMPTY-STATE): the public Home leaves it out,
+      // a Draft preview draws it; both structures are pinned.
+      const preview = render({ ...artifact, publication_id: `preview-${artifact.publication_id}` }, undefined, live);
+      expect(html).not.toContain("Trips from the house");
+      expect(preview).toContain("Trips from the house");
       expect(structure(html)).toMatchSnapshot();
+      expect(structure(preview)).toMatchSnapshot();
       expect(headerStructure(html)).toMatchSnapshot();
     });
   }
@@ -602,6 +612,30 @@ describe("#4453 6b a brand's own look reaches every new design", () => {
         expect(value, `${design.key} ${name}`).toMatch(/^var\(--c-/);
       }
       expect(render(artifact)).toContain("Wake up");
+    });
+  }
+});
+
+/* ---------------- I-SITES-NO-PUBLIC-EMPTY-STATE (milestone 3) ---------------- */
+
+describe("#4453 6b an empty upcoming grid is left out of the public site on Journal, Grid and Terra (I-SITES-NO-PUBLIC-EMPTY-STATE)", async () => {
+  const grid = { type: "offering_grid", kind: "trip", mode: "upcoming", heading: "Upcoming trips", empty_text: "New dates soon." };
+  for (const design of NEW) {
+    const artifact = galleryArtifact(design.key);
+    // Only ended trips: every upcoming grid is empty.
+    const live = await liveFor(artifact);
+    const page = homePage(artifact)!;
+    const publicCtx: SharedContext = { artifact, page, live, forms, analytics: { siteId: artifact.site_id, brandId: artifact.brand_id, publicationId: artifact.publication_id } };
+    const previewCtx: SharedContext = { ...publicCtx, analytics: { ...publicCtx.analytics, publicationId: "preview-4453" } };
+    it(`${design.key}: every offering_grid layout it offers renders nothing publicly, the owner's hint in a Draft preview`, () => {
+      const map = MAPS[design.key as keyof typeof MAPS].offering_grid;
+      expect(Object.keys(map)).toEqual([...design.variants.offering_grid]);
+      for (const [variant, Layout] of Object.entries(map)) {
+        const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
+        expect(renderToStaticMarkup(<Component block={{ ...grid, variant }} index={0} ctx={publicCtx} />), variant).toBe("");
+        expect(renderToStaticMarkup(<Component block={{ ...grid, variant }} index={0} ctx={previewCtx} />), variant).toContain("New dates soon.");
+      }
+      expect(render(artifact, undefined, live)).not.toContain("Trips from the house");
     });
   }
 });
