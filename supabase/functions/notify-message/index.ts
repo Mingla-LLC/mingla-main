@@ -8,6 +8,7 @@ import {
   chunked,
   messagePushData,
   pushMessageId,
+  resolveReplyAuthor,
   storedMentionUserIds,
   unifiedMessageIdempotencyKey,
   unifiedMessageTitle,
@@ -181,7 +182,7 @@ async function handleBrandGuestsMessage(
     message.reply_to_id
       ? adminClient
         .from("messages")
-        .select("sender_id")
+        .select("id, sender_id, sender_kind")
         .eq("id", message.reply_to_id)
         .eq("conversation_id", conv.id)
         .maybeSingle()
@@ -193,6 +194,17 @@ async function handleBrandGuestsMessage(
   }
 
   const team = new Set(((teamResult.data ?? []) as { user_id: string }[]).map((row) => row.user_id));
+  // #4459 D2: a brand post stores no sender, so a reply to one reaches the
+  // team member who wrote it through brand_guest_post_authors.
+  const repliedTo = replyResult.data as { id?: string; sender_id?: string | null; sender_kind?: string | null } | null;
+  const replyToAuthorId = await resolveReplyAuthor(repliedTo, async (messageId) => {
+    const { data } = await adminClient
+      .from("brand_guest_post_authors")
+      .select("author_id")
+      .eq("message_id", messageId)
+      .maybeSingle();
+    return (data as { author_id?: string | null } | null)?.author_id ?? null;
+  });
   const blocked = new Set<string>();
   for (const row of (blocksResult.data ?? []) as { blocker_id: string; blocked_id: string }[]) {
     blocked.add(row.blocker_id === senderId ? row.blocked_id : row.blocker_id);
@@ -200,7 +212,7 @@ async function handleBrandGuestsMessage(
   const recipients = brandGuestsRecipients({
     senderId,
     senderKind: message.sender_kind,
-    replyToAuthorId: (replyResult.data as { sender_id?: string | null } | null)?.sender_id ?? null,
+    replyToAuthorId,
     mentionedUserIds: storedMentionUserIds(message.mentions),
     members: ((membersResult.data ?? []) as { user_id: string; notifications_muted: boolean }[]).map((row) => ({
       userId: row.user_id,

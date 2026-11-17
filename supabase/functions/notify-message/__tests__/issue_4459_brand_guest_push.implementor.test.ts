@@ -9,6 +9,7 @@ import {
   brandGuestsPushCopy,
   brandGuestsRecipients,
   chunked,
+  resolveReplyAuthor,
   storedMentionUserIds,
   type BrandGuestsMember,
 } from "../messageKeys.ts";
@@ -104,4 +105,24 @@ Deno.test("#4459 notify-message routes Guest chats to the brand_guests handler",
     if (!handler.includes(needle)) throw new Error(`brand_guests handler is missing: ${needle}`);
   }
   if (handler.includes("messagePreview")) throw new Error("the app's preview must not be used");
+});
+
+Deno.test("#4459 D2 a reply to a brand post reaches the team member who wrote it", async () => {
+  const lookups: string[] = [];
+  const lookup = async (id: string) => {
+    lookups.push(id);
+    return id === "brand-post" ? HOST : null;
+  };
+  equals(await resolveReplyAuthor({ id: "brand-post", sender_id: null, sender_kind: "brand" }, lookup), HOST, "author from the team-only table");
+  equals(await resolveReplyAuthor({ id: "g", sender_id: ANA, sender_kind: "guest" }, lookup), ANA, "a guest post's sender");
+  equals(await resolveReplyAuthor({ id: "sys", sender_id: null, sender_kind: null }, lookup), null, "a system row has no author");
+  equals(await resolveReplyAuthor(null, lookup), null, "no reply");
+  equals(lookups, ["brand-post"], "only brand posts are looked up");
+  equals(
+    brandGuestsRecipients({ senderId: ANA, senderKind: "guest", replyToAuthorId: HOST, mentionedUserIds: [], members: roster, blockedWithSender: new Set() }),
+    [HOST],
+    "the replying guest pushes the brand post's author",
+  );
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  if (!source.includes("const replyToAuthorId = await resolveReplyAuthor(repliedTo,")) throw new Error("the handler must resolve the reply author");
 });

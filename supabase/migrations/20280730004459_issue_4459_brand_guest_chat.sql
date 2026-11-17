@@ -84,6 +84,15 @@ REVOKE ALL ON TABLE public.brand_guest_post_authors FROM PUBLIC, anon, authentic
 GRANT SELECT ON TABLE public.brand_guest_post_authors TO authenticated;
 GRANT ALL ON TABLE public.brand_guest_post_authors TO service_role;
 
+-- RSVP approvals written by the server (see section 4b).
+CREATE TABLE IF NOT EXISTS public.issue_4459_rsvp_server_approvals (
+  rsvp_id uuid PRIMARY KEY REFERENCES public.event_rsvps(id) ON DELETE CASCADE,
+  approved_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.issue_4459_rsvp_server_approvals ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.issue_4459_rsvp_server_approvals FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.issue_4459_rsvp_server_approvals TO service_role;
+
 -- ── 3. Helpers ──────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.issue_4459_is_brand_guests_conversation(p_conversation_id uuid)
 RETURNS boolean
@@ -95,8 +104,10 @@ AS $function$
      WHERE c.id = p_conversation_id AND c.linked_entity_type = 'brand_guests'
   );
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4459_is_brand_guests_conversation(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.issue_4459_is_brand_guests_conversation(uuid) TO authenticated, service_role;
+-- Server-side only (definer functions and triggers). RLS uses the
+-- auth.uid()-scoped issue_4459_rls_* helpers below.
+REVOKE ALL ON FUNCTION public.issue_4459_is_brand_guests_conversation(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4459_is_brand_guests_conversation(uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_4459_is_brand_team(p_brand_id uuid, p_user_id uuid)
 RETURNS boolean
@@ -126,8 +137,52 @@ AS $function$
        AND m.user_id = p_user_id AND m.accepted_at IS NOT NULL AND m.removed_at IS NULL
   );
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4459_is_brand_guest_team(uuid, uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.issue_4459_is_brand_guest_team(uuid, uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.issue_4459_is_brand_guest_team(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4459_is_brand_guest_team(uuid, uuid) TO service_role;
+
+-- RLS helpers. Each answers only about the signed-in caller (auth.uid()):
+-- nothing here tells a client about a chat or a team it is not part of.
+-- True when this is a Guest chat the caller is a member of.
+CREATE OR REPLACE FUNCTION public.issue_4459_rls_my_guest_chat(p_conversation_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.conversations c
+      JOIN public.conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = auth.uid()
+     WHERE c.id = p_conversation_id AND c.linked_entity_type = 'brand_guests'
+  );
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4459_rls_my_guest_chat(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4459_rls_my_guest_chat(uuid) TO authenticated, service_role;
+
+-- True when the caller runs this Guest chat (accepted brand team).
+CREATE OR REPLACE FUNCTION public.issue_4459_rls_i_run_guest_chat(p_conversation_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT public.issue_4459_is_brand_guest_team(p_conversation_id, auth.uid());
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4459_rls_i_run_guest_chat(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4459_rls_i_run_guest_chat(uuid) TO authenticated, service_role;
+
+-- Roster row visibility for a member of the Guest chat: their own row, every
+-- team row, and (for the team) everyone. Non-members get false for team rows
+-- (their permissive read policies stop them anyway).
+CREATE OR REPLACE FUNCTION public.issue_4459_rls_roster_row(p_conversation_id uuid, p_row_user uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT p_row_user = auth.uid()
+      OR (public.issue_4459_rls_my_guest_chat(p_conversation_id)
+          AND (public.issue_4459_is_brand_guest_team(p_conversation_id, auth.uid())
+               OR public.issue_4459_is_brand_guest_team(p_conversation_id, p_row_user)));
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4459_rls_roster_row(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_4459_rls_roster_row(uuid, uuid) TO authenticated, service_role;
 
 -- Eligibility, from the source rows only (past events count; a deleted listing
 -- does not). (d) is the email-claim rail: a guest checkout claimed through
@@ -145,12 +200,14 @@ AS $function$
          AND o.payment_status IN ('paid', 'partial_refund')
     ) OR EXISTS (
       SELECT 1 FROM public.event_rsvps r JOIN public.events e ON e.id = r.event_id
+        JOIN public.issue_4459_rsvp_server_approvals sa ON sa.rsvp_id = r.id
        WHERE e.brand_id = p_brand_id AND e.deleted_at IS NULL
          AND r.user_id = p_user_id
          AND r.rsvp_status = 'going' AND r.approval_status = 'approved'
     ) OR EXISTS (
       SELECT 1 FROM public.event_rsvp_guests g
         JOIN public.event_rsvps r ON r.id = g.rsvp_id
+        JOIN public.issue_4459_rsvp_server_approvals sa ON sa.rsvp_id = r.id
         JOIN public.events e ON e.id = r.event_id
        WHERE e.brand_id = p_brand_id AND e.deleted_at IS NULL
          AND g.matched_user_id = p_user_id
@@ -438,6 +495,123 @@ AFTER INSERT OR UPDATE OF accepted_at, removed_at, user_id, brand_id OR DELETE
 ON public.brand_team_members
 FOR EACH ROW EXECUTE FUNCTION public.issue_4459_tg_brand_team();
 
+-- ── 4b. RSVP approval hardening ────────────────────────────────────────────
+-- Guest chat eligibility counts an RSVP only when its approval was written by
+-- the server (a definer RPC, a trigger or the service role), and a signed-in
+-- client can never write approval or promote itself on event_rsvps directly.
+-- (issue_4459_rsvp_server_approvals is created in section 2.)
+
+CREATE OR REPLACE FUNCTION public.issue_4459_tg_rsvp_client_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  -- Only a direct client write (not a definer RPC, trigger or the service role).
+  IF current_user NOT IN ('authenticated', 'anon') THEN RETURN NEW; END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.approval_status IS DISTINCT FROM 'pending' OR NEW.rsvp_status = 'waitlisted'
+       OR NEW.promoted_at IS NOT NULL THEN
+      RAISE EXCEPTION 'rsvp_server_only' USING ERRCODE = '42501';
+    END IF;
+  ELSE
+    IF NEW.approval_status IS DISTINCT FROM OLD.approval_status
+       OR NEW.promoted_at IS DISTINCT FROM OLD.promoted_at
+       OR NEW.waitlisted_at IS DISTINCT FROM OLD.waitlisted_at
+       OR (OLD.rsvp_status = 'waitlisted' AND NEW.rsvp_status IS DISTINCT FROM OLD.rsvp_status
+           AND NEW.rsvp_status <> 'not_going')
+       OR NEW.event_id IS DISTINCT FROM OLD.event_id THEN
+      RAISE EXCEPTION 'rsvp_server_only' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4459_tg_rsvp_client_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4459_rsvp_client_guard ON public.event_rsvps;
+CREATE TRIGGER issue_4459_rsvp_client_guard
+BEFORE INSERT OR UPDATE ON public.event_rsvps
+FOR EACH ROW EXECUTE FUNCTION public.issue_4459_tg_rsvp_client_guard();
+
+-- Stamps a server-written approval (runs before the Guest chat sync trigger:
+-- AFTER triggers fire by name).
+CREATE OR REPLACE FUNCTION public.issue_4459_tg_rsvp_server_approval()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF NEW.approval_status = 'approved' THEN
+    IF current_setting('issue_4459.rsvp_writer', true) IS DISTINCT FROM 'client' THEN
+      INSERT INTO public.issue_4459_rsvp_server_approvals(rsvp_id) VALUES (NEW.id)
+      ON CONFLICT (rsvp_id) DO NOTHING;
+    END IF;
+  ELSE
+    DELETE FROM public.issue_4459_rsvp_server_approvals WHERE rsvp_id = NEW.id;
+  END IF;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4459_tg_rsvp_server_approval() FROM PUBLIC, anon, authenticated;
+
+-- The writer's role is only visible BEFORE the definer trigger switches it, so
+-- a BEFORE trigger records whether this write came straight from a client.
+CREATE OR REPLACE FUNCTION public.issue_4459_tg_rsvp_note_writer()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM set_config('issue_4459.rsvp_writer',
+    CASE WHEN current_user IN ('authenticated', 'anon') THEN 'client' ELSE 'server' END, true);
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4459_tg_rsvp_note_writer() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4459_rsvp_note_writer ON public.event_rsvps;
+CREATE TRIGGER issue_4459_rsvp_note_writer
+BEFORE INSERT OR UPDATE OF approval_status ON public.event_rsvps
+FOR EACH ROW EXECUTE FUNCTION public.issue_4459_tg_rsvp_note_writer();
+
+DROP TRIGGER IF EXISTS issue_4459_a_rsvp_server_approval ON public.event_rsvps;
+CREATE TRIGGER issue_4459_a_rsvp_server_approval
+AFTER INSERT OR UPDATE OF approval_status ON public.event_rsvps
+FOR EACH ROW EXECUTE FUNCTION public.issue_4459_tg_rsvp_server_approval();
+
+-- Existing approvals predate the guard; they are taken as server-written.
+INSERT INTO public.issue_4459_rsvp_server_approvals(rsvp_id, approved_at)
+SELECT r.id, COALESCE(r.updated_at, r.created_at) FROM public.event_rsvps r
+ WHERE r.approval_status = 'approved'
+ ORDER BY r.id
+ON CONFLICT (rsvp_id) DO NOTHING;
+
+-- ── 4c. A Guest chat someone hid comes back with the next post ─────────────
+-- (#4435 lifecycle). The generic reopen skips a brand post (no sender) and
+-- Guest chats, so this does it for them.
+CREATE OR REPLACE FUNCTION public.issue_4459_tg_reopen_hidden_guest_chat()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF NEW.deleted_at IS NOT NULL OR NEW.message_type = 'system' THEN RETURN NULL; END IF;
+  IF NEW.sender_id IS NULL AND NEW.sender_kind IS DISTINCT FROM 'brand' THEN RETURN NULL; END IF;
+  IF NOT public.issue_4459_is_brand_guests_conversation(NEW.conversation_id) THEN RETURN NULL; END IF;
+  UPDATE public.conversation_participant_lifecycle l
+     SET hidden_at = NULL
+   WHERE l.conversation_id = NEW.conversation_id AND l.hidden_at IS NOT NULL;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4459_tg_reopen_hidden_guest_chat() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4459_reopen_hidden_guest_chat ON public.messages;
+CREATE TRIGGER issue_4459_reopen_hidden_guest_chat
+AFTER INSERT ON public.messages
+FOR EACH ROW EXECUTE FUNCTION public.issue_4459_tg_reopen_hidden_guest_chat();
+
 -- ── 5. History from join time (backfilled guests see everything) ────────────
 -- A sibling BEFORE INSERT trigger, not an edit of tg_4261_set_history_visible_from
 -- (several lane suites re-apply the #4261 / #4435 migrations that own that
@@ -504,33 +678,33 @@ CREATE POLICY conversations_brand_guests_no_client_update ON public.conversation
 DROP POLICY IF EXISTS conversation_participants_brand_guests_rpc_only_insert ON public.conversation_participants;
 CREATE POLICY conversation_participants_brand_guests_rpc_only_insert ON public.conversation_participants
   AS RESTRICTIVE FOR INSERT
-  WITH CHECK (NOT public.issue_4459_is_brand_guests_conversation(conversation_id));
+  -- A non-member is already refused by the permissive policies (only direct
+  -- chats allow a self-add); this closes the door for members too.
+  WITH CHECK (NOT public.issue_4459_rls_my_guest_chat(conversation_id));
 
 DROP POLICY IF EXISTS conversation_participants_brand_guests_rpc_only_delete ON public.conversation_participants;
 CREATE POLICY conversation_participants_brand_guests_rpc_only_delete ON public.conversation_participants
   AS RESTRICTIVE FOR DELETE
-  USING (NOT public.issue_4459_is_brand_guests_conversation(conversation_id));
+  USING (NOT public.issue_4459_rls_my_guest_chat(conversation_id));
 
 -- A guest reads only their own row and the brand team's rows; the team reads all.
 DROP POLICY IF EXISTS conversation_participants_brand_guests_roster ON public.conversation_participants;
 CREATE POLICY conversation_participants_brand_guests_roster ON public.conversation_participants
   AS RESTRICTIVE FOR SELECT
   USING (
-    NOT public.issue_4459_is_brand_guests_conversation(conversation_id)
-    OR user_id = (SELECT auth.uid())
-    OR public.issue_4459_is_brand_guest_team(conversation_id, (SELECT auth.uid()))
-    OR public.issue_4459_is_brand_guest_team(conversation_id, user_id)
+    NOT public.issue_4459_rls_my_guest_chat(conversation_id)
+    OR public.issue_4459_rls_roster_row(conversation_id, user_id)
   );
 
 DROP POLICY IF EXISTS brand_guest_post_authors_team_read ON public.brand_guest_post_authors;
 CREATE POLICY brand_guest_post_authors_team_read ON public.brand_guest_post_authors
   FOR SELECT TO authenticated
-  USING (public.issue_4459_is_brand_guest_team(conversation_id, (SELECT auth.uid())));
+  USING (public.issue_4459_rls_i_run_guest_chat(conversation_id));
 
 DROP POLICY IF EXISTS messages_brand_guests_rpc_only ON public.messages;
 CREATE POLICY messages_brand_guests_rpc_only ON public.messages
   AS RESTRICTIVE FOR INSERT
-  WITH CHECK (NOT public.issue_4459_is_brand_guests_conversation(conversation_id));
+  WITH CHECK (NOT public.issue_4459_rls_my_guest_chat(conversation_id));
 
 -- ── 7. The booking rails ────────────────────────────────────────────────────
 -- add_buyer_to_event_chat keeps its signature (5 rails call it) and now lands

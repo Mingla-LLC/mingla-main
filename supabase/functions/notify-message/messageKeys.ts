@@ -177,3 +177,18 @@ export function brandGuestsPushCopy(input: BrandGuestsPushCopyInput): { title: s
   const sender = (input.senderDisplayName ?? "").trim() || "A guest";
   return { title, body: `${sender}: ${input.preview}` };
 }
+
+/**
+ * #4459 D2: who wrote the message being replied to. A brand post stores no
+ * sender (guests never learn which team member wrote it), so its author is
+ * looked up in brand_guest_post_authors with the service key.
+ */
+export async function resolveReplyAuthor(
+  repliedTo: { id?: string; sender_id?: string | null; sender_kind?: string | null } | null,
+  lookupBrandPostAuthor: (messageId: string) => Promise<string | null>,
+): Promise<string | null> {
+  if (!repliedTo) return null;
+  if (repliedTo.sender_id) return repliedTo.sender_id;
+  if (repliedTo.sender_kind !== "brand" || !repliedTo.id) return null;
+  return await lookupBrandPostAuthor(repliedTo.id);
+}
