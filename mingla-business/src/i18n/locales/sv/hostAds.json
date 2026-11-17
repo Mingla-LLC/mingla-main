@@ -298,6 +298,7 @@
         "paid": "Kredit tillagd. Du kan starta nu.",
         "cancelled": "Betalningen avbröts. Inget debiterades.",
         "failed": "Betalningen gick inte igenom. Inget lades till.",
+        "minimum": "Du kan fylla på minst {{amount}}.",
         "noAccess": "Att fylla på kräver tillgång till varumärkets betalningar. {{name}} kan lägga till kredit.",
         "returnFailed": "Betalningen kom tillbaka men krediten har inte kommit än. Försök igen eller be om hjälp.",
         "method": "Kort och andra sätt att betala · i {{currency}}"

@@ -41,7 +41,7 @@ import { buildHostAdList, hostAdRowIdentity, type HostAdListItem } from "../../s
 import { AdListSummaryCard } from "../../components/marketing/ads/results/AdListSummaryCard";
 import { hostAdScrollBottomPadding } from "../../components/marketing/ads/hostAdBuilderRules";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
-import { hostAdPayFromCredit } from "../../components/marketing/ads/hostAdBuilderModel";
+import { hostAdPayFromCredit, hostAdTopUpPresetMajor } from "../../components/marketing/ads/hostAdBuilderModel";
 import {
   builderStyles as bs,
   Blocker,
@@ -277,9 +277,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   });
   const listCurrency = currency ?? campaignItems.find((item) => item.currency)?.currency ?? null;
   const money = (cents: number): string => (listCurrency ? formatHostAdMoneyCents(cents, listCurrency) ?? "" : "");
-  const topUpTiles = (currency === "NGN" ? [20_000, 50_000, 100_000] : [20, 50, 100]).map((major) =>
-    currency ? minorFromMajor(major, currency) : 0,
-  );
+  const topUpTiles = currency ? hostAdTopUpPresetMajor(currency).map((major) => minorFromMajor(major, currency)) : [];
   const compareRows = hostAdCompareRows(
     campaignItems.map((item) => ({
       id: item.id,
@@ -549,6 +547,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
             currency={currency}
             neededCents={topUpTiles[1] ?? 0}
             options={topUpTiles}
+            limits={walletQuery.data?.top_up_limits ?? null}
             returnPath="/marketing/ads"
             money={money}
             onClose={() => setOverlay(null)}

@@ -298,6 +298,7 @@
         "paid": "Kredi eklendi. Şimdi başlatabilirsin.",
         "cancelled": "Ödeme iptal edildi. Hiçbir şey tahsil edilmedi.",
         "failed": "Ödeme gerçekleşmedi. Hiçbir şey eklenmedi.",
+        "minimum": "Yükleyebileceğin en düşük tutar {{amount}}.",
         "noAccess": "Yükleme için marka ödemelerine erişim gerekir. {{name}} kredi ekleyebilir.",
         "returnFailed": "Ödeme geri döndü ama kredi henüz gelmedi. Tekrar dene ya da yardım al.",
         "method": "Kart ve diğer ödeme yolları · {{currency}}"

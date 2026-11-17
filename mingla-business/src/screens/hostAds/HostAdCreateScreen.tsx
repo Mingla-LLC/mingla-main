@@ -115,7 +115,7 @@ import { useBusinessMediaTranslation } from "../../i18n";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
-import { applyAdCreditTopUp, getAdCreditWallet } from "../../services/adCreditService";
+import { applyAdCreditTopUp, getAdCreditWallet, type AdCreditTopUpLimits } from "../../services/adCreditService";
 import { formatCurrency, formatCurrencyRound } from "../../utils/currency";
 import {
   HOST_AD_CTA_OPTIONS,
@@ -420,6 +420,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [guidance, setGuidance] = useState<HostAdGuidance | HostAdGuidanceBelowEvery | null>(null);
   const [guidanceState, setGuidanceState] = useState<"idle" | "loading" | "error">("idle");
   const [walletCreditCents, setWalletCreditCents] = useState<number | null>(null);
+  const [topUpLimits, setTopUpLimits] = useState<AdCreditTopUpLimits | null>(null);
   const [advanced, setAdvanced] = useState<Record<string, boolean>>({});
   const [sheet, setSheet] = useState<null | "words" | "rights" | "topUp" | "leave" | "launch" | "cancel">(null);
   const [launched, setLaunched] = useState<null | "staff" | "apps">(null);
@@ -1860,6 +1861,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     try {
       const payload = await getAdCreditWallet(brandId);
       setWalletCreditCents(payload.wallet?.balance_cents ?? 0);
+      setTopUpLimits(payload.top_up_limits ?? null);
     } catch {
       // Unknown credit: the review step says so and asks for no top-up.
       setWalletCreditCents(null);
@@ -3382,6 +3384,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
           brandId={brandId}
           currency={currency}
           neededCents={topUpNeeded}
+          limits={topUpLimits}
           money={money}
           returnPath={`/marketing/ads/create?draft_id=${encodeURIComponent(draftIdRef.current ?? "")}&step=review`}
           onClose={() => setSheet(null)}

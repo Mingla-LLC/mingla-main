@@ -298,6 +298,7 @@
         "paid": "A ma ye igho ẹvbo. U sẹtin tobọ ẹre ẹghẹ na.",
         "cancelled": "A mu igho ne u hae rre. A i hae emwi ọkpa.",
         "failed": "Igho ne u hae i ladian. A i ye emwi ọkpa.",
+        "minimum": "Igho ne ọ kere sẹ ne u sẹtin ye ọre {{amount}}.",
         "noAccess": "Ọ hoo ẹtọ igho ẹkpẹti. {{name}} sẹtin ye igho.",
         "returnFailed": "Igho ne u hae kpaa dee, igho ẹvbo i rre ẹre ma. Ru ẹre vbe ọkpa ra gualọ ukpamaren.",
         "method": "Kaadi kevbe ẹmwẹ igho ọvbehe · vbe {{currency}}"
