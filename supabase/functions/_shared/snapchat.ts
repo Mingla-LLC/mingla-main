@@ -2942,8 +2942,16 @@ export async function snapchatCopyAdWithHeadline(
       message: `Snap ad ${adId} has no creative to copy.`,
     });
   }
-  const read = await snapchatApi(client, "GET", `creatives/${creativeId}`);
-  const source = snapchatEntityFromPayload(read, "creatives", "creative");
+  const creativePayload = await snapchatApi(
+    client,
+    "GET",
+    `creatives/${creativeId}`,
+  );
+  const source = snapchatEntityFromPayload(
+    creativePayload,
+    "creatives",
+    "creative",
+  );
   const copy = snapchatStripReadOnlyFields(source);
   delete copy.id;
   copy.headline = text;
