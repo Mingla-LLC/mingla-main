@@ -722,6 +722,8 @@ function ConnectionsPageRefactored({
   }, []);
   // #4459: the Guest chat rate limit (the composer shows the amber countdown).
   const [brandGuestRateLimit, setBrandGuestRateLimit] = useState<{ conversationId: string; until: number } | null>(null);
+  // #4459: a deep-linked chat waiting for the list to load it (see the resolver).
+  const [pendingDeepLinkChat, setPendingDeepLinkChat] = useState<{ id: string; refreshed: boolean } | null>(null);
   // #4459: the words of a send the rate limit refused, put back in the composer.
   const [restoreDraft, setRestoreDraft] = useState<{ conversationId: string; text: string; nonce: number } | null>(null);
   const refreshListIfMissing = useCallback((conversationId: string) => {
@@ -2264,6 +2266,22 @@ function ConnectionsPageRefactored({
           }
         }
 
+        // #4459: a chat not in the loaded list yet (a Guest chat just rejoined,
+        // or one this list has not loaded) stays the target until the list
+        // refreshes; the resolver below opens it once, then lets it go.
+        if (!rawConversation && conversationId) {
+          rawConversation = conversationsRef.current.find((conv) => conv.id === conversationId) ?? null;
+        }
+        if (!cancelled && !rawConversation && conversationId && !deepLinkParams.eventId && !deepLinkParams.sessionId) {
+          const target = conversationId;
+          setPendingDeepLinkChat({ id: target, refreshed: false });
+          onDeepLinkHandled?.();
+          void fetchConversations(user.id).finally(() => {
+            setPendingDeepLinkChat((prev) => (prev && prev.id === target ? { ...prev, refreshed: true } : prev));
+          });
+          return;
+        }
+
         if (!cancelled && rawConversation) {
           await handleSelectConversation(rawConversation);
           onDeepLinkHandled?.();
@@ -2285,6 +2303,39 @@ function ConnectionsPageRefactored({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- conversations read once per deep-link handoff
   }, [deepLinkParams, user?.id]);
+
+  // #4459: resolves a deep-linked chat that was not in the list. It opens as
+  // soon as the refreshed list has it; if the refresh ends without it, the
+  // chat is read by id once. Either way the target is cleared first, so this
+  // never loops.
+  useEffect(() => {
+    if (!pendingDeepLinkChat || !user?.id) return;
+    const row = conversations.find((conv) => conv.id === pendingDeepLinkChat.id);
+    if (row) {
+      setPendingDeepLinkChat(null);
+      void handleSelectConversation(row);
+      return;
+    }
+    if (!pendingDeepLinkChat.refreshed) return;
+    setPendingDeepLinkChat(null);
+    const targetId = pendingDeepLinkChat.id;
+    const userId = user.id;
+    void (async () => {
+      const { conversation, error } = await messagingService.getConversation(targetId, userId);
+      if (error || !conversation) {
+        console.warn('[ConnectionsPage] deep-linked chat could not be read:', error);
+        return;
+      }
+      // The by-id read carries participant rows (user_id); the page keys people by id.
+      const rows = (conversation as unknown as { participants?: Array<{ user_id?: string; id: string }> }).participants ?? [];
+      await handleSelectConversation({
+        ...(conversation as unknown as Conversation),
+        participants: rows.map((p) => ({ id: p.user_id ?? p.id, username: 'user' })),
+        messages: [],
+      } as unknown as Conversation);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on the list and the target only
+  }, [conversations, pendingDeepLinkChat, user?.id]);
 
   // handlePickFriend awaits getOrCreate; we only clear the pending id after that completes.
   // Refs keep latest conversations/dbFriends without re-running this effect when lists update

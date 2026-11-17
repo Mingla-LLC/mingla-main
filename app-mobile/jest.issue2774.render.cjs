@@ -84,6 +84,9 @@ module.exports = {
     // issue #4459 QA retest — the booking card opens the Guest chat in the
     // existing home shell; a rejoin drops the cached thread; row parity.
     "**/__tests__/issue_4459_booking_guest_chat.implementor.render.test.tsx",
+    // issue #4459 QA retest 2 — a deep link to a chat the list has not loaded
+    // yet (Rejoin / Open guest chat) opens the thread once it is found.
+    "**/__tests__/issue_4459_deep_link_pending_chat.implementor.render.test.tsx",
     // issue #4459 tester retest — two Chats pages alive at once (the booking
     // card's Open/Rejoin guest chat replaces to /) must not throw on the
     // enquiries channel.
