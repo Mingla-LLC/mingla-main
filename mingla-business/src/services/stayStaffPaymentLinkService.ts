@@ -1,4 +1,6 @@
 import type { StayPaymentSession } from "@mingla/brand-rendering/stayGuest";
+import type { ThemeInput } from "@mingla/offering-rendering";
+import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 
 import { supabase } from "./supabase";
 
@@ -12,12 +14,15 @@ export interface StayStaffPaymentLinkDetails {
   guestName: string;
   venueName: string;
   brandName: string;
-  /**
-   * issue #4420 wave 2 — the brand's public slug, so the pay page can wear
-   * the host's colours. Optional: absent until the details RPC returns it,
-   * and the page then stays on the Mingla default palette.
-   */
+  /** issue #4420 — the brand's public slug (null for a deleted brand). */
   brandSlug?: string | null;
+  /**
+   * issue #4420 — the brand's public theme, guarded into a ThemeInput (only
+   * valid colours, fonts and animations survive). Null when the brand has no
+   * theme or the details predate it: the page then stays on the Mingla
+   * default palette, never a guessed colour.
+   */
+  brandTheme: ThemeInput | null;
   expiresAt: string;
   paid: boolean;
   lines: {
@@ -50,9 +55,24 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   return (data as { data: T }).data;
 }
 
+/** #4420 — the details RPC's `brandTheme` object → a guarded ThemeInput. */
+export function brandThemeFrom(raw: unknown): ThemeInput | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const fields = raw as Record<string, unknown>;
+  return themeInputFromFields(
+    fields.color,
+    fields.font,
+    fields.animation,
+    fields.gradient,
+  );
+}
+
 export const stayStaffPaymentLinkService = {
-  view(token: string): Promise<StayStaffPaymentLinkDetails> {
-    return invoke({ action: "view", token });
+  async view(token: string): Promise<StayStaffPaymentLinkDetails> {
+    const raw = await invoke<
+      Omit<StayStaffPaymentLinkDetails, "brandTheme"> & { brandTheme?: unknown }
+    >({ action: "view", token });
+    return { ...raw, brandTheme: brandThemeFrom(raw.brandTheme) };
   },
   pay(input: {
     token: string;

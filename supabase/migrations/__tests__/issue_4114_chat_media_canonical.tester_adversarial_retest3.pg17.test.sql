@@ -145,7 +145,8 @@ BEGIN
     BEGIN
       UPDATE public.messages SET file_url = v_name WHERE id = v_plain;
       v_accepted := v_accepted || ('update:' || left(v_name, 80));
-    EXCEPTION WHEN check_violation THEN NULL;
+    -- #4456: a client cannot write file_url at all now.
+    EXCEPTION WHEN check_violation OR insufficient_privilege THEN NULL;
     END;
   END LOOP;
 
@@ -179,7 +180,12 @@ BEGIN
   ] LOOP
     INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url)
       VALUES (v_dm, v_ana, 'Photo', 'image', v_url) RETURNING id INTO v_id;
-    UPDATE public.messages SET file_url = v_url || '?v=2' WHERE id = v_id;
+    -- #4456: a client can no longer change a message's file at all.
+    BEGIN
+      UPDATE public.messages SET file_url = v_url || '?v=2' WHERE id = v_id;
+      v_accepted := v_accepted || ('url edit:' || v_url);
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
     BEGIN
       INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url, view_once)
         VALUES (v_dm, v_ana, 'Photo', 'image', v_url, true);

@@ -39,6 +39,7 @@ import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
 import { useBrandPayoutScreen } from "../../../../../src/hooks/useBrandPayoutScreen";
 import { PAYOUT_STATE_COPY } from "../../../../../src/utils/payoutScreen";
 import { isCompOrder } from "../../../../../src/utils/compOrders";
+import { formatBookedStart } from "../../../../../src/utils/bookedStart";
 import { useCurrentBrandRole } from "../../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../../src/utils/permissionGates";
 import { canViewBrandPayments } from "../../../../../src/utils/brandPaymentsPermission";
@@ -462,6 +463,9 @@ export default function OrderDetailRoute(): React.ReactElement {
     );
   }
 
+  // issue #3281 — the guest-chosen start, in the offering's own zone.
+  const bookedTime = formatBookedStart(order?.bookedStartAt, event?.timezone);
+
   // ---- Empty / not-found states ----
   if (typeof orderId !== "string" || order === null) {
     return (
@@ -629,33 +633,8 @@ export default function OrderDetailRoute(): React.ReactElement {
         {/* Lines table */}
         <GlassCard variant="base" padding={space[4]} style={styles.lines}>
           <DetailRow label="Order" value={order.id} mono />
-          {order.bookedStartAt !== undefined &&
-          order.bookedStartAt !== null &&
-          order.bookedStartAt.length > 0 ? (
-            <DetailRow
-              label="Booked time"
-              value={(() => {
-                const d = new Date(order.bookedStartAt);
-                if (Number.isNaN(d.getTime())) return order.bookedStartAt;
-                const tz =
-                  typeof event?.timezone === "string" &&
-                  event.timezone.length > 0
-                    ? event.timezone
-                    : "UTC";
-                try {
-                  return new Intl.DateTimeFormat(undefined, {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                    timeZone: tz,
-                  }).format(d);
-                } catch {
-                  return d.toLocaleString();
-                }
-              })()}
-            />
+          {bookedTime !== null ? (
+            <DetailRow label="Booked time" value={bookedTime} />
           ) : null}
           {order.lines.map((line) => (
             <DetailRow

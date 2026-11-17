@@ -209,8 +209,13 @@ BEGIN
     RAISE EXCEPTION 'customer_reads_note_file';
   END IF;
   -- The customer cannot flip a note public, nor write one.
-  UPDATE public.messages SET is_internal = false WHERE id = v_note_message;
-  GET DIAGNOSTICS v_count = ROW_COUNT;
+  -- #4456: refused outright now (clients cannot write is_internal at all).
+  v_count := 0;
+  BEGIN
+    UPDATE public.messages SET is_internal = false WHERE id = v_note_message;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+  EXCEPTION WHEN insufficient_privilege THEN v_count := 0;
+  END;
   IF v_count <> 0 THEN RAISE EXCEPTION 'customer_unhid_a_note'; END IF;
   v_raised := false;
   BEGIN

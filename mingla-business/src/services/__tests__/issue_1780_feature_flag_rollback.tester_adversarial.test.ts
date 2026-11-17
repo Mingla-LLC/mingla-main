@@ -91,8 +91,13 @@ describe("#1780 selection feature-flag rollback", () => {
         fs.readFileSync(path.join(ROOT, relativePath), "utf8"),
       );
 
+      // [TEST-MOD-APPROVED #4420] the readiness rule moved into the shared
+      // wizardInvitePublishGate (which returns true when !inviteEnabled, and
+      // also when nobody is invited; behaviour-tested in
+      // issue_4420_publish_without_estimate.implementor.test.ts).
       const readinessBypassesWhenDisabled =
-        /const\s+inviteSummaryReady\s*=\s*!inviteEnabled\s*\|\|/.test(source);
+        /const\s+inviteSummaryReady\s*=\s*!inviteEnabled\s*\|\|/.test(source) ||
+        /const\s+inviteSummaryReady\s*=\s*wizardInviteSummaryReady\(/.test(source);
       const publishGateIsConditional =
         /inviteEnabled\s*&&\s*!inviteSummaryReady/.test(source);
 

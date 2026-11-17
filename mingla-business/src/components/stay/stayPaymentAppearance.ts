@@ -1,7 +1,8 @@
 // issue #4420 wave 2 (D-S1) — the Stripe Payment Element follows the page:
 // Stripe's "stripe" theme on a light page, "night" on a dark one, with the
 // host's FIRST colour as the primary (text accents never take the gradient,
-// #1023). Same font and radius as the Connect pages (5313edba88).
+// #1023). The element takes one colour, so the caller hands in the same
+// one-colour `accent` it already passes to the payment element. Same font and radius as the Connect pages (5313edba88).
 //
 // Pure: no React, no Stripe import, so it is testable in node.
 
@@ -32,12 +33,13 @@ export const STAY_PAYMENT_FONT =
 
 export const stayPaymentAppearance = (
   palette: ThemePalette,
+  primary: string,
 ): StayPaymentAppearance => {
   const dark = paletteIsDark(palette);
   return {
     theme: dark ? "night" : "stripe",
     variables: {
-      colorPrimary: palette.accent,
+      colorPrimary: primary,
       colorBackground: paymentFieldBackground(palette),
       colorText: palette.primaryText,
       colorDanger: statusOn(palette).error.text,
@@ -47,7 +49,7 @@ export const stayPaymentAppearance = (
     },
     rules: {
       ".Input": { boxShadow: `inset 0 0 0 1px ${neutralControl(palette)}` },
-      ".Tab--selected": { boxShadow: `inset 0 0 0 2px ${palette.accent}` },
+      ".Tab--selected": { boxShadow: `inset 0 0 0 2px ${primary}` },
     },
   };
 };

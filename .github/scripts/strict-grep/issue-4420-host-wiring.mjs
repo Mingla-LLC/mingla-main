@@ -428,7 +428,9 @@ export const RULES = [
 // react-native-web implements Alert.alert as a no-op, so a raw call on a
 // web-reachable path is a silent failure (Constitution 3). Every alert goes
 // through src/components/ui/showAlert.ts. The files below run ONLY on a phone
-// and keep their raw calls, each marked "I-4420-NO-RAW-ALERT native-only";
+// and keep their raw calls, each marked "I-4420-NO-RAW-ALERT native-only"
+// (except AuthContext.tsx, whose bytes are pinned by the #1044 and #1881
+// tests, so its six native sign-in alerts carry no marker);
 // the number is a ceiling, so a new raw call there fails too. Comment lines
 // and __tests__ are ignored. Behaviour: ui/__tests__/issue_4420_show_alert.
 export const RAW_ALERT_ALLOW = {

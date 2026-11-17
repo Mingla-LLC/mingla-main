@@ -132,6 +132,50 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
 // #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
 const LOCKED_PHASE3D_CONTRACT_SHA256 = "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc";
+// [#4420] Reviewed heap raise, approved by Seth on #4420. ts-jest type-checks
+// every file it transforms, and on these jest steps that program outgrew the
+// runner's ~2 GB default V8 heap ("JavaScript heap out of memory", exit 134).
+// Only these exact assertion commands get the one literal below; nothing reads
+// it from the job, the registry or a step, and no other step's env changes.
+// validateHeapRaisedCommands pins that every id names a real jest step.
+export const HEAP_RAISED_ENV = Object.freeze({ NODE_OPTIONS: "--max-old-space-size=4096" });
+export const HEAP_RAISED_COMMAND_IDS = Object.freeze([
+  "assert:issue-948-w2-bank-route-web-tests:01",
+  "assert:orch-1404-invite-error-recovery-tests:01",
+  "assert:issue-2399-multiday-picker-ticket-box:01",
+  "assert:issue-1985-ari-task-state:06",
+  "assert:issue-1972-ari-event-lifecycle:03",
+  "assert:issue-1973-ari-experience-lifecycle:02",
+  "assert:issue-1974-ari-ticket-pricing:04",
+  "assert:issue-1995-contact-book-blast:25",
+  "assert:issue-1995-contact-book-blast:26",
+  "assert:issue-1995-contact-book-blast:27",
+  "assert:issue-1421-venue-organic-insights-tests:02",
+  "assert:issue-873-guest-status-roster-tests:02",
+  "assert:issue-873-guest-status-roster-tests:03",
+  "assert:issue-873-guest-status-roster-tests:04",
+  "assert:issue-873-guest-status-roster-tests:05",
+  "assert:issue-1902-public-event-lifecycle-tests:03",
+]);
+// A heap-raised step may carry no env except this one reviewed literal, which
+// the runner already admits for jest steps (allowNodePath).
+const HEAP_RAISED_ALLOWED_STEP_ENV = JSON.stringify({ NODE_PATH: "./node_modules" });
+// [#4420] The raise reaches every plain mingla-business jest step, not only the
+// ids above (the ones first seen running out of memory): those lanes sit near
+// the 2 GB default on main too, and one-by-one listing kept missing the next.
+// A step qualifies when it runs mingla-business jest or tsc: from that cwd, a script
+// that calls `npx jest` / `npm test` / `npx tsc`, or a script that `cd mingla-business` and
+// then calls one of those. Any other step (no business jest, children, or any
+// other env) never gets it.
+const BUSINESS_JEST_RUN = /\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
+const BUSINESS_JEST_AFTER_CD = /(?:^|\n|&&\s*|;\s*)cd mingla-business\b[\s\S]*\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
+export function isHeapRaisedStep(step) {
+  if (!step || step.children || typeof step.run !== "string") return false;
+  const runsBusinessJest = (step.cwd === "mingla-business" && BUSINESS_JEST_RUN.test(step.run))
+    || BUSINESS_JEST_AFTER_CD.test(step.run);
+  if (!runsBusinessJest) return false;
+  return !step.env || JSON.stringify(step.env) === HEAP_RAISED_ALLOWED_STEP_ENV;
+}
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -534,8 +578,14 @@ export function phase3dContractDigest(manifest) {
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
 // #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-// #4238 rework 8b: merged origin/4420-host-graphite-glass 55e6f03395 (its 20280724004420 row and #1931 filtered-replay skip kept beside the #4452 B21/B22/B25 row); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9eeda7cc9678fed4b3fac8cf1d80646dec684bc6c1aef32ff4029c28cf1dba14";
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4420 Stay pay link brand theme: listed migration 20280731104420 after 20280725004452 in the #1857, #1931 and #2117 lanes (plpgsql body, no filtered-replay skip needed; both filtered replays verified) and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "51b208b83890f0d09493ff578795ead6dce2b7dc631fa2bd5042b7f0ea015b5e";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1116,6 +1166,24 @@ export function decodeManifestTextRepresentations(rawManifest) {
   const origin = (manifest.legacyOrigins || []).find((item) => item.stem === "issue-994-ota-env-resolution" && item.extension === "yml");
   if (origin?.workflowMetadata?.pathScope) origin.workflowMetadata.pathScope = origin.workflowMetadata.pathScope.map(decodeReviewedText);
   return manifest;
+}
+
+// [#4420] Every heap-raised command must be a real mingla-business jest step in
+// the registry, listed once, so the raise can never drift onto another command.
+export function validateHeapRaisedCommands(manifest) {
+  const errors = [];
+  const steps = new Map();
+  for (const suite of manifest.suites || []) for (const step of suite.steps || []) steps.set(step.commandId, step);
+  if (new Set(HEAP_RAISED_COMMAND_IDS).size !== HEAP_RAISED_COMMAND_IDS.length) errors.push("heap-raised command ids must be unique");
+  if (JSON.stringify(HEAP_RAISED_ENV) !== JSON.stringify({ NODE_OPTIONS: "--max-old-space-size=4096" })) errors.push("heap-raised env must be exactly the reviewed NODE_OPTIONS literal");
+  for (const id of HEAP_RAISED_COMMAND_IDS) {
+    const step = steps.get(id);
+    if (!step) { errors.push(`${id}: heap-raised command is not in the registry`); continue; }
+    if (!isHeapRaisedStep(step)) {
+      errors.push(`${id}: heap-raised command must be a plain mingla-business jest step`);
+    }
+  }
+  return errors;
 }
 
 export function validateManifestTextRepresentations(rawManifest) {
@@ -1832,6 +1900,7 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
   if (JSON.stringify(manifest.runnerContract) !== JSON.stringify(requiredRunnerContract)) {
     fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
   }
+  for (const message of validateHeapRaisedCommands(manifest)) fail(errors, message);
   for (const suite of manifest.suites || []) {
     const maximumTimeoutSeconds = suite.migrationWave === POSTGRES_WAVE ? 2400 : 1500;
     if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > maximumTimeoutSeconds) {

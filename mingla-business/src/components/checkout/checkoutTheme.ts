@@ -24,23 +24,26 @@
  *
  * D-C1 stays reversible behind `CHECKOUT_USES_HOST_PALETTE`.
  */
-import {
-  createThemePalette,
-  resolveTheme,
-  type ResolvedTheme,
-  type ThemeInput,
-  type ThemePalette,
-} from "@mingla/offering-rendering";
+// Deep imports, not the package barrel: the barrel drags every offering
+// component (ParallaxCoverShell, video, svg) into each checkout step's graph,
+// and checkout only needs the theme resolvers.
+import type {
+  ResolvedTheme,
+  ThemeInput,
+} from "@mingla/offering-rendering/designTokens";
+import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
 import {
   accentFill,
   themeBoldFace,
 } from "@mingla/offering-rendering/themeAccentStyle";
 import {
+  createThemePalette,
   inkWash,
   neutralControl,
   neutralHair,
   statusOn,
   themeTextAccent,
+  type ThemePalette,
 } from "@mingla/offering-rendering/themePalette";
 
 import { color as graphite } from "../../constants/designSystem";

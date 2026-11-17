@@ -178,6 +178,12 @@ export const serializeGuestsToCsv = (
    * parsing this file by position.
    */
   dayLabels: ReadonlyMap<string, string> = new Map(),
+  /**
+   * issue #3281 — writes the "Booked start" cell (guestCsvDayOrder.ts's
+   * bookedStartCsvCell, which every export path loads on intent). Absent =>
+   * blank cells.
+   */
+  bookedCell: (iso: string | null | undefined) => string = () => "",
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
@@ -206,6 +212,10 @@ export const serializeGuestsToCsv = (
     // "Day" so the first 17 columns keep their index and "Day" stays last.
     "Via link",
     "Came with",
+    // issue #3281 — the start the guest booked on an open-daily experience,
+    // as the offering's wall clock. Inserted BEFORE "Day" like #3827: "Day"
+    // must stay last (guestCsvDayOrder rewrites the last cell).
+    "Booked start",
     // issue #2160 — APPENDED LAST so every existing column keeps its index.
     // Blank for door sales and any pass that is not day-scoped.
     "Day",
@@ -259,6 +269,7 @@ export const serializeGuestsToCsv = (
         "",
         o.viaLinkLabel ?? "",
         o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
+        bookedCell(o.bookedStartAt),
         orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -287,6 +298,7 @@ export const serializeGuestsToCsv = (
         o.currency,
         o.viaLinkLabel ?? "",
         "",
+        bookedCell(o.bookedStartAt),
         orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -316,6 +328,8 @@ export const serializeGuestsToCsv = (
         s.currency,
         // A door sale is rung up on the night, so its day is the night it was
         // rung up on — not a chosen occurrence. Left blank rather than guessed.
+        // Via link, Came with, Booked start, Day.
+        "",
         "",
         "",
         "",
@@ -326,16 +340,6 @@ export const serializeGuestsToCsv = (
 
   return `${lines.join("\r\n")}\r\n`;
 };
-
-export interface ExportGuestsCsvArgs {
-  event: LiveEvent;
-  rows: ExportGuestRow[];
-  /**
-   * issue #2160 — `event_dates.id` -> day label, for the "Day" column. Omitted
-   * on every single-date event, where the column is emitted but blank.
-   */
-  dayLabels?: ReadonlyMap<string, string>;
-}
 
 const downloadCsvWeb = (csv: string, filename: string): void => {
   // Web-only path — guard via Platform.OS check before calling.
@@ -431,19 +435,6 @@ export const exportCsvText = async (
   return { method: action };
 };
 
-export const exportGuestsCsv = async (
-  args: ExportGuestsCsvArgs,
-): Promise<ExportResult> => {
-  const csv = serializeGuestsToCsv(args.rows, undefined, args.dayLabels);
-  const filename = `${args.event.eventSlug}-guest-list-${formatYmdToday()}.csv`;
-  if (Platform.OS === "web") {
-    downloadCsvWeb(csv, filename);
-    return { method: "downloaded" };
-  }
-  const action = await downloadCsvNative(csv, filename);
-  return { method: action };
-};
-
 // ---- Cycle 12 — door-sales-only export (J-D5 reconciliation) -------
 
 export interface ExportDoorSalesCsvArgs {
@@ -480,6 +471,12 @@ export interface ExportReconciliationCsvArgs {
   doorSales: DoorSaleRecord[];
   /** ReconciliationSummary from computeReconciliation; populates the 5-line summary stanza prefix. */
   summary: ReconciliationSummary;
+  /**
+   * issue #3281 — writes the "Booked start" cell in the event's zone
+   * (guestCsvDayOrder's bookedStartCsvCell, which the caller loads on intent;
+   * importing it here would be a require cycle). Absent => blank cells.
+   */
+  bookedCell?: (iso: string | null | undefined) => string;
 }
 
 /**
@@ -543,7 +540,9 @@ export const exportReconciliationCsv = async (
     currencyMismatchCount: args.summary.currencyMismatches.length,
   };
 
-  const csv = serializeGuestsToCsv(rows, stanza);
+  // issue #3281 — the same offering zone as the guest export, so one order's
+  // booked start reads the same in both files.
+  const csv = serializeGuestsToCsv(rows, stanza, undefined, args.bookedCell);
   const filename = `${args.event.eventSlug}-reconciliation-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);

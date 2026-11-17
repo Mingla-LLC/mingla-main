@@ -2,8 +2,8 @@
  * #4420 (c_6876753693 item 4): Ari's icon is the Ari orb everywhere, never the
  * sparkle.
  *
- * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-
- * SOURCE-PIN); now renders the real Icon. The rule that no Ari nav entry names
+ * [TEST-MOD-APPROVED #4420] — was a source-text pin 
+ * (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); now renders the real Icon. The rule that no Ari nav entry names
  * the sparkle lives in the I-4420-HOST-WIRING strict-grep gate.
  *
  * FAILS ON REVERT: Icon "ari" draws an SVG glyph (or a second orb component)

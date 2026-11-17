@@ -1053,7 +1053,8 @@ BEGIN
   PERFORM pg_temp.t4261p_as('seth');
   SET LOCAL ROLE authenticated;
   v_err := pg_temp.t4261p_try(format($q$UPDATE public.messages SET content = 'edited' WHERE id = %L$q$, pg_temp.t4261p_val('msg_a')));
-  IF v_err <> '42501:not_allowed' THEN
+  -- #4456: refused by the column grants (or the plan guard) either way.
+  IF v_err NOT IN ('42501:not_allowed', '42501:permission denied for table messages') THEN
     RAISE EXCEPTION 'P-03: the sender cannot edit a plan message (got %)', v_err;
   END IF;
   v_err := pg_temp.t4261p_try(format($q$UPDATE public.messages SET deleted_at = now() WHERE id = %L$q$, pg_temp.t4261p_val('msg_a')));
@@ -1061,7 +1062,8 @@ BEGIN
     RAISE EXCEPTION 'P-03: the sender cannot unsend a plan message (got %)', v_err;
   END IF;
   v_err := pg_temp.t4261p_try(format($q$DELETE FROM public.messages WHERE id = %L$q$, pg_temp.t4261p_val('msg_a')));
-  IF v_err <> '42501:not_allowed' THEN
+  -- #4456: refused by the column grants (or the plan guard) either way.
+  IF v_err NOT IN ('42501:not_allowed', '42501:permission denied for table messages') THEN
     RAISE EXCEPTION 'P-03: the sender cannot delete a plan message (got %)', v_err;
   END IF;
   -- An ordinary message cannot be turned into a plan message.
@@ -1071,7 +1073,8 @@ BEGIN
     $q$UPDATE public.messages SET message_type = 'plan', plan_id = %L, card_payload = jsonb_build_object('kind','plan')
        WHERE conversation_id = %L AND content = 'hello'$q$, pg_temp.t4261p_val('plan_a'), pg_temp.t4261p_id('plain')));
   RESET ROLE;
-  IF v_err <> '42501:not_allowed' THEN
+  -- #4456: refused by the column grants (or the plan guard) either way.
+  IF v_err NOT IN ('42501:not_allowed', '42501:permission denied for table messages') THEN
     RAISE EXCEPTION 'P-03: a message cannot become a plan message (got %)', v_err;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.messages WHERE id = pg_temp.t4261p_val('msg_a')::uuid

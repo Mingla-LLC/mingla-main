@@ -14,6 +14,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { radius as radiusTokens, color, space } from "../../constants/designSystem";
 import type { OrderRecord } from "../../store/orderStore";
+import { buyerOrderReference } from "../../constants/buyerClaimCopy";
 import { formatCurrencyRound } from "../../utils/currency";
 
 import { Pill } from "../ui/Pill";
@@ -127,7 +128,9 @@ export const OrderListCard: React.FC<OrderListCardProps> = ({
         : order.currency === null
           ? "—"
           : formatCurrencyRound(order.totalGbpAtPurchase, order.currency),
-      subline: `${order.id} · ${summarizeLines(order.lines)} · ${formatRelativeTime(order.paidAt)}`,
+      // #4420 — the short reference the guest's receipt shows ("Order
+      // 531147C7"), so host and guest read the same thing; never the raw id.
+      subline: `${buyerOrderReference(order.id) ?? order.id} · ${summarizeLines(order.lines)} · ${formatRelativeTime(order.paidAt)}`,
     };
   }, [order]);
 

@@ -18,7 +18,7 @@ import {
 } from "../hostAdCapabilities.ts";
 
 const BRAND = "brand-1";
-// The migration's matrix (20280717004238): what the RPCs would answer.
+// The migration's matrix (20280803004238): what the RPCs would answer.
 const MATRIX: Record<string, Record<string, boolean>> = {
   owner: {
     plan: true,

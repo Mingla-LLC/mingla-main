@@ -190,7 +190,6 @@
   "unsendBody": "이 채팅의 모든 사람에게서 삭제돼요.",
   "unsendFailed": "보내기를 취소하지 못했어요. 다시 시도해 주세요.",
   "unsendTitle": "이 메시지 보내기를 취소할까요?",
-  "unsentToast": "메시지 보내기 취소됨",
   "yesterday": "어제",
   "you": "나",
   "a11yReaction_other": "{{emoji}}, 반응 {{count}}개",

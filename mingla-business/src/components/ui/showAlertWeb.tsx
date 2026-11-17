@@ -18,8 +18,8 @@ import { create } from "zustand";
 
 import { ConfirmDialog } from "./ConfirmDialog";
 
-import { requestAlertHost } from "./showAlert";
-import type { ShowAlertButton, ShowAlertOptions } from "./showAlert";
+import { requestAlertHost } from "./alertHost";
+import type { ShowAlertButton, ShowAlertOptions } from "./alertHost";
 
 import { nextToastEntryId, useToastStore } from "./toastStore";
 import type { ToastKind } from "./toastTimings";

@@ -177,8 +177,10 @@ function run() {
   // ── T-4: snap heights match the prior modal heights ────────────────────────
   // DismissedCardsSheet: was maxHeight screenHeight*0.8 → ['80%'].
   assert.match(code(dismissed), /\[\s*['"]80%['"]\s*\]/, "T-4 DismissedCardsSheet snap ['80%']");
-  // MessageContextMenu: compact ['28%'].
-  assert.match(code(contextMenu), /\[\s*['"]28%['"]\s*\]/, "T-4 MessageContextMenu snap ['28%']");
+  // MessageContextMenu: [TEST-MOD-APPROVED #4456] the approved design (v2) turns
+  // the actions into a labelled list that sizes to its content, capped at 86%.
+  assert.match(code(contextMenu), /\[\s*['"]86%['"]\s*\]/, "T-4 MessageContextMenu cap ['86%']");
+  assert.match(code(contextMenu), /enableDynamicSizing/, "T-4 MessageContextMenu sizes to its content");
   // BoardSettingsDropdown: was maxHeight "80%" → ['80%'].
   assert.match(code(boardSettings), /\[\s*["']80%["']\s*\]/, "T-4 BoardSettingsDropdown snap ['80%']");
   // [TEST-MOD-APPROVED #3988] FilterDropdown now owns Discover's ['85%'] sheet.
@@ -188,7 +190,13 @@ function run() {
   // PersonHolidayView saves list: tall ['90%'].
   assert.match(code(holiday), /\[\s*['"]90%['"]\s*\]/, "T-4 PersonHolidayView saves-list snap ['90%']");
   // No content-dynamic sizing introduced (Batch-3 off-screen lesson).
+  // [TEST-MOD-APPROVED #4456] MessageContextMenu sizes to its content by the
+  // approved design, clamped by maxDynamicContentSize (the ORCH-1138 pattern).
   for (const [name, src] of SHEETS) {
+    if (name === "MessageContextMenu") {
+      assert.match(code(src), /maxDynamicContentSize=\{/, "T-4 MessageContextMenu: dynamic sizing is clamped");
+      continue;
+    }
     assert.ok(
       !/enableDynamicSizing/.test(code(src)),
       `T-4 ${name}: must use a FIXED snap, not enableDynamicSizing`,

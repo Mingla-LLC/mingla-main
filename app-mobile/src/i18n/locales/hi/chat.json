@@ -190,7 +190,6 @@
   "unsendBody": "यह इस चैट में सभी के लिए हट जाएगा।",
   "unsendFailed": "भेजना वापस नहीं लिया जा सका। फिर से कोशिश करें।",
   "unsendTitle": "यह मैसेज वापस लें?",
-  "unsentToast": "मैसेज वापस लिया गया",
   "yesterday": "कल",
   "you": "आप",
   "a11yReaction_one": "{{emoji}}, {{count}} रिएक्शन",

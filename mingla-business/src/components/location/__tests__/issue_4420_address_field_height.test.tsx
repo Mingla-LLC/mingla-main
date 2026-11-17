@@ -3,8 +3,8 @@
  * 48pt inputs on the trip Basics step. The Host wrapper now hands the shared
  * field a height floor equal to the Host input size.
  *
- * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-
- * SOURCE-PIN); now mounts the real Host AddressInput and reads the token
+ * [TEST-MOD-APPROVED #4420] — was a source-text pin 
+ * (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); now mounts the real Host AddressInput and reads the token
  * bundle it passes to the shared field. The shared field's own use of the
  * optional floor is pinned by the I-4420-HOST-WIRING strict-grep gate.
  *

@@ -65,14 +65,19 @@ DECLARE
   v_second text := public.issue_4420_stay_group_resend_link('44200000-0000-4000-8000-000000000010');
   v_rows int;
   v_contact text;
+  v_country text;
 BEGIN
   -- R-2
   IF v_first <> 'a•••@example.com' OR v_second <> 'a•••@example.com' THEN
     RAISE EXCEPTION 'resend: returns the mask (got %, %)', v_first, v_second;
   END IF;
-  SELECT count(*), min(contact) INTO v_rows, v_contact
+  SELECT count(*), min(contact), min(country_code) INTO v_rows, v_contact, v_country
   FROM public.notification_outbox
   WHERE idempotency_key LIKE 'stay:44200000-0000-4000-8000-000000000010:%:resend:%';
+  -- #1529: the email-only resend writes an explicit NULL country.
+  IF v_country IS NOT NULL THEN
+    RAISE EXCEPTION 'resend: an email row carries no country, got %', v_country;
+  END IF;
   IF v_rows <> 1 THEN
     RAISE EXCEPTION 'resend: two taps in ten minutes queue ONE email, got %', v_rows;
   END IF;

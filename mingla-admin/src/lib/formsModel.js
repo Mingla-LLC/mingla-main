@@ -501,6 +501,8 @@ export const STATUS_FILTERS = Object.freeze([
 export const STATUS_PILL = Object.freeze({ live: ["live", "Live"], draft: ["draft", "Draft"], archived: ["stop", "Archived"] });
 export const DUPLICATED_TOAST = "Duplicated as a draft. It is not on any page yet.";
 export const ARCHIVED_TOAST = "Archived and taken off every page. Answers stay.";
+export const UNARCHIVED_TOAST = "Unarchived as a draft. It is not on any page until you publish it again.";
+export const unarchiveQuestion = (name) => `Unarchive '${name}'? It comes back as a draft, not on any page and with its emails off, until you publish it again. Answers stay.`;
 export const archiveQuestion = (name) => `Archive '${name}'? It is taken off every page and its emails stop. Answers stay.`;
 
 const SPOT_WORDS = Object.freeze({ popup: "Pop-up", "after-steps": "after the steps", "after-hero": "after the hero", details: "Details step", footer: "footer" });

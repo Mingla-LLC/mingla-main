@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4420-STRIPE-WEBHOOK-RETRY-CLASSES | issue #4420 | a webhook processing failure is classified transient, config or permanent; transient and config failures with attempts left are answered non-2xx so the provider redelivers, and a redelivered event lands exactly once
 // Issue #4420 — the Stripe webhook answered 200 when processing failed, so
 // Stripe never redelivered: a missing QR pepper dropped a paid order's
 // finalize for good. These tests drive the REAL processVerifiedStripeEvent

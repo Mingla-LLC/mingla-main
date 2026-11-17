@@ -9,7 +9,7 @@
  *
  * @invariant I-4238-ONE-GOAL-SWITCH
  *   owner: this module (decideGoalPromotion) + the partial unique index
- *          ad_plan_automation_events_once (20280715004238)
+ *          ad_plan_automation_events_once (20280801004238)
  *   rule: at most one switch per plan and app, never in the first 3 days,
  *         never with fewer than 5 days left; every switch is recorded.
  *         Declared beside its tests (_shared/__tests__/

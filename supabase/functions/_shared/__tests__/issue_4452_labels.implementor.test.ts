@@ -116,6 +116,9 @@ Deno.test("T-4.2a–d SC-43–46 each platform receives the creator label in its
   assertEquals(snap.event_name, "SIGN_UP");
   assertEquals(snap.custom_data.content_category, "creator_lead");
   assertEquals(snap.custom_data.event_tag, "creator_lead");
+  // #4238: same field as the browser pixel (item_category), so one Snap rule
+  // matches whichever copy Snap keeps after dedup.
+  assertEquals(snap.custom_data.item_category, "creator_lead");
   const rd = (c.bodies.reddit as { data: { events: Array<Record<string, any>> } }).data.events[0];
   assertEquals(rd.type.tracking_type, "LEAD"); // v3 upper-case standard type (redditEventType, #4238 Z5)
   assertEquals(rd.metadata.products[0].category, "creator_lead");

@@ -120,7 +120,9 @@ describe("issue #1780 — wizard invite plan implementation", () => {
       expect(source).toContain('inviteNavigation?.phase !== "ready"');
       expect(source).toContain("inviteNavigation?.primaryLabel ?? \"Checking…\"");
       expect(source).toContain("refreshAuthoritative()");
-      expect(source).toContain("inviteQuote.selectionHash === invitePlan.selectionHash");
+      // [TEST-MOD-APPROVED #4420] the quote/plan match now lives in the shared
+      // wizardInvitePublishGate every wizard calls.
+      expect(source).toContain("wizardInviteSummaryReady(inviteGateInput)");
       expect(source).toContain("checkingInvitePublish");
     }
     expect(hook.match(/AppState\.addEventListener\("change"/g)).toHaveLength(2);
@@ -246,9 +248,9 @@ describe("issue #1780 — wizard invite plan implementation", () => {
       // layer moved behind the lazy boundary it passes the identical value as
       // a prop on InvitePlanSummaryBridge. Accept either spelling so this
       // keeps asserting WHAT is passed, not how the call happens to be written.
-      expect(source).toMatch(
-        /quoteWhenEmpty(?::\s*|=\{)inviteFlag\.data === true\}?/,
-      );
+      // [TEST-MOD-APPROVED #4420] an empty plan never needs the estimate now,
+      // flag on or off: Publish without invites must not depend on it.
+      expect(source).toMatch(/quoteWhenEmpty=\{false\}/);
       expect(source).toContain("const inviteRollbackReady =");
       expect(source).toContain("inviteFlag.data === false");
       expect(source).toContain("selectedCount === 0");

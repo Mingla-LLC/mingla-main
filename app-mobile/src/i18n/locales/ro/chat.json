@@ -190,7 +190,6 @@
   "unsendBody": "Va fi eliminat pentru toți din această conversație.",
   "unsendFailed": "Nu s-a putut anula trimiterea. Încearcă din nou.",
   "unsendTitle": "Anulezi trimiterea acestui mesaj?",
-  "unsentToast": "Trimitere anulată",
   "yesterday": "Ieri",
   "you": "tu",
   "a11yReaction_few": "{{emoji}}, {{count}} reacții",

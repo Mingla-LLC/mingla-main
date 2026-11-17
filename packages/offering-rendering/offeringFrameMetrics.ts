@@ -21,7 +21,8 @@ export const OFFERING_PREMIUM_FLYER_SHARE = 0.4;
  * react-native-web (position: fixed); native never takes the desktop frame.
  */
 export interface PremiumDesktopBarDockStyle {
-  position: "fixed";
+  // RN's own positions stay in the union so the widening cast is legal.
+  position: ViewStyle["position"] | "fixed";
   left: string;
   width: string;
   bottom: number;

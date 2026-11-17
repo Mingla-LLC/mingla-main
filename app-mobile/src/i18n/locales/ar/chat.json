@@ -190,7 +190,6 @@
   "unsendBody": "ستُزال لدى الجميع في هذه المحادثة.",
   "unsendFailed": "تعذّر إلغاء الإرسال. حاول مرة أخرى.",
   "unsendTitle": "إلغاء إرسال هذه الرسالة؟",
-  "unsentToast": "تم إلغاء الإرسال",
   "yesterday": "أمس",
   "you": "أنت",
   "a11yReaction_few": "{{emoji}}، {{count}} تفاعلات",

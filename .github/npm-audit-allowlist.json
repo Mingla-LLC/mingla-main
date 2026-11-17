@@ -4,7 +4,7 @@
     "Allowlisted GitHub Security Advisories are ignored by the high/critical",
     "ceiling in .github/scripts/npm-audit-ceiling.mjs for mingla-site-cms and",
     "mingla-sites. Dependabot security alerts remain the reporter for these",
-    "entries — CI must not merge-block on an advisory with no patched release.",
+    "entries \u2014 CI must not merge-block on an advisory with no patched release.",
     "Remove an entry as soon as npm publishes a fix and the lockfile can clear it."
   ],
   "advisories": [
@@ -19,6 +19,12 @@
       "package": "graphql-scalars",
       "reason": "Latest @payloadcms/graphql 3.92.1 still pins graphql-scalars 1.22.2; patched 2.0.1 is a transitive major without a compatible Payload release. Tracked on #2830.",
       "addedForIssue": 2830
+    },
+    {
+      "ghsa": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "reason": "Advisory range is <=4.0.7 with firstPatchedVersion null; npm latest is still 4.0.7. Reaches Next, Payload, Vite and Vitest only through picomatch. Remove when a patched picomatch ships. Found on #4420.",
+      "addedForIssue": 4420
     }
   ]
 }

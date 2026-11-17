@@ -92,8 +92,11 @@ BEGIN
 
   v_bucket := floor(extract(epoch FROM pg_catalog.now()) / 600)::bigint;
 
+  -- Email leg only: a country cannot be derived from an email (#1529), so
+  -- country_code is an explicit NULL, the same as the Stay producer's email leg.
   INSERT INTO public.notification_outbox (
-    category_key, user_id, contact, brand_id, payload, idempotency_key
+    category_key, user_id, contact, brand_id, payload, idempotency_key,
+    country_code
   ) VALUES (
     v_category,
     v_group.user_id,
@@ -115,7 +118,8 @@ BEGIN
       END,
       'resent', true
     ),
-    'stay:' || v_group.id || ':' || v_category || ':resend:' || v_bucket
+    'stay:' || v_group.id || ':' || v_category || ':resend:' || v_bucket,
+    NULL
   ) ON CONFLICT (idempotency_key) DO NOTHING;
 
   RETURN public.issue_4420_mask_email(v_email);

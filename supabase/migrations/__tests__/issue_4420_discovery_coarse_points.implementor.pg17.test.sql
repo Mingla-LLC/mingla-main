@@ -5,7 +5,7 @@
 -- discover-merged-events and discover-cards edge functions, anon for
 -- pg_discover_business_events); everything rolls back.
 --
--- MINGLA-INVARIANT: I-4420-DISCOVERY-COARSE-POINTS | issue #4420 | while an experience or event hides its address (hideAddressUntilTicket true or absent), discover_v2_items, discover_v2_city_context, discover_v2_event_base (and pg_discover_business_events through it) filter and order it at its one-decimal point and discover_v2_nearest_city returns that point, never the exact pin; a visible address is still measured and returned exactly; anon holds no EXECUTE on pg_eligible_experiences_for_deck and no SELECT on events.venue_tax_address, while service_role, authenticated and the base-table readers keep theirs (D-ITEMS, D-CTX, D-EVENTS, D-NEAREST, V-*, G-DECK, G-TAX, O-EXACT)
+-- MINGLA-INVARIANT: I-4420-DISCOVERY-COARSE-POINTS | issue #4420 | while an offering hides its address, discovery filters, orders and returns it at its one-decimal coarse point; a visible address is measured and returned exactly; role grants on the deck reader and event tax address match the contract (D-ITEMS, D-CTX, D-EVENTS, D-NEAREST, V-*, G-DECK, G-TAX, O-EXACT)
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -161,21 +161,24 @@ BEGIN
 END
 $$;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44230000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44230000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44230000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420d_exact('owner');
 RESET ROLE;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44230000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44230000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44230000-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420d_exact('team');
 RESET ROLE;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44230000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44230000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44230000-0000-4000-8000-0000000000a3', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420d_exact('guest');
 RESET ROLE;
-SELECT set_config('request.jwt.claims', '', true);
+SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 
 -- ---------------------------------------------------------------------------
 -- Verdicts.

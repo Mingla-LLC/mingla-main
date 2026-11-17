@@ -71,6 +71,7 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
 import {
@@ -550,6 +551,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
       : ticketLink.ticket === null
         ? []
         : [ticketLink.ticket];
+  // #4420 — an empty cart totals zero in the event's own currency (the cart
+  // has no currency until a ticket is in it). A lone dash read as a bar.
+  const emptyTotalCurrency =
+    visibleTickets.find((ticket) => typeof ticket.currency === "string" && ticket.currency.length > 0)
+      ?.currency ??
+    (typeof event.currency === "string" && event.currency.length > 0 ? event.currency : null);
+  const emptyTotalLabel =
+    emptyTotalCurrency === null ? "—" : formatCurrency(0, emptyTotalCurrency);
 
   const checkoutLifecycle = resolveEventCheckoutLifecycleGate(
     event,
@@ -667,14 +676,19 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           {/* Event mini-card: cover hue band + name + date line */}
           {/* #4420 — on desktop the ticket stub carries this. */}
           <View style={[styles.miniCard, wide ? styles.hiddenOnWide : null]}>
-            <EventCoverMedia
-              hue={event.coverHue}
-              mediaUrl={event.coverMediaUrl}
-              mediaType={event.coverMediaType}
-              radius={0}
-              label=""
-              style={styles.miniCover}
-            />
+            {/* #4420 — no cover: the host's colour, as on the public page. */}
+            {typeof event.coverMediaUrl === "string" && event.coverMediaUrl.trim().length > 0 ? (
+              <EventCoverMedia
+                hue={event.coverHue}
+                mediaUrl={event.coverMediaUrl}
+                mediaType={event.coverMediaType}
+                radius={0}
+                label=""
+                style={styles.miniCover}
+              />
+            ) : (
+              <CheckoutCoverFallback style={styles.miniCover} />
+            )}
             <Text style={styles.miniTitle} numberOfLines={2}>
               {event.name.trim().length > 0 ? event.name : "Untitled event"}
             </Text>
@@ -887,7 +901,9 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           <View style={styles.subtotalRow}>
             <Text style={styles.subtotalLabel}>Total</Text>
             <Text style={styles.subtotalValue}>
-              {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
+              {/* #4420 — an empty cart totals zero in the event's currency
+                  (a lone dash read as a bar). */}
+              {totals.isEmpty ? emptyTotalLabel : totals.isFree ? "Free" : headlineAllIn}
             </Text>
           </View>
           <Button

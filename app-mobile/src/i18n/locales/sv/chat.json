@@ -190,7 +190,6 @@
   "unsendBody": "Det tas bort för alla i den här chatten.",
   "unsendFailed": "Kunde inte ångra. Försök igen.",
   "unsendTitle": "Ångra det här meddelandet?",
-  "unsentToast": "Meddelandet togs bort",
   "yesterday": "Igår",
   "you": "du",
   "a11yReaction_one": "{{emoji}}, {{count}} reaktion",

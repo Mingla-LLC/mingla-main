@@ -4,7 +4,7 @@
 //
 // @invariant I-4238-ONE-GOAL-SWITCH
 //   owner: supabase/functions/_shared/adGoalLadder.ts decideGoalPromotion +
-//          ad_plan_automation_events_once (20280715004238)
+//          ad_plan_automation_events_once (20280801004238)
 //   rule: one switch per plan and app; a second sweep or a concurrent sweep
 //         never switches again; a failed switch leaves the old ad set running.
 

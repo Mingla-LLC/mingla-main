@@ -119,6 +119,8 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (exportName === "LazyChangeSummaryModal") return { ChangeSummaryModal: leaf("ChangeSummaryModal") };
     // #4420 — the unsaved-changes rules and guard hook are pure / web-inert: real modules.
     if (exportName === "unsavedChangesGuard") return jest.requireActual("../../../utils/unsavedChangesGuard");
+    // #4420 — the wizards' invite publish gate (pure; real module).
+    if (exportName === "wizardInvitePublishGate") return jest.requireActual("../../invites/wizardInvitePublishGate");
     if (exportName === "useUnsavedChangesGuard") return jest.requireActual("../../../hooks/useUnsavedChangesGuard");
     throw new Error(`Unclassified host boundary: ${name}`);
   };

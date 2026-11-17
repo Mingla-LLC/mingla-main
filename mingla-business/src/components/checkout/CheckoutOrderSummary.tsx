@@ -23,6 +23,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { materials, radius, scrim, space } from "../../constants/designSystem";
 import { activeCheckoutPalette, checkoutStyles, color } from "./checkoutTheme";
+import { CheckoutCoverFallback } from "./CheckoutCoverFallback";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCurrency } from "../../utils/currency";
 import { useCart } from "./CartContext";
@@ -31,9 +32,13 @@ import { useCart } from "./CartContext";
 const SUMMARY_WIDTH = 400;
 const STUB_BAND_HEIGHT = 250;
 
-/** react-native-web passes `position: sticky`; RN's type has no name for it. */
+/**
+ * react-native-web passes `position: sticky`; RN's type has no name for it.
+ * The union keeps RN's own positions so the widening cast below is a legal
+ * comparison (the PublicVenueScreen `WebVenueViewStyle` pattern).
+ */
 interface WebStickyStyle {
-  position: "sticky";
+  position: ViewStyle["position"] | "sticky";
   top: number;
 }
 const stickyStub = (): StyleProp<ViewStyle> => {
@@ -192,7 +197,7 @@ export const CheckoutOrderSummary: React.FC<CheckoutOrderSummaryProps> = ({
                 accessibilityIgnoresInvertColors
               />
             ) : (
-              <View style={[StyleSheet.absoluteFill, styles.bandFallback]} />
+              <CheckoutCoverFallback style={StyleSheet.absoluteFill} />
             )}
             <LinearGradient
               colors={scrim.cardPhoto.colors}
@@ -278,7 +283,6 @@ const styles = checkoutStyles(() => StyleSheet.create({
     height: STUB_BAND_HEIGHT,
     justifyContent: "flex-end",
   },
-  bandFallback: { backgroundColor: color.accent },
   bandIdentity: { padding: space[5], gap: 6 },
   bandEyebrow: {
     fontSize: 11.5,

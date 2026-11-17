@@ -100,6 +100,9 @@ jest.mock("react-native-keyboard-controller", () => ({
   KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
   KeyboardToolbar: "KeyboardToolbar@library",
   KeyboardProvider: ({ children }: { children?: React.ReactNode }) => children,
+  // #4420 — mock-surface widening only: SmartScrollView reads the focused
+  // field's height from the library's focused-input value; nothing is focused.
+  useReanimatedFocusedInput: () => ({ input: null }),
 }));
 
 jest.mock("react-native-reanimated", () => {

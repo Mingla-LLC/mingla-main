@@ -215,12 +215,18 @@ export default function ReconciliationRoute(): React.ReactElement {
       // destination. Native dismissed → silent (no toast — user knew they
       // dismissed; pre-rework wrongly toasted success on this path).
       // Loaded on press: the CSV writer stays out of the boot chunk (#3827, orch-1083).
-      const { exportReconciliationCsv } = await import("../../../src/utils/guestCsvExport");
+      // issue #3281 — the "Booked start" cell comes from the per-date CSV
+      // module, in the event's own zone (never the phone's).
+      const [{ exportReconciliationCsv }, { bookedStartCsvCell }] = await Promise.all([
+        import("../../../src/utils/guestCsvExport"),
+        import("../../../src/utils/guestCsvDayOrder"),
+      ]);
       const result = await exportReconciliationCsv({
         event,
         orders: eventOrders,
         doorSales: eventDoorSales,
         summary,
+        bookedCell: (iso) => bookedStartCsvCell(iso, event.timezone),
       });
       if (result.method === "downloaded") {
         showToast("Downloaded reconciliation report.");

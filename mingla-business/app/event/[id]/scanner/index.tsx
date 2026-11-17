@@ -75,6 +75,7 @@ import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { doorExtrasLine, readDoorExtras } from "../../../../src/components/scanner/doorExtras";
+import { doorBookedLine } from "../../../../src/utils/bookedStart";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -146,6 +147,8 @@ interface ResultOverlayState {
   detail?: string;
   /** issue #3281 — what the guest is still owed; never clipped. */
   extras?: string;
+  /** issue #3281 — "Booked for Sat, Nov 14, 7:30 PM"; never clipped. */
+  booked?: string;
 }
 
 interface ResultOverlaySpec {
@@ -405,12 +408,17 @@ export default function ScannerCameraRoute(): React.ReactElement {
               ? doorExtrasLine(readDoorExtras(result.extras), admittedId)
               : null;
           const extras = extrasLine ?? undefined;
+          // issue #3281 — the start this guest booked, in the offering's zone.
+          const booked =
+            doorBookedLine(kind, result.bookedStartAt, event.timezone) ??
+            undefined;
           if (kind === "success") {
             showResult({
               kind,
               message: `${result.buyerName ?? "Guest"} checked in`,
               detail: result.ticketName ?? "Ticket",
               extras,
+              booked,
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -437,7 +445,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             } else {
               message = "Ticket not found";
             }
-            showResult({ kind, message, detail, extras });
+            showResult({ kind, message, detail, extras, booked });
             void Haptics.notificationAsync(
               kind === "duplicate" ||
                 kind === "not_yet_open" ||
@@ -568,6 +576,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
               message: copy.message,
               detail: copy.detail,
               extras,
+              booked,
             });
           } catch {
             // Keep the authoritative base overlay.
@@ -803,7 +812,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
               accessibilityRole="button"
               // issue #3281 — a screen reader hears the result, the ticket and
               // what the guest is still owed, not only how to dismiss it.
-              accessibilityLabel={[overlay.message, overlay.detail, overlay.extras]
+              accessibilityLabel={[overlay.message, overlay.detail, overlay.booked, overlay.extras]
                 .filter((part): part is string => typeof part === "string" && part.length > 0)
                 .join(". ")}
               accessibilityHint="Dismisses the scan result"
@@ -827,6 +836,11 @@ export default function ScannerCameraRoute(): React.ReactElement {
               {overlay.detail !== undefined ? (
                 <Text style={styles.overlayDetail} numberOfLines={2}>
                   {overlay.detail}
+                </Text>
+              ) : null}
+              {overlay.booked !== undefined ? (
+                <Text style={styles.overlayDetail} testID="scan-result-booked">
+                  {overlay.booked}
                 </Text>
               ) : null}
               {overlay.extras !== undefined ? (
@@ -908,6 +922,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             eventId={event.id}
             noun={kindCfg.noun}
             onAdmitted={handleNameAdmitted}
+            timeZone={event.timezone}
           />
         </Suspense>
       ) : null}

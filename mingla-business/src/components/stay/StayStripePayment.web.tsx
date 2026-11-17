@@ -11,6 +11,7 @@ import type { StayPaymentSession } from "@mingla/brand-rendering/stayGuest";
 import type { ThemePalette } from "@mingla/offering-rendering";
 
 import { color } from "../../constants/designSystem";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 import { stayPaymentAppearance } from "./stayPaymentAppearance";
 interface Props {
   session: Extract<StayPaymentSession, { provider: "stripe" }>;
@@ -61,7 +62,7 @@ export function StayStripePayment({
           clientSecret: session.clientSecret,
           appearance:
             palette !== undefined
-              ? stayPaymentAppearance(palette)
+              ? stayPaymentAppearance(palette, accent)
               : {
                   theme: "night",
                   variables: { colorPrimary: accent, borderRadius: "12px" },
@@ -129,7 +130,7 @@ export function StayStripePayment({
         style={{
           ...styles.button,
           ...(palette !== undefined
-            ? { backgroundColor: palette.accent, color: palette.accentText }
+            ? { ...accentFill(palette), color: palette.accentText }
             : null),
           opacity: submitting || !ready ? 0.55 : 1,
         }}

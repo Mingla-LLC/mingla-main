@@ -672,7 +672,7 @@ const styles = StyleSheet.create({
     backgroundColor: color.warning,
   },
   // #4420: every flex child of a diff row can shrink below its longest word
-  // (min-width:auto made an unbroken name push the old value to a sliver and
+  // (min-width:auto let an unbroken name squeeze the old value to a sliver and
   // run past the row edge); text then wraps at word boundaries and only breaks
   // inside a word that is longer than the whole column.
   diffContent: {

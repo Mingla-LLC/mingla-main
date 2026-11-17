@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useTranslation } from 'react-i18next';
 import { receivedBubbleTokens } from '../../constants/chatTokens';
 
 interface ReplyQuoteBlockProps {
@@ -10,6 +11,11 @@ interface ReplyQuoteBlockProps {
   variant: 'sent' | 'received';
   onPress?: () => void;
   isDeleted?: boolean;
+  /**
+   * Issue #4456: why the original is not shown. 'unsent' reads "Message
+   * unsent"; anything else (deleted for me, not loaded) "Message not available".
+   */
+  deletedState?: 'unsent' | 'unavailable';
 }
 
 /**
@@ -24,8 +30,14 @@ export function ReplyQuoteBlock({
   variant,
   onPress,
   isDeleted = false,
+  deletedState = 'unavailable',
 }: ReplyQuoteBlockProps): React.ReactElement {
+  const { t } = useTranslation(['chat']);
   const isSent = variant === 'sent';
+  const deletedText = deletedState === 'unsent' ? t('chat:replyQuoteUnsent') : t('chat:replyQuoteUnavailable');
+  const a11yLabel = senderName
+    ? t('chat:a11yReplyingTo', { name: senderName, text: isDeleted ? deletedText : previewText })
+    : t('chat:a11yReplyingToUnknown', { text: isDeleted ? deletedText : previewText });
 
   const handlePress = (): void => {
     if (onPress) {
@@ -41,7 +53,8 @@ export function ReplyQuoteBlock({
       disabled={!onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`Replying to ${senderName}: ${isDeleted ? 'Message deleted' : previewText}. Double-tap to scroll to original.`}
+      accessibilityLabel={a11yLabel}
+      accessibilityHint={onPress ? t('chat:a11yReplyJumpHint') : undefined}
     >
       {/* Accent bar */}
       <View style={[styles.accentBar, isSent ? styles.accentBarSent : styles.accentBarReceived]} />
@@ -56,7 +69,7 @@ export function ReplyQuoteBlock({
         </Text>
         {isDeleted ? (
           <Text style={[styles.previewText, isSent ? styles.deletedTextSent : styles.deletedText]}>
-            Message deleted
+            {deletedText}
           </Text>
         ) : (
           <Text

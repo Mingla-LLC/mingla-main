@@ -124,8 +124,10 @@ export const VenueOrderingStickyBar: React.FC<VenueOrderingStickyBarProps> = ({
 // react-native-web passes `position: fixed` through; RN's ViewStyle has no name
 // for it, so the web-only shape is typed here and widened once (the same
 // pattern as offeringFrameMetrics' `premiumDesktopBarDockStyle`).
+// The union keeps RN's own positions so the widening cast below is a legal
+// comparison (react-native-web passes `fixed`; RN's type has no name for it).
 interface PhoneBarDockStyle {
-  position: "fixed";
+  position: ViewStyle["position"] | "fixed";
   left: number;
   right: number;
   bottom: number;

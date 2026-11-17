@@ -3,7 +3,7 @@
 -- while the host hides the address until booking. Runs on the fully replayed PG17
 -- schema; every read below runs as the real caller role; everything rolls back.
 --
--- MINGLA-INVARIANT: I-4420-EXPERIENCE-STOP-DETAIL-VISIBILITY | issue #4420 | while an experience hides its address (hideAddressUntilTicket true or absent), anon and a signed-in caller who did not book get no stop street, exact pin or map place id through experience_stops (rows and WHERE filters), pg_eligible_experiences_for_deck (payload and radius filter), links_page_week, events.theme, pg_public_experience_by_slug, pg_public_experiences_by_brand or pg_brand_experiences_for_place; the owner, a team member and a booked guest still read the exact stop rows; a visible address is unchanged; the experience writers store the area line, not the street (A-DECK, A-RADIUS, A-TABLE, A-FILTER, A-THEME, A-PUBLIC, A-LINKS, U-*, O-TABLE, T-TABLE, B-TABLE, B-OTHER, V-*, W-CREATE, G-ACL)
+-- MINGLA-INVARIANT: I-4420-EXPERIENCE-STOP-DETAIL-VISIBILITY | issue #4420 | experience stop detail follows the address visibility rule: while hidden, only the host, brand team, booked guests and the service role read exact stop rows; a visible address is unchanged; writers store the area line (A-*, U-*, O-TABLE, T-TABLE, B-*, V-*, W-CREATE, G-ACL)
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -172,29 +172,33 @@ SELECT pg_temp.t4420s_observe_deck('anon');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44220000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44220000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44220000-0000-4000-8000-0000000000a4', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420s_observe('other');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44220000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44220000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44220000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420s_observe('owner');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44220000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44220000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44220000-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420s_observe('team');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44220000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44220000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44220000-0000-4000-8000-0000000000a3', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420s_observe('guest');
 RESET ROLE;
-SELECT set_config('request.jwt.claims', '', true);
+SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 
 -- A payload leaks when it carries a street, the exact pin (35.7796123 / -78.6382456 /
 -- 35.7811111 / -78.6399999, any 3+ decimals of them) or a map place id.
@@ -286,7 +290,8 @@ SELECT pg_temp.t4420s_check(
 
 -- W-CREATE: a new experience stores the area line, not the street.
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44220000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44220000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44220000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 CREATE TEMP TABLE t4420s_created AS
   SELECT public.biz_create_experience('44220000-0000-4000-8000-0000000000b1', jsonb_build_object(
@@ -295,7 +300,7 @@ CREATE TEMP TABLE t4420s_created AS
       'place_name', 'Created stop', 'address', '7 New Street, Raleigh, NC', 'city', 'Raleigh',
       'country_code', 'us', 'place_id', 'gplace-new', 'lat', 35.7, 'lng', -78.6))), false) AS r;
 RESET ROLE;
-SELECT set_config('request.jwt.claims', '', true);
+SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 SELECT pg_temp.t4420s_check(
   (SELECT e.theme #>> '{experience_meta,venue_text}' FROM public.events e
     WHERE e.brand_id = '44220000-0000-4000-8000-0000000000b1' AND e.title = 'Stop detail created') = 'Raleigh, US',

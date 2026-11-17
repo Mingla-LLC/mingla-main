@@ -11,7 +11,7 @@
 
 import React, { Suspense } from "react";
 
-import { useAlertHostWanted } from "./showAlert";
+import { useAlertHostWanted } from "./alertHost";
 
 const LazyWebAlertLayer = React.lazy(() => import("./showAlertWeb"));
 

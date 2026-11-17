@@ -19,7 +19,6 @@ import { describe, expect, test } from "@jest/globals";
 const read = (rel: string): string =>
   readFileSync(path.join(process.cwd(), rel), "utf8");
 
-const serviceSrc = read("src/services/publicExperienceService.ts");
 const previewSrc = read("src/components/experience/ExperiencePreview.tsx");
 const routeSrc = read("app/exp/[brandSlug]/[experienceSlug].tsx");
 const pickerSrc = read("src/components/experience/ExperienceReservePicker.tsx");
@@ -52,11 +51,10 @@ describe("ORCH-1138 Leg 3 — experience page redesign", () => {
   });
 
   // ── SC-2 read-path ──
-  test("SC-2 the service reads the real authored stop blurb + coords + vibe intents", () => {
-    expect(serviceSrc).toMatch(/ai_description, lat, lng/); // widened SELECT
-    expect(serviceSrc).toMatch(/description:\s*\n?\s*typeof s\.ai_description/);
-    expect(serviceSrc).toMatch(/intents:\s*readIntents\(event\.experience_intents\)/);
-  });
+  // SC-2 read-path (authored stop blurb + coords + vibe intents) is now a
+  // behaviour test: #4420 moved the stops onto the public reader RPC, so the
+  // old SELECT-string pin went stale. See
+  // src/services/__tests__/issue4420ExperienceByIdStopsFromPublicReader.test.ts.
 
   test("SC-2 the preview delegates vibe chips + per-stop blurb + stop-1 map to the shared ExperienceOfferingBody (ORCH-1183)", () => {
     // ORCH-1183 [experience-standardize] — the hand-mirrored FoundationExperiencePreview

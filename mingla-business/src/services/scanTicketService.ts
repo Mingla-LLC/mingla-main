@@ -39,6 +39,8 @@ export interface ServerScanResult {
   eventDateId?: string | null;
   /** issue #3281 — extras this order still owes; absent when none. */
   extras?: unknown;
+  /** issue #3281 — ISO start the guest booked; absent when none. */
+  bookedStartAt?: string | null;
 }
 
 export type ScanTicketErrorCode =

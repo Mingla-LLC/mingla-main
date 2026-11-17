@@ -278,8 +278,12 @@ test.describe('#2771 → #2331 independent browser privacy boundary', () => {
       const { context, page, oracle } = await newSeededPage(browser, 'fresh')
       await page.goto(`http://127.0.0.1:42769/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
       await expect(page.getByTestId('privacy-strip')).toBeVisible()
-      const reserve = page.getByRole('button', { name: 'Reserve a table', exact: true })
+      // #4420 — the venue now offers Reserve in the glass bar AND inside the
+      // page, so the accessible name alone matches two buttons. Target the
+      // bar's own action (the #2729 CTA anchor) and keep the name assertion.
+      const reserve = page.getByTestId('issue-2729-reserve-cta')
       await expect(reserve).toBeVisible()
+      await expect(reserve).toHaveAccessibleName('Reserve a table')
       await reserve.click()
       await expect(page.getByTestId('issue-2769-sheet')).toBeVisible()
       await page.getByTestId('privacy-strip').click()
@@ -289,7 +293,7 @@ test.describe('#2771 → #2331 independent browser privacy boundary', () => {
       await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), PRIVACY_KEY)).toContain('"ads":false')
       const marker = oracle.urls.length
       await page.reload({ waitUntil: 'domcontentloaded' })
-      await expect(page.getByRole('button', { name: 'Reserve a table', exact: true })).toBeVisible()
+      await expect(page.getByTestId('issue-2729-reserve-cta')).toBeVisible()
       await assertAnalyticsDark(context, page, oracle, marker)
       expect(requestIndexes(oracle, AD_REQUEST, marker)).toEqual([])
       await context.close()
