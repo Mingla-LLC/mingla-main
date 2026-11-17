@@ -61,7 +61,7 @@ export type InviteNavigationPhase = "checking" | "saving" | "error" | "ready";
 
 export interface InviteNavigationState {
   phase: InviteNavigationPhase;
-  primaryLabel: "Skip invites" | "Review" | "Checking…" | "Saving…" | "Try again";
+  primaryLabel: "Skip invites" | "Review" | "Continue" | "Checking…" | "Saving…" | "Try again";
   blocked: boolean;
   retry: () => void;
 }
@@ -220,9 +220,17 @@ export function InvitePeopleStep({
   );
   const isDirty = desiredIds !== null && !sameIds(visibleIds, persistedIds);
   const isChecking = model.plan.isPending || model.quote.isPending || model.quote.isFetching;
-  const hasBlockingError = model.plan.isError || plan === null || model.quote.isError ||
-    (plan !== null && !isChecking && !quoteIsCurrent) || isDirty ||
-    dirtyDescription !== null || saveError !== null;
+  // #4420 — two kinds of failure. An UNSAVED selection (a change the server
+  // has not confirmed) holds Continue on "Try again" so it is never lost. A
+  // failed READ (the saved list or the delivery estimate would not load) is
+  // not the host's to fix: the step shows the error inline with its own Try
+  // again and Continue still moves on to Preview, where Publish keeps its own
+  // invite guard. Before this, a local or transient estimate failure left the
+  // host on a "Try again" that could never succeed.
+  const hasUnsavedSelection = isDirty || dirtyDescription !== null || saveError !== null ||
+    pendingReceipt.current !== null;
+  const hasReadFailure = model.plan.isError || plan === null || model.quote.isError ||
+    (plan !== null && !isChecking && !quoteIsCurrent);
 
   const retry = () => {
     if (pendingReceipt.current !== null) {
@@ -243,13 +251,15 @@ export function InvitePeopleStep({
 
   const navigation: InviteNavigationState = isSaving
     ? { phase: "saving", primaryLabel: "Saving…", blocked: true, retry }
-    : isChecking
-      ? { phase: "checking", primaryLabel: "Checking…", blocked: true, retry }
-      : hasBlockingError
-        ? { phase: "error", primaryLabel: "Try again", blocked: false, retry }
+    : hasUnsavedSelection
+      ? { phase: "error", primaryLabel: "Try again", blocked: false, retry }
+      : isChecking && !model.plan.isError
+        ? { phase: "checking", primaryLabel: "Checking…", blocked: true, retry }
         : {
           phase: "ready",
-          primaryLabel: plan.selectedCount === 0 ? "Skip invites" : "Review",
+          primaryLabel: hasReadFailure || plan === null
+            ? "Continue"
+            : plan.selectedCount === 0 ? "Skip invites" : "Review",
           blocked: false,
           retry,
         };
@@ -492,8 +502,9 @@ export function InvitePeopleStep({
       actionLabel="Leave this flow" onAction={onProtectedFlowExit} />;
   }
   if (model.plan.isError || plan === null) {
-    return <InviteStepState title="We couldn’t load your invite list" description="Try again before continuing so your selection is not lost."
-      actionLabel="Try again" onAction={() => void model.refreshAuthoritative()} />;
+    return <InviteStepState title="We couldn’t load your invite list"
+      description="Try again, or continue without changing invites. Publish checks your invites again."
+      actionLabel="Try again" onAction={() => void model.refreshAuthoritative().catch(() => undefined)} />;
   }
 
   return (
@@ -558,7 +569,7 @@ export function InvitePeopleStep({
       />
       {dirtyDescription ? <Text accessibilityRole="alert" style={styles.dirty}>{dirtyDescription}</Text> : null}
       <InviteQuoteCard quote={quoteIsCurrent ? quote : null} loading={isChecking} error={model.quote.isError}
-        channels={channels} />
+        channels={channels} onRetry={() => void model.refreshAuthoritative().catch(() => undefined)} />
       {saveError ? <View style={styles.inlineError}><Text accessibilityRole="alert" style={styles.error}>{saveError}</Text>
         {staleConflict ? <Button label="Review changed selection" size="sm" variant="secondary"
           onPress={() => { setPickerOpen(true); setStaleConflict(false); }} /> : null}</View> : null}
@@ -817,10 +828,13 @@ export function InviteQuoteCard(props: {
   error: boolean;
   /** #4273 — the ticked methods; the line and the text cost follow them. */
   channels?: readonly WizardInviteChannel[] | null;
+  /** #4420 — re-reads the estimate; the step still lets the host continue. */
+  onRetry?: () => void;
 }) {
   if (props.loading) return <View style={styles.quoteCard}><Text style={styles.sectionTitle}>Invite delivery</Text><Text style={styles.muted}>Checking…</Text></View>;
-  if (props.error || props.quote === null) return <View style={styles.quoteCard}><Text style={styles.sectionTitle}>Invite delivery</Text>
-    <Text style={styles.error}>Delivery estimate unavailable. Refresh before publishing.</Text></View>;
+  if (props.error || props.quote === null) return <View style={styles.quoteCard} testID="invite-quote-unavailable"><Text style={styles.sectionTitle}>Invite delivery</Text>
+    <Text accessibilityRole="alert" style={styles.error}>Delivery estimate unavailable. You can continue; Publish checks it again.</Text>
+    {props.onRetry ? <Button label="Try again" size="sm" variant="secondary" onPress={props.onRetry} /> : null}</View>;
   const q = props.quote;
   const channels = props.channels ?? null;
   const textChosen = channels === null || channels.includes("sms");
