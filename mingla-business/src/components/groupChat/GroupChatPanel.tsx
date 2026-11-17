@@ -67,6 +67,10 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
   const insets = useSafeAreaInsets();
   const chat = useEventGroupChat(eventId ?? null, brandId ?? null);
   const moderation = useEventGroupChatModeration(chat.conversation?.id ?? null);
+  // #4459: the Guest chat speaks as its brand. Without a brand name (an older
+  // or partial conversation row) the copy falls back to the plain wording
+  // rather than printing "Message as undefined".
+  const postingAs = chat.conversation?.name?.trim() || null;
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
   const [moderationOpen, setModerationOpen] = useState(false);
@@ -181,7 +185,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
             {chat.conversation?.event_name ?? "Group chat"}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            {chat.conversation ? `Posting as ${chat.conversation.name}` : "Read, reply, and moderate your guests"}
+            {postingAs ? `Posting as ${postingAs}` : "Read, reply, and moderate your guests"}
           </Text>
         </View>
         <Pressable
@@ -230,7 +234,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
               // Team posts read as the brand (the team also sees who sent them);
               // guests by their own name.
               const fromBrand = message.sender_kind === "brand";
-              const brandName = chat.conversation?.name ?? "Your brand";
+              const brandName = postingAs ?? "Your brand";
               const senderLabel = fromBrand
                 ? `Sent as ${brandName} by ${mine ? "you" : message.author_name ?? "a teammate"}`
                 : mine
@@ -333,7 +337,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
               <TextInput
                 value={composer}
                 onChangeText={setComposer}
-                placeholder={chat.conversation ? `Message as ${chat.conversation.name}` : "Write a reply"}
+                placeholder={postingAs ? `Message as ${postingAs}` : "Write a reply"}
                 placeholderTextColor={color.text3}
                 style={styles.input}
                 multiline
