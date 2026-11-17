@@ -1177,6 +1177,7 @@
         "mingla-site-cms/src/migrations/20261116_150000_issue_4453_booking_blocks.ts",
         "mingla-sites/public/designs/_shared/blocks-2.css",
         "mingla-sites/src/designs/shared/blocks/Booking.tsx",
+        "mingla-sites/src/designs/voyage/blocks/Hero.tsx",
         "mingla-sites/src/designs/shared/chrome/Handoff.tsx",
         "mingla-sites/src/lib/bookingFeed.ts",
         "mingla-sites/src/lib/csp.ts",
