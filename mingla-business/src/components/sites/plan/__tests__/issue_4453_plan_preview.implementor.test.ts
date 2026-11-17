@@ -57,11 +57,10 @@ describe("#4453 M10 plan preview (Host)", () => {
     expect(chooser).toMatch(/Platform\.OS === "web" \|\| index === active/);
   });
 
-  it("the fixture harness is dev-only: it redirects in a release build and only __DEV__ exempts it from sign-in", () => {
-    const harness = readFileSync(join(__dirname, "../../../../../app/__dev-plan-preview.tsx"), "utf8");
+  it("the fixture harness is dev-only: it redirects in a release build and reads no auth", () => {
+    const harness = readFileSync(join(__dirname, "../../../../../app/b/__dev-plan-preview.tsx"), "utf8");
     expect(harness).toMatch(/if \(!__DEV__\) return <Redirect href="\/" \/>;/);
-    const layout = readFileSync(join(__dirname, "../../../../../app/_layout.tsx"), "utf8");
-    expect(layout).toMatch(/const devHarness = __DEV__ && pathname === "\/__dev-plan-preview";/);
+    expect(harness).not.toMatch(/useAuth/);
     // The chooser itself never reads the fixture.
     expect(readFileSync(join(__dirname, "../PlanPreviewChooser.tsx"), "utf8")).not.toMatch(/EXPO_PUBLIC_PLAN_PREVIEW_FIXTURE/);
     expect(readFileSync(join(__dirname, "../../../../sites/planPreviewApi.ts"), "utf8")).not.toMatch(/EXPO_PUBLIC_PLAN_PREVIEW_FIXTURE/);

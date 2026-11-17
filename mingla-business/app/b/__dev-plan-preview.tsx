@@ -2,20 +2,21 @@ import React, { useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, type Text as RNText } from "react-native";
 import { Redirect } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { brandSiteKeys } from "../src/sites/brandSiteKeys";
-import { normalizePlanPreview } from "../src/sites/planPreviewApi";
-import { normalizeSitePlan } from "../src/sites/sitePlanState";
-import { defaultPreviewPreference } from "../src/sites/previewDevice";
-import { WebsiteProvider, type WebsiteContextValue } from "../src/components/sites/website/WebsiteContext";
-import { PlanPreviewChooser } from "../src/components/sites/plan/PlanPreviewChooser";
-import { PlanDesignPart } from "../src/components/sites/plan/PlanDesignPart";
+import { brandSiteKeys } from "../../src/sites/brandSiteKeys";
+import { normalizePlanPreview } from "../../src/sites/planPreviewApi";
+import { normalizeSitePlan } from "../../src/sites/sitePlanState";
+import { defaultPreviewPreference } from "../../src/sites/previewDevice";
+import { WebsiteProvider, type WebsiteContextValue } from "../../src/components/sites/website/WebsiteContext";
+import { PlanPreviewChooser } from "../../src/components/sites/plan/PlanPreviewChooser";
+import { PlanDesignPart } from "../../src/components/sites/plan/PlanDesignPart";
 
 /**
  * #4453 milestone 10 — DEV-ONLY harness for "See your site in three styles",
  * so the chooser, the plan bar, the three previews, the confirm sheet and the
  * ✕ warning can be opened without a deployed Core. Never in a release build:
- * `__DEV__` is false there and this route redirects home (the auth-gate
- * exemption in _layout.tsx is `__DEV__`-only too). The plan-preview answer is
+ * `__DEV__` is false there and this route redirects home. It sits under the
+ * anon-tolerant `/b/` prefix so it opens signed out without touching the auth
+ * gate (it reads no auth and no brand data). The plan-preview answer is
  * a fixture passed at bundle time (EXPO_PUBLIC_PLAN_PREVIEW_FIXTURE, the JSON
  * Core would send); the renders come from a local `smoke:prod -- --serve`.
  */

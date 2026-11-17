@@ -423,10 +423,7 @@ function RootLayoutInner(): React.ReactElement {
   // that redirects to the route it governs re-triggers navigation every render
   // → React #185 → torn-down tree → white screen. When already at sign-in we
   // render the Stack so `index.tsx` shows BusinessWelcomeScreen instead.
-  // #4453 M10 — the dev-only plan-preview harness (fixture data) is reachable
-  // signed out in development only; a release build never exempts it.
-  const devHarness = __DEV__ && pathname === "/__dev-plan-preview";
-  const redirectToSignIn = !devHarness && shouldRedirectToSignInFromRoute({
+  const redirectToSignIn = shouldRedirectToSignInFromRoute({
     isWeb,
     loading,
     hasUser: user !== null,
