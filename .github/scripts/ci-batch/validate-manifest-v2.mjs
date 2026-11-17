@@ -518,7 +518,8 @@ export function phase3dContractDigest(manifest) {
 // #4453 6a: added the 6a design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
 // #4453 6b: added the 6b design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
 // #4453 6c: added the 6c design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "814aa22cce142100b23a675366cc0c7fe93d134086b1f6a69d9e3e526e950066";
+// #4453 milestone 5 (after the 6c merge): re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "2984cfe634b3aeae00253e9c09c49ed146bcb5a0ac9ac1679ff318d6fb8dc9f9";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

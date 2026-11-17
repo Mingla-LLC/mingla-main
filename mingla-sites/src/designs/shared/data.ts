@@ -91,10 +91,14 @@ export function destinations(block: SharedBlock, ctx: SharedContext): SiteDestin
     : all;
 }
 
-/** The gallery's pictures (approved media records carried in the block). */
-export function galleryImages(block: SharedBlock): Array<{ url: string; alt: string }> {
+/** The gallery's pictures (approved media records carried in the block), each with its caption when the owner wrote one (§5.2). */
+export function galleryImages(block: SharedBlock): Array<{ url: string; alt: string; caption?: string; sub?: string }> {
+  const captions = new Map(rows(block.captions).map((row) => [text(row.media_id), { caption: text(row.caption), sub: text(row.sub) }]));
   return rows(block.images)
-    .map((image) => ({ url: text(image.url), alt: text(image.alt) }))
+    .map((image) => {
+      const own = captions.get(text(image.id));
+      return { url: text(image.url), alt: text(image.alt), ...(own?.caption ? { caption: own.caption, ...(own.sub ? { sub: own.sub } : {}) } : {}) };
+    })
     .filter((image) => image.url.startsWith("/") || image.url.startsWith("https://"))
     .slice(0, 12);
 }

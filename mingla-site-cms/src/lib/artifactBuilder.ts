@@ -17,7 +17,7 @@ import {
 import type { ArtifactV2 } from "../contracts/generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "../contracts/generated/upgradeV1ToV2.ts";
 import { parseOfferingsFeed, type SiteOffering } from "../contracts/generated/offerings.ts";
-import { ATELIER, designFor, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
+import { ATELIER, designFor, HERO_LAYOUTS_WITH_BOOKING, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
 import { isBlockType } from "../contracts/generated/blocks.ts";
 import { resolveTokens } from "../contracts/generated/tokens.ts";
 import { resolveFontSlots } from "../contracts/generated/fontSlots.ts";
@@ -623,9 +623,15 @@ export async function buildPublicationArtifact(
   const blocks = (source: AnyDoc[]) =>
     source.map((raw) => {
       const shaped = shapeBlock(raw);
-      return shaped && isBlockType(raw.blockType)
-        ? { ...shaped, variant: variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null) }
-        : shaped;
+      if (!shaped || !isBlockType(raw.blockType)) return shaped;
+      const variant = variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null);
+      // #4453 milestone 5 (tester P2-1) — a hero layout that does not draw the
+      // booking bar or the rating never publishes them (Studio hides them too).
+      if (raw.blockType === "hero" && !HERO_LAYOUTS_WITH_BOOKING.includes(variant)) {
+        const { booking_bar: _bar, booking_target_id: _target, show_rating: _rating, ...rest } = shaped as Record<string, unknown>;
+        return { ...rest, variant };
+      }
+      return { ...shaped, variant };
     });
   const shapeBlock = (raw: AnyDoc) => {
       const eyebrow = optionalText(raw.eyebrow, "eyebrow");
@@ -640,6 +646,11 @@ export async function buildPublicationArtifact(
               ? { heading_lines: (raw.heading_lines || []).filter((row: AnyDoc) => typeof row.text === "string" && row.text.trim()).map((row: AnyDoc) => ({ text: row.text })) }
               : {}),
             ...optionalFlag(raw.show_search, "show_search"),
+            // #4453 milestone 5 — the booking bar (with its target) and the Mingla rating.
+            ...(typeof raw.booking_bar === "string" && raw.booking_bar !== "" && raw.booking_bar !== "none"
+              ? { booking_bar: raw.booking_bar, ...optionalText(raw.booking_target_id, "booking_target_id") }
+              : {}),
+            ...optionalFlag(raw.show_rating, "show_rating"),
             subheading: raw.subheading,
             media_url: renderMedia(raw.media, "").url,
             // Optional, and never a replacement for the still above. A hero
@@ -871,6 +882,18 @@ export async function buildPublicationArtifact(
             images: (raw.images || []).map((row: AnyDoc) =>
               renderMedia(row.media, String(row.alt || ""))
             ),
+            // #4453 milestone 5 (§5.2) — captions, each naming its own photograph (absent when none).
+            ...(() => {
+              const captions = (raw.images || [])
+                .map((row: AnyDoc) => ({ row, media: renderMedia(row.media, String(row.alt || "")) }))
+                .filter(({ row }: { row: AnyDoc }) => typeof row.caption === "string" && row.caption.trim())
+                .map(({ row, media }: { row: AnyDoc; media: { id: string } }) => ({
+                  media_id: media.id,
+                  caption: String(row.caption).trim(),
+                  ...optionalText(row.sub, "sub"),
+                }));
+              return captions.length ? { captions } : {};
+            })(),
           };
         case "hours_location":
           return {
@@ -907,6 +930,7 @@ export async function buildPublicationArtifact(
               from_collection: true,
               ...(picked.length ? { testimonial_ids: picked.map((testimonialId: string) => ({ id: testimonialId })) } : {}),
               ...optionalNumber(raw.limit, "limit"),
+              ...optionalFlag(raw.show_rating, "show_rating"),
               ...optionalCta(raw),
             };
           }
@@ -1098,6 +1122,41 @@ export async function buildPublicationArtifact(
               ...optionalText(row.icon, "icon"),
             })),
           };
+        // #4453 milestone 5 — the live booking blocks carry only their target; Mingla fills them at render.
+        case "availability": {
+          const nights = raw.source === "stay_nights";
+          return {
+            type: "availability",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            source: raw.source,
+            ...(nights ? optionalText(raw.stay_offering_id, "stay_offering_id") : optionalText(raw.offering_id, "offering_id")),
+            ...(raw.source === "venue_slots" ? optionalNumber(raw.party_size, "party_size") : {}),
+            ...optionalNumber(raw.days, "days"),
+          };
+        }
+        case "ticket_tiers":
+          return {
+            type: "ticket_tiers",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            offering_id: raw.offering_id,
+            ...(raw.media ? { media_url: renderMedia(raw.media, "").url } : {}),
+          };
+        case "process_steps":
+          return {
+            type: "process_steps",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            items: (raw.items || []).map((row: AnyDoc) => ({
+              title: row.title,
+              ...optionalText(row.text, "text"),
+              ...optionalText(row.time, "time"),
+            })),
+          };
         case "contact_details":
           return {
             type: "contact_details",
@@ -1199,6 +1258,9 @@ export async function buildPublicationArtifact(
       items,
       ...(cta ? { header_cta: cta } : {}),
       ...optionalText(doc?.wordmark, "wordmark"),
+      // #4453 milestone 5 — the sticky phone booking bar.
+      ...optionalFlag(doc?.sticky_booking, "sticky_booking"),
+      ...(doc?.sticky_booking === true ? { ...optionalText(doc?.sticky_title, "sticky_title"), ...optionalText(doc?.sticky_note, "sticky_note") } : {}),
     };
   };
   // #2829 — no address, no build: a site publishes only under the primary

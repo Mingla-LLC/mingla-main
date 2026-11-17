@@ -308,7 +308,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4453 milestone 3 + 6a merge: both milestones' migrations and pg17 suites (proof part implementor + tester) registered; re-sealed.
 // #4453 6b: added the 6b design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
 // #4453 6c: added the 6c design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
-export const BOOTSTRAP_SHA256 = "88eaf4c0db9f2e6eaca24f2c130689659eacfb9c91a13b68ab8a130ae5040f8b";
+// #4453 milestone 5 (after the 6c merge): booking-reads (implementor + tester) and stay-feed-kind migrations and pg17 suites registered; re-sealed.
+// #4453 milestone 5 (after the 6c merge): booking-reads (implementor + tester) and stay-feed-kind migrations and pg17 suites registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "55dc5081a58c219a02c1a0098929f5687808d697e17d7c6ece07d0c8fc743ee1";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

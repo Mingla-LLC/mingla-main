@@ -14,7 +14,7 @@ import { statsIconOptions } from "../lib/statsIcons";
 import { reviewField } from "../lib/reviewStamp";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
-import { ATELIER, DESIGNS, DESIGN_KEYS } from "../contracts/generated/designs.ts";
+import { ATELIER, DESIGNS, DESIGN_KEYS, HERO_LAYOUTS_WITH_BOOKING } from "../contracts/generated/designs.ts";
 
 /*
  * #3149 — `description` is built HERE rather than spread onto the result.
@@ -55,6 +55,11 @@ const link = (name = "href", label = "Link", required = true, validate: (value: 
   maxLength: 2048,
   validate,
 });
+/* #4453 milestone 5 — a Mingla id (venue, room, event or experience); empty is "not set". */
+const uuidOrEmpty = (value: unknown): true | string =>
+  value == null || value === "" || (typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
+    ? true
+    : "Enter a Mingla id (36 characters).";
 const readyMedia = (name = "media", label = "Image"): Field => ({
   name,
   label,
@@ -152,6 +157,43 @@ const BLOCK_CONFIGS: Block[] = [
         type: "checkbox",
         defaultValue: false,
         admin: { description: "Shows the date-and-place search when your site has a trips page." },
+      },
+      /* #4453 milestone 5 (§5.5, §5.6) — the hero booking bar and the Mingla rating badge (offered while SITES_BOOKING_BLOCKS is on). */
+      {
+        name: "booking_bar",
+        label: "Booking bar",
+        type: "select",
+        required: false,
+        options: [
+          { value: "none", label: "None" },
+          { value: "venue_table", label: "Book a table or visit" },
+          { value: "stay", label: "Book a stay" },
+          { value: "experience", label: "Book an experience" },
+          { value: "trip_search", label: "Trip search" },
+        ],
+        admin: {
+          description: "Blank date, time and guest fields that open your Mingla booking page pre-filled. Shown only by layouts that draw it (Full bleed, Editorial, Arch, Voyage's cover).",
+          condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant)),
+        },
+      },
+      {
+        name: "booking_target_id",
+        label: "What the booking bar books",
+        type: "text",
+        required: false,
+        maxLength: 36,
+        validate: uuidOrEmpty,
+        admin: {
+          description: "The Mingla id of your venue, room or experience.",
+          condition: (_, sibling) => ["venue_table", "stay", "experience"].includes(String(sibling?.booking_bar)) && (!sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant))),
+        },
+      },
+      {
+        name: "show_rating",
+        label: "Show the Mingla rating",
+        type: "checkbox",
+        defaultValue: false,
+        admin: { description: "Your score from approved Mingla reviews. Shown only with 20 or more reviews, by layouts that draw it.", condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant)) },
       },
       // The still image. REQUIRED even when a video is chosen: it is the
       // poster, and it is what a visitor sees on a slow connection, with data
@@ -653,7 +695,13 @@ const BLOCK_CONFIGS: Block[] = [
         minRows: 1,
         maxRows: 12,
         required: true,
-        fields: [readyMedia(), accessibleAlt()],
+        fields: [
+          readyMedia(),
+          accessibleAlt(),
+          // #4453 milestone 5 (§5.2) — the owner's caption under this photograph (offered while SITES_BOOKING_BLOCKS is on).
+          short("caption", "Caption", false, 120, "Optional. Shown under the photograph in layouts that caption."),
+          short("sub", "Small line under the caption", false, 80),
+        ],
       },
     ],
   },
@@ -772,6 +820,13 @@ const BLOCK_CONFIGS: Block[] = [
         min: 1,
         max: 24,
         admin: { condition: (_, sibling) => sibling?.from_collection === true },
+      },
+      {
+        name: "show_rating",
+        label: "Show the Mingla rating",
+        type: "checkbox",
+        defaultValue: false,
+        admin: { description: "Your score from approved Mingla reviews. Shown only with 20 or more reviews." },
       },
       ...optionalCta("Read more reviews", "under the reviews"),
       {
@@ -1240,6 +1295,98 @@ const BLOCK_CONFIGS: Block[] = [
       },
     ],
   },
+  /*
+   * #4453 milestone 5 (§5.1, §5.3, §5.4) — the live booking blocks. The
+   * block holds only WHICH venue, room or event; every slot, night, tier and
+   * price is read from Mingla when the page renders.
+   */
+  {
+    slug: "availability",
+    labels: { singular: "Live availability", plural: "Live availability" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short("intro", "Line under the heading", false, 300),
+      {
+        name: "source",
+        label: "What is shown",
+        type: "select",
+        required: true,
+        defaultValue: "venue_slots",
+        options: [
+          { value: "venue_slots", label: "Table or visit times" },
+          { value: "stay_nights", label: "Nights for a room" },
+          { value: "experience_slots", label: "Experience times" },
+          { value: "event_dates", label: "Event dates" },
+          { value: "trip_departures", label: "Trip departure" },
+        ],
+      },
+      {
+        name: "offering_id",
+        label: "Venue or offering (Mingla id)",
+        type: "text",
+        maxLength: 36,
+        validate: uuidOrEmpty,
+        admin: { condition: (_, sibling) => sibling?.source !== "stay_nights" },
+      },
+      {
+        name: "stay_offering_id",
+        label: "Room (Mingla id)",
+        type: "text",
+        maxLength: 36,
+        validate: uuidOrEmpty,
+        admin: { condition: (_, sibling) => sibling?.source === "stay_nights" },
+      },
+      {
+        name: "party_size",
+        label: "Party size",
+        type: "number",
+        min: 1,
+        max: 20,
+        admin: { condition: (_, sibling) => sibling?.source === "venue_slots" },
+      },
+      { name: "days", label: "Days shown", type: "number", min: 3, max: 14 },
+    ],
+  },
+  {
+    slug: "ticket_tiers",
+    labels: { singular: "Ticket tiers", plural: "Ticket tiers" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short("intro", "Line under the heading", false, 300),
+      { name: "offering_id", label: "Event (Mingla id)", type: "text", required: true, maxLength: 36, validate: uuidOrEmpty },
+      {
+        name: "media",
+        label: "Picture (optional)",
+        type: "relationship",
+        relationTo: "media",
+        required: false,
+        filterOptions: ({ req }) => {
+          const tenantId = (req.user as { tenantId?: string })?.tenantId;
+          return tenantId ? { tenant: { equals: tenantId }, state: { equals: "READY" } } : false;
+        },
+      },
+    ],
+  },
+  {
+    slug: "process_steps",
+    labels: { singular: "How it works", plural: "How it works" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short("intro", "Line under the heading", false, 300),
+      {
+        name: "items",
+        label: "Steps",
+        type: "array",
+        minRows: 3,
+        maxRows: 5,
+        required: true,
+        fields: [short("title", "Step", true, 80), short("text", "What happens", false, 300), short("time", "How long", false, 24)],
+      },
+    ],
+  },
   {
     slug: "contact_details",
     labels: { singular: "Contact details", plural: "Contact details" },
@@ -1284,6 +1431,7 @@ function variantField(type: BlockType): Field {
     label: "Layout",
     type: "select",
     required: false,
+    // #4453 milestone 5 — Atelier draws no booking block (its list is empty).
     defaultValue: ATELIER.variants[type][0],
     options: options.map((value) => ({ value, label: value === "atelier" || value === "neutral" || value === "voyage" ? "Standard" : value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ") })),
     admin: { description: "How this section is laid out. Your design supplies the layouts." },

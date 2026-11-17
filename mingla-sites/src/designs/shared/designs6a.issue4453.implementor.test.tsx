@@ -201,6 +201,8 @@ describe("#4453 6a §3.3 the neutral and Maison layouts draw every field their b
   for (const [type, variant, Layout] of layouts) {
     it(`${type}:${variant}`, () => {
       const { block, expected } = sentinelBlock(type, artifact);
+      // #4453 milestone 5 (§5.2) — a caption names one of the gallery's own photographs.
+      if (type === "gallery" && Array.isArray(block.captions) && Array.isArray(block.images)) (block.captions as Array<Record<string, unknown>>).forEach((row, i) => { row.media_id = (block.images as Array<{ id: string }>)[i]?.id; });
       const skipped = new Set((RUNTIME_OWNED[type] ?? []).map((key) => block[key]).filter((v): v is string => typeof v === "string"));
       const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
       // #4453 (milestone 3) — the sentinel grid is empty (only ended trips): its designed empty

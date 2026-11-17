@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { renderToStaticMarkup } from "react-dom/server";
+import { availabilityKey, availabilityRequestFor } from "../../contracts/generated/availability.ts";
 import { describe, expect, it, vi } from "vitest";
 import { BLOCK_CATALOG, type BlockType, type FieldSpec } from "../../contracts/generated/blocks.ts";
 import { assertArtifactV2, type ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
@@ -122,6 +123,23 @@ describe("#4453 §3.3 the shared block library", () => {
 /* ---------------- field parity ---------------- */
 
 /** A block of `type` with a unique, findable value in every content field (lists get two rows). */
+/* #4453 milestone 5 — a live booking answer for a sentinel availability or ticket-tiers block. */
+function sentinelBooking(block: Record<string, unknown>): NonNullable<LiveOfferings["booking"]> {
+  const ask = availabilityRequestFor({ ...block, type: "availability", source: "venue_slots" });
+  const eventId = String(block.offering_id ?? "").toLowerCase();
+  const href = "https://host.usemingla.com/b/sentinel/v/kitchen?tab=book&date=2026-11-20&time=18:00&party=2";
+  return {
+    availability: new Map(ask ? [[availabilityKey(ask), { generated_at: "2026-11-16T12:00:00Z", timezone: "Africa/Lagos", source: "venue_slots" as const, title: "Kitchen",
+      days: [{ local_date: "2026-11-20", slots: [{ label: "18:00", start_local: "2026-11-20T18:00", state: "open" as const, left: 6, price_minor: null, currency: null, href }] }] }]] : []),
+    ticketTiers: new Map([[eventId, { generated_at: "2026-11-16T12:00:00Z",
+      event: { id: eventId, title: "Night", start_at: "2099-12-01T19:00:00Z", end_at: null, timezone: "Africa/Lagos", status: "scheduled" as const, public_url: "https://host.usemingla.com/e/sentinel/night" },
+      tiers: [{ id: "00000000-0000-4000-8000-000000000999", name: "General", price_minor: 1200, currency: "USD", is_free: false, state: "on_sale" as const, sale_starts_at: null,
+        href: `https://host.usemingla.com/checkout/${eventId}?seed=00000000-0000-4000-8000-000000000999:1` }] }]]),
+    targets: new Map(),
+    rating: null,
+  };
+}
+
 function sentinelBlock(type: BlockType, artifact: ArtifactV2): { block: Record<string, unknown>; expected: string[] } {
   const expected: string[] = [];
   let n = 0;
@@ -158,7 +176,8 @@ function sentinelBlock(type: BlockType, artifact: ArtifactV2): { block: Record<s
         return { type: "doc", children: [{ type: "paragraph", children: [{ type: "text", text: v }] }] };
       }
       case "list":
-        return [0, 1].map(() => Object.fromEntries(Object.entries(spec.item).flatMap(([k, s]) => {
+        // #4453 milestone 5 — a list with a higher floor (how-it-works steps) gets its minimum.
+        return Array.from({ length: Math.max(2, spec.min) }, () => 0).map(() => Object.fromEntries(Object.entries(spec.item).flatMap(([k, s]) => {
           const v = value(s, k);
           return v === undefined ? [] : [[k, v]];
         })));
@@ -223,10 +242,14 @@ describe("#4453 §3.3 every shared layout draws every field its block defines", 
     for (const [variant, Layout] of Object.entries(layouts)) {
       it(`${type}:${variant}`, () => {
         const { block, expected } = sentinelBlock(type, artifact);
+        // #4453 milestone 5 (§5.2) — a caption names one of the gallery's own photographs.
+        if (type === "gallery" && Array.isArray(block.captions) && Array.isArray(block.images)) (block.captions as Array<Record<string, unknown>>).forEach((row, i) => { row.media_id = (block.images as Array<{ id: string }>)[i]?.id; });
         const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
         // #4453 — an empty upcoming grid is drawn only in a Draft preview (left out of the public site).
-        const drawCtx = type === "offering_grid" ? { ...ctx, analytics: { ...ctx.analytics, publicationId: "preview-sentinel" } } : ctx;
-        const html = renderToStaticMarkup(<Component block={{ ...block, variant }} index={0} ctx={drawCtx} />);
+        const baseCtx = type === "offering_grid" ? { ...ctx, analytics: { ...ctx.analytics, publicationId: "preview-sentinel" } } : ctx;
+        // #4453 milestone 5 — the live booking layouts draw only with live data: give them Core's answer for this block.
+        const drawCtx = type === "availability" || type === "ticket_tiers" ? { ...baseCtx, live: { ...baseCtx.live!, booking: sentinelBooking(block) } } : baseCtx;
+        const html = renderToStaticMarkup(<Component block={{ ...block, variant, ...(type === "availability" ? { source: "venue_slots" } : {}) }} index={0} ctx={drawCtx} />);
         // §5.2 binding limits: mosaic draws the first 5 pictures, stagger the first 3 (pinned up to 10).
         const take = type === "gallery" ? { mosaic: 5, stagger: 3, pinned: 10 }[variant] ?? 12 : Infinity;
         const media = expected.filter((v) => v.startsWith("/media/") && Array.isArray(block.images));

@@ -98,7 +98,7 @@ export function GalleryJournalEssay({ block, index, ctx }: SharedBlockProps) {
         {images.map((image, imageIndex) => (
           <figure key={imageIndex} className={`jr-plate jr-plate--${imageIndex}`} data-mg-rise="">
             <div className="mg-ph"><Photo artifact={ctx.artifact} url={image.url} alt={image.alt} sizes={imageIndex === 0 ? "(min-width: 900px) 60vw, 100vw" : "(min-width: 900px) 40vw, 100vw"} /></div>
-            <figcaption><b>Plate {ROMAN[imageIndex]}</b>{image.alt ? <span>{image.alt}</span> : null}</figcaption>
+            <figcaption><b>Plate {ROMAN[imageIndex]}</b>{/* #4453 M5 §5.2 — the owner's caption when written, else the picture description */}{image.caption ? <span>{image.caption}{image.sub ? <small className="mg-gal-cap__sub">{image.sub}</small> : null}</span> : image.alt ? <span>{image.alt}</span> : null}</figcaption>
           </figure>
         ))}
       </div>

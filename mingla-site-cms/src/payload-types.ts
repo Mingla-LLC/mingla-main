@@ -224,6 +224,18 @@ export interface Page {
              * Shows the date-and-place search when your site has a trips page.
              */
             show_search?: boolean | null;
+            /**
+             * Blank date, time and guest fields that open your Mingla booking page pre-filled.
+             */
+            booking_bar?: ('none' | 'venue_table' | 'stay' | 'experience' | 'trip_search') | null;
+            /**
+             * The Mingla id of your venue, room or experience.
+             */
+            booking_target_id?: string | null;
+            /**
+             * Your score from approved Mingla reviews. Shown only with 20 or more reviews.
+             */
+            show_rating?: boolean | null;
             media: string | Media;
             /**
              * Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.
@@ -239,7 +251,22 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame' | 'journal-front' | 'grid-index' | 'terra-pebble' | 'pop-stack' | 'sunset-sun' | 'pulse-stage') | null;
+            variant?:
+              | (
+                  | 'atelier'
+                  | 'cover-bottom-search'
+                  | 'fullbleed'
+                  | 'editorial'
+                  | 'arch'
+                  | 'maison-frame'
+                  | 'journal-front'
+                  | 'grid-index'
+                  | 'terra-pebble'
+                  | 'pop-stack'
+                  | 'sunset-sun'
+                  | 'pulse-stage'
+                )
+              | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -416,7 +443,8 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows' | 'journal-columns') | null;
+            variant?:
+              ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows' | 'journal-columns') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -654,12 +682,18 @@ export interface Page {
                * Describe meaningful images. Leave empty only when the image is decorative.
                */
               alt?: string | null;
+              /**
+               * Optional. Shown under the photograph in layouts that caption.
+               */
+              caption?: string | null;
+              sub?: string | null;
               id?: string | null;
             }[];
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates' | 'journal-essay') | null;
+            variant?:
+              ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates' | 'journal-essay') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -731,6 +765,10 @@ export interface Page {
                 }[]
               | null;
             limit?: number | null;
+            /**
+             * Your score from approved Mingla reviews. Shown only with 20 or more reviews.
+             */
+            show_rating?: boolean | null;
             /**
              * Optional. The words on the button under the reviews — for example “Read more reviews”. Leave both this and the link empty and no button is shown.
              */
@@ -1217,6 +1255,91 @@ export interface Page {
             blockType: 'feature_cards';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            source: 'venue_slots' | 'stay_nights' | 'experience_slots' | 'event_dates' | 'trip_departures';
+            offering_id?: string | null;
+            stay_offering_id?: string | null;
+            party_size?: number | null;
+            days?: number | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: 'strip' | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'availability';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            offering_id: string;
+            media?: (string | null) | Media;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: 'split' | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'ticket_tiers';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            items: {
+              title: string;
+              text?: string | null;
+              time?: string | null;
+              id?: string | null;
+            }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: 'band' | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'process_steps';
+          }
+        | {
             heading?: string | null;
             body?: string | null;
             email?: string | null;
@@ -1546,6 +1669,12 @@ export interface Navigation {
    * The header layout. Leave empty for the design's own header.
    */
   header_variant?: ('glass' | 'center' | 'pill' | 'journal-mast' | 'grid-bar') | null;
+  /**
+   * On phones, keeps one Book button at the bottom of the screen after the opening picture.
+   */
+  sticky_booking?: boolean | null;
+  sticky_title?: string | null;
+  sticky_note?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1625,7 +1754,21 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison' | 'journal' | 'grid' | 'terra' | 'pop' | 'sunset' | 'pulse') | null;
+  design?:
+    | (
+        | 'atelier'
+        | 'voyage'
+        | 'nocturne'
+        | 'haven'
+        | 'maison'
+        | 'journal'
+        | 'grid'
+        | 'terra'
+        | 'pop'
+        | 'sunset'
+        | 'pulse'
+      )
+    | null;
   tokens?:
     | {
         [k: string]: unknown;
@@ -2058,6 +2201,9 @@ export interface PagesSelect<T extends boolean = true> {
                   };
               subheading?: T;
               show_search?: T;
+              booking_bar?: T;
+              booking_target_id?: T;
+              show_rating?: T;
               media?: T;
               video?: T;
               ctas?:
@@ -2249,6 +2395,8 @@ export interface PagesSelect<T extends boolean = true> {
                 | {
                     media?: T;
                     alt?: T;
+                    caption?: T;
+                    sub?: T;
                     id?: T;
                   };
               variant?: T;
@@ -2291,6 +2439,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               limit?: T;
+              show_rating?: T;
               cta_label?: T;
               cta_href?: T;
               items?:
@@ -2529,6 +2678,54 @@ export interface PagesSelect<T extends boolean = true> {
               id?: T;
               blockName?: T;
             };
+        availability?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              source?: T;
+              offering_id?: T;
+              stay_offering_id?: T;
+              party_size?: T;
+              days?: T;
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        ticket_tiers?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              offering_id?: T;
+              media?: T;
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        process_steps?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              items?:
+                | T
+                | {
+                    title?: T;
+                    text?: T;
+                    time?: T;
+                    id?: T;
+                  };
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
         contact_details?:
           | T
           | {
@@ -2645,6 +2842,9 @@ export interface NavigationSelect<T extends boolean = true> {
       };
   wordmark?: T;
   header_variant?: T;
+  sticky_booking?: T;
+  sticky_title?: T;
+  sticky_note?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;

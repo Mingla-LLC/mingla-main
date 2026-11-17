@@ -902,6 +902,11 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       // #4453 — while SITES_PROOF_PART is on, the sections Ari writes start Draft.
       const proofFlag = await db.service.rpc("brand_site_proof_part_enabled");
       if (!proofFlag.error && proofFlag.data === true) payload.review_drafts = true;
+      // #4453 milestone 5 — SITES_BOOKING_BLOCKS, signed in by Core (never the
+      // caller): Studio offers the live booking blocks only while it is on.
+      // Ari's own tools do not declare them until milestone 7 either way.
+      const bookingFlag = await db.service.rpc("brand_site_booking_blocks_enabled");
+      if (!bookingFlag.error && bookingFlag.data === true) payload.booking_blocks = true;
       const studio = await callCmsRaw(db.service, {
         siteId,
         operationId,

@@ -173,7 +173,15 @@ describe("#4453 the Studio field and its migration", () => {
 
   it("the migration adds the column for every block type, live and versioned", () => {
     const sql = readFileSync(path.resolve(__dirname, "../migrations/20261116_103000_issue_4453_content_foundation.ts"), "utf8");
+    // #4453 milestone 5 — the live booking blocks' tables are created WITH the column.
+    const booking = readFileSync(path.resolve(__dirname, "../migrations/20261116_150000_issue_4453_booking_blocks.ts"), "utf8");
     for (const config of siteBlocks) {
+      if (["availability", "ticket_tiers", "process_steps"].includes(config.slug)) {
+        for (const table of [`pages_blocks_${config.slug}`, `_pages_v_blocks_${config.slug}`]) {
+          expect(booking, table).toMatch(new RegExp(`CREATE TABLE "sites_cms"\\."${table}" \\([^;]*"review" jsonb`));
+        }
+        continue;
+      }
       expect(sql, config.slug).toContain(`"pages_blocks_${config.slug}" ADD COLUMN IF NOT EXISTS "review" jsonb`);
       expect(sql, config.slug).toContain(`"_pages_v_blocks_${config.slug}" ADD COLUMN IF NOT EXISTS "review" jsonb`);
     }

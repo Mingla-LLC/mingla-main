@@ -13,7 +13,7 @@ export function sharedBannerText(brand: string, expiresAt: string | null): strin
 export const SHARED_BANNER_STYLE: CSSProperties = {
   position: "sticky",
   top: 0,
-  zIndex: 40,
+  zIndex: 100,
   margin: 0,
   height: 32,
   lineHeight: "32px",
@@ -27,3 +27,12 @@ export const SHARED_BANNER_STYLE: CSSProperties = {
   whiteSpace: "nowrap",
   textOverflow: "ellipsis",
 };
+
+/**
+ * The strip sits above every layer a design or the booking chrome fixes to the
+ * screen (headers 60, consent and the phone sticky bar 80, menus and the
+ * hand-off sheet 90), and the fixed header starts below it, so nothing covers it.
+ */
+export const SHARED_STRIP_CSS =
+  '[data-shared-preview="1"] :is(.mg-hd,.site-header,.v-header){top:32px !important}' +
+  '[data-shared-preview="1"] .mg-pmenu{padding-top:116px}';

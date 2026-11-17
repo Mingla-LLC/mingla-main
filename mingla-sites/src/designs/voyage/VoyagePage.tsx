@@ -10,6 +10,8 @@ import type { FormsContext } from "../../lib/siteForms";
 import type { CollectionEntry } from "../../lib/siteCollections";
 import { VOYAGE_HEAD_SCRIPT } from "./headScript";
 import { VoyageFooter } from "./VoyageFooter";
+import { PageBookingChrome } from "../shared/blocks/Booking";
+import type { SharedContext } from "../shared/parts";
 import { VoyageHeader, type VoyageNavItem } from "./VoyageHeader";
 import { VOYAGE_BLOCK_VARIANTS } from "./voyageBlocks";
 import { DestinationTemplate } from "./templates/DestinationTemplate";
@@ -50,6 +52,7 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
     : null;
   const siteName = headerWordmark(artifact) ?? artifact.brand.display_name;
   let content: React.ReactNode = null;
+  let booking: React.ReactNode = null;
   if (notFound || !current) {
     content = <NotFoundTemplate artifact={artifact} />;
   } else if (entry) {
@@ -58,6 +61,8 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
       : <StoryTemplate story={entry.entry} artifact={artifact} />;
   } else {
     const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };
+    // #4453 milestone 5 — the hand-off sheet and the sticky phone bar (shared library).
+    booking = <PageBookingChrome ctx={ctx as SharedContext} />;
     content = current.blocks.map((raw, index) => {
       const block = raw as unknown as VoyageBlock;
       const Variant = pickVariant(VOYAGE_BLOCK_VARIANTS, raw);
@@ -92,6 +97,7 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
         : <VoyageHeader items={items} logo={logo} siteName={siteName} cta={headerCta(artifact)} />}
       <main id="main" className="v-main">{content}</main>
       {footerVariant ? <SharedFooter variant={footerVariant} artifact={artifact} items={items} /> : <VoyageFooter artifact={artifact} />}
+      {booking}
       {notFound || !current ? null : <MotionRoot rootId="mg-scope" />}
     </div>
   );

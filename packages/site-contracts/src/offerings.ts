@@ -21,7 +21,12 @@
  */
 import { boundedText, hasOnlyKeys, isCanonicalMinglaHref, isIanaTimeZone, plainObject, UUID_RE } from "./safety.ts";
 
-export const OFFERING_KINDS = ["trip", "event", "experience"] as const;
+/*
+ * #4453 milestone 5 (§6.5) — `stay`: a live room or place of the brand's
+ * stay venue, linking to the venue page's stay tab (`/b/{brand}/v/{venue}?tab=stay&room={id}`).
+ * Core includes stay rows only while the stay flags are on.
+ */
+export const OFFERING_KINDS = ["trip", "event", "experience", "stay"] as const;
 export type OfferingKind = (typeof OFFERING_KINDS)[number];
 export const OFFERING_STATUSES = ["scheduled", "live", "ended", "cancelled"] as const;
 export type OfferingStatus = (typeof OFFERING_STATUSES)[number];
@@ -70,7 +75,7 @@ const OFFERING_KEYS = [
 
 const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,199}$/;
 const COVER_PATH_RE = /^(?:event_covers|brand_covers)\/[A-Za-z0-9._/-]{1,900}$/;
-const PUBLIC_PATH_PREFIX: Readonly<Record<OfferingKind, string>> = { trip: "/t/", event: "/e/", experience: "/exp/" };
+const PUBLIC_PATH_PREFIX: Readonly<Record<OfferingKind, string>> = { trip: "/t/", event: "/e/", experience: "/exp/", stay: "/b/" };
 
 function isInstant(value: unknown): value is string {
   return typeof value === "string" && value.length <= 40 && Number.isFinite(Date.parse(value));
@@ -94,6 +99,12 @@ function coverOk(value: unknown): boolean {
 function publicUrlOk(kind: OfferingKind, value: unknown): value is string {
   if (!isCanonicalMinglaHref(value)) return false;
   const url = new URL(value);
+  if (kind === "stay") {
+    // Exactly `?tab=stay&room={uuid}` on a venue page.
+    const params = [...url.searchParams.keys()];
+    return !url.hash && /^\/b\/[A-Za-z0-9-]{1,63}\/v\/[a-z0-9]{1,32}$/.test(url.pathname) &&
+      params.length === 2 && url.searchParams.get("tab") === "stay" && UUID_RE.test(url.searchParams.get("room") ?? "");
+  }
   return !url.search && !url.hash && url.pathname.startsWith(PUBLIC_PATH_PREFIX[kind]);
 }
 
@@ -225,7 +236,8 @@ export function offeringState(offering: SiteOffering, now: Date): OfferingState 
   else if (!start || !end || !today) {
     // An experience with no next date on record is an ongoing offer; a trip
     // or event without dates fails closed.
-    phase = offering.kind === "experience" && !start ? "upcoming" : "ended";
+    // #4453 milestone 5 — a stay row is a live room with no dates of its own.
+    phase = (offering.kind === "experience" || offering.kind === "stay") && !start ? "upcoming" : "ended";
   } else if (end < today) phase = "ended";
   else if (start > today) phase = "upcoming";
   else phase = "running";

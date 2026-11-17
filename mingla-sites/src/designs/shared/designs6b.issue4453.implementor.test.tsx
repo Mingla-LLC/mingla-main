@@ -229,6 +229,8 @@ describe("#4453 6b §3.3 every signature layout draws every field its block defi
         it(`${design.key} ${type}:${variant}`, () => {
           expect(design.variants[type as BlockType][0]).toBe(variant);
           const { block, expected } = sentinelBlock(type as BlockType, artifact);
+          // #4453 milestone 5 (§5.2) — a caption names one of the gallery's own photographs.
+          if (type === "gallery" && Array.isArray(block.captions) && Array.isArray(block.images)) (block.captions as Array<Record<string, unknown>>).forEach((row, i) => { row.media_id = (block.images as Array<{ id: string }>)[i]?.id; });
           const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
           // #4453 (milestone 3) — the sentinel grid is empty (only ended trips): its designed empty state,
           // with every field, is drawn in a Draft preview; publicly the section is left out.
@@ -699,7 +701,8 @@ describe("#4453 6b Journal's columns draw a trip's cover, and leave no plate for
 describe("#4453 6b production-build findings", () => {
   it("the centred header keeps its menu button on a phone (Nocturne's sat at 438-486 px on a 375 px screen with real fonts)", () => {
     const shared = css(SHARED_STYLESHEET);
-    const phone = shared.slice(shared.lastIndexOf("@media (max-width: 720px)"));
+    // #4453 milestone 5 — later phone blocks (the booking layouts) follow it; read the one holding the fix.
+    const phone = shared.slice(shared.lastIndexOf("@media (max-width: 720px)", shared.lastIndexOf(".mg-hd--center .mg-hd__bar { display: flex;")));
     expect(phone).toContain("[data-design] .mg-hd--center .mg-hd__bar { display: flex; justify-content: space-between; gap: 10px; }");
     expect(phone).toContain("[data-design] .mg-hd--center .mg-mark { min-width: 0; flex: 0 1 auto; overflow: hidden; justify-self: auto; }");
     expect(phone).toContain("[data-design] .mg-hd--center .mg-hd__end { flex: none; }");

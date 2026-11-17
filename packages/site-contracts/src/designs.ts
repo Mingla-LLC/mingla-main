@@ -156,7 +156,29 @@ export const SHARED_LAYOUTS: Readonly<Partial<Record<BlockType, readonly string[
   hours_location: ["split"],
   faq: ["split"],
   newsletter_signup: ["photo"],
+  // #4453 milestone 5 — the live booking blocks (every gallery design gets them through galleryVariants).
+  availability: ["strip"],
+  ticket_tiers: ["split"],
+  process_steps: ["band"],
 };
+
+/**
+ * #4453 milestone 5 — the booking blocks' layouts are drawn by the shared
+ * library only. Atelier (the original restaurant design, frozen) does not
+ * draw them: its layout list for them is empty, so Studio and the artifact
+ * validator refuse one on an Atelier site instead of publishing a block that
+ * would render nothing.
+ */
+/**
+ * #4453 milestone 5 (tester P2-1) — the hero layouts that draw the booking
+ * bar and the Mingla rating: the shared ones and Voyage's own cover. A
+ * design's signature hero that does not draw them is told so in Studio (the
+ * fields are hidden) and the fields are left out of its published hero, so a
+ * setting never silently does nothing.
+ */
+export const HERO_LAYOUTS_WITH_BOOKING: readonly string[] = ["fullbleed", "editorial", "arch", "cover-bottom-search"];
+
+export const SHARED_ONLY_BLOCK_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
 
 /**
  * #4453 — the layouts ARI may choose for a block in a design. The shared
@@ -217,7 +239,9 @@ export const NEUTRAL_BLOCK_TYPES: readonly BlockType[] = [
 /** Every block type drawn by atelier, in one layout each (AD-4). */
 const ATELIER_VARIANTS: Record<BlockType, readonly string[]> = (() => {
   const variants = {} as Record<BlockType, readonly string[]>;
-  for (const type of BLOCK_TYPES) variants[type] = NEUTRAL_BLOCK_TYPES.includes(type) ? ["neutral"] : ["atelier"];
+  for (const type of BLOCK_TYPES) {
+    variants[type] = SHARED_ONLY_BLOCK_TYPES.includes(type) ? [] : NEUTRAL_BLOCK_TYPES.includes(type) ? ["neutral"] : ["atelier"];
+  }
   return variants;
 })();
 
@@ -257,6 +281,10 @@ export const VOYAGE_VARIANTS: Readonly<Record<BlockType, readonly string[]>> = {
   hours_location: ["neutral", "split"],
   marquee: ["neutral", "ticker"],
   contact_handoff: ["neutral"],
+  // #4453 milestone 5 — the shared library's booking layouts.
+  availability: ["strip"],
+  ticket_tiers: ["split"],
+  process_steps: ["band"],
 };
 
 export const ATELIER: DesignDefinition = {

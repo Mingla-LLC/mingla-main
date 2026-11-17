@@ -5,6 +5,7 @@ import { RichText } from "../../../components/v2/RichText";
 import { SiteSearchForm } from "../../../components/PreviewLinks";
 import { playableVideoUrl } from "../../../lib/siteVideo";
 import { hrefForPage, sitePages } from "../../../lib/pageRouting";
+import { HeroBookingBar, HeroRating, heroTarget } from "./Booking";
 import { ActionButton, Arrow, Blk, HeadlineLines, Label, Photo, rows, sectionId, text, type SharedBlockProps, type SharedContext } from "../parts";
 
 /*
@@ -23,7 +24,10 @@ export function heroParts(block: SharedBlockProps["block"], index: number, ctx: 
     .filter((cta) => cta.label && isSafeHref(cta.href))
     .slice(0, 2);
   const tripsPage = sitePages(ctx.artifact).find((page) => page.enabled && page.kind === "collection_index" && page.collection === "trips");
-  const search = block.show_search === true && tripsPage ? hrefForPage(tripsPage) : null;
+  // #4453 milestone 5 — `booking_bar: trip_search` is the stored `show_search`.
+  const wantsSearch = block.show_search === true || block.booking_bar === "trip_search";
+  const search = wantsSearch && tripsPage ? hrefForPage(tripsPage) : null;
+  const target = search ? null : heroTarget(block, ctx);
   const picture = isSafeHref(block.media_url) ? String(block.media_url) : null;
   const film = picture ? playableVideoUrl(ctx.artifact, block.video_url) : null;
   const firstHero = index === ctx.page.blocks.findIndex((candidate) => candidate.type === "hero");
@@ -34,6 +38,7 @@ export function heroParts(block: SharedBlockProps["block"], index: number, ctx: 
     subheading: text(block.subheading),
     ctas,
     search,
+    target,
     picture,
     film,
     as: firstHero ? ("h1" as const) : ("h2" as const),
@@ -77,7 +82,8 @@ export function HeroFullbleed({ block, index, ctx }: SharedBlockProps) {
           <div className="mg-hero__main">
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}
             <HeroButtons ctas={p.ctas} />
-            {p.search ? <TripSearch action={p.search} id={id} /> : null}
+            <HeroRating block={block} ctx={ctx} />
+            {p.search ? <TripSearch action={p.search} id={id} /> : p.target ? <HeroBookingBar target={p.target} id={id} language={ctx.artifact.language} /> : null}
           </div>
         </div>
       </div>
@@ -100,8 +106,9 @@ export function HeroEditorial({ block, index, ctx }: SharedBlockProps) {
         <div className="mg-hero-ed__foot">
           {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : <span />}
           <HeroButtons ctas={p.ctas} />
+            <HeroRating block={block} ctx={ctx} />
         </div>
-        {p.search ? <div className="mg-hero-ed__bk"><TripSearch action={p.search} id={id} /></div> : null}
+        {p.search || p.target ? <div className="mg-hero-ed__bk">{p.search ? <TripSearch action={p.search} id={id} /> : p.target ? <HeroBookingBar target={p.target} id={id} language={ctx.artifact.language} /> : null}</div> : null}
       </div>
     </section>
   );
@@ -121,6 +128,7 @@ export function HeroArch({ block, index, ctx }: SharedBlockProps) {
           <div className="mg-hero-arch__side">
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}
             <HeroButtons ctas={p.ctas} />
+            <HeroRating block={block} ctx={ctx} />
           </div>
         </div>
         <div className="mg-hero-arch__arch" data-mg-arch="">
@@ -129,7 +137,7 @@ export function HeroArch({ block, index, ctx }: SharedBlockProps) {
             {p.film && p.picture ? <HeroBackgroundVideo src={p.film} poster={p.picture} saveData={ctx.saveData} /> : null}
           </div>
         </div>
-        {p.search ? <div className="mg-hero-arch__bk"><TripSearch action={p.search} id={id} /></div> : null}
+        {p.search || p.target ? <div className="mg-hero-arch__bk">{p.search ? <TripSearch action={p.search} id={id} /> : p.target ? <HeroBookingBar target={p.target} id={id} language={ctx.artifact.language} /> : null}</div> : null}
       </div>
     </section>
   );

@@ -1417,6 +1417,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
       "evidence",
       // #4453 — SITES_PROOF_PART on: the sections Ari writes start Draft.
       "review_drafts",
+      // #4453 milestone 5 — SITES_BOOKING_BLOCKS on (signed in by Core).
+      "booking_blocks",
     ]);
     if (Object.keys(body).some((key) => !allowedOuter.has(key))) {
       throw new Error("VALIDATION_FAILED");
@@ -1447,6 +1449,7 @@ async function ari(req: PayloadRequest): Promise<Response> {
       rank,
     });
     if (body.review_drafts === true) scoped.context = { ...scoped.context, minglaReviewSource: "ari" };
+    if (body.booking_blocks === true) scoped.context = { ...scoped.context, minglaBookingBlocks: true };
     const tenantWhere = { tenant: { equals: tenant.id } };
 
     if (ARI_DESIGNER_ACTIONS.has(action)) {

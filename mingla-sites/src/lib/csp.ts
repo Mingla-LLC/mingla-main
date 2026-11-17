@@ -117,7 +117,8 @@ export function buildCsp(
     `frame-src 'self' ${MAP_FRAME_ORIGIN}`,
     `frame-ancestors ${frameAncestorsFor(pathname, { localMode, frameAncestor })}`,
     "base-uri 'none'",
-    "form-action 'self' https://usemingla.com https://www.usemingla.com",
+    // #4453 milestone 5 — the hero booking bar works without JavaScript: a GET to this brand's Mingla page.
+    "form-action 'self' https://usemingla.com https://www.usemingla.com https://host.usemingla.com",
     "object-src 'none'",
     ...(localMode ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");

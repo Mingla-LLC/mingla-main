@@ -3,6 +3,7 @@ import type { BlockType } from "../../contracts/generated/blocks.ts";
 import { MOTION_PROFILE_NUMBERS, type DesignDefinition, type MotionNumbers } from "../../contracts/generated/designs.ts";
 import type { MotionPreset } from "../../contracts/generated/tokens.ts";
 import type { SharedBlockProps } from "./parts";
+import { AvailabilityStrip, ProcessStepsBand, TicketTiersSplit } from "./blocks/Booking";
 import { HeroArch, HeroEditorial, HeroFullbleed, MarqueeTicker, RichTextManifesto } from "./blocks/Hero";
 import {
   DestinationGridTiles, FeatureCardsNumbered, FeatureCardsTiles, GalleryMosaic, GalleryPinned, GalleryStagger,
@@ -33,6 +34,10 @@ export const SHARED_BLOCK_LAYOUTS: Readonly<Partial<Record<BlockType, Readonly<R
   hours_location: { split: HoursLocationSplit },
   faq: { split: FaqSplit },
   newsletter_signup: { photo: NewsletterPhoto },
+  // #4453 milestone 5 — the live booking layouts.
+  availability: { strip: AvailabilityStrip },
+  ticket_tiers: { split: TicketTiersSplit },
+  process_steps: { band: ProcessStepsBand },
 };
 
 /**

@@ -11,7 +11,7 @@ import { requestHost } from "../../../../lib/publication";
 import { loadPageExtras } from "../../../../lib/pageExtras";
 import { SHARE_TOKEN, sharedPreviewForRequest } from "../../../../lib/shareLinks";
 import { withSharedView } from "../../../../lib/sharedView";
-import { sharedBannerText, SHARED_BANNER_STYLE } from "../../../../lib/sharedBanner";
+import { sharedBannerText, SHARED_BANNER_STYLE, SHARED_STRIP_CSS } from "../../../../lib/sharedBanner";
 import { siteDisplayName } from "../../../../lib/siteArtifact";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +71,7 @@ export default async function SharedPreviewPage({
   const incoming = await headers();
   return (
     <div data-preview="1" data-shared-preview="1" data-page={resolved.page.key}>
+      <style nonce={incoming.get("x-nonce") ?? undefined}>{SHARED_STRIP_CSS}</style>
       <p className="preview-banner" role="status" style={SHARED_BANNER_STYLE}>
         {sharedBannerText(siteDisplayName(artifact), shared.expiresAt)}
       </p>

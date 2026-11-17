@@ -14,6 +14,7 @@ import type { CollectionEntry } from "../../lib/siteCollections";
 import { SharedFooter, SharedHeader } from "./chrome/SharedChrome";
 import { SHARED_BLOCK_LAYOUTS, motionAttributes } from "./library";
 import { MotionRoot } from "./MotionRoot";
+import { PageBookingChrome } from "./blocks/Booking";
 import type { SharedBlock, SharedBlockProps, SharedContext } from "./parts";
 import {
   CalloutBasic, ContactDetailsBasic, ContactFormBasic, DividerBasic, MapEmbedBasic, MediaFeatureBasic, MenuPreviewBasic,
@@ -100,10 +101,13 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
   const footerVariant = artifact.footer.footer_variant ?? compositionFooter(design) ?? "giant";
   const motion = motionAttributes(design, artifact.tokens.motion, saveData === true);
   let content: React.ReactNode = null;
+  let booking: React.ReactNode = null;
   if (current && entry) {
     content = <div className="mg-blk mg-basic mg-basic--entry"><div className="mg-wrap"><CollectionEntryView entry={entry} artifact={artifact} live={live} /></div></div>;
   } else if (current) {
     const ctx: SharedContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };
+    // #4453 milestone 5 — the hand-off sheet and the sticky phone bar.
+    booking = <PageBookingChrome ctx={ctx} />;
     content = current.blocks.map((raw, index) => {
       const block = raw as unknown as SharedBlock;
       const Variant = pickVariant(blocks, raw);
@@ -125,6 +129,7 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
       <SharedHeader variant={headerVariant} items={items} path={path} logo={logo} siteName={siteName} cta={headerCta(artifact)} place={artifact.footer.location} />
       <main id="main" className="mg-main">{content}</main>
       <SharedFooter variant={footerVariant} artifact={artifact} items={items} />
+      {booking}
       {current ? <MotionRoot rootId="mg-scope" /> : null}
     </div>
   );

@@ -5,6 +5,7 @@ import {
   type CollectionConfig,
 } from "payload";
 import { siteBlocks } from "../blocks/siteBlocks";
+import { gateBookingBlocks } from "../lib/bookingBlocksGate";
 import { stampBlockReview } from "../lib/reviewStamp";
 import {
   enforceLiveStudioWrite,
@@ -160,7 +161,7 @@ export const Pages: CollectionConfig = {
   hooks: {
     beforeOperation: [enforceLiveStudioWrite],
     // #4453 — the Draft stamp runs last, on the blocks being stored.
-    beforeChange: [enforcePage, bindRequestTenant, stampBlockReview],
+    beforeChange: [enforcePage, bindRequestTenant, gateBookingBlocks, stampBlockReview],
     beforeDelete: [protectPage],
   },
   fields: [

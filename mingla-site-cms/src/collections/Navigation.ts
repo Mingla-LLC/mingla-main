@@ -200,5 +200,33 @@ export const Navigation: CollectionConfig = {
       options: HEADER_VARIANTS.map((value) => ({ value, label: { glass: "Glass bar", center: "Centred", pill: "Floating pill", "journal-mast": "Masthead (Journal)", "grid-bar": "Ruled bar (Grid)" }[value] })),
       admin: { description: "The header layout. Leave empty for the design's own header." },
     },
+    /*
+     * #4453 milestone 5 (§5.7) — the sticky phone booking bar: one Mingla
+     * action below 721 px, after the hero. The words are checked like any
+     * site text; a "from" price only ever comes from Mingla's live data.
+     */
+    {
+      name: "sticky_booking",
+      label: "Phone booking bar",
+      type: "checkbox",
+      defaultValue: false,
+      admin: { description: "On phones, keeps one Book button at the bottom of the screen after the opening picture." },
+    },
+    {
+      name: "sticky_title",
+      label: "Phone booking bar title",
+      type: "text",
+      maxLength: 40,
+      validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 40)),
+      admin: { condition: (data) => data?.sticky_booking === true },
+    },
+    {
+      name: "sticky_note",
+      label: "Phone booking bar note",
+      type: "text",
+      maxLength: 60,
+      validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 60)),
+      admin: { condition: (data) => data?.sticky_booking === true },
+    },
   ],
 };
