@@ -25,6 +25,7 @@ vi.mock("./designPassInputs", async (importOriginal) => {
 });
 
 import { designPassClaimKey, isClaimDuplicate, runDesignPassAction } from "./designPass";
+import { ARI_REFUSAL_CODES } from "./ariSiteActions";
 import { parseSignedDesignPass } from "./designPassInputs";
 import type { AriActionContext } from "./ariSiteActions";
 import { designFingerprint } from "../contracts/generated/formats.ts";
@@ -179,6 +180,8 @@ describe("#4453 design pass — gating and refusals", () => {
     expect(isClaimDuplicate(new Error("connection refused"))).toBe(false);
     expect(isClaimDuplicate({ data: { errors: [{ path: "site_id", message: "required" }] } })).toBe(false);
     await expect(pass("terra")).resolves.toMatchObject({ design: "terra" });
+    // Studio passes the code through to Core (an unknown code would read as a generic outage).
+    expect(ARI_REFUSAL_CODES.has("DESIGN_PASS_TRY_AGAIN")).toBe(true);
   });
 
   it("the claim key is per tenant and per draft start", () => {

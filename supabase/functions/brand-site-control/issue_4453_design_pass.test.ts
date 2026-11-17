@@ -121,3 +121,14 @@ Deno.test("#4453 M7 the design-pass actions are designer actions Core routes and
   }
   assertEquals(planFormat({ offerings_selected: ["trips", "events"], venue_descriptor: null, story: { main_action: "Come to an event" }, design_key: null }), "events");
 });
+
+Deno.test("#4453 M7c DESIGN_PASS_TRY_AGAIN reaches Ari and the owner as a plain, retryable 'try again' (never 'already run', never a generic outage)", async () => {
+  const { ARI_FAILURE_MESSAGES, ariFailureFrom } = await import("./siteAri.ts");
+  const response = ariFailureFrom({ ok: false, error: { code: "DESIGN_PASS_TRY_AGAIN" } }, 409);
+  const body = await response.json();
+  if (response.status !== 503) throw new Error(`status ${response.status}`);
+  if (body.error.code !== "DESIGN_PASS_TRY_AGAIN" || body.error.retryable !== true) throw new Error(JSON.stringify(body));
+  if (body.error.message !== ARI_FAILURE_MESSAGES.DESIGN_PASS_TRY_AGAIN || !/try again/i.test(body.error.message)) throw new Error(body.error.message);
+  const already = await ariFailureFrom({ ok: false, error: { code: "DESIGN_PASS_ALREADY_RUN" } }, 409).json();
+  if (already.error.retryable !== false) throw new Error("already run must not read as retryable");
+});

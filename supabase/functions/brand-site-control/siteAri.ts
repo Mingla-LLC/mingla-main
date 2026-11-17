@@ -86,6 +86,8 @@ export type AriFailureCode =
   | "STYLE_DOES_NOT_FIT"
   | "DESIGN_PASS_OFF"
   | "DESIGN_PASS_ALREADY_RUN"
+  // #4453 milestone 7c — the pass could not start (not "already run"); nothing was written, so it can run again.
+  | "DESIGN_PASS_TRY_AGAIN"
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
@@ -114,6 +116,7 @@ export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
   STYLE_DOES_NOT_FIT: "That style is built for other kinds of places. Ari picks from the styles that fit; the owner can still choose it in Your look.",
   DESIGN_PASS_OFF: "Ari's design pass isn't switched on for this brand yet.",
   DESIGN_PASS_ALREADY_RUN: "Ari has already designed this draft once. Change sections one at a time, or ask the owner before starting again.",
+  DESIGN_PASS_TRY_AGAIN: "Ari couldn't start the design pass just now and nothing was changed. Try again in a moment.",
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 
@@ -122,6 +125,7 @@ const STATUS: Partial<Record<AriFailureCode, number>> = {
   NOT_FOUND: 404,
   PAGE_NOT_FOUND: 404,
   SERVICE_TEMPORARILY_UNAVAILABLE: 503,
+  DESIGN_PASS_TRY_AGAIN: 503,
 };
 
 function isAriCode(value: unknown): value is AriFailureCode {
@@ -150,7 +154,7 @@ export function ariFailureFrom(body: JsonObject | null, status: number): Respons
     error: {
       code,
       message: ARI_FAILURE_MESSAGES[code],
-      retryable: code === "SERVICE_TEMPORARILY_UNAVAILABLE",
+      retryable: code === "SERVICE_TEMPORARILY_UNAVAILABLE" || code === "DESIGN_PASS_TRY_AGAIN",
       ...detail,
     },
   }, STATUS[code] ?? (status >= 500 && code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : 409));
