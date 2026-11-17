@@ -4,6 +4,7 @@ import {
   previewCornerRadius,
   previewDimensions,
   previewScale,
+  previewViewportHeight,
   PREVIEW_DEVICE_LABELS,
   type PreviewDevicePreference,
 } from "../../../../sites/previewDevice";
@@ -22,6 +23,8 @@ export type ScaledPreviewFrameProps = {
   /** Fit within this height (side panel 520, phone sheet 560); or fill the stage's own height. */
   maxHeight?: number;
   fill?: boolean;
+  /** #4453 M10 — draw at least this tall (extends the device height, never shrinks the width). */
+  minHeight?: number;
   tokenDeclarations?: readonly string[] | null;
   onLoad?: () => void;
 };
@@ -31,11 +34,12 @@ function prefersReducedMotion(): boolean {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function ScaledPreviewFrame({ url, preference, maxHeight = 520, fill = false, tokenDeclarations, onLoad }: ScaledPreviewFrameProps): React.ReactElement {
+export function ScaledPreviewFrame({ url, preference, maxHeight = 520, fill = false, minHeight, tokenDeclarations, onLoad }: ScaledPreviewFrameProps): React.ReactElement {
   const [box, setBox] = useState({ width: 0, height: 0 });
   const frameRef = useRef<HTMLIFrameElement | null>(null);
-  const { width, height } = previewDimensions(preference);
-  const scale = previewScale({ paneWidth: box.width, maxHeight: fill ? box.height : maxHeight, width, height });
+  const { width, height: deviceHeight } = previewDimensions(preference);
+  const scale = previewScale({ paneWidth: box.width, maxHeight: fill ? box.height : maxHeight, width, height: deviceHeight });
+  const height = previewViewportHeight({ height: deviceHeight, scale, minHeight: fill ? undefined : minHeight });
   const left = Math.max(0, (box.width - width * scale) / 2);
   const reduce = prefersReducedMotion();
 

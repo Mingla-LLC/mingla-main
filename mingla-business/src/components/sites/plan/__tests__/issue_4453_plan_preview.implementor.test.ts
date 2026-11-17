@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { normalizePlanPreview, planPreviewUrl } from "../../../../sites/planPreviewApi";
 import { normalizeSitePlan } from "../../../../sites/sitePlanState";
 import { planBuildSentence, planPreviewPicks } from "../../../../../../packages/site-contracts/src/planPreview";
+import { previewScale, previewViewportHeight } from "../../../../sites/previewDevice";
 
 const KEY = `plan-previews/aaaaaaaa-1111-4111-8111-0000000010b1/plan-${"a".repeat(32)}/${"d".repeat(64)}.json`;
 
@@ -54,11 +55,46 @@ describe("#4453 M10 plan preview (Host)", () => {
     const writes = chooser.match(/\b(save|compose)\.mutate\(/g) ?? [];
     expect(writes).toEqual(["save.mutate(", "compose.mutate("]);
     expect(chooser.indexOf("save.mutate(")).toBeGreaterThan(chooser.indexOf("const startBuild"));
-    expect(chooser).toMatch(/Platform\.OS === "web" \|\| index === active/);
+    // Rework P3-3: native mounts one WebView; while full screen is open the card's frame is unmounted.
+    expect(chooser).toMatch(/Platform\.OS === "web" \|\| \(index === active && full === null\)/);
   });
 
-  it("the fixture harness is dev-only: it redirects in a release build and reads no auth", () => {
-    const harness = readFileSync(join(__dirname, "../../../../../app/b/__dev-plan-preview.tsx"), "utf8");
+  it("rework P3-2: desktop frames are at least 360 px tall (the device height grows; the width never shrinks)", () => {
+    const chooserSource = readFileSync(join(__dirname, "../PlanPreviewChooser.tsx"), "utf8");
+    expect(chooserSource).toMatch(/export const PLAN_PREVIEW_DESKTOP_MIN_HEIGHT = 360;/);
+    const PLAN_PREVIEW_DESKTOP_MIN_HEIGHT = 360;
+    // 1440 x 900 desktop in a ~400 px column: the width-limited scale draws it 250 px tall.
+    const scale = previewScale({ paneWidth: 400, maxHeight: 420, width: 1440, height: 900 });
+    expect(Math.ceil(900 * scale)).toBeLessThan(360);
+    const height = previewViewportHeight({ height: 900, scale, minHeight: PLAN_PREVIEW_DESKTOP_MIN_HEIGHT });
+    expect(Math.ceil(height * scale)).toBeGreaterThanOrEqual(360);
+    expect(previewViewportHeight({ height: 900, scale })).toBe(900);
+    expect(previewViewportHeight({ height: 900, scale: 0, minHeight: 360 })).toBe(900);
+    const chooser = readFileSync(join(__dirname, "../PlanPreviewChooser.tsx"), "utf8");
+    expect(chooser).toMatch(/minHeight=\{wide \? PLAN_PREVIEW_DESKTOP_MIN_HEIGHT : undefined\}/);
+  });
+
+  it("the fixture harness is dev-only: Metro never sees it in production, it redirects in a release build and reads no auth", () => {
+    // Rework P2-2: a production Metro config blocks the harness file, so no route and no chunk ship.
+    const root = join(__dirname, "../../../../..");
+    const harnessPath = join(root, "app/b/__dev-plan-preview.tsx");
+    const blocked = (env: string): boolean => {
+      const vars = process.env as Record<string, string | undefined>;
+      const previous = vars.NODE_ENV;
+      vars.NODE_ENV = env;
+      try {
+        jest.resetModules();
+        const config = jest.requireActual(join(root, "metro.config.js")) as { resolver: { blockList?: RegExp | RegExp[] } };
+        const list = config.resolver.blockList;
+        return (Array.isArray(list) ? list : list ? [list] : []).some((re) => re.test(harnessPath));
+      } finally {
+        vars.NODE_ENV = previous;
+        jest.resetModules();
+      }
+    };
+    expect(blocked("production")).toBe(true);
+    expect(blocked("development")).toBe(false);
+    const harness = readFileSync(harnessPath, "utf8");
     expect(harness).toMatch(/if \(!__DEV__\) return <Redirect href="\/" \/>;/);
     expect(harness).not.toMatch(/useAuth/);
     // The chooser itself never reads the fixture.

@@ -90,7 +90,9 @@ export function PlanPreviewChooser({
   };
 
   const cardFrame = (card: PlanPreviewCard, index: number) => {
-    const mountWebView = Platform.OS === "web" || index === active;
+    // Native: ONE WebView at a time. While full screen is open its frame is the
+    // one; the card's frame is unmounted (tester P3-3) and comes back on close.
+    const mountWebView = Platform.OS === "web" || (index === active && full === null);
     if (!mountWebView) {
       return (
         <View style={styles.waiting} testID={`plan-preview-waiting-${card.style}`}>
@@ -105,6 +107,7 @@ export function PlanPreviewChooser({
         url={card.url}
         preference={defaultPreviewPreference(wide)}
         maxHeight={wide ? 420 : 560}
+        minHeight={wide ? PLAN_PREVIEW_DESKTOP_MIN_HEIGHT : undefined}
       />
     );
   };
@@ -211,6 +214,9 @@ export function PlanPreviewChooser({
     </View>
   );
 }
+
+/** §2.1.5 — Business web ≥ 1200 px: each desktop frame is at least 360 px tall. */
+export const PLAN_PREVIEW_DESKTOP_MIN_HEIGHT = 360;
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 },
