@@ -530,7 +530,10 @@ export function phase3dContractDigest(manifest) {
 // #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 rework 7: merged origin/4420-host-graphite-glass 33f59ce94a (its 20280721/22/23004420 rows kept beside the #4238 and #4452 B8 rows); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "930f8ccfdc1a2e29c40626c46a224ffedcb2b2abb2ff798a1ea5c20b2fc087d2";
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "fd0fcc0bfee074dcf774080bd2be816ff781e71306f830e8734433cb703804cc";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

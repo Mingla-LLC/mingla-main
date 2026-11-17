@@ -300,7 +300,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   const currentFingerprint = useMemo(() => draftFingerprint(currentPayload), [currentPayload]);
   const draftDirty = savedFingerprint !== currentFingerprint &&
     (draft !== null || hasDraftContent({ subject, document: documentValue }));
-  const draftEditable = canEditDraft(draft, { userId: myUserId, isAdmin });
+  const draftEditable = canEditDraft(draft, { userId: myUserId, isAdmin }) === true;
 
   const applyComposerState = useCallback((state) => {
     setAudienceMode(state.audienceMode);

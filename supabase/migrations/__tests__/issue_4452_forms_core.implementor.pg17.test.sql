@@ -223,7 +223,11 @@ BEGIN
                                jsonb_set(jsonb_set(v_draft, '{fields,2,required}', 'false'), '{fields,2,locked}', 'false')));
   PERFORM pg_temp.f_assert(v_state = '22023', 'T-1.1h SC-9 making the locked phone optional is refused');
 
-  -- ── Publish needs the test send (publish check 5) ──
+  -- ── Publish needs the test send (publish check 5) when the flow emails the person ──
+  -- (#4452 B22: a form whose flow sends no email passes check 5; issue_4452_flow_validator proves that side.)
+  PERFORM public.admin_automation_save_draft(v_form, 0,
+    '{"v":1,"steps":[{"id":"e1","type":"email","name":"Welcome","to":"person","from":"creators","reply_to":"team","subject":"Thanks","doc":[{"id":"e1b","type":"rich_text","html":"<p>Thanks.</p>"}],"show_answers":false}]}',
+    '{}');
   v_state := pg_temp.f_state(format($$SELECT public.admin_form_publish(%L, %s)$$, v_form, v_rev));
   PERFORM pg_temp.f_assert(v_state = '22023', 'T-1.1f publish is blocked until a test was sent');
   PERFORM public.admin_form_mark_tested(v_form);

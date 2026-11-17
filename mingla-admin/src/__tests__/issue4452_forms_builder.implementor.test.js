@@ -18,6 +18,13 @@
 // `!review.ok` from its disabled) fails T-7.4b; a follow-up before any wait
 // (kind walk) fails T-AUTO; letting the PT409 path overwrite fails T-7.4a.
 //
+//   B22/B23/B24 (follow-up, migration 20280725004452): check 5 passes with "No emails to test" when the
+//   flow sends the person no email; an invalid_flow refusal (bad_step:<id> and the other flow codes) marks
+//   the step card with a plain reason and never points at Publish; "save first" hints close themselves and
+//   a successful save closes the stale error toasts.
+//   FAILS-ON-REVERT: `ok: testedAt !== null` alone fails B22; the "See Publish for the list." toast or a
+//   card without data-step-error fails B23; an error-variant no_email_steps toast fails B24.
+//
 // Run: node --test src/__tests__/issue4452_forms_builder.implementor.test.js (from mingla-admin).
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -52,6 +59,7 @@ import { PublishTab } from "../../components/forms/PublishTab.jsx";
 import { DesignTab } from "../../components/forms/DesignTab.jsx";
 import { FieldsTab } from "../../components/forms/FieldsTab.jsx";
 import { GoogleConversionsCardView } from "../../components/forms/GoogleConversionsCardView.jsx";
+import { FlowList } from "../../components/forms/AutomationsTab.jsx";
 import { kitSrcDoc, previewForm } from "../../lib/formsPreview.js";
 export { M, F, kitSrcDoc, previewForm };
 export const table = (p) => r(<FormsTable onEdit={() => {}} onDuplicate={() => {}} onArchive={() => {}} {...p} />);
@@ -59,6 +67,7 @@ export const publish = (p) => r(<PublishTab flush={async () => {}} reload={async
 export const design = (p) => r(<DesignTab edit={() => {}} {...p} />);
 export const fields = (p) => r(<FieldsTab edit={() => {}} {...p} />);
 export const google = (p) => r(<GoogleConversionsCardView onCreate={() => {}} busy="" {...p} />);
+export const flowList = (steps, errors) => r(<FlowList steps={steps} path={[]} ctx={{ canEdit: true, cardOn: false, kinds: {}, fields: [], stats: {}, sel: null, errors, select() {}, add() {} }} />);
 `, {
     name: "issue4452-forms",
     stubs: {
@@ -122,7 +131,7 @@ describe("#4452 T-7.3 the Forms list", () => {
   it("Book-a-call forms say they use the Book-a-call emails", () => {
     assert.equal(h.M.formSubLine({ template: "book_call_extra", fields: 3 }), "Uses Book-a-call emails");
     // #4452 §6.9: the free tools' system follow-up forms are labelled, and never offered for a page spot.
-    assert.equal(h.M.formSubLine({ template: "tool", fields: 3 }), "Free tool follow-ups (system form)");
+    assert.equal(h.M.formSubLine({ template: "tool", fields: 3 }), h.M.TOOL_FORM_HINT);
     assert.match(readSrc("components/website/PageSidePanel.jsx"), /f\.template !== "tool" && \(details \?/);
   });
 });
@@ -407,5 +416,103 @@ describe("#4452 T-7.0 view-only members", () => {
       assert.equal(canOpenPage(website, page), true, `website ${page}`);
       assert.equal(canOpenPage(nobody, page), false, `nobody ${page}`);
     }
+  });
+});
+
+// #4452 B19: a failed forms-admin call ("Send me a test", "Test the whole flow")
+// shows plain words, never the client library's raw "Failed to send a request
+// to the Edge Function". FAILS-ON-REVERT: putting `error.message` back into the
+// fn() throw, or `e.message` back into the flow test's toast, fails these.
+describe("#4452 B19 a failed forms-admin call reads in plain English", () => {
+  const RAW = "Failed to send a request to the Edge Function";
+  it("an unreachable function says so plainly; the server's own message wins when it sent one", () => {
+    const fetchError = Object.assign(new Error(RAW), { name: "FunctionsFetchError" });
+    assert.equal(h.M.functionErrorWords(fetchError, null), h.M.FUNCTION_UNREACHABLE);
+    assert.doesNotMatch(h.M.FUNCTION_UNREACHABLE, /Edge Function/);
+    assert.equal(h.M.functionErrorWords(new Error("x"), { error: "publish_first", message: "Publish the form and its emails first." }), "Publish the form and its emails first.");
+    assert.equal(h.M.functionErrorWords(new Error(RAW), { error: "server" }), "Something on the server failed. Try again.");
+    assert.equal(h.M.functionErrorWords(new Error(RAW), { error: "validation" }), "That did not go through. Try again.");
+    assert.equal(h.M.functionErrorWords(new Error(RAW), null), "That did not go through. Try again.");
+  });
+  it("the service throws those words, and every forms-admin toast goes through formsErrorWords", () => {
+    const svc = readSrc("services/formsService.js");
+    assert.match(svc, /throw new FormsError\(code, functionErrorWords\(error, payload\)\);/);
+    assert.doesNotMatch(svc, /error\.message \|\| "That did not go through\."/);
+    const auto = readSrc("components/forms/AutomationsTab.jsx");
+    assert.doesNotMatch(auto, /title: e\.message/);
+    assert.match(auto, /const res = await testWholeFlow\(form\.id\);[\s\S]{0,200}title: formsErrorWords\(e\)/);
+  });
+});
+
+describe("#4452 follow-up B22 publish check 5 with no emails", () => {
+  const TEAM_ONLY = () => ({ v: 1, steps: [{ id: "t1", type: "team", name: "Team alert", to: "creators_inbox", include_answers: true }] });
+  it("passes as \"No emails to test\" when the flow sends the person nothing", () => {
+    for (const flow of [null, { v: 1, steps: [] }, TEAM_ONLY()]) {
+      const c = h.M.publishReview(CREATORS(), flow, null).checks.find((x) => x.id === "tested");
+      assert.equal(c.ok, true, JSON.stringify(flow));
+      assert.equal(c.title, "No emails to test");
+    }
+    const html = h.publish({ form: { id: "f" }, def: CREATORS(), flow: TEAM_ONLY(), review: h.M.publishReview(CREATORS(), TEAM_ONLY(), null), canEdit: true });
+    assert.match(html, /data-check="tested" data-ok="yes"/);
+    assert.match(html, /No emails to test/);
+  });
+  it("still needs a test when an email reaches the person", () => {
+    const c = h.M.publishReview(CREATORS(), FLOW(), null).checks.find((x) => x.id === "tested");
+    assert.equal(c.ok, false);
+    assert.equal(c.title, "You sent yourself a test");
+    const branchOnly = { v: 1, steps: [{ id: "b1", type: "branch", cond: { on: "booked", op: "is", value: "yes" }, yes: [], no: [FLOW().steps[0]] }] };
+    assert.equal(h.M.publishReview(CREATORS(), branchOnly, null).checks.find((x) => x.id === "tested").ok, false, "an email inside a branch counts");
+  });
+});
+
+describe("#4452 follow-up B23 a refused save marks the step", () => {
+  const PROD = () => ({ v: 1, steps: [{ id: "emktrwbj", type: "email", name: "New email", to: "person", from: "creators", reply_to: "team", subject: "Hi {first_name}", doc: [{ id: "emktrwbjb", type: "rich_text", html: "<p>Hi {first_name},</p>" }], show_answers: false, action_bar: "auto" }] });
+  it("bad_step:<id> names the step with the reason the contract gives", () => {
+    const flow = PROD();
+    delete flow.steps[0].to;
+    const r = h.M.flowSaveErrors(JSON.stringify([{ code: "bad_step:emktrwbj", path: "steps" }]), flow, CREATORS());
+    assert.deepEqual(r.byStep, { emktrwbj: "Pick who it goes to." });
+    assert.deepEqual(r.general, []);
+  });
+  it("a bad_step with no matching step, and flow-wide codes, become plain general lines", () => {
+    const r = h.M.flowSaveErrors(JSON.stringify([{ code: "bad_step:emktrwbjb", path: "steps" }, { code: "too_many_steps", path: "steps" }]), PROD(), CREATORS());
+    assert.deepEqual(r.byStep, {});
+    assert.deepEqual(r.general, ["A step could not be saved. Remove it and add it again.", "The flow has more than 30 steps."]);
+  });
+  it("unknown tokens, stage moves and follow-ups without consent land on their steps", () => {
+    const flow = FLOW();
+    flow.steps[2].subject = "Hi {nickname}";
+    flow.steps.push({ id: "mv", type: "stage", stage: "contacted" });
+    const noConsent = { ...CREATORS(), fields: CREATORS().fields.filter((f) => f.type !== "consent") };
+    const r = h.M.flowSaveErrors(JSON.stringify([
+      { code: "unknown_token:nickname", path: "steps" }, { code: "stage_needs_card", path: "steps" }, { code: "follow_up_needs_consent", path: "steps" },
+    ]), flow, noConsent);
+    assert.equal(r.byStep.nudge, "Unknown merge field {nickname}. Pick one from Insert.");
+    assert.equal(r.byStep.mv, "A pipeline move needs the pipeline card on (Settings).");
+    assert.equal(r.byStep.welcome, undefined, "the confirmation is not a follow-up");
+  });
+  it("the card is outlined with the reason; the toast never points at Publish", () => {
+    const html = h.flowList(PROD().steps, { emktrwbj: "Pick who it goes to." });
+    assert.match(html, /data-flow-step="emktrwbj"[^>]*data-step-error=""/);
+    assert.match(html, /aria-invalid="true"/);
+    assert.match(html, /data-step-error-reason="">Pick who it goes to\.</);
+    assert.doesNotMatch(h.flowList(PROD().steps, {}), /data-step-error/);
+    const auto = readSrc("components/forms/AutomationsTab.jsx");
+    assert.doesNotMatch(auto, /See Publish/);
+    assert.match(auto, /flowSaveErrors\(e\.detail, flow, def, \{ cardOn, stages \}\)/);
+  });
+});
+
+describe("#4452 follow-up B24 stale toasts", () => {
+  it("the no-email hints are self-closing info toasts", () => {
+    const builder = readSrc("components/forms/FormBuilder.jsx");
+    assert.match(builder, /e\.code === "no_email_steps"\) addToast\(\{ variant: "info"/);
+    assert.doesNotMatch(builder, /variant: "error", title: e\.code === "no_email_steps"/);
+    assert.equal(readSrc("components/forms/AutomationsTab.jsx").includes('trackStale(addToast({ variant: "info", title: "Save changes first'), true);
+  });
+  it("a successful save closes the save-error toasts it made stale", () => {
+    const auto = readSrc("components/forms/AutomationsTab.jsx");
+    assert.match(auto, /await publishAutomation\(form\.id, saved\.draft_rev\);\s*setStepErrors\(\{\}\);\s*staleToasts\.current\.splice\(0\)\.forEach\(\(id\) => removeToast\?\.\(id\)\);/);
+    assert.match(auto, /trackStale\(addToast\(\{\s*variant: "error",\s*title: ids\.length/);
   });
 });

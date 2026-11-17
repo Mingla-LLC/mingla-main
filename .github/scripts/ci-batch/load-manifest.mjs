@@ -318,7 +318,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
 // #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
 // #4238 rework 7: merged origin/4420-host-graphite-glass 33f59ce94a (its 20280721/22/23004420 rows and the #1931 filtered-replay skips for 20280722/23004420 kept beside the #4238 and #4452 B8 rows); re-sealed.
-export const BOOTSTRAP_SHA256 = "331625e7b8a581c1da13ec59a2e0c72461a4ae6d65033b9eb5d4d35346f7abca";
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
+export const BOOTSTRAP_SHA256 = "a3b82d390213468cec7b10e78341358f4f4ff4b22e74dac635dca265e0ce88e1";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

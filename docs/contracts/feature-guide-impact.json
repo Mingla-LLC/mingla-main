@@ -1307,7 +1307,8 @@
         "supabase/functions/admin-send-email/model.ts",
         "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
-        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql"
+        "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql",
+        "mingla-marketing/public/brand/mingla-logo-pill.png"
       ]
     },
     {
@@ -2780,7 +2781,10 @@
         "mingla-business/src/components/messages/brandGroupFilePicker.ts",
         "mingla-business/src/components/messages/brandGroupFilePickerShared.ts",
         "mingla-business/src/services/brandGroupFilesService.ts",
-        "mingla-business/app/g/[token].tsx"
+        "mingla-business/app/g/[token].tsx",
+        "mingla-admin/src/hooks/useMinuteClock.js",
+        "mingla-admin/src/lib/brandGroupHostAssign.js",
+        "mingla-admin/src/lib/brandGroupSideAccess.js"
       ]
     },
     {
@@ -4029,7 +4033,8 @@
         "supabase/functions/forms-automation-sender/function-policy.json",
         "supabase/functions/forms-automation-sender/index.ts",
         "supabase/functions/forms-automation-sender/sender.ts",
-        "supabase/migrations/20280712024452_issue_4452_automations.sql"
+        "supabase/migrations/20280712024452_issue_4452_automations.sql",
+        "supabase/migrations/20280725004452_issue_4452_flow_validator.sql"
       ]
     },
     {
