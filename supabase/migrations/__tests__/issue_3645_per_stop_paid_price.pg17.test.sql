@@ -277,4 +277,83 @@ BEGIN
   RAISE NOTICE 'ISSUE-3645-2A L2 PASS: an existing free per-stop experience keeps saving; paid at 0 never does';
 END $l2$;
 
+-- ─── L3  with tickets sold, the sold-ticket gate still answers first ───────
+DO $l3$
+DECLARE
+  v_brand uuid := '3645a2a0-0000-4000-8000-0000000000c3';
+  v_event uuid;
+  v_tt uuid;
+  v_r jsonb;
+BEGIN
+  PERFORM pg_temp.brand(v_brand);
+  PERFORM pg_temp.as_host();
+  v_event := (public.biz_create_experience(v_brand,
+    pg_temp.payload(false, 'per_stop', NULL, 100000, 0), true)->'event'->>'id')::uuid;
+  v_tt := (pg_temp.live_ticket(v_event)).id;
+  INSERT INTO public.orders(id, event_id, event_date_id, buyer_email, total_cents, currency,
+    payment_method, payment_status, source)
+  VALUES ('3645a2a0-0000-4000-8000-00000000f003', v_event,
+    (SELECT id FROM public.event_dates WHERE event_id = v_event LIMIT 1),
+    'l3@example.test', 100000, 'NGN', 'online_card', 'paid', 'manual_import');
+  INSERT INTO public.order_line_items(order_id, ticket_type_id, quantity, unit_price_cents, total_cents)
+  VALUES ('3645a2a0-0000-4000-8000-00000000f003', v_tt, 1, 100000, 100000);
+
+  v_r := public.biz_update_live_experience(v_event, pg_temp.payload(false, 'per_stop', NULL, 0, 0),
+    'Updating the experience for guests');
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' IS DISTINCT FROM 'price_change_with_sales' THEN
+    RAISE EXCEPTION 'L3 FAIL: sold, cut to 0 answered %', v_r;
+  END IF;
+  v_r := public.biz_update_live_experience(v_event, pg_temp.payload(true, 'per_stop', NULL, 0, 0),
+    'Updating the experience for guests');
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' IS DISTINCT FROM 'price_change_with_sales' THEN
+    RAISE EXCEPTION 'L3 FAIL: sold, marked free answered %', v_r;
+  END IF;
+  IF (pg_temp.live_ticket(v_event)).price_cents IS DISTINCT FROM 100000 OR (pg_temp.live_ticket(v_event)).is_free THEN
+    RAISE EXCEPTION 'L3 FAIL: a refused edit changed the sold ticket';
+  END IF;
+  RAISE NOTICE 'ISSUE-3645-2A L3 PASS: with tickets sold, price_change_with_sales still answers before the price rule';
+END $l3$;
+
+-- ─── A1  Ari: an update that claims "paid" at 0 is refused; others save ────
+-- Ari writes through business_apply_experience_action, which merges the patch
+-- onto issue_1973_current_experience_payload (what the wizard reads back too).
+DO $a1$
+DECLARE
+  v_brand uuid := '3645a2a0-0000-4000-8000-0000000000a1';
+  v_event uuid;
+  v_err text;
+  v_cur jsonb;
+BEGIN
+  PERFORM pg_temp.brand(v_brand);
+  PERFORM pg_temp.as_host();
+  v_event := (public.biz_create_experience(v_brand,
+    pg_temp.payload(true, 'per_stop', NULL, 0, 0), true)->'event'->>'id')::uuid;
+
+  -- The real readback of an existing free per-stop experience says free.
+  v_cur := public.issue_1973_current_experience_payload(v_event);
+  IF (v_cur->>'is_free')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'A1 fixture FAIL: readback is_free=%', v_cur->'is_free';
+  END IF;
+  -- Saved exactly as read back, it goes through (the live wizard and Ari both
+  -- start from this payload).
+  IF pg_temp.try_live(v_event, v_cur) IS NOT NULL THEN
+    RAISE EXCEPTION 'A1 FAIL: saving the readback was refused: %', pg_temp.try_live(v_event, v_cur);
+  END IF;
+
+  BEGIN
+    PERFORM public.business_apply_experience_action(v_event, '{"is_free": false}'::jsonb, 'update',
+      NULL, 'Updating the experience for guests');
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  IF v_err IS NULL OR v_err NOT LIKE '%experience_price_invalid%' THEN
+    RAISE EXCEPTION 'A1 FAIL: Ari "paid" at 0 (%)', coalesce(v_err, 'accepted');
+  END IF;
+  PERFORM public.business_apply_experience_action(v_event, '{"description": "A longer walk."}'::jsonb, 'update',
+    NULL, 'Updating the experience for guests');
+  IF NOT (pg_temp.live_ticket(v_event)).is_free THEN
+    RAISE EXCEPTION 'A1 FAIL: a harmless Ari update changed the free ticket';
+  END IF;
+  RAISE NOTICE 'ISSUE-3645-2A A1 PASS: Ari cannot turn a free per-stop experience into a paid one at 0; other updates save';
+END $a1$;
+
 ROLLBACK;

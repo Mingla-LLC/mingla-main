@@ -84,3 +84,18 @@ Deno.test("#3645 2A the refusal is worded for Ari and the experience wizard", ()
   );
   assert(/experience_price_invalid:\s*"Set a valid price, or mark the experience free\."/.test(wizard));
 });
+
+Deno.test("#3645 2A refuses to apply before its source migrations (no silent rollback of the rule)", () => {
+  const sql = Deno.readTextFileSync(TARGET);
+  const guard = sql.indexOf("DO $precondition$");
+  const firstCreate = sql.indexOf("CREATE OR REPLACE FUNCTION");
+  assert(guard > 0 && guard < firstCreate, "the precondition runs before any re-emit");
+  assert(sql.includes("to_regprocedure('public.issue_3281_event_date_deletable(uuid)') IS NULL"));
+  assert(sql.includes("p.prosrc LIKE '%experience_dates_have_sales%'"));
+  assert(sql.includes("RAISE EXCEPTION 'issue_3645_2a_requires_20280625003281'"));
+  assert(sql.includes("RAISE EXCEPTION 'issue_3645_2a_requires_20280428003645'"));
+  // The update marker it checks survives this migration's own hunk, so a
+  // re-apply still passes.
+  const update = definitions(sql).get("biz_update_live_experience")!;
+  assert(update.includes("a paid whole-price experience edited to 0"));
+});

@@ -18,6 +18,35 @@
 
 BEGIN;
 
+-- Apply order. These bodies are re-emitted from their latest definitions, so
+-- each source migration must already be live: biz_publish_experience comes
+-- from 20280625003281 (#3281 bundle 6; it calls
+-- issue_3281_event_date_deletable) and biz_update_live_experience from
+-- 20280428003645. Applied before them, this would install bodies calling a
+-- missing function, and the later source migration would then silently put
+-- the old rule back. Refuse instead.
+DO $precondition$
+BEGIN
+  IF to_regprocedure('public.issue_3281_event_date_deletable(uuid)') IS NULL
+     OR NOT EXISTS (
+       SELECT 1 FROM pg_proc p
+        WHERE p.oid = to_regprocedure('public.biz_publish_experience(uuid,jsonb,boolean)')
+          AND p.prosrc LIKE '%experience_dates_have_sales%'
+     ) THEN
+    RAISE EXCEPTION 'issue_3645_2a_requires_20280625003281'
+      USING HINT = 'Apply 20280625003281_issue_3281_dates_never_orphan.sql first.';
+  END IF;
+  IF NOT EXISTS (
+       SELECT 1 FROM pg_proc p
+        WHERE p.oid = to_regprocedure('public.biz_update_live_experience(uuid,jsonb,text)')
+          AND p.prosrc LIKE '%a paid whole-price experience edited to 0%'
+     ) THEN
+    RAISE EXCEPTION 'issue_3645_2a_requires_20280428003645'
+      USING HINT = 'Apply 20280428003645_issue_3645_sell_publish_integrity.sql first.';
+  END IF;
+END
+$precondition$;
+
 -- biz_create_experience: latest definition 20271123003281_issue_3281_r3_spacing_spots.sql, one hunk.
 CREATE OR REPLACE FUNCTION public.biz_create_experience(
   p_brand_id uuid,

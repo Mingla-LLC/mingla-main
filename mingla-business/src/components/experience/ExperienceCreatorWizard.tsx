@@ -1014,8 +1014,9 @@ export const ExperienceCreatorWizard: React.FC<
             typeof s.startOffsetMinutes === "number"
               ? s.startOffsetMinutes
               : null,
+          // #3645 bundle 2A — a free experience sends no stop prices.
           price_cents:
-            pricingMode === "per_stop"
+            pricingMode === "per_stop" && !isFree
               ? Math.round((parseFloat(s.priceMajor) || 0) * 100)
               : 0,
           ai_description: s.description.trim(),
@@ -1635,8 +1636,9 @@ export const ExperienceCreatorWizard: React.FC<
       whole_price_cents: resolvedCents,
       stops: stops.map((s) => ({
         placeName: s.placeName.trim(),
+        // #3645 bundle 2A — a free experience sends no stop prices.
         priceCents:
-          pricingMode === "per_stop"
+          pricingMode === "per_stop" && !isFree
             ? Math.round((parseFloat(s.priceMajor) || 0) * 100)
             : 0,
       })),

@@ -48,6 +48,7 @@ import type {
 import {
   EXPERIENCE_BLOCK_MINUTES,
   emptyPriceOption,
+  perStopTotalMinor,
 } from "./experienceWizardTypes";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
@@ -256,11 +257,28 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
     return `${currencySymbol}${major.toFixed(decimals)}`;
   };
 
+  // #3645 bundle 2A — paid but resolving to 0 minor units, exactly as the
+  // server sums it (per stop: each stop rounded first).
+  const unpriced =
+    !isFree &&
+    (pricingMode === "per_stop"
+      ? perStopTotalMinor(stops) <= 0
+      : Math.round(resolvedTotalMajor * 100) <= 0);
+
   const summaryCopy = (): string => {
-    const t = formatSummaryTotal(resolvedTotalMajor);
+    const t = formatSummaryTotal(
+      pricingMode === "per_stop" ? perStopTotalMinor(stops) / 100 : resolvedTotalMajor,
+    );
     const stopWord = n === 1 ? "stop" : "stops";
-    if (isFree || resolvedTotalMajor === 0) {
+    if (isFree) {
       return `Free for buyers — they get ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} in one booking.`;
+    }
+    // #3645 bundle 2A — a paid experience at 0 is not free: only the free
+    // switch makes it free (the server refuses it otherwise).
+    if (unpriced) {
+      return pricingMode === "per_stop"
+        ? "No price yet. Give at least one stop a price, or mark the experience free."
+        : "No price yet. Set a price, or mark the experience free.";
     }
     if (priceOptions.filter((o) => !o.isHidden).length > 1) {
       return `From ${t}. Buyers pick a price, then book the whole experience.`;
@@ -321,13 +339,16 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         </Text>
       ) : null}
 
+      {/* #3645 bundle 2A — the free switch shows in both modes: in per-stop
+          mode, stops left at 0 no longer make the experience free. */}
+      <ToggleRow
+        label="This experience is free"
+        value={isFree}
+        onToggle={() => setIsFree(!isFree)}
+      />
+
       {pricingMode === "whole" ? (
         <>
-          <ToggleRow
-            label="This experience is free"
-            value={isFree}
-            onToggle={() => setIsFree(!isFree)}
-          />
           {!isFree ? (
             <>
               {priceOptions.map((opt, idx) => (
@@ -367,7 +388,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
             </>
           ) : null}
         </>
-      ) : (
+      ) : isFree ? null : (
         <>
           <Text style={styles.sectionLabel}>PER-STOP PRICES</Text>
           {stops.map((s, i) => (
@@ -392,8 +413,13 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
           <View style={styles.divider} />
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatSummaryTotal(resolvedTotalMajor)}</Text>
+            <Text style={styles.totalValue}>{formatSummaryTotal(perStopTotalMinor(stops) / 100)}</Text>
           </View>
+          {showErrors && unpriced ? (
+            <Text style={styles.inlineError} testID="experience-pricing-per-stop-unpriced">
+              Give at least one stop a price, or mark the experience free.
+            </Text>
+          ) : null}
         </>
       )}
 
@@ -495,7 +521,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         />
       </GlassCard>
       <Text style={styles.refundHelper} testID="experience-pricing-refund-helper">
-        {isFree || resolvedTotalMajor === 0 ? REFUND_HELPER_FREE : REFUND_HELPER_PAID}
+        {isFree ? REFUND_HELPER_FREE : REFUND_HELPER_PAID}
       </Text>
       {liveSoldCount > 0 ? (
         <GlassCard

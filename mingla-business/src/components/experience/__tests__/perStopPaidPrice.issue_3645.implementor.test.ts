@@ -38,8 +38,11 @@ describe("issue #3645 2A — per-stop total in minor units", () => {
     expect(rule).toMatch(/if \(isFree\) return true;/);
     expect(rule).toMatch(/if \(pricingMode === "whole"\) return paidPriceHasMinorUnits\(resolvedTotalMajor\);/);
     expect(rule).toMatch(/stops\.every\(\(s\) => stopPriceEntryIsValid\(s\.priceMajor\)\) &&\s*perStopTotalMinor\(stops\) > 0/);
-    // The payload sends each stop exactly the way perStopTotalMinor counts it.
-    expect(src).toMatch(/Math\.round\(\(parseFloat\(s\.priceMajor\) \|\| 0\) \* 100\)/);
+    // The payload sends each stop exactly the way perStopTotalMinor counts it,
+    // and a free experience sends no stop prices (create/publish and live save).
+    const sends = src.match(/pricingMode === "per_stop" && !isFree\s*\?\s*Math\.round\(\(parseFloat\(s\.priceMajor\) \|\| 0\) \* 100\)\s*:\s*0/g) ?? [];
+    expect(sends).toHaveLength(2);
+    expect(src).not.toMatch(/pricingMode === "per_stop"\s*\?\s*Math\.round\(\(parseFloat/);
     expect(src).toMatch(/experience_price_invalid: "Set a valid price, or mark the experience free\."/);
     // Review never calls a paid per-stop experience "Free": only the free mark does.
     expect(src).not.toMatch(/pricingMode === "per_stop" && resolvedTotalMajor === 0/);

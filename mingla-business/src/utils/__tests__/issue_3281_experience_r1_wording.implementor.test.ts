@@ -62,7 +62,12 @@ describe("issue #3281 Round 1 PR 1a — Host wording / zone / money", () => {
     expect(step).toMatch(/priceDecimals/);
     expect(step).toMatch(/formatSummaryTotal/);
     expect(step).not.toMatch(/resolvedTotalMajor\.toFixed\(2\)/);
-    expect(step).toMatch(/formatSummaryTotal\(resolvedTotalMajor\)/);
+    // [TEST-MOD-APPROVED #3645] bundle 2A: the summary and the per-stop Total
+    // format the server's per-stop sum (each stop rounded to minor units)
+    // with the same formatter, never toFixed.
+    expect(step).toMatch(/formatSummaryTotal\(\s*pricingMode === "per_stop" \? perStopTotalMinor\(stops\) \/ 100 : resolvedTotalMajor,?\s*\)/);
+    expect(step).toMatch(/formatSummaryTotal\(perStopTotalMinor\(stops\) \/ 100\)/);
+    expect(step).not.toMatch(/\.toFixed\(2\)/);
   });
 
   it("ExperienceReservePicker uses experienceTimeZone (no getHours)", () => {
