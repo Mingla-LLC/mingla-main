@@ -197,7 +197,7 @@ export const Navigation: CollectionConfig = {
     {
       name: "header_variant",
       type: "select",
-      options: HEADER_VARIANTS.map((value) => ({ value, label: { glass: "Glass bar", center: "Centred", pill: "Floating pill" }[value] })),
+      options: HEADER_VARIANTS.map((value) => ({ value, label: { glass: "Glass bar", center: "Centred", pill: "Floating pill", "journal-mast": "Masthead (Journal)", "grid-bar": "Ruled bar (Grid)" }[value] })),
       admin: { description: "The header layout. Leave empty for the design's own header." },
     },
     /*

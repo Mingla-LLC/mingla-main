@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { bookingBarHref, type BookingBarValues, type BookingTarget } from "../../../contracts/generated/availability.ts";
-import { analyticsAllowed, isPreviewPublication, sendSiteEvent, siteHandoffHref, type SiteEventContext } from "../../../lib/clientAnalytics";
+import { analyticsAllowed, sendSiteEvent, siteHandoffHref, type SiteEventContext } from "../../../lib/clientAnalytics";
 
 /*
  * #4453 milestone 5 (spec v2 §5.8) — the checkout hand-off.
@@ -85,12 +85,15 @@ export function HeroBookingForm({ target, children, submitLabel, from }: { targe
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/** The one hand-off sheet a page mounts. */
-export function MinglaHandoff({ context }: { context: SiteEventContext }) {
+/**
+ * The one hand-off sheet a page mounts. `preview` is decided on the server
+ * from the artifact being rendered (ctx.preview, #4453 milestone 3 fix), never
+ * from a browser-only API during render.
+ */
+export function MinglaHandoff({ context, preview = false }: { context: SiteEventContext; preview?: boolean }) {
   const [detail, setDetail] = useState<HandoffDetail | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
-  const preview = isPreviewPublication(context.publicationId);
 
   useEffect(() => {
     const onOpen = (event: Event) => {

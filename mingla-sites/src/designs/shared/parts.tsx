@@ -25,6 +25,11 @@ export type SharedContext = {
   live?: LiveOfferings;
   forms?: FormsContext;
   analytics: SiteEventContext;
+  /**
+   * #4453 — this render is a Draft preview (decided on the server from the
+   * artifact's publication). Only a preview draws empty-state hints.
+   */
+  preview?: boolean;
   saveData?: boolean;
 };
 

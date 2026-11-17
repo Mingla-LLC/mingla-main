@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { isPreviewPublication } from "../../lib/previewPublication";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";
 import { pickVariant } from "../../components/v2/Blocks";
@@ -59,7 +60,7 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
       ? <DestinationTemplate destination={entry.entry} artifact={artifact} live={live} analytics={analytics} />
       : <StoryTemplate story={entry.entry} artifact={artifact} />;
   } else {
-    const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData };
+    const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData, preview: isPreviewPublication(artifact.publication_id) };
     // #4453 milestone 5 — the hand-off sheet and the sticky phone bar (shared library).
     booking = <PageBookingChrome ctx={ctx as SharedContext} />;
     content = current.blocks.map((raw, index) => {

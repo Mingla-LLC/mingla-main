@@ -218,7 +218,7 @@ export function PageBookingChrome({ ctx }: { ctx: SharedContext }) {
   const note = text(ctx.artifact.navigation.sticky_note) || sticky?.from || "";
   return (
     <>
-      <MinglaHandoff context={ctx.analytics} />
+      <MinglaHandoff context={ctx.analytics} preview={ctx.preview === true} />
       {sticky ? (
         <StickyBookingBar>
           <div className="mg-sticky__txt"><p className="mg-sticky__t">{title}</p>{note ? <p className="mg-sticky__n">{note}</p> : null}</div>

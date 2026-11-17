@@ -159,7 +159,7 @@ describe("#4453 M5 hand-off sheet (SC-B5)", () => {
   it("in the private preview, Continue opens the real Mingla page in a new tab and says so", async () => {
     const { root, unmount } = await mount(<>
       <HandoffLink detail={{ href: OPEN, item: "Alpha Kitchen", ctaKind: "reservation" }}>Book</HandoffLink>
-      <MinglaHandoff context={{ siteId: "s", brandId: "b", publicationId: "preview-x" }} />
+      <MinglaHandoff context={{ siteId: "s", brandId: "b", publicationId: "preview-x" }} preview />
     </>);
     await act(async () => { root.querySelector<HTMLAnchorElement>("a[data-mg-handoff]")!.click(); });
     expect(root.querySelector("[data-mg-handoff-go]")!.getAttribute("target")).toBe("_blank");
@@ -169,6 +169,12 @@ describe("#4453 M5 hand-off sheet (SC-B5)", () => {
 });
 
 describe("#4453 M5 sticky phone bar (SC-B4)", () => {
+  it("the sheet's preview mode comes from ctx.preview (decided on the server)", () => {
+    const html = renderToStaticMarkup(<PageBookingChrome ctx={ctxWith(view(), { preview: true })} />);
+    expect(html).not.toContain("isPreviewPublication");
+    const source = fs.readFileSync(path.join(process.cwd(), "src/designs/shared/chrome/Handoff.tsx"), "utf8");
+    expect(source).not.toMatch(/isPreviewPublication\(/);
+  });
   it("one Mingla action (the hero target), hidden until scripts show it", () => {
     const ctx = ctxWith(view());
     expect(stickyAction(ctx)).toEqual({ href: "https://host.usemingla.com/b/alpha/v/kitchen?tab=book", item: "Alpha Kitchen", from: undefined });

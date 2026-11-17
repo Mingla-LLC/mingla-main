@@ -242,6 +242,8 @@ describe("#4453 §3.3 every shared layout draws every field its block defines", 
     for (const [variant, Layout] of Object.entries(layouts)) {
       it(`${type}:${variant}`, () => {
         const { block, expected } = sentinelBlock(type, artifact);
+        // #4453 milestone 5 (§5.2) — a caption names one of the gallery's own photographs.
+        if (type === "gallery" && Array.isArray(block.captions) && Array.isArray(block.images)) (block.captions as Array<Record<string, unknown>>).forEach((row, i) => { row.media_id = (block.images as Array<{ id: string }>)[i]?.id; });
         const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
         // #4453 — an empty upcoming grid is drawn only in a Draft preview (left out of the public site).
         const baseCtx = type === "offering_grid" ? { ...ctx, analytics: { ...ctx.analytics, publicationId: "preview-sentinel" } } : ctx;

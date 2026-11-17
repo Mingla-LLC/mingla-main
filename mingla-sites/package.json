@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "goldens:render": "GOLDENS_RENDER_DIR=/tmp/mingla-sites-goldens-html vitest run e2e/goldens/render.test.tsx",
-    "goldens": "node e2e/goldens/goldens.mjs"
+    "goldens": "node e2e/goldens/goldens.mjs",
+    "smoke:prod": "PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-prod-smoke} vitest run e2e/prod-smoke/fixtures.test.ts && PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-prod-smoke} node e2e/prod-smoke/smoke.mjs"
   },
   "dependencies": {
     "next": "16.4.2",

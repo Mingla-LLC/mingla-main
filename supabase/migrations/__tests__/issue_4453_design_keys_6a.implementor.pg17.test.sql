@@ -24,9 +24,10 @@ BEGIN
 END
 $a$;
 
+-- #4453 6b: later design batches append keys, so 6a's five lead the list (6b's suite pins the whole list).
 SELECT pg_temp.k6_assert(
-  public.brand_site_design_keys() = ARRAY['atelier','voyage','nocturne','haven','maison']::text[],
-  'T-1a brand_site_design_keys() = atelier, voyage, nocturne, haven, maison');
+  (public.brand_site_design_keys())[1:5] = ARRAY['atelier','voyage','nocturne','haven','maison']::text[],
+  'T-1a brand_site_design_keys() starts atelier, voyage, nocturne, haven, maison');
 SELECT pg_temp.k6_assert(public.brand_site_design_keys() = :'contract_design_keys'::text[],
   'T-1b brand_site_design_keys() = generated DESIGN_KEYS ' || :'contract_design_keys');
 
@@ -56,10 +57,11 @@ SELECT pg_temp.k6_assert((SELECT count(*) = 6 FROM k6_probe), 'T-3a nocturne, ha
 DO $t3b$
 BEGIN
   BEGIN
-    INSERT INTO k6_probe VALUES ('journal');
-    RAISE EXCEPTION 'issue #4453 6a design keys FAIL: T-3b a key from a later batch (journal) was accepted';
+    -- #4453 6b: journal shipped, so the probe is a key from the last batch (6c).
+    INSERT INTO k6_probe VALUES ('pop');
+    RAISE EXCEPTION 'issue #4453 6a design keys FAIL: T-3b a key from a later batch (pop) was accepted';
   EXCEPTION WHEN check_violation THEN
-    RAISE NOTICE 'PASS  T-3b a key not yet shipped (journal) is refused (23514)';
+    RAISE NOTICE 'PASS  T-3b a key not yet shipped (pop) is refused (23514)';
   END;
 END
 $t3b$;

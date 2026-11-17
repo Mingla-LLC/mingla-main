@@ -86,7 +86,7 @@ export function GalleryMaisonPlates({ block, index, ctx }: SharedBlockProps) {
           {images.map((image, imageIndex) => (
             <figure key={imageIndex} className={`ms-plate ms-plate--${imageIndex % 3}`} data-mg-rise="">
               <div className="mg-ph"><Photo artifact={ctx.artifact} url={image.url} alt={image.alt} sizes={imageIndex % 3 === 0 ? "(min-width: 1240px) 1200px, 100vw" : "(min-width: 900px) 50vw, 100vw"} /></div>
-              <figcaption><span className="ms-plate__n">{two(imageIndex)}</span>{image.alt ? <span>{image.alt}</span> : null}</figcaption>
+              <figcaption><span className="ms-plate__n">{two(imageIndex)}</span>{/* #4453 M5 §5.2 — the owner's caption when written, else the picture description */}{image.caption ? <span>{image.caption}{image.sub ? <small className="mg-gal-cap__sub">{image.sub}</small> : null}</span> : image.alt ? <span>{image.alt}</span> : null}</figcaption>
             </figure>
           ))}
         </div>

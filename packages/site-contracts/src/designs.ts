@@ -28,8 +28,8 @@ import type { FontSlotKey, FontSlots } from "./fontSlots.ts";
 import type { RampStep } from "./colorRamp.ts";
 import { BLOCK_TYPES, type BlockType } from "./blocks.ts";
 
-export type DesignKey = "atelier" | "voyage" | "nocturne" | "haven" | "maison";
-export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage", "nocturne", "haven", "maison"];
+export type DesignKey = "atelier" | "voyage" | "nocturne" | "haven" | "maison" | "journal" | "grid" | "terra";
+export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage", "nocturne", "haven", "maison", "journal", "grid", "terra"];
 
 /**
  * #4453 6a — the designs Ari may name (its declared tools, its design list
@@ -111,7 +111,13 @@ export type DesignImage = {
 };
 
 /* ---------------- #4453 §3.3 + v2.1 §1.4 — chrome variants ---------------- */
-export const HEADER_VARIANTS = ["glass", "center", "pill"] as const;
+/**
+ * #4453 6b — `journal-mast` (Journal's masthead: a dateline strip, the
+ * nameplate on its own row, a ruled menu row that stays pinned) and
+ * `grid-bar` (Grid's ruled cells with numbered items and an accent CTA cell)
+ * are signature headers: only the design that lists them offers them.
+ */
+export const HEADER_VARIANTS = ["glass", "center", "pill", "journal-mast", "grid-bar"] as const;
 export type HeaderVariant = (typeof HEADER_VARIANTS)[number];
 export const FOOTER_VARIANTS = ["giant", "columns"] as const;
 export type FooterVariant = (typeof FOOTER_VARIANTS)[number];
@@ -120,7 +126,7 @@ export type FooterVariant = (typeof FOOTER_VARIANTS)[number];
  * 1100 and 1279 px it is one less; the rest sit under "More". Below 1100 px
  * the inline menu hides and the menu button shows.
  */
-export const HEADER_INLINE_CAPACITY: Readonly<Record<HeaderVariant, number>> = { glass: 6, center: 4, pill: 6 };
+export const HEADER_INLINE_CAPACITY: Readonly<Record<HeaderVariant, number>> = { glass: 6, center: 4, pill: 6, "journal-mast": 6, "grid-bar": 4 };
 /** The widths the header capacity rule switches at (px). */
 export const HEADER_BREAKPOINTS = { wide: 1280, inline: 1100 } as const;
 export type DesignChrome = {
@@ -611,7 +617,8 @@ export const NOCTURNE: DesignDefinition = {
   },
   fonts: {
     display: { family: "Bodoni Moda", source: "google", weights: [400, 500, 800], italic: true },
-    body: { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false },
+    // #4453 6b — Archivo's width axis: compressed capitals (62%) and wide labels (125%), as designed.
+    body: { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false, axes: { wdth: [62, 125] } },
     accent: { family: "Bodoni Moda", source: "google", weights: [400, 500], italic: true },
     label: null,
   },
@@ -865,6 +872,352 @@ export const MAISON: DesignDefinition = {
   picks: MAISON_PICKS,
 };
 
+/* ---------------- #4453 6b — Journal, Grid, Terra ---------------- */
+
+const SINGLE_ROLES_DRAWN = [
+  "canvas", "surface", "surface_sunken", "surface_deep",
+  "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+  "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+] as const;
+
+const JOURNAL_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "journal-front",
+  offering_grid: "journal-columns",
+  feature_cards: "numbered",
+  gallery: "journal-essay",
+  offering_history: "ledger-count",
+  testimonials: "journal-letters",
+  newsletter_signup: "journal-coupon",
+};
+
+/** Journal's own layouts (designs/journal/blocks), each first in its type. */
+export const JOURNAL_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "journal-front",
+  offering_grid: "journal-columns",
+  gallery: "journal-essay",
+  testimonials: "journal-letters",
+  newsletter_signup: "journal-coupon",
+};
+
+/*
+ * #4453 6b — Journal: an editorial front page. Cream newsprint, ink black and
+ * one oxblood accent; high-contrast Fraunces headlines over Libre Franklin
+ * (labels too: no label slot), double rules, datelines, numbered plates and
+ * letters, warm faded photographs. A masthead header (signature). Light only
+ * by design. Every default pair passes AA on the gallery's own hex values.
+ */
+export const JOURNAL: DesignDefinition = {
+  key: "journal",
+  version: 1,
+  label: "Journal",
+  description: "Editorial, literate, front-page confident: cream newsprint, ink black, one oxblood accent and double rules.",
+  tokens: {
+    colors: {
+      canvas: "#f1eadb",
+      surface: "#f7f2e6",
+      surface_sunken: "#e8dfcb",
+      surface_deep: "#17140f",
+      surface_inverse: "#17140f",
+      ink_strong: "#17140f",
+      ink_body: "#17140f",
+      ink_prose: "#17140f",
+      ink_quiet: "#5a5247",
+      ink_on_dark_body: "#f1eadb",
+      ink_on_photo_body: "#f7f2e6",
+      ink_on_photo_quiet: "#e8dfcb",
+      accent_ink: "#f7f2e6",
+      highlight_on_dark: "#dcb48e",
+      action: "#17140f",
+      accent: {
+        seed: "#7b1e1a",
+        ramp: {
+          50: "#fcf3f3",
+          100: "#f8e4e3",
+          200: "#f1c7c5",
+          300: "#e89e9b",
+          400: "#7b1e1a",
+          500: "#d74842",
+          600: "#bf312b",
+          700: "#9c2b26",
+          800: "#782421",
+          900: "#561d1a",
+          950: "#351312",
+        },
+      },
+      neutral: {
+        seed: "#8a8172",
+        ramp: {
+          50: "#f8f8f7",
+          100: "#efeeec",
+          200: "#dedcd8",
+          300: "#c7c3bc",
+          400: "#aea89d",
+          500: "#978f81",
+          600: "#80786a",
+          700: "#696358",
+          800: "#534e46",
+          900: "#3c3934",
+          950: "#262421",
+        },
+      },
+      highlight: {
+        seed: "#7b1e1a",
+        ramp: { 50: "#fcf3f3", 200: "#f1c7c5", 600: "#7b1e1a", 700: "#561d1a" },
+      },
+      paper: {
+        seed: "#e8dfcb",
+        ramp: { 50: "#f7f2e6", 100: "#e8dfcb", 200: "#dcd0b6", 400: "#958a72" },
+      },
+      danger: { seed: "#a8432f", ramp: { 50: "#f9ece9", 600: "#a8432f" } },
+      success: { seed: "#4d6b3c", ramp: { 50: "#ecf1e9", 600: "#4d6b3c" } },
+      scrim_rgb: "23 20 15",
+      shadow_rgb: "23 20 15",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    // Italics come from the accent slot (the same family): every weight is one more @font-face per subset (MAX_FONT_ASSETS).
+    // #4453 6b — Fraunces' optical-size axis: the high-contrast display cut at headline sizes, as in the gallery.
+    display: { family: "Fraunces", source: "google", weights: [400, 700, 800], italic: false, axes: { opsz: [9, 144] } },
+    body: { family: "Libre Franklin", source: "google", weights: [400, 600, 700], italic: false },
+    accent: { family: "Fraunces", source: "google", weights: [300, 400], italic: true, axes: { opsz: [9, 144] } },
+    label: null,
+  },
+  variants: galleryVariants(JOURNAL_PICKS, JOURNAL_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/journal/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [400], highlight: [600] } },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "cinematic", signature: "rule-draw" },
+  image: { filter: "warm", treatment: "Warm, slightly faded newsprint tone (sepia lift, low saturation), square-cut plates with captions" },
+  chrome: { header: ["journal-mast", "center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: JOURNAL_PICKS,
+};
+
+const GRID_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "grid-index",
+  offering_grid: "list",
+  feature_cards: "tiles",
+  gallery: "mosaic",
+  offering_history: "ledger-count",
+  testimonials: "wall",
+};
+
+/** Grid's own layouts (designs/grid/blocks), each first in its type. */
+export const GRID_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "grid-index",
+};
+
+/*
+ * #4453 6b — Grid: Swiss and exact. Off-white paper, black ink and one signal
+ * red; heavy Hanken Grotesk capitals over IBM Plex Mono labels (the label
+ * slot), a visible 12-column grid, radius 0, numbered sections, monochrome
+ * photographs that return to colour on hover, fast precise motion. Ruled-cell
+ * header and an index-sheet hero (signature). Light only by design.
+ */
+export const GRID: DesignDefinition = {
+  key: "grid",
+  version: 1,
+  label: "Grid",
+  description: "Swiss, exact, loud in one colour: black on paper, signal red, heavy capitals and a visible grid.",
+  tokens: {
+    colors: {
+      canvas: "#f1efe9",
+      surface: "#f7f6f2",
+      surface_sunken: "#e7e4dc",
+      surface_deep: "#0b0b0b",
+      surface_inverse: "#0b0b0b",
+      ink_strong: "#0b0b0b",
+      ink_body: "#0b0b0b",
+      ink_prose: "#0b0b0b",
+      ink_quiet: "#4d4b46",
+      ink_on_dark_body: "#f1efe9",
+      ink_on_photo_body: "#f1efe9",
+      ink_on_photo_quiet: "#e7e4dc",
+      accent_ink: "#0b0b0b",
+      highlight_on_dark: "#ff5a3d",
+      action: "#0b0b0b",
+      accent: {
+        seed: "#ff3b1d",
+        ramp: {
+          50: "#fef3f1",
+          100: "#fde1dd",
+          200: "#fdc3ba",
+          300: "#fd9686",
+          400: "#ff3b1d",
+          500: "#ff381a",
+          600: "#e72204",
+          700: "#c42200",
+          800: "#901b09",
+          900: "#66160a",
+          950: "#3f1009",
+        },
+      },
+      neutral: {
+        seed: "#7a776f",
+        ramp: {
+          50: "#f8f7f7",
+          100: "#eeedec",
+          200: "#dddcda",
+          300: "#c5c3bf",
+          400: "#aaa8a2",
+          500: "#928f87",
+          600: "#7b7870",
+          700: "#65635d",
+          800: "#504e49",
+          900: "#3a3936",
+          950: "#252422",
+        },
+      },
+      highlight: {
+        seed: "#e62a0c",
+        ramp: { 50: "#fef3f1", 200: "#fdc3ba", 600: "#e62a0c", 700: "#bb1f07" },
+      },
+      paper: {
+        seed: "#e7e4dc",
+        ramp: { 50: "#f7f6f2", 100: "#e7e4dc", 200: "#d9d5cb", 400: "#8f8a7f" },
+      },
+      danger: { seed: "#c42200", ramp: { 50: "#fef3f1", 600: "#c42200" } },
+      success: { seed: "#2f6b45", ramp: { 50: "#e9f2ec", 600: "#2f6b45" } },
+      scrim_rgb: "11 11 11",
+      shadow_rgb: "11 11 11",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Hanken Grotesk", source: "google", weights: [400, 700, 800, 900], italic: false },
+    body: { family: "Hanken Grotesk", source: "google", weights: [400, 700, 800, 900], italic: false },
+    accent: null,
+    label: { family: "IBM Plex Mono", source: "google", weights: [500, 700], italic: false },
+  },
+  variants: galleryVariants(GRID_PICKS, GRID_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/grid/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [400, 700], highlight: [600] } },
+    font_slots: ["display", "body", "label"],
+  },
+  motion: { profile: "bold", signature: "colour-return" },
+  image: { filter: "mono", treatment: "Monochrome, high contrast, hard square crops; colour returns on hover" },
+  chrome: { header: ["grid-bar", "glass", "center", "pill"], footer: ["giant", "columns"] },
+  picks: GRID_PICKS,
+};
+
+const TERRA_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "terra-pebble",
+  offering_grid: "cards",
+  feature_cards: "tiles",
+  gallery: "mosaic",
+  offering_history: "ledger-count",
+  testimonials: "rail",
+};
+
+/** Terra's own layout (designs/terra/blocks), first in its type. */
+export const TERRA_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "terra-pebble",
+};
+
+/*
+ * #4453 6b — Terra: organic, earthy and handmade. A sand page, deep olive ink,
+ * terracotta and sage; soft Fraunces over a warm Figtree; pebble-shaped
+ * photographs, a slowly turning sage blob behind the hero (its one signature
+ * moment), hand-drawn squiggles and wavy edges. Light only by design.
+ */
+export const TERRA: DesignDefinition = {
+  key: "terra",
+  version: 1,
+  label: "Terra",
+  description: "Organic, earthy, handmade: sand and olive, terracotta and sage, soft serif headlines and pebble-shaped photographs.",
+  tokens: {
+    colors: {
+      canvas: "#f1e7d6",
+      surface: "#f9f2e6",
+      surface_sunken: "#e8d8bf",
+      surface_deep: "#2f3a21",
+      surface_inverse: "#2f3a21",
+      ink_strong: "#2f3a21",
+      ink_body: "#2f3a21",
+      ink_prose: "#2f3a21",
+      ink_quiet: "#5f5a42",
+      ink_on_dark_body: "#f6ecdb",
+      ink_on_photo_body: "#f9f2e6",
+      ink_on_photo_quiet: "#f1e7d6",
+      accent_ink: "#fff8ee",
+      highlight_on_dark: "#e9b48c",
+      action: "#2f3a21",
+      accent: {
+        seed: "#a94e2c",
+        ramp: {
+          50: "#fbf6f4",
+          100: "#f7e9e4",
+          200: "#efd2c8",
+          300: "#dc9a6f",
+          400: "#a94e2c",
+          500: "#d06e49",
+          600: "#b85733",
+          700: "#9a4526",
+          800: "#743a25",
+          900: "#532c1d",
+          950: "#341c14",
+        },
+      },
+      neutral: {
+        seed: "#7d7458",
+        ramp: {
+          50: "#f8f8f6",
+          100: "#f0efea",
+          200: "#e1ded5",
+          300: "#ccc7b7",
+          400: "#b5ae96",
+          500: "#a09678",
+          600: "#897f62",
+          700: "#716951",
+          800: "#585341",
+          900: "#403c30",
+          950: "#28261f",
+        },
+      },
+      highlight: {
+        seed: "#5f7352",
+        ramp: { 50: "#eef1e8", 200: "#b5c19c", 600: "#5f7352", 700: "#4a5a40" },
+      },
+      paper: {
+        seed: "#e8d8bf",
+        ramp: { 50: "#f9f2e6", 100: "#e8d8bf", 200: "#dcc8a8", 400: "#9b8a6c" },
+      },
+      danger: { seed: "#9a3a24", ramp: { 50: "#f9ece9", 600: "#9a3a24" } },
+      success: { seed: "#4f6b40", ramp: { 50: "#edf2ea", 600: "#4f6b40" } },
+      // The olive scrim darkened from the gallery's 47 58 33 so photo text passes AA at the copy zone's lightest (§3.8).
+      scrim_rgb: "30 37 21",
+      shadow_rgb: "47 58 33",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    // #4453 6b — Fraunces' optical size, with its soft, "wonky" instance pinned (SOFT 100, WONK 1), as in the gallery.
+    display: { family: "Fraunces", source: "google", weights: [400, 500], italic: true, axes: { opsz: [9, 144], SOFT: [100, 100], WONK: [1, 1] } },
+    body: { family: "Figtree", source: "google", weights: [400, 500, 600, 700], italic: false },
+    accent: { family: "Fraunces", source: "google", weights: [400], italic: true, axes: { opsz: [9, 144], SOFT: [100, 100], WONK: [1, 1] } },
+    label: null,
+  },
+  variants: galleryVariants(TERRA_PICKS, TERRA_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/terra/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [300, 400, 700], highlight: [200, 600] } },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "calm", signature: "blob-turn" },
+  image: { filter: "warm", treatment: "Warm film tone (light sepia, softened contrast), pebble and rounded frames, paper grain" },
+  chrome: { header: ["center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: TERRA_PICKS,
+};
+
 /** One of the primary swatches the look editors show (spec §W3), in order. */
 export type PrimarySwatch = { label: string; role: SingleColorRole | RampRole; step?: RampStep };
 
@@ -904,7 +1257,9 @@ export function designFontSlots(design: DesignDefinition): FontSlotKey[] {
   return (["display", "body", "accent"] as const).filter((slot) => design.uses.font_slots.includes(slot));
 }
 
-export const DESIGNS: Readonly<Record<DesignKey, DesignDefinition>> = { atelier: ATELIER, voyage: VOYAGE, nocturne: NOCTURNE, haven: HAVEN, maison: MAISON };
+export const DESIGNS: Readonly<Record<DesignKey, DesignDefinition>> = {
+  atelier: ATELIER, voyage: VOYAGE, nocturne: NOCTURNE, haven: HAVEN, maison: MAISON, journal: JOURNAL, grid: GRID, terra: TERRA,
+};
 
 export function isDesignKey(value: unknown): value is DesignKey {
   return typeof value === "string" && (DESIGN_KEYS as readonly string[]).includes(value);

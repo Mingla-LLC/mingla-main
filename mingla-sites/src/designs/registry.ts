@@ -10,6 +10,9 @@ import { VoyagePage } from "./voyage/VoyagePage";
 import { NocturnePage } from "./nocturne/NocturnePage";
 import { HavenPage } from "./haven/HavenPage";
 import { MaisonPage } from "./maison/MaisonPage";
+import { JournalPage } from "./journal/JournalPage";
+import { GridPage } from "./grid/GridPage";
+import { TerraPage } from "./terra/TerraPage";
 
 /*
  * #2829 AD-1 — the runtime's design registry: for each design key in
@@ -47,6 +50,10 @@ export const DESIGN_RENDERERS: Readonly<Record<DesignKey, DesignRenderer>> = {
   nocturne: { stylesheet: (version) => `/designs/nocturne/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: NocturnePage },
   haven: { stylesheet: (version) => `/designs/haven/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: HavenPage },
   maison: { stylesheet: (version) => `/designs/maison/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: MaisonPage },
+  // #4453 6b — Journal, Grid and Terra, the same way.
+  journal: { stylesheet: (version) => `/designs/journal/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: JournalPage },
+  grid: { stylesheet: (version) => `/designs/grid/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: GridPage },
+  terra: { stylesheet: (version) => `/designs/terra/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: TerraPage },
 };
 
 /** TEMPORARY(#2829): v1 rollback renderer's stylesheet — remove with RestaurantV1. */

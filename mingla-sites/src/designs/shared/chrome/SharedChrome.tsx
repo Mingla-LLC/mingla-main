@@ -17,6 +17,12 @@ import { MoreMenu, PhoneMenu, ScrollState } from "./HeaderClient";
  * menu. The split is CSS container queries over `data-cap` (no measuring,
  * no layout shift). Stored menus keep their order (M1).
  *
+ * #4453 6b — two signature headers draw on the same bar, menu, "More" and
+ * phone menu: `journal-mast` adds a dateline strip (the site's place) above
+ * the bar and its stylesheet sets the nameplate on its own row; `grid-bar`
+ * numbers each top-level item (01, 02 …, hidden from assistive tech). Their
+ * look lives in the design's own stylesheet (`jr-` / `gr-` classes).
+ *
  * Active state: exactly one top-level item is `aria-current="page"`, the one
  * whose href is the longest prefix of the current path; a page under "More"
  * lights "More" and its child. Home lights nothing; the wordmark is Home.
@@ -61,7 +67,10 @@ export function SharedHeader({ variant, items, path, logo, siteName, cta, place 
     const current = index === active;
     return (
       <li key={`${item.href}-${index}`} className="mg-nav__li" data-i={index} data-current={current ? "true" : undefined}>
-        <Go href={item.href} className="mg-nav__a" aria-current={current ? "page" : undefined}>{item.label}</Go>
+        <Go href={item.href} className="mg-nav__a" aria-current={current ? "page" : undefined}>
+          {variant === "grid-bar" && !inMore ? <small className="gr-n" aria-hidden="true">{String(index + 1).padStart(2, "0")}</small> : null}
+          {item.label}
+        </Go>
         {item.children?.length ? (
           <ul className={inMore ? "mg-nav__sub mg-nav__sub--inline" : "mg-nav__sub"}>
             {item.children.map((child, childIndex) => (
@@ -81,6 +90,7 @@ export function SharedHeader({ variant, items, path, logo, siteName, cta, place 
   return (
     <header className={`mg-hd mg-hd--${variant}`} data-mg-header="" data-cap={capacity}>
       <ScrollState />
+      {variant === "journal-mast" && place ? <div className="jr-dateline"><div className="mg-wrap"><p>{place}</p></div></div> : null}
       <div className="mg-wrap mg-hd__wrap">
         <div className="mg-hd__bar">
           {variant !== "center" ? wordmark : null}

@@ -1187,6 +1187,9 @@
         "supabase/functions/brand-site-runtime-resolve/index.ts",
         "supabase/migrations/20280726004453_issue_4453_booking_reads.sql",
         "supabase/migrations/20280726014453_issue_4453_stay_feed_kind.sql",
+        "mingla-sites/e2e/prod-smoke/smoke.mjs",
+        "mingla-sites/package.json",
+        "mingla-sites/src/lib/previewPublication.ts",
         "mingla-site-cms/src/migrations/20261116_100000_issue_4453_design_platform.ts",
         "mingla-site-cms/src/migrations/index.ts",
         "mingla-site-cms/src/payload-types.ts",
@@ -1237,7 +1240,18 @@
         "mingla-sites/src/designs/shared/galleryDesigns.fixture.ts",
         "supabase/functions/_shared/agentSystemPrompt.ts",
         "supabase/functions/_shared/ariFlows/websiteSetup.ts",
-        "supabase/migrations/20280724104453_issue_4453_design_keys_6a.sql"
+        "supabase/migrations/20280724104453_issue_4453_design_keys_6a.sql",
+        "mingla-site-cms/src/migrations/20261116_140000_issue_4453_designs_6b.ts",
+        "mingla-sites/public/designs/grid/1.css",
+        "mingla-sites/public/designs/journal/1.css",
+        "mingla-sites/public/designs/terra/1.css",
+        "mingla-sites/src/designs/grid/GridPage.tsx",
+        "mingla-sites/src/designs/grid/blocks/GridBlocks.tsx",
+        "mingla-sites/src/designs/journal/JournalPage.tsx",
+        "mingla-sites/src/designs/journal/blocks/JournalBlocks.tsx",
+        "mingla-sites/src/designs/terra/TerraPage.tsx",
+        "mingla-sites/src/designs/terra/blocks/TerraBlocks.tsx",
+        "supabase/migrations/20280725104453_issue_4453_design_keys_6b.sql"
       ]
     },
     {

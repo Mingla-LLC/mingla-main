@@ -251,7 +251,19 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame') | null;
+            variant?:
+              | (
+                  | 'atelier'
+                  | 'cover-bottom-search'
+                  | 'fullbleed'
+                  | 'editorial'
+                  | 'arch'
+                  | 'maison-frame'
+                  | 'journal-front'
+                  | 'grid-index'
+                  | 'terra-pebble'
+                )
+              | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -428,7 +440,8 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows') | null;
+            variant?:
+              ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows' | 'journal-columns') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -676,7 +689,8 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates') | null;
+            variant?:
+              ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates' | 'journal-essay') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -767,7 +781,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher') | null;
+            variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher' | 'journal-letters') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1170,7 +1184,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'card' | 'photo') | null;
+            variant?: ('neutral' | 'card' | 'photo' | 'journal-coupon') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1651,7 +1665,7 @@ export interface Navigation {
   /**
    * The header layout. Leave empty for the design's own header.
    */
-  header_variant?: ('glass' | 'center' | 'pill') | null;
+  header_variant?: ('glass' | 'center' | 'pill' | 'journal-mast' | 'grid-bar') | null;
   /**
    * On phones, keeps one Book button at the bottom of the screen after the opening picture.
    */
@@ -1737,7 +1751,7 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison') | null;
+  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison' | 'journal' | 'grid' | 'terra') | null;
   tokens?:
     | {
         [k: string]: unknown;
