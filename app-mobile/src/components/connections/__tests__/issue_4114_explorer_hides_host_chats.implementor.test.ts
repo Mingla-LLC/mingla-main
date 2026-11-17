@@ -16,7 +16,7 @@
 // the unread test fails; delete the cache read in
 // ConnectionsPage, the toast guard in handleSelectConversation or the
 // TEAM_BRAND_CACHE_PREFIX line in authCleanup and the wiring test fails.
-// MINGLA-INVARIANT: I-4114-EXPLORER-HIDES-HOST-CHATS | issue #4114 / #4459 | Explorer never lists, searches, filters or counts unread for a brand Guest chat whose brand is in the user's team set; it never opens one either.
+// MINGLA-INVARIANT: I-4114-EXPLORER-HIDES-HOST-CHATS | issue #4114 | Explorer never lists, searches, filters or counts unread for a brand Guest chat whose brand is in the user's team set; it never opens one either.
 
 import {
   explorerConversations,
