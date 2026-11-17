@@ -44,7 +44,7 @@ import { isLiveOfferingGrid } from "../../contracts/generated/blocks.ts";
 import { DestinationGrid, OfferingHistory, StoryGrid, TestimonialWall } from "../../components/v2/neutral/CollectionBlocks";
 import { CollectionEntryView } from "../../components/v2/neutral/CollectionTemplates";
 import { ContactFormBlock, NewsletterBlock } from "../../components/v2/neutral/FormBlocks";
-import { ContactDetailsNeutral, FeatureCardsNeutral, PageHeaderNeutral } from "../../components/v2/neutral/BasicBlocks";
+import { ContactDetailsNeutral, FactsTableNeutral, FeatureCardsNeutral, PageHeaderNeutral, PageLinksNeutral } from "../../components/v2/neutral/BasicBlocks";
 import type { FormsContext } from "../../lib/siteForms";
 import type { CollectionEntry } from "../../lib/siteCollections";
 import { siteHasVenueFacts } from "../../lib/venueFacts";
@@ -454,6 +454,8 @@ function NeutralBlock({ block, live, site }: AtelierBlockProps) {
     case "page_header": return <PageHeaderNeutral block={record} />;
     case "feature_cards": return <FeatureCardsNeutral block={record} />;
     case "contact_details": return <ContactDetailsNeutral block={record} />;
+    case "page_links": return <PageLinksNeutral block={record} />;
+    case "facts_table": return <FactsTableNeutral block={record} />;
     default: return null;
   }
 }
@@ -472,6 +474,8 @@ export const ATELIER_BLOCK_VARIANTS: BlockVariantMap<AtelierBlockProps> = {
   page_header: { neutral: NeutralBlock }, feature_cards: { neutral: NeutralBlock }, contact_details: { neutral: NeutralBlock },
   // #4453 milestone 5 — atelier (frozen) draws no live booking block: its layout list is empty, so none can be published on it.
   availability: {}, ticket_tiers: {}, process_steps: {},
+  // #4453 milestone 7b — the page-set blocks, in atelier's neutral cards and facts list (its stylesheet already styles both).
+  page_links: { neutral: NeutralBlock }, facts_table: { neutral: NeutralBlock },
 };
 
 function renderBlock(block: RestaurantBlock, props: Omit<AtelierBlockProps, "block">): React.ReactNode {

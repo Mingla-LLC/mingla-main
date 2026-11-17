@@ -4,6 +4,7 @@ import { MOTION_PROFILE_NUMBERS, type DesignDefinition, type MotionNumbers } fro
 import type { MotionPreset } from "../../contracts/generated/tokens.ts";
 import type { SharedBlockProps } from "./parts";
 import { AvailabilityStrip, ProcessStepsBand, TicketTiersSplit } from "./blocks/Booking";
+import { FactsTableSplit, PageLinksCards, PageLinksList } from "./blocks/PageSet";
 import { HeroArch, HeroEditorial, HeroFullbleed, MarqueeTicker, RichTextManifesto } from "./blocks/Hero";
 import {
   DestinationGridTiles, FeatureCardsNumbered, FeatureCardsTiles, GalleryMosaic, GalleryPinned, GalleryStagger,
@@ -38,6 +39,9 @@ export const SHARED_BLOCK_LAYOUTS: Readonly<Partial<Record<BlockType, Readonly<R
   availability: { strip: AvailabilityStrip },
   ticket_tiers: { split: TicketTiersSplit },
   process_steps: { band: ProcessStepsBand },
+  // #4453 milestone 7b — the page-set layouts.
+  page_links: { cards: PageLinksCards, list: PageLinksList },
+  facts_table: { split: FactsTableSplit },
 };
 
 /**

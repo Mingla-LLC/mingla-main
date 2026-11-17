@@ -160,6 +160,9 @@ export const SHARED_LAYOUTS: Readonly<Partial<Record<BlockType, readonly string[
   availability: ["strip"],
   ticket_tiers: ["split"],
   process_steps: ["band"],
+  // #4453 milestone 7b — the page-set blocks (spec v2.1 §1.1, §1.3).
+  page_links: ["cards", "list"],
+  facts_table: ["split"],
 };
 
 /**
@@ -177,6 +180,9 @@ export const SHARED_LAYOUTS: Readonly<Partial<Record<BlockType, readonly string[
  * setting never silently does nothing.
  */
 export const HERO_LAYOUTS_WITH_BOOKING: readonly string[] = ["fullbleed", "editorial", "arch", "cover-bottom-search"];
+
+/** #4453 milestone 7b — the hero layouts that draw the fact badges (the shared ones); elsewhere the field is left out of the published hero. */
+export const HERO_LAYOUTS_WITH_FACTS: readonly string[] = ["fullbleed", "editorial", "arch"];
 
 export const SHARED_ONLY_BLOCK_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
 
@@ -234,6 +240,9 @@ export const NEUTRAL_BLOCK_TYPES: readonly BlockType[] = [
   "page_header",
   "feature_cards",
   "contact_details",
+  // #4453 milestone 7b — atelier draws the page-set blocks with the neutral cards and facts list.
+  "page_links",
+  "facts_table",
 ];
 
 /** Every block type drawn by atelier, in one layout each (AD-4). */
@@ -285,6 +294,9 @@ export const VOYAGE_VARIANTS: Readonly<Record<BlockType, readonly string[]>> = {
   availability: ["strip"],
   ticket_tiers: ["split"],
   process_steps: ["band"],
+  // #4453 milestone 7b — the shared library's page-set layouts.
+  page_links: ["cards", "list"],
+  facts_table: ["split"],
 };
 
 export const ATELIER: DesignDefinition = {

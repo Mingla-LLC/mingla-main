@@ -14,7 +14,7 @@ import { statsIconOptions } from "../lib/statsIcons";
 import { reviewField } from "../lib/reviewStamp";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
-import { ATELIER, DESIGNS, DESIGN_KEYS, HERO_LAYOUTS_WITH_BOOKING } from "../contracts/generated/designs.ts";
+import { ATELIER, DESIGNS, DESIGN_KEYS, HERO_LAYOUTS_WITH_BOOKING, HERO_LAYOUTS_WITH_FACTS } from "../contracts/generated/designs.ts";
 
 /*
  * #3149 — `description` is built HERE rather than spread onto the result.
@@ -194,6 +194,22 @@ const BLOCK_CONFIGS: Block[] = [
         type: "checkbox",
         defaultValue: false,
         admin: { description: "Your score from approved Mingla reviews. Shown only with 20 or more reviews, by layouts that draw it.", condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant)) },
+      },
+      /*
+       * #4453 milestone 7b (spec v2 §5.6) — the fact badges: your own setup
+       * "Quick facts", word for word. Never a price, count, date or rating.
+       */
+      {
+        name: "fact_badges",
+        label: "Fact badges",
+        type: "array",
+        maxRows: 3,
+        required: false,
+        fields: [short("big", "Big", true, 12), short("small", "Small", true, 40)],
+        admin: {
+          description: "Up to three short facts in your words, for example 90° / sauna. Drawn by layouts that show badges.",
+          condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_FACTS.includes(String(sibling.variant)),
+        },
       },
       // The still image. REQUIRED even when a video is chosen: it is the
       // poster, and it is what a visitor sees on a slow connection, with data
@@ -1384,6 +1400,48 @@ const BLOCK_CONFIGS: Block[] = [
         maxRows: 5,
         required: true,
         fields: [short("title", "Step", true, 80), short("text", "What happens", false, 300), short("time", "How long", false, 24)],
+      },
+    ],
+  },
+  /*
+   * #4453 milestone 7b (spec v2.1 §1.1, §1.3) — "Keep exploring". Only the
+   * heading and which pages are set here; the pages themselves are picked
+   * from the menu when the site is published (never typed).
+   */
+  {
+    slug: "page_links",
+    labels: { singular: "Keep exploring", plural: "Keep exploring" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      {
+        name: "mode",
+        label: "Which pages",
+        type: "select",
+        required: true,
+        defaultValue: "next",
+        options: [
+          { value: "teaser", label: "Up to four pages from the menu" },
+          { value: "next", label: "The next three pages in the menu" },
+        ],
+      },
+    ],
+  },
+  /* #4453 milestone 7b (spec v2.1 §1.1) — the owner's facts, in their words. */
+  {
+    slug: "facts_table",
+    labels: { singular: "Facts", plural: "Facts" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      {
+        name: "items",
+        label: "Facts",
+        type: "array",
+        minRows: 1,
+        maxRows: 8,
+        required: true,
+        fields: [short("label", "Fact", true, 40), short("value", "Detail", true, 200)],
       },
     ],
   },

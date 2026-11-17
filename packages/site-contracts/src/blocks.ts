@@ -141,6 +141,21 @@ export const BLOCK_CATALOG = {
       booking_target_id: { kind: "uuid", label: "What the booking bar books" },
       /* #4453 milestone 5 (§5.6) — the Mingla rating badge (approved Mingla reviews only; no number is stored). */
       show_rating: { kind: "boolean", label: "Show the Mingla rating" },
+      /*
+       * #4453 milestone 7b (spec v2 §5.6) — the hero's fact badges: only the
+       * owner's own setup "Quick facts" (Q8), copied verbatim. Never a price,
+       * count, date or rating.
+       */
+      fact_badges: {
+        kind: "list",
+        min: 0,
+        max: 3,
+        label: "Fact badges",
+        item: {
+          big: { kind: "text", max: 12, required: true, label: "Big" },
+          small: { kind: "text", max: 40, required: true, label: "Small" },
+        },
+      },
       media_url: { kind: "media_url", required: true, label: "Picture" },
       video_url: { kind: "video_url", label: "Background film" },
       ctas: {
@@ -739,6 +754,62 @@ export const BLOCK_CATALOG = {
       },
     },
   },
+  /*
+   * #4453 milestone 7b (spec v2.1 §1.1, §1.3) — "Keep exploring": links to the
+   * site's other pages. The owner (or composer v2) sets only the eyebrow, the
+   * heading and the mode; the ITEMS are never stored in Studio: the builder
+   * computes them at publish from the menu (teaser: up to 4 pages; next: the
+   * following 3 in menu order, wrapping), from pages that are enabled and
+   * reviewed, each with its own label, `seo.description` (cut to 120) and
+   * `page_header` picture. Fewer than 2 pages: the block is left out.
+   */
+  page_links: {
+    label: "Keep exploring",
+    description: "Links to your other pages, picked from your menu when the site is published.",
+    pageKinds: ANY_PAGE,
+    fields: {
+      eyebrow,
+      heading: heading(),
+      mode: { kind: "enum", values: ["teaser", "next"], required: true, label: "Which pages" },
+      items: {
+        kind: "list",
+        min: 2,
+        max: 4,
+        label: "Pages (filled at publish)",
+        item: {
+          label: { kind: "text", max: 40, required: true, label: "Page name" },
+          href: { kind: "action_href", required: true, label: "Page" },
+          description: { kind: "text", max: 120, label: "What is on it" },
+          media_url: { kind: "media_url", label: "Picture" },
+        },
+      },
+    },
+  },
+  /*
+   * #4453 milestone 7b (spec v2.1 §1.1) — a short table of facts in the
+   * owner's own words (setup Q8 "Quick facts", copied verbatim). A row with no
+   * value is never drawn.
+   */
+  facts_table: {
+    label: "Facts",
+    description: "A short table of facts about your place, in your words.",
+    pageKinds: ANY_PAGE,
+    fields: {
+      eyebrow,
+      heading: heading(),
+      items: {
+        kind: "list",
+        min: 1,
+        max: 8,
+        required: true,
+        label: "Facts",
+        item: {
+          label: { kind: "text", max: 40, required: true, label: "Fact" },
+          value: { kind: "text", max: 200, required: true, label: "Detail" },
+        },
+      },
+    },
+  },
   contact_details: {
     label: "Contact details",
     description: "Your email and where you are, in tiles.",
@@ -791,8 +862,23 @@ export const BOOKING_BLOCK_TYPES: readonly string[] = ["offering_grid", "offerin
 export const BOOKING_BLOCK_NEW_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
 /** #4453 milestone 5 — new fields on existing blocks, offered with the flag and held from Ari the same way. */
 export const BOOKING_BLOCK_NEW_FIELDS: readonly string[] = ["hero.booking_bar", "hero.booking_target_id", "hero.show_rating", "testimonials.show_rating", "gallery.captions"];
-/** The block types Ari's tools declare (every type minus the held booking blocks). */
-export const ARI_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type));
+/**
+ * #4453 milestone 7b — the page-set blocks (spec v2.1 §1.1). Composer v2
+ * places them on the design pass (switch-ON path); Ari's own block tools never
+ * declare them, so the frozen switch-OFF declarations stay byte-identical
+ * (#3355). A Studio editor may add one only with SITES_BOOKING_BLOCKS on (the
+ * Studio gate); rendering a stored one is never flagged.
+ */
+export const PAGE_SET_BLOCK_TYPES: readonly BlockType[] = ["page_links", "facts_table"];
+/** The block types Ari's tools declare (every type minus the held booking and page-set blocks). */
+export const ARI_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type) && !PAGE_SET_BLOCK_TYPES.includes(type));
+
+/** #4453 milestone 7b — does this block use a page-set feature (a page-set block, or hero fact badges)? */
+export function usesPageSetFeature(block: { type?: unknown; blockType?: unknown; [key: string]: unknown }): boolean {
+  const type = typeof block.type === "string" ? block.type : block.blockType;
+  if ((PAGE_SET_BLOCK_TYPES as readonly unknown[]).includes(type)) return true;
+  return type === "hero" && Array.isArray(block.fact_badges) && block.fact_badges.length > 0;
+}
 
 /**
  * #4453 milestone 5 — does this block use something SITES_BOOKING_BLOCKS

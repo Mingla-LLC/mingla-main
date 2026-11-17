@@ -46,6 +46,7 @@ import {
   type DesignKey,
   DESIGNS,
   designSwatches,
+  FOOTER_VARIANTS,
   HEADER_VARIANTS,
 } from "./siteContracts/designs.ts";
 import { STYLE_KEYS } from "./siteContracts/formats.ts";
@@ -1902,11 +1903,12 @@ const proposeSiteDesignPass = tool(
 
 const proposeSiteChrome = tool(
   "propose_site_chrome",
-  "Propose the website's header and phone bar: a header layout the design offers (from the brief), whether the phone booking bar shows, and the header button (the format's own booking label, leading to its Mingla booking page). Draft only.",
+  "Propose the website's header, footer and phone bar: a header layout and a footer layout the design offers (from the brief), whether the phone booking bar shows, and the header button (the format's own booking label, leading to its Mingla booking page). Draft only.",
   {
     brand_id: UUID,
     site_id: UUID,
     header_variant: { type: "string", enum: [...HEADER_VARIANTS] },
+    footer_variant: { type: "string", enum: [...FOOTER_VARIANTS] },
     sticky_booking: { type: "boolean" },
     header_button: { type: "boolean", description: "true: the header button books through Mingla with the format's own label" },
     why: WHY,

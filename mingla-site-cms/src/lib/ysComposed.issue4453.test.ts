@@ -157,6 +157,31 @@ describe("#4453 M7 Young and Stamped composed in Voyage, through the real builde
     expect(homeTypes.filter((type: string) => order.includes(type as never))).toEqual(homeTypes);
     expect(homeTypes).toEqual(expect.arrayContaining(["hero", "marquee", "offering_grid", "feature_cards", "destination_grid", "offering_history", "testimonials", "story_grid", "faq", "newsletter_signup"]));
     expect(artifact.pages.map((page: { path: string }) => page.path)).toEqual(expect.arrayContaining(["", "trips", "destinations", "stories", "about", "faq"]));
+    // #4453 milestone 7b — "Keep exploring" is filled at publish from the menu: live pages only, never itself, in menu order.
+    const livePaths = new Set(artifact.pages.filter((page: { enabled: boolean }) => page.enabled).map((page: { path: string }) => `/${page.path}`));
+    const menu = artifact.navigation.items.map((item: { href: string }) => item.href);
+    let linked = 0;
+    for (const page of artifact.pages as Array<{ path: string; blocks: Array<Record<string, unknown>> }>) {
+      for (const block of page.blocks.filter((candidate) => candidate.type === "page_links")) {
+        const items = block.items as Array<{ label: string; href: string }>;
+        expect(items.length, page.path).toBeGreaterThanOrEqual(2);
+        expect(items.length, page.path).toBeLessThanOrEqual(block.mode === "teaser" ? 4 : 3);
+        for (const item of items) {
+          expect(livePaths.has(item.href), item.href).toBe(true);
+          expect(item.href, "never links to itself").not.toBe(`/${page.path}`);
+        }
+        if (block.mode === "next") {
+          const at = menu.indexOf(`/${page.path}`);
+          const ring = [...menu.slice(at + 1), ...menu.slice(0, at)];
+          expect(items.map((item) => item.href)).toEqual(ring.slice(0, 3));
+        }
+        linked += 1;
+      }
+    }
+    expect(linked).toBeGreaterThanOrEqual(5);
+    expect(home.blocks.find((block: { type: string }) => block.type === "page_links")).toMatchObject({ mode: "teaser" });
+    const faqPage = artifact.pages.find((page: { path: string }) => page.path === "faq");
+    expect(faqPage.blocks.find((block: { type: string }) => block.type === "facts_table")).toMatchObject({ items: [{ label: "people per trip", value: "12" }] });
     if (process.env.YS_COMPOSED_OUT) {
       writeFileSync(join(process.env.YS_COMPOSED_OUT, "ys-composed.json"), built.serialized);
       writeFileSync(join(process.env.YS_COMPOSED_OUT, "ys-feed.json"), JSON.stringify(FEED));

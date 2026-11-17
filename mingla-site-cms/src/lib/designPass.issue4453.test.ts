@@ -194,6 +194,16 @@ describe("#4453 design pass — what it writes", () => {
   });
 });
 
+describe("#4453 milestone 7b — propose_site_chrome footer", () => {
+  const chrome = (args: Record<string, unknown>) =>
+    runDesignPassAction("propose_site_chrome", { why: "Fits.", cites: [], ...args }, ctx(signed()), deps);
+  it("writes a footer layout the design offers to the footer draft, and refuses one it does not", async () => {
+    await expect(chrome({ footer_variant: "giant" })).resolves.toMatchObject({ changed: ["footer_variant"], draft_only: true });
+    expect(writes.some((write) => (write.collection === "footer") && (write.data as Record<string, unknown>).footer_variant === "giant")).toBe(true);
+    await expect(chrome({ footer_variant: "nope" })).rejects.toThrow("VARIANT_NOT_IN_DESIGN");
+  });
+});
+
 describe("#4453 design brief", () => {
   it("lists the styles with fixed fit and reasons; avoid is never pickable by Ari; a taken look is marked", async () => {
     const brief = await runDesignPassAction("get_site_design_brief", {}, ctx(signed()), deps);

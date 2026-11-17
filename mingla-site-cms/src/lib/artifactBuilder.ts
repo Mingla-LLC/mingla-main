@@ -18,7 +18,7 @@ import {
 import type { ArtifactV2 } from "../contracts/generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "../contracts/generated/upgradeV1ToV2.ts";
 import { parseOfferingsFeed, type SiteOffering } from "../contracts/generated/offerings.ts";
-import { ATELIER, designFor, HERO_LAYOUTS_WITH_BOOKING, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
+import { ATELIER, designFor, HERO_LAYOUTS_WITH_BOOKING, HERO_LAYOUTS_WITH_FACTS, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
 import { isBlockType } from "../contracts/generated/blocks.ts";
 import { resolveTokens } from "../contracts/generated/tokens.ts";
 import { resolveFontSlots } from "../contracts/generated/fontSlots.ts";
@@ -629,7 +629,12 @@ export async function buildPublicationArtifact(
       // #4453 milestone 5 (tester P2-1) — a hero layout that does not draw the
       // booking bar or the rating never publishes them (Studio hides them too).
       if (raw.blockType === "hero" && !HERO_LAYOUTS_WITH_BOOKING.includes(variant)) {
-        const { booking_bar: _bar, booking_target_id: _target, show_rating: _rating, ...rest } = shaped as Record<string, unknown>;
+        const { booking_bar: _bar, booking_target_id: _target, show_rating: _rating, fact_badges: _facts, ...rest } = shaped as Record<string, unknown>;
+        return { ...rest, variant };
+      }
+      // #4453 milestone 7b — likewise the fact badges, drawn by the shared hero layouts only.
+      if (raw.blockType === "hero" && !HERO_LAYOUTS_WITH_FACTS.includes(variant)) {
+        const { fact_badges: _facts, ...rest } = shaped as Record<string, unknown>;
         return { ...rest, variant };
       }
       return { ...shaped, variant };
@@ -652,6 +657,13 @@ export async function buildPublicationArtifact(
               ? { booking_bar: raw.booking_bar, ...optionalText(raw.booking_target_id, "booking_target_id") }
               : {}),
             ...optionalFlag(raw.show_rating, "show_rating"),
+            // #4453 milestone 7b — the owner's own Quick facts (Q8), verbatim; absent means absent.
+            ...((raw.fact_badges || []).some((row: AnyDoc) => typeof row.big === "string" && row.big.trim() && typeof row.small === "string" && row.small.trim())
+              ? { fact_badges: (raw.fact_badges || [])
+                .filter((row: AnyDoc) => typeof row.big === "string" && row.big.trim() && typeof row.small === "string" && row.small.trim())
+                .slice(0, 3)
+                .map((row: AnyDoc) => ({ big: row.big.trim(), small: row.small.trim() })) }
+              : {}),
             subheading: raw.subheading,
             media_url: renderMedia(raw.media, "").url,
             // Optional, and never a replacement for the still above. A hero
@@ -1158,6 +1170,23 @@ export async function buildPublicationArtifact(
               ...optionalText(row.time, "time"),
             })),
           };
+        // #4453 milestone 7b — "Keep exploring": the items are computed below, once every page's address is known.
+        case "page_links":
+          return {
+            type: "page_links",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            mode: raw.mode === "teaser" ? "teaser" : "next",
+          };
+        case "facts_table": {
+          // A row with no value is never drawn, so it is never published.
+          const items = (raw.items || [])
+            .filter((row: AnyDoc) => typeof row.label === "string" && row.label.trim() && typeof row.value === "string" && row.value.trim())
+            .map((row: AnyDoc) => ({ label: row.label.trim(), value: row.value.trim() }));
+          return items.length
+            ? { type: "facts_table", ...eyebrow, ...optionalText(raw.heading, "heading"), items }
+            : null;
+        }
         case "contact_details":
           return {
             type: "contact_details",
@@ -1190,7 +1219,7 @@ export async function buildPublicationArtifact(
    */
   const renderedPages = (pagesResult.docs as AnyDoc[])
     .map((page) => {
-      const rendered = blocks(page.blocks || []).filter(Boolean);
+      const rendered: AnyDoc[] = blocks(page.blocks || []).filter(Boolean) as AnyDoc[];
       const isHome = isHomePage(page);
       return {
         page,
@@ -1276,6 +1305,46 @@ export async function buildPublicationArtifact(
       ...(doc?.sticky_booking === true ? { ...optionalText(doc?.sticky_title, "sticky_title"), ...optionalText(doc?.sticky_note, "sticky_note") } : {}),
     };
   };
+  /*
+   * #4453 milestone 7b (spec v2.1 §1.3) — "Keep exploring" items, computed
+   * here (never stored): the menu's pages in menu order (children included),
+   * only pages that publish (a disabled, emptied or Draft page is never
+   * linked), never the page itself or Home. `teaser` takes up to 4; `next`
+   * the 3 after this page, wrapping. Each card carries the page's menu label,
+   * its description (cut to 120) and its page-header picture. Fewer than 2
+   * pages: the block is left out.
+   */
+  const menuPages: Array<{ id: string; label: string; href: string }> = [];
+  for (const item of ((navigationResult.docs[0] as AnyDoc | undefined)?.items as AnyDoc[] | undefined) ?? []) {
+    for (const row of [item, ...(((item.children as AnyDoc[] | undefined) ?? []))]) {
+      if (row?.target_type === "url") continue;
+      const pageId = id(row?.page);
+      const path = livePaths.get(pageId);
+      const label = typeof row?.label === "string" ? row.label.trim().slice(0, 40) : "";
+      if (!path || !label || menuPages.some((entry) => entry.id === pageId)) continue;
+      menuPages.push({ id: pageId, label, href: `/${path}` });
+    }
+  }
+  const pageCard = (entry: { id: string; label: string; href: string }) => {
+    const target = renderedPages.find((candidate) => String(candidate.page.id) === entry.id);
+    const description = typeof target?.page.seo?.description === "string" ? target.page.seo.description.trim().slice(0, 120) : "";
+    const header = (target?.rendered as AnyDoc[] | undefined)?.find((block) => block?.type === "page_header" && typeof block.media_url === "string");
+    return { label: entry.label, href: entry.href, ...(description ? { description } : {}), ...(header ? { media_url: header.media_url } : {}) };
+  };
+  for (const entry of renderedPages) {
+    entry.rendered = entry.rendered.flatMap((block): AnyDoc[] => {
+      if (block?.type !== "page_links") return [block];
+      const others = menuPages.filter((candidate) => candidate.id !== String(entry.page.id));
+      let picked = others.slice(0, 4);
+      if (block.mode === "next") {
+        const at = menuPages.findIndex((candidate) => candidate.id === String(entry.page.id));
+        const ring = at < 0 ? others : [...menuPages.slice(at + 1), ...menuPages.slice(0, at)];
+        picked = ring.slice(0, 3);
+      }
+      return picked.length >= 2 ? [{ ...block, items: picked.map(pageCard) }] : [];
+    });
+  }
+
   // #2829 — no address, no build: a site publishes only under the primary
   // host Core named for it (fails before anything is written).
   if (!tenantCanonicalUrl(input.tenant)) throw new Error("INVALID_STATE");

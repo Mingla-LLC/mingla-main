@@ -10,7 +10,10 @@ import { MAX_REDIRECTS } from "../contracts/generated/limits.ts";
 import {
   COLLECTION_KINDS,
   DEFAULT_SITE_ROUTES,
+  DEFAULT_STAYS_BASE,
   isBasePath,
+  isReservedSegment,
+  isSlug,
   redirectRuleProblem,
 } from "../contracts/generated/routes.ts";
 import { DESIGN_KEYS, DESIGNS } from "../contracts/generated/designs.ts";
@@ -254,7 +257,7 @@ export const SiteSettings: CollectionConfig = {
       name: "routes",
       type: "group",
       admin: { description: "Where each kind of detail page lives, for example trips/<name>." },
-      fields: COLLECTION_KINDS.map((kind) => ({
+      fields: [...COLLECTION_KINDS.map((kind) => ({
         name: kind,
         type: "text" as const,
         maxLength: 60,
@@ -268,6 +271,22 @@ export const SiteSettings: CollectionConfig = {
             ? true
             : "Use lowercase letters, numbers and single hyphens, not a reserved word.",
       })),
+        /*
+         * #4453 milestone 7b (spec v2.1 §1.2) — the rooms base: where room and
+         * place detail pages live (default "rooms"). Optional, so every site
+         * published before it keeps its addresses.
+         */
+        {
+          name: "stays",
+          type: "text" as const,
+          maxLength: 60,
+          admin: { description: `Rooms and places. Default "${DEFAULT_STAYS_BASE}".` },
+          validate: (value: unknown) =>
+            value == null || value === "" || (typeof value === "string" && isSlug(value) && !isReservedSegment(value))
+              ? true
+              : "Use lowercase letters, numbers and single hyphens, not a reserved word.",
+        },
+      ],
     },
     {
       name: "language",

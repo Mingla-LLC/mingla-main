@@ -36,3 +36,24 @@ describe("#4453 M5 booking blocks gate", () => {
     expect(newBookingFeatureBlocks([...added, ...added], added)).toHaveLength(1);
   });
 });
+
+describe("#4453 milestone 7b — page-set blocks gate", () => {
+  const pageSet = [{ blockType: "page_links", id: "p1", mode: "next" }];
+  const facts = [{ blockType: "facts_table", id: "f1", items: [{ label: "Sauna", value: "90°" }] }];
+  const badges = [{ blockType: "hero", id: "h1", fact_badges: [{ big: "90°", small: "sauna" }] }];
+  it("a Studio editor adds a page-set block or fact badges only with the flag on (flags off: Studio as before)", async () => {
+    const off = makeBookingBlocksGate(async () => false);
+    for (const blocks of [pageSet, facts, badges]) {
+      await expect(run(off, blocks, [], { context: {}, user: { siteId: "s1" } })).rejects.toThrow("BOOKING_BLOCKS_OFF");
+    }
+    const on = makeBookingBlocksGate(async () => true);
+    await expect(run(on, pageSet, [], { context: {}, user: { siteId: "s1" } })).resolves.toBeTruthy();
+  });
+  it("a signed Mingla request (composer v2 on the design pass) may add them; a stored one keeps saving", async () => {
+    const reader = vi.fn(async () => false);
+    const gate = makeBookingBlocksGate(reader);
+    await expect(run(gate, [...pageSet, ...facts, ...badges], [], { context: { minglaSignedCore: true } })).resolves.toBeTruthy();
+    await expect(run(gate, pageSet, pageSet, { context: {}, user: { siteId: "s1" } })).resolves.toBeTruthy();
+    expect(reader).not.toHaveBeenCalled();
+  });
+});

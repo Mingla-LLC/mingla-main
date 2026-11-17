@@ -70,4 +70,7 @@ export const VOYAGE_BLOCK_VARIANTS: BlockVariantMap<VoyageBlockProps> = {
   availability: { strip: shared.availability!.strip! },
   ticket_tiers: { split: shared.ticket_tiers!.split! },
   process_steps: { band: shared.process_steps!.band! },
+  // #4453 milestone 7b — the shared page-set layouts.
+  page_links: { cards: shared.page_links!.cards!, list: shared.page_links!.list! },
+  facts_table: { split: shared.facts_table!.split! },
 };

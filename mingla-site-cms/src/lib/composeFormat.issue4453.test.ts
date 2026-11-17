@@ -252,3 +252,85 @@ describe("#4453 composer v2 — formats, secondaries and styles", () => {
     expect(result.skipped).toEqual(expect.arrayContaining([expect.objectContaining({ type: "venue_reservation", reason: "NO_VERIFIED_VENUE" })]));
   });
 });
+
+describe("#4453 milestone 7b — page-set blocks, fact badges and detail bases", () => {
+  it("every placed inner page ends with page_links (next) and Home has the teaser before the sign-up", () => {
+    for (const format of FORMAT_KEYS) {
+      const result = composeFormatSite(full(format))!;
+      const inner = result.pages.filter((page) => page.key !== "home");
+      expect(inner.length, format).toBeGreaterThanOrEqual(3);
+      for (const page of inner) {
+        const last = page.blocks[page.blocks.length - 1]!;
+        expect(last, `${format}/${page.slug}`).toMatchObject({ blockType: "page_links", mode: "next", heading: "Keep exploring" });
+        expect(Object.keys(last).sort(), "items are never stored").not.toContain("items");
+      }
+      const home = result.pages[0]!.blocks.map((block) => block.blockType);
+      const teaser = home.indexOf("page_links");
+      expect(teaser, format).toBeGreaterThan(0);
+      expect(result.pages[0]!.blocks[teaser]).toMatchObject({ mode: "teaser" });
+      const signUp = home.indexOf("newsletter_signup");
+      if (signUp >= 0) expect(teaser, format).toBeLessThan(signUp);
+    }
+  });
+
+  it("page_links is left out when fewer than 2 other pages are placed (NO_OTHER_PAGES)", () => {
+    const input = full("trips");
+    const bare = composeFormatSite({ ...input, inventory: { ...EMPTY_INVENTORY, has_cover: true, faq_items: 1 }, answers: { ...input.answers, value_points: [], process_steps: [], quick_facts: null } })!;
+    // Two inner pages: Home can link to both; each inner page has only one other, so it gets none.
+    expect(bare.pages.map((page) => page.slug)).toEqual(["", "trips", "faq"]);
+    for (const page of bare.pages.slice(1)) expect(page.blocks.some((block) => block.blockType === "page_links"), page.slug).toBe(false);
+    expect(bare.pages[0]!.blocks.some((block) => block.blockType === "page_links")).toBe(true);
+    expect(bare.skipped.some((skip) => skip.type === "page_links" && skip.reason === "NO_OTHER_PAGES")).toBe(true);
+  });
+
+  it("facts_table is the owner's Q8 facts verbatim (small names it, big is the detail), and absent without facts", () => {
+    const result = composeFormatSite(full("trips"))!;
+    const faq = result.pages.find((page) => page.slug === "faq")!;
+    expect(faq.blocks.find((block) => block.blockType === "facts_table")).toMatchObject({ items: [{ label: "people per group", value: "12" }] });
+    const input = full("trips");
+    const none = composeFormatSite({ ...input, inventory: { ...input.inventory, quick_facts: 0 }, answers: { ...input.answers, quick_facts: null } })!;
+    expect(none.pages.flatMap((page) => page.blocks).some((block) => block.blockType === "facts_table")).toBe(false);
+  });
+
+  it("hero fact badges come only from Q8, only on hero layouts that draw them", () => {
+    const shared = composeFormatSite(full("experiences", "terra"))!;
+    const hero = shared.pages[0]!.blocks.find((block) => block.blockType === "hero")!;
+    if (["fullbleed", "editorial", "arch"].includes(String(hero.variant))) {
+      expect(hero.fact_badges).toEqual([{ big: "12", small: "people per group" }]);
+    } else {
+      expect(hero.fact_badges).toBeUndefined();
+    }
+    // Voyage's own cover layout does not draw badges: never placed there.
+    const voyage = composeFormatSite(full("trips", "voyage"))!;
+    const voyageHero = voyage.pages[0]!.blocks.find((block) => block.blockType === "hero")!;
+    if (!["fullbleed", "editorial", "arch"].includes(String(voyageHero.variant))) expect(voyageHero.fact_badges).toBeUndefined();
+    for (const style of STYLE_KEYS) {
+      const hero = composeFormatSite(full("experiences", style))!.pages[0]!.blocks.find((block) => block.blockType === "hero")!;
+      expect(Boolean(hero.fact_badges), style).toBe(["fullbleed", "editorial", "arch"].includes(String(hero.variant)));
+    }
+    const input = full("experiences", "terra");
+    const noFacts = composeFormatSite({ ...input, inventory: { ...input.inventory, quick_facts: 0 }, answers: { ...input.answers, quick_facts: null } })!;
+    expect(noFacts.pages[0]!.blocks.find((block) => block.blockType === "hero")!.fact_badges).toBeUndefined();
+  });
+
+  it("detail bases: moved only on a never-published site whose base is empty; otherwise the listing stays a standard page", () => {
+    const stored = { trips: null, events: null, experiences: null };
+    const fresh = composeFormatSite({ ...full("experiences"), routes: { stored, canMove: true } })!;
+    expect(fresh.routes).toEqual({ experiences: "sessions" });
+    expect(fresh.pages.find((page) => page.slug === "sessions")).toMatchObject({ kind: "collection_index", collection_kind: "experiences" });
+    const art = composeFormatSite({ ...full("art"), routes: { stored, canMove: true } })!;
+    expect(art.routes).toEqual({ events: "exhibitions", experiences: "workshops" });
+    // Published (cannot move): no base changes, the listing is a standard page.
+    const published = composeFormatSite({ ...full("experiences"), routes: { stored, canMove: false } })!;
+    expect(published.routes).toEqual({});
+    expect(published.pages.find((page) => page.slug === "sessions")).toMatchObject({ kind: "standard" });
+    expect(published.pages.find((page) => page.slug === "sessions")).not.toHaveProperty("collection_kind");
+    // The owner set a base: it is never moved.
+    const owned = composeFormatSite({ ...full("experiences"), routes: { stored: { ...stored, experiences: "classes" }, canMove: true } })!;
+    expect(owned.routes).toEqual({});
+    // Trips keep their default base (no change needed).
+    const trips = composeFormatSite({ ...full("trips"), routes: { stored, canMove: true } })!;
+    expect(trips.routes).toEqual({});
+    expect(trips.pages.find((page) => page.slug === "trips")).toMatchObject({ kind: "collection_index", collection_kind: "trips" });
+  });
+});
