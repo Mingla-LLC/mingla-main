@@ -301,3 +301,29 @@ test("#3643 a Phase 3D suite runs every step after a failure; a sealed primary s
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// [#4420] The reviewed 4 GB heap raise reaches only the pinned jest commands,
+// as one fixed literal, and can never be requested through a step's env.
+test("#4420 heap raise: only the pinned jest commands get the one NODE_OPTIONS literal", async () => {
+  const { minimalChildEnvironment } = await import("../run-suite-batch.mjs");
+  const { HEAP_RAISED_COMMAND_IDS, HEAP_RAISED_ENV, validateHeapRaisedCommands } = await import("../validate-manifest-v2.mjs");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "heap-raise-"));
+  try {
+    assert.equal(minimalChildEnvironment({}, home, { heapRaised: true }).NODE_OPTIONS, "--max-old-space-size=4096");
+    assert.equal(minimalChildEnvironment({}, home).NODE_OPTIONS, undefined);
+    assert.throws(() => minimalChildEnvironment({ NODE_OPTIONS: "--max-old-space-size=4096" }, home),
+      /undeclared child environment capability: NODE_OPTIONS/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+  assert.deepEqual(HEAP_RAISED_ENV, { NODE_OPTIONS: "--max-old-space-size=4096" });
+  const manifest = loadManifest();
+  assert.deepEqual(validateHeapRaisedCommands(manifest), []);
+  const steps = new Map(manifest.suites.flatMap((suite) => suite.steps.map((step) => [step.commandId, step])));
+  for (const id of HEAP_RAISED_COMMAND_IDS) assert.match(steps.get(id).run, /^npx jest\b/, id);
+  // A non-jest step slipped into the list is refused by the gate.
+  const playwright = structuredClone(manifest);
+  const step = playwright.suites.flatMap((suite) => suite.steps).find((s) => s.commandId === HEAP_RAISED_COMMAND_IDS[0]);
+  step.run = "npx playwright test";
+  assert.ok(validateHeapRaisedCommands(playwright).some((message) => message.includes("plain mingla-business jest step")));
+});

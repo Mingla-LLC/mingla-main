@@ -1785,6 +1785,10 @@ jobs:
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
       - name: Run ISSUE-1977 RSVP lifecycle contract
+        # #4420 — reviewed heap raise (Seth): ts-jest type-checks every file it
+        # transforms and outgrew the runner's ~2 GB default V8 heap.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: >
           npx jest
           src/services/__tests__/issue1977RsvpLifecycle.test.ts

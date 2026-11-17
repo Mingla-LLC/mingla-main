@@ -132,6 +132,30 @@ export const SUITES_FOLDED_SINCE_SEAL = Object.freeze([
 // re-seal of THIS constant; the Phase 3A/3B/3C seals are never touched by it.
 // #4334: register the Google places migration and its PostgreSQL proofs, and point the issue-992 lane at the renamed server geocode helper.
 const LOCKED_PHASE3D_CONTRACT_SHA256 = "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc";
+// [#4420] Reviewed heap raise, approved by Seth on #4420. ts-jest type-checks
+// every file it transforms, and on these jest steps that program outgrew the
+// runner's ~2 GB default V8 heap ("JavaScript heap out of memory", exit 134).
+// Only these exact assertion commands get the one literal below; nothing reads
+// it from the job, the registry or a step, and no other step's env changes.
+// validateHeapRaisedCommands pins that every id names a real jest step.
+export const HEAP_RAISED_ENV = Object.freeze({ NODE_OPTIONS: "--max-old-space-size=4096" });
+export const HEAP_RAISED_COMMAND_IDS = Object.freeze([
+  "assert:issue-948-w2-bank-route-web-tests:01",
+  "assert:orch-1404-invite-error-recovery-tests:01",
+  "assert:issue-2399-multiday-picker-ticket-box:01",
+  "assert:issue-1985-ari-task-state:06",
+  "assert:issue-1972-ari-event-lifecycle:03",
+  "assert:issue-1973-ari-experience-lifecycle:02",
+  "assert:issue-1974-ari-ticket-pricing:04",
+  "assert:issue-1995-contact-book-blast:25",
+  "assert:issue-1995-contact-book-blast:26",
+  "assert:issue-1995-contact-book-blast:27",
+  "assert:issue-1421-venue-organic-insights-tests:02",
+  "assert:issue-873-guest-status-roster-tests:02",
+  "assert:issue-873-guest-status-roster-tests:03",
+  "assert:issue-873-guest-status-roster-tests:04",
+  "assert:issue-873-guest-status-roster-tests:05",
+]);
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -1109,6 +1133,24 @@ export function decodeManifestTextRepresentations(rawManifest) {
   return manifest;
 }
 
+// [#4420] Every heap-raised command must be a real mingla-business jest step in
+// the registry, listed once, so the raise can never drift onto another command.
+export function validateHeapRaisedCommands(manifest) {
+  const errors = [];
+  const steps = new Map();
+  for (const suite of manifest.suites || []) for (const step of suite.steps || []) steps.set(step.commandId, step);
+  if (new Set(HEAP_RAISED_COMMAND_IDS).size !== HEAP_RAISED_COMMAND_IDS.length) errors.push("heap-raised command ids must be unique");
+  if (JSON.stringify(HEAP_RAISED_ENV) !== JSON.stringify({ NODE_OPTIONS: "--max-old-space-size=4096" })) errors.push("heap-raised env must be exactly the reviewed NODE_OPTIONS literal");
+  for (const id of HEAP_RAISED_COMMAND_IDS) {
+    const step = steps.get(id);
+    if (!step) { errors.push(`${id}: heap-raised command is not in the registry`); continue; }
+    if (step.cwd !== "mingla-business" || !/^npx jest\b/.test(step.run) || step.env || step.children) {
+      errors.push(`${id}: heap-raised command must be a plain mingla-business jest step`);
+    }
+  }
+  return errors;
+}
+
 export function validateManifestTextRepresentations(rawManifest) {
   const errors = [];
   const expected = new Set(REVIEWED_SPLIT_PATHS);
@@ -1823,6 +1865,7 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
   if (JSON.stringify(manifest.runnerContract) !== JSON.stringify(requiredRunnerContract)) {
     fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
   }
+  for (const message of validateHeapRaisedCommands(manifest)) fail(errors, message);
   for (const suite of manifest.suites || []) {
     const maximumTimeoutSeconds = suite.migrationWave === POSTGRES_WAVE ? 2400 : 1500;
     if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > maximumTimeoutSeconds) {
