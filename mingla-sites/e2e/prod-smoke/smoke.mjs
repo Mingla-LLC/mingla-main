@@ -238,6 +238,32 @@ async function waitForApp() {
   throw new Error("next start did not come up");
 }
 
+/**
+ * #4453 milestone 7b (retest P2-1) — at phone width every visible header
+ * control (link or button) sits fully inside the viewport and is at least
+ * 44 x 44 px. "No sideways scroll" alone missed a half-clipped menu button.
+ */
+async function headerControlsCheck(page, label, out) {
+  const problems = await page.evaluate(() => {
+    const header = document.querySelector("[data-mg-header]") ?? document.querySelector("body header");
+    if (!header) return ["no header"];
+    const found = [];
+    for (const el of header.querySelectorAll("a[href], button")) {
+      if (el.closest("dialog:not([open]), [hidden], [aria-hidden='true']")) continue;
+      const style = getComputedStyle(el);
+      if (style.visibility === "hidden" || style.display === "none") continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const name = (el.getAttribute("aria-label") || el.textContent || el.className || el.tagName).replace(/\s+/g, " ").trim().slice(0, 40);
+      if (r.left < -0.5 || r.right > window.innerWidth + 0.5) found.push(`"${name}" leaves the screen (x ${Math.round(r.left)}-${Math.round(r.right)})`);
+      if (r.width < 43.5 || r.height < 43.5) found.push(`"${name}" is ${Math.round(r.width)}x${Math.round(r.height)} px (under 44)`);
+    }
+    return found;
+  });
+  if (problems.length) for (const problem of problems) out.push(`${label} header: ${problem}`);
+  else console.log(`ok ${label} header controls on screen and >= 44 px`);
+}
+
 async function phoneWidthCheck(out) {
   let chromium;
   try {
@@ -256,6 +282,7 @@ async function phoneWidthCheck(out) {
         const width = await page.evaluate(() => document.documentElement.scrollWidth);
         if (width > 375) out.push(`375 ${site.design_key} ${path}: the page is ${width}px wide (scrolls sideways)`);
         else console.log(`ok 375 ${site.design_key} ${path} (${width}px)`);
+        await headerControlsCheck(page, `375 ${site.design_key} ${path}`, out);
       }
     }
   } finally {
@@ -322,6 +349,7 @@ async function ysChecks(out) {
         const scroll = await page.evaluate(() => document.documentElement.scrollWidth);
         if (scroll > width) out.push(`ys ${width} ${path}: the page is ${scroll}px wide (scrolls sideways)`);
         else console.log(`ok ys ${width} ${path} (${scroll}px)`);
+        if (width === 375) await headerControlsCheck(page, `ys 375 ${path}`, out);
         if (SHOTS) {
           // Walk the page once so lazy images and reveal observers fire, then shoot from the top.
           await page.evaluate(async () => {
