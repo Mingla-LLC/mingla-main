@@ -14,6 +14,7 @@ import {
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
 import { parseBookingRequest } from "../_shared/siteContracts/availability.ts";
 import { answerBooking, bookingBrandSlug } from "./booking.ts";
+import { answerOfferingDetail, detailPagesEnabled, parseDetailRequest } from "./detail.ts";
 
 function envelopeHeader(req: Request): unknown {
   const value = req.headers.get("x-mingla-sites-envelope");
@@ -85,9 +86,15 @@ async function handleBrandSiteRuntimeResolveRequest(
       if (feedNonceError) {
         return sitesJson({ ok: false, error: { code: "REPLAY_DETECTED" } }, 409);
       }
+      // #4453 milestone 9 — whether this site may draw offering detail pages
+      // (SITES_DETAIL_PAGES), carried with the feed so cards and routes read
+      // one answer per minute. Any failure reads as off.
+      const detailPages = await detailPagesEnabled((fn, args) =>
+        service.rpc(fn, args) as unknown as Promise<{ data: unknown; error: unknown }>
+      );
       // Storage paths only, never signed URLs: the runtime serves covers
       // through its own token-bound media route.
-      return sitesJson({ ok: true, data: feed }, 200, {
+      return sitesJson({ ok: true, data: { ...(feed as Record<string, unknown>), detail_pages: detailPages } }, 200, {
         "Cache-Control": "private, max-age=60, stale-if-error=300",
       });
     }
@@ -133,6 +140,53 @@ async function handleBrandSiteRuntimeResolveRequest(
         }
         const data = await answerBooking(rpc, siteId, brandSlug, request);
         return sitesJson({ ok: true, data }, 200, {
+          "Cache-Control": "private, max-age=60, stale-if-error=300",
+        });
+      } catch {
+        return sitesJson({ ok: false, error: { code: "UNAVAILABLE" } }, 503);
+      }
+    }
+    // #4453 milestone 9 — one offering's detail-page extras for ONE site.
+    // Same site binding as the feed; the body names only a kind and a feed
+    // slug, and the answer is re-validated before it leaves (detail.ts).
+    const detailMatch = path.match(
+      /^\/internal\/v1\/sites\/([0-9a-f-]{36})\/offering-detail$/i,
+    );
+    if (detailMatch) {
+      const siteId = detailMatch[1].toLowerCase();
+      if (
+        envelope.site_id === SITES_HOST_RESOLUTION_SITE_ID ||
+        envelope.site_id !== siteId ||
+        value.site_id !== siteId
+      ) {
+        return sitesJson({ ok: false, error: { code: "NOT_FOUND" } }, 404);
+      }
+      const request = parseDetailRequest(value);
+      if (!request) {
+        return sitesJson({ ok: false, error: { code: "BAD_REQUEST" } }, 400);
+      }
+      const { error: detailNonceError } = await service
+        .from("brand_site_gateway_nonces")
+        .insert({
+          direction: envelope.direction,
+          nonce: envelope.nonce,
+          operation_id: envelope.operation_id,
+          site_id: siteId,
+          expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+        });
+      if (detailNonceError) {
+        return sitesJson({ ok: false, error: { code: "REPLAY_DETECTED" } }, 409);
+      }
+      try {
+        const detail = await answerOfferingDetail(
+          (fn, args) => service.rpc(fn, args) as unknown as Promise<{ data: unknown; error: unknown }>,
+          siteId,
+          request,
+        );
+        if (!detail) {
+          return sitesJson({ ok: false, error: { code: "NOT_FOUND" } }, 404);
+        }
+        return sitesJson({ ok: true, data: detail }, 200, {
           "Cache-Control": "private, max-age=60, stale-if-error=300",
         });
       } catch {

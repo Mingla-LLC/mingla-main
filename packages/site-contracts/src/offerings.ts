@@ -64,6 +64,8 @@ export type OfferingsFeed = {
   generated_at: string;
   brand: { slug: string; currency: string | null; payment_rails: "stripe" | "paystack" };
   offerings: SiteOffering[];
+  /** #4453 milestone 9 — SITES_DETAIL_PAGES as Core read it with this feed (absent or anything but true = off). */
+  detail_pages?: boolean;
 };
 
 const OFFERING_KEYS = [
@@ -182,6 +184,7 @@ export function parseOfferingsFeed(value: unknown): OfferingsFeed {
       payment_rails: brand.payment_rails === "paystack" ? "paystack" : "stripe",
     },
     offerings,
+    ...(value.detail_pages === true ? { detail_pages: true } : {}),
   };
 }
 
