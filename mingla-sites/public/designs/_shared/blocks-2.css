@@ -613,13 +613,12 @@
   /* #4453 final rework — visually hidden text (a generic menu label's page name; see SharedChrome descriptiveSuffix). */
   [data-design] .mg-vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
   /* #4453 final rework (Lighthouse contrast): the "N left" count is 12 px text,
-     so it needs 4.5:1. The accent itself is a fill colour on the light styles
-     (Voyage 1.61:1, Pop 2.63:1 on the canvas), so it reads in the 700 shade
-     of the same accent ramp (Voyage 4.82:1, Pop 5.30:1; every light style
-     >= 4.5:1 on canvas, surface and sunken). The three dark styles keep
-     their accent (>= 6:1 there). Pinned by slotCountContrast.issue4453. */
-  [data-design] .mg-slot__n { font: 600 12px/1 var(--mg-f-label); color: var(--c-accent-700, var(--mg-accent)); text-transform: uppercase; letter-spacing: .06em; text-decoration: none; }
-  :is([data-design="atelier"], [data-design="nocturne"], [data-design="pulse"]) .mg-slot__n { color: var(--mg-accent); }
+     so it needs 4.5:1. The accent alone is a fill colour on the light styles
+     (Voyage 1.61:1, Pop 2.63:1 on the canvas). Mixed 45% accent into the
+     style's ink it keeps the accent's hue and moves toward the ink on every
+     style, light or dark: worst case 5.0:1 (Voyage) on canvas, surface and
+     sunken. Pinned by slotCountContrast.issue4453. */
+  [data-design] .mg-slot__n { font: 600 12px/1 var(--mg-f-label); color: color-mix(in srgb, var(--mg-accent) 45%, var(--mg-ink)); text-transform: uppercase; letter-spacing: .06em; text-decoration: none; }
   [data-design] .mg-slot--full .mg-slot__n { color: var(--mg-muted); }
   [data-design] .mg-slot__p { font: 500 13px/1 var(--mg-f-body); color: var(--mg-muted); }
   @media (max-width: 720px) {

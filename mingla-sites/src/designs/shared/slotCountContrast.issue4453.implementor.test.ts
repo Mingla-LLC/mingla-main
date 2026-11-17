@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { DESIGNS, DESIGN_KEYS } from "../../contracts/generated/designs.ts";
 
 type Ramp = Record<string, string>;
-type Colors = { canvas: string; surface: string; surface_sunken?: string; accent: { ramp: Ramp } };
+type Colors = { canvas: string; surface: string; surface_sunken?: string; ink_strong: string; accent: { ramp: Ramp } };
 
 function colorsOf(value: unknown, depth = 0): Colors | null {
   if (!value || typeof value !== "object" || depth > 4) return null;
@@ -37,20 +37,26 @@ function contrast(a: string, b: string): number {
 }
 
 const css = fs.readFileSync(path.join(process.cwd(), "public/designs/_shared/blocks-2.css"), "utf8");
-const darkMatch = css.match(/:is\(([^)]*)\) \.mg-slot__n \{ color: var\(--mg-accent\); \}/);
-const DARK = new Set([...(darkMatch?.[1] ?? "").matchAll(/data-design="([a-z]+)"/g)].map((m) => m[1]));
+const share = Number(css.match(/\.mg-slot__n \{[^}]*color: color-mix\(in srgb, var\(--mg-accent\) (\d+)%, var\(--mg-ink\)\);/)?.[1] ?? NaN) / 100;
+
+/** CSS color-mix(in srgb, a p, b): per-channel interpolation of the sRGB values. */
+function mix(a: string, b: string, p: number): string {
+  const ch = (hex: string) => [0, 2, 4].map((i) => parseInt(hex.replace("#", "").slice(i, i + 2), 16));
+  const [x, y] = [ch(a), ch(b)];
+  return `#${x.map((v, i) => Math.round(v * p + y[i] * (1 - p)).toString(16).padStart(2, "0")).join("")}`;
+}
 
 describe("#4453 slot count contrast (.mg-slot__n)", () => {
-  it("the light styles read the accent's 700 shade; the dark styles keep the accent", () => {
-    expect(css).toMatch(/\[data-design\] \.mg-slot__n \{[^}]*color: var\(--c-accent-700, var\(--mg-accent\)\);/);
-    expect([...DARK].sort()).toEqual(["atelier", "nocturne", "pulse"]);
+  it("the count mixes the accent into the ink (one rule for every style)", () => {
+    expect(share).toBeGreaterThan(0);
+    expect(share).toBeLessThan(1);
   });
 
   it.each(DESIGN_KEYS.map((key) => [key]))("%s: the count is at least 4.5:1 on every slot background", (key) => {
     const colors = colorsOf(DESIGNS[key]);
     expect(colors).not.toBeNull();
     const ramp = colors!.accent.ramp;
-    const ink = DARK.has(key) ? ramp["400"] : ramp["700"];
+    const ink = mix(ramp["400"], colors!.ink_strong, share);
     for (const background of [colors!.canvas, colors!.surface, colors!.surface_sunken].filter((v): v is string => typeof v === "string")) {
       expect(contrast(ink, background)).toBeGreaterThanOrEqual(4.5);
     }

@@ -1307,6 +1307,8 @@ li.mg-nav__li
 a.mg-nav__a
 small.gr-n
 /small
+span.mg-vh
+/span
 /a
 ul.mg-nav__sub
 li
@@ -1337,6 +1339,8 @@ path
 ul.mg-more__list
 li.mg-nav__li
 a.mg-nav__a
+span.mg-vh
+/span
 /a
 ul.mg-nav__sub mg-nav__sub--inline
 li
@@ -1409,6 +1413,8 @@ span.mg-pmenu__n
 li
 a
 span.mg-pmenu__n
+/span
+span.mg-vh
 /span
 /a
 ul
@@ -2351,6 +2357,8 @@ a.mg-nav__a
 /li
 li.mg-nav__li
 a.mg-nav__a
+span.mg-vh
+/span
 /a
 ul.mg-nav__sub
 li
@@ -2421,6 +2429,8 @@ span.mg-pmenu__n
 li
 a
 span.mg-pmenu__n
+/span
+span.mg-vh
 /span
 /a
 ul
@@ -3318,6 +3328,8 @@ a.mg-nav__a
 /li
 li.mg-nav__li
 a.mg-nav__a
+span.mg-vh
+/span
 /a
 ul.mg-nav__sub
 li
@@ -3348,6 +3360,8 @@ path
 ul.mg-more__list
 li.mg-nav__li
 a.mg-nav__a
+span.mg-vh
+/span
 /a
 ul.mg-nav__sub mg-nav__sub--inline
 li
@@ -3423,6 +3437,8 @@ span.mg-pmenu__n
 li
 a
 span.mg-pmenu__n
+/span
+span.mg-vh
 /span
 /a
 ul
