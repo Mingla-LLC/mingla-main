@@ -67,6 +67,23 @@ ALTER TABLE public.brand_guest_chat_exclusions ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.brand_guest_chat_exclusions FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.brand_guest_chat_exclusions TO service_role;
 
+-- Who on the team wrote a brand post. Brand posts store sender_id NULL; this
+-- table is the only place the author lives, and only the brand team reads it.
+CREATE TABLE IF NOT EXISTS public.brand_guest_post_authors (
+  message_id uuid PRIMARY KEY REFERENCES public.messages(id) ON DELETE CASCADE,
+  conversation_id uuid NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  author_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS brand_guest_post_authors_conversation_idx
+  ON public.brand_guest_post_authors(conversation_id);
+CREATE INDEX IF NOT EXISTS brand_guest_post_authors_author_idx
+  ON public.brand_guest_post_authors(author_id);
+ALTER TABLE public.brand_guest_post_authors ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.brand_guest_post_authors FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.brand_guest_post_authors TO authenticated;
+GRANT ALL ON TABLE public.brand_guest_post_authors TO service_role;
+
 -- ── 3. Helpers ──────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.issue_4459_is_brand_guests_conversation(p_conversation_id uuid)
 RETURNS boolean
@@ -504,6 +521,11 @@ CREATE POLICY conversation_participants_brand_guests_roster ON public.conversati
     OR public.issue_4459_is_brand_guest_team(conversation_id, (SELECT auth.uid()))
     OR public.issue_4459_is_brand_guest_team(conversation_id, user_id)
   );
+
+DROP POLICY IF EXISTS brand_guest_post_authors_team_read ON public.brand_guest_post_authors;
+CREATE POLICY brand_guest_post_authors_team_read ON public.brand_guest_post_authors
+  FOR SELECT TO authenticated
+  USING (public.issue_4459_is_brand_guest_team(conversation_id, (SELECT auth.uid())));
 
 DROP POLICY IF EXISTS messages_brand_guests_rpc_only ON public.messages;
 CREATE POLICY messages_brand_guests_rpc_only ON public.messages
@@ -1399,7 +1421,10 @@ BEGIN
   NEW.media_width := NULL;
   NEW.media_height := NULL;
   NEW.unsent_at := now();
-  NEW.unsent_by := v_uid;
+  -- #4459: a brand removal in its Guest chat names the brand, never a team member.
+  NEW.unsent_by := CASE
+    WHEN v_kind = 'host' AND public.issue_4459_is_brand_guests_conversation(OLD.conversation_id) THEN NULL
+    ELSE v_uid END;
   NEW.unsent_kind := v_kind;
   IF OLD.deleted_at IS NULL AND v_client THEN
     NEW.deleted_at := now();
@@ -1533,9 +1558,14 @@ BEGIN
 
   -- Idempotent retry: the same client id returns the stored row.
   IF p_client_id IS NOT NULL THEN
-    SELECT * INTO v_row FROM public.messages
-     WHERE conversation_id = p_conversation_id AND client_id = p_client_id AND sender_id = v_uid;
-    IF FOUND THEN RETURN to_jsonb(v_row); END IF;
+    SELECT m.* INTO v_row FROM public.messages m
+     WHERE m.conversation_id = p_conversation_id AND m.client_id = p_client_id
+       AND (m.sender_id = v_uid OR EXISTS (
+         SELECT 1 FROM public.brand_guest_post_authors a
+          WHERE a.message_id = m.id AND a.author_id = v_uid));
+    IF FOUND THEN
+      RETURN to_jsonb(v_row) || CASE WHEN v_team THEN jsonb_build_object('author_id', v_uid) ELSE '{}'::jsonb END;
+    END IF;
   END IF;
 
   -- Guests: at most 20 messages per 10 minutes.
@@ -1558,15 +1588,23 @@ BEGIN
       INTO v_display FROM public.profiles p WHERE p.id = v_uid;
   END IF;
 
+  -- A brand post carries the brand only: sender_id stays NULL on the message
+  -- (every guest read path: rows, realtime, previews, list RPCs) and the
+  -- author is kept in brand_guest_post_authors, which only the team reads.
   INSERT INTO public.messages(
     conversation_id, sender_id, content, message_type, reply_to_id, client_id,
     mentions, sender_kind, sender_display_name_snapshot, sender_role_snapshot
   ) VALUES (
-    p_conversation_id, v_uid, v_content, 'text', p_reply_to_id, p_client_id,
+    p_conversation_id, CASE WHEN v_team THEN NULL ELSE v_uid END, v_content, 'text', p_reply_to_id, p_client_id,
     v_mentions, CASE WHEN v_team THEN 'brand' ELSE 'guest' END, v_display,
     CASE WHEN v_team THEN 'brand' ELSE NULL END
   )
   RETURNING * INTO v_row;
+  IF v_team THEN
+    INSERT INTO public.brand_guest_post_authors(message_id, conversation_id, author_id)
+    VALUES (v_row.id, p_conversation_id, v_uid);
+    RETURN to_jsonb(v_row) || jsonb_build_object('author_id', v_uid);
+  END IF;
   RETURN to_jsonb(v_row);
 END;
 $function$;

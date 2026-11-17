@@ -150,7 +150,19 @@ async function handleBrandGuestsMessage(
     console.warn("[notify-message] brand_guests message lookup failed:", messageErr?.code ?? "not_found");
     return { notified: 0 };
   }
-  if (message.conversation_id !== conv.id || message.sender_id !== senderId || message.deleted_at !== null) {
+  if (message.conversation_id !== conv.id || message.deleted_at !== null) return { notified: 0 };
+  // A brand post stores no sender (guests never learn which team member wrote
+  // it); its author is in brand_guest_post_authors, read here with the
+  // service key.
+  const fromBrand = message.sender_kind === "brand";
+  if (fromBrand) {
+    const { data: author } = await adminClient
+      .from("brand_guest_post_authors")
+      .select("author_id")
+      .eq("message_id", id)
+      .maybeSingle();
+    if ((author as { author_id?: string | null } | null)?.author_id !== senderId) return { notified: 0 };
+  } else if (message.sender_id !== senderId) {
     return { notified: 0 };
   }
 
@@ -216,7 +228,8 @@ async function handleBrandGuestsMessage(
         body: copy.body,
         deepLink,
         data: messagePushData(deepLink, id),
-        actorId: senderId,
+        // The notification row a guest can read never names a team member.
+        actorId: fromBrand ? null : senderId,
         relatedId: conv.id,
         relatedType: "conversation",
         idempotencyKey: brandGuestsIdempotencyKey(id, recipientId),

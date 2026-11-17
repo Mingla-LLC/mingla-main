@@ -308,7 +308,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4459: listed migration 20280730004459 (brand Guest chat) after 20280725004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "a1a791a22faa79c875d5f0254b6e608e817d7deb08a137e4e83a5d165ac21a07";
+export const BOOTSTRAP_SHA256 = "0fb4f6299b78c76edb4bad7960935914450f604a21cc39c50c7bb1cb19624162";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

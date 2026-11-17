@@ -639,6 +639,17 @@ export const MESSAGE_PAGE_SIZE = 50;
 /** Issue #4114: the partial unique index on (conversation_id, client_id) WHERE client_id IS NOT NULL. */
 export const MESSAGE_CLIENT_ID_UNIQUE_INDEX = 'messages_unique_client_id_per_conversation';
 
+/**
+ * ORCH-0908 / #4459: a row with no sender is a system line, except a brand
+ * post in a Guest chat (sender_kind 'brand'), which stores no sender on
+ * purpose so guests never learn which team member wrote it.
+ */
+export function isSystemMessageRow(message: { sender_id?: string | null; sender_kind?: string | null; message_type?: string | null; content?: string | null }): boolean {
+  if (message.message_type === 'system') return true;
+  if (message.sender_id == null) return message.sender_kind !== 'brand';
+  return isCollabDeadEndBannerMessage(message.content ?? '');
+}
+
 export class MessagingService {
   private channels: Map<string, RealtimeChannel> = new Map();
   private senderProfileCache: Map<string, { name: string; cachedAt: number }> = new Map();
@@ -2432,7 +2443,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: !!readData,
-      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
+      isSystem: isSystemMessageRow(message),
     };
   }
 
@@ -2450,7 +2461,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: false,
-      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
+      isSystem: isSystemMessageRow(message),
     };
   }
 

@@ -610,7 +610,9 @@ export interface ChatPreviewLineMessage {
 
 /** A system row (plan / group events, joins): written by Mingla, never by a person. */
 export function isSystemPreviewRow(message: ChatPreviewLineMessage): boolean {
-  return message.message_type === "system" || message.sender_id == null;
+  // #4459: a brand post in a Guest chat stores no sender but is not a system row.
+  if (message.message_type === "system") return true;
+  return message.sender_id == null && message.sender_kind !== "brand";
 }
 
 /**

@@ -99,7 +99,8 @@ Deno.test("#4459 notify-message routes Guest chats to the brand_guests handler",
     throw new Error("a client mention list must never push in a Guest chat");
   }
   const handler = source.slice(source.indexOf("async function handleBrandGuestsMessage("), source.indexOf("async function handleUnifiedMessage("));
-  for (const needle of ['.from("messages")', "message.sender_id !== senderId", "message.conversation_id !== conv.id", "brandGuestsIdempotencyKey", "chunked(recipients, BRAND_GUESTS_PUSH_CHUNK)"]) {
+  for (const needle of ['.from("messages")', "message.sender_id !== senderId", "message.conversation_id !== conv.id", "brandGuestsIdempotencyKey", "chunked(recipients, BRAND_GUESTS_PUSH_CHUNK)",
+    '.from("brand_guest_post_authors")', "actorId: fromBrand ? null : senderId"]) {
     if (!handler.includes(needle)) throw new Error(`brand_guests handler is missing: ${needle}`);
   }
   if (handler.includes("messagePreview")) throw new Error("the app's preview must not be used");
