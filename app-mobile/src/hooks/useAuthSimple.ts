@@ -400,6 +400,7 @@ export const useAuthSimple = () => {
                 logger.auth('User exists but no profile — creating new profile');
                 try {
                   const emailName = session.user.email?.split("@")[0] || "User";
+                  // #4456 [profile-fallback] — begin real-columns insert.
                   // Issue #4456: only real profiles columns. No photo column
                   // (it was a non-existent profile_image, so the insert always
                   // failed) and no username: usernames are unique, and the
@@ -437,6 +438,7 @@ export const useAuthSimple = () => {
                   } else {
                     if (mounted) setProfile(newProfile);
                   }
+                  // #4456 [profile-fallback] — end real-columns insert.
                 } catch (createError) {
                   console.error("Error creating profile:", createError);
                 }

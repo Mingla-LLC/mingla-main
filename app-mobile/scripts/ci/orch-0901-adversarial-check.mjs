@@ -412,10 +412,19 @@ check(
 
 // ─── TA-12: Q1 has .is('last_message.deleted_at', null) — embedded soft-delete filter ─
 
+// #4456: the equivalent filter keeps live messages plus the unsent-line
+// placeholders only (unsent_kind sender/admin, whose content the server has
+// already wiped); every other soft-deleted message is still filtered out.
+const tombstoneFilterExact =
+  /export const LIVE_OR_TOMBSTONE_FILTER = 'deleted_at\.is\.null,unsent_kind\.in\.\(sender,admin\)';/.test(svcSrc);
 check(
-  "TA-12 Q1 includes `.is('last_message.deleted_at', null)` embedded filter — soft-deleted last_message" +
-    " is not shown as the latest message",
-  body !== null && /\.\s*is\(\s*['"`]last_message\.deleted_at['"`]\s*,\s*null\s*\)/.test(stripComments(body)),
+  "TA-12 Q1 includes `.is('last_message.deleted_at', null)` embedded filter (or the #4456 equivalent that" +
+    " admits only wiped unsent-line placeholders) — soft-deleted last_message is not shown as the latest message",
+  body !== null && (
+    /\.\s*is\(\s*['"`]last_message\.deleted_at['"`]\s*,\s*null\s*\)/.test(stripComments(body)) ||
+    (tombstoneFilterExact &&
+      /\.\s*or\(\s*LIVE_OR_TOMBSTONE_FILTER\s*,\s*\{\s*referencedTable:\s*['"`]last_message['"`]\s*\}\s*\)/.test(stripComments(body)))
+  ),
   "Q1's embedded last_message subselect must filter out soft-deleted messages via dot-notation filter on" +
     " the embedded resource (`.is('last_message.deleted_at', null)`). Without this, a conversation whose" +
     " most recent message was soft-deleted would show that deleted message in the Friends-tab preview" +

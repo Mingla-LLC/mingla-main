@@ -11,7 +11,7 @@
 -- the 20271230064114 body of issue_4114_can_read_chat_attachment (T-FILES), or
 -- let a server write bring a tombstone back (T-FINAL-SERVER).
 --
--- MINGLA-INVARIANT: I-4456-CLIENT-NO-CONTENT-WRITE | issue #4456 | every messages column except deleted_at, updated_at, is_read and read_at is closed to UPDATE for anon and authenticated, and DELETE is closed, checked from the catalog so a new column is covered too
+-- MINGLA-INVARIANT: I-4456-CLIENT-WRITE-CATALOG | issue #4456 | every messages column except deleted_at, updated_at, is_read and read_at is closed to UPDATE for anon and authenticated, and DELETE is closed, checked from the catalog so a new column is covered too
 
 BEGIN;
 

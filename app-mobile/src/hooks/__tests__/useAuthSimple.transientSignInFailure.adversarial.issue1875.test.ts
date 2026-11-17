@@ -1618,6 +1618,41 @@ test('AX-F3 — everything ELSE in useAuthSimple.ts is byte-identical to origin/
     assert.ok(at > -1 && endAt > at, 'AX-F #4445 declared region missing')
     residue = residue.slice(0, at) + residue.slice(endAt + end4445.length)
   }
+  // #4456 [profile-fallback] rewrote the missing-profile insert to real
+  // columns after #1875 shipped. Restore that declared region to its pre-#4456
+  // bytes so this older guard keeps proving #1875 alone.
+  {
+    const start4456 = '                  // #4456 [profile-fallback] — begin real-columns insert.\n'
+    const end4456 = '                  // #4456 [profile-fallback] — end real-columns insert.\n'
+    const at = residue.indexOf(start4456)
+    const endAt = residue.indexOf(end4456, at)
+    assert.ok(at > -1 && endAt > at, 'AX-F #4456 declared region missing')
+    residue =
+      residue.slice(0, at) +
+      '                  const { data: newProfile, error: createError } =\n' +
+      '                    await supabase\n' +
+      '                      .from("profiles")\n' +
+      '                      .insert({\n' +
+      '                        id: session.user.id,\n' +
+      '                        email: session.user.email,\n' +
+      '                        display_name: emailName,\n' +
+      '                        first_name: emailName,\n' +
+      '                        last_name: "",\n' +
+      '                        username: emailName,\n' +
+      '                        profile_image: null,\n' +
+      '                        created_at: new Date().toISOString(),\n' +
+      '                        updated_at: new Date().toISOString(),\n' +
+      '                      })\n' +
+      '                      .select()\n' +
+      '                      .single();\n' +
+      '\n' +
+      '                  if (createError) {\n' +
+      '                    console.error("Error creating profile:", createError);\n' +
+      '                  } else {\n' +
+      '                    if (mounted) setProfile(newProfile);\n' +
+      '                  }\n' +
+      residue.slice(endAt + end4456.length)
+  }
   const issue4202Start = '            // #4202 [explorer-account-deletion] — begin explicit reactivation gate.\n'
   const issue4202End = '            // #4202 [explorer-account-deletion] — end explicit reactivation gate.\n'
   const issue4202At = residue.indexOf(issue4202Start)
