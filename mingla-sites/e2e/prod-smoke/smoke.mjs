@@ -61,8 +61,20 @@ function ysSites() {
   const digest = createHash("sha256").update(bytes).digest("hex");
   // The mock serves storage objects by their last path segment (the digest file).
   writeFileSync(join(dir, `${digest}.json`), bytes);
+  // #4453 milestone 11 — the owner's newest preview of the same site (it carries the Draft page from Ari),
+  // which a private share link serves. Its key opens /preview; a share view must never carry it.
+  const previewId = `preview-${randomBytes(16).toString("hex")}`;
+  const previewBytes = Buffer.from(JSON.stringify({ ...artifact, publication_id: previewId }));
+  const previewDigest = createHash("sha256").update(previewBytes).digest("hex");
+  writeFileSync(join(dir, `${previewDigest}.json`), previewBytes);
   return {
     artifact,
+    share: {
+      token: randomBytes(32).toString("base64url"),
+      previewKey: `publications/${artifact.site_id}/${previewId}/${previewDigest}.json`,
+      previewDigest,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    },
     sites: {
       [YS_HOST]: {
         site_id: artifact.site_id, brand_id: artifact.brand_id, publication_id: artifact.publication_id,
@@ -177,6 +189,13 @@ const mock = http.createServer((req, res) => {
         stay: row.kind === "stay" ? { kind: "room", max_guests: 3, max_adults: 2, max_children: 1, amenities: ["Wi-Fi", "Sea view"], accessibility: [] } : null,
         photos: [],
       } });
+    }
+    // #4453 milestone 11 — Core's share-link lookup (the ys fixture): the newest preview's key while the link is live.
+    if ((m = url.match(/\/internal\/v1\/sites\/([^/]+)\/share-preview$/)) && ys) {
+      let ask = {};
+      try { ask = JSON.parse(body); } catch { /* answered below */ }
+      if (ask.token !== ys.share.token || decodeURIComponent(m[1]) !== ys.artifact.site_id) return send(404, { ok: false });
+      return send(200, { ok: true, data: { site_id: ys.artifact.site_id, artifact_key: ys.share.previewKey, expires_at: ys.share.expiresAt } });
     }
     if (url.includes("/enquiry-status")) return send(200, { ok: true, data: { status: "available" } });
     // #4453 milestone 5 — Core's live booking answer for the blocks every Home carries.
@@ -436,6 +455,47 @@ async function ysChecks(out) {
       const html = await (await fetch(`http://${YS_HOST}:${APP_PORT}${path}`)).text();
       if (/private-hire|ARI-DRAFT-/.test(html)) out.push(`ys ${path}: links to or shows the Draft page from Ari`);
     }
+  }
+  // #4453 milestone 11 (N10) — a private share link never carries the owner's preview key (HTML, asset URLs,
+  // the RSC payload inlined in the response, headers), and nothing found in it opens /preview or the Draft page.
+  {
+    const { token, previewKey, previewDigest } = ys.share;
+    const base = `http://${YS_HOST}:${APP_PORT}`;
+    const owner = await fetch(`${base}/preview?k=${encodeURIComponent(previewKey)}&path=private-hire`);
+    if (owner.status !== 200) out.push(`ys share: the owner's preview did not open the Draft page (HTTP ${owner.status})`);
+    else console.log("ok ys owner's preview opens the Draft page from Ari");
+    const found = new Set([token]);
+    let mediaUrl = null;
+    for (const path of ["", "trips", "about"]) {
+      const response = await fetch(`${base}/preview/share/${token}${path ? `?path=${path}` : ""}`);
+      const text = `${[...response.headers].map(([name, value]) => `${name}: ${value}`).join("\n")}\n${await response.text()}`;
+      const unescaped = text.replace(/\\u0026/g, "&").replace(/&amp;/g, "&").replace(/\\"/g, "\"");
+      if (response.status !== 200) { out.push(`ys share /${path}: HTTP ${response.status}`); continue; }
+      const hits = [previewKey, encodeURIComponent(previewKey), previewDigest].filter((secret) => text.includes(secret) || unescaped.includes(secret));
+      if (hits.length || /[?&]k=/.test(unescaped)) out.push(`ys share /${path}: the response carries the preview key (${hits.length} hits)`);
+      else console.log(`ok ys share /${path}: 0 preview-key hits in the full response`);
+      if (/private-hire|ARI-DRAFT-/.test(unescaped)) out.push(`ys share /${path}: links to or shows the Draft page from Ari`);
+      for (const match of unescaped.matchAll(/[?&]([a-z]{1,2})=([^"&\s\\<>)]+)/gi)) found.add(decodeURIComponent(match[2]));
+      mediaUrl ??= unescaped.match(/\/media\/[0-9a-f-]{36}\/[a-z0-9.]+\?s=[A-Za-z0-9_-]{43}/i)?.[0] ?? null;
+    }
+    for (const credential of found) {
+      for (const param of ["k", "s"]) {
+        const probe = await fetch(`${base}/preview?${param}=${encodeURIComponent(credential)}&path=private-hire`);
+        const body = await probe.text();
+        if (probe.status === 200 || /ARI-DRAFT-/.test(body)) out.push(`ys share: a value found in the share view opens /preview (${param}=${credential.slice(0, 12)}…)`);
+      }
+    }
+    console.log(`ok ys share: none of ${found.size} values found in the share view opens /preview`);
+    const direct = await fetch(`${base}/preview/share/${token}?path=private-hire`);
+    if (direct.status !== 404) out.push(`ys share: the share route answered the Draft page with ${direct.status}`);
+    if (mediaUrl) {
+      // The share token answers exactly as the owner's key does for the same file; another token is a 404.
+      const media = await fetch(`${base}${mediaUrl}`);
+      const ownerMedia = await fetch(`${base}${mediaUrl.replace(/\?s=.*/, `?k=${encodeURIComponent(previewKey)}`)}`);
+      const forged = await fetch(`${base}${mediaUrl.replace(/\?s=.*/, `?s=${"A".repeat(43)}`)}`);
+      if (media.status !== ownerMedia.status || forged.status !== 404) out.push(`ys share media: own token ${media.status} (owner key ${ownerMedia.status}), another token ${forged.status} (want 404)`);
+      else console.log(`ok ys share media: own token ${media.status} = owner key ${ownerMedia.status}, another token 404`);
+    } else console.log("ys share: no media URL on the shared pages (media check skipped)");
   }
   let chromium;
   try {

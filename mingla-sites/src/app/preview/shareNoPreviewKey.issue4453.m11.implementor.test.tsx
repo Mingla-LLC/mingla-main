@@ -50,8 +50,8 @@ function preview(): SiteArtifact {
   const about = artifact.pages.find((row) => row.path === "about-us")!;
   artifact.pages = [
     ...artifact.pages,
-    { ...structuredClone(about), key: "private-hire", path: "private-hire", title: DRAFT_TITLE, enabled: false, draft_by_ari: true as const },
-    { ...structuredClone(about), key: "secret", path: "secret", title: HIDDEN_TITLE, enabled: false },
+    { ...structuredClone(about), path: "private-hire", title: DRAFT_TITLE, enabled: false, draft_by_ari: true as const },
+    { ...structuredClone(about), path: "secret", title: HIDDEN_TITLE, enabled: false },
   ];
   return artifact as unknown as SiteArtifact;
 }
