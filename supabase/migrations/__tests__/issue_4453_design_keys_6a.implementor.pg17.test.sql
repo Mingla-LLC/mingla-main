@@ -10,7 +10,7 @@
 -- T-4         brand_site_plan_save_design and brand_context_completeness_internal still read the function
 --             (6a re-issued neither).
 --
--- FAILS-ON-REVERT: drop 20280724104453 -> T-1 (the function still returns two keys) and T-3 (nocturne is refused).
+-- FAILS-ON-REVERT: drop 20280725024453 -> T-1 (the function still returns two keys) and T-3 (nocturne is refused).
 
 \ir issue_4453_design_keys.fixture.sql
 

@@ -10,7 +10,7 @@
  *   - UNREVIEWED_SECTIONS reaches the owner as a fixable 409 naming pages.
  *
  * invariant: I-SITES-NO-INVENTED-PROOF (declared in
- * supabase/migrations/20280723004453_issue_4453_website_proof_part.sql).
+ * supabase/migrations/20280725014453_issue_4453_website_proof_part.sql).
  */
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleSitePlanRoute, materializedRows, type SitePlanContext } from "./sitePlan.ts";

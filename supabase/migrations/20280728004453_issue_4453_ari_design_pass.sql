@@ -20,7 +20,7 @@
 --      (site, fingerprint): the looks of OTHER brands' live sites of the same
 --      format (no brand ids leave Core), and the fingerprint Studio computed
 --      for this site's design pass.
---   6. brand_site_plan_authorize_compose re-issued from 20280723004453; the
+--   6. brand_site_plan_authorize_compose re-issued from 20280725014453; the
 --      only change is that Build also receives the owner's own Q5-Q8 answers
 --      (value_points, faq, process_steps, quick_facts).
 --
@@ -200,7 +200,7 @@ END;
 $function$;
 
 -- ── 6. Build receives the owner's own Q5-Q8 answers ────────────────────────
--- Re-issued from 20280723004453; the only change is the four answer keys.
+-- Re-issued from 20280725014453; the only change is the four answer keys.
 CREATE OR REPLACE FUNCTION public.brand_site_plan_authorize_compose(p_brand_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER

@@ -272,7 +272,7 @@ export function planBuildBlockers(input: {
  * #4453 (spec v1 §3.2, spec v2 §6.7) — the setup part "What guests say and
  * where you've been". Every answer is the owner's own words, saved verbatim;
  * nothing here writes copy. The limits mirror Core's validator CHECKs
- * (20280723004453_issue_4453_website_proof_part.sql).
+ * (20280725014453_issue_4453_website_proof_part.sql).
  */
 export const PROOF_LIMITS = {
   reviews: 24,

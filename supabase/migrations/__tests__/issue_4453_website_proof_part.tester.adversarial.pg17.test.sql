@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 PR 3 (content foundation): the tester's adversarial PostgreSQL 17 proof of
--- 20280723004453 (a different angle from the implementor's happy-path suite).
+-- 20280725014453 (a different angle from the implementor's happy-path suite).
 -- MINGLA-INVARIANT: I-SITES-PLAN-BUILD-NEEDS-APPROVE | issue #4453 | with SITES_PROOF_PART on, Build
 -- (authorize_provision / authorize_compose) still needs 'approve', and the optional 'proof' never blocks it.
 --

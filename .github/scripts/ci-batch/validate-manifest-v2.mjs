@@ -526,7 +526,8 @@ export function phase3dContractDigest(manifest) {
 // #4453 milestone 10: plan-preview migration and pg17 suite registered; re-sealed.
 // #4453 milestone 11: re-sealed after merging milestone 10.
 // #4453 milestone 11 tester: re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "89f792373f130ffae4057f91737daada956d0e941ce0b57a79e61767b5105964";
+// #4453 final pass: three #4453 migrations renamed to sort after 20280725004452; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "dfcc0d6e09768d3a9b2401a783a5c83ebf578b9bd456f69600f3fc3477801ff0";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
