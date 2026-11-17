@@ -1,3 +1,4 @@
+import { parseSignedDesignPass } from "../lib/designPassInputs";
 import { createStreamUploadIntent, refreshStreamVideo, streamVideoCapability } from "../lib/streamVideo";
 import type { Endpoint, PayloadRequest } from "payload";
 import { ARI_DESIGNER_ACTIONS, ARI_REFUSAL_CODES, AriRefusal, assertFirstPublishChecked, loadDraftState, parseAriEvidence, runAriDesignerAction } from "../lib/ariSiteActions";
@@ -1419,6 +1420,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
       "review_drafts",
       // #4453 milestone 5 — SITES_BOOKING_BLOCKS on (signed in by Core).
       "booking_blocks",
+      // #4453 milestone 7 — SITES_ARI_DESIGN_PASS on: the plan, facts and live looks (signed in by Core).
+      "design_pass",
     ]);
     if (Object.keys(body).some((key) => !allowedOuter.has(key))) {
       throw new Error("VALIDATION_FAILED");
@@ -1463,6 +1466,7 @@ async function ari(req: PayloadRequest): Promise<Response> {
           userId,
           rank,
           evidence: parseAriEvidence(body.evidence, brandId),
+          designPass: parseSignedDesignPass(body.design_pass),
         });
         return json({ ok: true, data });
       } catch (error) {

@@ -101,6 +101,10 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
       "propose_site_copy",
       "propose_site_imagery",
       "propose_site_collection_entry",
+      // #4453 milestone 7 — the design pass (on-path only).
+      "get_site_design_brief",
+      "propose_site_design_pass",
+      "propose_site_chrome",
       "confirm_site_review",
       "propose_trip_guide_update",
       "create_site_preview",
@@ -111,7 +115,8 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
     ]),
     "Ari Website tool registry drifted",
   );
-  assert(SITE_AGENT_READ_ONLY.size === 13, "Ari read-only set drifted");
+  // #4453 milestone 7 — get_site_design_brief is read-only; 13→14.
+  assert(SITE_AGENT_READ_ONLY.size === 14, "Ari read-only set drifted");
   for (const tool of SITE_AGENT_TOOLS) {
     assert(
       (tool.parameters as { additionalProperties?: unknown }).additionalProperties === false,

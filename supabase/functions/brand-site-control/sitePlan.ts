@@ -17,6 +17,7 @@
  * recorded on the plan ONLY after Studio answered that the pages exist (no
  * fabricated tick), with exactly the pages Studio reported.
  */
+import { brandFlagOn, composeFacts } from "./designPass.ts";
 import { sitesJson } from "../_shared/sitesContracts.ts";
 import { PLANNED_PAGE_ORDER, splitBrandDescription } from "../_shared/siteContracts/sitePlan.ts";
 import { isDesignKey } from "../_shared/siteContracts/designs.ts";
@@ -181,9 +182,13 @@ export async function handleSitePlanRoute(
     const { data, error } = await ctx.userRpc("brand_site_plan_get", { p_brand_id: brandId });
     if (error) return planFailureFromRpc(error.message);
     const joined = await withBrandCompleteness(ctx, brandId, data);
-    return joined.error
-      ? planFailureFromRpc(joined.error.message)
-      : sitesJson({ ok: true, data: joined.data });
+    if (joined.error) return planFailureFromRpc(joined.error.message);
+    // #4453 — SITES_STYLE_LIBRARY for this brand (Core's value): which styles the look picker offers.
+    const styleLibrary = await brandFlagOn(ctx.serviceRpc, "SITES_STYLE_LIBRARY", brandId);
+    const body = joined.data && typeof joined.data === "object" && !Array.isArray(joined.data)
+      ? { ...(joined.data as JsonObject), style_library: styleLibrary }
+      : joined.data;
+    return sitesJson({ ok: true, data: body });
   }
   if (plan && !plan[2] && method === "POST") {
     const revision = input.revision;
@@ -275,6 +280,11 @@ export async function handleSitePlanRoute(
     const proof = await proofForCompose(ctx, brandId);
     if (proof.error) return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
     const words = splitBrandDescription(typeof brand.description === "string" ? brand.description : null);
+    // #4453 milestone 7 — SITES_ARI_DESIGN_PASS (this brand, from Core): Build
+    // runs composer v2 from the owner's own answers and Mingla's facts, and
+    // every composed section starts Draft.
+    const designPass = await designPassForCompose(ctx, siteId, brandId, inputs);
+    if (designPass === "error") return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
     const cms = await ctx.callCms({
       siteId,
       operationId,
@@ -300,8 +310,9 @@ export async function handleSitePlanRoute(
           city: typeof brand.city === "string" && brand.city.trim() ? brand.city.trim().slice(0, 120) : null,
           ...(brandCoverPhotoPath(brand) ? { cover_photo_path: brandCoverPhotoPath(brand) } : {}),
         },
-        ...(proof.reviewDrafts ? { review_drafts: true } : {}),
+        ...(proof.reviewDrafts || designPass ? { review_drafts: true } : {}),
         ...(proof.rows.length ? { setup_content: proof.rows } : {}),
+        ...(designPass ? { design_pass: designPass } : {}),
       },
     });
     if (!cms.ok) return cms;
@@ -417,6 +428,32 @@ async function handleSetupProofRoute(
 }
 
 type StagedRow = { id: string; kind: string; payload: JsonObject; confirmed_real_by: string | null };
+
+/**
+ * #4453 milestone 7 — what Build sends Studio for composer v2 while
+ * SITES_ARI_DESIGN_PASS covers this brand: the chosen design, the owner's own
+ * Q5-Q8 answers (verbatim), the brand's address and Mingla's facts. Null when
+ * the flag is off (Build stays composer v1, unchanged); "error" when a read
+ * failed.
+ */
+async function designPassForCompose(ctx: SitePlanContext, siteId: string, brandId: string, inputs: JsonObject): Promise<JsonObject | null | "error"> {
+  if (!(await brandFlagOn(ctx.serviceRpc, "SITES_ARI_DESIGN_PASS", brandId))) return null;
+  const feed = await ctx.serviceRpc("brand_site_offerings_feed", { p_site_id: siteId });
+  const rows = feed.error ? null : (feed.data as { offerings?: unknown } | null)?.offerings;
+  if (!Array.isArray(rows)) return "error";
+  const brand = (inputs.brand ?? {}) as JsonObject;
+  return {
+    design_key: typeof inputs.design_key === "string" ? inputs.design_key : null,
+    answers: {
+      value_points: Array.isArray(inputs.value_points) ? inputs.value_points : [],
+      faq: Array.isArray(inputs.faq) ? inputs.faq : [],
+      process_steps: Array.isArray(inputs.process_steps) ? inputs.process_steps : [],
+      quick_facts: inputs.quick_facts && typeof inputs.quick_facts === "object" ? inputs.quick_facts : null,
+    },
+    address: typeof brand.address === "string" && brand.address.trim() ? brand.address.trim().slice(0, 300) : null,
+    facts: await composeFacts(ctx.serviceRpc, siteId, rows as JsonObject[]),
+  };
+}
 
 /** What Build sends Studio: SITES_PROOF_PART and the unmaterialised staged rows. */
 async function proofForCompose(ctx: SitePlanContext, brandId: string): Promise<{ error: boolean; reviewDrafts: boolean; rows: StagedRow[] }> {

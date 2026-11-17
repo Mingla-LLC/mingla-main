@@ -49,6 +49,9 @@ export const ARI_DESIGNER_ACTIONS: ReadonlySet<string> = new Set([
   "propose_site_imagery",
   "propose_site_collection_entry",
   "log_work",
+  "get_site_design_brief",
+  "propose_site_design_pass",
+  "propose_site_chrome",
 ]);
 
 export type AriFailureCode =
@@ -75,6 +78,10 @@ export type AriFailureCode =
   | "CONTENT_LIMIT_EXCEEDED"
   // #4453 PR 2 — a question form may not take bookings.
   | "BOOKING_THROUGH_ENQUIRY"
+  // #4453 milestone 7 — the design pass.
+  | "STYLE_DOES_NOT_FIT"
+  | "DESIGN_PASS_OFF"
+  | "DESIGN_PASS_ALREADY_RUN"
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
@@ -100,6 +107,9 @@ export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
   SLUG_TAKEN: "Another entry already uses that address.",
   CONTENT_LIMIT_EXCEEDED: "This collection is full.",
   BOOKING_THROUGH_ENQUIRY: BOOKING_LOCK_REASONS.BOOKING_THROUGH_ENQUIRY,
+  STYLE_DOES_NOT_FIT: "That style is built for other kinds of places. Ari picks from the styles that fit; the owner can still choose it in Your look.",
+  DESIGN_PASS_OFF: "Ari's design pass isn't switched on for this brand yet.",
+  DESIGN_PASS_ALREADY_RUN: "Ari has already designed this draft once. Change sections one at a time, or ask the owner before starting again.",
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 

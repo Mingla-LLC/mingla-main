@@ -257,6 +257,9 @@ export const ARI_CAPABILITY_INDEX = `CAPABILITIES (your tools):
 - propose_site_copy — propose new words for a page's text fields after confirmation
 - propose_site_imagery — propose the owner's approved photos and videos for picture spots after confirmation
 - propose_site_collection_entry — propose a destination, story or review (reviews only from text the owner pasted) after confirmation
+- get_site_design_brief — read the website design brief (format, the ten styles with their fixed fit and reasons, eligible sections, layouts, booking actions); only while Ari's design pass is on for the brand
+- propose_site_design_pass — propose Ari's one design pass in a style that fits (never one marked avoid) after confirmation; Mingla composes every section from its own data and the owner's answers, all as Drafts
+- propose_site_chrome — propose the header layout, phone booking bar and header button after confirmation
 - confirm_site_review — show the confirm-real card for one review (only brand admins and owners can confirm it)
 - propose_trip_guide_update — propose a trip's guide after confirmation (event managers and up)
 - create_site_preview — create a 30-minute private preview for one exact validated revision after confirmation

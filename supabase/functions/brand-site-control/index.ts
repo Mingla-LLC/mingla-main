@@ -22,6 +22,7 @@ import { handleSitePlanRoute, planFailureFromRpc } from "./sitePlan.ts";
 import { handleSiteContentRoute } from "./siteContent.ts";
 import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
+import { brandFlagOn, composeFacts, DESIGN_PASS_ACTIONS, liveFingerprints, planFormat } from "./designPass.ts";
 import { BOOKING_IDENTITY_CAPABILITY, bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
 import { unreviewedRefusal } from "./reviewGate.ts";
 
@@ -907,6 +908,49 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       // Ari's own tools do not declare them until milestone 7 either way.
       const bookingFlag = await db.service.rpc("brand_site_booking_blocks_enabled");
       if (!bookingFlag.error && bookingFlag.data === true) payload.booking_blocks = true;
+      // #4453 milestone 7 — Ari's design pass: only while SITES_ARI_DESIGN_PASS
+      // covers this brand (Core's value, never the caller's). Studio gets the
+      // plan, Mingla's facts and other brands' live looks (no brand ids).
+      const serviceRpc = async (fn: string, args: Record<string, unknown>) => {
+        const { data, error } = await db.service.rpc(fn, args);
+        return { data, error: error ? { message: error.message } : null };
+      };
+      if (DESIGN_PASS_ACTIONS.has(action)) {
+        const brandId = String(auth.brand_id);
+        if (!(await brandFlagOn(serviceRpc, "SITES_ARI_DESIGN_PASS", brandId))) {
+          return ariFailureFrom({ error: { code: "DESIGN_PASS_OFF" } }, 409);
+        }
+        const { data: planRow } = await db.service.from("brand_site_plans")
+          .select("offerings_selected,venue_descriptor,story,design_key,value_points,faq,process_steps,quick_facts")
+          .eq("brand_id", brandId).maybeSingle();
+        const { data: brandRow } = await db.service.from("brands").select("address").eq("id", brandId).maybeSingle();
+        const plan = (planRow ?? {}) as Record<string, unknown>;
+        const planInputs = {
+          offerings_selected: Array.isArray(plan.offerings_selected) ? plan.offerings_selected.filter((v): v is string => typeof v === "string") : [],
+          venue_descriptor: typeof plan.venue_descriptor === "string" ? plan.venue_descriptor : null,
+          story: plan.story && typeof plan.story === "object" ? plan.story as Record<string, unknown> : null,
+          design_key: typeof plan.design_key === "string" ? plan.design_key : null,
+        };
+        const evidenceRows = Array.isArray((payload.evidence as { offerings?: unknown } | undefined)?.offerings)
+          ? (payload.evidence as { offerings: Record<string, unknown>[] }).offerings
+          : [];
+        payload.design_pass = {
+          plan: planInputs,
+          answers: {
+            value_points: Array.isArray(plan.value_points) ? plan.value_points : [],
+            faq: Array.isArray(plan.faq) ? plan.faq : [],
+            process_steps: Array.isArray(plan.process_steps) ? plan.process_steps : [],
+            quick_facts: plan.quick_facts && typeof plan.quick_facts === "object" ? plan.quick_facts : null,
+          },
+          address: typeof (brandRow as { address?: unknown } | null)?.address === "string"
+            ? String((brandRow as { address: string }).address).slice(0, 300)
+            : null,
+          facts: await composeFacts(serviceRpc, siteId, evidenceRows),
+          style_library: await brandFlagOn(serviceRpc, "SITES_STYLE_LIBRARY", brandId),
+          live_fingerprints: await liveFingerprints(serviceRpc, planFormat(planInputs), brandId),
+        };
+        payload.review_drafts = true;
+      }
       const studio = await callCmsRaw(db.service, {
         siteId,
         operationId,
@@ -916,6 +960,15 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       if (!studio) return ariFailureFrom(null, 503);
       if (studio.status >= 300 || studio.body?.ok !== true) {
         return ariFailureFrom(studio.body, studio.status);
+      }
+      // #4453 milestone 7 — the design pass's look, for the look-alike warning on other sites.
+      if (action === "propose_site_design_pass") {
+        const fingerprint = (studio.body.data as { fingerprint?: unknown } | null)?.fingerprint;
+        if (fingerprint && typeof fingerprint === "object") {
+          const recorded = await db.service.rpc("brand_site_record_fingerprint", { p_site_id: siteId, p_fingerprint: fingerprint });
+          // The look-alike check is a warning only: a failed write never fails the confirmed pass, but it is logged.
+          if (recorded.error) console.warn("[brand-site-control] design fingerprint not recorded", { site_id: siteId, code: recorded.error.code ?? null });
+        }
       }
       return sitesJson({ ok: true, data: studio.body.data }, 202);
     }

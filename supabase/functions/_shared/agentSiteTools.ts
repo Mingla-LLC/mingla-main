@@ -46,7 +46,9 @@ import {
   type DesignKey,
   DESIGNS,
   designSwatches,
+  HEADER_VARIANTS,
 } from "./siteContracts/designs.ts";
+import { STYLE_KEYS } from "./siteContracts/formats.ts";
 import { PLAN_OFFERING_KEYS } from "./siteContracts/sitePlan.ts";
 import {
   ARI_THEME_FONT_PATTERN,
@@ -1871,6 +1873,49 @@ const listVersions = tool(
   },
 );
 
+/*
+ * #4453 milestone 7 — Ari's design pass (spec v2 §6.2-§6.6). On the "Ari
+ * understands first" path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS), and Core
+ * refuses all three unless SITES_ARI_DESIGN_PASS covers the brand, so the
+ * frozen off-path declarations stay origin/main's (#3355).
+ */
+const DESIGN_PASS_STYLE = { type: "string", enum: [...STYLE_KEYS] };
+
+const getSiteDesignBrief = tool(
+  "get_site_design_brief",
+  "Read the design brief for the brand's website: its business type (format), the ten styles with their fixed fit (pick, fits or avoid), the reason for each and whether a live Mingla site already looks like it, the sections and pages the format places (and which have content), every layout per block type and the Mingla booking actions that exist. Read this before propose_site_design_pass.",
+  { brand_id: UUID, site_id: UUID },
+  ["brand_id", "site_id"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    return await cmsTool("get_site_design_brief", args, client, crypto.randomUUID());
+  },
+);
+
+const proposeSiteDesignPass = tool(
+  "propose_site_design_pass",
+  "Propose Ari's one design pass for the draft: the style you picked from the brief (never one marked avoid). Mingla then composes every page of the brand's format in that style from Mingla's own data and the owner's answers; you write no section text, prices, counts, dates or reviews. Every section starts as a Draft the owner reviews. Runs once per draft. Say in one sentence why the style fits.",
+  { brand_id: UUID, site_id: UUID, design_key: DESIGN_PASS_STYLE, why: WHY, cites: CITES },
+  ["brand_id", "site_id", "design_key", "why", "cites"],
+  designerWrite("propose_site_design_pass"),
+);
+
+const proposeSiteChrome = tool(
+  "propose_site_chrome",
+  "Propose the website's header and phone bar: a header layout the design offers (from the brief), whether the phone booking bar shows, and the header button (the format's own booking label, leading to its Mingla booking page). Draft only.",
+  {
+    brand_id: UUID,
+    site_id: UUID,
+    header_variant: { type: "string", enum: [...HEADER_VARIANTS] },
+    sticky_booking: { type: "boolean" },
+    header_button: { type: "boolean", description: "true: the header button books through Mingla with the format's own label" },
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "site_id", "why", "cites"],
+  designerWrite("propose_site_chrome"),
+);
+
 const createSitePreview = publicationTool("create_site_preview");
 const publishSite = publicationTool("publish_site");
 const rollbackSite = publicationTool("rollback_site");
@@ -1897,6 +1942,10 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   proposeSiteCopy,
   proposeSiteImagery,
   proposeSiteCollectionEntry,
+  // #4453 milestone 7 — on-path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS).
+  getSiteDesignBrief,
+  proposeSiteDesignPass,
+  proposeSiteChrome,
   confirmSiteReview,
   proposeTripGuideUpdate,
   createSitePreview,
@@ -1920,6 +1969,7 @@ export const SITE_AGENT_READ_ONLY = new Set([
   "validate_site_draft",
   "get_site_operation_status",
   "list_site_versions",
+  "get_site_design_brief",
 ]);
 
 /** The Sites tools that write (each one a confirmed proposal). */

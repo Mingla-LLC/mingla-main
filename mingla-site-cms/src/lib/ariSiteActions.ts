@@ -47,6 +47,8 @@ import { tenantPagePaths } from "./pageTree";
 import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { designCheckWarningCount, runDesignChecks, type DesignCheckResult } from "./designChecks";
 import { CONTENT_COLLECTIONS, runContentAction, scopedRequest, type ContentCollection } from "../endpoints/contentEndpoint";
+import { DESIGN_PASS_ACTIONS, runDesignPassAction } from "./designPass";
+import type { SignedDesignPass } from "./designPassInputs";
 
 type AnyDoc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -89,6 +91,8 @@ export type AriActionContext = {
   userId: string;
   rank: number;
   evidence: AriEvidence | null;
+  /** #4453 milestone 7 — Core's signed design-pass inputs (only while SITES_ARI_DESIGN_PASS covers the brand). */
+  designPass?: SignedDesignPass | null;
 };
 
 /** Validates the Core-signed evidence's shape (anything else is treated as no evidence). */
@@ -588,9 +592,14 @@ export const ARI_DESIGNER_ACTIONS = new Set([
   "propose_site_imagery",
   "propose_site_collection_entry",
   "log_work",
+  // #4453 milestone 7 — Ari's design pass (designPass.ts; SITES_ARI_DESIGN_PASS, checked by Core).
+  "get_site_design_brief",
+  "propose_site_design_pass",
+  "propose_site_chrome",
 ]);
 
 export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: AriActionContext): Promise<Record<string, unknown>> {
+  if (DESIGN_PASS_ACTIONS.has(action)) return runDesignPassAction(action, args, ctx, { currentSettings, writeWorkLog, assertCites, decisionOf });
   switch (action) {
     case "get_site_tokens":
       return tokensView(await currentSettings(ctx));
@@ -945,4 +954,6 @@ export const ARI_REFUSAL_CODES = new Set([
   "REVIEW_NOT_CONFIRMED",
   // #4453 PR 2 — a question form may not take bookings.
   "BOOKING_THROUGH_ENQUIRY",
+  // #4453 milestone 7 — the design pass.
+  "STYLE_DOES_NOT_FIT", "DESIGN_PASS_OFF", "DESIGN_PASS_ALREADY_RUN",
 ]);
