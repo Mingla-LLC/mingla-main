@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { isPreviewPublication } from "../../lib/previewPublication";
+import { showsDraftHints } from "../../lib/previewPublication";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";
 import { pickVariant } from "../../components/v2/Blocks";
@@ -57,7 +57,7 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
       ? <DestinationTemplate destination={entry.entry} artifact={artifact} live={live} analytics={analytics} />
       : <StoryTemplate story={entry.entry} artifact={artifact} />;
   } else {
-    const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData, preview: isPreviewPublication(artifact.publication_id) };
+    const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };
     content = current.blocks.map((raw, index) => {
       const block = raw as unknown as VoyageBlock;
       const Variant = pickVariant(VOYAGE_BLOCK_VARIANTS, raw);

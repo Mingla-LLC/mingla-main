@@ -1,5 +1,5 @@
 import { Fragment, type ComponentType } from "react";
-import { isPreviewPublication } from "../../lib/previewPublication";
+import { showsDraftHints } from "../../lib/previewPublication";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import type { BlockType } from "../../contracts/generated/blocks.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";
@@ -103,7 +103,7 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
   if (current && entry) {
     content = <div className="mg-blk mg-basic mg-basic--entry"><div className="mg-wrap"><CollectionEntryView entry={entry} artifact={artifact} live={live} /></div></div>;
   } else if (current) {
-    const ctx: SharedContext = { artifact, page: current, live, forms, analytics, saveData, preview: isPreviewPublication(artifact.publication_id) };
+    const ctx: SharedContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };
     content = current.blocks.map((raw, index) => {
       const block = raw as unknown as SharedBlock;
       const Variant = pickVariant(blocks, raw);

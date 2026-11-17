@@ -10,6 +10,9 @@ import { normalizeRequestSegments } from "../../../../contracts/generated/routes
 import { requestHost } from "../../../../lib/publication";
 import { loadPageExtras } from "../../../../lib/pageExtras";
 import { SHARE_TOKEN, sharedPreviewForRequest } from "../../../../lib/shareLinks";
+import { withSharedView } from "../../../../lib/sharedView";
+import { sharedBannerText, SHARED_BANNER_STYLE } from "../../../../lib/sharedBanner";
+import { siteDisplayName } from "../../../../lib/siteArtifact";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +54,8 @@ export default async function SharedPreviewPage({
   }
   const { key } = shared;
   // #2830 — this page's pictures and videos come through the key, not the publication.
-  const artifact = withPreviewMediaKey(shared.artifact, key);
+  // #4453 M8 — a client never sees the team's Draft-only hints or unreviewed pages.
+  const artifact = withSharedView(withPreviewMediaKey(shared.artifact, key));
   const resolved = resolveSitePath(artifact, previewPath);
   if (resolved.kind !== "page" && resolved.kind !== "entry") notFound();
   const entry = resolved.kind === "entry" ? resolved.entry : undefined;
@@ -67,8 +71,8 @@ export default async function SharedPreviewPage({
   const incoming = await headers();
   return (
     <div data-preview="1" data-shared-preview="1" data-page={resolved.page.key}>
-      <p className="preview-banner" role="status">
-        Private preview — not live yet. Only people with this link can see it.
+      <p className="preview-banner" role="status" style={SHARED_BANNER_STYLE}>
+        {sharedBannerText(siteDisplayName(artifact), shared.expiresAt)}
       </p>
       <PreviewLinkScope scope={{ target: { token }, path: previewPath, assetKey: key }}>
         <SitePageView artifact={artifact} page={resolved.page} previewKey={key} live={withPreviewOfferingKey(live, key)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />
