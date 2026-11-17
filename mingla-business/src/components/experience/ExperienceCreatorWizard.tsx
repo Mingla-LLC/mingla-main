@@ -140,6 +140,7 @@ import {
   type ExperiencePricingMode,
   type ExperienceStopDraft,
   stopPriceEntryIsValid,
+  perStopTotalMinor,
 } from "./experienceWizardTypes";
 import {
   EXPERIENCE_INTENTS,
@@ -853,10 +854,9 @@ export const ExperienceCreatorWizard: React.FC<
       const v = parseFloat(wholePriceMajor);
       return Number.isFinite(v) && v >= 0 ? v : 0;
     }
-    return stops.reduce((sum, s) => {
-      const v = parseFloat(s.priceMajor);
-      return sum + (Number.isFinite(v) && v >= 0 ? v : 0);
-    }, 0);
+    // #3645 bundle 2A — the server's per-stop sum (each stop rounded to minor
+    // units first), so "is it paid" and the Terms gate agree with publish.
+    return perStopTotalMinor(stops) / 100;
   }, [isFree, pricingMode, stops, wholePriceMajor]);
 
   const turnoutSource = useMemo<TurnoutInputSource>(
@@ -929,9 +929,15 @@ export const ExperienceCreatorWizard: React.FC<
     if (isFree) return true;
     // #3645 — same rule as the server: a price that rounds to 0 minor units is no price.
     if (pricingMode === "whole") return paidPriceHasMinorUnits(resolvedTotalMajor);
-    // #3645 — per-stop: an EMPTY price means that stop is free (same as 0), so
-    // only something typed that is not a valid amount stops Continue.
-    return stops.every((s) => stopPriceEntryIsValid(s.priceMajor));
+    // #3645 — per-stop: an EMPTY price means that one stop costs nothing (same
+    // as 0), so only something typed that is not a valid amount is invalid.
+    // Bundle 2A: but, as for whole price, a paid experience whose stops total
+    // 0 is no price (the server refuses it with experience_price_invalid).
+    // Marking it free is the way to make the experience free.
+    return (
+      stops.every((s) => stopPriceEntryIsValid(s.priceMajor)) &&
+      perStopTotalMinor(stops) > 0
+    );
   }, [
     unlimited,
     capacity,
@@ -1054,8 +1060,9 @@ export const ExperienceCreatorWizard: React.FC<
             typeof s.startOffsetMinutes === "number"
               ? s.startOffsetMinutes
               : null,
+          // #3645 bundle 2A — a free experience sends every stop price as 0.
           price_cents:
-            pricingMode === "per_stop"
+            pricingMode === "per_stop" && !isFree
               ? Math.round((parseFloat(s.priceMajor) || 0) * 100)
               : 0,
           ai_description: s.description.trim(),
@@ -1719,8 +1726,9 @@ export const ExperienceCreatorWizard: React.FC<
       whole_price_cents: resolvedCents,
       stops: stops.map((s) => ({
         placeName: s.placeName.trim(),
+        // #3645 bundle 2A — a free experience sends every stop price as 0.
         priceCents:
-          pricingMode === "per_stop"
+          pricingMode === "per_stop" && !isFree
             ? Math.round((parseFloat(s.priceMajor) || 0) * 100)
             : 0,
       })),
@@ -2291,7 +2299,7 @@ export const ExperienceCreatorWizard: React.FC<
             <View style={styles.reviewCard}>
               <Text style={styles.label}>Experience</Text><Text style={styles.reviewValue}>{title}</Text>
               <Text style={styles.label}>Stops</Text><Text style={styles.reviewValue}>{stops.length}</Text>
-              <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree || (pricingMode === "per_stop" && resolvedTotalMajor === 0) ? "Free" : (() => {
+              <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree ? "Free" : (() => {
                 const code = (displayCurrency ?? "").trim().toUpperCase();
                 if (code.length === 3) {
                   try {
