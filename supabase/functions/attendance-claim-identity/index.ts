@@ -170,8 +170,8 @@ serve(async (req) => {
   } catch (error) {
     outcome = "internal_error";
     // #4473: a swallowed claim failure hid a sweep that aborted for 230
-    // buyers. Log the database code and message only; no user id, email or
-    // phone.
+    // buyers. Log the database code and message only; no user id or contact
+    // details.
     const failure = error as { code?: unknown; message?: unknown } | null;
     console.error(
       "[attendance-claim-identity] claim_failed",
