@@ -521,7 +521,9 @@ export function phase3dContractDigest(manifest) {
 // #4453 milestone 5 (after the 6c merge): re-sealed.
 // #4453 milestone 7: the ari-design-pass migration on the post-replay lanes and its pg17 suite; re-sealed.
 // #4453 milestone 7 tester: adversarial design-pass pg17 suite registered; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "cc2b25aafea585dfd7259129502a992e4127477e0a6ea0a904f4e66426f5aaa2";
+// #4453 milestone 9: offering-detail migration and pg17 suites registered; re-sealed.
+// #4453 milestone 7 merged with milestone 9 (0b096f08f0): union of both registrations; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4e0d6c6bf5273af30e766b5c1b310f4a067268ffc4e478028dcb335cbd310435";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

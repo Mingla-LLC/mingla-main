@@ -23,6 +23,8 @@ import { hrefForPage } from "../../lib/pageRouting";
 import { SharedFooter, SharedHeader } from "../shared/chrome/SharedChrome";
 import { motionAttributes } from "../shared/library";
 import { MotionRoot } from "../shared/MotionRoot";
+import { OfferingDetailTemplate } from "../shared/blocks/Detail";
+import type { OfferingDetailView } from "../../lib/offeringDetail";
 
 /*
  * #2829 W7 — one voyage page: the head script, the skip link, the header,
@@ -30,12 +32,13 @@ import { MotionRoot } from "../shared/MotionRoot";
  * footer. The stylesheet (public/designs/voyage/1.css) is scoped to
  * html[data-design="voyage"], set by the layout from the artifact.
  */
-export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce, notFound }: {
+export function VoyagePage({ artifact, page, live, forms, entry, detail, saveData, nonce, notFound }: {
   artifact: ArtifactV2;
   page?: ArtifactPage;
   live?: LiveOfferings;
   forms?: FormsContext;
   entry?: CollectionEntry;
+  detail?: OfferingDetailView;
   saveData?: boolean;
   nonce?: string;
   notFound?: boolean;
@@ -55,6 +58,9 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
   let booking: React.ReactNode = null;
   if (notFound || !current) {
     content = <NotFoundTemplate artifact={artifact} />;
+  } else if (detail) {
+    // #4453 milestone 9 — the shared detail template, in Voyage's tokens.
+    content = <OfferingDetailTemplate artifact={artifact} detail={detail} analytics={analytics} designKey="voyage" />;
   } else if (entry) {
     content = entry.collection === "destinations"
       ? <DestinationTemplate destination={entry.entry} artifact={artifact} live={live} analytics={analytics} />

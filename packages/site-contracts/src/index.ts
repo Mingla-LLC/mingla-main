@@ -10,6 +10,7 @@ export * from "./icons.ts";
 export * from "./blocks.ts";
 export * from "./designs.ts";
 export * from "./offerings.ts";
+export * from "./offeringDetail.ts";
 export * from "./availability.ts";
 export * from "./ratings.ts";
 export * from "./collections.ts";

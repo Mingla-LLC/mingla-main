@@ -37,9 +37,12 @@ function gridConfig(block: GridBlock): OfferingGridConfig {
 function Card({ card, context }: { card: OfferingCard; context: SiteEventContext }) {
   return (
     <article className="tile offering-card" data-offering-state={card.state.cancelled ? "cancelled" : card.state.phase} data-offering-kind={card.kind}>
-      {card.coverUrl ? <img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" /> : null}
+      {card.coverUrl ? (card.detailHref
+        ? <a href={card.detailHref} tabIndex={-1} aria-hidden="true"><img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" /></a>
+        : <img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" />) : null}
       {card.state.badge ? <p className="offering-badge">{card.state.badge}</p> : null}
-      <h3>{card.title}</h3>
+      {/* #4453 milestone 9 — with detail pages on, the title opens the site's own page; the CTA below still goes to Mingla. */}
+      <h3>{card.detailHref ? <a className="mg-to-detail" href={card.detailHref}>{card.title}</a> : card.title}</h3>
       {card.dates ? <p className="offering-dates">{card.dates}</p> : null}
       {card.destination ? <p className="offering-place">{card.destination}</p> : null}
       {card.summary ? <p>{card.summary}</p> : null}

@@ -5,6 +5,7 @@ import type { ArtifactPage } from "../lib/pageRouting";
 import type { LiveOfferings } from "../lib/offeringCards";
 import type { FormsContext } from "../lib/siteForms";
 import type { CollectionEntry } from "../lib/siteCollections";
+import type { OfferingDetailView } from "../lib/offeringDetail";
 import { AtelierPage } from "./atelier/AtelierPage";
 import { VoyagePage } from "./voyage/VoyagePage";
 import { NocturnePage } from "./nocturne/NocturnePage";
@@ -35,6 +36,8 @@ export type DesignRenderer = {
     live?: LiveOfferings;
     forms?: FormsContext;
     entry?: CollectionEntry;
+    /** #4453 milestone 9 — an offering detail page (the shared detail template). */
+    detail?: OfferingDetailView;
     saveData?: boolean;
     /** #2829 W7 — this request's CSP nonce (a design's own inline script). */
     nonce?: string;
@@ -42,6 +45,12 @@ export type DesignRenderer = {
     notFound?: boolean;
   }>;
 };
+
+/**
+ * #4453 milestone 9 — the offering detail template's stylesheet, linked on
+ * detail pages only, for every design (immutable: a change is detail-2.css).
+ */
+export const DETAIL_STYLESHEET = "/designs/_shared/detail-1.css";
 
 /** #4453 — immutable like a design stylesheet (a change is blocks-2.css). */
 export const SHARED_STYLESHEET = "/designs/_shared/blocks-2.css";

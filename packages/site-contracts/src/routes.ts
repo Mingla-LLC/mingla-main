@@ -41,8 +41,16 @@ export type CollectionKind = (typeof COLLECTION_KINDS)[number];
 export const PAGE_KINDS = ["standard", "collection_index"] as const;
 export type PageKind = (typeof PAGE_KINDS)[number];
 
-/** Where each collection's detail pages live. `stories: ""` = at the site root. */
-export type SiteRoutes = Record<CollectionKind, string>;
+/**
+ * Where each collection's detail pages live. `stories: ""` = at the site root.
+ * #4453 milestone 9 (spec v2.1 §1.2) — `stays` (rooms and places) is optional
+ * so every artifact published before it still validates; absent means
+ * `DEFAULT_STAYS_BASE`.
+ */
+export type SiteRoutes = Record<CollectionKind, string> & { stays?: string };
+
+/** #4453 milestone 9 — the base path of room and place detail pages when the site names none. */
+export const DEFAULT_STAYS_BASE = "rooms";
 
 export const DEFAULT_SITE_ROUTES: SiteRoutes = {
   trips: "trips",
@@ -89,8 +97,9 @@ export function isBasePath(kind: CollectionKind, value: unknown): value is strin
 export function isSiteRoutes(value: unknown): value is SiteRoutes {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
-  return Object.keys(record).every((key) => isCollectionKind(key)) &&
-    COLLECTION_KINDS.every((kind) => isBasePath(kind, record[kind]));
+  return Object.keys(record).every((key) => isCollectionKind(key) || key === "stays") &&
+    COLLECTION_KINDS.every((kind) => isBasePath(kind, record[kind])) &&
+    (record.stays === undefined || (isSlug(record.stays) && !isReservedSegment(record.stays as string)));
 }
 
 /** Owner input → routes, defaults filled in. Returns null on any invalid value. */
@@ -100,7 +109,33 @@ export function resolveSiteRoutes(input: Partial<Record<string, unknown>> | null
     const value = input?.[kind];
     if (value !== undefined && value !== null) routes[kind] = value;
   }
+  if (input?.stays !== undefined && input.stays !== null) routes.stays = input.stays;
   return isSiteRoutes(routes) ? (routes as SiteRoutes) : null;
+}
+
+/* ------------------------------------------------------------------ */
+/* #4453 milestone 9 — offering detail bases                             */
+/* ------------------------------------------------------------------ */
+
+/** The offering kinds a site can draw a detail page for, and the route each lives under. */
+export const OFFERING_DETAIL_ROUTE = {
+  trip: "trips",
+  event: "events",
+  experience: "experiences",
+  stay: "stays",
+} as const;
+export type OfferingDetailKind = keyof typeof OFFERING_DETAIL_ROUTE;
+
+/** The base path of one offering kind's detail pages on this site. */
+export function offeringBasePath(routes: SiteRoutes, kind: OfferingDetailKind): string {
+  if (kind === "stay") return routes.stays ?? DEFAULT_STAYS_BASE;
+  return routes[OFFERING_DETAIL_ROUTE[kind]];
+}
+
+/** The offering kinds whose detail base is this one path segment (normally one). */
+export function offeringKindsAtBase(routes: SiteRoutes, base: string): OfferingDetailKind[] {
+  if (base === "") return [];
+  return (Object.keys(OFFERING_DETAIL_ROUTE) as OfferingDetailKind[]).filter((kind) => offeringBasePath(routes, kind) === base);
 }
 
 /** "/" + path; home is "/". */
@@ -285,6 +320,11 @@ export function findPathCollisions(input: CollisionInput): string[] {
       if (!isSlug(slug)) continue;
       claim(base === "" ? slug : `${base}/${slug}`, `the ${kind} entry "${slug}"`);
     }
+  }
+  // #4453 milestone 9 — the rooms base shares the one-base-per-address rule.
+  const staysBase = input.routes.stays;
+  if (staysBase !== undefined && bases.has(staysBase)) {
+    problems.push(`${hrefForPath(staysBase)} is the address of both ${bases.get(staysBase)} and stays`);
   }
   for (const rule of input.redirects ?? []) {
     const literal = rule.from.replace(/^\//, "").replace(/\/$/, "");

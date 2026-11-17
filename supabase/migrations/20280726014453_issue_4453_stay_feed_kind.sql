@@ -201,7 +201,7 @@ BEGIN
       'title', left(l.title, 200),
       'summary', NULLIF(left(btrim(regexp_replace(COALESCE(l.description, ''), '\s+', ' ', 'g')), 500), ''),
       'cover', CASE
-                WHEN l.cover_path IS NOT NULL AND l.cover_path ~ '^brand_covers/[A-Za-z0-9._/-]{1,900}$' AND position('..' in l.cover_path) = 0
+                WHEN l.cover_path IS NOT NULL AND l.cover_path ~ '^brand_covers/[A-Za-z0-9._/-]+$' AND char_length(l.cover_path) <= 913 AND position('..' in l.cover_path) = 0
                   THEN jsonb_build_object('path', l.cover_path, 'type', 'image')
                 WHEN public.brand_site_offering_cover_path(l.cover_media_url, l.cover_media_type) IS NULL THEN NULL
                 ELSE jsonb_build_object('path', public.brand_site_offering_cover_path(l.cover_media_url, l.cover_media_type), 'type', 'image') END,

@@ -67,6 +67,12 @@ function ClockIcon() {
  * #2829 W7c — `sizes` follows how many cards share the row (the count-aware
  * grid), so the browser picks the publish-time rendition that fits.
  */
+function CardLink({ card, analytics, children }: { card: OfferingCard; analytics: SiteEventContext; children: React.ReactNode }) {
+  return card.detailHref
+    ? <a href={card.detailHref} className="mg-to-detail-card">{children}</a>
+    : <TrackedLink href={card.href} context={analytics} ctaKind="offering" offeringId={card.id}>{children}</TrackedLink>;
+}
+
 export function PhotoCard({ card, offering, analytics, sizes }: { card: OfferingCard; offering: SiteOffering; analytics: SiteEventContext; sizes?: string }) {
   const length = tripLength(offering);
   const badge = card.state.badge;
@@ -74,7 +80,8 @@ export function PhotoCard({ card, offering, analytics, sizes }: { card: Offering
   const from = price?.startsWith("From ") ? price.slice(5) : null;
   return (
     <article className="card card--interactive card--padded v-card" data-offering-state={card.state.cancelled ? "cancelled" : card.state.phase} data-offering-kind={card.kind}>
-      <TrackedLink href={card.href} context={analytics} ctaKind="offering" offeringId={card.id}>
+      {/* #4453 milestone 9 — with detail pages on, the whole photo card opens the site's own page (its Book goes to Mingla from there). */}
+      <CardLink card={card} analytics={analytics}>
         <div className="v-card__media">
           <div className="media media--flush v-ratio-4-3">
             {card.coverUrl ? <img src={card.coverUrl} srcSet={card.coverSrcSet ?? undefined} sizes={card.coverSrcSet ? sizes ?? gridSizes(3) : undefined} alt="" loading="lazy" decoding="async" className="v-card__img" /> : null}
@@ -95,9 +102,9 @@ export function PhotoCard({ card, offering, analytics, sizes }: { card: Offering
                 : <p className="meta v-card__price">{price}</p>
             ) : null}
           </div>
-          <span className="sr-only">{`${card.cta}: ${card.title} on Mingla`}</span>
+          <span className="sr-only">{card.detailHref ? `: details and booking` : `${card.cta}: ${card.title} on Mingla`}</span>
         </div>
-      </TrackedLink>
+      </CardLink>
     </article>
   );
 }

@@ -110,9 +110,23 @@ export function Book({ item, ctx, className }: { item: GridItem; ctx: SharedCont
 }
 
 export function Cover({ item, sizes }: { item: GridItem; sizes: string }) {
-  return item.card.coverUrl
+  const image = item.card.coverUrl
     ? <img src={item.card.coverUrl} srcSet={item.card.coverSrcSet ?? undefined} sizes={item.card.coverSrcSet ? sizes : undefined} alt="" loading="lazy" decoding="async" />
     : null;
+  // #4453 milestone 9 — with detail pages on, the image opens the site's own
+  // page (a duplicate of the title link, so it is hidden from the keyboard and readers).
+  return image && item.card.detailHref
+    ? <a className="mg-to-detail-img" href={item.card.detailHref} tabIndex={-1} aria-hidden="true">{image}</a>
+    : image;
+}
+
+/**
+ * #4453 milestone 9 — a card's title: a link to the offering's page on this
+ * site while SITES_DETAIL_PAGES is on, plain text otherwise (the card's Book
+ * button always goes to Mingla).
+ */
+export function CardTitle({ card }: { card: Pick<GridItem["card"], "title" | "detailHref"> }) {
+  return card.detailHref ? <a className="mg-to-detail" href={card.detailHref}>{card.title}</a> : <>{card.title}</>;
 }
 
 export function OfferingGridPoster(props: SharedBlockProps) {
@@ -125,7 +139,7 @@ export function OfferingGridPoster(props: SharedBlockProps) {
               <div className="mg-ph"><Cover item={item} sizes={itemIndex === 0 && items.length % 2 ? "(min-width: 1320px) 1280px, 100vw" : "(min-width: 900px) 50vw, 100vw"} /></div>
               <div className="mg-poster__body">
                 {item.card.destination || item.card.dates ? <p className="mg-poster__where">{[item.card.destination, item.card.dates].filter(Boolean).join(" · ")}</p> : null}
-                <h3>{item.card.title}</h3>
+                <h3><CardTitle card={item.card} /></h3>
                 {item.card.summary ? <p className="mg-poster__blurb">{item.card.summary}</p> : null}
                 <div className="mg-chips"><State item={item} /></div>
                 <div className="mg-poster__foot">
@@ -150,7 +164,7 @@ export function OfferingGridList(props: SharedBlockProps) {
             <li key={item.card.id} className="mg-lrow" data-offering-kind={item.card.kind}>
               <p className="mg-lrow__d">{item.card.dates}</p>
               <div className="mg-lrow__t">
-                <h3>{item.card.title}</h3>
+                <h3><CardTitle card={item.card} /></h3>
                 {item.card.summary ? <p>{item.card.summary}</p> : null}
               </div>
               <div className="mg-lrow__meta">
@@ -177,7 +191,7 @@ export function OfferingGridCards(props: SharedBlockProps) {
               <div className="mg-ph"><Cover item={item} sizes="(min-width: 1000px) 33vw, (min-width: 720px) 50vw, 100vw" /></div>
               <div className="mg-ocard__b">
                 {item.card.dates ? <p className="mg-ocard__when">{item.card.dates}</p> : null}
-                <h3>{item.card.title}</h3>
+                <h3><CardTitle card={item.card} /></h3>
                 {item.card.summary ? <p className="mg-ocard__blurb">{item.card.summary}</p> : null}
                 {item.card.destination ? <p className="mg-ocard__where">{item.card.destination}</p> : null}
                 <State item={item} />

@@ -1,4 +1,5 @@
 import type { PayloadRequest } from "payload";
+import { findOfferingRouteCollisions } from "../contracts/generated/offeringDetail.ts";
 import { assertNoUnreviewedSections } from "./reviewStamp";
 import { cmsConfig } from "./config";
 import { emitCmsObservation } from "./observability";
@@ -1209,6 +1210,18 @@ export async function buildPublicationArtifact(
    * stays live.
    */
   assertNoPathCollision(pagesResult.docs, settings, new Set(livePaths.keys()));
+  /*
+   * #4453 milestone 9 (SC-DP3) — ROUTE_COLLISION. A live page at a live
+   * offering's detail address (`/{base}/{slug}`) would hide that offering's
+   * detail page; the publish is refused before anything is written. Ended
+   * and cancelled offerings claim no address.
+   */
+  if (findOfferingRouteCollisions({
+    paths: [...livePaths.values()],
+    routes: routing.routes,
+    offerings: offeringsSnapshot,
+    now: new Date(),
+  }).length) throw new Error("ROUTE_COLLISION");
   const pageSeo = (seo: unknown) => {
     const record = (seo ?? {}) as AnyDoc;
     const out = {
