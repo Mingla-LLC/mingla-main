@@ -123,6 +123,41 @@ function compose() {
 }
 
 describe("#4453 M7 Young and Stamped composed in Voyage, through the real builder", () => {
+  it("a page whose only block is \"Keep exploring\" never publishes enabled and empty (tester P3-2)", async () => {
+    const composed = compose();
+    expect(composed.format).toBe("trips");
+    const ids = new Map(composed.pages.map((page, i) => [page.slug, `page-${i}`]));
+    composed.pages.push({ key: "links-only", slug: "links-only", title: "Links only", kind: "standard", blocks: [{ blockType: "page_links", mode: "next" }] });
+    ids.set("links-only", "page-links-only");
+    composed.menu.items.push({ key: "links-only", label: "Links only", slug: "links-only" });
+    const pages = composed.pages.map((page) => ({ id: ids.get(page.slug), tenant: "t1", slug: page.slug, title: page.title, kind: page.kind, enabled: true, blocks: page.blocks, ...(page.collection_kind ? { collection_kind: page.collection_kind } : {}) }));
+    const navigation = {
+      id: "nav-1", tenant: "t1", wordmark: composed.wordmark, header_variant: composed.header_variant,
+      items: composed.menu.items.map((item) => ({ label: item.label, target_type: "page", page: ids.get(item.slug) })),
+      ...(composed.header_cta ? { header_cta: { label: composed.header_cta.label, target_type: "page", page: ids.get(composed.header_cta.slug) } } : {}),
+    };
+    const settings = { id: "settings-1", tenant: "t1", display_name: "Young and Stamped", design: "voyage" };
+    const footer = { id: "footer-1", tenant: "t1" };
+    const collections: Record<string, unknown[]> = {
+      pages, navigation: [navigation], footer: [footer], "site-settings": [settings], media,
+      destinations: DEST, stories: STORIES, categories: [], testimonials: REVIEWS,
+    };
+    const sourceDigest = await publicationDraftDigest({ pages, navigation, footer, settings, media, content: { destinations: DEST, stories: STORIES, categories: [], testimonials: REVIEWS } } as never);
+    const req = { context: {}, payload: { find: async ({ collection }: { collection: string }) => ({ docs: collections[collection] ?? [] }) } } as never;
+    const built = await buildPublicationArtifact(req, {
+      tenant: { id: "t1", core_site_id: SITE, core_brand_id: BRAND, primary_hostname: "youngandstamped.sites.localhost" } as never,
+      operationId: "op-m7", publicationId: PUBLICATION, sourceRevisionId: "rev-m7", sourceDigest, generatedAt: new Date().toISOString(),
+      fontPipeline: offlineFonts,
+      actionScope: { brand_slug: "youngandstamped", contact_email: "hello@youngandstamped.example" },
+    });
+    const artifact = JSON.parse(built.serialized);
+    expect(() => assertArtifactV2(artifact)).not.toThrow();
+    const linksOnly = artifact.pages.find((page: { path: string }) => page.path === "links-only");
+    expect(linksOnly?.enabled ?? false).toBe(false);
+    for (const page of artifact.pages as Array<{ enabled: boolean; blocks: unknown[] }>) if (page.enabled) expect(page.blocks.length).toBeGreaterThan(0);
+    expect(artifact.navigation.items.some((item: { href: string }) => item.href === "/links-only")).toBe(false);
+  });
+
   it("publishes a valid artifact with the trips recipe and page set", async () => {
     const composed = compose();
     expect(composed.format).toBe("trips");

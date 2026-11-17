@@ -248,7 +248,10 @@ async function headerControlsCheck(page, label, out) {
     const header = document.querySelector("[data-mg-header]") ?? document.querySelector("body header");
     if (!header) return ["no header"];
     const found = [];
-    for (const el of header.querySelectorAll("a[href], button")) {
+    // The menu toggle wherever it sits (Voyage's own drawer toggle is outside <header>).
+    const controls = new Set([...header.querySelectorAll("a[href], button"), ...document.querySelectorAll(".v-drawer__toggle, .mg-menu-btn, [aria-controls][aria-haspopup]")]);
+    if (![...controls].some((el) => el.tagName === "BUTTON")) found.push("no menu button found");
+    for (const el of controls) {
       // A closed menu (dialog, or a drawer marked data-open="false") is not on screen.
       if (el.closest("dialog:not([open]), [hidden], [aria-hidden='true'], [inert], [data-open='false']")) continue;
       const style = getComputedStyle(el);
@@ -276,15 +279,19 @@ async function phoneWidthCheck(out) {
   // The pinned Playwright browser, else the machine's Chrome (no download at run time).
   const browser = await chromium.launch().catch(() => chromium.launch({ channel: "chrome" }));
   try {
-    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
-    for (const [host, site] of Object.entries(sites)) {
-      for (const path of [...site.smoke_paths, ...(site.detail_paths ?? []).map((detail) => detail.path)]) {
-        await page.goto(`http://${host}:${APP_PORT}${path}`, { waitUntil: "networkidle" });
-        const width = await page.evaluate(() => document.documentElement.scrollWidth);
-        if (width > 375) out.push(`375 ${site.design_key} ${path}: the page is ${width}px wide (scrolls sideways)`);
-        else console.log(`ok 375 ${site.design_key} ${path} (${width}px)`);
-        await headerControlsCheck(page, `375 ${site.design_key} ${path}`, out);
+    // #4453 milestone 7c (tester P2-3) — 375 px and the narrowest common phone, 320 px.
+    for (const vw of [375, 320]) {
+      const page = await browser.newPage({ viewport: { width: vw, height: 812 } });
+      for (const [host, site] of Object.entries(sites)) {
+        for (const path of [...site.smoke_paths, ...(site.detail_paths ?? []).map((detail) => detail.path)]) {
+          await page.goto(`http://${host}:${APP_PORT}${path}`, { waitUntil: "networkidle" });
+          const width = await page.evaluate(() => document.documentElement.scrollWidth);
+          if (width > vw) out.push(`${vw} ${site.design_key} ${path}: the page is ${width}px wide (scrolls sideways)`);
+          else console.log(`ok ${vw} ${site.design_key} ${path} (${width}px)`);
+          await headerControlsCheck(page, `${vw} ${site.design_key} ${path}`, out);
+        }
       }
+      await page.close();
     }
   } finally {
     await browser.close();
@@ -350,7 +357,12 @@ async function ysChecks(out) {
         const scroll = await page.evaluate(() => document.documentElement.scrollWidth);
         if (scroll > width) out.push(`ys ${width} ${path}: the page is ${scroll}px wide (scrolls sideways)`);
         else console.log(`ok ys ${width} ${path} (${scroll}px)`);
-        if (width === 375) await headerControlsCheck(page, `ys 375 ${path}`, out);
+        if (width === 375) {
+          await headerControlsCheck(page, `ys 375 ${path}`, out);
+          await page.setViewportSize({ width: 320, height: 812 });
+          await headerControlsCheck(page, `ys 320 ${path}`, out);
+          await page.setViewportSize({ width: 375, height: 812 });
+        }
         if (SHOTS) {
           // Walk the page once so lazy images and reveal observers fire, then shoot from the top.
           await page.evaluate(async () => {

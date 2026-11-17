@@ -322,8 +322,9 @@ export function findPathCollisions(input: CollisionInput): string[] {
     }
   }
   // #4453 milestone 9 — the rooms base shares the one-base-per-address rule.
-  const staysBase = input.routes.stays;
-  if (staysBase !== undefined && bases.has(staysBase)) {
+  // Milestone 7c (tester P3-3): the DEFAULT rooms base counts too, so another kind's base of "rooms" is refused.
+  const staysBase = input.routes.stays ?? DEFAULT_STAYS_BASE;
+  if (bases.has(staysBase)) {
     problems.push(`${hrefForPath(staysBase)} is the address of both ${bases.get(staysBase)} and stays`);
   }
   for (const rule of input.redirects ?? []) {
