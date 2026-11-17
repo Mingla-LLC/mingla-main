@@ -162,10 +162,22 @@ describe("#4453 M7 Young and Stamped composed in Voyage, through the real builde
     const composed = compose();
     expect(composed.format).toBe("trips");
     const ids = new Map(composed.pages.map((page, i) => [page.slug, `page-${i}`]));
-    const pages = composed.pages.map((page) => ({ id: ids.get(page.slug), tenant: "t1", slug: page.slug, title: page.title, kind: page.kind, enabled: true, blocks: page.blocks, ...(page.collection_kind ? { collection_kind: page.collection_kind } : {}) }));
+    // #4453 milestone 11 — a Draft page from Ari (hidden, owner-only questions) and its Draft menu entry: never published.
+    const pages = [
+      ...composed.pages.map((page) => ({ id: ids.get(page.slug), tenant: "t1", slug: page.slug, title: page.title, kind: page.kind, enabled: true, blocks: page.blocks, ...(page.collection_kind ? { collection_kind: page.collection_kind } : {}) })),
+      {
+        id: "page-ari", tenant: "t1", slug: "private-hire", title: "Private hire", kind: "standard", enabled: false,
+        origin: "ari", ari_draft: true, ari_request: "ARI-DRAFT-REQUEST-NEVER-PUBLIC",
+        owner_questions: [{ key: "q1", question: "ARI-DRAFT-QUESTION-NEVER-PUBLIC", block_index: 0, field_path: "subheading" }],
+        blocks: [{ id: "ari-b0", blockType: "page_header", heading: "Private hire", review: { state: "draft", source: "ari" } }],
+      },
+    ];
     const navigation = {
       id: "nav-1", tenant: "t1", wordmark: composed.wordmark, header_variant: composed.header_variant,
-      items: composed.menu.items.map((item) => ({ label: item.label, target_type: "page", page: ids.get(item.slug) })),
+      items: [
+        ...composed.menu.items.map((item) => ({ label: item.label, target_type: "page", page: ids.get(item.slug) })),
+        { label: "Private hire", target_type: "page", page: "page-ari", draft: true },
+      ],
       ...(composed.header_cta ? { header_cta: { label: composed.header_cta.label, target_type: "page", page: ids.get(composed.header_cta.slug) } } : {}),
     };
     const settings = { id: "settings-1", tenant: "t1", display_name: "Young and Stamped", design: "voyage" };
@@ -185,6 +197,9 @@ describe("#4453 M7 Young and Stamped composed in Voyage, through the real builde
     const artifact = JSON.parse(built.serialized);
     expect(() => assertArtifactV2(artifact)).not.toThrow();
     expect(artifact.design.key).toBe("voyage");
+    // #4453 milestone 11 (SC-N3, SC-AP2) — the Draft page from Ari, its menu entry and its questions are not in the publish.
+    expect(built.serialized).not.toContain("private-hire");
+    expect(built.serialized).not.toContain("ARI-DRAFT-");
     const home = artifact.pages.find((page: { path: string }) => page.path === "");
     const order = FORMAT_RECIPES.trips.map((section) => section.type).filter((type) => !["availability"].includes(type) || true);
     const homeTypes = home.blocks.map((block: { type: string }) => block.type);

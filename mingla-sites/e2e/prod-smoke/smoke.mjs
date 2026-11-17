@@ -373,6 +373,16 @@ async function ysChecks(out) {
     else console.log(`ok ys Book "${link.text}" on ${link.path} -> ${link.href}`);
   }
   if (!bookLinks.length) out.push("ys: no Book link to host.usemingla.com on any page");
+  // #4453 milestone 11 (SC-N3, SC-AP2) — the composed fixture carries a Draft page from Ari: it never shows on the published site.
+  {
+    const draft = await fetch(`http://${YS_HOST}:${APP_PORT}/private-hire`, { redirect: "manual" });
+    if (draft.status !== 404) out.push(`ys: the Draft page from Ari answered ${draft.status} (must be 404)`);
+    else console.log("ok ys Draft page from Ari is not published (/private-hire 404)");
+    for (const path of ["/", "/trips", "/about"]) {
+      const html = await (await fetch(`http://${YS_HOST}:${APP_PORT}${path}`)).text();
+      if (/private-hire|ARI-DRAFT-/.test(html)) out.push(`ys ${path}: links to or shows the Draft page from Ari`);
+    }
+  }
   let chromium;
   try {
     ({ chromium } = await import("@playwright/test"));
