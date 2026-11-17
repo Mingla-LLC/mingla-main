@@ -104,6 +104,46 @@ describe("#4420 — by-id experience stops come from the public reader", () => {
     expect(payload?.experience.venueText).toBe("Raleigh, US");
   });
 
+  // ORCH-1138 SC-2 (moved here from a source pin in
+  // experiencePageRedesign.orch1138): the page gets the real authored stop
+  // blurb, the stop's coordinates when the reader serves them, and the vibe
+  // intents.
+  test("keeps the authored blurb, the served coordinates and the vibe intents", async () => {
+    rpcMock.mockImplementation((fn: string) =>
+      Promise.resolve(
+        fn === "pg_public_experience_by_slug"
+          ? {
+              data: {
+                stops: [
+                  {
+                    id: "stop-1",
+                    stopOrder: 0,
+                    placeName: "First stop",
+                    address: "1 Main St",
+                    description: "Start with a flight of reds",
+                    startTime: null,
+                    lat: 35.78,
+                    lng: -78.64,
+                    imageUrls: [],
+                  },
+                ],
+              },
+              error: null,
+            }
+          : { data: [], error: null },
+      ),
+    );
+    const payload = await getPublicExperienceById("exp-1");
+    expect(payload?.experience.stops[0]).toEqual(
+      expect.objectContaining({
+        description: "Start with a flight of reds",
+        lat: 35.78,
+        lng: -78.64,
+      }),
+    );
+    expect(payload?.experience.intents).toEqual(["group-fun"]);
+  });
+
   test("a reader error is thrown, never hidden", async () => {
     rpcMock.mockImplementation((fn: string) =>
       Promise.resolve(

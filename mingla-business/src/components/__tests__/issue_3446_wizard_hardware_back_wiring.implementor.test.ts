@@ -91,8 +91,11 @@ const WIZARDS: WizardSpec[] = [
     isFirstStepLocal: false,
     onStepBack: "goBack",
     onExit: "goBack",
-    busyFlags: ["submitting", "checkingInvitePublish"],
-    exitFlags: null,
+    // #4420 — the wizard now saves a draft before leaving (creatingDraft is
+    // busy) and asks before discarding (the discard dialog is the surfaced
+    // exit; back closes it instead of leaving).
+    busyFlags: ["submitting", "checkingInvitePublish", "creatingDraft"],
+    exitFlags: ["discardOpen"],
   },
   {
     name: "Trip",

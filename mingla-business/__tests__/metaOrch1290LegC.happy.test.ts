@@ -5,7 +5,8 @@
  * Leg C RENDERS the owner-authored pitch that Leg A surfaced:
  *   - public page: `venue_public_view.pitch` (= place_pool.generative_summary)
  *     → PublicVenue.pitch → an "About" section (4-line clamp + Read more) under
- *     the identity block, pitch-first meta (≤155), and a desktop 2-line clamp;
+ *     the identity block and pitch-first meta (≤155) (the desktop panel's
+ *     2-line clamp left with the panel in #4420);
  *   - consumer deck: discover-cards maps the pitch into the card's
  *     `description`, and the EXPANDED card shows the full pitch.
  *     [TEST-MOD-APPROVED #1609] This used to read "…the swipe FACE clamps
@@ -252,13 +253,9 @@ describe("META-ORCH-1290 Leg C — public page 'About' pitch (§6)", () => {
     expect(pageSrc).toContain('text.replace(/\\s+/g, " ")');
   });
 
-  test("desktop sticky panel gets a 2-line pitch clamp under the address", () => {
-    expect(pageSrc).toContain("styles.deskPitch");
-    // The desk pitch is a 2-line clamp gated on hasPitch (hidden when empty).
-    const deskPitchIdx = pageSrc.indexOf("styles.deskPitch");
-    const region = pageSrc.slice(deskPitchIdx - 120, deskPitchIdx + 160);
-    expect(region).toContain("numberOfLines={2}");
-  });
+  // The desktop sticky-panel 2-line pitch clamp was retired with the panel
+  // itself (#4420, 07dc1086db: desktop drops the boxed side panel). The pitch
+  // still reaches desktop guests through the About section asserted above.
 });
 
 // ---- consumer swipe-card render seams (§5a) --------------------------------
