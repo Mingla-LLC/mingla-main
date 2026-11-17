@@ -261,6 +261,13 @@ export async function buildPublicationArtifact(
      * so Studio and Core may deploy in either order.
      */
     coreSendsIdentity?: boolean;
+    /**
+     * #4453 milestone 11 (spec v2.1 §3.3, decision N10) — keep a Draft-by-Ari
+     * page (always disabled, marked `draft_by_ari`) in the artifact. Set only
+     * by the private preview; every other build (publish, export) leaves the
+     * page and everything under it out.
+     */
+    includeAriDrafts?: boolean;
   },
 ): Promise<BuiltPublication> {
   const scopedReq = await tenantRequest(req, input.tenant);
@@ -1217,7 +1224,20 @@ export async function buildPublicationArtifact(
    * #2829 W2 — pages are ordered by address (home first) so the bytes do not
    * depend on the order pages were created in.
    */
+  /*
+   * #4453 milestone 11 (SC-N3, SC-AP2, N10) — a Draft-by-Ari page (and any page
+   * under it) is never enabled in any artifact, so no menu, footer, header
+   * button or page_links entry can point at it. Outside the private preview
+   * it is left out altogether. Its owner-only fields (origin, ari_request,
+   * owner_questions) are never copied: the page object below is an allowlist.
+   */
+  const ariDraftPaths = (pagesResult.docs as AnyDoc[])
+    .filter((page) => page.ari_draft === true)
+    .map((page) => pagePaths.get(String(page.id)) ?? "")
+    .filter((path) => path !== "");
+  const underAriDraft = (path: string): boolean => ariDraftPaths.some((draft) => path === draft || path.startsWith(`${draft}/`));
   const renderedPages = (pagesResult.docs as AnyDoc[])
+    .filter((page) => input.includeAriDrafts === true || !underAriDraft(pagePaths.get(String(page.id)) ?? ""))
     .map((page) => {
       const rendered: AnyDoc[] = blocks(page.blocks || []).filter(Boolean) as AnyDoc[];
       const isHome = isHomePage(page);
@@ -1226,7 +1246,10 @@ export async function buildPublicationArtifact(
         path: pagePaths.get(String(page.id)) ?? "",
         rendered,
         // #4453 milestone 7c (tester P3-2) — "Keep exploring" alone is not content: a page with nothing else never publishes enabled.
-        enabled: isHome ? page.enabled === true : page.enabled === true && rendered.some((block) => block?.type !== "page_links"),
+        enabled: isHome
+          ? page.enabled === true
+          : page.enabled === true && rendered.some((block) => block?.type !== "page_links") && !underAriDraft(pagePaths.get(String(page.id)) ?? ""),
+        ariDraft: page.ari_draft === true,
       };
     })
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
@@ -1287,6 +1310,8 @@ export async function buildPublicationArtifact(
   };
   const navigationOf = (doc: AnyDoc | undefined) => {
     const items = ((doc?.items as AnyDoc[] | undefined) ?? [])
+      // #4453 milestone 11 — a menu entry Ari added for its Draft page is never published.
+      .filter((item) => item?.draft !== true)
       .map((item) => {
         const link = navLink(item);
         if (!link) return null;
@@ -1359,10 +1384,11 @@ export async function buildPublicationArtifact(
     source_revision_id: input.sourceRevisionId,
     source_digest: input.sourceDigest,
     generated_at: input.generatedAt,
-    pages: renderedPages.map(({ page, path, rendered, enabled }) => ({
+    pages: renderedPages.map(({ page, path, rendered, enabled, ariDraft }) => ({
       path,
       title: page.title,
       enabled,
+      ...(ariDraft ? { draft_by_ari: true as const } : {}),
       kind: page.kind === "collection_index" ? "collection_index" : "standard",
       ...(page.kind === "collection_index" && typeof page.collection_kind === "string"
         ? { collection: page.collection_kind }

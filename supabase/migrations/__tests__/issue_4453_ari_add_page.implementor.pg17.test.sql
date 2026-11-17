@@ -7,9 +7,10 @@
 -- T-2  SITES_ARI_ADD_PAGE seeded off; no brand is allowlisted for it by the migration.
 -- T-3  off for every brand; on for an allowlisted brand only; on for all when the flag is on.
 -- T-4  the milestone 7 flags are unchanged; an unknown key is false and is refused by the allowlist.
+-- T-5  the three Ari-page content actions sit at the content minimum (20); other ranks are unchanged.
 --
 -- FAILS-ON-REVERT: drop 20280803004453 -> T-2a (no flag row) and T-3b (allowlist insert refused);
--- drop the new key from brand_site_flag_on -> T-3b.
+-- drop the new key from brand_site_flag_on -> T-3b; drop the three actions from min_rank -> T-5a.
 
 BEGIN;
 
@@ -76,5 +77,16 @@ $t$;
 INSERT INTO public.brand_site_flag_brands (flag_key, brand_id) VALUES ('SITES_STYLE_LIBRARY', '00000000-0000-4000-8000-0000000b1102');
 SELECT pg_temp.p_assert(public.brand_site_flag_on('SITES_STYLE_LIBRARY', '00000000-0000-4000-8000-0000000b1102'),
   'T-4c the milestone 7 flags still read through the allowlist');
+
+-- T-5
+SELECT pg_temp.p_assert(public.brand_site_content_min_rank('ari_page_answer') = 20
+    AND public.brand_site_content_min_rank('ari_page_accept') = 20
+    AND public.brand_site_content_min_rank('ari_page_remove') = 20,
+  'T-5a the Ari-page content actions are at the content minimum');
+SELECT pg_temp.p_assert(public.brand_site_content_min_rank('mark_reviewed') = 20
+    AND public.brand_site_content_min_rank('confirm_review') = 50
+    AND public.brand_site_content_min_rank('set_offering_visibility') = 50
+    AND public.brand_site_content_min_rank('ari_page_publish_everything') IS NULL,
+  'T-5b every other rank is unchanged; an unknown action has no rank');
 
 ROLLBACK;

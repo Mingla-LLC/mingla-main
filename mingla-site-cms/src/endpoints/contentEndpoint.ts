@@ -62,6 +62,10 @@ export const CONTENT_ACTION_MIN_RANK: Readonly<Record<string, number>> = {
   // #4453 — "N sections to review" and "Looks right" (content rank).
   review_status: 20,
   mark_reviewed: 20,
+  // #4453 milestone 11 — the owner's Draft page from Ari (content minimum, as Core's brand_site_content_min_rank).
+  ari_page_answer: 20,
+  ari_page_accept: 20,
+  ari_page_remove: 20,
   list: 20,
   get: 20,
   create: 20,
@@ -957,6 +961,21 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
         pages: rows,
       };
     }
+    /*
+     * #4453 milestone 11 (spec v2.1 §3.2-§3.3) — a Draft page from Ari: the
+     * owner answers a question ("Ari needs this" -> Save), publishes it
+     * ("Publish this page": all its blocks reviewed, on, Draft marks cleared;
+     * the site publish runs next as normal) or removes it. Core checks the
+     * member's rank (content minimum) and SITES_ARI_ADD_PAGE for answers.
+     */
+    case "ari_page_answer":
+    case "ari_page_accept":
+    case "ari_page_remove": {
+      const { runOwnerAriPageAction } = await import("../lib/ariPage");
+      return runOwnerAriPageAction(action, args, {
+        req: ctx.req, scoped: ctx.scoped, tenantId: ctx.tenantId, userId: ctx.request.userId, brandId: ctx.request.brandId,
+      });
+    }
     case "mark_reviewed": {
       // #4453 — "Looks right" on one section, or "Mark all on this page as reviewed".
       const pageId = entryIdOf(args.page_id);
@@ -1013,6 +1032,14 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
         collection_kind: page.collection_kind ?? null,
         planned_offering: page.planned_offering ?? null,
         enabled: page.enabled !== false,
+        // #4453 milestone 11 — a Draft page from Ari, its sections to review and the owner-only questions (this route is the owner's).
+        ...(page.origin === "ari" ? {
+          origin: "ari",
+          ari_draft: page.ari_draft === true,
+          ari_request: typeof page.ari_request === "string" ? page.ari_request : null,
+          owner_questions: Array.isArray(page.owner_questions) ? page.owner_questions : [],
+          review_count: (Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : []).filter((block) => (block.review as AnyDoc | undefined)?.state === "draft").length,
+        } : {}),
         in_menu: menuOrder.has(String(page.id)),
         in_group: items.some((item) => (Array.isArray(item.children) ? item.children as AnyDoc[] : []).some((child) => relationId(child.page) === String(page.id))),
         menu_index: menuOrder.get(String(page.id)) ?? null,
@@ -1295,6 +1322,8 @@ const NAMED_CODES = new Set([
   "FORBIDDEN", "NOT_FOUND", "VALIDATION_FAILED", "REVISION_CONFLICT", "REVIEW_NOT_CONFIRMED",
   "TITLE_REQUIRED", "QUOTE_REQUIRED", "SLUG_TAKEN", "SLUG_INVALID", "CATEGORY_IN_USE",
   "CONTENT_LIMIT_EXCEEDED", "MEDIA_REJECTED", "MEDIA_PROCESSING", "VIDEO_TOO_LONG",
+  // #4453 milestone 11 — the owner's Ari-page actions ("Ari needs this", "Publish this page", "Remove").
+  "QUESTION_NOT_FOUND", "PAGE_NOT_ARI_DRAFT", "UNSELLABLE_OFFER", "BOOKING_THROUGH_ENQUIRY",
 ]);
 
 export function contentFailure(error: unknown): Response {
@@ -1302,7 +1331,10 @@ export function contentFailure(error: unknown): Response {
   if (error instanceof Error && error.name === "ValidationError") code = "VALIDATION_FAILED";
   if (code === "SIGNATURE_INVALID" || code === "REPLAY_DETECTED") code = "FORBIDDEN";
   if (!NAMED_CODES.has(code)) code = "SERVICE_TEMPORARILY_UNAVAILABLE";
-  const extra = error instanceof ContentError ? error.extra ?? {} : {};
+  // #4453 milestone 11 — an Ari-page refusal (AriRefusal, by name: no import cycle) carries its plain sentence too.
+  const extra = error instanceof ContentError || (error instanceof Error && error.name === "AriRefusal")
+    ? (error as Error & { extra?: Record<string, unknown> }).extra ?? {}
+    : {};
   return sitesJsonResponse(
     { ok: false, error: { code, ...extra } },
     code === "FORBIDDEN" ? 403 : code === "NOT_FOUND" ? 404 : code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : 409,

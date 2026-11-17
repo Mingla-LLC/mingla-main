@@ -1429,6 +1429,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
       "booking_blocks",
       // #4453 milestone 7 — SITES_ARI_DESIGN_PASS on: the plan, facts and live looks (signed in by Core).
       "design_pass",
+      // #4453 milestone 11 — SITES_ARI_ADD_PAGE on for the brand (signed in by Core).
+      "add_page",
     ]);
     if (Object.keys(body).some((key) => !allowedOuter.has(key))) {
       throw new Error("VALIDATION_FAILED");
@@ -1474,6 +1476,7 @@ async function ari(req: PayloadRequest): Promise<Response> {
           rank,
           evidence: parseAriEvidence(body.evidence, brandId),
           designPass: parseSignedDesignPass(body.design_pass),
+          addPage: body.add_page === true,
         });
         return json({ ok: true, data });
       } catch (error) {
@@ -1788,6 +1791,8 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       sourceRevisionId: grant.source_revision,
       sourceDigest: grant.source_digest,
       generatedAt: new Date().toISOString(),
+      // #4453 milestone 11 — the owner's preview keeps Draft-by-Ari pages (disabled, marked); share links drop them (N10).
+      includeAriDrafts: true,
     });
     // #2829 W10 — this is now the site's newest preview (private share links show it).
     await reportPreviewBuilt(grant.site_id, built.artifactKey);

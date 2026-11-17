@@ -12,7 +12,8 @@ import { isV2Artifact, type SiteArtifact } from "./siteArtifact";
  *      chose to send, so unreviewed sections on enabled pages may show, with no
  *      Draft UI; nothing that must never be public (unconfirmed reviews,
  *      unanswered setup fields, owner prompts) is added to it.
- *   2. A page that is not enabled is removed, and so is EVERY link to it, from
+ *   2. A page that is not enabled, or is a Draft by Ari (milestone 11, N10), is
+ *      removed, and so is EVERY link to it, from
  *      any source: menu, header button, footer, a block's button or in-page
  *      link. One walk over the whole artifact (`withoutLinksTo`), not a list of
  *      known places.
@@ -63,8 +64,9 @@ const trimPath = (path: string): string => path.replace(/^\/+|\/+$/g, "");
  * page above it in the path ("a" above "a/b") is disabled, even if it is enabled
  * itself. Links to every hidden page are removed by `withoutLinksTo`.
  */
-export function hiddenPaths(pages: ReadonlyArray<{ path: string; enabled: boolean }>): Set<string> {
-  const disabled = new Set(pages.filter((page) => !page.enabled).map((page) => trimPath(page.path)));
+export function hiddenPaths(pages: ReadonlyArray<{ path: string; enabled: boolean; draft_by_ari?: true }>): Set<string> {
+  // #4453 milestone 11 (decision N10) — a Draft-by-Ari page is left out of share links even if it were ever enabled.
+  const disabled = new Set(pages.filter((page) => !page.enabled || page.draft_by_ari === true).map((page) => trimPath(page.path)));
   const hidden = new Set(disabled);
   for (const page of pages) {
     const path = trimPath(page.path);

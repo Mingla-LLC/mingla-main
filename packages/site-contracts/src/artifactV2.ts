@@ -246,6 +246,13 @@ export type PageNode = {
   collection?: CollectionKind;
   blocks: SiteBlock[];
   seo?: { title?: string; description?: string; noindex?: true };
+  /**
+   * #4453 milestone 11 (decision N10) — a page Ari added that the owner has not
+   * accepted yet. Only a PREVIEW artifact carries it (the publish leaves the
+   * page out), it is always disabled, and the share view drops it with every
+   * link to it.
+   */
+  draft_by_ari?: true;
 };
 
 export type CommercialReference = { kind: "offering" | "reservation" | "checkout"; id: string; url: string };
@@ -645,7 +652,9 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
   for (const entry of a.pages as unknown[]) {
     if (
       !plainObject(entry) ||
-      !hasOnlyKeys(entry, ["path", "title", "enabled", "kind", "collection", "blocks", "seo"]) ||
+      !hasOnlyKeys(entry, ["path", "title", "enabled", "kind", "collection", "blocks", "seo", "draft_by_ari"]) ||
+      // #4453 milestone 11 — a Draft-by-Ari page is never enabled in any artifact.
+      (entry.draft_by_ari !== undefined && (entry.draft_by_ari !== true || entry.enabled !== false)) ||
       !isPagePath(entry.path) || paths.has(entry.path as string) ||
       !boundedText(entry.title, 120, true) || typeof entry.enabled !== "boolean" ||
       !(PAGE_KINDS as readonly unknown[]).includes(entry.kind) ||

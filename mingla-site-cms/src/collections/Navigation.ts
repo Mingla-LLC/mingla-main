@@ -137,6 +137,17 @@ export const Navigation: CollectionConfig = {
       maxRows: MAX_NAV_ITEMS,
       fields: [
         ...targetFields,
+        /*
+         * #4453 milestone 11 (spec v2.1 §3.1) — a menu entry Ari added for its
+         * Draft page. Studio-only: the builder never publishes it while the
+         * page is a Draft (§1.4), and "Publish this page" clears it.
+         */
+        {
+          name: "draft",
+          type: "checkbox",
+          defaultValue: false,
+          admin: { readOnly: true, description: "Draft: added by Ari with a Draft page; hidden until the page is published." },
+        },
         {
           name: "children",
           type: "array",

@@ -39,6 +39,7 @@ import { nearestPassingShade, readabilityWarnings, warningSentence } from "../co
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
 import { MAX_BLOCKS_PER_PAGE, MAX_NAV_ITEMS, MAX_NAV_LABEL_LENGTH, MAX_PAGE_TITLE_LENGTH, MAX_SLUG_LENGTH } from "../contracts/generated/limits.ts";
 import { SLUG_PATTERN } from "../contracts/generated/routes.ts";
+import { ARI_PAGE_CODES } from "../contracts/generated/ariPage.ts";
 import { MAX_HERO_VIDEO_MS } from "../contracts/generated/video.ts";
 import { publicationDraftDigest } from "./artifactBuilder";
 import { findAllTenantPages } from "./tenantPages";
@@ -48,6 +49,7 @@ import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { designCheckWarningCount, runDesignChecks, type DesignCheckResult } from "./designChecks";
 import { CONTENT_COLLECTIONS, runContentAction, scopedRequest, type ContentCollection } from "../endpoints/contentEndpoint";
 import { DESIGN_PASS_ACTIONS, runDesignPassAction } from "./designPass";
+import { ARI_PAGE_ACTIONS, runAriPageAction } from "./ariPage";
 import type { SignedDesignPass } from "./designPassInputs";
 
 type AnyDoc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -93,6 +95,8 @@ export type AriActionContext = {
   evidence: AriEvidence | null;
   /** #4453 milestone 7 — Core's signed design-pass inputs (only while SITES_ARI_DESIGN_PASS covers the brand). */
   designPass?: SignedDesignPass | null;
+  /** #4453 milestone 11 — Core signed SITES_ARI_ADD_PAGE on for this brand. */
+  addPage?: boolean;
 };
 
 /** Validates the Core-signed evidence's shape (anything else is treated as no evidence). */
@@ -198,7 +202,7 @@ export async function assertCites(ctx: AriActionContext, cites: unknown): Promis
   return list;
 }
 
-function ownerQuotes(cites: readonly WorkLogCite[]): string[] {
+export function ownerQuotes(cites: readonly WorkLogCite[]): string[] {
   return cites.filter((cite) => cite.kind === "owner_words" && typeof cite.quote === "string").map((cite) => cite.quote!);
 }
 
@@ -213,7 +217,7 @@ export function assertBacked(ctx: AriActionContext, texts: readonly string[], ow
   if (claims.length) refuse("CLAIM_NOT_BACKED", { claims: claims.slice(0, 12).map(claimSentence) });
 }
 
-function decisionOf(value: unknown): string {
+export function decisionOf(value: unknown): string {
   if (typeof value !== "string" || !value.trim() || value.length > MAX_WORK_LOG_DECISION || /<\s*\/?\s*[a-z!]/i.test(value)) {
     refuse("VALIDATION_FAILED", { problems: [`why must be plain text up to ${MAX_WORK_LOG_DECISION} characters`] });
   }
@@ -262,11 +266,11 @@ async function pageAt(ctx: AriActionContext, pagePath: unknown, req = ctx.scoped
   return { page, pages, paths };
 }
 
-function checkRevision(current: unknown, expected: unknown): void {
+export function checkRevision(current: unknown, expected: unknown): void {
   if (typeof expected !== "string" || String(current ?? "") !== expected) refuse("REVISION_CONFLICT", { latest_revision: String(current ?? "") });
 }
 
-function siteDesign(settings: AnyDoc | null | undefined): DesignKey {
+export function siteDesign(settings: AnyDoc | null | undefined): DesignKey {
   return isDesignKey(settings?.design) ? (settings!.design as DesignKey) : "atelier";
 }
 
@@ -372,7 +376,7 @@ function blockOfferingIds(block: AnyDoc): string[] {
 }
 
 /** Visitor-facing text in a block as Ari wrote it (for the truth check). */
-function blockTexts(block: AnyDoc): string[] {
+export function blockTexts(block: AnyDoc): string[] {
   const type = String(block.type);
   if (!isBlockType(type)) return [];
   const texts: string[] = [];
@@ -428,7 +432,7 @@ export function assertAriBookingLock(ctx: AriActionContext, blocks: readonly Any
   if (enquiry.length) refuse(BOOKING_THROUGH_ENQUIRY, { problems: enquiry.slice(0, 20) });
 }
 
-async function assertBlocks(ctx: AriActionContext, blocks: unknown, design: DesignKey, path: string, ownerTexts: readonly string[]): Promise<AnyDoc[]> {
+export async function assertBlocks(ctx: AriActionContext, blocks: unknown, design: DesignKey, path: string, ownerTexts: readonly string[]): Promise<AnyDoc[]> {
   if (!Array.isArray(blocks) || blocks.length > MAX_BLOCKS_PER_PAGE) refuse("VALIDATION_FAILED", { problems: [`${path} must be a list of at most ${MAX_BLOCKS_PER_PAGE} blocks`] });
   const problems = blocks.flatMap((block, index) => ariBlockProblems(block, design, `${path}[${index}]`));
   if (problems.length) refuse("VALIDATION_FAILED", { problems: problems.slice(0, 20) });
@@ -464,7 +468,7 @@ async function updatePage(ctx: AriActionContext, page: AnyDoc, data: AnyDoc, req
 }
 
 /** Payload transactions when the adapter has them (all-or-nothing composition). */
-async function inTransaction<T>(ctx: AriActionContext, work: (req: PayloadRequest) => Promise<T>): Promise<T> {
+export async function inTransaction<T>(ctx: AriActionContext, work: (req: PayloadRequest) => Promise<T>): Promise<T> {
   const db = ctx.req.payload.db as unknown as {
     beginTransaction?: () => Promise<string | number | null>;
     commitTransaction?: (id: string | number) => Promise<void>;
@@ -596,10 +600,15 @@ export const ARI_DESIGNER_ACTIONS = new Set([
   "get_site_design_brief",
   "propose_site_design_pass",
   "propose_site_chrome",
+  // #4453 milestone 11 — "Add a page with Ari" (ariPage.ts; SITES_ARI_ADD_PAGE, checked by Core).
+  "propose_site_page",
+  "answer_site_page_question",
 ]);
 
 export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: AriActionContext): Promise<Record<string, unknown>> {
   if (DESIGN_PASS_ACTIONS.has(action)) return runDesignPassAction(action, args, ctx, { currentSettings, writeWorkLog, assertCites, decisionOf });
+  // #4453 milestone 11 — "Add a page with Ari" (ariPage.ts; SITES_ARI_ADD_PAGE, checked by Core).
+  if (ARI_PAGE_ACTIONS.has(action)) return runAriPageAction(action, args, ctx);
   switch (action) {
     case "get_site_tokens":
       return tokensView(await currentSettings(ctx));
@@ -958,4 +967,6 @@ export const ARI_REFUSAL_CODES = new Set([
   "STYLE_DOES_NOT_FIT", "DESIGN_PASS_OFF", "DESIGN_PASS_ALREADY_RUN",
   // #4453 milestone 7c — the claim could not be made (not a duplicate): retryable, nothing written.
   "DESIGN_PASS_TRY_AGAIN",
+  // #4453 milestone 11 — "Add a page with Ari" (one plain sentence each, ARI_PAGE_MESSAGES).
+  ...ARI_PAGE_CODES,
 ]);

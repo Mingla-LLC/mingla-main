@@ -140,6 +140,11 @@ function slugField(value: unknown): true | string {
   return true;
 }
 
+/** #4453 milestone 11 — only the Ari page actions write the Ari page fields. */
+function ariPageFieldAccess({ req }: { req: { context?: Record<string, unknown> } }): boolean {
+  return req.context?.minglaAriPage === true;
+}
+
 export const Pages: CollectionConfig = {
   slug: "pages",
   labels: { singular: "Page", plural: "Pages" },
@@ -234,6 +239,40 @@ export const Pages: CollectionConfig = {
       },
     },
     { name: "enabled", type: "checkbox", defaultValue: true },
+    /*
+     * #4453 milestone 11 (spec v2.1 §3.1) — "Add a page with Ari". Written only
+     * by the Ari page actions (req.context.minglaAriPage); never published
+     * (the builder copies an allowlist of page keys), never editable here.
+     * `ari_draft` is the Draft-by-Ari marker: true until the owner accepts the
+     * page with "Publish this page".
+     */
+    {
+      name: "origin",
+      type: "text",
+      access: { create: ariPageFieldAccess, update: ariPageFieldAccess },
+      validate: (value: unknown) => (value == null || value === "ari" ? true : "origin is set by Mingla"),
+      admin: { readOnly: true, position: "sidebar", description: "\"ari\" when Ari added this page." },
+    },
+    {
+      name: "ari_draft",
+      type: "checkbox",
+      defaultValue: false,
+      access: { create: ariPageFieldAccess, update: ariPageFieldAccess },
+      admin: { readOnly: true, position: "sidebar", description: "Draft by Ari: hidden from visitors and share links until the owner publishes it." },
+    },
+    {
+      name: "ari_request",
+      type: "textarea",
+      maxLength: 500,
+      access: { create: ariPageFieldAccess, update: ariPageFieldAccess },
+      admin: { readOnly: true, position: "sidebar", description: "What the owner asked Ari for, word for word." },
+    },
+    {
+      name: "owner_questions",
+      type: "json",
+      access: { create: ariPageFieldAccess, update: ariPageFieldAccess },
+      admin: { readOnly: true, description: "Ari's questions for the owner. Shown only to the owner; never published." },
+    },
     {
       name: "revision",
       type: "number",
