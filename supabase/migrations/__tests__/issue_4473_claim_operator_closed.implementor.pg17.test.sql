@@ -58,7 +58,7 @@ BEGIN
      'online_card', 'paid', 'online_checkout'),
     (v_new_order, v_event, 'new@example.test', '+12025554473', 50, 'USD',
      'online_card', 'paid', 'online_checkout'),
-    (v_link_order, v_event, 'link-guest@example.test', NULL, 50, 'USD',
+    (v_link_order, v_event, 'link-guest@example.test', '+12025554499', 50, 'USD',
      'online_card', 'paid', 'online_checkout');
   INSERT INTO public.tickets(
     order_id, ticket_type_id, event_id, qr_code, status, approval_status

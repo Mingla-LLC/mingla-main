@@ -27,38 +27,45 @@
 
 BEGIN;
 
-DO $patch$
+-- The patch runs inside a pg_temp helper (as #4420 does) so the replaced
+-- function source is executed from a function body, not a DO block.
+CREATE FUNCTION pg_temp.issue_4473_patch(p_sig regprocedure)
+RETURNS void
+LANGUAGE plpgsql
+AS $fn$
 DECLARE
-  v_sig regprocedure;
-  v_def text;
+  v_def text := pg_get_functiondef(p_sig);
   v_old constant text := 'SET state = ''claimed'', resolved_via = ';
   v_new constant text :=
     'SET state = ''claimed'', operator_closure_id = NULL, resolved_via = ';
   v_old_count integer;
   v_new_count integer;
 BEGIN
-  FOREACH v_sig IN ARRAY ARRAY[
-    'public.claim_attendance_by_verified_identity(uuid)'::regprocedure,
-    'public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure
-  ] LOOP
-    v_def := pg_get_functiondef(v_sig);
-    v_new_count := (length(v_def) - length(replace(v_def, v_new, '')))
-      / length(v_new);
-    v_old_count := (length(v_def) - length(replace(v_def, v_old, '')))
-      / length(v_old);
+  v_new_count := (length(v_def) - length(replace(v_def, v_new, '')))
+    / length(v_new);
+  v_old_count := (length(v_def) - length(replace(v_def, v_old, '')))
+    / length(v_old);
 
-    IF v_new_count = 1 AND v_old_count = 0 THEN
-      CONTINUE;
-    END IF;
-    IF v_old_count <> 1 OR v_new_count <> 0 THEN
-      RAISE EXCEPTION
-        'issue_4473: % has % unpatched and % patched recovery claim updates; expected exactly one unpatched',
-        v_sig, v_old_count, v_new_count;
-    END IF;
+  IF v_new_count = 1 AND v_old_count = 0 THEN
+    RETURN;
+  END IF;
+  IF v_old_count <> 1 OR v_new_count <> 0 THEN
+    RAISE EXCEPTION
+      'issue_4473: % has % unpatched and % patched recovery claim updates; expected exactly one unpatched',
+      p_sig, v_old_count, v_new_count;
+  END IF;
 
-    EXECUTE replace(v_def, v_old, v_new);
-  END LOOP;
+  EXECUTE replace(v_def, v_old, v_new);
 END;
-$patch$;
+$fn$;
+
+SELECT pg_temp.issue_4473_patch(
+  'public.claim_attendance_by_verified_identity(uuid)'::regprocedure
+);
+SELECT pg_temp.issue_4473_patch(
+  'public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure
+);
+
+DROP FUNCTION pg_temp.issue_4473_patch(regprocedure);
 
 COMMIT;
