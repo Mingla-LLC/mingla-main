@@ -13,7 +13,8 @@ export interface UnsavedChangesGuardConfig {
   onRequestLeave: () => void;
   /**
    * Native only. False for a creation wizard: its Android back already runs
-   * through useWizardHardwareBack (step back, keyboard first, I-3446), which
+   * through useWizardHardwareBack (step back, keyboard first,
+   * I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK), which
    * reaches the same close owner on step 1.
    */
   hardwareBack?: boolean;

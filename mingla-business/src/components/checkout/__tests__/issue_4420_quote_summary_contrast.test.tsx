@@ -5,8 +5,8 @@
  * The same summary also mounts inside the light "Your total changed" review
  * panel, which takes `onPaper` and switches to the paper inks.
  *
- * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-
- * SOURCE-PIN); now renders the real TicketQuoteSummary and TicketCheckoutReviewPanel
+ * [TEST-MOD-APPROVED #4420] — was a source-text pin 
+ * (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); now renders the real TicketQuoteSummary and TicketCheckoutReviewPanel
  * and reads the flattened colour of every text node.
  *
  * FAILS ON REVERT: an amount, the total label or the total value paints with a

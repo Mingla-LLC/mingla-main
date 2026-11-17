@@ -1,4 +1,5 @@
 // #4420 sheet audit round 2 (shots-sheets after2-*).
+// MINGLA-INVARIANT: I-4420-ONE-FIELD-ONE-RING | issue #4420 | a focused web text field that is the only child of its field box shows exactly one focus ring, drawn on the box; a textarea sharing its box with other controls keeps the browser ring
 //   - One field, one border, one focus ring: a web textarea that is the only
 //     child of its bordered box draws no outline of its own; the box draws the
 //     input focus border and ring. A textarea sharing its box keeps its ring.

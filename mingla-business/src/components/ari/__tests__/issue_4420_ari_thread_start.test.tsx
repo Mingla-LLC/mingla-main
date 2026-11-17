@@ -3,8 +3,8 @@
  * x=0 beside an empty grey pill holding a lone caret. The thinking bubble now
  * holds dots and the row keeps the screen gutter.
  *
- * [TEST-MOD-APPROVED #4420] — was a source-text pin (I-PROPOSED-1047-NO-SOLE-
- * SOURCE-PIN); now renders the real StreamingText. The structural halves (the
+ * [TEST-MOD-APPROVED #4420] — was a source-text pin 
+ * (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN); now renders the real StreamingText. The structural halves (the
  * thread-opening gate in AriChatScreen, the web sheet's width cap) live in the
  * I-4420-HOST-WIRING strict-grep gate.
  *
