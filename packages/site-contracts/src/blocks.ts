@@ -857,7 +857,7 @@ export const BOOKING_BLOCK_TYPES: readonly string[] = ["offering_grid", "offerin
  * NOT offered to Ari until the Ari composition PR (milestone 7), so Ari's
  * frozen tool declarations stay byte-identical (#3355). Rendering a stored
  * one is never flagged.
- * [TRANSITIONAL] booking blocks held from Ari — exit: PR 7 (4453-ari-composer) offers them behind SITES_ARI_DESIGN_PASS.
+ * [TRANSITIONAL] booking blocks held from Ari's frozen tool declarations — PR 7 (merged) already offers them through the design pass while SITES_ARI_DESIGN_PASS is on; exit: when the frozen pre-#4453 declarations (#3355 I-ARI-ROLLOUT-OFF-IS-MAIN) are retired, these lists stop being held from Ari.
  */
 export const BOOKING_BLOCK_NEW_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
 /** #4453 milestone 5 — new fields on existing blocks, offered with the flag and held from Ari the same way. */

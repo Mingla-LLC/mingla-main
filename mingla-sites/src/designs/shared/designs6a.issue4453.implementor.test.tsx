@@ -104,7 +104,7 @@ describe("#4453 6a SC-D1 nocturne, haven and maison are design keys everywhere",
     expect(sql).not.toMatch(/ALTER TABLE|DROP |INSERT |UPDATE |DELETE /);
   });
 
-  it("Ari's declared designs stay atelier and voyage until PR 7 (#3355 frozen declarations)", () => {
+  it("Ari's frozen #3355 declarations name only atelier and voyage (PR 7's design pass offers the rest)", () => {
     expect(ARI_DESIGN_KEYS).toEqual(["atelier", "voyage"]);
     // The any-design variant enum Ari sees is exactly what atelier and voyage offer Ari.
     expect(ariVariants("hero")).not.toContain("maison-frame");

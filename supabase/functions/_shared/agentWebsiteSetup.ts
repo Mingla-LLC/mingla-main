@@ -297,7 +297,7 @@ function fieldInteraction(
       version: 1,
       id: "design-choice",
       selection: "single",
-      // #4453 6a — Ari offers only ARI_DESIGN_KEYS until PR 7.
+      // #4453 6a — setup offers only ARI_DESIGN_KEYS (frozen #3355 path); PR 7's design pass offers every style behind SITES_ARI_DESIGN_PASS.
       options: ARI_DESIGN_KEYS.map((key) => ({
         id: key,
         label: DESIGNS[key].label,

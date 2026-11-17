@@ -639,7 +639,7 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
       checkRevision(settings.updatedAt, args.expected_revision);
       const changes: AnyDoc = {};
       if (args.design !== undefined) {
-        // #4453 6a — Ari may name only ARI_DESIGN_KEYS until PR 7 (Studio and owners may pick any design).
+        // #4453 6a — Ari's frozen #3355 tools name only ARI_DESIGN_KEYS (Studio, owners and PR 7's design pass may pick any design).
         if (!isAriDesignKey(args.design)) refuse("VALIDATION_FAILED", { problems: ["design is not one of the designs"] });
         changes.design = args.design;
       }
@@ -692,7 +692,7 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
       if (!Number.isInteger(index) || !block) refuse("VALIDATION_FAILED", { problems: ["block_index is not a block on that page"] });
       const type = String(block.blockType);
       const design = siteDesign(await currentSettings(ctx));
-      // #4453 — Ari offers only the layouts it may choose (shared ones wait for PR 7).
+      // #4453 — Ari's frozen #3355 tools offer only the layouts they may choose (PR 7's design pass offers the shared ones).
       if (!isBlockType(type) || !ariDesignVariants(DESIGNS[design], type).includes(String(args.variant))) {
         refuse("VARIANT_NOT_IN_DESIGN", { variants: isBlockType(type) ? ariDesignVariants(DESIGNS[design], type) : [] });
       }

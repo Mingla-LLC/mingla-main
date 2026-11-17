@@ -37,7 +37,7 @@ export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage", "nocturne
  * chosen in Studio and by the owner from 6a; Ari offering them belongs to
  * the Ari composition PR (flag SITES_ARI_DESIGN_PASS), so Ari's frozen tool
  * declarations stay byte-identical (I-ARI-ROLLOUT-OFF-IS-MAIN, #3355).
- * [TRANSITIONAL] gallery designs hidden from Ari — exit: PR 7 (4453-ari-composer) offers them behind SITES_ARI_DESIGN_PASS.
+ * [TRANSITIONAL] gallery designs hidden from Ari's frozen tool declarations — PR 7 (merged) already offers every style through the design pass while SITES_ARI_DESIGN_PASS is on; exit: when the frozen pre-#4453 declarations (#3355 I-ARI-ROLLOUT-OFF-IS-MAIN) are retired, this list becomes DESIGN_KEYS.
  */
 export const ARI_DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage"];
 
@@ -192,7 +192,7 @@ export const SHARED_ONLY_BLOCK_TYPES: readonly BlockType[] = ["availability", "t
  * PR 4, but Ari choosing them belongs to the Ari composition PR (flag
  * SITES_ARI_DESIGN_PASS), so Ari's declared tools stay byte-identical to
  * the pre-#4453 declarations (I-ARI-ROLLOUT-OFF-IS-MAIN, #3355).
- * [TRANSITIONAL] shared layouts hidden from Ari — exit: PR 7 (4453-ari-composer) offers them behind SITES_ARI_DESIGN_PASS.
+ * [TRANSITIONAL] shared layouts hidden from Ari's frozen tool declarations — PR 7 (merged) already offers them through the design pass while SITES_ARI_DESIGN_PASS is on; exit: when the frozen pre-#4453 declarations (#3355 I-ARI-ROLLOUT-OFF-IS-MAIN) are retired, this filter is removed.
  */
 export function ariDesignVariants(design: DesignDefinition, type: BlockType): string[] {
   const held = SHARED_LAYOUTS[type] ?? [];

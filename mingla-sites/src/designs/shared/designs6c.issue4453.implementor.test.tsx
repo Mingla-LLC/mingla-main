@@ -128,7 +128,7 @@ describe("#4453 6c SC-D1 pop, sunset and pulse are design keys everywhere", () =
     expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra','pop','sunset','pulse']");
   });
 
-  it("Ari's declared designs stay atelier and voyage until PR 7 (#3355 frozen declarations)", () => {
+  it("Ari's frozen #3355 declarations name only atelier and voyage (PR 7's design pass offers the rest)", () => {
     expect(ARI_DESIGN_KEYS).toEqual(["atelier", "voyage"]);
     for (const layout of ["pop-stack", "sunset-sun", "pulse-stage"]) expect(ariVariants("hero")).not.toContain(layout);
     expect(read("supabase/functions/_shared/agentSiteTools.ts")).toContain("enum: [...ARI_DESIGN_KEYS]");

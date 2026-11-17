@@ -78,7 +78,7 @@ const PAGE_PATH = {
   description:
     'The page\'s address as list_site_pages returns it ("" is the home page, "about", "resources/faqs"). Always send it.',
 };
-// #4453 6a — Ari names only ARI_DESIGN_KEYS until PR 7 (frozen declarations, #3355).
+// #4453 6a — these frozen declarations (#3355) name only ARI_DESIGN_KEYS; PR 7's design pass offers every style behind SITES_ARI_DESIGN_PASS.
 const DESIGN = { type: "string", enum: [...ARI_DESIGN_KEYS] };
 const WHY = {
   type: "string",
