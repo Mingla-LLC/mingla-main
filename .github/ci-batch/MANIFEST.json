@@ -21417,6 +21417,8 @@
         "supabase/migrations/__tests__/issue_4452_tool_followups.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_add_page.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_ari_add_page.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4453_ari_add_page.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4453_ari_add_page.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.tester.adversarial.pg17.test.sql",
@@ -26924,6 +26926,8 @@
         "supabase/migrations/__tests__/issue_4452_tool_followups.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_add_page.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_ari_add_page.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4453_ari_add_page.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4453_ari_add_page.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.tester.adversarial.pg17.test.sql",
@@ -54254,5 +54258,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "0305dc521298ad466a62aaaa865993495df64db23d4588e1c963f479c1b25be1"
+  "phase3eContractSha256": "89f792373f130ffae4057f91737daada956d0e941ce0b57a79e61767b5105964"
 }
