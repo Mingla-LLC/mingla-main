@@ -179,5 +179,9 @@ module.exports = {
     "**/__tests__/issue_4456_unsend_confirm_sheet.implementor.render.test.tsx",
     // issue #4456 — Profile → Edit bio opens (it froze), saves and closes.
     "**/__tests__/issue_4456_edit_bio_sheet.implementor.render.test.tsx",
+    // issue #4473 — "Missing a ticket?": Check again, the three ways in, the
+    // dark add sheet (tabs, code, found / shared / nothing), ask-to-send and
+    // the confirmation-link step; Send to a friend draws dark.
+    "**/__tests__/issue_4473_missing_ticket.implementor.render.test.tsx",
   ],
 };
