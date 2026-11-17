@@ -188,7 +188,7 @@ describe("#4453 m7b tester — design-pass claim and detail bases", () => {
 });
 
 /*
- * Tester finding P1-1 (m7b): a story's inline picture was never read before
+ * Tester finding P2-1 (m7b; latent: Studio's story editor has no upload feature today): a story's inline picture was never read before
  * m7b (richTextToAst drops upload nodes), so a story whose inline image was
  * still processing, failed its scan, or was deleted published fine. The new
  * fallback hands that picture to the builder's renderMedia, which THROWS
@@ -212,7 +212,7 @@ describe("#4453 m7b tester — a story's inline picture never blocks the site", 
     const shaped = shapeSiteCollections({ destinations: [], stories: [story("m-ready")], categories: [], testimonials: [] } as never, builderRender as never);
     expect(shaped.stories[0]!.featured_image?.id).toBe("m-ready");
   });
-  it.fails("P1-1: an inline picture that is not READY (processing, rejected or deleted) leaves the card photo-less instead of failing the publish", () => {
+  it.fails("P2-1: an inline picture that is not READY (processing, rejected or deleted) leaves the card photo-less instead of failing the publish", () => {
     const shaped = shapeSiteCollections({ destinations: [], stories: [story("m-processing")], categories: [], testimonials: [] } as never, builderRender as never);
     expect(shaped.stories[0]!.featured_image).toBeUndefined();
   });
