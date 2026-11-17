@@ -101,7 +101,7 @@ export function createHandler(deps: ScanTicketDeps) {
 
 export const handler = createHandler({
   client: () => serviceClient() as unknown as ScanTicketClient,
-  pepper: qrTokenPepper,
+  pepper: () => qrTokenPepper(),
 });
 
 if (import.meta.main) serve(handler);

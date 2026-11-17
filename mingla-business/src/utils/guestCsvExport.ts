@@ -25,7 +25,6 @@ import { isCompOrder } from "./compOrders";
 import { PAYMENT_METHOD_LABELS } from "./paymentMethodLabels";
 import { doorSaleMoney } from "./moneySummary";
 import { isDoorOrder } from "./isDoorOrder";
-import { bookedStartCsvCell } from "./bookedStart";
 import type { ReconciliationSummary } from "./reconciliation";
 import type {
   DoorPaymentMethod,
@@ -180,10 +179,11 @@ export const serializeGuestsToCsv = (
    */
   dayLabels: ReadonlyMap<string, string> = new Map(),
   /**
-   * issue #3281 — the offering's IANA zone, for the "Booked start" column.
-   * Absent => UTC (never the phone's zone, so two exports always agree).
+   * issue #3281 — writes the "Booked start" cell (guestCsvDayOrder.ts's
+   * bookedStartCsvCell, loaded on intent by every export path). Absent =>
+   * blank cells.
    */
-  timeZone: string | null = null,
+  bookedCell: (iso: string | null | undefined) => string = () => "",
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
@@ -269,7 +269,7 @@ export const serializeGuestsToCsv = (
         "",
         o.viaLinkLabel ?? "",
         o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
-        bookedStartCsvCell(o.bookedStartAt, timeZone),
+        bookedCell(o.bookedStartAt),
         orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -298,7 +298,7 @@ export const serializeGuestsToCsv = (
         o.currency,
         o.viaLinkLabel ?? "",
         "",
-        bookedStartCsvCell(o.bookedStartAt, timeZone),
+        bookedCell(o.bookedStartAt),
         orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -340,16 +340,6 @@ export const serializeGuestsToCsv = (
 
   return `${lines.join("\r\n")}\r\n`;
 };
-
-export interface ExportGuestsCsvArgs {
-  event: LiveEvent;
-  rows: ExportGuestRow[];
-  /**
-   * issue #2160 — `event_dates.id` -> day label, for the "Day" column. Omitted
-   * on every single-date event, where the column is emitted but blank.
-   */
-  dayLabels?: ReadonlyMap<string, string>;
-}
 
 const downloadCsvWeb = (csv: string, filename: string): void => {
   // Web-only path — guard via Platform.OS check before calling.
@@ -442,24 +432,6 @@ export const exportCsvText = async (
     return { method: "downloaded" };
   }
   const action = await downloadCsvNative(csv, filename, dialogTitle);
-  return { method: action };
-};
-
-export const exportGuestsCsv = async (
-  args: ExportGuestsCsvArgs,
-): Promise<ExportResult> => {
-  const csv = serializeGuestsToCsv(
-    args.rows,
-    undefined,
-    args.dayLabels,
-    args.event.timezone,
-  );
-  const filename = `${args.event.eventSlug}-guest-list-${formatYmdToday()}.csv`;
-  if (Platform.OS === "web") {
-    downloadCsvWeb(csv, filename);
-    return { method: "downloaded" };
-  }
-  const action = await downloadCsvNative(csv, filename);
   return { method: action };
 };
 
@@ -564,7 +536,10 @@ export const exportReconciliationCsv = async (
 
   // issue #3281 — the same offering zone as the guest export, so one order's
   // booked start reads the same in both files.
-  const csv = serializeGuestsToCsv(rows, stanza, undefined, args.event.timezone);
+  const { bookedStartCsvCell } = await import("./guestCsvDayOrder");
+  const csv = serializeGuestsToCsv(rows, stanza, undefined, (iso) =>
+    bookedStartCsvCell(iso, args.event.timezone),
+  );
   const filename = `${args.event.eventSlug}-reconciliation-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);

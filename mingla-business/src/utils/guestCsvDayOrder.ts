@@ -113,13 +113,47 @@ const daySourceForRow = (row: ExportGuestRow): GuestCsvDayCellOrder => {
  * "All N dates" without growing the shared guestCsvExport __common module.
  * Record splitting respects quoted CRLF so notes cannot desync rowIdx.
  */
+/**
+ * issue #3281 — the "Booked start" cell: "2026-11-14 19:30", the offering's
+ * wall clock, sortable and locale-free so a spreadsheet reads it the same
+ * everywhere. Blank when there is no readable booked start. An unknown or
+ * missing zone reads as UTC, never the phone's zone. Lives here, in the
+ * on-intent CSV chunk, so the eager web chunk does not carry it (#3493).
+ */
+export const bookedStartCsvCell = (
+  iso: string | null | undefined,
+  timeZone: string | null | undefined,
+): string => {
+  const d = new Date(typeof iso === "string" && iso.trim() !== "" ? iso : NaN);
+  if (Number.isNaN(d.getTime())) return "";
+  const shape: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  };
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-CA", { ...shape, timeZone: timeZone || "UTC" }).formatToParts(d);
+  } catch {
+    parts = new Intl.DateTimeFormat("en-CA", { ...shape, timeZone: "UTC" }).formatToParts(d);
+  }
+  const get = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+};
+
 export const serializeGuestsToCsvByOccurrence = (
   rows: ExportGuestRow[],
   dayLabels: ReadonlyMap<string, string> = new Map(),
   /** issue #3281 — the offering's zone, for the "Booked start" column. */
   timeZone: string | null = null,
 ): string => {
-  const raw = serializeGuestsToCsv(rows, undefined, dayLabels, timeZone);
+  const raw = serializeGuestsToCsv(rows, undefined, dayLabels, (iso) =>
+    bookedStartCsvCell(iso, timeZone),
+  );
   const records = splitCsvRecords(raw);
   if (records.length === 0) return raw;
   const out: string[] = [];

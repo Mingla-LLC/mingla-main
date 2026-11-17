@@ -9,13 +9,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
-  bookedStartCsvCell,
   bookedStartLine,
   doorBookedLine,
   formatBookedStart,
 } from "../bookedStart";
 import { serializeGuestsToCsv, type ExportGuestRow } from "../guestCsvExport";
-import { serializeGuestsToCsvByOccurrence, splitCsvRecords } from "../guestCsvDayOrder";
+import {
+  bookedStartCsvCell,
+  serializeGuestsToCsvByOccurrence,
+  splitCsvRecords,
+} from "../guestCsvDayOrder";
 
 describe("issue #3281 — booked start formatting", () => {
   test("nothing to show gives null / blank, never an invented time", () => {
@@ -118,9 +121,11 @@ describe("issue #3281 — which door results name the booked start", () => {
   });
 });
 
+const lagos = (iso: string | null | undefined): string => bookedStartCsvCell(iso, "Africa/Lagos");
+
 describe("issue #3281 — the guest CSV's Booked start column", () => {
   test("sits right before Day, and Day stays last", () => {
-    const [header] = splitCsvRecords(serializeGuestsToCsv(rows(), undefined, new Map(), "Africa/Lagos"));
+    const [header] = splitCsvRecords(serializeGuestsToCsv(rows(), undefined, new Map(), lagos));
     const cols = header.split(",");
     expect(cols[cols.length - 1]).toBe("Day");
     expect(cols[cols.length - 2]).toBe("Booked start");
@@ -128,7 +133,7 @@ describe("issue #3281 — the guest CSV's Booked start column", () => {
   });
 
   test("the online order shows the offering's wall clock; comp and door rows are blank; every row is as wide as the header", () => {
-    const csv = serializeGuestsToCsv(rows(), undefined, new Map([["d1", "Sat 14 Nov"]]), "Africa/Lagos");
+    const csv = serializeGuestsToCsv(rows(), undefined, new Map([["d1", "Sat 14 Nov"]]), lagos);
     const records = splitCsvRecords(csv).filter((r) => r.length > 0);
     const width = records[0].split(",").length;
     const cells = records.map(parseCsvRecord);
@@ -149,10 +154,11 @@ describe("issue #3281 — the guest CSV's Booked start column", () => {
     for (const row of records) expect(row).toHaveLength(width);
   });
 
-  test("without a zone the cell reads in UTC", () => {
+  test("without a cell writer the column stays, blank, so positions never move", () => {
     const csv = serializeGuestsToCsv(rows());
     const records = splitCsvRecords(csv).filter((r) => r.length > 0).map(parseCsvRecord);
-    expect(records[1][records[0].length - 2]).toBe("2026-11-14 23:30");
+    expect(records[0][records[0].length - 2]).toBe("Booked start");
+    expect(records[1][records[0].length - 2]).toBe("");
   });
 });
 

@@ -2,33 +2,22 @@
  * issue #3281 — the guest-chosen experience start (`orders.booked_start_at`,
  * round 1b / #3979), worded once for every Host surface that shows it: order
  * detail, the door scanner, "Find by name", the guest list and guest detail.
+ * (The CSV cell lives with the on-intent CSV code, in guestCsvDayOrder.ts.)
  *
  * The time is always read in the offering's own time zone, never the phone's:
  * a host checking a Lagos experience from Chicago must see the Lagos time the
- * guest picked. A missing or unknown zone falls back to UTC rather than the
+ * guest picked. A missing or unknown zone reads as UTC rather than the
  * phone's zone, so two phones never disagree about one booking.
  *
- * Pure: no React, no store reads.
+ * Pure and small on purpose: it sits in the eager web chunk (#3493).
  */
 
-const hasValue = (value: string | null | undefined): value is string =>
-  typeof value === "string" && value.trim().length > 0;
-
-const zoneOrUtc = (timeZone: string | null | undefined): string => {
-  if (!hasValue(timeZone)) return "UTC";
-  try {
-    // Throws RangeError for a zone the runtime does not know.
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
-    return timeZone;
-  } catch {
-    return "UTC";
-  }
-};
-
-const parse = (iso: string | null | undefined): Date | null => {
-  if (!hasValue(iso)) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d;
+const SHAPE: Intl.DateTimeFormatOptions = {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
 };
 
 /**
@@ -40,16 +29,14 @@ export const formatBookedStart = (
   iso: string | null | undefined,
   timeZone: string | null | undefined,
 ): string | null => {
-  const d = parse(iso);
-  if (d === null) return null;
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: zoneOrUtc(timeZone),
-  }).format(d);
+  const d = new Date(typeof iso === "string" && iso.trim() !== "" ? iso : NaN);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat(undefined, { ...SHAPE, timeZone: timeZone || "UTC" }).format(d);
+  } catch {
+    // An unknown zone name: UTC, never the phone's zone.
+    return new Intl.DateTimeFormat(undefined, { ...SHAPE, timeZone: "UTC" }).format(d);
+  }
 };
 
 /** The door and roster line: "Booked for Sat, Nov 14, 7:30 PM", or null. */
@@ -62,45 +49,15 @@ export const bookedStartLine = (
 };
 
 /**
- * The CSV cell: "2026-11-14 19:30" — the offering's wall-clock time, sortable
- * and locale-free so a spreadsheet reads it the same everywhere. Blank when
- * there is no booked start.
+ * The door line for one scan or name admit, or null. Only results where the
+ * booked start helps the door name it: let in, already in, or early for the
+ * time they picked. Void, wrong event, cancelled and not found never do.
  */
-export const bookedStartCsvCell = (
-  iso: string | null | undefined,
-  timeZone: string | null | undefined,
-): string => {
-  const d = parse(iso);
-  if (d === null) return "";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone: zoneOrUtc(timeZone),
-  }).formatToParts(d);
-  const get = (type: Intl.DateTimeFormatPartTypes): string =>
-    parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
-};
-
-/**
- * The scan results where the guest's booked start helps the door: let in,
- * already in, or early for the time they picked. Every other result (void,
- * wrong event, cancelled, not found) names no booking.
- */
-const DOOR_BOOKED_RESULTS: ReadonlySet<string> = new Set([
-  "success",
-  "duplicate",
-  "not_yet_open",
-]);
-
-/** The door line for one scan or name admit, or null when it has none. */
 export const doorBookedLine = (
   result: string,
   iso: string | null | undefined,
   timeZone: string | null | undefined,
 ): string | null =>
-  DOOR_BOOKED_RESULTS.has(result) ? bookedStartLine(iso, timeZone) : null;
+  result === "success" || result === "duplicate" || result === "not_yet_open"
+    ? bookedStartLine(iso, timeZone)
+    : null;
