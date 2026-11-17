@@ -523,6 +523,20 @@ BEGIN
        OR NEW.event_id IS DISTINCT FROM OLD.event_id THEN
       RAISE EXCEPTION 'rsvp_server_only' USING ERRCODE = '42501';
     END IF;
+    -- A row that was waitlisted reaches going or maybe only through the
+    -- server's promotion (promoted_at). Without this a guest could step
+    -- waitlisted -> not_going -> going past capacity.
+    IF NEW.rsvp_status IN ('going', 'maybe')
+       AND NEW.rsvp_status IS DISTINCT FROM OLD.rsvp_status
+       AND (OLD.waitlisted_at IS NOT NULL OR OLD.rsvp_status = 'waitlisted')
+       AND OLD.promoted_at IS NULL THEN
+      RAISE EXCEPTION 'rsvp_server_only' USING ERRCODE = '42501';
+    END IF;
+    -- Leaving the waitlist keeps its mark (also on legacy rows without one),
+    -- so the step above still applies to the next change.
+    IF OLD.rsvp_status = 'waitlisted' AND NEW.rsvp_status = 'not_going' THEN
+      NEW.waitlisted_at := COALESCE(OLD.waitlisted_at, now());
+    END IF;
   END IF;
   RETURN NEW;
 END;

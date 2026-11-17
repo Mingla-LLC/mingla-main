@@ -7,7 +7,7 @@
 -- MINGLA-INVARIANT: I-4459-RSVP-SERVER-APPROVAL | issue #4459 | a signed-in client can never write approval_status, promote itself off a waitlist or insert an approved RSVP; Guest chat eligibility counts an RSVP only with a server-written approval stamp
 --
 -- FAILS-ON-REVERT: drop the issue_4459_rsvp_client_guard trigger (H-1/H-2
--- fail), drop the stamp join from issue_4459_brand_guest_eligible (H-4
+-- fail), drop its waitlist-promotion step (H-2d/H-2f fail), drop the stamp join from issue_4459_brand_guest_eligible (H-4
 -- fails), drop the reopen trigger (H-6 fails), or grant EXECUTE on the
 -- server-only helpers again (H-8 fails).
 
@@ -188,6 +188,26 @@ BEGIN
   PERFORM pg_temp.ok('H-2b a client cannot promote itself off the waitlist', v_r LIKE '42501%' AND NOT pg_temp.member('b1', 'ben'));
   v_r := pg_temp.try_as('ben', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE user_id = %L', 'not_going', pg_temp.u('ben')));
   PERFORM pg_temp.ok('H-2c a client can still drop off the waitlist', v_r = 'ok');
+  -- H-2d (QA retest): the two-step (waitlisted -> not_going -> going/maybe)
+  -- is refused; only the server's promotion moves a waitlisted row on.
+  v_r := pg_temp.try_as('ben', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE user_id = %L', 'going', pg_temp.u('ben')));
+  PERFORM pg_temp.ok('H-2d a guest who left the waitlist cannot then go', v_r LIKE '42501%'
+    AND (SELECT rsvp_status FROM public.event_rsvps WHERE user_id = pg_temp.u('ben')) = 'not_going' AND NOT pg_temp.member('b1', 'ben'));
+  v_r := pg_temp.try_as('ben', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE user_id = %L', 'maybe', pg_temp.u('ben')));
+  PERFORM pg_temp.ok('H-2e nor move to maybe', v_r LIKE '42501%');
+  -- A legacy waitlisted row with no waitlisted_at keeps its mark on leaving.
+  INSERT INTO public.event_rsvps(event_id, user_id, guest_name, rsvp_status, approval_status)
+    VALUES (pg_temp.u('rsvp'), pg_temp.u('cy'), 'Cy', 'waitlisted', 'approved');
+  v_r := pg_temp.try_as('cy', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE user_id = %L', 'not_going', pg_temp.u('cy')));
+  v_r := v_r || '|' || pg_temp.try_as('cy', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE user_id = %L', 'going', pg_temp.u('cy')));
+  PERFORM pg_temp.ok('H-2f a legacy waitlisted row (no waitlisted_at) cannot two-step either', v_r LIKE 'ok|42501%'
+    AND (SELECT rsvp_status FROM public.event_rsvps WHERE user_id = pg_temp.u('cy')) = 'not_going');
+  DELETE FROM public.event_rsvps WHERE user_id = pg_temp.u('cy');
+  -- Once the server promotes it, the guest owns the row again.
+  UPDATE public.event_rsvps SET rsvp_status = 'going', promoted_at = now() WHERE user_id = pg_temp.u('ben');
+  v_r := pg_temp.try_as('ben', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE user_id = %L', 'not_going', pg_temp.u('ben')));
+  v_r := v_r || '|' || pg_temp.try_as('ben', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE user_id = %L', 'going', pg_temp.u('ben')));
+  PERFORM pg_temp.ok('H-2g a server-promoted guest can leave and come back', v_r = 'ok|ok');
 
   -- H-3: the server approving (host RPC, trigger, service role) stamps and joins.
   UPDATE public.event_rsvps SET approval_status = 'approved' WHERE id = v_rsvp;
