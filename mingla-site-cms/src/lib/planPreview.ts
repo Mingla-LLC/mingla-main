@@ -38,6 +38,7 @@ import { buildPublicationArtifact, publicationDraftDigest, stable } from "./arti
 import { composeFormatSite, type ComposeV2Result } from "./composeFormat";
 import { inventoryAndSources, parseSignedDesignPass, type StudioRecords } from "./designPassInputs";
 import type { FontPipelineDeps } from "./fontAssets";
+import { payloadFontPipeline } from "./fontAssetStore";
 import type { CoverRenditionDeps } from "./offeringCoverRenditions";
 import { samplesFor } from "./samplePacks";
 import { sha256 } from "./crypto";
@@ -109,22 +110,8 @@ export function parsePlanPreviewBody(body: unknown, envelopeScope: string): Plan
 /** Before any site exists Studio holds no records for the brand. */
 const NO_RECORDS: StudioRecords = { photos: [], destination_ids: [], stories: 0, confirmed_reviews: 0, ready_videos: 0, has_logo: false } as StudioRecords;
 
-/**
- * The plan's composition for one style: the SAME composer and inputs Build
- * uses (SC-PP4), plus — for the preview only — sample counts for a kind the
- * brand has none of, so its listing section is drawn with labelled samples.
- */
-export function composePlan(body: PlanPreviewBody, style: DesignKey): { composed: ComposeV2Result | null; samples: PlanSamples | null } {
-  const liveKinds = new Set((body.feed.offerings as AnyDoc[]).map((row) => String(row?.kind)));
-  const kind = FEED_KIND_FOR_FORMAT[body.format];
-  const listings = kind ? samplesFor(body.format, liveKinds) : [];
-  const facts = structuredClone(body.facts) as AnyDoc;
-  if (listings.length && kind && kind !== "stay") {
-    const upcoming = (facts.upcoming && typeof facts.upcoming === "object" ? facts.upcoming : {}) as AnyDoc;
-    facts.upcoming = { ...upcoming, [kind]: listings.length };
-  } else if (listings.length && kind === "stay") {
-    facts.live_stay_offerings = listings.length;
-  }
+/** Composer v2 with one set of facts (the code path Build runs). */
+function composeWith(body: PlanPreviewBody, style: DesignKey, facts: AnyDoc): ComposeV2Result | null {
   const signed = parseSignedDesignPass({
     design_key: style,
     plan: body.plan,
@@ -134,7 +121,7 @@ export function composePlan(body: PlanPreviewBody, style: DesignKey): { composed
     style_library: true,
     live_fingerprints: body.liveFingerprints,
   });
-  if (!signed?.plan) return { composed: null, samples: null };
+  if (!signed?.plan) return null;
   const { inventory, sources } = inventoryAndSources({
     signed,
     records: NO_RECORDS,
@@ -142,7 +129,7 @@ export function composePlan(body: PlanPreviewBody, style: DesignKey): { composed
     brand: body.brand,
     cover_media_id: null,
   });
-  const composed = composeFormatSite({
+  return composeFormatSite({
     plan: signed.plan,
     answers: signed.answers,
     brand: body.brand,
@@ -152,7 +139,70 @@ export function composePlan(body: PlanPreviewBody, style: DesignKey): { composed
     existing: [],
     currentWordmark: null,
   });
-  return { composed, samples: listings.length ? { strip: SAMPLE_STRIP, listings } : null };
+}
+
+const blockSignature = (block: AnyDoc): string => `${String(block.blockType)}:${String(block.variant ?? block.layout ?? "")}`;
+
+/**
+ * Sample grids only inside pages Build keeps (SC-PP4, tester P1-1). Walks the
+ * sampled composition's blocks of one page against Build's: every Build block
+ * is kept, in Build's order; a listing grid (`offering_grid`) that exists only
+ * because of the sample counts is slotted in where the composer placed it.
+ * Nothing else from the sampled composition is taken (no page, no menu item,
+ * no teaser link to a page Build won't make).
+ */
+function mergeSampleGrids(real: AnyDoc[], sampled: AnyDoc[] | undefined): { blocks: AnyDoc[]; added: number } {
+  if (!sampled) return { blocks: real, added: 0 };
+  const out: AnyDoc[] = [];
+  let next = 0;
+  let added = 0;
+  for (const block of sampled) {
+    if (next < real.length && blockSignature(real[next]!) === blockSignature(block)) {
+      out.push(real[next]!);
+      next += 1;
+    } else if (block.blockType === "offering_grid" && !real.some((kept) => kept.blockType === "offering_grid")) {
+      out.push(block);
+      added += 1;
+    }
+  }
+  while (next < real.length) { out.push(real[next]!); next += 1; }
+  return { blocks: out, added };
+}
+
+/**
+ * The plan's composition for one style (SC-PP4): Build's composer with Build's
+ * facts, so the page list, the menu and every page's `type:variant` sequence
+ * are exactly what "Start the build" makes. For a kind the brand has ZERO live
+ * rows of (§2.5), the preview may draw that format's labelled samples, but
+ * ONLY in a listing grid on a page Build keeps: the sample counts are used to
+ * learn where the composer would place the grid, never to add a page or a
+ * menu item. `sampleGrids` counts the grids added that way ("sample content
+ * aside"); with none, there are no samples and no strip.
+ */
+export function composePlan(body: PlanPreviewBody, style: DesignKey): { composed: ComposeV2Result | null; samples: PlanSamples | null; sampleGrids: number } {
+  const real = composeWith(body, style, body.facts);
+  if (!real) return { composed: null, samples: null, sampleGrids: 0 };
+  const liveKinds = new Set((body.feed.offerings as AnyDoc[]).map((row) => String(row?.kind)));
+  const kind = FEED_KIND_FOR_FORMAT[body.format];
+  const listings = kind ? samplesFor(body.format, liveKinds) : [];
+  if (!listings.length || !kind) return { composed: real, samples: null, sampleGrids: 0 };
+  const facts = structuredClone(body.facts) as AnyDoc;
+  if (kind === "stay") {
+    facts.live_stay_offerings = listings.length;
+  } else {
+    const upcoming = (facts.upcoming && typeof facts.upcoming === "object" ? facts.upcoming : {}) as AnyDoc;
+    facts.upcoming = { ...upcoming, [kind]: listings.length };
+  }
+  const sampled = composeWith(body, style, facts);
+  const bySlug = new Map((sampled?.pages ?? []).map((page) => [page.slug, page.blocks as AnyDoc[]]));
+  let sampleGrids = 0;
+  const pages = real.pages.map((page) => {
+    const merged = mergeSampleGrids(page.blocks as AnyDoc[], bySlug.get(page.slug));
+    sampleGrids += merged.added;
+    return merged.added ? { ...page, blocks: merged.blocks as typeof page.blocks } : page;
+  });
+  if (!sampleGrids) return { composed: real, samples: null, sampleGrids: 0 };
+  return { composed: { ...real, pages }, samples: { strip: SAMPLE_STRIP, listings }, sampleGrids };
 }
 
 /** The `type:variant` sequence of every page (SC-PP4 compares a Build with its preview). */
@@ -193,6 +243,23 @@ const NO_COVER_RENDITIONS: CoverRenditionDeps = {
   readStored: async () => null,
   writeStored: async () => { throw new Error("PLAN_PREVIEW_WRITES_NOTHING"); },
 };
+
+/**
+ * Fonts for a plan preview are READ ONLY (SC-PP1, tester P2-1): faces already
+ * in Studio's font store are used; a cache miss never fetches, stores a woff2
+ * under `fonts/` or saves a FontAssets row. The builder then falls back to the
+ * design's own faces (with its normal warning), exactly as when Google Fonts is
+ * unreachable. Build, which may write, warms the cache for the real site.
+ */
+export function readOnlyFontPipeline(base: FontPipelineDeps): FontPipelineDeps {
+  const refuse = async (): Promise<never> => { throw new Error("PLAN_PREVIEW_WRITES_NOTHING"); };
+  return {
+    fetch: async () => { throw new Error("PLAN_PREVIEW_FONT_CACHE_ONLY"); },
+    cachedFaces: (requestKey) => base.cachedFaces(requestKey),
+    storeFont: refuse,
+    saveFaces: refuse,
+  };
+}
 
 /** Builds one style's plan artifact in memory (validated, not stored). */
 export async function buildPlanArtifact(body: PlanPreviewBody, style: DesignKey, deps: PlanPreviewDeps, generatedAt: string): Promise<{ serialized: string; result: Omit<PlanPreviewResult, "key"> }> {
@@ -238,7 +305,7 @@ export async function buildPlanArtifact(body: PlanPreviewBody, style: DesignKey,
     sourceRevisionId: `plan-${body.planRevision}`,
     sourceDigest,
     generatedAt,
-    fontPipeline: deps.fontPipeline,
+    fontPipeline: readOnlyFontPipeline(deps.fontPipeline ?? payloadFontPipeline(deps.req)),
     coverRenditions: NO_COVER_RENDITIONS,
     planMode: {
       projection: {

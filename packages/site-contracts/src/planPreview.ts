@@ -101,13 +101,23 @@ export const SAMPLE_STRIP = "Sample listings. Your real Mingla listings replace 
 export const SAMPLE_SUBTITLE = "Your name and details, sample listings";
 export const SAMPLE_TAG = "Sample";
 
-/** True when `value` holds a `sample` key anywhere (depth-limited walk). */
-export function containsSampleContent(value: unknown, depth = 0): boolean {
-  if (depth > 40 || value === null || typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.some((entry) => containsSampleContent(entry, depth + 1));
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (key === "sample" || key === "plan_samples" || key === "preview_kind") return true;
-    if (containsSampleContent(entry, depth + 1)) return true;
+/**
+ * True when `value` holds a `sample`, `plan_samples` or `preview_kind` key at
+ * ANY depth. An explicit stack (no recursion, no depth limit), so nesting can
+ * never hide a sample past the check; each object is visited once.
+ */
+export function containsSampleContent(value: unknown): boolean {
+  const stack: unknown[] = [value];
+  const seen = new Set<object>();
+  while (stack.length) {
+    const next = stack.pop();
+    if (next === null || typeof next !== "object" || seen.has(next)) continue;
+    seen.add(next);
+    if (Array.isArray(next)) { for (const entry of next) stack.push(entry); continue; }
+    for (const [key, entry] of Object.entries(next as Record<string, unknown>)) {
+      if (key === "sample" || key === "plan_samples" || key === "preview_kind") return true;
+      stack.push(entry);
+    }
   }
   return false;
 }

@@ -22,6 +22,8 @@ import { containsSampleContent, splitPlanArtifact } from "../contracts/generated
 import { composeFormatSite } from "./composeFormat";
 import { inventoryAndSources, parseSignedDesignPass } from "./designPassInputs";
 import { composePlan, pageSequence, parsePlanPreviewBody, runPlanPreview, type PlanPreviewStore } from "./planPreview";
+// Core's facts builder (rework: the no-site facts come from the real Core code, not a literal).
+import { composeFacts } from "../../../supabase/functions/brand-site-control/designPass.ts";
 
 const BRAND = "00000000-0000-4000-8000-0000000020b1";
 const NO_RECORDS = { photos: [], destination_ids: [], stories: 0, confirmed_reviews: 0, ready_videos: 0, has_logo: false } as never;
@@ -53,17 +55,32 @@ describe("#4453 M10 tester — Studio plan preview, adversarial", () => {
     expect(preview.composed!.menu).toEqual(build.menu);
   });
 
-  it("SC-PP4 deviation 2: Core's no-site facts give the SAME type:variant sequence as Build's site facts for the same brand", () => {
+  it("SC-PP4 deviation 2: Core's no-site facts give the SAME type:variant sequence as Build's site facts for the same brand", async () => {
     const plan = { offerings_selected: ["trips"], venue_descriptor: null, story: { main_action: "Reserve the next trip" } };
     const tripId = "11111111-1111-4111-8111-000000000001";
     const feed = { ...EMPTY_FEED, offerings: [{ id: tripId, kind: "trip", slug: "porto", title: "Porto in spring", summary: null, cover: null, destination_text: "Porto",
       start_at: new Date(Date.now() + 30 * 86_400_000).toISOString(), end_at: null, timezone: "Europe/London", status: "scheduled", bookings_closed: false,
       capacity: 12, spots_left: 5, group_minimum: null, min_price_minor: 69000, currency: "GBP", has_free_tier: false,
       public_url: "https://host.usemingla.com/t/tester/porto", waitlist_enabled: false, installments_available: false }] };
-    // Core today, no site: composeFacts(null) keeps only the feed counts (bookable dates, reviews... stay 0).
-    const noSite = { ...baseFacts(), upcoming: { trip: 1, event: 0, experience: 0 }, next_offering: { trip: tripId } };
-    // Core at Build (site now exists): the same brand's open dates and Mingla reviews are read.
-    const withSite = { ...noSite, bookable: { trip: 4 }, mingla_reviews: 12 };
+    // One fake database for the brand: 4 open departures in the next 14 days and 12 Mingla reviews.
+    // Site reads (Build, site now exists) and their brand twins (plan preview, no site) answer from it.
+    const SITE = "22222222-2222-4222-8222-000000000001";
+    const db = (fn: string, args: Record<string, unknown>) => {
+      const scoped = args.p_site_id === SITE || args.p_brand_id === BRAND;
+      if (!scoped) return { data: null, error: null };
+      const base = fn.replace(/_for_brand$/, "");
+      if (base === "brand_site_compose_facts") return { data: { venues: {}, published_menu: false, mingla_reviews: 12 }, error: null };
+      if (base === "brand_site_offering_dates" && args.p_offering_id === tripId) {
+        return { data: { days: [{ local_date: "2099-01-01", slots: [{ state: "open" }, { state: "few" }, { state: "open" }, { state: "open" }, { state: "full" }] }] }, error: null };
+      }
+      return { data: null, error: null };
+    };
+    const rpc = async (fn: string, args: Record<string, unknown>) => db(fn, args);
+    // Core's REAL composeFacts: the plan preview (no site yet: by brand) and Build (by site).
+    const noSite = await composeFacts(rpc, { brandId: BRAND }, feed.offerings);
+    const withSite = await composeFacts(rpc, SITE, feed.offerings);
+    expect(withSite.bookable).toEqual({ trip: 4 });
+    expect(withSite.mingla_reviews).toBe(12);
     const body = parsePlanPreviewBody({ kind: "plan_preview", brand_id: BRAND, plan_revision: 1, format: "trips", styles: ["voyage"], plan, answers, brand, address: null, facts: noSite, feed, live_fingerprints: [] }, BRAND)!;
     const preview = composePlan(body, "voyage").composed!;
     const build = buildCompose("voyage", plan, withSite);

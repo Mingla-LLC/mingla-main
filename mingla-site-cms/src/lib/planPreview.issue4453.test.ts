@@ -25,7 +25,7 @@ import { assertArtifactV2 } from "../contracts/generated/artifactV2.ts";
 import { parsePlanPreviewKey, splitPlanArtifact, SAMPLE_STRIP } from "../contracts/generated/planPreview.ts";
 import { composeFormatSite } from "./composeFormat";
 import { inventoryAndSources, parseSignedDesignPass } from "./designPassInputs";
-import { composePlan, pageSequence, parsePlanPreviewBody, prunePlanPreviews, runPlanPreview, type PlanPreviewStore } from "./planPreview";
+import { composePlan, pageSequence, parsePlanPreviewBody, prunePlanPreviews, readOnlyFontPipeline, runPlanPreview, type PlanPreviewStore } from "./planPreview";
 import type { FontPipelineDeps } from "./fontAssets";
 
 const BRAND = "00000000-0000-4000-8000-0000000010b1";
@@ -116,6 +116,41 @@ describe("#4453 M10 Studio plan preview", () => {
       expect(pageSequence(preview)).toEqual(pageSequence(build));
       expect(preview.menu).toEqual(build.menu);
     }
+  });
+
+  it("rework P1-1 (SC-PP4): zero listings → Build's page list and menu; samples only in a grid on a page Build keeps", () => {
+    const body = parsePlanPreviewBody(raw(EMPTY_FEED), BRAND)!;
+    for (const style of body.styles) {
+      const preview = composePlan(body, style);
+      const signed = parseSignedDesignPass({ design_key: style, plan, answers, address: null, facts: facts(EMPTY_FEED), style_library: true, live_fingerprints: [] })!;
+      const { inventory, sources } = inventoryAndSources({ signed, records: { photos: [], destination_ids: [], stories: 0, confirmed_reviews: 0, ready_videos: 0, has_logo: false } as never, offerings_selected: signed.plan!.offerings_selected, brand, cover_media_id: null });
+      const build = composeFormatSite({ plan: signed.plan!, answers: signed.answers, brand, design: style, inventory, sources, existing: [], currentWordmark: null })!;
+      expect(preview.composed!.pages.map((page) => page.slug)).toEqual(build.pages.map((page) => page.slug));
+      expect(preview.composed!.menu).toEqual(build.menu);
+      expect(preview.composed!.header_cta).toEqual(build.header_cta);
+      // Samples aside: removing the sample grids gives Build's exact type:variant sequence.
+      const withoutSamples = pageSequence(preview.composed!).map((page) => ({ ...page, blocks: page.blocks.filter((block) => !block.startsWith("offering_grid:")) }));
+      expect(withoutSamples).toEqual(pageSequence(build));
+      expect(preview.sampleGrids).toBeGreaterThan(0);
+      expect(preview.samples).not.toBeNull();
+      expect(build.pages.some((page) => page.slug === "trips")).toBe(false);
+    }
+  });
+
+  it("rework P2-1 (SC-PP1): plan fonts are read only — a cache miss never fetches, stores a woff2 or saves a FontAssets row", async () => {
+    const calls: string[] = [];
+    const base: FontPipelineDeps = {
+      fetch: (async () => { calls.push("fetch"); return new Response("x"); }) as typeof fetch,
+      storeFont: async () => { calls.push("storeFont"); },
+      cachedFaces: async () => { calls.push("cachedFaces"); return null; },
+      saveFaces: async () => { calls.push("saveFaces"); },
+    };
+    const ro = readOnlyFontPipeline(base);
+    expect(await ro.cachedFaces("Inter|400")).toBeNull();
+    await expect(ro.fetch("https://fonts.googleapis.com/css2")).rejects.toThrow("PLAN_PREVIEW_FONT_CACHE_ONLY");
+    await expect(ro.storeFont("d".repeat(64), new Uint8Array([1]))).rejects.toThrow("PLAN_PREVIEW_WRITES_NOTHING");
+    await expect(ro.saveFaces("Inter|400", [])).rejects.toThrow("PLAN_PREVIEW_WRITES_NOTHING");
+    expect(calls).toEqual(["cachedFaces"]);
   });
 
   it("SC-PP3: zero listings → labelled samples in plan_samples only; publish/preview validators refuse them; Build never reads a pack", async () => {
