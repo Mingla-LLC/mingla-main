@@ -116,7 +116,25 @@ export function startMotion(root: HTMLElement, win: Window = window): () => void
     // Released when its entrance really ends (a paused or throttled page keeps the slot: rises then appear in place).
     void Promise.all(running.map((animation) => animation.finished.catch(() => undefined))).then(release);
   }
+  let entriesArrived = false;
+  // #4453 (tester P3, comments 6932770046 / 6935515341) — failsafe: a suspended, prerendered or hidden
+  // webview runs no frames, so IntersectionObserver never reports and rises would stay hidden. Reveal
+  // in place (no movement) if nothing reported by the settle time, and on becoming visible.
+  const reveal = (all: boolean): void => {
+    for (const element of [...targets, ...counters]) {
+      if (element.hasAttribute("data-in")) continue;
+      if (!all && element.getBoundingClientRect().top >= win.innerHeight) continue;
+      observer.unobserve(element);
+      element.setAttribute("data-mg-instant", "");
+      element.setAttribute("data-in", "");
+    }
+  };
+  const failsafe = win.setTimeout(() => { if (!entriesArrived) reveal(true); }, Math.max(heroSettle, settleAfter));
+  // Shown again: whatever is on screen or scrolled past appears now; below the fold still rises (frames run again).
+  const onVisible = (): void => { if (win.document.visibilityState === "visible") reveal(!entriesArrived); };
+  win.document.addEventListener("visibilitychange", onVisible);
   const observer = new IntersectionObserver((entries) => {
+    if (entries.length) entriesArrived = true;
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       const element = entry.target as HTMLElement;
@@ -134,6 +152,8 @@ export function startMotion(root: HTMLElement, win: Window = window): () => void
   }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
   for (const element of [...targets, ...counters]) observer.observe(element);
   return () => {
+    win.clearTimeout(failsafe);
+    win.document.removeEventListener("visibilitychange", onVisible);
     observer.disconnect();
     root.removeAttribute("data-mg-motion");
   };
