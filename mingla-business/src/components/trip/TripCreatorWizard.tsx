@@ -195,6 +195,7 @@ import {
 } from "../invites/LazyInvitePeopleStep";
 import {
   wizardInviteEstimateFailed,
+  wizardInviteListFailed,
   wizardInviteSummaryReady,
 } from "../invites/wizardInvitePublishGate";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
@@ -1051,6 +1052,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   };
   const inviteSummaryReady = wizardInviteSummaryReady(inviteGateInput);
   const inviteEstimateFailed = wizardInviteEstimateFailed(inviteGateInput);
+  const inviteListFailed = wizardInviteListFailed(inviteGateInput);
   const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     _plan: WizardInvitePlan | null,
@@ -2698,6 +2700,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           {step === 8 ? (
             <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
             estimateFailed={inviteEstimateFailed}
+            listFailed={inviteListFailed}
             onRetry={() => void inviteSummary.refreshAuthoritative().catch(() => undefined)} />
           ) : null}
         </View>

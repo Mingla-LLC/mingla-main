@@ -9,6 +9,7 @@ import { describe, expect, test } from "@jest/globals";
 
 import {
   wizardInviteEstimateFailed,
+  wizardInviteListFailed,
   wizardInviteSummaryReady,
 } from "../wizardInvitePublishGate";
 
@@ -60,5 +61,10 @@ describe("#4420 invite publish gate", () => {
 
   test("GP-5 invites off: never holds Publish", () => {
     expect(wizardInviteSummaryReady({ inviteEnabled: false, plan: null, quote: null, summary: { plan: failed, quote: failed } })).toBe(true);
+  });
+
+  test("GP-6 a failed saved-list read is reported", () => {
+    expect(wizardInviteListFailed({ inviteEnabled: true, plan: null, quote: null, summary: { plan: failed, quote: idle } })).toBe(true);
+    expect(wizardInviteListFailed({ inviteEnabled: false, plan: null, quote: null, summary: { plan: failed, quote: idle } })).toBe(false);
   });
 });

@@ -866,6 +866,7 @@ describe("#1780 A1 — on-screen Back waits for the invite pre-check", () => {
 // PE-2 Event and RSVP: people invited and the estimate failed → Publish waits,
 //      and the Preview step is told to say why with Try again.
 // PE-3 Try again re-reads the plan and estimate.
+// PE-4 Event and RSVP: the saved list failed → Publish waits and says why.
 // FAILS-ON-REVERT: restore the wizards' inline `inviteSummaryReady` (which
 // required a quote for every enabled plan) and PE-1 goes red; drop the
 // `estimateFailed` prop and PE-2 goes red.
@@ -933,5 +934,17 @@ describe("#4420 the Preview step never dead-ends on the delivery estimate", () =
       (mockInvite.reviewProps?.onRetry as () => void)();
     });
     expect(mockInvite.refreshes).toHaveLength(1);
+  });
+
+  test.each(PREVIEW_HOSTS)("PE-4 $name: the saved list failed → Publish waits and says why", async (host) => {
+    mockInvite.summary = {
+      ...(failedEstimateSummary(0) as Record<string, unknown>),
+      plan: { isPending: false, isFetching: false, isError: true, data: undefined },
+      quote: { isPending: true, isFetching: false, isError: false, data: undefined },
+    };
+    const tree = await mount(host.render());
+    await settle();
+    expect(buttons(tree, host.publishLabel)[0].props.disabled).toBe(true);
+    expect(mockInvite.reviewProps?.listFailed).toBe(true);
   });
 });

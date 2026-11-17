@@ -862,8 +862,13 @@ export function InvitePlanReviewSummary(props: {
   quote: WizardInviteQuote | null;
   /** #4420 — people are invited and their delivery estimate failed. */
   estimateFailed?: boolean;
+  /** #4420 — the saved invite list failed to load. */
+  listFailed?: boolean;
   onRetry?: () => void;
 }) {
+  if (props.listFailed === true) return <View style={styles.reviewSummary} testID="invite-review-list-failed"><Text style={styles.sectionTitle}>Invites</Text>
+    <Text accessibilityRole="alert" style={styles.error}>We couldn't load your invite list. Publish waits for it so no invitation is lost. Try again.</Text>
+    {props.onRetry ? <Button label="Try again" size="sm" variant="secondary" onPress={props.onRetry} /> : null}</View>;
   if (!props.plan || props.plan.selectedCount === 0) return <View style={styles.reviewSummary}><Text style={styles.sectionTitle}>Invites</Text><Text style={styles.muted}>No invitations planned.</Text></View>;
   // #4420 — say why Publish waits, and offer the fix, instead of a silently
   // disabled Publish.

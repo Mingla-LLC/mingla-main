@@ -109,6 +109,7 @@ import {
 } from "../invites/LazyInvitePeopleStep";
 import {
   wizardInviteEstimateFailed,
+  wizardInviteListFailed,
   wizardInviteSummaryReady,
 } from "../invites/wizardInvitePublishGate";
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
@@ -409,6 +410,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   };
   const inviteSummaryReady = wizardInviteSummaryReady(inviteGateInput);
   const inviteEstimateFailed = wizardInviteEstimateFailed(inviteGateInput);
+  const inviteListFailed = wizardInviteListFailed(inviteGateInput);
   const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     plan: WizardInvitePlan | null,
@@ -1263,6 +1265,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
           <><RsvpStep7Preview {...baseProps} brand={brand} onTapMiniCard={onOpenPreview} />
           <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
             estimateFailed={inviteEstimateFailed}
+            listFailed={inviteListFailed}
             onRetry={() => void persistedInvite.refreshAuthoritative().then((latest) => { setInvitePlan(latest.plan); setInviteQuote(latest.quote); }).catch(() => undefined)} /></>
         );
       default:

@@ -131,6 +131,7 @@ import {
 } from "../invites/LazyInvitePeopleStep";
 import {
   wizardInviteEstimateFailed,
+  wizardInviteListFailed,
   wizardInviteSummaryReady,
 } from "../invites/wizardInvitePublishGate";
 import type {
@@ -463,6 +464,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   };
   const inviteSummaryReady = wizardInviteSummaryReady(inviteGateInput);
   const inviteEstimateFailed = wizardInviteEstimateFailed(inviteGateInput);
+  const inviteListFailed = wizardInviteListFailed(inviteGateInput);
   const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     plan: WizardInvitePlan | null,
@@ -1286,6 +1288,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
             onConnectStripe={handleConnectStripe} />
           <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
             estimateFailed={inviteEstimateFailed}
+            listFailed={inviteListFailed}
             onRetry={() => void persistedInvite.refreshAuthoritative().then((latest) => { setInvitePlan(latest.plan); setInviteQuote(latest.quote); }).catch(() => undefined)} /></>
         );
       default:

@@ -56,3 +56,11 @@ export function wizardInviteEstimateFailed(input: WizardInviteGateInput): boolea
   return input.plan.selectedCount > 0 && input.summary.quote.isError &&
     !input.summary.quote.isFetching;
 }
+
+/**
+ * True when the saved invite list itself failed to load: Publish waits for
+ * it (the selection is unknown), so the Preview step says so with Try again.
+ */
+export function wizardInviteListFailed(input: WizardInviteGateInput): boolean {
+  return input.inviteEnabled && input.summary.plan.isError && !input.summary.plan.isFetching;
+}
