@@ -13,15 +13,36 @@ import { ShareLinksPanel } from "../sections/SharePreviewCard";
  * are told why). Desktop / Tablet / Phone and rotate sit directly below it in
  * the preview panel. Draft chips never appear here, only in the editor frame.
  */
-export function FullScreenPreviewBar({ brandName, onClose, canShare, shareReady }: {
+export function FullScreenPreviewBar({ brandName, onClose, canShare, shareReady, plan }: {
   brandName: string;
   onClose: () => void;
   /** Brand admins and owners (Core decides; this follows the publish capability). */
   canShare: boolean;
   /** A draft exists to share. */
   shareReady: boolean;
+  /**
+   * #4453 M10 — the plan preview's bar: "Preview · nothing built yet", Back to
+   * compare, and Build with this style (absent when the viewer cannot build).
+   * There is no share link for a plan preview.
+   */
+  plan?: { onBuild: (() => void) | null };
 }): React.ReactElement {
   const [shareOpen, setShareOpen] = useState(false);
+  if (plan) {
+    return (
+      <View style={styles.bar} testID="fullscreen-preview-bar">
+        <Pressable onPress={onClose} role="button" accessibilityRole="button" accessibilityLabel="Back to compare" style={styles.back} testID="preview-back">
+          <WebsiteIcon name="left" size={16} color={ui.t1} />
+          <Text style={styles.backText}>Back to compare</Text>
+        </Pressable>
+        <View style={styles.titleWrap}>
+          <Text style={styles.title} numberOfLines={1} role="heading" aria-level={1}>Preview · nothing built yet</Text>
+          <Text style={styles.brand} numberOfLines={1}>{brandName}</Text>
+        </View>
+        {plan.onBuild ? <WButton label="Build with this style" size="sm" variant="primary" onPress={plan.onBuild} testID="plan-preview-build-full" /> : null}
+      </View>
+    );
+  }
   return (
     <>
       <View style={styles.bar} testID="fullscreen-preview-bar">

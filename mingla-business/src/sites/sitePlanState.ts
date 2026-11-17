@@ -110,6 +110,8 @@ export type SitePlanState = {
   proofEnabled: boolean;
   /** #4453 — SITES_STYLE_LIBRARY for this brand (Core's value): the look pickers offer the ten styles. */
   styleLibrary: boolean;
+  /** #4453 M10 — SITES_PLAN_PREVIEW for this brand (Core sends `plan_preview` only while it is on). */
+  planPreview: boolean;
   proofCounts: { reviews: number; pastTrips: number; destinations: number; stories: number };
 };
 
@@ -205,6 +207,7 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     prefillOfferings: strings(raw.prefill_offerings),
     proofEnabled: raw.proof_enabled === true,
     styleLibrary: raw.style_library === true,
+    planPreview: raw.plan_preview === true,
     proofCounts: {
       reviews: num(obj(raw.proof_counts).reviews),
       pastTrips: num(obj(raw.proof_counts).past_trips),
