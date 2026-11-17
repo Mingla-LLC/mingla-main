@@ -167,29 +167,33 @@ SELECT pg_temp.t4420l_observe('anon');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a4', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420l_observe('other');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420l_observe('owner');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420l_observe('team');
 RESET ROLE;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a3', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420l_observe('guest');
 RESET ROLE;
-SELECT set_config('request.jwt.claims', '', true);
+SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 
 -- A-* / U-*: anon and the signed-in caller who did not book.
 DO $$
@@ -272,7 +276,8 @@ CREATE TEMP TABLE t4420l_save(step text, response jsonb);
 GRANT ALL ON t4420l_save TO authenticated;
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 -- 1. Rename the venue only: the stored street must survive the save.
 INSERT INTO t4420l_save SELECT 'venue', public.business_update_live_event_atomic(
@@ -292,7 +297,8 @@ SELECT pg_temp.t4420l_check(
   'H-RESPONSE the save response gives the host the street');
 
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 INSERT INTO t4420l_obs SELECT 'owner', 'reload1', 'hid', m.management_theme::text
   FROM public.business_management_events_view m WHERE m.id = '44240000-0000-4000-8000-000000000e01';
@@ -327,7 +333,8 @@ SELECT pg_temp.t4420l_check(
 
 -- 3. Show the address: the street returns to the public theme. 4. Hide it again.
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 SELECT public.business_update_live_event_atomic('44240000-0000-4000-8000-000000000e01',
   jsonb_build_object('core', jsonb_build_object('hideAddressUntilTicket', false)),
@@ -338,7 +345,8 @@ INSERT INTO t4420l_obs SELECT 'anon', 'shown', 'hid', e.theme::text
   FROM public.events e WHERE e.id = '44240000-0000-4000-8000-000000000e01';
 RESET ROLE;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 SELECT public.business_update_live_event_atomic('44240000-0000-4000-8000-000000000e01',
   jsonb_build_object('core', jsonb_build_object('hideAddressUntilTicket', true)),
@@ -348,7 +356,7 @@ SET LOCAL ROLE anon;
 INSERT INTO t4420l_obs SELECT 'anon', 'rehidden', 'hid', e.theme::text
   FROM public.events e WHERE e.id = '44240000-0000-4000-8000-000000000e01';
 RESET ROLE;
-SELECT set_config('request.jwt.claims', '', true);
+SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 
 SELECT pg_temp.t4420l_check(
   (SELECT payload::jsonb #>> '{business_event,location,address}' FROM t4420l_obs WHERE path = 'shown')
@@ -361,12 +369,13 @@ SELECT pg_temp.t4420l_check(
 -- D-*: duplicating a hidden event (the unpublish path builds the same draft) keeps the
 -- street: the draft's location is the stored label, as before this change (#3827).
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 CREATE TEMP TABLE t4420l_dup AS
   SELECT public.business_duplicate_event_as_draft('44240000-0000-4000-8000-000000000e02') AS r;
 RESET ROLE;
-SELECT set_config('request.jwt.claims', '', true);
+SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 SELECT pg_temp.t4420l_check(
   (SELECT e.theme #>> '{business_draft,location,venueName}' FROM public.events e
     WHERE e.id = (SELECT (r #>> '{event,id}')::uuid FROM t4420l_dup))

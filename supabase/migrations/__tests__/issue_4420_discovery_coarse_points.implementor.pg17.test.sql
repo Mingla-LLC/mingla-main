@@ -161,21 +161,24 @@ BEGIN
 END
 $$;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44230000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44230000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44230000-0000-4000-8000-0000000000a1', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420d_exact('owner');
 RESET ROLE;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44230000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44230000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44230000-0000-4000-8000-0000000000a2', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420d_exact('team');
 RESET ROLE;
 SELECT set_config('request.jwt.claims',
-  json_build_object('sub', '44230000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true);
+  json_build_object('sub', '44230000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true),
+  set_config('request.jwt.claim.sub', '44230000-0000-4000-8000-0000000000a3', true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t4420d_exact('guest');
 RESET ROLE;
-SELECT set_config('request.jwt.claims', '', true);
+SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 
 -- ---------------------------------------------------------------------------
 -- Verdicts.
