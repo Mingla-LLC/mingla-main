@@ -23,7 +23,7 @@ import {
   ARCHIVED_TOAST, DUPLICATED_TOAST, STATUS_FILTERS, STATUS_PILL, archiveQuestion, TOOL_FORM_BADGE, formSubLine, formsHash, isToolForm, formsRoute,
   placementTags, weekChange,
 } from "../lib/formsModel";
-import { archiveForm, createForm, duplicateForm, formsErrorWords, listForms } from "../services/formsService";
+import { archiveForm, createForm, duplicateForm, formsErrorWords, listForms, siteRefreshWarning } from "../services/formsService";
 
 function useFormsRoute() {
   const [route, setRoute] = useState(() => formsRoute(window.location.hash));
@@ -165,8 +165,9 @@ function FormsList({ onOpen, tab, onTab }) {
   const confirmArchive = async () => {
     setBusy(true);
     try {
-      await archiveForm(archiving.id);
-      addToast({ variant: "success", title: ARCHIVED_TOAST });
+      const { refreshed } = await archiveForm(archiving.id);
+      if (refreshed) addToast({ variant: "success", title: ARCHIVED_TOAST });
+      else siteRefreshWarning(addToast, "Archived.");
       setArchiving(null);
       retry();
     } catch (e) { addToast({ variant: "error", title: formsErrorWords(e) }); }

@@ -5,6 +5,7 @@
 // again by the RPC or function.
 import { supabase } from "../lib/supabase";
 import { fetchConfig } from "./crmService";
+import { revalidatePages } from "./websitePagesService";
 import { PHOTO_LONG_EDGE, PHOTO_STORED_MAX, PHOTO_THUMB_EDGE, PHOTO_TOO_BIG_AFTER, fitEdge, functionErrorWords, photoPrecheck } from "../lib/formsModel";
 
 export class FormsError extends Error {
@@ -39,8 +40,34 @@ async function fn(name, body) {
 export const listForms = (status = null) => rpc("admin_forms_list", { p_status: status });
 export const createForm = (name, audience, template = null) => rpc("admin_form_create", { p_name: name, p_audience: audience, p_template: template });
 export const duplicateForm = (id) => rpc("admin_form_duplicate", { p_form_id: id });
-export const archiveForm = (id) => rpc("admin_form_archive", { p_form_id: id });
-export const unarchiveForm = (id) => rpc("admin_form_unarchive", { p_form_id: id });
+
+// #4452 B27: the marketing site caches every form page with no expiry, so a change
+// to what is live shows only after Admin asks the site to refresh. Every action that
+// changes a live form goes through this one wrapper so the refresh cannot be forgotten.
+// Resolves { result, refreshed }; a failed refresh never undoes the change, the caller
+// shows siteRefreshWarning.
+export async function refreshSiteAfter(action) {
+  const result = await action();
+  let refreshed = true;
+  try { await revalidatePages(); } catch { refreshed = false; }
+  return { result, refreshed };
+}
+/** Honest warning (with a retry button) for when the change saved but the site did not refresh. */
+export function siteRefreshWarning(addToast, lead) {
+  addToast({
+    variant: "warning",
+    title: `${lead} The site has not refreshed, so the public page may still show the old version.`,
+    action: {
+      label: "Refresh site",
+      onClick: () => revalidatePages().then(
+        () => addToast({ variant: "success", title: "The site refreshed." }),
+        () => addToast({ variant: "error", title: "The site still did not refresh. Try again in a minute." }),
+      ),
+    },
+  });
+}
+export const archiveForm = (id) => refreshSiteAfter(() => rpc("admin_form_archive", { p_form_id: id }));
+export const unarchiveForm = (id) => refreshSiteAfter(() => rpc("admin_form_unarchive", { p_form_id: id }));
 
 // ── One form ────────────────────────────────────────────────────────────────
 /** { form, draft, draft_rev, live_version, versions, own_page } */
@@ -48,7 +75,7 @@ export const getForm = (id) => rpc("admin_form_get", { p_form_id: id });
 /** Raises PT409 form_draft_conflict on a stale rev; returns { draft_rev }. */
 export const saveFormDraft = (id, rev, draft) => rpc("admin_form_save_draft", { p_form_id: id, p_expected_rev: rev, p_draft: draft });
 /** Raises 22023 publish_check_failed (DETAIL = the failing list) or PT409; returns { version }. */
-export const publishForm = (id, rev) => rpc("admin_form_publish", { p_form_id: id, p_expected_rev: rev });
+export const publishForm = (id, rev) => refreshSiteAfter(() => rpc("admin_form_publish", { p_form_id: id, p_expected_rev: rev }));
 
 // ── Automations ─────────────────────────────────────────────────────────────
 /** { draft, draft_rev, enabled, stops, live_version, kinds, steps, kpis, can_edit } */

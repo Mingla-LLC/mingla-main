@@ -22,7 +22,7 @@ export const formsErrorWords = (e) => e?.message || "x";
 export const saveAutomationDraft = async () => ({}); export const publishAutomation = async () => ({});
 export const setAutomationEnabled = async () => ({}); export const testWholeFlow = async () => ({});
 export const getAutomation = async () => ({}); export const getForm = async () => ({}); export const saveFormDraft = async () => ({});
-export const archiveForm = async () => ({}); export const createForm = async () => ({}); export const duplicateForm = async () => ({});
+export const archiveForm = async () => ({ refreshed: true }); export const siteRefreshWarning = () => {}; export const createForm = async () => ({}); export const duplicateForm = async () => ({});
 `;
 
 let h;

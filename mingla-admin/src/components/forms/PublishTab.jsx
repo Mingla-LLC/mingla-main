@@ -8,8 +8,7 @@ import { Button } from "../ui/Button";
 import { useToast } from "../../context/ToastContext";
 import { Panel } from "./formsUi";
 import { serverCheckLines } from "../../lib/formsModel";
-import { formsErrorWords, publishForm } from "../../services/formsService";
-import { revalidatePages } from "../../services/websitePagesService";
+import { formsErrorWords, publishForm, siteRefreshWarning } from "../../services/formsService";
 
 export function PublishTab({ form, def, flow, review, canEdit, meta, rev, dirty, flush, reload }) {
   const { addToast } = useToast();
@@ -21,9 +20,9 @@ export function PublishTab({ form, def, flow, review, canEdit, meta, rev, dirty,
     setServerLines([]);
     try {
       if (dirty) await flush();
-      const res = await publishForm(form.id, rev);
-      await revalidatePages().catch(() => addToast({ variant: "warning", title: "Published. The site did not refresh yet; it will within a minute." }));
-      addToast({ variant: "success", title: `Published version ${res.version}. It updates everywhere it already shows.` });
+      const { result: res, refreshed } = await publishForm(form.id, rev);
+      if (refreshed) addToast({ variant: "success", title: `Published version ${res.version}. It updates everywhere it already shows.` });
+      else siteRefreshWarning(addToast, `Published version ${res.version}.`);
       await reload();
     } catch (e) {
       if (/publish_check_failed/.test(e.message || "")) setServerLines(serverCheckLines(e.detail, def, flow));
