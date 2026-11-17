@@ -23,7 +23,7 @@ import { SHARED_BLOCK_LAYOUTS } from "../designs/shared/library";
 import type { SharedContext } from "../designs/shared/parts";
 import { OfferingGridPhotoCard } from "../designs/voyage/blocks/OfferingGridPhotoCard";
 import { showsDraftHints } from "./previewPublication";
-import { withSharedView, withoutLinksTo } from "./sharedView";
+import { hiddenPaths, withSharedView, withoutLinksTo } from "./sharedView";
 
 const NOW = new Date("2026-10-26T12:00:00Z");
 const TEAM_ID = `preview-${"c".repeat(32)}`;
@@ -69,5 +69,23 @@ describe("#4453 M8 a share view carries nothing that must never be public", asyn
     expect(text).not.toContain("private-hire");
     expect(text).toContain("/trips");
     expect(JSON.stringify(withoutLinksTo({ a: [{ href: "https://x.test/private-hire" }] }, new Set(["private-hire"])))).toContain("https://x.test/private-hire");
+  });
+
+  it("a page whose parent is disabled is hidden too, with every link to it, even when it is enabled itself", () => {
+    const template = base.pages[1]!;
+    const artifact = {
+      ...base,
+      pages: [...base.pages,
+        { ...template, path: "hire", enabled: false },
+        { ...template, path: "hire/weddings", enabled: true },
+        { ...template, path: "hire/weddings/venues", enabled: true }],
+      navigation: { ...base.navigation, items: [...base.navigation.items, { label: "Weddings", href: "/hire/weddings" }, { label: "Venues", href: "/hire/weddings/venues?x=1" }] },
+      footer: { ...base.footer, columns: [{ heading: "Pages", links: [{ label: "Weddings", href: "/hire/weddings/" }, { label: "Trips", href: "/trips" }] }] },
+    } as unknown as ArtifactV2;
+    const shared = withSharedView(artifact);
+    expect(shared.pages.some((page) => page.path.startsWith("hire"))).toBe(false);
+    expect(JSON.stringify(shared.navigation) + JSON.stringify(shared.footer)).not.toContain("hire");
+    expect(JSON.stringify(shared.footer)).toContain("/trips");
+    expect([...hiddenPaths(artifact.pages)].sort()).toEqual(["hire", "hire/weddings", "hire/weddings/venues"]);
   });
 });

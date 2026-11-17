@@ -56,11 +56,31 @@ export function withoutLinksTo<T>(value: T, hidden: ReadonlySet<string>): T {
   return walk(value) as T;
 }
 
+const trimPath = (path: string): string => path.replace(/^\/+|\/+$/g, "");
+
+/**
+ * The page tree as one walk: a page is hidden when it is disabled, or when any
+ * page above it in the path ("a" above "a/b") is disabled, even if it is enabled
+ * itself. Links to every hidden page are removed by `withoutLinksTo`.
+ */
+export function hiddenPaths(pages: ReadonlyArray<{ path: string; enabled: boolean }>): Set<string> {
+  const disabled = new Set(pages.filter((page) => !page.enabled).map((page) => trimPath(page.path)));
+  const hidden = new Set(disabled);
+  for (const page of pages) {
+    const path = trimPath(page.path);
+    const parts = path.split("/");
+    for (let depth = 1; depth < parts.length; depth += 1) {
+      if (disabled.has(parts.slice(0, depth).join("/"))) hidden.add(path);
+    }
+  }
+  return hidden;
+}
+
 export function withSharedView<T extends SiteArtifact>(artifact: T): T {
   const relabelled = { ...artifact, publication_id: sharedViewPublicationId(artifact.publication_id) } as T;
   if (!isV2Artifact(relabelled)) return relabelled;
-  const hidden = new Set(relabelled.pages.filter((page) => !page.enabled).map((page) => page.path.replace(/^\/+|\/+$/g, "")));
+  const hidden = hiddenPaths(relabelled.pages);
   if (hidden.size === 0) return relabelled;
   const { pages, ...rest } = relabelled;
-  return { ...withoutLinksTo(rest, hidden), pages: pages.filter((page) => page.enabled).map((page) => withoutLinksTo(page, hidden)) } as T;
+  return { ...withoutLinksTo(rest, hidden), pages: pages.filter((page) => !hidden.has(trimPath(page.path))).map((page) => withoutLinksTo(page, hidden)) } as T;
 }

@@ -1168,6 +1168,7 @@
         "mingla-sites/package.json",
         "mingla-sites/src/lib/previewPublication.ts",
         "mingla-business/src/components/sites/website/preview/FullScreenPreviewBar.tsx",
+        "mingla-business/src/components/sites/website/preview/SitePreviewPanel.tsx",
         "mingla-business/src/components/sites/website/sections/SharePreviewCard.tsx",
         "mingla-business/src/utils/shareLinkAddress.ts",
         "mingla-sites/src/app/preview/share/[token]/not-found.tsx",
