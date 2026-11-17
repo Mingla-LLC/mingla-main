@@ -36,6 +36,10 @@ export const ARI_CMS_ACTIONS: ReadonlySet<string> = new Set([
   "propose_site_imagery",
   "propose_site_collection_entry",
   "log_work",
+  // #4453 milestone 7 — Ari's design pass (Core checks SITES_ARI_DESIGN_PASS, designPass.ts).
+  "get_site_design_brief",
+  "propose_site_design_pass",
+  "propose_site_chrome",
 ]);
 
 /** Designer actions: Studio answers them unmapped (named refusals with detail); Core attaches evidence. */

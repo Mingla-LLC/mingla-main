@@ -201,9 +201,10 @@ describe("#4453 composer v2 — never invents (Constitution 9)", () => {
 describe("#4453 composer v2 — formats, secondaries and styles", () => {
   it("primary follows the main action; a second tick adds its listing page and ≤ 2 Home sections", () => {
     const input = full("trips");
-    input.plan = { ...input.plan, offerings_selected: ["trips", "events"], story: { ...input.plan.story, main_action: "Buy tickets" } };
-    const byAction = composeFormatSite(input);
-    expect(byAction?.format).toBeDefined();
+    input.plan = { ...input.plan, offerings_selected: ["trips", "events"], story: { ...input.plan.story, main_action: "Come to an event" } };
+    const byAction = composeFormatSite(input)!;
+    expect(byAction.format).toBe("events");
+    expect(byAction.secondary).toEqual(["trips"]);
     const both = composeFormatSite({ ...input, plan: { ...input.plan, story: { why: "x" } } })!;
     expect(both.format).toBe("trips");
     expect(both.secondary).toEqual(["events"]);

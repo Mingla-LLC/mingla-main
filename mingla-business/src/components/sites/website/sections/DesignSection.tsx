@@ -12,6 +12,8 @@ import { useFontSearch, useSetSiteCover, useSiteCover } from "../../../../sites/
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 import { useQueryClient } from "@tanstack/react-query";
+import { useBrandSitePlan } from "../../../../sites/planApi";
+import { lookPickerKeys, planFormatOf, styleFitLabel } from "../../../../sites/styleLibrary";
 import {
   DESIGN_KEYS,
   DESIGNS,
@@ -236,13 +238,20 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
   const ctx = useWebsite();
   // Each tile's headline is drawn in that design's own heading font (web).
   const drawable = useFontSpecimens(ctx.controller.siteId, DESIGN_KEYS.map((key) => DESIGNS[key].fonts.display.family));
+  // #4453 — SITES_STYLE_LIBRARY (Core's value): the ten styles with their fit, else Atelier and Voyage.
+  const plan = useBrandSitePlan(ctx.brandId);
+  const styleLibrary = plan.data?.styleLibrary === true;
+  const keys = lookPickerKeys(styleLibrary, design.key);
+  const format = styleLibrary ? planFormatOf(plan.data?.plan) : null;
+  const currentFit = styleFitLabel(format, design.key);
   return (
     <Card testID="design-designs">
       <CardTitle>Design</CardTitle>
       <Hint style={styles.cardHint}>Switching keeps all your words, photos and pages. Colours and fonts reset to the new design&apos;s, and you can undo before saving.</Hint>
       <View style={styles.tiles} role="radiogroup" accessibilityLabel="Design">
-        {DESIGN_KEYS.map((key) => {
+        {keys.map((key) => {
           const option = DESIGNS[key];
+          const fit = styleFitLabel(format, key);
           const checked = option.key === design.key;
           const colors = option.tokens.colors as unknown as Record<string, unknown>;
           const ramp = colors.accent as { seed?: string; ramp?: Record<number, string> } | undefined;
@@ -279,11 +288,18 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
                   {checked ? <Chip label="In use" tone="accent" /> : null}
                 </View>
                 <Text style={styles.tileDesc}>{option.description}</Text>
+                {fit ? (
+                  <View style={styles.fitRow} testID={`design-fit-${key}`}>
+                    <Chip label={fit.label} tone={fit.fit === "avoid" ? "warn" : fit.fit === "pick" ? "accent" : "neutral"} />
+                    <Text style={styles.tileDesc}>{fit.reason}</Text>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
           );
         })}
       </View>
+      {currentFit?.warning ? <View testID="design-avoid-warning"><Hint>{currentFit.warning}</Hint></View> : null}
     </Card>
   );
 }
@@ -659,6 +675,7 @@ function MinglaPageCard({ design, fonts, value, onChange, disabled }: {
 }
 
 const styles = StyleSheet.create({
+  fitRow: { gap: 6, marginTop: 8, alignItems: "flex-start" },
   grow: { flex: 1, minWidth: 0 },
   cardHint: { marginBottom: 12 },
   cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
