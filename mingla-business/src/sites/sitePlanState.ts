@@ -110,6 +110,8 @@ export type SitePlanState = {
   proofEnabled: boolean;
   /** #4453 — SITES_STYLE_LIBRARY for this brand (Core's value): the look pickers offer the ten styles. */
   styleLibrary: boolean;
+  /** #4453 milestone 11 — SITES_ARI_ADD_PAGE for this brand (Core's value): "Add a page with Ari" shows. */
+  ariAddPage: boolean;
   proofCounts: { reviews: number; pastTrips: number; destinations: number; stories: number };
 };
 
@@ -205,6 +207,7 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     prefillOfferings: strings(raw.prefill_offerings),
     proofEnabled: raw.proof_enabled === true,
     styleLibrary: raw.style_library === true,
+    ariAddPage: raw.ari_add_page === true,
     proofCounts: {
       reviews: num(obj(raw.proof_counts).reviews),
       pastTrips: num(obj(raw.proof_counts).past_trips),

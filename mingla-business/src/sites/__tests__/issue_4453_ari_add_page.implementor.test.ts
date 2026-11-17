@@ -1,0 +1,52 @@
+/*
+ * #4453 milestone 11 (spec v2.1 §3, SC-AP-Web/iOS/Android) — the Host app's
+ * "Add a page with Ari": Core's SITES_ARI_ADD_PAGE value is the only gate
+ * (flag off = today's Pages section), the chips are the four approved ones
+ * (no "Gift ideas", N7), the plan card has its owner words, and the Draft
+ * page card answers, publishes and removes through the owner's content
+ * actions only.
+ */
+import { readFileSync } from "fs";
+import { join } from "path";
+import { normalizeSitePlan } from "../sitePlanState";
+import { WRITE_TOOL_OWNER_COPY } from "../../components/ari/toolProposalCopy";
+import { ARI_PAGE_CHIPS, ariPagePrompt, unsellableOffer } from "../../../../packages/site-contracts/src/ariPage";
+
+const BRAND = "733bc470-45e1-4684-8896-acd7e26074ff";
+const pages = readFileSync(join(__dirname, "../../components/sites/website/sections/PagesSection.tsx"), "utf8");
+const api = readFileSync(join(__dirname, "../contentApi.ts"), "utf8");
+
+describe("#4453 milestone 11 Add a page with Ari (Host app)", () => {
+  it("reads Core's flag; anything but true is off", () => {
+    expect(normalizeSitePlan(BRAND, { ari_add_page: true }).ariAddPage).toBe(true);
+    expect(normalizeSitePlan(BRAND, { ari_add_page: "true" }).ariAddPage).toBe(false);
+    expect(normalizeSitePlan(BRAND, {}).ariAddPage).toBe(false);
+  });
+
+  it("the button shows only while the flag is on (flag off = today's Pages section)", () => {
+    expect(pages).toContain('const ariAddPage = ctx.plan?.ariAddPage === true;');
+    expect(pages).toContain('{ariAddPage ? <WButton label="Add a page with Ari"');
+  });
+
+  it("offers the four approved chips, never gift ideas, and seeds Ari's composer with the owner's topic", () => {
+    expect(ARI_PAGE_CHIPS).toEqual(["Private hire", "Our team", "Weddings and celebrations", "Group bookings"]);
+    for (const chip of ARI_PAGE_CHIPS) expect(unsellableOffer(chip)).toBeNull();
+    expect(unsellableOffer("Gift ideas")).not.toBeNull();
+    expect(ariPagePrompt("Private hire")).toBe("Add a page to my website about private hire");
+    expect(pages).toContain("useAriSeedStore.getState().setSeed(ariPagePrompt(text))");
+  });
+
+  it("the plan card and the answer card have owner words", () => {
+    expect(WRITE_TOOL_OWNER_COPY.propose_site_page).toBeDefined();
+    expect(JSON.stringify(WRITE_TOOL_OWNER_COPY.propose_site_page)).toContain("Add as a Draft");
+    expect(WRITE_TOOL_OWNER_COPY.answer_site_page_question).toBeDefined();
+  });
+
+  it("the Draft page card answers, publishes and removes only through the owner's content actions", () => {
+    for (const action of ["ari_page_answer", "ari_page_accept", "ari_page_remove"]) expect(api).toContain(`"${action}"`);
+    expect(pages).toContain("Ari needs this");
+    expect(pages).toContain("Only you see these questions.");
+    expect(pages).toContain("Those rows stay hidden.");
+    expect(pages).toContain('label="Publish this page"');
+  });
+});
