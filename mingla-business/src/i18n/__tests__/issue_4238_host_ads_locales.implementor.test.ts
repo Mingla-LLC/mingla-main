@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOST-ADS-ALL-LOCALES | issue #4238 W6a | Every Promote builder string ships in all 29 Host locales (English in locales/en/hostAds.json, others in locales/<lang>/hostAds.json, machine-translated with no human review: standing rule) with the same placeholders, the lazy language groups load them, and no locale names a payment provider or uses Mingla's internal words in English.
+// MINGLA-INVARIANT: I-4238-HOST-ADS-ALL-LOCALES | issue #4238 | W6a: Every Promote builder string ships in all 29 Host locales (English in locales/en/hostAds.json, others in locales/<lang>/hostAds.json, machine-translated with no human review: standing rule) with the same placeholders, the lazy language groups load them, and no locale names a payment provider or uses Mingla's internal words in English.
 /**
  * FAILS-ON-REVERT: deleting a key from any hostAds.json, adding an English
  * key without translating it, dropping a {{placeholder}}, unwiring a language

@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-EDIT-TOTAL-IS-DAILY-TIMES-DAYS-LEFT | issue #4238 rework 1 | The live edit sheet starts from the plan's daily in the brand's money (server plan_daily_credit_cents) and sends the new total as spent + daily credit × days left to the end date; an unknown daily hides the stepper and never sends a total built on it.
+// MINGLA-INVARIANT: I-4238-EDIT-TOTAL-IS-DAILY-TIMES-DAYS-LEFT | issue #4238 | rework 1: The live edit sheet starts from the plan's daily in the brand's money (server plan_daily_credit_cents) and sends the new total as spent + daily credit × days left to the end date; an unknown daily hides the stepper and never sends a total built on it.
 /**
  * #4238 rework 1 (after the tester FAIL on 27212fe70f) — Host app side.
  *

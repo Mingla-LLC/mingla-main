@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-ONE-PAUSE-CONFIRM | issue #4238 rework 5 | Every Host ad Pause (the ad detail page and the Home ad tile) asks first with the same money-stating confirm (hostAdPauseConfirmWords: what stays held, in what the Host pays); the confirm pauses only the ad it was opened for.
+// MINGLA-INVARIANT: I-4238-ONE-PAUSE-CONFIRM | issue #4238 | rework 5: Every Host ad Pause (the ad detail page and the Home ad tile) asks first with the same money-stating confirm (hostAdPauseConfirmWords: what stays held, in what the Host pays); the confirm pauses only the ad it was opened for.
 /**
  * #4238 rework 5 (native P2-1): the Home ad tile's Pause paused at once with
  * no confirm (iOS ios-04). It now opens the same "Pause this ad?" confirm as

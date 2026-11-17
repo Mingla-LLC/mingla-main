@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-W6C-DAILY-EDIT | issue #4238 W6c | The edit sheet steps the DAILY amount the Host pays (15% fee inside, via hostAdPlanBudget / hostAdPayFromCredit), shows the run total and the extra to hold, sends the TOTAL in credit, and never steps below the one-ad-set minimum; a notice for another brand switches to it only when the person is on that team, else says so; statements and receipts show the ad's name.
+// MINGLA-INVARIANT: I-4238-W6C-DAILY-EDIT | issue #4238 | W6c: The edit sheet steps the DAILY amount the Host pays (15% fee inside, via hostAdPlanBudget / hostAdPayFromCredit), shows the run total and the extra to hold, sends the TOTAL in credit, and never steps below the one-ad-set minimum; a notice for another brand switches to it only when the person is on that team, else says so; statements and receipts show the ad's name.
 /**
  * FAILS-ON-REVERT (each fix deleted, suite failed, restored; hash in the issue comment):
  * - hostAdEditDailyMoney sending the daily pay as credit (no hostAdPlanBudget) → "daily edit" fails;

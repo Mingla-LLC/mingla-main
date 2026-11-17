@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOST-AD-SHEET-PINNED-FOOTER | issue #4238 rework 3 | Every Host ads sheet built on SheetFrame (edit budget, Ari confirm, withdraw, receipts, statement, compare, share) and the top-up sheet render their body in SheetScrollLayout with the action buttons in its pinned footer, inside a flex:1 / minHeight:0 frame, so Save stays reachable on a 1280x800 window.
+// MINGLA-INVARIANT: I-4238-HOST-AD-SHEET-PINNED-FOOTER | issue #4238 | rework 3: Every Host ads sheet built on SheetFrame (edit budget, Ari confirm, withdraw, receipts, statement, compare, share) and the top-up sheet render their body in SheetScrollLayout with the action buttons in its pinned footer, inside a flex:1 / minHeight:0 frame, so Save stays reachable on a 1280x800 window.
 /**
  * #4238 rework 3 (after retest 3, FAIL at a1c5958958) — Host app side.
  *

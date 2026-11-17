@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-GOAL-SWITCH-TRACKED-AT-CREATE | issue #4238 | startGoalPromotion saves new_adset_id (with cleanup_required) on its pending row immediately after Meta creates the ad set and before any ad is copied; if that save fails the new ad set is paused and the row fails.
 /**
  * #4238 item 4 — the provider side of the goal ladder (see adGoalLadder.ts).
  *
@@ -205,7 +206,6 @@ export async function startGoalPromotion(deps: {
     // leaves a pending row that names the ACTIVE ad set, so the next sweep's
     // finish step pauses it (cleanUpNewAdSet) instead of leaving it untracked.
     // Only a completed copy below clears the mark.
-    // MINGLA-INVARIANT: I-4238-GOAL-SWITCH-TRACKED-AT-CREATE | issue #4238 | startGoalPromotion saves new_adset_id (with cleanup_required) on its pending row immediately after Meta creates the ad set and before any ad is copied; if that save fails the new ad set is paused and the row fails.
     const { error: trackError } = await db.from("ad_plan_automation_events")
       .update({
         detail: {

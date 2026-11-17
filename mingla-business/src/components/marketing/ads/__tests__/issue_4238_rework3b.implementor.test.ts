@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-DAY-BY-DAY-TERMS-ALL-LOCALES | issue #4238 rework 3b (rework 4 reshaped) | The detail "Day by day" terms line exists in all 29 Host locales and resolves through the Host copy helper. (The Home Ads total moved to rework 4: one shared summary line for Home and Promote.)
+// MINGLA-INVARIANT: I-4238-DAY-BY-DAY-TERMS-ALL-LOCALES | issue #4238 | rework 3b (rework 4 reshaped): The detail "Day by day" terms line exists in all 29 Host locales and resolves through the Host copy helper. (The Home Ads total moved to rework 4: one shared summary line for Home and Promote.)
 // #4238 rework 4: behaviour only. Locale files are LOADED as modules (executed),
 // never read as text (I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN).
 import { hm } from "../hostAdManageCopy";

@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-ARI-SOLD-OUT-QUIET | issue #4238 rework 4 | Ari never suggests a budget change or a new video for an ad with no stock left (only accept_last_tickets), and the stop reason Ari reads is the NEWEST pause or end event's, never an older one.
+// MINGLA-INVARIANT: I-4238-ARI-SOLD-OUT-QUIET | issue #4238 | rework 4: Ari never suggests a budget change or a new video for an ad with no stock left (only accept_last_tickets), and the stop reason Ari reads is the NEWEST pause or end event's, never an older one.
 // Issue #4238 rework 4 (retest 4 P3-2, P3-3, P3-4).
 //
 // FAILS-ON-REVERT: delete `!soldOut &&` from the lower branch -> "sold out" fails;

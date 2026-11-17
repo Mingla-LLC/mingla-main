@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-HOME-PROMOTE-ONE-TOTAL | issue #4238 rework 4 | The Home Ads card total and the Promote summary derive from ONE function (hostAdListSummaryLine over the server's "this month" summary): for the same data they show identical figures, in pay terms, ended ads included.
+// MINGLA-INVARIANT: I-4238-HOME-PROMOTE-ONE-TOTAL | issue #4238 | rework 4: The Home Ads card total and the Promote summary derive from ONE function (hostAdListSummaryLine over the server's "this month" summary): for the same data they show identical figures, in pay terms, ended ads included.
 /**
  * #4238 rework 4 (retest 4 P2-1, P3-1, P3-5). Behaviour tests: the real
  * HomeAdsSection and AdListSummaryCard are rendered; nothing reads source text.

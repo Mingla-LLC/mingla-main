@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-BUILDER-PAY-TERMS | issue #4238 W6a | Every amount the Promote builder shows is what the Host pays (15% Mingla fee inside, one HOST_FEE_RATIO), the minimum shown is the server's *_daily_minimum_pay_cents (never the credit figure), the budget sent to the server is credit (pay x 0.85), the top-up is the plain pay-terms difference, and Launch stays off until every app's check passed, the rights are confirmed and the credit covers the hold.
+// MINGLA-INVARIANT: I-4238-BUILDER-PAY-TERMS | issue #4238 | W6a: Every amount the Promote builder shows is what the Host pays (15% Mingla fee inside, one HOST_FEE_RATIO), the minimum shown is the server's *_daily_minimum_pay_cents (never the credit figure), the budget sent to the server is credit (pay x 0.85), the top-up is the plain pay-terms difference, and Launch stays off until every app's check passed, the rights are confirmed and the credit covers the hold.
 /**
  * FAILS-ON-REVERT: changing HOST_AD_FEE_RATIO, sending the pay figure as the
  * delivery budget, showing the credit minimum, or letting Launch through a

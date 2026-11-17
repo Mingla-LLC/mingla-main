@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-W6B-PAY-TERMS | issue #4238 W6b | The ad detail, Promote home, edit sheet, Ari suggestion confirm and withdraw show what the Host PAYS (credit ÷ 0.85); an edit sends credit back (pay × 0.85); a suggestion sends only its suggestion_id; a stop shows its true reason; no Host word names a payment provider; ad notices deep-link to the ad.
+// MINGLA-INVARIANT: I-4238-W6B-PAY-TERMS | issue #4238 | W6b: The ad detail, Promote home, edit sheet, Ari suggestion confirm and withdraw show what the Host PAYS (credit ÷ 0.85); an edit sends credit back (pay × 0.85); a suggestion sends only its suggestion_id; a stop shows its true reason; no Host word names a payment provider; ad notices deep-link to the ad.
 /**
  * FAILS-ON-REVERT (each was deleted, the suite failed, then restored):
  * - hostAdCreditCard showing the wallet as credit (no hostAdPayFromCredit) → "credit card" fails;
