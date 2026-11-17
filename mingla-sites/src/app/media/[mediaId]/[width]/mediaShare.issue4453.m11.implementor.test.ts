@@ -143,7 +143,7 @@ describe("#4453 M11 /media with a share token", () => {
     const now = Date.parse("2026-11-17T10:00:00Z");
     core.expiresAt = new Date(now + 5_000).toISOString();
     await expect(sharedArtifactForAsset(TOKEN, host.value, now)).resolves.toMatchObject({ site_id: SITE_A });
-    // Still inside the 30 s hold, but past the link's own expiry.
+    // Past the link's own expiry (Core is asked again on every request).
     await expect(sharedArtifactForAsset(TOKEN, host.value, now + 6_000)).rejects.toThrow("NOT_FOUND");
   });
 
@@ -151,6 +151,17 @@ describe("#4453 M11 /media with a share token", () => {
     serve(storedPreview());
     core.live = false;
     expect((await get(SHOWN, shareQuery)).status).toBe(404);
+  });
+
+  it("#4453 final pass (tester P3-1): revocation is honoured at once, with no 30 s window", async () => {
+    serve(storedPreview());
+    expect((await get(SHOWN, shareQuery)).status).toBe(200);
+    // Revoked a moment later: the very next request is refused (nothing from the first answer is reused).
+    core.live = false;
+    expect((await get(SHOWN, shareQuery)).status).toBe(404);
+    // Core reachable and live again: served again, so a failure is never held either.
+    core.live = true;
+    expect((await get(SHOWN, shareQuery)).status).toBe(200);
   });
 
   it("the preview key never works as `s`, and the share token never works as `k`", async () => {

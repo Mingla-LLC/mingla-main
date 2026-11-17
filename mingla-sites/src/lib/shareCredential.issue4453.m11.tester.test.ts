@@ -76,11 +76,12 @@ describe("#4453 m11 tester: a share view hands out nothing that opens /preview o
     const { artifact, key, draftPicture } = previewWithDraft();
     clearSharedAssetCache();
     const now = Date.now();
-    const scoped = await sharedArtifactForAsset(TOKEN, HOST, now, (async () => ({ artifact, key, expiresAt: new Date(now + 5_000).toISOString() })) as never);
+    const load = (async () => ({ artifact, key, expiresAt: new Date(now + 5_000).toISOString() })) as never;
+    const scoped = await sharedArtifactForAsset(TOKEN, HOST, now, load);
     const text = JSON.stringify(scoped);
     expect(text).not.toContain(draftPicture);
     expect(text).not.toContain("private-hire");
-    // a held answer still dies at the link's own expiry (inside the 30 s hold)
-    await expect(sharedArtifactForAsset(TOKEN, HOST, now + 6_000)).rejects.toThrow("NOT_FOUND");
+    // the answer dies at the link's own expiry (#4453 final pass: Core is asked on every request, no hold)
+    await expect(sharedArtifactForAsset(TOKEN, HOST, now + 6_000, load)).rejects.toThrow("NOT_FOUND");
   });
 });

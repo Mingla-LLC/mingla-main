@@ -64,15 +64,18 @@ export async function previewArtifactForAsset(rawKey: string, host: string, now 
  * the SHARE VIEW of the site's newest preview (`withSharedView`: no hidden or
  * Draft-by-Ari page, no link to one), and its media list is narrowed to the
  * files that view itself names (by URL or id), so a picture only a hidden or Draft page uses
- * is a 404 too. Core is asked again after the same 30 s hold, and the link's
- * own expiry is checked on every request, so an expired link's media die with
- * it. A token of another site, or none Core answers for, is a 404.
+ * is a 404 too. #4453 final pass (tester P3-1, comment 6945336387): Core is
+ * asked on EVERY share-asset request (no time hold), so a revoked or expired
+ * link's media are refused at once. Only lookups still in flight are shared by
+ * concurrent requests; nothing is kept once Core has answered. A token of
+ * another site, or none Core answers for, is a 404, and a failed lookup fails
+ * closed.
  */
-const sharedHeld = new Map<string, { value: Promise<{ artifact: SiteArtifact; expiresAt: string | null }>; expires: number }>();
+const sharedInFlight = new Map<string, Promise<{ artifact: SiteArtifact; expiresAt: string | null }>>();
 
-/** Test hook: forget every held share answer. */
+/** Test hook: forget every in-flight share lookup. */
 export function clearSharedAssetCache(): void {
-  sharedHeld.clear();
+  sharedInFlight.clear();
 }
 
 /** The share view with `media` cut to what the view's own pages, settings and blocks name. */
@@ -95,19 +98,15 @@ export async function sharedArtifactForAsset(
 ): Promise<SiteArtifact> {
   if (!SHARE_TOKEN.test(rawToken)) throw new Error("NOT_FOUND");
   const id = `${host}|${rawToken}`;
-  const entry = sharedHeld.get(id);
-  const value = entry && entry.expires > now
-    ? entry.value
-    : (() => {
-      const loaded = load(host, rawToken).then(({ artifact, expiresAt }) => ({ artifact: shareScopedArtifact(artifact), expiresAt }));
-      for (const [name, row] of sharedHeld) if (row.expires <= now) sharedHeld.delete(name);
-      if (sharedHeld.size >= MAX_HELD) sharedHeld.clear();
-      sharedHeld.set(id, { value: loaded, expires: now + HOLD_MS });
-      loaded.catch(() => {
-        if (sharedHeld.get(id)?.value === loaded) sharedHeld.delete(id);
-      });
-      return loaded;
-    })();
+  let value = sharedInFlight.get(id);
+  if (!value) {
+    const loaded = load(host, rawToken).then(({ artifact, expiresAt }) => ({ artifact: shareScopedArtifact(artifact), expiresAt }));
+    if (sharedInFlight.size >= MAX_HELD) sharedInFlight.clear();
+    sharedInFlight.set(id, loaded);
+    const forget = () => { if (sharedInFlight.get(id) === loaded) sharedInFlight.delete(id); };
+    loaded.then(forget, forget);
+    value = loaded;
+  }
   const { artifact, expiresAt } = await value;
   if (expiresAt !== null && !(Date.parse(expiresAt) > now)) throw new Error("NOT_FOUND");
   return artifact;
