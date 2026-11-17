@@ -56,7 +56,8 @@ export function venuePrefill(params: Record<string, Param>): VenuePrefill {
     tab: tab === "book" || tab === "stay" || tab === "reservations" ? "reservations" : null,
     date: prefillDate(params.date),
     time: prefillTime(params.time),
-    party: prefillCount(params.party),
+    // The venue's own party control stops at 12 (GuestVenueReservation): a site link never seeds more.
+    party: prefillCount(params.party, 12),
     checkin,
     checkout: checkin && checkout && checkout > checkin ? checkout : null,
     guests: prefillCount(params.guests),

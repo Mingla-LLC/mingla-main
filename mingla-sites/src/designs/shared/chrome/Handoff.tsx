@@ -218,18 +218,29 @@ export function StickyBookingBar({ children }: { children: ReactNode }) {
       const active = document.activeElement;
       const field = active instanceof HTMLElement && active.matches("input, textarea, select, [contenteditable='true']");
       const menu = document.querySelector('[aria-controls="mg-phone-menu"][aria-expanded="true"]') !== null;
-      setBusy(field || menu || document.documentElement.dataset.mgHandoff === "open");
+      // #4453 M5 tester P1-2 — never cover the analytics choice: while the
+      // consent banner is showing, the bar stays away; it returns once the
+      // visitor has chosen (the banner leaves the page).
+      const consent = document.querySelector("aside.consent") !== null;
+      setBusy(field || menu || consent || document.documentElement.dataset.mgHandoff === "open");
     };
+    const syncSoon = () => window.setTimeout(sync, 0);
+    sync();
     document.addEventListener("focusin", sync);
-    document.addEventListener("focusout", () => window.setTimeout(sync, 0));
+    document.addEventListener("focusout", syncSoon);
     const mutations = new MutationObserver(sync);
     mutations.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mg-handoff"], subtree: false });
     const menuButton = document.querySelector('[aria-controls="mg-phone-menu"]');
     if (menuButton) mutations.observe(menuButton, { attributes: true, attributeFilter: ["aria-expanded"] });
+    // The consent banner mounts and unmounts anywhere in the page.
+    const pageChanges = new MutationObserver(sync);
+    pageChanges.observe(document.body, { childList: true, subtree: true });
     return () => {
       observer.disconnect();
       mutations.disconnect();
+      pageChanges.disconnect();
       document.removeEventListener("focusin", sync);
+      document.removeEventListener("focusout", syncSoon);
     };
   }, []);
   const shown = past && !busy;

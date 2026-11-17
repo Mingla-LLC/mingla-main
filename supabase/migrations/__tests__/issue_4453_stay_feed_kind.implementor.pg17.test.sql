@@ -10,6 +10,10 @@
 -- T-4  nights: one slot per sellable night in the window (the room's zone), the night's own price,
 --      stop-sell and sold-out nights are text (no link), checkout = check-in + minimum nights; no total.
 --
+-- T-5  P1-1 rooms LEFT, never the night's total: partly booked (2 of 4 booked + 1 held -> 1 left, few),
+--      fully booked (full, no link), blocked (stop-sell: full), a released booking and an expired hold
+--      do not count; the "from" price and the stay target skip a night with no room left.
+--
 -- FAILS-ON-REVERT: drop 20280726014453 -> T-2 (no stay rows); drop brand_site_stay_flags_on() from the feed -> T-3.
 
 BEGIN;
@@ -121,5 +125,57 @@ BEGIN
     'T-4e the stay target carries the lowest live night as its "from"');
 END
 $t4$;
+
+-- T-5 writes holds and bookings without a whole paid reservation: inside this
+-- transaction only, their reservation foreign keys and scope guards are set
+-- aside (the tester's adversarial proof does the same; all rolled back).
+ALTER TABLE public.stay_inventory_commitments
+  DROP CONSTRAINT stay_inventory_commitments_group_id_fkey,
+  DROP CONSTRAINT stay_inventory_commitments_reservation_line_id_fkey;
+ALTER TABLE public.stay_inventory_commitments DISABLE TRIGGER stay_inventory_commitments_scope_guard;
+ALTER TABLE public.stay_inventory_holds DROP CONSTRAINT stay_inventory_holds_group_id_fkey;
+ALTER TABLE public.stay_inventory_holds DISABLE TRIGGER stay_inventory_holds_scope_guard;
+ALTER TABLE public.stay_inventory_hold_slices DROP CONSTRAINT stay_inventory_hold_slices_reservation_line_id_fkey;
+ALTER TABLE public.stay_inventory_hold_slices DISABLE TRIGGER stay_inventory_hold_slices_scope_guard;
+
+DO $t5$
+DECLARE
+  v_site uuid := (SELECT v FROM m5s WHERE k = 'site');
+  v_room uuid := (SELECT v FROM m5s WHERE k = 'room');
+  v_brand uuid := (SELECT v FROM m5s WHERE k = 'brand');
+  v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date;
+  v_hold uuid := gen_random_uuid();
+  v_old uuid := gen_random_uuid();
+  v_feed jsonb;
+  v_row jsonb;
+BEGIN
+  -- Night 0 (4 sellable, min 2 nights): fully booked. Night 5: 2 booked + 1 live hold.
+  -- Night 6: a released booking and an expired hold only. Night 3 (the cheap override): fully booked.
+  INSERT INTO public.stay_inventory_commitments(group_id, reservation_line_id, resource_type, offering_id, room_date, quantity, state, released_at) VALUES
+    (gen_random_uuid(), gen_random_uuid(), 'room_night', v_room, v_today, 4, 'active', NULL),
+    (gen_random_uuid(), gen_random_uuid(), 'room_night', v_room, v_today + 5, 2, 'active', NULL),
+    (gen_random_uuid(), gen_random_uuid(), 'room_night', v_room, v_today + 6, 4, 'released', now()),
+    (gen_random_uuid(), gen_random_uuid(), 'room_night', v_room, v_today + 3, 4, 'active', NULL);
+  INSERT INTO public.stay_inventory_holds(id, group_id, state, expires_at) VALUES
+    (v_hold, gen_random_uuid(), 'active', now() + interval '10 minutes'),
+    (v_old, gen_random_uuid(), 'active', now() - interval '10 minutes');
+  INSERT INTO public.stay_inventory_hold_slices(hold_id, reservation_line_id, resource_type, offering_id, room_date, quantity) VALUES
+    (v_hold, gen_random_uuid(), 'room_night', v_room, v_today + 5, 1),
+    (v_old, gen_random_uuid(), 'room_night', v_room, v_today + 6, 4);
+  v_feed := public.brand_site_stay_nights(v_site, v_room, 7);
+  PERFORM pg_temp.p_assert(v_feed->'days'->0->'slots'->0->>'state' = 'full' AND v_feed->'days'->0->'slots'->0->'href' = 'null'::jsonb
+    AND (v_feed->'days'->0->'slots'->0->>'left')::int = 0, 'T-5a fully booked: full, 0 left, no link');
+  PERFORM pg_temp.p_assert(v_feed->'days'->5->'slots'->0->>'state' = 'few' AND (v_feed->'days'->5->'slots'->0->>'left')::int = 1,
+    'T-5b partly booked (2 booked, 1 held of 4): 1 left, few');
+  PERFORM pg_temp.p_assert(v_feed->'days'->6->'slots'->0->>'state' = 'open' AND (v_feed->'days'->6->'slots'->0->>'left')::int = 4,
+    'T-5c a released booking and an expired hold do not count');
+  PERFORM pg_temp.p_assert(v_feed->'days'->4->'slots'->0->>'state' = 'full' AND v_feed->'days'->4->'slots'->0->'href' = 'null'::jsonb,
+    'T-5d a blocked (stop-sell) night: full, no link');
+  SELECT o INTO v_row FROM jsonb_array_elements(public.brand_site_offerings_feed(v_site)->'offerings') o WHERE o->>'kind' = 'stay';
+  PERFORM pg_temp.p_assert((v_row->>'min_price_minor')::bigint = 12500000
+    AND (public.brand_site_booking_target(v_site, 'stay', v_room)->>'min_price_minor')::bigint = 12500000,
+    'T-5e the "from" price skips the cheap night that is fully booked (feed and target)');
+END
+$t5$;
 
 ROLLBACK;

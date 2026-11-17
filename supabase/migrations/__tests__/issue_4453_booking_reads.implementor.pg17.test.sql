@@ -43,8 +43,8 @@ FROM unnest(ARRAY[
   'public.brand_site_venue_slots(uuid,uuid,integer,integer)', 'public.brand_site_stay_nights(uuid,uuid,integer)',
   'public.brand_site_offering_dates(uuid,uuid,text,integer)', 'public.brand_site_ticket_tiers(uuid,uuid)',
   'public.brand_site_booking_target(uuid,text,uuid)', 'public.brand_site_mingla_rating(uuid)',
-  'public.brand_site_date_places_left(uuid,uuid)']) AS f;
-SELECT pg_temp.p_assert(count(*) = 11 AND bool_and(p.prosecdef)
+  'public.brand_site_date_places_left(uuid,uuid)', 'public.stay_room_night_available(uuid,date)']) AS f;
+SELECT pg_temp.p_assert(count(*) = 12 AND bool_and(p.prosecdef)
     AND bool_and(EXISTS (SELECT 1 FROM unnest(p.proconfig) c WHERE c LIKE 'search_path=%'))
     AND bool_and(p.prosrc !~* '\mEXECUTE\M'),
   'T-1b SECURITY DEFINER, explicit search_path, static SQL')
@@ -52,7 +52,7 @@ FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.proname IN ('brand_site_booking_blocks_enabled', 'brand_site_stay_flags_on',
   'brand_site_zone_or_utc', 'brand_site_booking_brand', 'brand_site_venue_slots', 'brand_site_stay_nights',
   'brand_site_offering_dates', 'brand_site_ticket_tiers', 'brand_site_booking_target', 'brand_site_mingla_rating',
-  'brand_site_date_places_left');
+  'brand_site_date_places_left', 'stay_room_night_available');
 
 -- T-2 flag
 SELECT pg_temp.p_assert((SELECT NOT is_enabled FROM public.feature_flags WHERE flag_key = 'SITES_BOOKING_BLOCKS')
@@ -291,6 +291,10 @@ BEGIN
   v_feed := public.brand_site_offering_dates(v_site, v_exp, 'experience_slots', 7);
   PERFORM pg_temp.p_assert((v_feed->'days'->0->'slots'->0->>'left')::int = 2 AND v_feed->'days'->0->'slots'->0->>'state' = 'few',
     'T-7d a counted tier: 2 places left, shown as few');
+  UPDATE public.ticket_types SET held_count = 1 WHERE id = v_tt;
+  v_feed := public.brand_site_offering_dates(v_site, v_exp, 'experience_slots', 7);
+  PERFORM pg_temp.p_assert((v_feed->'days'->0->'slots'->0->>'left')::int = 1,
+    'T-7d2 a place held in a live checkout counts as taken (1 left)');
   INSERT INTO public.ticket_types(event_id, name, price_cents, currency, is_free, is_unlimited, display_order)
   VALUES (v_exp, 'Walk-in', 1000000, 'NGN', false, true, 1);
   v_feed := public.brand_site_offering_dates(v_site, v_exp, 'experience_slots', 7);

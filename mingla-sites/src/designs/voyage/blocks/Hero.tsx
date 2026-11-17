@@ -1,5 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- the cover photograph is the site's own first-party, immutable media. */
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
+import { HeroBookingBar, HeroRating, heroTarget } from "../../shared/blocks/Booking";
+import type { SharedBlock, SharedContext } from "../../shared/parts";
 import { HeroBackgroundVideo } from "../../../components/v2/HeroBackgroundVideo";
 import { playableVideoUrl } from "../../../lib/siteVideo";
 import { collectionIndexPath } from "../routing";
@@ -25,7 +27,9 @@ export function Hero({ block, index, ctx }: VoyageBlockProps) {
     .map((cta) => ({ label: text(cta.label), href: cta.href }))
     .filter((cta): cta is { label: string; href: string } => Boolean(cta.label) && isSafeHref(cta.href))
     .slice(0, 2);
-  const searchAction = block.show_search === true ? collectionIndexPath(artifact, "trips") : null;
+  // #4453 milestone 5 — `booking_bar: trip_search` is the stored `show_search`; a venue, stay or experience bar draws the shared booking bar.
+  const searchAction = block.show_search === true || block.booking_bar === "trip_search" ? collectionIndexPath(artifact, "trips") : null;
+  const target = searchAction ? null : heroTarget(block as unknown as SharedBlock, ctx as unknown as SharedContext);
   const Heading = index === ctx.page.blocks.findIndex((candidate) => candidate.type === "hero") ? "h1" : "h2";
   return (
     <section className={`cover cover--bottom on-photo v-cover${film ? " has-video" : ""}`}>
@@ -53,7 +57,8 @@ export function Hero({ block, index, ctx }: VoyageBlockProps) {
               ))}
             </div>
           ) : null}
-          {searchAction ? <TripFilters variant="hero" action={searchAction} /> : null}
+          <HeroRating block={block as unknown as SharedBlock} ctx={ctx as unknown as SharedContext} />
+          {searchAction ? <TripFilters variant="hero" action={searchAction} /> : target ? <div className="hero-enter v-hero__book" style={{ ["--enter-delay" as string]: "480ms" }}><HeroBookingBar target={target} id={`v-hero-${index}`} language={artifact.language} /></div> : null}
         </div>
       </div>
     </section>

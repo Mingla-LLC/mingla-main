@@ -32,5 +32,7 @@ describe("#4453 M5 booking blocks gate", () => {
     await expect(run(gate, [{ blockType: "faq", id: "f" }], [], { context: {}, user: { siteId: "s1" } })).resolves.toBeTruthy();
     expect(reader).not.toHaveBeenCalled();
     expect(newBookingFeatureBlocks([{ blockType: "hero", id: "h", booking_bar: "venue_table" }], [{ blockType: "hero", id: "h" }])).toHaveLength(1);
+    // a duplicated stored block (same id) is a new one
+    expect(newBookingFeatureBlocks([...added, ...added], added)).toHaveLength(1);
   });
 });

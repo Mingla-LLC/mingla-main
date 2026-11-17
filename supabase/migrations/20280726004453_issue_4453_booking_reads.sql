@@ -158,6 +158,40 @@ BEGIN
 END;
 $function$;
 
+-- ── 2a. Rooms left on one night (the canonical formula) ─────────────────
+-- Exactly what Mingla's stay quote (20271231204134, stay_quote_create's
+-- `v_available := sellable_quantity - v_held - v_committed`) and stay
+-- discovery (20270205001423) compute inline: the night's sellable units, less
+-- live holds (active and unexpired, or awaiting reconciliation), less active
+-- commitments (bookings). One definition here so every website read uses it.
+-- NULL when the night has no row (Mingla does not sell it); 0 for stop-sell.
+CREATE OR REPLACE FUNCTION public.stay_room_night_available(p_offering_id uuid, p_local_date date)
+RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT CASE WHEN night.stop_sell THEN 0 ELSE GREATEST(night.sellable_quantity
+    - COALESCE((
+        SELECT sum(slice.quantity)
+        FROM public.stay_inventory_hold_slices slice
+        JOIN public.stay_inventory_holds hold ON hold.id = slice.hold_id
+        WHERE slice.offering_id = night.offering_id
+          AND slice.resource_type = 'room_night'
+          AND slice.room_date = night.local_date
+          AND ((hold.state = 'active' AND hold.expires_at > now()) OR hold.state = 'reconciliation_required')
+      ), 0)
+    - COALESCE((
+        SELECT sum(commitment.quantity)
+        FROM public.stay_inventory_commitments commitment
+        WHERE commitment.offering_id = night.offering_id
+          AND commitment.resource_type = 'room_night'
+          AND commitment.room_date = night.local_date
+          AND commitment.state = 'active'
+      ), 0), 0)::integer END
+  FROM public.stay_room_nights night
+  WHERE night.offering_id = p_offering_id AND night.local_date = p_local_date;
+$function$;
+
 -- ── 2. Nights (§5.1 stay_nights) ─────────────────────────────────────────
 -- A LIVE room or place of this brand's verified stay venue, only while the
 -- stay flags are on. A night is shown when Mingla has a room-night row for
@@ -204,19 +238,23 @@ BEGIN
       'slots', jsonb_build_array(jsonb_build_object(
         'label', to_char(n.local_date, 'Dy DD Mon'),
         'start_local', to_char(n.local_date, 'YYYY-MM-DD'),
-        'state', CASE WHEN n.stop_sell OR n.sellable_quantity <= 0 THEN 'full'
-                      WHEN n.sellable_quantity <= 3 THEN 'few' ELSE 'open' END,
-        'left', CASE WHEN n.stop_sell THEN 0 ELSE GREATEST(n.sellable_quantity, 0) END,
+        -- Rooms LEFT (sellable less holds and bookings), never the night's total.
+        'state', CASE WHEN n.available <= 0 THEN 'full'
+                      WHEN n.available <= 3 THEN 'few' ELSE 'open' END,
+        'left', n.available,
         'price_minor', COALESCE(n.price_override_minor, pv.amount_minor),
         'currency', COALESCE(n.currency_code, pv.currency_code)::text,
-        'href', CASE WHEN n.stop_sell OR n.sellable_quantity <= 0 THEN NULL
+        'href', CASE WHEN n.available <= 0 THEN NULL
           ELSE 'https://host.usemingla.com/b/' || v_brand.brand_slug || '/v/' || v_room.venue_slug
             || '?tab=stay&checkin=' || to_char(n.local_date, 'YYYY-MM-DD')
             || '&checkout=' || to_char(n.local_date + n.minimum_nights, 'YYYY-MM-DD')
             || '&room=' || v_room.id::text END
       ))
     ) ORDER BY n.local_date), '[]'::jsonb) INTO v_days
-  FROM public.stay_room_nights n
+  FROM (
+    SELECT rn.*, public.stay_room_night_available(rn.offering_id, rn.local_date) AS available
+    FROM public.stay_room_nights rn
+  ) n
   LEFT JOIN LATERAL (
     SELECT p.amount_minor, p.currency_code
     FROM public.stay_price_versions p
@@ -256,7 +294,7 @@ AS $function$
     SELECT COALESCE((public.issue_3313_event_day_choice(p_event_id)->>'perOccurrenceCapacity')::boolean, false) AS per_occ
   ),
   tiers AS (
-    SELECT tt.id, tt.is_unlimited, tt.quantity_total, tt.valid_occurrence_keys, tt.sold_count
+    SELECT tt.id, tt.is_unlimited, tt.quantity_total, tt.valid_occurrence_keys, tt.sold_count, tt.held_count
     FROM public.ticket_types tt, d
     WHERE tt.event_id = p_event_id AND tt.deleted_at IS NULL
       AND tt.is_hidden IS NOT TRUE AND tt.is_disabled IS NOT TRUE AND tt.available_online IS TRUE
@@ -271,7 +309,8 @@ AS $function$
     ELSE (SELECT SUM(GREATEST(t.quantity_total - CASE
             WHEN t.valid_occurrence_keys IS NOT NULL OR (SELECT per_occ FROM cap)
             THEN public.issue_3313_ticket_type_occurrence_taken(t.id, (SELECT id FROM d))
-            ELSE COALESCE(t.sold_count, 0) END, 0))::integer FROM tiers t)
+            -- shared pool: sold AND held (live checkouts), as the checkout counts (tester P3-2)
+            ELSE COALESCE(t.sold_count, 0) + COALESCE(t.held_count, 0) END, 0))::integer FROM tiers t)
   END;
 $function$;
 
@@ -505,7 +544,7 @@ BEGIN
           AND p.effective_from <= now() AND (p.effective_to IS NULL OR p.effective_to > now())
         ORDER BY p.version_number DESC LIMIT 1
       ) pv ON true
-      WHERE n.offering_id = o.id AND NOT n.stop_sell AND n.sellable_quantity > 0
+      WHERE n.offering_id = o.id AND public.stay_room_night_available(n.offering_id, n.local_date) > 0
         AND n.local_date BETWEEN (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date
                              AND (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date + 60
         AND COALESCE(n.price_override_minor, pv.amount_minor) IS NOT NULL
@@ -575,6 +614,8 @@ REVOKE ALL ON FUNCTION public.brand_site_venue_slots(uuid,uuid,integer,integer) 
 GRANT EXECUTE ON FUNCTION public.brand_site_venue_slots(uuid,uuid,integer,integer) TO service_role;
 REVOKE ALL ON FUNCTION public.brand_site_stay_nights(uuid,uuid,integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_stay_nights(uuid,uuid,integer) TO service_role;
+REVOKE ALL ON FUNCTION public.stay_room_night_available(uuid,date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.stay_room_night_available(uuid,date) TO service_role;
 REVOKE ALL ON FUNCTION public.brand_site_date_places_left(uuid,uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_date_places_left(uuid,uuid) TO service_role;
 REVOKE ALL ON FUNCTION public.brand_site_offering_dates(uuid,uuid,text,integer) FROM PUBLIC, anon, authenticated;

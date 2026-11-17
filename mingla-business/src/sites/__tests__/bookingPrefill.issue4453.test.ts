@@ -22,6 +22,8 @@ describe("#4453 M5 venue page pre-fill", () => {
     expect(prefillTime("7pm")).toBeNull();
     expect(prefillCount("0")).toBeNull();
     expect(prefillCount("21")).toBeNull();
+    expect(venuePrefill({ party: "13" }).party).toBeNull();
+    expect(venuePrefill({ party: "12" }).party).toBe(12);
     expect(prefillCount("4e1")).toBeNull();
     expect(venuePrefill({ tab: "admin", room: "../../x" })).toMatchObject({ tab: null, room: null });
     expect(venuePrefill({ date: ["2026-11-20", "2026-11-21"] }).date).toBe("2026-11-20");

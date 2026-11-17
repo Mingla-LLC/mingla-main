@@ -24,8 +24,19 @@ function key(block: RawBlock): string {
 
 /** The booking-feature blocks in `next` that were not already in `previous` (matched by block id and type). */
 export function newBookingFeatureBlocks(next: readonly RawBlock[], previous: readonly RawBlock[]): RawBlock[] {
-  const before = new Set(previous.filter((block) => usesBookingBlocksFeature(block)).map(key));
-  return next.filter((block) => usesBookingBlocksFeature(block) && (!block.id || !before.has(key(block))));
+  // Counted, not just matched: a copy of a stored booking block (same id) is a new one (tester P3-4).
+  const left = new Map<string, number>();
+  for (const block of previous) if (usesBookingBlocksFeature(block)) left.set(key(block), (left.get(key(block)) ?? 0) + 1);
+  return next.filter((block) => {
+    if (!usesBookingBlocksFeature(block)) return false;
+    const k = key(block);
+    const n = block.id ? left.get(k) ?? 0 : 0;
+    if (n > 0) {
+      left.set(k, n - 1);
+      return false;
+    }
+    return true;
+  });
 }
 
 const FLAG_TTL_MS = 60_000;

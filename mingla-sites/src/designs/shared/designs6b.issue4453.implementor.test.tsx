@@ -124,9 +124,10 @@ describe("#4453 6b SC-D1 journal, grid and terra are design keys everywhere", ()
     expect(sql).toContain("SELECT ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra']::text[]");
     expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
     expect(sql).not.toMatch(/ALTER TABLE|DROP |INSERT |UPDATE |DELETE /);
-    // #4453 milestone 5 — later #4453 migrations (the booking reads) follow; 6b is the newest design-keys one.
-    const prefixes = fs.readdirSync(dir).filter((file) => /^\d{14}_.*design_keys/.test(file)).map((file) => file.slice(0, 14)).sort();
-    expect(prefixes.at(-1)).toBe("20280725104453");
+    // #4453 milestone 5 — later #4453 migrations (the booking reads) follow; none of them may
+    // re-issue brand_site_design_keys() after 6b (tester P3-3: by content, not file name).
+    const later = fs.readdirSync(dir).filter((file) => /^\d{14}_.*\.sql$/.test(file) && file.slice(0, 14) > "20280725104453");
+    for (const file of later) expect(read(`supabase/migrations/${file}`), file).not.toMatch(/FUNCTION\s+public\.brand_site_design_keys\s*\(/);
     expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra']");
   });
 

@@ -73,24 +73,24 @@ export function AvailabilityStrip({ block, index, ctx }: SharedBlockProps) {
   const language = ctx.artifact.language;
   const item = feed.title ?? text(block.heading) ?? "Booking";
   return (
-    <Blk id={id} className="mg-avail" labelledBy={`${id}-h`}>
+    <Blk id={id} className="mg-slots" labelledBy={`${id}-h`}>
       <SecHead id={`${id}-h`} eyebrow={text(block.eyebrow)} heading={text(block.heading) || "Book a time"} intro={text(block.intro)} />
-      <p className="mg-avail__tz">Times in {feed.timezone.replace(/_/g, " ")}</p>
-      <ol className="mg-avail__days" aria-label="Days">
+      <p className="mg-slots__tz">Times in {feed.timezone.replace(/_/g, " ")}</p>
+      <ol className="mg-slots__days" aria-label="Days">
         {days.map((day) => {
           const name = dayName(day.local_date, language);
           const when = `${name.day} ${name.date}`;
           return (
-            <li key={day.local_date} className="mg-avail__day">
-              <p className="mg-avail__dn"><span>{name.day}</span> {name.date}</p>
-              <ul className="mg-avail__slots" aria-label={when}>
+            <li key={day.local_date} className="mg-slots__day">
+              <p className="mg-slots__dn"><span>{name.day}</span> {name.date}</p>
+              <ul className="mg-slots__slots" aria-label={when}>
                 {day.slots.map((slot) => <SlotChip key={slot.start_local} slot={slot} item={item} when={when} language={language} />)}
               </ul>
             </li>
           );
         })}
       </ol>
-      <p className="mg-avail__foot">Booked through Mingla</p>
+      <p className="mg-slots__foot">Booked through Mingla</p>
     </Blk>
   );
 }
@@ -128,7 +128,7 @@ export function TicketTiersSplit({ block, index, ctx }: SharedBlockProps) {
               );
             })}
           </ul>
-          <p className="mg-avail__foot">Booked through Mingla</p>
+          <p className="mg-slots__foot">Booked through Mingla</p>
         </div>
       </div>
     </Blk>
