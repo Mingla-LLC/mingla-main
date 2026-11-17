@@ -243,7 +243,11 @@ async function waitForApp() {
  * control (link or button) sits fully inside the viewport and is at least
  * 44 x 44 px. "No sideways scroll" alone missed a half-clipped menu button.
  */
+// #4453 milestone 7c — sensitivity proof only: PROD_SMOKE_BREAK_HEADER=1 pushes every menu toggle 40px right, so the check must fail in every design.
+const BREAK_HEADER = process.env.PROD_SMOKE_BREAK_HEADER === "1";
+
 async function headerControlsCheck(page, label, out) {
+  if (BREAK_HEADER) await page.addStyleTag({ content: ".mg-menu-btn, .v-drawer__toggle, [aria-controls][aria-haspopup], header button { transform: translateX(40px) !important; }" });
   const problems = await page.evaluate(() => {
     const header = document.querySelector("[data-mg-header]") ?? document.querySelector("body header");
     if (!header) return ["no header"];

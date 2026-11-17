@@ -57,7 +57,9 @@ function withBookingBlocks(artifact: ArtifactV2): ArtifactV2 {
 }
 
 /** #4453 milestone 7c (tester P2-3) — the long brand name the phone header must survive. */
-export const SMOKE_LONG_NAME = "The Long Weekend Supper & Travel Collective";
+// One long word (no space to wrap at), the hardest case for a phone header (milestone 7c).
+export const SMOKE_LONG_NAME = "Wanderlustandsupperclubcompany";
+export const SMOKE_LONG_BUTTON = "Book your next weekend away";
 
 /*
  * #4453 milestone 7c — every design's fixture carries what broke Young and
@@ -71,7 +73,7 @@ function withHeaderAndPageSet(artifact: ArtifactV2, key: DesignKey): ArtifactV2 
   a.navigation.wordmark = SMOKE_LONG_NAME;
   const live = a.pages.filter((page) => page.enabled && page.path !== "");
   const target = live.find((page) => page.blocks.some((block) => block.type === "offering_grid")) ?? live[0];
-  a.navigation.header_cta = { label: "Book a trip", href: target ? `/${target.path}` : "/" };
+  a.navigation.header_cta = { label: SMOKE_LONG_BUTTON, href: target ? `/${target.path}` : "/" };
   const variants = DESIGNS[key].variants;
   const home = a.pages.find((page) => page.path === "");
   if (home && variants.page_links.length && variants.facts_table.length) {
