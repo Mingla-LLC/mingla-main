@@ -620,7 +620,16 @@
         "supabase/migrations/20280709004435_issue_4435_group_qa_fixes.sql",
         "supabase/migrations/20280710004435_issue_4435_leftovers.sql",
         "supabase/functions/notify-dispatch/appCallerGate.ts",
-        "app-mobile/src/hooks/useBoardSession.ts"
+        "app-mobile/src/hooks/useBoardSession.ts",
+        "app-mobile/src/components/board/BoardDiscussionTab.tsx",
+        "app-mobile/src/components/chat/MessageContextMenu.tsx",
+        "app-mobile/src/components/chat/ReplyQuoteBlock.tsx",
+        "app-mobile/src/components/chat/UnsendConfirmSheet.tsx",
+        "app-mobile/src/components/chat/UnsentBubble.tsx",
+        "app-mobile/src/services/reportService.ts",
+        "supabase/functions/open-view-once/handler.ts",
+        "supabase/functions/open-view-once/index.ts",
+        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql"
       ]
     },
     {
@@ -2091,7 +2100,8 @@
         "app-mobile/src/components/profile/ProfileInterestsSection.tsx",
         "app-mobile/src/components/profile/ProfileSectionSkeleton.tsx",
         "app-mobile/src/components/profile/profileFreshness.ts",
-        "app-mobile/src/hooks/useUserPreferences.ts"
+        "app-mobile/src/hooks/useUserPreferences.ts",
+        "app-mobile/src/components/profile/EditBioSheet.tsx"
       ]
     },
     {

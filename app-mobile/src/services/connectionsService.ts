@@ -29,6 +29,8 @@ export interface Friend {
   eventPublicCard?: BusinessEventCard | null;
   isBroadcastOnly?: boolean;
   isSessionAdmin?: boolean;
+  /** Issue #4456: I created this plain friend group (its admin). */
+  isPlainGroupCreator?: boolean;
   notificationsMuted?: boolean;
   participantCount?: number;
   participants?: {
@@ -78,8 +80,14 @@ export interface Message {
   systemPayload?: any;
   /** Issue #4114 Wave 3: direct_message_reactions rows (absent on realtime rows). */
   reactions?: Array<{ user_id: string; emoji: string }>;
-  /** Issue #4114 Wave 3: unsent (soft-deleted); hidden from the thread. */
+  /**
+   * Issue #4114 Wave 3: hidden from the thread. Issue #4456: a removal that
+   * leaves no line (Host moderation, account deletion, older rows) or a
+   * message you deleted for yourself.
+   */
   unsent?: boolean;
+  /** Issue #4456: unsent by its author or removed by a group admin: the thread shows the unsent line. */
+  tombstone?: { kind: 'sender' | 'admin'; byUserId: string | null };
   /** Issue #4114 Wave 4: a photo or video each recipient may open once. */
   viewOnce?: boolean;
   /** Issue #4114 Wave 4: the view-once file was deleted from storage. */

@@ -47,6 +47,8 @@ export const chatTokens = {
   inputBg: "#1A1E24",
   /** "Add a plan" row border in the attach sheet (accent at 45%). */
   accentBorder: "rgba(235, 120, 37, 0.45)",
+  /** Issue #4456: the outline of an unsent line. */
+  tombstoneBorder: "rgba(255, 255, 255, 0.14)",
 } as const;
 
 /**

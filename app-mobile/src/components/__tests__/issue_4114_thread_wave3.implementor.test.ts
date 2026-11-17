@@ -91,7 +91,8 @@ Deno.test("W3 reactions: read in one batched query and rendered under bubbles", 
     "one .in() read per page, no N+1");
   assert(/reactionsByMessage = await this\.getReactionsForMessages\(/.test(service), "getMessages attaches the reactions");
   const page = strip(await read("components/ConnectionsPage.tsx"));
-  assert(/reactions: msg\.reactions,/.test(page), "transformMessage carries the reactions");
+  // Issue #4456: an unsent line carries none.
+  assert(/reactions: unsentStateOf\(msg\)\.tombstone \? \[\] : msg\.reactions,/.test(page), "transformMessage carries the reactions");
   assert(/const \{ error \} = await messagingService\.toggleDirectMessageReaction\(/.test(page), "the toggle is awaited");
   assert(/reactions: before \}\]\);\s*showToast\(\{ message: t\('chat:reactionFailed'\)/.test(page), "a failed toggle rolls back and toasts");
   const chat = strip(await read("components/MessageInterface.tsx"));
@@ -155,15 +156,17 @@ Deno.test("W3 list polish: typing heartbeat, loading state, scroll-to-latest, tr
 
 Deno.test("W3 message actions: unsend, reply jump, labelled 44pt actions, report", async () => {
   const chat = strip(await read("components/MessageInterface.tsx"));
-  assert(/onDelete=\{onUnsendMessage \? handleUnsendRequest : undefined\}/.test(chat), "unsend is wired");
+  // Issue #4456: Unsend goes through the confirm sheet and the unsend_messages RPC.
+  assert(/onUnsend=\{onUnsendMessages \? \(\) => requestUnsend\('unsend', contextMenu\.messageIds\) : undefined\}/.test(chat), "unsend is wired");
   assert(/onScrollToMessage=\{handleScrollToMessage\}/.test(chat), "reply quotes jump");
   assert(/onReport=\{onReportMessage \? handleReportMessageRequest : undefined\}/.test(chat), "report message is wired");
   const menu = strip(await read("components/chat/MessageContextMenu.tsx"));
-  assert(/minHeight: 44/.test(menu) && /accessibilityLabel=\{labelFor\(id\)\}/.test(menu), "44pt labelled actions");
+  // Issue #4456: the actions are a labelled 48pt list.
+  assert(/minHeight: 48/.test(menu) && /const label = labelFor\(id\)/.test(menu), "48pt labelled actions");
   assert(/messageActions\(\{/.test(menu), "Copy only on text via the shared rule");
   const service = strip(await read("services/messagingService.ts"));
-  assert(/update\(\{ deleted_at: new Date\(\)\.toISOString\(\) \}\)\s*\.eq\('id', messageId\)\s*\.eq\('sender_id', senderId\)/.test(service),
-    "unsend is the sender's soft delete");
+  assert(/supabase\.rpc\('unsend_messages', \{ p_message_ids: ids \}\)/.test(service), "unsend goes through the server's unsend_messages");
+  assert(!/\.update\(\{ deleted_at:/.test(service), "the phone no longer writes deleted_at itself");
 });
 
 Deno.test("W3 structure: the unused discussion code is gone and the thread is split", async () => {

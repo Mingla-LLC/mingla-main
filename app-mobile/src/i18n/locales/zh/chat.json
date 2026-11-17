@@ -190,7 +190,6 @@
   "unsendBody": "这条消息会从聊天中所有人那里移除。",
   "unsendFailed": "无法撤回，请重试。",
   "unsendTitle": "撤回这条消息？",
-  "unsentToast": "消息已撤回",
   "yesterday": "昨天",
   "you": "你",
   "a11yReaction_other": "{{emoji}}，{{count}}个回应",

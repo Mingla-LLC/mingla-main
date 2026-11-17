@@ -66,7 +66,8 @@ Deno.test("the social channel keeps every published listener; the lifecycle list
 
 Deno.test("the listeners still refresh the same caches", () => {
   const social = channelBody(strip(Deno.readTextFileSync(HOOK)), "social-realtime-");
-  assert(/table: "conversation_participants"[\s\S]*?queryKey: \["messages"\]/.test(social), "chat membership refreshes messages");
+  // Issue #4456: chat membership refreshes the Chats list (["messages"] had no query).
+  assert(/table: "conversation_participants"[\s\S]*?refreshChatListSoon\(\);/.test(social), "chat membership refreshes the Chats list (debounced, #4456)");
   assert(/table: "friends"[\s\S]*?queryKey: \["friends"\][\s\S]*?onFriendListChange/.test(social), "friends refresh");
   assert(/table: "calendar_entries"[\s\S]*?queryKey: \["calendarEntries"\]/.test(social), "calendar refresh");
   assert(/table: "pair_requests"[\s\S]*?pairingKeys\.incomingRequests\(userId\)/.test(social), "pair requests refresh");

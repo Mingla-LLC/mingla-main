@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/__tests__/issue_4456_unsend_wiring.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4456-unsend-wiring-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

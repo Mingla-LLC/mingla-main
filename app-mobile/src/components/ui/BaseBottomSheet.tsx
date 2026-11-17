@@ -435,6 +435,12 @@ function useEffectiveBackdropOpacity(
   return Math.max(base, floor);
 }
 
+/**
+ * #4456: how long a modal-wrapped, dynamically sized sheet may take to report
+ * its open snap point (the open animation is 280 ms) before it is closed.
+ */
+export const SHEET_OPEN_WATCHDOG_MS = 2000;
+
 function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactElement | null {
   const { visible, onClose, onChange, children, accessibilityLabel } = props;
   const theme: BaseBottomSheetTheme = props.theme ?? 'light';
@@ -539,8 +545,30 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     return () => sub.remove();
   }, [wrapInRNModal, visible, onClose]);
 
+  // #4456 safety net: a modal-wrapped, dynamically sized sheet whose body
+  // gorhom cannot measure never reaches an open snap point, while its RN Modal
+  // window stays up and swallows every touch (the frozen chat / Edit bio of
+  // #4456). If such a sheet has not reported an open index in time, close it.
+  const openedRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!visible) {
+      openedRef.current = false;
+      return undefined;
+    }
+    if (!wrapInRNModal || !enableDynamicSizing) return undefined;
+    const timer = setTimeout(() => {
+      if (openedRef.current) return;
+      console.warn('[BaseBottomSheet] a dynamically sized sheet did not open; closing it');
+      onCloseRef.current();
+    }, SHEET_OPEN_WATCHDOG_MS);
+    return () => clearTimeout(timer);
+  }, [visible, wrapInRNModal, enableDynamicSizing]);
+
   const handleSheetChange = useCallback(
     (index: number) => {
+      if (index >= 0) openedRef.current = true;
       if (index === -1) onClose();
       onChange?.(index);
     },

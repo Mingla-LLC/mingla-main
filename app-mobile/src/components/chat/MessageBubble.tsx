@@ -96,6 +96,8 @@ interface ReplyToData {
   content: string;
   imageUrl?: string;
   isDeleted?: boolean;
+  /** Issue #4456: "Message unsent" vs "Message not available". */
+  deletedState?: 'unsent' | 'unavailable';
   messageId?: string;
 }
 
@@ -721,6 +723,7 @@ function MessageBubbleImpl({
                   imageUrl={replyTo.imageUrl}
                   variant={isMe ? 'sent' : 'received'}
                   isDeleted={replyTo.isDeleted}
+                  deletedState={replyTo.deletedState}
                   onPress={replyTo.messageId && onScrollToMessage ? () => onScrollToMessage(replyTo.messageId!) : undefined}
                 />
               )}

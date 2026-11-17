@@ -239,6 +239,14 @@ export interface DirectMessage {
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
+  /**
+   * Issue #4456: set when the message was unsent. 'sender' (its author) and
+   * 'admin' (a group admin) leave a placeholder line; every other kind
+   * ('host', 'server', 'legacy') stays hidden. The server wipes the content.
+   */
+  unsent_at?: string | null;
+  unsent_by?: string | null;
+  unsent_kind?: UnsentKind | null;
   sender_name?: string;
   /** #4187 official team label captured when an Admin sends a program message. */
   sender_display_name_snapshot?: string | null;
@@ -272,6 +280,26 @@ export interface DirectMessage {
    * recipient, every row as its sender (RLS). Absent on realtime rows.
    */
   media_views?: MediaViewRow[];
+}
+
+/** Issue #4456: who removed a message (see DirectMessage.unsent_kind). */
+export type UnsentKind = 'sender' | 'admin' | 'host' | 'server' | 'legacy';
+
+/** Issue #4456: the unsent kinds the thread shows as a placeholder line. */
+export const TOMBSTONE_KINDS: readonly UnsentKind[] = ['sender', 'admin'];
+
+/** Issue #4456: reads keep live messages and placeholder tombstones; other removals stay hidden. */
+export const LIVE_OR_TOMBSTONE_FILTER = 'deleted_at.is.null,unsent_kind.in.(sender,admin)';
+
+/** Issue #4456: why an unsend did not go through. */
+export type UnsendError = 'not_allowed' | 'offline' | 'failed';
+
+export function unsendErrorOf(error: { code?: string; message?: string } | null | undefined): UnsendError {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /not_allowed/.test(message)) return 'not_allowed';
+  if (/network request failed|failed to fetch|network|timeout|offline/i.test(message)) return 'offline';
+  return 'failed';
 }
 
 /** Issue #4114 Wave 4: one row of `message_media_views`. */
@@ -814,7 +842,7 @@ export class MessagingService {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .is('deleted_at', null)
+        .or(LIVE_OR_TOMBSTONE_FILTER)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
@@ -929,12 +957,13 @@ export class MessagingService {
             file_url, file_name, file_size, card_payload, reply_to_id,
             plan_id, plan_quote,
             marketing_campaign_id, sender_display_name_snapshot, sender_role_snapshot,
-            created_at, updated_at, deleted_at,
+            created_at, updated_at, deleted_at, unsent_at, unsent_by, unsent_kind,
             read_status:message_reads(user_id)
           )
         `)
         .neq('linked_entity_type', 'support')
-        .is('last_message.deleted_at', null)
+        // Issue #4456: an unsent last message shows its unsent line (D5).
+        .or(LIVE_OR_TOMBSTONE_FILTER, { referencedTable: 'last_message' })
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .order('created_at', { referencedTable: 'last_message', ascending: false })
         .limit(1, { referencedTable: 'last_message' });
@@ -1101,8 +1130,10 @@ export class MessagingService {
       const ids = typeof conversationId === 'string' ? [conversationId] : Array.from(new Set(conversationId));
       if (ids.length === 0) return { messages: [], error: null, hasMore: false };
       const base = supabase.from('messages').select('*');
+      // Issue #4456: unsent messages come back as placeholders (content wiped
+      // by the server), so the thread and the merge keep the line.
       let query = (ids.length === 1 ? base.eq('conversation_id', ids[0]) : base.in('conversation_id', ids))
-        .is('deleted_at', null);
+        .or(LIVE_OR_TOMBSTONE_FILTER);
       if (before) query = query.lte('created_at', before);
       const { data, error } = await query
         .order('created_at', { ascending: false })
@@ -1217,24 +1248,55 @@ export class MessagingService {
   }
 
   /**
-   * Issue #4114 Wave 3: unsend one of your own messages. A soft delete
-   * (`deleted_at`), which every read already filters; the realtime UPDATE tells
-   * the other side to drop it. RLS only lets the sender update their own row.
-   * Editing is not offered: the table has no edited marker, so an edit would
-   * change the text with no sign it was changed.
+   * Issue #4456: unsend your own messages for everyone, or (a friend group's
+   * admin) remove someone else's. One to ten ids from one chat: an album is
+   * one call. The server wipes each message into a tombstone; the realtime
+   * UPDATE turns it into the unsent line on every phone. No time limit.
    */
-  async unsendMessage(messageId: string, senderId: string): Promise<{ error: string | null }> {
+  async unsendMessages(messageIds: readonly string[]): Promise<{ unsent: string[]; kind: 'sender' | 'admin' | null; error: UnsendError | null }> {
+    const ids = [...new Set(messageIds)].filter(Boolean);
+    if (ids.length === 0) return { unsent: [], kind: null, error: 'failed' };
     try {
-      const { error } = await supabase
-        .from('messages')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', messageId)
-        .eq('sender_id', senderId);
+      const { data, error } = await supabase.rpc('unsend_messages', { p_message_ids: ids });
+      if (error) {
+        console.warn('[messagingService] unsend failed', error.code ?? error.message);
+        return { unsent: [], kind: null, error: unsendErrorOf(error) };
+      }
+      const result = (data ?? {}) as { unsent?: string[]; kind?: 'sender' | 'admin' };
+      return { unsent: result.unsent ?? ids, kind: result.kind ?? null, error: null };
+    } catch (error: unknown) {
+      console.warn('[messagingService] unsend threw', error);
+      return { unsent: [], kind: null, error: unsendErrorOf(error as { message?: string }) };
+    }
+  }
+
+  /**
+   * Issue #4456: Delete for me. Hides messages from this person only, on every
+   * phone they sign in on (message_hidden_for). Undo calls unhideMessagesForMe.
+   */
+  async hideMessagesForMe(messageIds: readonly string[]): Promise<{ error: string | null }> {
+    const ids = [...new Set(messageIds)].filter(Boolean);
+    if (ids.length === 0) return { error: null };
+    try {
+      const { error } = await supabase.rpc('hide_messages_for_me', { p_message_ids: ids });
       if (error) throw error;
       return { error: null };
-    } catch (error: any) {
-      console.error('Error unsending message:', error);
-      return { error: error?.message ?? 'unsend_failed' };
+    } catch (error: unknown) {
+      console.warn('[messagingService] delete for me failed', error);
+      return { error: (error as { message?: string })?.message ?? 'hide_failed' };
+    }
+  }
+
+  async unhideMessagesForMe(messageIds: readonly string[]): Promise<{ error: string | null }> {
+    const ids = [...new Set(messageIds)].filter(Boolean);
+    if (ids.length === 0) return { error: null };
+    try {
+      const { error } = await supabase.rpc('unhide_messages_for_me', { p_message_ids: ids });
+      if (error) throw error;
+      return { error: null };
+    } catch (error: unknown) {
+      console.warn('[messagingService] undo delete for me failed', error);
+      return { error: (error as { message?: string })?.message ?? 'unhide_failed' };
     }
   }
 
@@ -1294,7 +1356,7 @@ export class MessagingService {
         .from('messages')
         .select('*')
         .eq('id', messageId)
-        .is('deleted_at', null)
+        .or(LIVE_OR_TOMBSTONE_FILTER)
         .single();
 
       if (error) {

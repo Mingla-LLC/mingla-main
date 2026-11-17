@@ -89,8 +89,9 @@ Deno.test("W6 a send goes to exactly one event chat (D10)", async () => {
 Deno.test("W6 the thread draws markers, the Next up card, the chip and per-event guests", async () => {
   const chat = strip(await read("components/MessageInterface.tsx"));
   assert(/<BrandChannelEventMarker/.test(chat), "event markers render");
-  // Issue #4261 adds three row kinds (plan card, join request, plan / group row).
-  assert((chat.match(/\{eventMarker\}/g) ?? []).length === 6, "every row kind can carry a marker");
+  // Issue #4261 adds three row kinds (plan card, join request, plan / group row);
+  // Issue #4456 adds the unsent line.
+  assert((chat.match(/\{eventMarker\}/g) ?? []).length === 7, "every row kind can carry a marker");
   assert(/eventMarker: brandChannel && eventMarkerIds\?\.has\(message\.id\)/.test(chat), "markers come from the run starts");
   assert(/\{brandChannel && showSendChip && sendTargetEvent \? \(\s*<BrandChannelSendChip/.test(chat), "the chip shows only when showSendTargetChip says so");
   assert(/replyToConversationId: replyingTo\?\.conversationId \?\? null/.test(chat), "the chip names the reply's event");

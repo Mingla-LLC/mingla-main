@@ -106,11 +106,12 @@ BEGIN
   END IF;
   BEGIN
     UPDATE public.messages SET view_once_purged_at = NULL WHERE id = v_id;
-  EXCEPTION WHEN check_violation THEN v_refused := v_refused + 1;
+  -- #4456: refused by the column grants before the trigger.
+  EXCEPTION WHEN check_violation OR insufficient_privilege THEN v_refused := v_refused + 1;
   END;
   BEGIN
     UPDATE public.messages SET view_once_purged_at = now() + interval '1 day' WHERE id = v_id;
-  EXCEPTION WHEN check_violation THEN v_refused := v_refused + 1;
+  EXCEPTION WHEN check_violation OR insufficient_privilege THEN v_refused := v_refused + 1;
   END;
   IF v_refused <> 2 THEN
     RAISE EXCEPTION 'P-02/P-03: expected 2 refused purge changes, got %', v_refused;
@@ -131,11 +132,13 @@ BEGIN
   IF (SELECT deleted_at FROM public.messages WHERE id = v_opened) IS NULL THEN
     RAISE EXCEPTION 'P-04: a client could not unsend a purged message';
   END IF;
-  -- A never-purged unsent message can still be restored by a client request.
-  UPDATE public.messages SET deleted_at = NULL WHERE id = v_live;
-  IF (SELECT deleted_at FROM public.messages WHERE id = v_live) IS NOT NULL THEN
-    RAISE EXCEPTION 'P-04: the rule reached a message that was never purged';
-  END IF;
+  -- #4456: an unsent message never comes back (I-4456-UNSEND-FINAL), purged
+  -- or not; a client request to restore one is refused.
+  BEGIN
+    UPDATE public.messages SET deleted_at = NULL WHERE id = v_live;
+    RAISE EXCEPTION 'P-04: a client brought an unsent message back';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
   -- Service code still owns the purge column.
   PERFORM pg_temp.t4114p_as('ana', 'service_role');
   UPDATE public.messages SET view_once_purged_at = now() WHERE id = v_opened;
