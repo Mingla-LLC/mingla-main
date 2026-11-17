@@ -224,18 +224,25 @@ BEGIN
   v_result := public.issue_4063_record_claim_contact(
     v_user_b, 'email', 'extra-4063@example.test'
   );
+  -- #4473: two accounts that each proved the same extra both keep it, so a
+  -- purchase on that contact shows on both.
   IF v_result->>'result' <> 'recorded'
-     OR public.account_owns_contact(v_user_a, 'extra-4063@example.test', NULL)
+     OR NOT public.account_owns_contact(v_user_a, 'extra-4063@example.test', NULL)
      OR NOT public.account_owns_contact(v_user_b, 'extra-4063@example.test', NULL) THEN
-    RAISE EXCEPTION 'most-recent extra proof did not move cleanly: %', v_result;
+    RAISE EXCEPTION 'a second proof of the same extra did not leave both accounts holding it: %', v_result;
   END IF;
 
+  -- #4473: proving another account's primary phone as an extra is allowed and
+  -- leaves the primary in place.
   INSERT INTO public.verified_phone_identities(user_id, phone_e164)
   VALUES (v_user_a, '+12025553999');
-  IF public.issue_4063_record_claim_contact(
+  v_result := public.issue_4063_record_claim_contact(
     v_user_b, 'phone', '+12025553999'
-  )->>'result' <> 'already_other_account' THEN
-    RAISE EXCEPTION 'primary phone proof was movable as an extra contact';
+  );
+  IF v_result->>'result' <> 'recorded'
+     OR NOT public.account_owns_contact(v_user_a, NULL, '+12025553999')
+     OR NOT public.account_owns_contact(v_user_b, NULL, '+12025553999') THEN
+    RAISE EXCEPTION 'an extra proof of a primary phone did not co-exist with the primary: %', v_result;
   END IF;
 
   IF has_table_privilege('anon', 'public.claim_links', 'SELECT')
