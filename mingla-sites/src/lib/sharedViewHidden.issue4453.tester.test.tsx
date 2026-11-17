@@ -49,3 +49,20 @@ describe("#4453 M8 (tester) the shared view points at nothing it removed", () =>
     expect(SHARE_TOKEN.test("a".repeat(43))).toBe(true);
   });
 });
+
+describe("#4453 M8 (tester, retest) a link inside rich text", () => {
+  it("a rich-text link to a removed page is dropped; a link to a live page stays", () => {
+    const base = withDraftPage();
+    const home = base.pages[0]!;
+    const richText = { type: "rich_text", body: [{ type: "paragraph", children: [
+      { type: "text", text: "Ask about " },
+      { type: "link", href: "/private-hire", children: [{ type: "text", text: "SECRET-DRAFT-PAGE" }] },
+      { type: "link", href: "/trips", children: [{ type: "text", text: "our trips" }] },
+    ] }] };
+    const shared = withSharedView({ ...base, pages: [{ ...home, blocks: [...home.blocks, richText] }, ...base.pages.slice(1)] } as ArtifactV2);
+    const text = JSON.stringify(shared.pages);
+    expect(text).not.toContain("SECRET-DRAFT-PAGE");
+    expect(text).not.toContain("/private-hire");
+    expect(text).toContain("our trips");
+  });
+});
