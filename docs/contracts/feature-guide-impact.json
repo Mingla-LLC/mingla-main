@@ -1092,6 +1092,7 @@
         "mingla-sites/src/designs/voyage/blocks/StoryGridCard.tsx",
         "mingla-sites/src/designs/voyage/blocks/TripFilters.tsx",
         "mingla-sites/src/designs/voyage/parts.tsx",
+        "mingla-sites/src/lib/assetCredential.ts",
         "mingla-sites/src/lib/clientAnalytics.ts",
         "mingla-sites/src/lib/previewMedia.ts",
         "mingla-sites/src/lib/sharedPreviewHref.ts",
