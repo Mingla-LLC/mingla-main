@@ -7,7 +7,6 @@ import type {
 import {
   createThemePalette,
   offeringSurfaceStyles,
-  resolveTheme,
 } from "@mingla/offering-rendering";
 
 import {
@@ -17,6 +16,7 @@ import {
   type,
 } from "../../constants/designSystem";
 import { useStaffStayDetail } from "../../hooks/useStaffStayDetail";
+import { stayHostChromeTheme } from "./stayHostChromeTheme";
 import {
   StayReservationError,
   stayReservationService,
@@ -93,7 +93,8 @@ export function StayStaffReservationCreateSheet({
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const theme = useMemo(() => resolveTheme(null, null), []);
+  // #4420 — Host chrome draws in the app's face (see stayHostChromeTheme).
+  const theme = useMemo(() => stayHostChromeTheme(), []);
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
 
