@@ -237,6 +237,32 @@ describe("#4453 milestone 11 answers and Publish this page (spec v2.1 §3.2-§3.
     expect(workLog.at(-1)).toMatchObject({ actor: "user", tool: "ari_page_accept" });
   });
 
+  // #4453 m11 rework (tester P3-1) — publishing closes Ari's questions; nothing can be written into a published page.
+  it("Publish this page closes Ari's open questions (owner_questions emptied)", async () => {
+    state.pages.push(draftPage());
+    await runOwnerAriPageAction("ari_page_accept", { page_id: "p9" }, owner());
+    const update = writes.find((w) => w.collection === "pages")!;
+    expect(update.data!.owner_questions).toEqual([]);
+  });
+
+  it("Ari's answer tool refuses a page the owner already published (origin ari, ari_draft false), writing nothing", async () => {
+    state.pages.push({ ...draftPage(), ari_draft: false, enabled: true });
+    const args = {
+      brand_id: BRAND, site_id: "00000000-0000-4000-8000-0000000c0011", page_path: "private-hire", question_key: "ada_role",
+      answer: "Head chef", why: "The owner told me Ada's role.", cites: [{ kind: "owner_words", quote: "Ada is our head chef" }],
+    };
+    await expect(runAriPageAction("answer_site_page_question", args, ctx())).rejects.toThrow("PAGE_NOT_ARI_DRAFT");
+    expect(writes).toHaveLength(0);
+    expect(workLog).toHaveLength(0);
+  });
+
+  it("the owner's answer route refuses a page already published, writing nothing", async () => {
+    state.pages.push({ ...draftPage(), ari_draft: false, enabled: true });
+    await expect(runOwnerAriPageAction("ari_page_answer", { page_id: "p9", question_key: "ada_role", answer: "Head chef" }, owner())).rejects.toThrow("PAGE_NOT_ARI_DRAFT");
+    expect(writes).toHaveLength(0);
+    expect(workLog).toHaveLength(0);
+  });
+
   it("Remove deletes the Draft page and its menu entry; an owner page is never touched", async () => {
     state.pages.push(draftPage());
     state.navigation.items.unshift({ id: "i0", label: "Private hire", target_type: "page", page: "p9", draft: true });

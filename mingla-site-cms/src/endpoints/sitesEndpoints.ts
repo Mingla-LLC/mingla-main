@@ -1284,10 +1284,7 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
       });
       const docs = await findAllTenantPages(scopedPreview, tenant.id);
       const paths = tenantPagePaths(docs);
-      return docs
-        .filter((page) => page.enabled === true || isHomePage(page))
-        .map((page) => ({ path: paths.get(String(page.id)) ?? "", title: String(page.title ?? "") }))
-        .sort((left, right) => left.path.localeCompare(right.path));
+      return previewGrantPages(docs as AnyDocLike[], paths);
     })();
     await callCore(
       `/internal/v1/sites/${envelope.site_id}/preview-results`,
@@ -1826,6 +1823,28 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
   } catch (error) {
     return safeFailure(error);
   }
+}
+
+/**
+ * #2829 W2 — the pages the owner may pick in the editor preview ("" is home).
+ * #4453 m11 rework (spec v2.1 §3.3) — a Draft page from Ari is listed too,
+ * marked `draft_by_ari` so the editor's page menu tags it "Draft". Only this
+ * owner-only grant carries the mark; publish, export and share links still
+ * leave the page out (the builder and the share view).
+ */
+type AnyDocLike = { id?: unknown; enabled?: unknown; ari_draft?: unknown; title?: unknown; slug?: unknown; parent?: unknown };
+export function previewGrantPages(
+  docs: readonly AnyDocLike[],
+  paths: ReadonlyMap<string, string>,
+): Array<{ path: string; title: string; draft_by_ari?: true }> {
+  return docs
+    .filter((page) => page.enabled === true || isHomePage(page as never) || page.ari_draft === true)
+    .map((page) => ({
+      path: paths.get(String(page.id)) ?? "",
+      title: String(page.title ?? ""),
+      ...(page.ari_draft === true ? { draft_by_ari: true as const } : {}),
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
 }
 
 /**

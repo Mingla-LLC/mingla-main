@@ -201,6 +201,30 @@ export interface Page {
    */
   planned_offering?: ('trips' | 'events' | 'experiences') | null;
   enabled?: boolean | null;
+  /**
+   * "ari" when Ari added this page.
+   */
+  origin?: string | null;
+  /**
+   * Draft by Ari: hidden from visitors and share links until the owner publishes it.
+   */
+  ari_draft?: boolean | null;
+  /**
+   * What the owner asked Ari for, word for word.
+   */
+  ari_request?: string | null;
+  /**
+   * Ari's questions for the owner. Shown only to the owner; never published.
+   */
+  owner_questions?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   revision: number;
   blocks?:
     | (
@@ -1705,6 +1729,10 @@ export interface Navigation {
         target_type: 'page' | 'url';
         page?: (string | null) | Page;
         url?: string | null;
+        /**
+         * Draft: added by Ari with a Draft page; hidden until the page is published.
+         */
+        draft?: boolean | null;
         children?:
           | {
               label: string;
@@ -2250,6 +2278,10 @@ export interface PagesSelect<T extends boolean = true> {
   collection_kind?: T;
   planned_offering?: T;
   enabled?: T;
+  origin?: T;
+  ari_draft?: T;
+  ari_request?: T;
+  owner_questions?: T;
   revision?: T;
   blocks?:
     | T
@@ -2922,6 +2954,7 @@ export interface NavigationSelect<T extends boolean = true> {
         target_type?: T;
         page?: T;
         url?: T;
+        draft?: T;
         children?:
           | T
           | {

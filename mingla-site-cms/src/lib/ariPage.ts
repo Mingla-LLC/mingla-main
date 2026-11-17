@@ -300,7 +300,8 @@ async function answerSitePageQuestion(args: AnyDoc, ctx: AriActionContext): Prom
   const paths = tenantPagePaths(pages as never);
   const page = pages.find((row) => paths.get(String(row.id)) === String(args.page_path ?? "").replace(/^\/+|\/+$/g, ""));
   if (!page) refuse("PAGE_NOT_FOUND");
-  if (page.origin !== "ari") refuse("PAGE_NOT_ARI_DRAFT");
+  // #4453 m11 rework (tester P3-1) — once the owner has published the page it is theirs: Ari never writes into it.
+  if (page.origin !== "ari" || page.ari_draft !== true) refuse("PAGE_NOT_ARI_DRAFT");
   const next = pageWithAnswer(page, String(args.question_key ?? ""), answer);
   const writing = { ...ctx.scoped, context: { ...ctx.scoped.context, minglaReviewSource: "ari", minglaAriPage: true } } as PayloadRequest;
   const updated = await ctx.req.payload.update({
@@ -333,7 +334,8 @@ export async function runOwnerAriPageAction(action: "ari_page_answer" | "ari_pag
   const pages = (await findAllTenantPages(ctx.scoped, ctx.tenantId)) as AnyDoc[];
   const page = pages.find((row) => String(row.id) === pageId);
   if (!page) refuse("NOT_FOUND");
-  if (page.origin !== "ari" || (action !== "ari_page_answer" && page.ari_draft !== true)) refuse("PAGE_NOT_ARI_DRAFT");
+  // #4453 m11 rework (tester P3-1) — every owner action, the answer included, needs a page that is still a Draft by Ari.
+  if (page.origin !== "ari" || page.ari_draft !== true) refuse("PAGE_NOT_ARI_DRAFT");
   const title = String(page.title ?? "Page");
   const ariWrite = (extra: Record<string, unknown> = {}) => ({ ...ctx.scoped, context: { ...ctx.scoped.context, minglaAriPage: true, ...extra } } as PayloadRequest);
 
@@ -354,7 +356,8 @@ export async function runOwnerAriPageAction(action: "ari_page_answer" | "ari_pag
     // "Publish this page": every block reviewed, the page on, the Draft marks cleared. The site publish runs next, as normal.
     const updated = await ctx.req.payload.update({
       collection: "pages", id: page.id, req: ariWrite({ minglaMarkReviewed: "all" }), overrideAccess: false, draft: true, depth: 0,
-      data: { blocks: page.blocks, enabled: true, ari_draft: false, revision: page.revision } as never,
+      // #4453 m11 rework (tester P3-1) — publishing closes Ari's open questions (their rows stay hidden, N8).
+      data: { blocks: page.blocks, enabled: true, ari_draft: false, owner_questions: [], revision: page.revision } as never,
     }) as AnyDoc;
     if (navigation && items.some(isThisPage)) {
       await ctx.req.payload.update({ collection: "navigation", id: navigation.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: { items: items.map((item) => (isThisPage(item) ? { ...item, draft: false } : item)) } as never });
