@@ -7,8 +7,12 @@
  *   - the confirm sheet's sentence lists the page set;
  *   - asking for previews writes nothing: only "Start the build" saves the
  *     design and runs Build.
+ * The source-shape rules (the setup screen's flag branch, the chooser's two
+ * writes, the one native WebView, the desktop min height, the harness's
+ * release redirect) live in the strict-grep gate
+ * .github/scripts/strict-grep/issue-4453-sites-host-wiring.mjs
+ * (I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN: no source-text pins in Jest).
  */
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizePlanPreview, planPreviewUrl } from "../../../../sites/planPreviewApi";
 import { normalizeSitePlan } from "../../../../sites/sitePlanState";
@@ -23,9 +27,7 @@ describe("#4453 M10 plan preview (Host)", () => {
     expect(off.planPreview).toBe(false);
     const on = normalizeSitePlan("b", { plan: { brand_id: "b", revision: 1 }, plan_preview: true });
     expect(on.planPreview).toBe(true);
-    const screen = readFileSync(join(__dirname, "../../setup/WebsiteSetupScreen.tsx"), "utf8");
-    expect(screen).toMatch(/plan\.planPreview && !allStyles \? \(/);
-    expect(screen).toMatch(/: <PlanDesignPart brandId=\{brandId\} planState=\{plan\} readOnly=\{readOnly\} onDone=/);
+    expect(normalizeSitePlan("b", { plan: { brand_id: "b", revision: 1 }, plan_preview: "true" }).planPreview).toBe(false);
   });
 
   it("normalises Core's answer into cards on the plan host, with Ari's picks", () => {
@@ -50,18 +52,8 @@ describe("#4453 M10 plan preview (Host)", () => {
     expect(planBuildSentence(["Home", "Menu"], "restaurants")).toBe("Ari builds 2 pages: Home, Menu.");
   });
 
-  it("only Start the build writes (save design, then Build); previews are a read", () => {
-    const chooser = readFileSync(join(__dirname, "../PlanPreviewChooser.tsx"), "utf8");
-    const writes = chooser.match(/\b(save|compose)\.mutate\(/g) ?? [];
-    expect(writes).toEqual(["save.mutate(", "compose.mutate("]);
-    expect(chooser.indexOf("save.mutate(")).toBeGreaterThan(chooser.indexOf("const startBuild"));
-    // Rework P3-3: native mounts one WebView; while full screen is open the card's frame is unmounted.
-    expect(chooser).toMatch(/Platform\.OS === "web" \|\| \(index === active && full === null\)/);
-  });
 
   it("rework P3-2: desktop frames are at least 360 px tall (the device height grows; the width never shrinks)", () => {
-    const chooserSource = readFileSync(join(__dirname, "../PlanPreviewChooser.tsx"), "utf8");
-    expect(chooserSource).toMatch(/export const PLAN_PREVIEW_DESKTOP_MIN_HEIGHT = 360;/);
     const PLAN_PREVIEW_DESKTOP_MIN_HEIGHT = 360;
     // 1440 x 900 desktop in a ~400 px column: the width-limited scale draws it 250 px tall.
     const scale = previewScale({ paneWidth: 400, maxHeight: 420, width: 1440, height: 900 });
@@ -70,8 +62,6 @@ describe("#4453 M10 plan preview (Host)", () => {
     expect(Math.ceil(height * scale)).toBeGreaterThanOrEqual(360);
     expect(previewViewportHeight({ height: 900, scale })).toBe(900);
     expect(previewViewportHeight({ height: 900, scale: 0, minHeight: 360 })).toBe(900);
-    const chooser = readFileSync(join(__dirname, "../PlanPreviewChooser.tsx"), "utf8");
-    expect(chooser).toMatch(/minHeight=\{wide \? PLAN_PREVIEW_DESKTOP_MIN_HEIGHT : undefined\}/);
   });
 
   it("the fixture harness is dev-only: Metro never sees it in production, it redirects in a release build and reads no auth", () => {
@@ -94,11 +84,5 @@ describe("#4453 M10 plan preview (Host)", () => {
     };
     expect(blocked("production")).toBe(true);
     expect(blocked("development")).toBe(false);
-    const harness = readFileSync(harnessPath, "utf8");
-    expect(harness).toMatch(/if \(!__DEV__\) return <Redirect href="\/" \/>;/);
-    expect(harness).not.toMatch(/useAuth/);
-    // The chooser itself never reads the fixture.
-    expect(readFileSync(join(__dirname, "../PlanPreviewChooser.tsx"), "utf8")).not.toMatch(/EXPO_PUBLIC_PLAN_PREVIEW_FIXTURE/);
-    expect(readFileSync(join(__dirname, "../../../../sites/planPreviewApi.ts"), "utf8")).not.toMatch(/EXPO_PUBLIC_PLAN_PREVIEW_FIXTURE/);
   });
 });

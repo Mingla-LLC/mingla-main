@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, type Text as RNText } from "react-native";
+import { StyleSheet, Text, View, type Text as RNText } from "react-native";
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
+import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { Redirect } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { brandSiteKeys } from "../../src/sites/brandSiteKeys";
@@ -160,7 +162,8 @@ function Harness(): React.ReactElement {
 
   return (
     <WebsiteProvider value={value}>
-      <ScrollView style={styles.root} contentContainerStyle={styles.body}>
+      <SafeScreen edges={["top", "bottom"]} style={styles.root}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
         <Text style={styles.dev}>{`Dev harness · fixture data · not in release builds · step ${step} · ${pagesRef.current.length} pages`}</Text>
         {toast ? <Text style={styles.toast} testID="dev-toast">{toast}</Text> : null}
         <View style={styles.steps}>
@@ -203,12 +206,14 @@ function Harness(): React.ReactElement {
           <PagesSection key={step} />
         )}
       </ScrollView>
+      </SafeScreen>
     </WebsiteProvider>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#0c0e12" },
+  scroll: { flex: 1 },
   body: { padding: 16, paddingBottom: 48 },
   dev: { color: "#9aa0a6", fontSize: 12, marginBottom: 12 },
   toast: { color: "#fff", backgroundColor: "#333", padding: 10, borderRadius: 8, marginBottom: 12 },

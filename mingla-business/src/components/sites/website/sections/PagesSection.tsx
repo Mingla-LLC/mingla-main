@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { DraftReviewCard } from "./DraftReviewCard";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useWebsite } from "../WebsiteContext";
 import { Body, Card, CardTitle, Chip, Field, Hint, ListBox, MiniButton, Row, RowText, SectionHead, Toggle, WButton, ui } from "../ui";
@@ -19,6 +19,7 @@ import { PLAN_OFFERING_OPTIONS } from "../../../../../../packages/site-contracts
 import { ARI_PAGE_CHIPS, ARI_PAGE_LIMITS, ariPagePrompt } from "../../../../../../packages/site-contracts/src/ariPage.ts";
 import { useAriSeedStore } from "../../../../store/ariSeedStore";
 import { useWebEscapeClose } from "../../../ui/useWebEscapeClose";
+import { KeyboardAvoidingView } from "../../../../wrappers/SmartKeyboardAvoidingView";
 
 const OFFERING_KIND_WORDS: Record<string, { plural: string; kind: string }> = {
   trips: { plural: "trips", kind: "trip" },

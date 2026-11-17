@@ -5,16 +5,18 @@
  * (no "Gift ideas", N7), the plan card has its owner words, and the Draft
  * page card answers, publishes and removes through the owner's content
  * actions only.
+ * The Pages section's wiring (the flag-gated button, the composer seed, the
+ * Draft card's words, the content actions) and the harness's release
+ * redirect are source-shape rules: they live in the strict-grep gate
+ * .github/scripts/strict-grep/issue-4453-sites-host-wiring.mjs
+ * (I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN: no source-text pins in Jest).
  */
-import { readFileSync } from "fs";
 import { join } from "path";
 import { normalizeSitePlan } from "../sitePlanState";
 import { WRITE_TOOL_OWNER_COPY } from "../../components/ari/toolProposalCopy";
 import { ARI_PAGE_CHIPS, ariPagePrompt, unsellableOffer } from "../../../../packages/site-contracts/src/ariPage";
 
 const BRAND = "733bc470-45e1-4684-8896-acd7e26074ff";
-const pages = readFileSync(join(__dirname, "../../components/sites/website/sections/PagesSection.tsx"), "utf8");
-const api = readFileSync(join(__dirname, "../contentApi.ts"), "utf8");
 
 describe("#4453 milestone 11 Add a page with Ari (Host app)", () => {
   it("reads Core's flag; anything but true is off", () => {
@@ -23,17 +25,12 @@ describe("#4453 milestone 11 Add a page with Ari (Host app)", () => {
     expect(normalizeSitePlan(BRAND, {}).ariAddPage).toBe(false);
   });
 
-  it("the button shows only while the flag is on (flag off = today's Pages section)", () => {
-    expect(pages).toContain('const ariAddPage = ctx.plan?.ariAddPage === true;');
-    expect(pages).toContain('{ariAddPage ? <WButton label="Add a page with Ari"');
-  });
 
   it("offers the four approved chips, never gift ideas, and seeds Ari's composer with the owner's topic", () => {
     expect(ARI_PAGE_CHIPS).toEqual(["Private hire", "Our team", "Weddings and celebrations", "Group bookings"]);
     for (const chip of ARI_PAGE_CHIPS) expect(unsellableOffer(chip)).toBeNull();
     expect(unsellableOffer("Gift ideas")).not.toBeNull();
     expect(ariPagePrompt("Private hire")).toBe("Add a page to my website about private hire");
-    expect(pages).toContain("useAriSeedStore.getState().setSeed(ariPagePrompt(text))");
   });
 
   it("the plan card and the answer card have owner words", () => {
@@ -42,13 +39,6 @@ describe("#4453 milestone 11 Add a page with Ari (Host app)", () => {
     expect(WRITE_TOOL_OWNER_COPY.answer_site_page_question).toBeDefined();
   });
 
-  it("the Draft page card answers, publishes and removes only through the owner's content actions", () => {
-    for (const action of ["ari_page_answer", "ari_page_accept", "ari_page_remove"]) expect(api).toContain(`"${action}"`);
-    expect(pages).toContain("Ari needs this");
-    expect(pages).toContain("Only you see these questions.");
-    expect(pages).toContain("Those rows stay hidden.");
-    expect(pages).toContain('label="Publish this page"');
-  });
 
   it("the add-a-page walk-through harness is dev-only: production Metro never sees it, a release build redirects, no auth", () => {
     const root = join(__dirname, "../../..");
@@ -69,8 +59,5 @@ describe("#4453 milestone 11 Add a page with Ari (Host app)", () => {
     };
     expect(blocked("production")).toBe(true);
     expect(blocked("development")).toBe(false);
-    const harness = readFileSync(harnessPath, "utf8");
-    expect(harness).toMatch(/if \(!__DEV__\) return <Redirect href="\/" \/>;/);
-    expect(harness).not.toMatch(/useAuth/);
   });
 });

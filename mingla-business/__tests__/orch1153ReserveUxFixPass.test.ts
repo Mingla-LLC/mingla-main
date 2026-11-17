@@ -115,6 +115,11 @@ describe("ORCH-1153 reserve-UX fix pass", () => {
     const src = read(BIZ_PICKER);
     // FAILS-ON-REVERT: deleting the reset effect removes the visible-gated reset.
     expect(src).toMatch(/useEffect\(\(\)\s*=>\s*\{\s*if\s*\(visible\)/);
-    expect(src).toMatch(/setSelectedDateId\(null\)/);
+    // #4453 milestone 5: the reset now goes to the website's pre-filled date
+    // when one was passed and is in `dates`, else to null, so the no-prefill
+    // behaviour this pins is unchanged.
+    expect(src).toMatch(/const seeded = initialDateId && dates\.some\(.*\) \? initialDateId : null;/);
+    expect(src).toMatch(/setSelectedDateId\(seeded\)/);
+    expect(src).toMatch(/initialDateId = null,/);
   });
 });

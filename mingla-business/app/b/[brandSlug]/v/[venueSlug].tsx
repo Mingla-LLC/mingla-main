@@ -564,9 +564,11 @@ export default function PublicVenueRoute(): React.ReactElement {
           surface={context.surface}
           theme={context.theme}
           onQuoteChange={setStayQuote}
-          initialRange={prefill.checkin && prefill.checkout ? { checkIn: prefill.checkin, checkOut: prefill.checkout } : null}
-          initialAdults={prefill.guests}
-          initialRoomId={prefill.room}
+          // #4453 — pre-fill props only when the site sent them, so a plain
+          // visit renders byte-identically to before (#1559 render parity).
+          {...(prefill.checkin && prefill.checkout ? { initialRange: { checkIn: prefill.checkin, checkOut: prefill.checkout } } : {})}
+          {...(prefill.guests != null ? { initialAdults: prefill.guests } : {})}
+          {...(prefill.room != null ? { initialRoomId: prefill.room } : {})}
         />
       ) : (
         <GuestVenueReservation
@@ -574,9 +576,9 @@ export default function PublicVenueRoute(): React.ReactElement {
           brandId={context.brandId}
           currency={context.currency}
           analyticsSurface={analyticsSurface}
-          initialDate={prefill.date}
-          initialTime={prefill.time}
-          initialPartySize={prefill.party}
+          {...(prefill.date != null ? { initialDate: prefill.date } : {})}
+          {...(prefill.time != null ? { initialTime: prefill.time } : {})}
+          {...(prefill.party != null ? { initialPartySize: prefill.party } : {})}
           // issue #1564 — the slot has always carried the resolved palette (the
           // Stay branch two lines up already used it); the table branch simply
           // never read it, and painted Mingla orange on every brand's page.

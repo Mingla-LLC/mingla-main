@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import { Modal, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { DESIGNS } from "../../../../../packages/site-contracts/src/designs.ts";
 import { planBuildSentence } from "../../../../../packages/site-contracts/src/planPreview.ts";
@@ -11,9 +11,28 @@ import { BrandSitesError } from "../../../services/brandSitesService";
 import { Sheet } from "../../ui/Sheet";
 import { useWebsite } from "../website/WebsiteContext";
 import { Card, CardTitle, Chip, Hint, SectionHead, Segmented, Skeleton, WButton, ui } from "../website/ui";
-import { ScaledPreviewFrame } from "../website/preview/ScaledPreviewFrame";
+import type { ScaledPreviewFrameProps } from "../website/preview/ScaledPreviewFrame";
 import { FullScreenPreviewBar } from "../website/preview/FullScreenPreviewBar";
 import { PreviewDeviceSwitcher } from "../website/preview/SitePreviewPanel";
+
+// #4453 final rework — the native frame imports `react-native-webview` at
+// module scope. Website setup mounts this chooser, so a module-scope import
+// pulled the WebView into every suite (and boot path) that loads setup.
+// Resolved at first render instead (the AriChatScreen deferred-require
+// pattern): Metro still picks the `.web.tsx` iframe on web, no new chunk.
+const LazyScaledPreviewFrame = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../website/preview/ScaledPreviewFrame") as typeof import("../website/preview/ScaledPreviewFrame");
+  return { default: mod.ScaledPreviewFrame };
+});
+
+function ScaledPreviewFrame(props: ScaledPreviewFrameProps): React.ReactElement {
+  return (
+    <Suspense fallback={<Skeleton height={props.fill ? 320 : Math.min(props.maxHeight ?? 560, 320)} />}>
+      <LazyScaledPreviewFrame {...props} />
+    </Suspense>
+  );
+}
 
 /**
  * #4453 milestone 10 (spec v2.1 §2.1) — "See your site in three styles",

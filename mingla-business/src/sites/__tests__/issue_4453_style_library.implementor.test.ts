@@ -3,11 +3,11 @@
  * look pickers offer (off: Atelier and Voyage, as before; on: the ten styles
  * with their fixed fit). An owner may pick an "avoid" style: it shows the
  * fixed warning and is never blocked (D6). The plan read carries Core's flag.
+ * That both pickers read lookPickerKeys (never DESIGN_KEYS) is a source-shape
+ * rule in .github/scripts/strict-grep/issue-4453-sites-host-wiring.mjs.
  */
 import { lookPickerKeys, planFormatOf, styleFitLabel } from "../styleLibrary";
 import { normalizeSitePlan } from "../sitePlanState";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 describe("#4453 SITES_STYLE_LIBRARY look picker", () => {
   it("off: Atelier and Voyage only; a design already in use stays listed", () => {
@@ -48,16 +48,4 @@ describe("#4453 SITES_STYLE_LIBRARY look picker", () => {
     expect(normalizeSitePlan("b", {}).styleLibrary).toBe(false);
   });
 
-  it("both pickers read the gate (never DESIGN_KEYS directly) and show the avoid warning", () => {
-    const root = join(__dirname, "..", "..", "components", "sites");
-    const plan = readFileSync(join(root, "plan", "PlanDesignPart.tsx"), "utf8");
-    const look = readFileSync(join(root, "website", "sections", "DesignSection.tsx"), "utf8");
-    expect(plan).toContain("lookPickerKeys(planState.styleLibrary, stored)");
-    expect(plan).not.toMatch(/DESIGN_KEYS\.map/);
-    expect(plan).toContain('testID="plan-design-avoid-warning"');
-    expect(look).toContain("lookPickerKeys(styleLibrary, design.key)");
-    expect(look).toContain("ctx.plan?.styleLibrary === true");
-    expect(look).not.toMatch(/\{DESIGN_KEYS\.map/);
-    expect(look).toContain('testID="design-avoid-warning"');
-  });
 });
