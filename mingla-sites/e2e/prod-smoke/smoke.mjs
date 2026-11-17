@@ -254,16 +254,21 @@ async function waitForApp() {
  */
 // #4453 milestone 7c — sensitivity proof only: PROD_SMOKE_BREAK_HEADER=1 pushes every header menu toggle a full screen right, so the check must fail in every design.
 const BREAK_HEADER = process.env.PROD_SMOKE_BREAK_HEADER === "1";
+// #4453 milestone 7c (tester P2-1) — sensitivity proof only: PROD_SMOKE_COVER_HEADER=1 lays an opaque layer over the
+// top-right corner (where every design's menu toggle sits), so the check must report the toggle as covered.
+const COVER_HEADER = process.env.PROD_SMOKE_COVER_HEADER === "1";
 
 async function headerControlsCheck(page, label, out) {
   // Voyage's .btn animates transform, so the break also turns transitions off; otherwise the check measures the toggle mid-slide.
   if (BREAK_HEADER) await page.addStyleTag({ content: ".mg-menu-btn, .v-drawer__toggle, [aria-controls][aria-haspopup], header button, header summary { transform: translateX(100vw) !important; transition: none !important; }" });
+  if (COVER_HEADER) await page.addStyleTag({ content: "body::after { content: ''; position: fixed; top: 0; right: 0; width: 110px; height: 140px; background: #000; z-index: 2147483647; pointer-events: auto; }" });
   const problems = await page.evaluate(() => {
     const header = document.querySelector("[data-mg-header]") ?? document.querySelector("body header");
     if (!header) return ["no header"];
     const found = [];
     // The menu toggle wherever it sits (Voyage's own drawer toggle is outside <header>).
     const controls = new Set([...header.querySelectorAll("a[href], button"), ...document.querySelectorAll(".v-drawer__toggle, .mg-menu-btn, [aria-controls][aria-haspopup]")]);
+    const nameOf = (node) => (node.getAttribute("aria-label") || node.textContent || node.className || node.tagName).replace(/\s+/g, " ").trim().slice(0, 40);
     let toggleMeasured = false;
     for (const el of controls) {
       // A closed menu (dialog, or a drawer marked data-open="false") is not on screen.
@@ -272,16 +277,21 @@ async function headerControlsCheck(page, label, out) {
       if (style.visibility === "hidden" || style.display === "none") continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
-      // Measure what the user sees: when the control's centre is on screen, it must be the topmost element there
-      // (a duplicate hidden under another layer is skipped). A centre off screen is still measured, and fails below.
+      const name = nameOf(el);
+      if (el.tagName === "BUTTON" || el.tagName === "SUMMARY") toggleMeasured = true;
+      // #4453 milestone 7c (tester P2-1) — what the user can tap: when the control's centre is on screen, the
+      // topmost element there must be the control or inside it. Anything else covering it fails ("covered"); the
+      // only skip is a same-named twin control lying on top (a duplicate). A centre off screen fails below.
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
       if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
         const top = document.elementFromPoint(cx, cy);
-        if (top && top !== el && !el.contains(top)) continue;
+        if (top && top !== el && !el.contains(top)) {
+          const twin = top.closest("a[href], button, summary");
+          if (twin && twin !== el && nameOf(twin) === name) continue;
+          found.push(`"${name}" is covered by ${top.tagName.toLowerCase()}${typeof top.className === "string" && top.className ? `.${top.className.trim().split(/\s+/)[0]}` : ""}`);
+        }
       }
-      if (el.tagName === "BUTTON" || el.tagName === "SUMMARY") toggleMeasured = true;
-      const name = (el.getAttribute("aria-label") || el.textContent || el.className || el.tagName).replace(/\s+/g, " ").trim().slice(0, 40);
       if (r.left < -0.5 || r.right > window.innerWidth + 0.5) found.push(`"${name}" leaves the screen (x ${Math.round(r.left)}-${Math.round(r.right)})`);
       if (r.width < 43.5 || r.height < 43.5) found.push(`"${name}" is ${Math.round(r.width)}x${Math.round(r.height)} px (under 44)`);
     }
@@ -424,6 +434,13 @@ for (const state of ["empty", "upcoming"]) {
           if (found.length) failures.push(`${label}: empty-grid markup on the public page (${found.join(", ")})`);
         }
         if (html.includes(upcomingFeed.offerings[0]?.title ?? "Smoke Trip 1")) sawTrip = true;
+        // #4453 milestone 7c (tester P3-1) — the fixtures put "Keep exploring" (page_links) and "Good to know"
+        // (facts_table) on every design's Home; each must actually be drawn, not just present in the artifact.
+        if (!ys && path === "/") {
+          const missing = ["Keep exploring", "Good to know", "Twelve at most"].filter((text) => !html.includes(text));
+          if (missing.length) failures.push(`${label}: page_links / facts_table not drawn on Home (missing ${missing.map((text) => `"${text}"`).join(", ")})`);
+          else console.log(`ok ${label} Keep exploring + Good to know drawn`);
+        }
         if (path === "/" && site.expects_booking && !(html.includes("mg-slots") && html.includes("mg-tiers") && (!site.expects_rating || html.includes("reviews on Mingla")))) {
           failures.push(`${label}: the live booking blocks are not drawn on Home (saved ${site.design_key}-home.html)`);
           writeFileSync(join(dir, `${site.design_key}-home.html`), html);

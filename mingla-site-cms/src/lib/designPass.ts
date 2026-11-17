@@ -96,28 +96,60 @@ export function isClaimDuplicate(error: unknown): boolean {
   return (record.data?.errors ?? []).some((row) => row?.path === "nonce");
 }
 
+/**
+ * Milestone 7c rework (tester P3-2) — a claim only guards a pass in flight; the
+ * work log is what says "already run" once a pass has finished. So a claim
+ * expires after DESIGN_PASS_CLAIM_TTL_MS, and a claim left behind by a crash,
+ * a failed release or an ambiguous write blocks the draft for ten minutes at
+ * most, not until the next publish.
+ */
+export const DESIGN_PASS_CLAIM_TTL_MS = 10 * 60 * 1000;
+
 async function claimDesignPass(ctx: AriActionContext, draftSince: string | null): Promise<string> {
   const nonce = designPassClaimKey(ctx.tenantId, draftSince);
-  try {
-    await ctx.req.payload.create({
-      collection: "gateway-nonces",
-      overrideAccess: true,
-      data: {
-        nonce,
-        direction: "core_to_cms",
-        site_id: ctx.siteId,
-        operation_id: "propose_site_design_pass",
-        expires_at: new Date(Date.now() + 400 * 24 * 3600 * 1000).toISOString(),
-      } as never,
-    });
-  } catch (error) {
-    // The claim already exists: another pass on this draft won the race.
-    if (isClaimDuplicate(error)) refuse("DESIGN_PASS_ALREADY_RUN");
-    // Anything else (database unavailable, validation) is not "already run": the owner may simply try again.
-    console.error("[design-pass] claim failed", error);
-    refuse("DESIGN_PASS_TRY_AGAIN", { retryable: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await ctx.req.payload.create({
+        collection: "gateway-nonces",
+        overrideAccess: true,
+        data: {
+          nonce,
+          direction: "core_to_cms",
+          site_id: ctx.siteId,
+          operation_id: "propose_site_design_pass",
+          expires_at: new Date(Date.now() + DESIGN_PASS_CLAIM_TTL_MS).toISOString(),
+        } as never,
+      });
+      return nonce;
+    } catch (error) {
+      if (!isClaimDuplicate(error)) {
+        // Anything else (database unavailable, validation) is not "already run": the owner may simply try again.
+        console.error("[design-pass] claim failed", error);
+        refuse("DESIGN_PASS_TRY_AGAIN", { retryable: true });
+      }
+    }
+    // The claim already exists. A live one means another pass on this draft is running; an expired one was
+    // left behind, so it is cleared once and the claim retried.
+    let cleared = false;
+    try {
+      cleared = attempt === 0 && (await clearExpiredClaim(ctx, nonce));
+    } catch (error) {
+      console.error("[design-pass] could not clear an expired claim", nonce, error);
+      refuse("DESIGN_PASS_TRY_AGAIN", { retryable: true });
+    }
+    if (!cleared) break;
   }
-  return nonce;
+  refuse("DESIGN_PASS_ALREADY_RUN");
+}
+
+/** Deletes the claim only if it has expired (the delete re-checks the expiry, so a fresh claim made meanwhile survives). */
+async function clearExpiredClaim(ctx: AriActionContext, nonce: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const found = await ctx.req.payload.find({ collection: "gateway-nonces", overrideAccess: true, depth: 0, limit: 1, pagination: false, where: { nonce: { equals: nonce } } });
+  const expires = Date.parse(String((found.docs[0] as { expires_at?: unknown } | undefined)?.expires_at ?? ""));
+  if (!Number.isFinite(expires) || expires > Date.now()) return false;
+  await ctx.req.payload.delete({ collection: "gateway-nonces", overrideAccess: true, where: { nonce: { equals: nonce }, expires_at: { less_than: now } } });
+  return true;
 }
 
 /** Milestone 7c (tester P2-2) — a pass that fails after claiming gives the claim back, so Ari may try again on this draft. */
