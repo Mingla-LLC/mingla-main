@@ -115,6 +115,10 @@ export async function sendSnapConversion(
     // #4452 §4.2: Snap has no lead event; the label rides as content_category
     // and event_tag. Unset on purchases.
     content_category: input.contentCategory ?? undefined,
+    // #4238: the browser pixel carries the label as item_category
+    // (marketing-pixels fireMarketingLabelled). Send it here too so the server
+    // and pixel copies both match one Snap custom-conversion rule after dedup.
+    item_category: input.contentCategory ?? undefined,
     event_tag: input.eventTag ?? undefined,
   } as Record<string, unknown>);
 
