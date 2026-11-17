@@ -167,8 +167,21 @@ serve(async (req) => {
       claimed,
       more: result?.more === true || transferResult?.more === true,
     });
-  } catch {
+  } catch (error) {
     outcome = "internal_error";
+    // #4473: a swallowed claim failure hid a sweep that aborted for 230
+    // buyers. Log the database code and message only; no user id, email or
+    // phone.
+    const failure = error as { code?: unknown; message?: unknown } | null;
+    console.error(
+      "[attendance-claim-identity] claim_failed",
+      JSON.stringify({
+        code: typeof failure?.code === "string" ? failure.code : null,
+        message: typeof failure?.message === "string"
+          ? failure.message.slice(0, 300)
+          : null,
+      }),
+    );
     return json(500, { ok: false, error: "claim_failed" });
   } finally {
     if (attemptId && admitted) {
