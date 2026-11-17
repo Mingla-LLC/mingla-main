@@ -952,7 +952,7 @@ BEGIN
          attendance_claim_token_consumed_at = now()
    WHERE id = p_source_id;
   UPDATE public.attendance_claim_recovery_items
-     SET state = 'claimed', resolved_via = v_resolved,
+     SET state = 'claimed', operator_closure_id = NULL, resolved_via = v_resolved,
          reconciled_at = now(), updated_at = now()
    WHERE order_id = p_source_id;
   UPDATE public.attendance_claim_deliveries
@@ -1093,7 +1093,7 @@ BEGIN
     v_pass_count := v_pass_count + 1;
 
     UPDATE public.attendance_claim_recovery_items
-       SET state = 'claimed', resolved_via = 'verified_identity',
+       SET state = 'claimed', operator_closure_id = NULL, resolved_via = 'verified_identity',
            reconciled_at = now(), updated_at = now()
      WHERE order_id = v_row.id;
     UPDATE public.attendance_claim_deliveries

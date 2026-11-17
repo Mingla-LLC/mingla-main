@@ -9,7 +9,8 @@
 -- FAILS-ON-REVERT: drop the issue_4459_rsvp_client_guard trigger (H-1/H-2
 -- fail), drop its waitlist-promotion step (H-2d/H-2f fail), drop the stamp join from issue_4459_brand_guest_eligible (H-4
 -- fails), drop the reopen trigger (H-6 fails), or grant EXECUTE on the
--- server-only helpers again (H-8 fails).
+-- server-only helpers again (H-8 fails), or drop operator_closure_id = NULL
+-- from either claim UPDATE (H-9 fails).
 
 BEGIN;
 
@@ -255,5 +256,69 @@ BEGIN
     pg_temp.count_as('cy', format('SELECT count(*) FROM public.conversation_participants WHERE conversation_id = %L', pg_temp.chat('b1')))
       = 1 + (SELECT count(*) FROM public.brand_team_members m WHERE m.brand_id = pg_temp.u('b1') AND m.accepted_at IS NOT NULL AND m.removed_at IS NULL));
 END $h8$;
+
+-- H-9 (#4473 carried here): an order whose recovery row an operator closed
+-- (#3060) must still claim by verified identity. Leaving operator_closure_id
+-- set broke the operator_resolution_check (23514) and aborted the whole sweep,
+-- so the buyer never saw any ticket. Also proves the claimed buyer joins the
+-- brand's Guest chat.
+DO $h9$
+DECLARE
+  v_host uuid := '44590000-0000-4000-8000-000000009001';
+  v_payer uuid := '44590000-0000-4000-8000-000000009002';
+  v_guest uuid := '44590000-0000-4000-8000-000000009003';
+  v_brand uuid := '44590000-0000-4000-8000-000000009004';
+  v_event uuid := '44590000-0000-4000-8000-000000009005';
+  v_order uuid := '44590000-0000-4000-8000-000000009006';
+  v_ticket_type uuid := '44590000-0000-4000-8000-000000009007';
+  v_result jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  INSERT INTO auth.users(id) VALUES (v_host), (v_payer), (v_guest);
+  INSERT INTO public.creator_accounts(id) VALUES (v_host) ON CONFLICT DO NOTHING;
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency, pricing_currency, payment_provider)
+  VALUES (v_brand, v_host, 'Issue 4459 H9', 'issue-4459-h9', 'USD', 'USD', 'stripe');
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_event, v_brand, 'Issue 4459 H9 event', 'issue-4459-h9-event', 'event', 'scheduled', 'private', 'UTC', 'USD');
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_email, buyer_phone_e164, total_cents,
+    currency, payment_method, payment_status, source)
+  VALUES (v_order, v_event, v_payer, 'h9-guest@example.test', '+12025559003',
+    1000, 'USD', 'online_card', 'paid', 'online_checkout');
+  INSERT INTO public.ticket_types(id, event_id, name, price_cents, currency)
+  VALUES (v_ticket_type, v_event, 'General', 1000, 'USD');
+  INSERT INTO public.tickets(order_id, ticket_type_id, event_id, qr_code, status, approval_status)
+  VALUES (v_order, v_ticket_type, v_event, 'issue-4459-h9-qr', 'valid', 'auto');
+  INSERT INTO public.account_claim_contacts(user_id, channel, value, verified_via)
+  VALUES (v_guest, 'email', 'h9-guest@example.test', 'email_code');
+
+  INSERT INTO public.attendance_claim_recovery_operator_closures(closure_id, expected_count, set_sha256, decision_reference)
+  VALUES ('issue_3060_no_current_buyers', 1, repeat('0', 64),
+    'https://github.com/Mingla-LLC/mingla-main/issues/2979#issuecomment-5514866755')
+  ON CONFLICT (closure_id) DO NOTHING;
+  INSERT INTO public.attendance_claim_recovery_items(order_id, selected_token_created_at, state,
+    resolved_via, operator_closure_id, reconciled_at)
+  VALUES (v_order, now() - interval '30 days', 'no_longer_eligible',
+    'operator_confirmed_no_current_buyer', 'issue_3060_no_current_buyers', now() - interval '1 day')
+  ON CONFLICT (order_id) DO UPDATE SET state = EXCLUDED.state, resolved_via = EXCLUDED.resolved_via,
+    operator_closure_id = EXCLUDED.operator_closure_id, reconciled_at = EXCLUDED.reconciled_at;
+
+  v_result := public.claim_attendance_by_verified_identity(v_guest);
+  PERFORM pg_temp.ok('H-9a an operator-closed order still claims by verified identity',
+    (SELECT buyer_user_id = v_guest FROM public.orders WHERE id = v_order));
+  PERFORM pg_temp.ok('H-9b the recovery row is claimed and its operator closure cleared',
+    (SELECT state = 'claimed' AND resolved_via = 'verified_identity' AND operator_closure_id IS NULL
+       FROM public.attendance_claim_recovery_items WHERE order_id = v_order));
+  PERFORM pg_temp.ok('H-9c the operator closure record stays as history',
+    EXISTS (SELECT 1 FROM public.attendance_claim_recovery_operator_closures
+             WHERE closure_id = 'issue_3060_no_current_buyers'));
+  PERFORM pg_temp.ok('H-9d the claimed buyer is in the brand''s Guest chat',
+    EXISTS (SELECT 1 FROM public.conversations c JOIN public.conversation_participants cp ON cp.conversation_id = c.id
+             WHERE c.brand_id = v_brand AND c.linked_entity_type = 'brand_guests' AND cp.user_id = v_guest));
+  PERFORM pg_temp.ok('H-9e claim_attendance_internal_v2 clears the operator closure too',
+    position('operator_closure_id = NULL' in (SELECT prosrc FROM pg_proc
+      WHERE oid = 'public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure)) > 0);
+END $h9$;
 
 ROLLBACK;
