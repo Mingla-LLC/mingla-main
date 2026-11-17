@@ -1246,12 +1246,12 @@ export async function buildPublicationArtifact(
         path: pagePaths.get(String(page.id)) ?? "",
         rendered,
         // #4453 milestone 7c (tester P3-2) — "Keep exploring" alone is not content: a page with nothing else never publishes enabled.
-        enabled: isHome
-          ? page.enabled === true
-          : page.enabled === true && rendered.some((block) => block?.type !== "page_links") && !underAriDraft(pagePaths.get(String(page.id)) ?? ""),
+        enabled: isHome ? page.enabled === true : page.enabled === true && rendered.some((block) => block?.type !== "page_links"),
         ariDraft: page.ari_draft === true,
       };
     })
+    // #4453 milestone 11 — a Draft-by-Ari page and everything under it is never enabled (only the preview keeps it).
+    .map((entry) => (underAriDraft(entry.path) ? { ...entry, enabled: false } : entry))
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
   const livePaths = new Map(
     renderedPages.filter((entry) => entry.enabled).map((entry) => [String(entry.page.id), entry.path]),
