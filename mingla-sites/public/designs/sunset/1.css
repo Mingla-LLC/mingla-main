@@ -1,0 +1,176 @@
+/*
+ * #4453 6c — the "sunset" design, version 1: warm retro 70s. Cream paper,
+ * chocolate ink and a burnt-orange / tomato / mustard sunset; a soft display
+ * serif (its soft instance is self-hosted) over a rounded sans, groovy
+ * accent words in the accent face; chunky sticker shadows, rounded
+ * everything, a striped retro sun hero drawn in CSS, film-warm photographs.
+ * The one signature moment: the sun's rays turn very slowly (transform only,
+ * holding one of the 12 animation slots while they turn, off under reduced
+ * motion and Save-Data). Light only by design.
+ *
+ * Drawn by the shared block library (public/designs/_shared/blocks-1.css,
+ * linked first) plus Sunset's signature hero (`ss-*`: hero sunset-sun).
+ * Every colour is a site token (var(--c-*)); type families are the font
+ * slots; radii scale with var(--radius-scale) and the button with
+ * var(--button-radius). Scoped under [data-design="sunset"]. Immutable: a
+ * change is 2.css.
+ */
+@layer base, components;
+
+:root[data-design="sunset"] {
+  color-scheme: light;
+  --display: var(--font-display);
+  --body: var(--font-body);
+  --groovy: var(--font-accent, var(--font-display));
+  --mg-bg: var(--c-canvas);
+  --mg-bg-alt: var(--c-surface-sunken);
+  --mg-surface: var(--c-surface);
+  --mg-ink: var(--c-ink-strong);
+  --mg-heading: var(--c-ink-strong);
+  --mg-body: var(--c-ink-body);
+  --mg-muted: var(--c-ink-quiet);
+  --mg-line: color-mix(in srgb, var(--c-ink-strong) 18%, transparent);
+  --mg-accent: var(--c-accent-400);
+  --mg-accent-ink: var(--c-accent-ink);
+  --mg-label: var(--c-accent-700);
+  --mg-band: var(--c-surface-deep);
+  --mg-band-ink: var(--c-ink-on-dark-body);
+  --mg-band-muted: color-mix(in srgb, var(--c-ink-on-dark-body) 76%, var(--c-surface-deep));
+  --mg-band-label: var(--c-highlight-on-dark);
+  --mg-btn: var(--c-action);
+  --mg-btn-ink: var(--c-surface);
+  --mg-btn-hover: var(--c-ink-strong);
+  --mg-hero-ink: var(--c-ink-on-photo-body);
+  --mg-hero-quiet: var(--c-ink-on-photo-quiet);
+  --mg-i: var(--c-highlight-600);
+  --mg-focus: var(--c-highlight-600);
+  --mg-scrim: var(--c-scrim-rgb);
+  --mg-shadow: var(--c-shadow-rgb);
+  --mg-f-display: var(--display);
+  --mg-f-body: var(--body);
+  --mg-f-label: var(--body);
+  --mg-max: 1320px;
+  --mg-d-weight: 800;
+  --mg-d-track: -.025em;
+  --mg-d-lh: .98;
+  --mg-h2-size: clamp(40px, 6vw, 92px);
+  --mg-h1-size: clamp(48px, 6.9vw, 116px);
+  --mg-h1-track: -.035em;
+  --mg-h1-lh: .92;
+  --mg-h3-track: -.02em;
+  --mg-l-weight: 800;
+  --mg-l-track: .16em;
+  --mg-l-size: 12.5px;
+  --mg-man-weight: 600;
+  --mg-man-size: clamp(28px, 3.7vw, 56px);
+  --mg-man-track: -.02em;
+  --mg-r-card: calc(30px * var(--radius-scale, 1));
+  --mg-r-field: calc(28px * var(--radius-scale, 1));
+  --mg-r-btn: var(--button-radius, 999px);
+  --ss-edge: 2px solid var(--c-ink-strong);
+}
+
+@layer base {
+  [data-design="sunset"] *, [data-design="sunset"] *::before, [data-design="sunset"] *::after { box-sizing: border-box; }
+  [data-design="sunset"] body { margin: 0; background: var(--c-canvas); color: var(--c-ink-body); font: 400 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+  [data-design="sunset"] img, [data-design="sunset"] video { max-width: 100%; }
+  [data-design="sunset"] a { color: inherit; }
+}
+
+/* soft grain (decorative, never intercepts a tap) and film-warm photographs */
+[data-design="sunset"] .mg-page::after { content: ""; position: fixed; inset: 0; z-index: 70; pointer-events: none; opacity: .05; background-image: radial-gradient(var(--c-ink-strong) .5px, transparent .6px); background-size: 4px 4px; }
+[data-design="sunset"] .mg-page .mg-ph img, [data-design="sunset"] .mg-hero__bg img { filter: sepia(.2) saturate(1.14) contrast(1.03) hue-rotate(-5deg); }
+
+/* type: the last headline line in the groovy accent face, tomato, tilted */
+[data-design="sunset"] .mg-page .mg-h1 .mg-ln { padding-bottom: .12em; margin-bottom: -.12em; }
+[data-design="sunset"] .mg-page .mg-h1 .mg-ln:last-child > span { font-family: var(--groovy); font-weight: 400; letter-spacing: -.005em; color: var(--c-highlight-600); transform: rotate(-3deg); }
+[data-design="sunset"] .mg-page .mg-on-photo .mg-h1 .mg-ln:last-child > span { color: inherit; }
+[data-design="sunset"] .mg-page :is(.mg-blk, .mg-foot, .mg-pmenu) h3 { font-weight: 700; }
+[data-design="sunset"] .mg-page .mg-label { display: inline-flex; align-items: center; gap: 10px; }
+[data-design="sunset"] .mg-page .mg-label::before { content: ""; width: 24px; height: 12px; border-radius: 24px 24px 0 0; flex: none; background: linear-gradient(180deg, var(--c-highlight-600) 0 34%, var(--c-highlight-700) 34% 67%, var(--c-highlight-200) 67%); }
+[data-design="sunset"] .mg-page :is(.mg-hd, .mg-pmenu) .mg-label::before { display: none; }
+[data-design="sunset"] .mg-page .mg-btn { font: 800 15px/1 var(--body); box-shadow: 3px 3px 0 var(--c-ink-strong); transition: transform .3s, box-shadow .3s, background .3s, color .3s; }
+[data-design="sunset"] .mg-page .mg-btn:hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--c-ink-strong); color: var(--c-surface); }
+[data-design="sunset"] .mg-page .mg-btn--accent { background: var(--c-action); color: var(--c-surface); }
+[data-design="sunset"] .mg-page .mg-btn--accent:hover { background: var(--c-ink-strong); color: var(--c-surface); }
+[data-design="sunset"] .mg-page .mg-btn--ghost { background: var(--c-surface); color: var(--c-ink-strong); box-shadow: inset 0 0 0 2px var(--c-ink-strong), 3px 3px 0 var(--c-ink-strong); }
+[data-design="sunset"] .mg-page :is(.mg-band, .mg-nl-photo, .mg-hd) .mg-btn { box-shadow: none; }
+[data-design="sunset"] .mg-page .mg-price { font: 800 30px/1 var(--display); letter-spacing: -.02em; }
+[data-design="sunset"] .mg-page .mg-price small { display: block; margin-bottom: 6px; font: 800 11px/1.2 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--c-ink-quiet); }
+[data-design="sunset"] .mg-page .mg-fn__n, [data-design="sunset"] .mg-page .mg-big-num { font: 400 50px/1 var(--groovy); color: var(--c-highlight-600); }
+[data-design="sunset"] .mg-page .mg-band .mg-big-num { color: var(--c-highlight-on-dark); }
+[data-design="sunset"] .mg-page .mg-manifesto__big :is(em, strong) { font-family: var(--groovy); font-style: normal; font-weight: 400; color: var(--c-highlight-600); }
+[data-design="sunset"] .mg-page .mg-faq summary { font: 700 clamp(21px, 2vw, 27px)/1.2 var(--display); }
+[data-design="sunset"] .mg-page .mg-pm { box-shadow: inset 0 0 0 2px var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-faq details[open] .mg-pm { background: var(--c-action); color: var(--c-surface); }
+[data-design="sunset"] .mg-page :is(.mg-bigq, .mg-voice) { font-weight: 700; }
+[data-design="sunset"] .mg-page .mg-cite { color: var(--c-accent-700); }
+[data-design="sunset"] .mg-page .mg-giant { font: 400 clamp(52px, 14vw, 240px)/.95 var(--groovy); letter-spacing: 0; color: var(--c-highlight-600); }
+[data-design="sunset"] .mg-page .mg-foot { background: var(--c-surface-sunken); border-top: var(--ss-edge); }
+[data-design="sunset"] .mg-page .mg-mark { font: 800 25px/1 var(--display); letter-spacing: -.02em; }
+
+/* header: the floating pill with an ink edge */
+[data-design="sunset"] .mg-page .mg-hd--pill .mg-hd__bar { background: color-mix(in srgb, var(--c-surface) 92%, transparent); border: var(--ss-edge); box-shadow: 5px 5px 0 var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-hd__cta { background: var(--c-action); color: var(--c-surface); }
+[data-design="sunset"] .mg-page :is(.mg-hd--glass, .mg-hd--center) { color: var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-hd--center[data-scrolled] { background: color-mix(in srgb, var(--c-canvas) 92%, transparent); }
+
+/* ticker: a mustard strip, tomato dots */
+[data-design="sunset"] .mg-page .mg-mq { background: var(--c-highlight-200); color: var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-mq__it { font: 800 clamp(24px, 3.4vw, 46px)/1 var(--display); letter-spacing: -.02em; }
+[data-design="sunset"] .mg-page .mg-mq__dot { width: 14px; height: 14px; background: var(--c-highlight-600); }
+
+/* rounded sticker cards and warm tiles */
+[data-design="sunset"] .mg-page :is(.mg-ocard, .mg-htable, .mg-stat) { border: var(--ss-edge); box-shadow: 6px 6px 0 var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-ocard:hover { transform: translate(-3px, -3px); box-shadow: 9px 9px 0 var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-tiles { gap: 20px; background: transparent; border: 0; box-shadow: none; overflow: visible; }
+[data-design="sunset"] .mg-page .mg-tile { border: var(--ss-edge); border-radius: var(--mg-r-card); background: var(--c-surface); color: var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-tile:nth-child(4n + 1) { background: var(--c-paper-100); }
+[data-design="sunset"] .mg-page .mg-tile:nth-child(4n + 2) { background: var(--c-paper-200); }
+[data-design="sunset"] .mg-page .mg-tile:nth-child(4n + 3) { background: var(--c-paper-400); }
+[data-design="sunset"] .mg-page .mg-tile :is(p, h3) { color: var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-tile svg { color: var(--c-highlight-600); }
+[data-design="sunset"] .mg-page .mg-mosaic :is(figure, button) { border: var(--ss-edge); }
+[data-design="sunset"] .mg-page .mg-qrow { gap: 18px; background: transparent; border: 0; box-shadow: none; }
+[data-design="sunset"] .mg-page .mg-qrow > li { border-radius: var(--mg-r-card); background: var(--c-surface); box-shadow: inset 0 0 0 2px var(--c-ink-strong); }
+[data-design="sunset"] .mg-page .mg-band.mg-hist-ledger { background: radial-gradient(60% 80% at 0% 100%, color-mix(in srgb, var(--c-highlight-700) 38%, transparent), transparent 62%), var(--c-surface-deep); }
+[data-design="sunset"] .mg-page .mg-nl-photo { border-radius: calc(44px * var(--radius-scale, 1)); margin: 0 max(12px, env(safe-area-inset-left, 0px)) clamp(60px, 8vw, 110px); }
+[data-design="sunset"] .mg-page .mg-nl-photo .btn { background: var(--c-highlight-200); color: var(--c-ink-strong); }
+
+/* ---------- hero: sunset-sun ---------- */
+[data-design="sunset"] .ss-hero { padding-top: 118px; background: radial-gradient(80% 70% at 82% 30%, color-mix(in srgb, var(--c-highlight-200) 32%, transparent), transparent 62%), var(--c-canvas); color: var(--c-ink-strong); }
+[data-design="sunset"] .ss-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 48px; align-items: center; padding-top: 34px; }
+[data-design="sunset"] .ss-copy { min-width: 0; }
+[data-design="sunset"] .ss-kick { display: inline-flex; align-items: center; margin: 0 0 26px; padding: 10px 16px; border-radius: 999px; background: var(--c-surface); border: var(--ss-edge); color: var(--c-ink-strong); box-shadow: 3px 3px 0 var(--c-ink-strong); font: 800 12.5px/1.2 var(--body); letter-spacing: .16em; text-transform: uppercase; }
+[data-design="sunset"] .ss-lede { margin: 28px 0 0; max-width: 470px; font-size: 18.5px; color: var(--c-ink-quiet); }
+[data-design="sunset"] .ss-sun { position: relative; width: 100%; max-width: 590px; aspect-ratio: 1; justify-self: end; isolation: isolate; }
+[data-design="sunset"] .ss-rays { position: absolute; inset: -22%; z-index: -1; border-radius: 50%; background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--c-highlight-700) 22%, transparent) 0 5deg, transparent 5deg 15deg); -webkit-mask: radial-gradient(circle, var(--c-ink-strong) 30%, transparent 68%); mask: radial-gradient(circle, var(--c-ink-strong) 30%, transparent 68%); }
+[data-design="sunset"] .ss-rings { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle closest-side, transparent 0 75%, var(--c-highlight-200) 75.5% 83%, var(--c-highlight-700) 83.5% 91%, var(--c-highlight-600) 91.5% 100%); }
+[data-design="sunset"] .ss-disc { position: absolute; inset: 13%; border-radius: 50%; background: var(--c-surface-sunken); -webkit-mask: linear-gradient(180deg, var(--c-ink-strong) 0 58%, transparent 58% 61.5%, var(--c-ink-strong) 61.5% 70%, transparent 70% 74.5%, var(--c-ink-strong) 74.5% 82%, transparent 82% 87.5%, var(--c-ink-strong) 87.5%); mask: linear-gradient(180deg, var(--c-ink-strong) 0 58%, transparent 58% 61.5%, var(--c-ink-strong) 61.5% 70%, transparent 70% 74.5%, var(--c-ink-strong) 74.5% 82%, transparent 82% 87.5%, var(--c-ink-strong) 87.5%); }
+[data-design="sunset"] .ss-disc :is(img, video) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+[data-design="sunset"] .ss-bk { margin-top: 44px; }
+[data-design="sunset"] .ss-bk .mg-bk { max-width: none; border: var(--ss-edge); box-shadow: 6px 6px 0 var(--c-ink-strong); border-radius: 999px; padding: 8px 8px 8px 14px; }
+[data-design="sunset"] .ss-stripes { display: grid; gap: 7px; margin-top: 56px; padding-bottom: 7px; }
+[data-design="sunset"] .ss-stripes i { display: block; height: 12px; }
+[data-design="sunset"] .ss-stripes i:nth-child(1) { background: var(--c-highlight-600); }
+[data-design="sunset"] .ss-stripes i:nth-child(2) { background: var(--c-highlight-700); }
+[data-design="sunset"] .ss-stripes i:nth-child(3) { background: var(--c-highlight-200); }
+@media (prefers-reduced-motion: no-preference) {
+  [data-design="sunset"] .mg-scope[data-motion="on"] .ss-rays { animation: ss-turn 120s linear infinite; }
+}
+@keyframes ss-turn { to { transform: rotate(360deg); } }
+@media (max-width: 1000px) {
+  [data-design="sunset"] .ss-grid { grid-template-columns: 1fr; gap: 40px; }
+  [data-design="sunset"] .ss-sun { justify-self: center; max-width: 520px; width: 88%; }
+}
+@media (max-width: 720px) {
+  [data-design="sunset"] .ss-hero { padding-top: 96px; }
+  [data-design="sunset"] .ss-grid { padding-top: 12px; }
+  [data-design="sunset"] .ss-lede { font-size: 16.5px; }
+  [data-design="sunset"] .ss-sun { width: 86%; }
+  [data-design="sunset"] .ss-rays { inset: -12%; }
+  [data-design="sunset"] .ss-bk .mg-bk { border-radius: calc(24px * var(--radius-scale, 1)); padding: 6px; box-shadow: 4px 4px 0 var(--c-ink-strong); }
+  [data-design="sunset"] .ss-stripes { gap: 5px; margin-top: 40px; }
+  [data-design="sunset"] .ss-stripes i { height: 9px; }
+  [data-design="sunset"] .mg-page .mg-nl-photo { border-radius: calc(28px * var(--radius-scale, 1)); }
+}

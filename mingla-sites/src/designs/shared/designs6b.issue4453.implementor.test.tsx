@@ -90,7 +90,8 @@ function render(artifact: ArtifactV2, page?: ArtifactPage, live?: LiveOfferings)
 
 describe("#4453 6b SC-D1 journal, grid and terra are design keys everywhere", () => {
   it("DESIGN_KEYS lists all eight, each new one with a renderer, the shared stylesheet and its own stylesheet", () => {
-    expect(DESIGN_KEYS).toEqual(["atelier", "voyage", "nocturne", "haven", "maison", "journal", "grid", "terra"]);
+    // #4453 6c appended pop, sunset and pulse (designs6c pins the whole list).
+    expect(DESIGN_KEYS.slice(0, 8)).toEqual(["atelier", "voyage", "nocturne", "haven", "maison", "journal", "grid", "terra"]);
     for (const design of NEW) {
       const renderer = DESIGN_RENDERERS[design.key];
       expect(renderer.sharedStylesheet).toBe(SHARED_STYLESHEET);
@@ -125,8 +126,8 @@ describe("#4453 6b SC-D1 journal, grid and terra are design keys everywhere", ()
     expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
     expect(sql).not.toMatch(/ALTER TABLE|DROP |INSERT |UPDATE |DELETE /);
     const prefixes = fs.readdirSync(dir).filter((file) => /^\d{14}_/.test(file)).map((file) => file.slice(0, 14)).sort();
-    expect(prefixes.at(-1)).toBe("20280725104453");
-    expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra']");
+    expect(prefixes).toContain("20280725104453");
+    expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra',");
   });
 
   it("Ari's declared designs stay atelier and voyage until PR 7 (#3355 frozen declarations)", () => {

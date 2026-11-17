@@ -239,7 +239,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame' | 'journal-front' | 'grid-index' | 'terra-pebble') | null;
+            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame' | 'journal-front' | 'grid-index' | 'terra-pebble' | 'pop-stack' | 'sunset-sun' | 'pulse-stage') | null;
             review?:
               | {
                   [k: string]: unknown;
@@ -1625,7 +1625,7 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison' | 'journal' | 'grid' | 'terra') | null;
+  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison' | 'journal' | 'grid' | 'terra' | 'pop' | 'sunset' | 'pulse') | null;
   tokens?:
     | {
         [k: string]: unknown;

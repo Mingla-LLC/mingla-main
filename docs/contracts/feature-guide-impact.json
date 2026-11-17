@@ -1228,7 +1228,18 @@
         "mingla-sites/src/designs/journal/blocks/JournalBlocks.tsx",
         "mingla-sites/src/designs/terra/TerraPage.tsx",
         "mingla-sites/src/designs/terra/blocks/TerraBlocks.tsx",
-        "supabase/migrations/20280725104453_issue_4453_design_keys_6b.sql"
+        "supabase/migrations/20280725104453_issue_4453_design_keys_6b.sql",
+        "mingla-site-cms/src/migrations/20261116_160000_issue_4453_designs_6c.ts",
+        "mingla-sites/public/designs/pop/1.css",
+        "mingla-sites/public/designs/pulse/1.css",
+        "mingla-sites/public/designs/sunset/1.css",
+        "mingla-sites/src/designs/pop/PopPage.tsx",
+        "mingla-sites/src/designs/pop/blocks/PopBlocks.tsx",
+        "mingla-sites/src/designs/pulse/PulsePage.tsx",
+        "mingla-sites/src/designs/pulse/blocks/PulseBlocks.tsx",
+        "mingla-sites/src/designs/sunset/SunsetPage.tsx",
+        "mingla-sites/src/designs/sunset/blocks/SunsetBlocks.tsx",
+        "supabase/migrations/20280727104453_issue_4453_design_keys_6c.sql"
       ]
     },
     {

@@ -13,6 +13,9 @@ import { MaisonPage } from "./maison/MaisonPage";
 import { JournalPage } from "./journal/JournalPage";
 import { GridPage } from "./grid/GridPage";
 import { TerraPage } from "./terra/TerraPage";
+import { PopPage } from "./pop/PopPage";
+import { SunsetPage } from "./sunset/SunsetPage";
+import { PulsePage } from "./pulse/PulsePage";
 
 /*
  * #2829 AD-1 — the runtime's design registry: for each design key in
@@ -54,6 +57,10 @@ export const DESIGN_RENDERERS: Readonly<Record<DesignKey, DesignRenderer>> = {
   journal: { stylesheet: (version) => `/designs/journal/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: JournalPage },
   grid: { stylesheet: (version) => `/designs/grid/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: GridPage },
   terra: { stylesheet: (version) => `/designs/terra/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: TerraPage },
+  // #4453 6c — Pop, Sunset and Pulse, the same way.
+  pop: { stylesheet: (version) => `/designs/pop/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: PopPage },
+  sunset: { stylesheet: (version) => `/designs/sunset/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: SunsetPage },
+  pulse: { stylesheet: (version) => `/designs/pulse/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: PulsePage },
 };
 
 /** TEMPORARY(#2829): v1 rollback renderer's stylesheet — remove with RestaurantV1. */

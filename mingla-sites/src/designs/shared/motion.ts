@@ -94,7 +94,8 @@ export function startMotion(root: HTMLElement, win: Window = window): () => void
   // slots are held until each of its finite animations ends (or the hero settle time, at most).
   const settleAfter = duration + MAX_STAGGER_STEPS * stagger;
   const hero = root.querySelector("[data-mg-hero]");
-  const heroMovers = hero ? Array.from(hero.querySelectorAll<HTMLElement>(".mg-ln > span, [data-mg-hero-bg]")).slice(0, MAX_ANIMATING_AT_ONCE) : [];
+  // #4453 6c — a design's endless hero motion (Pulse's light orbs, `data-mg-hold`) holds its slot for as long as it moves.
+  const heroMovers = hero ? Array.from(hero.querySelectorAll<HTMLElement>(".mg-ln > span, [data-mg-hero-bg], [data-mg-hold]")).slice(0, MAX_ANIMATING_AT_ONCE) : [];
   let animating = heroMovers.length;
   const heroSettle = Number.parseFloat(win.getComputedStyle(root).getPropertyValue("--mg-hero-settle")) || 1600;
   for (const mover of heroMovers) {
@@ -109,6 +110,8 @@ export function startMotion(root: HTMLElement, win: Window = window): () => void
       win.setTimeout(release, Math.max(heroSettle, settleAfter) + 1600);
       continue;
     }
+    // An endless animation never finishes: a held mover that is moving keeps its slot.
+    if (mover.hasAttribute("data-mg-hold") && mover.getAnimations().length) continue;
     const running = mover.getAnimations().filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
     // Released when its entrance really ends (a paused or throttled page keeps the slot: rises then appear in place).
     void Promise.all(running.map((animation) => animation.finished.catch(() => undefined))).then(release);

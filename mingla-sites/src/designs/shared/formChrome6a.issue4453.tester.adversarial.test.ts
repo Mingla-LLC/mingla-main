@@ -6,7 +6,7 @@ const pub = path.resolve(__dirname, "../../../public/designs");
 const css = (key: string) => fs.readFileSync(path.join(pub, "_shared/blocks-1.css"), "utf8") + fs.readFileSync(path.join(pub, `${key}/1.css`), "utf8");
 describe("#4453 6a tester: a gallery design hides the form honeypot and screen-reader labels", () => {
   // #4453 6b: extended to Journal, Grid and Terra.
-  for (const key of ["nocturne", "haven", "maison", "journal", "grid", "terra"]) {
+  for (const key of ["nocturne", "haven", "maison", "journal", "grid", "terra", "pop", "sunset", "pulse"]) {
     it(`${key}: .form-trap and .sr-only are visually hidden`, () => {
       const all = css(key);
       expect(all, `${key} must hide .form-trap`).toMatch(/\.form-trap[^{]*\{[^}]*(clip-path|position:\s*absolute|display:\s*none)/);
