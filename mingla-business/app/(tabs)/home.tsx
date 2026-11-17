@@ -149,7 +149,7 @@ const LazyBrandSwitcherSheet = React.lazy(async () => {
 
 // #4238 — the Host ads card (copy, models, 33 KB of English) loads after first
 // paint; a static import kept it in `__common`.
-const LazyHomeAdsSection = React.lazy(async () => {
+const HomeAdsSection = React.lazy(async () => {
   const mod = await import("../../src/screens/hostAds/HostAdScreens");
   return { default: mod.HomeAdsSection };
 });
@@ -1046,7 +1046,7 @@ export default function HomeTab(): React.ReactElement {
                 moneyFootnote={doorTodayLine}
               />
               <Suspense fallback={null}>
-                <LazyHomeAdsSection brandId={currentBrand.id} />
+                <HomeAdsSection brandId={currentBrand.id} />
               </Suspense>
 
               <View style={styles.desktopUpcomingPane}>
@@ -1166,7 +1166,7 @@ export default function HomeTab(): React.ReactElement {
                 moneyFootnote={doorTodayLine}
               />
               <Suspense fallback={null}>
-                <LazyHomeAdsSection brandId={currentBrand.id} />
+                <HomeAdsSection brandId={currentBrand.id} />
               </Suspense>
               <View style={styles.mobileRecentHeaderWrap}>
                 <View style={styles.mobileSectionHeaderRow}>
