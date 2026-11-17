@@ -76,7 +76,7 @@ import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { doorExtrasLine, readDoorExtras } from "../../../../src/components/scanner/doorExtras";
-import { bookedStartLine } from "../../../../src/utils/bookedStart";
+import { doorBookedLine } from "../../../../src/utils/bookedStart";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -411,12 +411,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
           const extras = extrasLine ?? undefined;
           // issue #3281 — the start this guest booked, in the offering's zone.
           const booked =
-            kind === "success" ||
-            kind === "duplicate" ||
-            kind === "not_yet_open"
-              ? bookedStartLine(result.bookedStartAt, event.timezone) ??
-                undefined
-              : undefined;
+            doorBookedLine(kind, result.bookedStartAt, event.timezone) ??
+            undefined;
           if (kind === "success") {
             showResult({
               kind,

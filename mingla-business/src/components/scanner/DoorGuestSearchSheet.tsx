@@ -53,7 +53,7 @@ import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { doorExtrasLine, readDoorExtras } from "./doorExtras";
-import { bookedStartLine } from "../../utils/bookedStart";
+import { bookedStartLine, doorBookedLine } from "../../utils/bookedStart";
 
 // issue #3827 — the guest-list client is its own chunk (__common ceiling).
 const loadGuestList = () => import("../../services/guestListService");
@@ -94,10 +94,6 @@ export const ticketStateLabel = (ticket: DoorGuestTicket): string | null => {
   if (ticket.status === "transferred") return "Transferred";
   return null; // admissible
 };
-
-// issue #3281 — results where the guest's booked start helps the door: let
-// in, already in, or early for the time they picked.
-const BOOKED_START_KINDS: ReadonlySet<string> = new Set(["success", "duplicate", "not_yet_open"]);
 
 export interface DoorGuestSearchPanelProps {
   eventId: string;
@@ -217,11 +213,10 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   // issue #3281 — the start the admitted guest booked. Not money, so any
   // answer that holds their row will do (unlike the extras above).
   const lastBooked =
-    lastAdmitted === null ||
-    lastResult === null ||
-    !BOOKED_START_KINDS.has(lastResult.kind)
+    lastAdmitted === null || lastResult === null
       ? null
-      : bookedStartLine(
+      : doorBookedLine(
+        lastResult.kind,
         results.find((guest) => guest.orderId === lastAdmitted.orderId)?.bookedStartAt,
         timeZone,
       );

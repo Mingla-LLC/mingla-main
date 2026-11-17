@@ -562,7 +562,9 @@ export const exportReconciliationCsv = async (
     currencyMismatchCount: args.summary.currencyMismatches.length,
   };
 
-  const csv = serializeGuestsToCsv(rows, stanza);
+  // issue #3281 — the same offering zone as the guest export, so one order's
+  // booked start reads the same in both files.
+  const csv = serializeGuestsToCsv(rows, stanza, undefined, args.event.timezone);
   const filename = `${args.event.eventSlug}-reconciliation-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);

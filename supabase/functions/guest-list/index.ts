@@ -93,6 +93,8 @@ export type GuestListDeps = {
     orderIds: string[],
     signal: AbortSignal,
   ) => Promise<Record<string, string>>;
+  /** Tests only: the optional door reads' deadline (DOOR_EXTRAS_DEADLINE_MS). */
+  doorDeadlineMs?: number;
   audit: (entry: {
     user_id: string;
     event_id: string | null;
@@ -623,45 +625,54 @@ export function createHandler(
           console.error("[guest-list] ticket-link attribution unavailable");
         }
         const labels = isObject(labelResult.data) ? labelResult.data : {};
-        // issue #3281 — each order's extras, optional like the labels above:
-        // a slow, refused or failed read leaves the search answer as it was.
-        let extrasByOrder: Record<string, unknown> = {};
-        try {
-          const extrasResult = await withDeadline(
-            Promise.resolve(deps.rpc("issue_3281_door_order_extras", {
-              p_actor_id: actorId,
-              p_event_id: body.eventId,
-              p_order_ids: orderIds,
-            })),
-            DOOR_EXTRAS_DEADLINE_MS,
-          );
-          if (extrasResult === null || extrasResult.error) {
+        // issue #3281 — each order's extras and booked start, optional like the
+        // labels above and read side by side under one deadline: a slow,
+        // refused or failed read leaves the search answer as it was, and two
+        // slow reads cost the door one deadline, not two.
+        const deadlineMs = deps.doorDeadlineMs ?? DOOR_EXTRAS_DEADLINE_MS;
+        const readExtras = async (): Promise<Record<string, unknown>> => {
+          try {
+            const extrasResult = await withDeadline(
+              Promise.resolve(deps.rpc("issue_3281_door_order_extras", {
+                p_actor_id: actorId,
+                p_event_id: body.eventId,
+                p_order_ids: orderIds,
+              })),
+              deadlineMs,
+            );
+            if (extrasResult === null || extrasResult.error) {
+              console.error("[guest-list] door extras unavailable");
+            } else if (isObject(extrasResult.data)) {
+              return extrasResult.data;
+            }
+          } catch {
             console.error("[guest-list] door extras unavailable");
-          } else if (isObject(extrasResult.data)) {
-            extrasByOrder = extrasResult.data;
           }
-        } catch {
-          console.error("[guest-list] door extras unavailable");
-        }
-        // issue #3281 — the start each guest booked, optional the same way.
-        let bookedByOrder: Record<string, string> = {};
-        if (deps.bookedStarts && orderIds.length > 0) {
+          return {};
+        };
+        const readBooked = async (): Promise<Record<string, unknown>> => {
+          if (!deps.bookedStarts || orderIds.length === 0) return {};
           const deadline = new AbortController();
           try {
             const booked = await withDeadline(
               deps.bookedStarts(body.eventId, orderIds, deadline.signal),
-              DOOR_EXTRAS_DEADLINE_MS,
+              deadlineMs,
             );
             if (booked === null) {
               deadline.abort();
               console.error("[guest-list] booked start unavailable");
             } else if (isObject(booked)) {
-              bookedByOrder = booked as Record<string, string>;
+              return booked;
             }
           } catch {
             console.error("[guest-list] booked start unavailable");
           }
-        }
+          return {};
+        };
+        const [extrasByOrder, bookedByOrder] = await Promise.all([
+          readExtras(),
+          readBooked(),
+        ]);
         const attributedOrders = Array.isArray(out.orders)
           ? out.orders.map((order) => {
             if (!isObject(order) || !isUuid(order.orderId)) return order;

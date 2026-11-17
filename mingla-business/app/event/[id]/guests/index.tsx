@@ -1081,8 +1081,8 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
   }
   if (isOrder && row.order.viaLinkLabel) partyFragments.push(`via ${row.order.viaLinkLabel}`);
   // issue #3281 — the start this guest booked, in the offering's zone.
+  // Its own line under the subline, never clipped off by a long email.
   const booked = isOrder ? formatBookedStart(row.order.bookedStartAt, timeZone) : null;
-  if (booked !== null) partyFragments.push(`booked for ${booked}`);
   const subline = [`${sublineLeft}${ticketSummary}`, ...partyFragments, relativeTime].join(" · ");
 
   // Cycle 11 J-S6 + Cycle 12 — derived check-in pill state.
@@ -1121,6 +1121,7 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     a11yLabel = isCompOrder(row.order) && row.order.status !== "cancelled"
       ? `Guest-list guest ${name}, ${ticketSummary}`
       : `Guest ${name}, ${ticketSummary}, ${spec.label}`;
+    if (booked !== null) a11yLabel += `, booked for ${booked}`;
   } else {
     const spec = doorPaymentPill(row.sale.paymentMethod, row.sale.status);
     kindPillNode = <Pill variant={spec.variant}>{spec.label}</Pill>;
@@ -1149,6 +1150,11 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
         <Text style={styles.rowSubline} numberOfLines={1}>
           {subline}
         </Text>
+        {booked !== null ? (
+          <Text style={styles.rowSubline} numberOfLines={1} testID={`guest-booked-${row.id}`}>
+            {`Booked for ${booked}`}
+          </Text>
+        ) : null}
         <View style={styles.rowPills}>
           {kindPillNode}
           {checkInPillNode}

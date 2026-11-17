@@ -117,3 +117,35 @@ Deno.test("#3281 projection keeps bookedStartAt only as a readable string", () =
   assertEquals(out[0].bookedStartAt, BOOKED);
   assert(!("bookedStartAt" in out[1]));
 });
+
+Deno.test("#3281 search: extras and booked start both stalled cost the door one deadline, not two", async () => {
+  const asked: string[] = [];
+  const deps: GuestListDeps = {
+    actorId: () => Promise.resolve(ACTOR),
+    rpc: (fn) => {
+      asked.push(fn);
+      if (fn === "issue_3281_door_order_extras") return new Promise(() => {});
+      return Promise.resolve(
+        fn === "biz_door_guest_search"
+          ? { data: { truncated: false, orders: [order(ORDER_A, "Ada")] }, error: null }
+          : fn === "biz_ticket_link_order_labels"
+          ? { data: {}, error: null }
+          : { data: { allowed: true }, error: null },
+      );
+    },
+    pepper: () => "pepper",
+    dispatch: () => Promise.resolve(),
+    audit: () => Promise.resolve(),
+    bookedStarts: (_e, _o, signal) =>
+      new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")))),
+    doorDeadlineMs: 200,
+  };
+  const started = Date.now();
+  const res = await quiet(async () => await createHandler(deps)(search()));
+  const elapsed = Date.now() - started;
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.orders.length, 1);
+  assert(!("bookedStartAt" in body.orders[0]) && !("extras" in body.orders[0]));
+  assert(elapsed < 350, `waited ${elapsed} ms for two 200 ms deadlines`);
+});

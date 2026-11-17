@@ -85,3 +85,22 @@ export const bookedStartCsvCell = (
     parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 };
+
+/**
+ * The scan results where the guest's booked start helps the door: let in,
+ * already in, or early for the time they picked. Every other result (void,
+ * wrong event, cancelled, not found) names no booking.
+ */
+const DOOR_BOOKED_RESULTS: ReadonlySet<string> = new Set([
+  "success",
+  "duplicate",
+  "not_yet_open",
+]);
+
+/** The door line for one scan or name admit, or null when it has none. */
+export const doorBookedLine = (
+  result: string,
+  iso: string | null | undefined,
+  timeZone: string | null | undefined,
+): string | null =>
+  DOOR_BOOKED_RESULTS.has(result) ? bookedStartLine(iso, timeZone) : null;

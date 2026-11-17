@@ -1,19 +1,8 @@
 /* eslint-disable import/first */
-// issue #3827 — door "Find by name", implementor render proof.
-//
-//   S-1  under 2 letters: helper copy, no search request
-//   S-2  results: name, masked email, GUEST LIST, "with {lead}", Admit per
-//        open ticket, "Admit all {n}"; checked-in tickets show the time
-//   S-3  no match: the empty copy
-//   S-4  offline: banner, input disabled, no request
-//   S-5  Admit → server admit with the real ticket id; a duplicate shows the
-//        same "Already checked in" the QR camera shows; onAdmitted fires
-//   S-6  the web door renders the panel inline and keeps its "scan in the
-//        app" message (ORCH-1099), with no camera or haptics import
-//   S-7  roster rows of guest-list guests read "Guest list"
+// issue #3281 — door "Find by name" names each guest's booked start, in the
+// offering's zone, on the result row and on the admit banner. Harness copied
+// from DoorGuestSearchSheet.issue_3827_comps.implementor.test.tsx.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import React from "react";
 
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -24,7 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 interface TestInstance {
   type: unknown;
   props: Record<string, unknown>;
-  children: Array<TestInstance | string>;
+  children: (TestInstance | string)[];
   findAll: (predicate: (node: TestInstance) => boolean) => TestInstance[];
 }
 interface Renderer {
@@ -45,7 +34,6 @@ jest.mock("../../../lib/netinfoSafe", () => ({
 const mockSearch = jest.fn<(input: { eventId: string; query: string }) => Promise<unknown>>();
 const mockAdmit = jest.fn<(input: { eventId: string; ticketId: string }) => Promise<unknown>>();
 jest.mock("../../../services/guestListService", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const actual = jest.requireActual("../../../services/guestListService") as Record<string, unknown>;
   return {
     ...actual,
@@ -164,6 +152,36 @@ describe("issue #3281 — booked start at the door search", () => {
     const [line] = textNodes(r, "door-admit-booked");
     expect(line).toBeDefined();
     expect(text(line)).toMatch(/^Booked for .*(7:30|19:30)/);
+    r.unmount();
+  });
+
+  test.each(["duplicate", "not_yet_open"])("a %s admission still names the booked start", async (result) => {
+    mockSearch.mockResolvedValue({ orders: [ADA], truncated: false });
+    mockAdmit.mockResolvedValue({
+      result, ticketId: "tk-a1", orderId: "o-ada", buyerName: "Ada Obi",
+      ticketName: "Sunset walk", nextStartAt: "2026-11-14T18:00:00.000Z", lastEndAt: null, eventDateId: null,
+    });
+    const r = await mount();
+    await typeAndWait(r, "ad");
+    const [admit] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.accessibilityLabel === "Admit Ada Obi, Sunset walk");
+    await act(async () => { (admit.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(textNodes(r, "door-admit-booked")).toHaveLength(1);
+    r.unmount();
+  });
+
+  test.each(["wrong_event", "cancelled_order"])("a %s answer shows no booked start", async (result) => {
+    mockSearch.mockResolvedValue({ orders: [ADA], truncated: false });
+    mockAdmit.mockResolvedValue({
+      result, ticketId: "tk-a1", orderId: "o-ada", buyerName: "Ada Obi",
+      ticketName: "Sunset walk", nextStartAt: null, lastEndAt: null, eventDateId: null,
+    });
+    const r = await mount();
+    await typeAndWait(r, "ad");
+    const [admit] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.accessibilityLabel === "Admit Ada Obi, Sunset walk");
+    await act(async () => { (admit.props.onPress as () => void)(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(textNodes(r, "door-admit-booked")).toHaveLength(0);
     r.unmount();
   });
 

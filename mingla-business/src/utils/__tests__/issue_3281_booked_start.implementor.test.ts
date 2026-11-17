@@ -5,14 +5,17 @@
  */
 import { describe, expect, test } from "@jest/globals";
 
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 import {
   bookedStartCsvCell,
   bookedStartLine,
+  doorBookedLine,
   formatBookedStart,
 } from "../bookedStart";
 import { serializeGuestsToCsv, type ExportGuestRow } from "../guestCsvExport";
-import { serializeGuestsToCsvByOccurrence } from "../guestCsvDayOrder";
-import { splitCsvRecords } from "../guestCsvDayOrder";
+import { serializeGuestsToCsvByOccurrence, splitCsvRecords } from "../guestCsvDayOrder";
 
 describe("issue #3281 — booked start formatting", () => {
   test("nothing to show gives null / blank, never an invented time", () => {
@@ -87,6 +90,33 @@ const rows = (): ExportGuestRow[] => [
     sortKey: "c",
   } as unknown as ExportGuestRow,
 ];
+
+describe("issue #3281 — which door results name the booked start", () => {
+  const iso = "2026-11-14T18:30:00Z";
+  test("let in, already in and early show it, in the offering's zone", () => {
+    for (const kind of ["success", "duplicate", "not_yet_open"]) {
+      expect(doorBookedLine(kind, iso, "Africa/Lagos")).toMatch(/^Booked for .*(7:30|19:30)/);
+    }
+  });
+  test("every other result shows nothing, even with a booked start", () => {
+    for (const kind of ["void", "wrong_event", "cancelled_order", "not_found", "event_ended", "refunded", ""]) {
+      expect(doorBookedLine(kind, iso, "Africa/Lagos")).toBeNull();
+    }
+  });
+  test("no booked start shows nothing on any result", () => {
+    expect(doorBookedLine("success", null, "Africa/Lagos")).toBeNull();
+  });
+  test("the scanner and both doors use this rule with the offering's zone", () => {
+    const root = path.join(__dirname, "../../..");
+    const native = fs.readFileSync(path.join(root, "app/event/[id]/scanner/index.tsx"), "utf8");
+    const web = fs.readFileSync(path.join(root, "app/event/[id]/scanner/index.web.tsx"), "utf8");
+    const sheet = fs.readFileSync(path.join(root, "src/components/scanner/DoorGuestSearchSheet.tsx"), "utf8");
+    expect(native).toMatch(/doorBookedLine\(kind, result\.bookedStartAt, event\.timezone\)/);
+    expect(native).toMatch(/timeZone=\{event\.timezone\}/);
+    expect(web).toMatch(/<DoorGuestSearchPanel[^>]*timeZone=\{event\.timezone\}/);
+    expect(sheet).toMatch(/doorBookedLine\(\s*lastResult\.kind,/);
+  });
+});
 
 describe("issue #3281 — the guest CSV's Booked start column", () => {
   test("sits right before Day, and Day stays last", () => {
