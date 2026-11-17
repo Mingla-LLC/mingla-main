@@ -143,9 +143,20 @@ RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
-  SELECT COALESCE(jsonb_agg(s.design_fingerprint - 'format' ORDER BY s.id), '[]'::jsonb)
+  -- Allowlist on read too: only the six look keys, each of its own type, ever
+  -- leave (never format, never any extra key a row might hold).
+  SELECT COALESCE(jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+      'design', CASE WHEN jsonb_typeof(s.fp->'design') = 'string' THEN s.fp->'design' END,
+      'header', CASE WHEN jsonb_typeof(s.fp->'header') = 'string' THEN s.fp->'header' END,
+      'hero',   CASE WHEN jsonb_typeof(s.fp->'hero') = 'string' THEN s.fp->'hero' END,
+      'home',   CASE WHEN jsonb_typeof(s.fp->'home') = 'array'
+                       AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s.fp->'home') h WHERE jsonb_typeof(h) <> 'string')
+                     THEN s.fp->'home' END,
+      'fonts',  CASE WHEN jsonb_typeof(s.fp->'fonts') = 'string' THEN s.fp->'fonts' END,
+      'colors', CASE WHEN jsonb_typeof(s.fp->'colors') = 'string' THEN s.fp->'colors' END))
+    ORDER BY s.id), '[]'::jsonb)
   FROM (
-    SELECT bs.id, bs.design_fingerprint
+    SELECT bs.id, bs.design_fingerprint AS fp
     FROM public.brand_sites bs
     WHERE bs.design_fingerprint IS NOT NULL
       AND bs.last_successful_publication_id IS NOT NULL
@@ -166,10 +177,23 @@ BEGIN
      OR octet_length(p_fingerprint::text) > 4096
      OR jsonb_typeof(p_fingerprint->'design') <> 'string'
      OR jsonb_typeof(p_fingerprint->'format') <> 'string'
-     OR jsonb_typeof(p_fingerprint->'home') <> 'array' THEN
+     OR jsonb_typeof(p_fingerprint->'home') <> 'array'
+     -- An allowlist, not a denylist: any key outside the seven is refused.
+     OR EXISTS (SELECT 1 FROM jsonb_object_keys(p_fingerprint) k
+                WHERE k NOT IN ('design', 'format', 'header', 'hero', 'home', 'fonts', 'colors'))
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_fingerprint->'home') h WHERE jsonb_typeof(h) <> 'string')
+     OR COALESCE(jsonb_typeof(p_fingerprint->'header'), 'null') NOT IN ('string', 'null')
+     OR COALESCE(jsonb_typeof(p_fingerprint->'hero'), 'null') NOT IN ('string', 'null')
+     OR COALESCE(jsonb_typeof(p_fingerprint->'fonts'), 'null') NOT IN ('string', 'null')
+     OR COALESCE(jsonb_typeof(p_fingerprint->'colors'), 'null') NOT IN ('string', 'null') THEN
     RETURN false;
   END IF;
-  UPDATE public.brand_sites SET design_fingerprint = p_fingerprint WHERE id = p_site_id;
+  -- Store only the allowed keys, rebuilt key by key (nulls dropped).
+  UPDATE public.brand_sites SET design_fingerprint = jsonb_strip_nulls(jsonb_build_object(
+      'design', p_fingerprint->'design', 'format', p_fingerprint->'format',
+      'header', p_fingerprint->'header', 'hero', p_fingerprint->'hero',
+      'home', p_fingerprint->'home', 'fonts', p_fingerprint->'fonts', 'colors', p_fingerprint->'colors'))
+  WHERE id = p_site_id;
   RETURN FOUND;
 END;
 $function$;

@@ -3,15 +3,17 @@
 -- migration (20280728004453). BEGIN ... ROLLBACK: every fixture rolls back.
 -- MINGLA-INVARIANT: I-SITES-DESIGN-PASS-FLAGS-PER-BRAND | issue #4453 | SITES_ARI_DESIGN_PASS and SITES_STYLE_LIBRARY are seeded off and are on for a brand only when the flag is on or the brand is in brand_site_flag_brands; read by service role only.
 -- MINGLA-INVARIANT: I-SITES-COMPOSE-FACTS-COUNTS-ONLY | issue #4453 | brand_site_compose_facts returns counts, booleans and the site's own venue ids only (no names, prices or guest data), and never another brand's venues.
+-- MINGLA-INVARIANT: I-SITES-DESIGN-FINGERPRINT-ALLOWLIST | issue #4453 | brand_site_record_fingerprint refuses any key outside design/format/header/hero/home/fonts/colors (or a wrong type) and stores only those keys; brand_site_live_fingerprints returns only design/header/hero/home/fonts/colors of the right type, so no brand id or name leaves Core.
 --
 -- T-1  grants and shape: service role only; SECURITY DEFINER; search_path set; static SQL; the allowlist table is closed to anon/authenticated.
 -- T-2  both flags seeded off; brand_site_flag_on is false, then true for an allowlisted brand only, then true for all when the flag is on; unknown flag keys are always false.
 -- T-3  compose facts: verified venues per category, the single venue id and its reservation switch; another brand's and unverified venues never count; a published menu; NULL for an unknown site.
--- T-4  fingerprints: record refuses malformed input; live fingerprints list only OTHER brands' PUBLISHED sites of the same format, without the format key.
+-- T-4  fingerprints: record refuses malformed input and any key outside the allowlist; live fingerprints list only OTHER brands' PUBLISHED sites of the same format, returning only the six allowed look keys.
 -- T-5  Build receives the owner's Q5-Q8 answers (value_points, faq, process_steps, quick_facts).
 --
 -- FAILS-ON-REVERT: drop 20280728004453 -> T-1 (functions missing); drop the allowlist EXISTS -> T-2c;
--- drop the brand filter in compose facts -> T-3b; drop the IS DISTINCT FROM brand filter -> T-4c.
+-- drop the brand filter in compose facts -> T-3b; drop the IS DISTINCT FROM brand filter -> T-4c;
+-- drop the write allowlist -> T-4g; store p_fingerprint as is -> T-4i; return design_fingerprint - 'format' -> T-4j.
 
 BEGIN;
 
@@ -105,6 +107,39 @@ SELECT pg_temp.p_assert(
     = '[{"design":"terra","home":["hero:arch"]}]'::jsonb
   AND public.brand_site_live_fingerprints('events', '00000000-0000-4000-8000-0000000b0001') = '[]'::jsonb,
   'T-4f only OTHER brands'' live sites of the SAME format, without the format key');
+
+-- T-4g..T-4j the fingerprint is an ALLOWLIST on write and on read (tester P2-1).
+SELECT pg_temp.p_assert(
+  NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001',
+    '{"design":"voyage","format":"trips","home":[],"brand_id":"00000000-0000-4000-8000-0000000b0001","name":"M7 Alpha"}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001',
+    '{"design":"voyage","format":"trips","home":[],"extra":null}'::jsonb)
+  AND (SELECT design_fingerprint = '{"design":"voyage","format":"trips","home":["hero:fullbleed"]}'::jsonb
+       FROM public.brand_sites WHERE id = '00000000-0000-4000-8000-0000000c0001'),
+  'T-4g a fingerprint with any key outside the seven is refused and the stored one is unchanged');
+SELECT pg_temp.p_assert(
+  NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips","home":[1]}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips","home":[],"header":{"b":1}}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips","home":[],"hero":2}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips","home":[],"fonts":[]}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips","home":[],"colors":true}'::jsonb),
+  'T-4h wrongly typed home items, header, hero, fonts or colors are refused');
+SELECT pg_temp.p_assert(
+  public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001',
+    '{"design":"voyage","format":"trips","header":null,"hero":"split","home":["hero:split"],"fonts":"A|B","colors":"h1l1/none"}'::jsonb),
+  'T-4i Studio''s full shape is accepted');
+-- (read back in its own statement: a subquery in the same statement sees the row as it was before the write)
+SELECT pg_temp.p_assert(
+  (SELECT design_fingerprint = '{"design":"voyage","format":"trips","hero":"split","home":["hero:split"],"fonts":"A|B","colors":"h1l1/none"}'::jsonb
+       FROM public.brand_sites WHERE id = '00000000-0000-4000-8000-0000000c0001'),
+  'T-4i Studio''s full shape is stored key by key (a null header is dropped)');
+-- A row written around the function (an older writer, a hand edit) still leaks nothing.
+UPDATE public.brand_sites SET design_fingerprint =
+  '{"design":"terra","format":"trips","home":["hero:arch",7],"header":5,"brand_id":"00000000-0000-4000-8000-0000000b0002","name":"M7 Beta","site":{"id":1}}'::jsonb
+WHERE id = '00000000-0000-4000-8000-0000000c0002';
+SELECT pg_temp.p_assert(
+  public.brand_site_live_fingerprints('trips', '00000000-0000-4000-8000-0000000b0001') = '[{"design":"terra"}]'::jsonb,
+  'T-4j live fingerprints return only allowed keys of the right type (no brand_id, name or nested object)');
 
 -- T-5 Build gets the owner's answers
 SELECT pg_temp.p_assert(

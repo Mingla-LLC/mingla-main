@@ -56,6 +56,16 @@ function refuse(code: string, extra: Record<string, unknown> = {}): never {
   throw new AriRefusal(code, extra);
 }
 
+/** When the current draft began: the site's last successful publish (null = never published, so the whole history is one draft). */
+async function currentDraftSince(ctx: AriActionContext): Promise<string | null> {
+  const last = await ctx.req.payload.find({
+    collection: "publication-jobs", overrideAccess: true, depth: 0, limit: 1, sort: "-updatedAt",
+    where: { and: [{ tenant: { equals: ctx.tenantId } }, { status: { equals: "published" } }] },
+  });
+  const at = (last.docs[0] as AnyDoc | undefined)?.updatedAt;
+  return typeof at === "string" && at.length > 0 ? at : null;
+}
+
 async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc): Promise<ComposeV2Input> {
   if (!signed.plan) refuse("VALIDATION_FAILED", { problems: ["the website plan is not set up yet"] });
   const brand = ctx.evidence?.brand;
@@ -155,10 +165,16 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
     if (!composed) refuse("VALIDATION_FAILED", { problems: ["tick what the brand offers in the website plan first"] });
     // I-SITES-ARI-NEVER-PICKS-AVOID — Ari never proposes an avoid style; owners may (Your look, with a warning).
     if (styleFitLevel(composed.format, design) === "avoid") refuse("STYLE_DOES_NOT_FIT", { problems: [skippedLine(composed.format)] });
-    // At most one automatic pass per draft (Seth's decision): a second needs the owner, section by section.
+    // At most one automatic pass per DRAFT (Seth's decision): a second needs the owner, section by section.
+    // The current draft starts at the site's last publish, so a new draft after a publish gets one fresh pass.
+    const draftSince = await currentDraftSince(ctx);
     const earlier = await ctx.req.payload.find({
       collection: "work-log", overrideAccess: true, depth: 0, limit: 1,
-      where: { and: [{ tenant: { equals: ctx.tenantId } }, { tool: { equals: "propose_site_design_pass" } }] },
+      where: { and: [
+        { tenant: { equals: ctx.tenantId } },
+        { tool: { equals: "propose_site_design_pass" } },
+        ...(draftSince ? [{ createdAt: { greater_than: draftSince } }] : []),
+      ] },
     });
     if (earlier.docs.length > 0) refuse("DESIGN_PASS_ALREADY_RUN");
     const similar = similarLiveSites(composed.fingerprint, signed.live_fingerprints);

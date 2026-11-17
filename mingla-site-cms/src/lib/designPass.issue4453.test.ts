@@ -46,11 +46,18 @@ function signed(overrides: Record<string, unknown> = {}) {
 type Write = { op: string; collection: string; data?: unknown };
 let writes: Write[];
 let workLog: Array<Record<string, unknown>>;
+let publications: Array<{ updatedAt: string }>;
+let clock: number;
+const tick = (): string => new Date(Date.UTC(2026, 10, 16, 12, 0, clock++)).toISOString();
 
 function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
   const payload = {
-    find: vi.fn(async ({ collection }: { collection: string }) => {
-      if (collection === "work-log") return { docs: workLog };
+    find: vi.fn(async ({ collection, where }: { collection: string; where?: { and?: Array<Record<string, { greater_than?: string }>> } }) => {
+      if (collection === "publication-jobs") return { docs: publications.slice(-1) };
+      if (collection === "work-log") {
+        const since = where?.and?.find((clause) => clause.createdAt)?.createdAt?.greater_than;
+        return { docs: workLog.filter((entry) => !since || String(entry.createdAt) > since) };
+      }
       if (collection === "navigation") return { docs: [{ id: "nav", items: [] }] };
       return { docs: [] };
     }),
@@ -80,7 +87,7 @@ function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
 const deps = {
   currentSettings: vi.fn(async () => ({ id: "settings", design: "voyage", tokens: {} })),
   writeWorkLog: vi.fn(async (_ctx: AriActionContext, entry: Record<string, unknown>) => {
-    workLog.push(entry);
+    workLog.push({ ...entry, createdAt: tick() });
     return "log-1";
   }),
   assertCites: vi.fn(async () => [{ kind: "mingla_record", record_id: id(1) }]),
@@ -93,6 +100,8 @@ const pass = (design: string, designPass = signed()) =>
 beforeEach(() => {
   writes = [];
   workLog = [];
+  publications = [];
+  clock = 0;
 });
 
 describe("#4453 design pass — gating and refusals", () => {
@@ -117,6 +126,19 @@ describe("#4453 design pass — gating and refusals", () => {
   });
 
   it("runs once per draft (DESIGN_PASS_ALREADY_RUN)", async () => {
+    await pass("terra");
+    await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
+  });
+
+  it("is once per DRAFT, not once per site: after a publish the new draft gets one fresh pass (tester P3-1)", async () => {
+    await pass("terra");
+    publications.push({ updatedAt: tick() }); // the owner publishes; the next edit is a new draft
+    await expect(pass("journal")).resolves.toMatchObject({ design: "journal", draft_only: true });
+    await expect(pass("voyage")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
+  });
+
+  it("a publish BEFORE the pass does not open a second pass on the same draft", async () => {
+    publications.push({ updatedAt: tick() });
     await pass("terra");
     await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
   });

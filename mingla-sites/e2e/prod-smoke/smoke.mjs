@@ -11,10 +11,22 @@
 //   PROD_SMOKE_DIR=/tmp/x node e2e/prod-smoke/smoke.mjs --no-build
 //
 // Exit code 0 only when every request passed; the failures are printed.
+//
+// #4453 milestone 7 — `--fixture ys` serves Young and Stamped's COMPOSED site
+// (composer v2 in Voyage, published through the real Studio builder by
+// mingla-site-cms ysComposed.issue4453.test.ts with YS_COMPOSED_OUT) instead of
+// the per-design fixtures, on the same production build, at
+// http://youngandstamped.sites.localhost:<APP_PORT>/. It requests every page,
+// checks Home's recipe order, that every same-site link answers 200 and every
+// Book link goes to host.usemingla.com, and that no page scrolls sideways at
+// 1440 or 375 px. PROD_SMOKE_SHOTS=<dir> saves full-page screenshots; --serve
+// keeps next start running afterwards (Ctrl-C stops it) for a manual look.
+//
+//   npm run smoke:prod:ys         # from mingla-sites/ (see package.json)
 
 import { spawn, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,12 +38,60 @@ const MOCK_PORT = Number(process.env.PROD_SMOKE_MOCK_PORT ?? 57471);
 const APP_PORT = Number(process.env.PROD_SMOKE_APP_PORT ?? 3471);
 const EMPTY_MARKERS = ["mg-empty", "v-empty", "offering-grid-message", "will appear here as soon as they are on sale", "No upcoming"];
 
-if (!existsSync(join(dir, "sites.json"))) {
-  console.error(`prod-smoke: no fixtures in ${dir}; run the fixtures step first (npm run smoke:prod).`);
+const fixtureArg = process.argv.indexOf("--fixture");
+const FIXTURE = fixtureArg > 0 ? process.argv[fixtureArg + 1] : null;
+const SERVE = process.argv.includes("--serve");
+const SHOTS = process.env.PROD_SMOKE_SHOTS ? resolve(process.env.PROD_SMOKE_SHOTS) : null;
+if (FIXTURE !== null && FIXTURE !== "ys") {
+  console.error(`prod-smoke: unknown --fixture ${FIXTURE} (only "ys")`);
   process.exit(2);
 }
-const sites = JSON.parse(readFileSync(join(dir, "sites.json"), "utf8"));
-const upcomingFeed = JSON.parse(readFileSync(join(dir, "feed.json"), "utf8"));
+const YS_HOST = "youngandstamped.sites.localhost";
+
+/** Young and Stamped's composed artifact, bound to one local host exactly as Core binds a published site. */
+function ysSites() {
+  const artifactFile = join(dir, "ys-composed.json");
+  if (!existsSync(artifactFile) || !existsSync(join(dir, "ys-feed.json"))) {
+    console.error(`prod-smoke: no YS artifact in ${dir}; run mingla-site-cms ysComposed.issue4453.test.ts with YS_COMPOSED_OUT=${dir} first (npm run smoke:prod:ys does).`);
+    process.exit(2);
+  }
+  const bytes = readFileSync(artifactFile);
+  const artifact = JSON.parse(bytes.toString("utf8"));
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  // The mock serves storage objects by their last path segment (the digest file).
+  writeFileSync(join(dir, `${digest}.json`), bytes);
+  return {
+    artifact,
+    sites: {
+      [YS_HOST]: {
+        site_id: artifact.site_id, brand_id: artifact.brand_id, publication_id: artifact.publication_id,
+        artifact_key: `publications/${artifact.site_id}/${artifact.publication_id}/${digest}.json`, artifact_digest: digest,
+        artifact_schema_version: 2, renderer_key: artifact.renderer_key, renderer_version: artifact.renderer_version,
+        hostname: YS_HOST, primary_hostname: YS_HOST, is_primary: true, host_kind: "subdomain", design_key: artifact.design.key,
+        site_hostnames: [YS_HOST],
+        smoke_paths: artifact.pages.map((page) => `/${page.path}`),
+        expects_booking: false,
+        expects_live_trips: true,
+      },
+    },
+  };
+}
+
+let ys = null;
+let sites;
+let upcomingFeed;
+if (FIXTURE === "ys") {
+  ys = ysSites();
+  sites = ys.sites;
+  upcomingFeed = JSON.parse(readFileSync(join(dir, "ys-feed.json"), "utf8"));
+} else {
+  if (!existsSync(join(dir, "sites.json"))) {
+    console.error(`prod-smoke: no fixtures in ${dir}; run the fixtures step first (npm run smoke:prod).`);
+    process.exit(2);
+  }
+  sites = JSON.parse(readFileSync(join(dir, "sites.json"), "utf8"));
+  upcomingFeed = JSON.parse(readFileSync(join(dir, "feed.json"), "utf8"));
+}
 let feedOn = false;
 
 const VENUE = "22222222-2222-4222-8222-000000000001";
@@ -54,6 +114,28 @@ function bookingAnswer() {
   };
 }
 
+/**
+ * #4453 M7 — the departures a trip's availability strip asks for ("trip_departures"), answered from the
+ * fixture feed's own trip (its next three start dates, each linking to the trip on Mingla). Only for asks
+ * the page really made, keyed exactly as Core keys them.
+ */
+function withDepartures(answer, rawBody) {
+  let asks = [];
+  try { asks = JSON.parse(rawBody || "{}")?.request?.availability ?? []; } catch { asks = []; }
+  for (const ask of Array.isArray(asks) ? asks : []) {
+    if (ask?.source !== "trip_departures") continue;
+    const trip = (feedOn ? upcomingFeed.offerings : []).find((offering) => offering.id.toLowerCase() === String(ask.target_id).toLowerCase());
+    if (!trip) continue;
+    const first = new Date(trip.start_at);
+    const days = [0, 14, 28].map((offset) => new Date(first.getTime() + offset * 86_400_000).toISOString().slice(0, 10));
+    answer.availability[`trip_departures:${String(ask.target_id).toLowerCase()}:${ask.party_size}:${ask.days}`] = {
+      generated_at: answer.generated_at, timezone: trip.timezone ?? "Europe/London", source: "trip_departures", title: trip.title,
+      days: days.map((date) => ({ local_date: date, slots: [{ label: "Depart", start_local: `${date}T09:00`, state: "open", left: 5, price_minor: null, currency: null, href: trip.public_url }] })),
+    };
+  }
+  return answer;
+}
+
 const mock = http.createServer((req, res) => {
   let body = "";
   req.on("data", (chunk) => { body += chunk; });
@@ -70,7 +152,7 @@ const mock = http.createServer((req, res) => {
     }
     if (url.includes("/enquiry-status")) return send(200, { ok: true, data: { status: "available" } });
     // #4453 milestone 5 — Core's live booking answer for the blocks every Home carries.
-    if (url.endsWith("/booking")) return send(200, { ok: true, data: bookingAnswer() });
+    if (url.endsWith("/booking")) return send(200, { ok: true, data: withDepartures(bookingAnswer(), body) });
     if ((m = url.match(/\/internal\/v1\/hosts\/([^/]+)\/(publication|site|probe)/))) {
       const site = sites[decodeURIComponent(m[1])];
       if (!site) return send(404, { ok: false });
@@ -165,6 +247,83 @@ async function phoneWidthCheck(out) {
   }
 }
 
+/** Text of a block's own heading, as the artifact holds it (hero and ticker carry none). */
+const headingOf = (block) => (typeof block.heading === "string" && block.heading.trim() ? block.heading.trim() : null);
+const decode = (html) => html.replace(/&amp;/g, "&").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"');
+
+/** #4453 M7 — Young and Stamped: recipe order, links, and no sideways scroll at 1440 and 375 (screenshots on request). */
+async function ysChecks(out) {
+  const home = ys.artifact.pages.find((page) => page.path === "");
+  const homeHtml = decode((await request(YS_HOST, "/")).html);
+  console.log(`ys Home recipe: ${home.blocks.map((block) => block.type).join(" > ")}`);
+  let at = -1;
+  for (const block of home.blocks) {
+    const heading = headingOf(block);
+    if (!heading) continue;
+    const found = homeHtml.indexOf(heading, at + 1);
+    if (found < 0) out.push(`ys Home: the ${block.type} heading "${heading}" is not drawn`);
+    else if (found < at) out.push(`ys Home: ${block.type} "${heading}" is out of recipe order`);
+    else { at = found; console.log(`ok ys recipe ${block.type} "${heading}"`); }
+  }
+  // Every same-site link answers 200; every Book link leaves for host.usemingla.com.
+  const sameSite = new Set();
+  const bookLinks = [];
+  for (const path of sites[YS_HOST].smoke_paths) {
+    const { html } = await request(YS_HOST, path);
+    for (const m of html.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
+      const href = decode(m[1]);
+      const text = decode(m[2].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+      if (href.startsWith("/") && !href.startsWith("//")) sameSite.add(href.split("#")[0].split("?")[0] || "/");
+      if (/\bbook\b/i.test(text) && !href.startsWith("/")) bookLinks.push({ path, href, text });
+    }
+  }
+  for (const href of [...sameSite].sort()) {
+    if (href.startsWith("/_next/") || href.startsWith("/__")) continue;
+    const { status } = await request(YS_HOST, href);
+    if (status !== 200) out.push(`ys link ${href}: HTTP ${status}`);
+    else console.log(`ok ys link ${href}`);
+  }
+  for (const link of bookLinks) {
+    if (!link.href.startsWith("https://host.usemingla.com/")) out.push(`ys Book link on ${link.path} goes to ${link.href}`);
+    else console.log(`ok ys Book "${link.text}" on ${link.path} -> ${link.href}`);
+  }
+  if (!bookLinks.length) out.push("ys: no Book link to host.usemingla.com on any page");
+  let chromium;
+  try {
+    ({ chromium } = await import("@playwright/test"));
+  } catch {
+    out.push("ys widths: Playwright is not installed (npm ci in mingla-sites)");
+    return;
+  }
+  if (SHOTS) mkdirSync(SHOTS, { recursive: true });
+  const browser = await chromium.launch().catch(() => chromium.launch({ channel: "chrome" }));
+  try {
+    for (const width of [1440, 375]) {
+      // Reduced motion draws every scroll-reveal section at once, so a full-page screenshot shows them all.
+      const page = await browser.newPage({ viewport: { width, height: width === 375 ? 812 : 900 }, reducedMotion: "reduce" });
+      for (const path of ["/", "/trips", "/about"]) {
+        await page.goto(`http://${YS_HOST}:${APP_PORT}${path}`, { waitUntil: "networkidle" });
+        const scroll = await page.evaluate(() => document.documentElement.scrollWidth);
+        if (scroll > width) out.push(`ys ${width} ${path}: the page is ${scroll}px wide (scrolls sideways)`);
+        else console.log(`ok ys ${width} ${path} (${scroll}px)`);
+        if (SHOTS) {
+          // Walk the page once so lazy images and reveal observers fire, then shoot from the top.
+          await page.evaluate(async () => {
+            for (let y = 0; y < document.documentElement.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
+            window.scrollTo(0, 0);
+          });
+          await page.waitForTimeout(300);
+        }
+        if (SHOTS) await page.screenshot({ path: join(SHOTS, `ys-${path === "/" ? "home" : path.slice(1)}-${width}.png`), fullPage: true });
+      }
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+  if (SHOTS) console.log(`ys screenshots: ${SHOTS}`);
+}
+
 for (const state of ["empty", "upcoming"]) {
   feedOn = state === "upcoming";
   const server = spawn("npx", ["next", "start", "-p", String(APP_PORT)], { cwd: app, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -183,7 +342,7 @@ for (const state of ["empty", "upcoming"]) {
           const found = EMPTY_MARKERS.filter((marker) => html.includes(marker));
           if (found.length) failures.push(`${label}: empty-grid markup on the public page (${found.join(", ")})`);
         }
-        if (html.includes("Smoke Trip 1")) sawTrip = true;
+        if (html.includes(upcomingFeed.offerings[0]?.title ?? "Smoke Trip 1")) sawTrip = true;
         if (path === "/" && site.expects_booking && !(html.includes("mg-slots") && html.includes("mg-tiers") && (!site.expects_rating || html.includes("reviews on Mingla")))) {
           failures.push(`${label}: the live booking blocks are not drawn on Home (saved ${site.design_key}-home.html)`);
           writeFileSync(join(dir, `${site.design_key}-home.html`), html);
@@ -193,7 +352,11 @@ for (const state of ["empty", "upcoming"]) {
       if (state === "upcoming" && site.expects_live_trips && !sawTrip) failures.push(`upcoming ${site.design_key}: no upcoming trip drawn on Home or Trips`);
     }
     // #4453 milestone 5 (tester P1-3) — at 375 px no page scrolls sideways, on every design, Home and Trips.
-    if (state === "upcoming") await phoneWidthCheck(failures);
+    if (state === "upcoming") await (ys ? ysChecks(failures) : phoneWidthCheck(failures));
+    if (state === "upcoming" && SERVE) {
+      console.log(`prod-smoke: serving ${Object.keys(sites).map((host) => `http://${host}:${APP_PORT}/`).join(" ")} (Ctrl-C stops it)`);
+      await new Promise((done) => { process.once("SIGINT", done); process.once("SIGTERM", done); });
+    }
   } catch (error) {
     failures.push(`${state}: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
