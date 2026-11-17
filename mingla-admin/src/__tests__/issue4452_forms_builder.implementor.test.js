@@ -45,7 +45,7 @@ export const formsErrorWords = (e) => e?.message || "x";
 export const saveAutomationDraft = async () => ({}); export const publishAutomation = async () => ({});
 export const setAutomationEnabled = async () => ({}); export const testWholeFlow = async () => ({});
 export const getAutomation = async () => ({}); export const getForm = async () => ({}); export const saveFormDraft = async () => ({});
-export const archiveForm = async () => ({ result: {}, refreshed: true }); export const refreshSiteAfter = async (a) => ({ result: await a(), refreshed: true }); export const siteRefreshWarning = () => {}; export const createForm = async () => ({}); export const duplicateForm = async () => ({});
+export const archiveForm = async () => ({ result: {}, refreshed: true }); export const refreshSiteAfter = async (a) => ({ result: await a(), refreshed: true }); export const siteRefreshWarning = () => {}; export const unarchiveForm = async () => ({ result: {}, refreshed: true }); export const createForm = async () => ({}); export const duplicateForm = async () => ({});
 `;
 
 let h;
@@ -549,5 +549,30 @@ describe("#4452 B27 archive and unarchive refresh the public site", () => {
     assert.doesNotMatch(readSrc("components/forms/PublishTab.jsx"), /within a minute/);
     assert.match(readSrc("components/forms/PublishTab.jsx"), /siteRefreshWarning/);
     assert.match(readSrc("pages/FormsPage.jsx"), /const \{ refreshed \} = await archiveForm/);
+  });
+});
+
+describe("#4452 B28 an archived form can be unarchived", () => {
+  it("the list shows Unarchive on archived rows only, and Archive on the others", () => {
+    const rows = [{ id: "a", name: "Old", status: "archived", subs_7d: 0 }, { id: "b", name: "Cur", status: "live", live_version: 1, subs_7d: 0 }];
+    const html = h.table({ rows, canEdit: true, onUnarchive: () => {} });
+    assert.match(html, /aria-label="Unarchive Old"/);
+    assert.doesNotMatch(html, /aria-label="Unarchive Cur"/);
+    assert.doesNotMatch(html, /aria-label="Archive Old"/);
+    assert.match(html, /aria-label="Archive Cur"/);
+  });
+  it("the list confirms, goes through unarchiveForm, and says it comes back as a draft", () => {
+    const src = readSrc("pages/FormsPage.jsx");
+    assert.match(src, /const \{ refreshed \} = await unarchiveForm\(unarchiving\.id\)/);
+    assert.match(src, /title="Unarchive this form\?"/);
+    assert.match(h.M.UNARCHIVED_TOAST, /as a draft/);
+    assert.match(h.M.unarchiveQuestion("X"), /comes back as a draft/);
+  });
+  it("the builder banner has an Unarchive button wired to unarchiveForm and no longer points at a missing list action", () => {
+    const src = readSrc("components/forms/FormBuilder.jsx");
+    assert.match(src, /data-archived-banner/);
+    assert.match(src, />Unarchive<\/Button>/);
+    assert.match(src, /await unarchiveForm\(formId\)/);
+    assert.doesNotMatch(src, /unarchive it from the list/);
   });
 });
