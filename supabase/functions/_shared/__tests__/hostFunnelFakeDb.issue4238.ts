@@ -22,7 +22,18 @@ const CONVERSION_DEFAULTS: Row = {
   appsflyer_status: "pending",
 };
 
-export function hostFakeDb(seed: Record<string, Row[]> = {}) {
+export interface HostFakeDbOptions {
+  /**
+   * #4452 B20: emails that public.inbound_lead_is_test answers true for (a
+   * stand-in for the SQL rule, which its own pg17 tests own). Every other
+   * contact is a real lead.
+   */
+  testLeadEmails?: string[];
+  /** Make the inbound_lead_is_test RPC fail (the fail-closed path). */
+  testLeadCheckError?: boolean;
+}
+
+export function hostFakeDb(seed: Record<string, Row[]> = {}, options: HostFakeDbOptions = {}) {
   const tables: Record<string, Row[]> = {};
   for (const [name, rows] of Object.entries(seed)) {
     tables[name] = rows.map((r) => ({ ...r }));
@@ -123,9 +134,21 @@ export function hostFakeDb(seed: Record<string, Row[]> = {}) {
   };
 
   const users: Record<string, string> = {};
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const testEmails = new Set((options.testLeadEmails ?? []).map((e) => e.toLowerCase()));
+  const rpc = (name: string, args: Record<string, unknown> = {}) => {
+    rpcCalls.push({ name, args });
+    if (name !== "inbound_lead_is_test") {
+      return Promise.resolve({ data: null, error: { message: `no fake for rpc ${name}` } });
+    }
+    if (options.testLeadCheckError) return Promise.resolve({ data: null, error: { message: "rpc down" } });
+    const email = typeof args.p_email === "string" ? args.p_email.toLowerCase() : "";
+    return Promise.resolve({ data: testEmails.has(email), error: null });
+  };
   return {
+    rpcCalls,
     // deno-lint-ignore no-explicit-any
-    client: { from, auth: { getUser: (token: string) => Promise.resolve(users[token] ? { data: { user: { id: users[token] } }, error: null } : { data: { user: null }, error: { message: "bad jwt" } }) } } as any,
+    client: { from, rpc, auth: { getUser: (token: string) => Promise.resolve(users[token] ? { data: { user: { id: users[token] } }, error: null } : { data: { user: null }, error: { message: "bad jwt" } }) } } as any,
     tables,
     row: (table: string, pred: (r: Row) => boolean): Row | undefined =>
       rowsOf(table).find(pred),

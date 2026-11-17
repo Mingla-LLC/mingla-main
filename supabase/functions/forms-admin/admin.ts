@@ -7,6 +7,11 @@
 // never routes, never fires a Lead and is hidden from Results and Leads.
 
 import { type GateSend, renderFormEmail } from "../forms-automation-sender/sender.ts";
+// #4452 B19: Admin calls this from the browser (supabase.functions.invoke), so
+// the preflight must be answered and every answer, errors included, must carry
+// CORS headers. The shared Admin-function headers: the JWT is the gate, not
+// the origin (no cookies), the same as every other Admin function.
+import { corsHeaders } from "../_shared/cors.ts";
 
 export const SAMPLE_ANSWERS: Record<string, unknown> = {
   name: "Ada Okafor", city: { label: "Lagos" }, what_do_you_make: "Video",
@@ -39,7 +44,24 @@ function emailSteps(steps: unknown): Array<Record<string, unknown>> {
   return out;
 }
 
+/** The same response with the Admin CORS headers added. */
+function withCors(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(corsHeaders)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 export async function handleAdmin(req: Request, deps: AdminDeps): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: corsHeaders });
+  try {
+    return withCors(await handleAdminPost(req, deps));
+  } catch (err) {
+    console.error("[forms-admin] server_error", err instanceof Error ? err.name : "unknown");
+    return withCors(Response.json({ error: "server", message: "Something on the server failed. Try again." }, { status: 500 }));
+  }
+}
+
+async function handleAdminPost(req: Request, deps: AdminDeps): Promise<Response> {
   if (req.method !== "POST") return Response.json({ error: "method" }, { status: 405 });
   if (!(await deps.canEdit())) return Response.json({ error: "forbidden", message: "You don't have edit access" }, { status: 403 });
   const me = await deps.callerEmail();

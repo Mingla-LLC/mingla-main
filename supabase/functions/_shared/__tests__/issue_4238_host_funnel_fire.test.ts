@@ -25,6 +25,9 @@ import type { AdConversionRetryRow } from "../adConversionRetry.ts";
 import { recordHostLead } from "../hostFunnelConversion.ts";
 import { hostFakeDb } from "./hostFunnelFakeDb.issue4238.ts";
 
+// #4452 B20: a real (non-test) person; the fake answers inbound_lead_is_test false for it.
+const REAL_CONTACT = { email: "ada@example.org", name: "Ada Okafor" };
+
 const UID = "5b1f6a2e-4238-4f00-8a00-000000000001";
 const CLICK = "7c2d8e3f-4238-4a00-9b00-000000000002";
 
@@ -186,7 +189,7 @@ Deno.test("#4238 W3-3 (d) a book-a-call lead sends Meta Lead with the /schedule 
     page_url: "https://usemingla.com/schedule?utm_source=meta",
   }, req);
   assert(ad);
-  const eventId = await recordHostLead(db.client, { subjectId: LEAD, ad }, deps);
+  const eventId = await recordHostLead(db.client, { subjectId: LEAD, ad, contact: REAL_CONTACT }, deps);
   assertEquals(eventId, `lead:${LEAD}`);
   const meta = sent.find((s) => s.channel === "meta");
   assertEquals(meta?.eventName, "Lead");
@@ -199,7 +202,7 @@ Deno.test("#4238 W3-3 (d) a book-a-call lead sends Meta Lead with the /schedule 
   assertEquals(row?.event_type, "lead");
   // A replayed lead resolves to the same event id and sends nothing again.
   const before = sent.length;
-  await recordHostLead(db.client, { subjectId: LEAD, ad }, deps);
+  await recordHostLead(db.client, { subjectId: LEAD, ad, contact: REAL_CONTACT }, deps);
   assertEquals(sent.length, before);
 });
 

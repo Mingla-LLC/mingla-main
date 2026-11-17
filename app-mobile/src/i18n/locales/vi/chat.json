@@ -190,7 +190,6 @@
   "unsendBody": "Tin nhắn sẽ bị xóa với mọi người trong cuộc trò chuyện này.",
   "unsendFailed": "Không thể thu hồi. Vui lòng thử lại.",
   "unsendTitle": "Thu hồi tin nhắn này?",
-  "unsentToast": "Đã thu hồi tin nhắn",
   "yesterday": "Hôm qua",
   "you": "bạn",
   "a11yReaction_other": "{{emoji}}, {{count}} cảm xúc",

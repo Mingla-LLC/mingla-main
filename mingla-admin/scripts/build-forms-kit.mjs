@@ -58,9 +58,27 @@ await build({
   // React and react-dom always come from mingla-admin, one copy each.
   alias: { react: path.join(NM, "react"), "react-dom": path.join(NM, "react-dom") },
   nodePaths: [NM],
-  define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_SUPABASE_URL": '""', "process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY": '""' },
+  // The sandboxed preview has no `process`. Every `process.env.*` the kit reads
+  // is an empty string (the preview never connects: connect-src 'none'), and a
+  // bare `process.env` resolves to an empty object, so no key can ever throw.
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    "process.env.NEXT_PUBLIC_SUPABASE_URL": '""',
+    "process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY": '""',
+    "process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL": '""',
+    "process.env": "{}",
+  },
   logLevel: "warning",
 });
+const UNSAFE_PROCESS = /process\.env|(?<![\w$.])process\.(?!emit\b)/;
+// #4452: the bundle runs in a sandboxed iframe with no `process`; fail the build
+// if any reference survived (it threw `process is not defined` in production).
+const bundle = fs.readFileSync(path.join(OUT, "forms-kit.js"), "utf8");
+// React's reportError path reads `process.emit` only behind `typeof process == "object"`; that is safe.
+if (UNSAFE_PROCESS.test(bundle)) {
+  console.error("FATAL [forms-kit] forms-kit.js still references process.env / process; add it to `define` in build-forms-kit.mjs.");
+  process.exit(1);
+}
 // The page around the pop-up.
 fs.appendFileSync(path.join(OUT, "forms-kit.css"), fs.readFileSync(path.join(MARKETING, "components/forms/kit/kit.css"), "utf8"));
 fs.writeFileSync(path.join(OUT, ".gitignore"), "*\n!.gitignore\n");

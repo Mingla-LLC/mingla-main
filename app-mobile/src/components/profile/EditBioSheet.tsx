@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { BaseBottomSheet, BottomSheetTextInput } from '../ui/BaseBottomSheet';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +17,15 @@ const MAX_LENGTH = 160;
 // textarea + counter + save). enableDynamicSizing lets the sheet open at the
 // content's natural height rather than forcing a tall snap — preserves the prior
 // flex-end card's compact feel while becoming a true swipe-down sheet.
+//
+// #4456: the body used to be `scrollMode="view"`, a plain View that gorhom's
+// dynamic sizing cannot measure, so the sheet never opened while its RN Modal
+// window swallowed every touch (Profile froze). Header, input and Save now
+// live in one measurable BottomSheetScrollView (the TicketCart pattern), capped
+// like the chat sheets; BaseBottomSheet closes any such sheet that still fails
+// to open.
+export const EDIT_BIO_SNAP_POINTS = ['86%'] as const;
+export const EDIT_BIO_SCROLL_PROPS = { keyboardShouldPersistTaps: 'handled' as const };
 const EditBioSheet: React.FC<EditBioSheetProps> = ({
   visible,
   onClose,
@@ -25,6 +34,7 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
 }) => {
   const { t } = useTranslation(['profile', 'common']);
   const [bioText, setBioText] = useState(currentBio);
+  const { height: windowHeight } = useWindowDimensions();
 
   useEffect(() => {
     if (visible) setBioText(currentBio);
@@ -43,27 +53,36 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
       visible={visible}
       onClose={onClose}
       theme="light"
+      snapPoints={EDIT_BIO_SNAP_POINTS as unknown as string[]}
       enableDynamicSizing
-      scrollMode="view"
+      maxDynamicContentSize={Math.round(windowHeight * 0.86)}
+      scrollMode="scroll"
+      scrollProps={EDIT_BIO_SCROLL_PROPS}
       wrapInRNModal
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       accessibilityLabel={t('profile:edit_bio.title')}
-      header={
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>{t('profile:edit_bio.title')}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Icon name="close" size={24} color="#111827" />
-          </TouchableOpacity>
-        </View>
-      }
     >
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{t('profile:edit_bio.title')}</Text>
+        <TouchableOpacity
+          onPress={onClose}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('common:close')}
+          testID="edit-bio-close"
+        >
+          <Icon name="close" size={24} color="#111827" />
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.body}>
         <BottomSheetTextInput
           style={styles.input}
           value={bioText}
           onChangeText={setBioText}
+          testID="edit-bio-input"
           maxLength={MAX_LENGTH}
           multiline
           numberOfLines={4}
@@ -82,6 +101,9 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
           onPress={handleSave}
           disabled={!hasChanged}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !hasChanged }}
+          testID="edit-bio-save"
         >
           <Text style={styles.saveText}>{t('profile:edit_bio.save')}</Text>
         </TouchableOpacity>

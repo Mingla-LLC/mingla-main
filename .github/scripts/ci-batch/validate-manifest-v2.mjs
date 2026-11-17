@@ -520,7 +520,12 @@ export function phase3dContractDigest(manifest) {
 // #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b5f331d0486655ecebe5440fb3feb235df06ba6a117c85ee46abad3fbf01368b";
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ea3a20ffcefbde1904ab411a2009b3dbb9157287e87b576036cb2c9c642b08a2";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -157,21 +157,140 @@ export const COMPOSER_MAX_LINES = 5;
 export const COMPOSER_MIN_HEIGHT = 56;
 export const COMPOSER_INPUT_MAX_HEIGHT = COMPOSER_LINE_HEIGHT * COMPOSER_MAX_LINES;
 
-export type MessageActionId = "reply" | "copy" | "unsend" | "report";
+export type MessageActionId = "reply" | "copy" | "report" | "deleteForMe" | "unsend" | "removeForEveryone";
 
-/** The long-press menu: Copy only for text, Unsend for your own sent messages, Report for others'. */
+/** Issue #4456: the message types a person can unsend (plan cards and system rows are server-owned). */
+export const UNSENDABLE_MESSAGE_TYPES: readonly string[] = ["text", "image", "video", "file", "card"];
+
+export function isUnsendableType(type: string | null | undefined): boolean {
+  return UNSENDABLE_MESSAGE_TYPES.includes(type ?? "text");
+}
+
+/**
+ * Issue #4456: the long-press menu, in the design's order. Group 1 holds
+ * everyday actions (Reply, Copy for text, Report on someone else's message);
+ * group 2 holds the two delete actions (Delete for me, then Unsend for
+ * everyone on your own message or Remove for everyone for a group admin).
+ * There is no time limit on Unsend (Seth, 2026-11-16).
+ *
+ * - An unsent line offers Delete for me only.
+ * - A failed (never sent) bubble offers Delete for me only (local).
+ * - A message still uploading has no menu (its own cancel stays).
+ * - View once: Delete for me and Unsend (yours) or Report and Delete for me
+ *   (someone else's); no Reply or Copy, and admins cannot remove it.
+ */
 export function messageActions(input: {
   isOwnMessage: boolean;
   type: string;
   isSent: boolean;
+  isFailed?: boolean;
+  isTombstone?: boolean;
+  isViewOnce?: boolean;
+  isGroupAdmin?: boolean;
   canUnsend: boolean;
   canReport: boolean;
+  canDeleteForMe?: boolean;
 }): MessageActionId[] {
-  const actions: MessageActionId[] = ["reply"];
-  if (input.type === "text") actions.push("copy");
-  if (input.isOwnMessage && input.isSent && input.canUnsend) actions.push("unsend");
+  const canDelete = input.canDeleteForMe !== false;
+  if (input.isTombstone) return canDelete ? ["deleteForMe"] : [];
+  if (input.isFailed) return canDelete ? ["deleteForMe"] : [];
+  if (!input.isSent) return [];
+  const unsendable = isUnsendableType(input.type);
+  const actions: MessageActionId[] = [];
+  if (!input.isViewOnce) {
+    actions.push("reply");
+    if (input.type === "text") actions.push("copy");
+  }
   if (!input.isOwnMessage && input.canReport) actions.push("report");
+  if (canDelete) actions.push("deleteForMe");
+  if (input.isOwnMessage && input.canUnsend && unsendable) actions.push("unsend");
+  if (!input.isOwnMessage && input.isGroupAdmin && input.canUnsend && unsendable && !input.isViewOnce) {
+    actions.push("removeForEveryone");
+  }
   return actions;
+}
+
+/** Issue #4456: actions that change something on the server, refused while offline. */
+export const NEEDS_CONNECTION_ACTIONS: ReadonlySet<MessageActionId> = new Set<MessageActionId>([
+  "deleteForMe",
+  "unsend",
+  "removeForEveryone",
+]);
+
+/** Issue #4456: the menu's two groups (everyday actions, then the delete actions). */
+export function messageActionGroups(actions: readonly MessageActionId[]): MessageActionId[][] {
+  const deletes = new Set<MessageActionId>(["deleteForMe", "unsend", "removeForEveryone"]);
+  return [actions.filter((id) => !deletes.has(id)), actions.filter((id) => deletes.has(id))]
+    .filter((group) => group.length > 0);
+}
+
+export type TombstoneKind = "sender" | "admin";
+
+/**
+ * Issue #4456: the unsent line, as an i18n key and params.
+ * - unsent by its author: "You unsent a message" / "Ana unsent a message";
+ * - removed by a group admin: "You removed a message" (you are the admin),
+ *   "Sam removed your message" (you wrote it), "Sam removed a message".
+ */
+export function tombstoneLine(input: {
+  kind: TombstoneKind;
+  authorIsMe: boolean;
+  actorIsMe: boolean;
+  authorName: string;
+  actorName: string;
+}): { key: string; params: Record<string, string> } {
+  if (input.kind === "admin") {
+    if (input.actorIsMe) return { key: "chat:tombstoneYouRemoved", params: {} };
+    if (input.authorIsMe) return { key: "chat:tombstoneAdminRemovedYours", params: { name: input.actorName } };
+    return { key: "chat:tombstoneAdminRemoved", params: { name: input.actorName } };
+  }
+  if (input.authorIsMe) return { key: "chat:tombstoneYouUnsent", params: {} };
+  return { key: "chat:tombstoneTheyUnsent", params: { name: input.authorName } };
+}
+
+export interface MessageTombstone {
+  kind: TombstoneKind;
+  /** Who unsent or removed it (null when that account was deleted). */
+  byUserId: string | null;
+}
+
+/**
+ * Issue #4456: how a stored row reads in the thread. A message unsent by its
+ * author or removed by a group admin becomes a placeholder (`tombstone`); any
+ * other removal (Host moderation, account deletion, rows from before #4456)
+ * stays hidden (`unsent`), as before.
+ */
+export function unsentStateOf(row: {
+  deleted_at?: string | null;
+  unsent_kind?: string | null;
+  unsent_by?: string | null;
+}): { unsent?: true; tombstone?: MessageTombstone } {
+  if (!row.deleted_at) return {};
+  if (row.unsent_kind === "sender" || row.unsent_kind === "admin") {
+    return { tombstone: { kind: row.unsent_kind, byUserId: row.unsent_by ?? null } };
+  }
+  return { unsent: true };
+}
+
+/** Issue #4456: how long Delete for me can be undone (10 s while a screen reader is on). */
+export const DELETE_FOR_ME_UNDO_MS = 5000;
+export const DELETE_FOR_ME_UNDO_SCREEN_READER_MS = 10000;
+
+/** Issue #4456: the most messages one unsend can name (an album is one call). */
+export const UNSEND_MAX_IDS = 10;
+
+/**
+ * Issue #4456: what a reply quote shows for its original. An unsent original
+ * reads "Message unsent" (no thumbnail); one hidden for me, or one that cannot
+ * be loaded, reads "Message not available".
+ */
+export type ReplyQuoteState = "live" | "unsent" | "unavailable";
+
+export function replyQuoteState(original: { tombstone?: unknown; unsent?: boolean } | undefined): ReplyQuoteState {
+  if (!original) return "unavailable";
+  if (original.tombstone) return "unsent";
+  if (original.unsent) return "unavailable";
+  return "live";
 }
 
 /**
@@ -179,6 +298,8 @@ export function messageActions(input: {
  * with nothing open the thread itself closes. Order is top-most first.
  */
 export const CHAT_BACK_LAYERS = [
+  // Issue #4456: the unsend confirm sits above the menu it opens from.
+  "unsendConfirm",
   "contextMenu",
   "attachmentMenu",
   "imagePreview",

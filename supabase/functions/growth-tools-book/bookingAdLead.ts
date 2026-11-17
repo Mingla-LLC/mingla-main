@@ -14,6 +14,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
   type HostAdContext,
+  type LeadContact,
   recordHostLead,
 } from "../_shared/hostFunnelConversion.ts";
 import type { FireAdConversionDeps } from "../_shared/adConversionFire.ts";
@@ -24,6 +25,16 @@ type Db = any;
 export interface BookingAdLeadDeps {
   db?: Db;
   fire?: FireAdConversionDeps;
+}
+
+/**
+ * #4452 B20: the contact public.inbound_lead_is_test reads for a booking, the
+ * same pair the Leads list uses (the venue when given, else the name).
+ */
+export function bookingContact(row: { email?: unknown; name?: unknown; venue?: unknown }): LeadContact {
+  const venue = typeof row.venue === "string" ? row.venue.trim() : "";
+  const name = typeof row.name === "string" ? row.name : null;
+  return { email: typeof row.email === "string" ? row.email : null, name: venue !== "" ? venue : name };
 }
 
 export async function recordBookingAdLead(
@@ -42,12 +53,12 @@ export async function recordBookingAdLead(
     }
     const { data, error } = await db
       .from("book_call_leads")
-      .select("id")
+      .select("id,email,name,venue")
       .eq("booking_key", bookingKey)
       .eq("audience", "host")
       .maybeSingle();
     if (error || !data?.id) return null;
-    return await recordHostLead(db, { subjectId: String(data.id), ad }, deps.fire);
+    return await recordHostLead(db, { subjectId: String(data.id), ad, contact: bookingContact(data) }, deps.fire);
   } catch (err) {
     console.error(
       "[growth-tools-book] host lead conversion failed (non-fatal)",
@@ -122,15 +133,17 @@ export async function recordBookingConversions(
   try {
     const db = serviceDb(config, deps.db);
     if (!db) return { leadEventId: null, goalEventId: null };
-    const { data, error } = await db.from("book_call_leads").select("id,email").eq("booking_key", bookingKey).maybeSingle();
+    const { data, error } = await db.from("book_call_leads").select("id,email,name,venue").eq("booking_key", bookingKey).maybeSingle();
     if (error || !data?.id) return { leadEventId: null, goalEventId: null };
     const bookingId = String(data.id);
     let leadEventId: string | null = null;
     const label = formLink ? formLink.label : audience;
+    // #4452 B20: a test or internal booker's Lead and call are never sent (both ids null).
+    const contact = bookingContact(data);
     if (!formLink) {
-      leadEventId = await recordLabelledLead(db, { label, subjectId: bookingId, ad: ad ?? OPTED_OUT_CONTEXT, source: "book_a_call" }, deps.fire);
+      leadEventId = await recordLabelledLead(db, { label, subjectId: bookingId, ad: ad ?? OPTED_OUT_CONTEXT, source: "book_a_call", contact }, deps.fire);
     }
-    const goalEventId = await recordCallBooked(db, { label, bookingId, source: "book_a_call" }, deps.fire);
+    const goalEventId = await recordCallBooked(db, { label, bookingId, source: "book_a_call", contact }, deps.fire);
     await db.from("book_call_leads").update({ lead_event_id: leadEventId, goal_event_id: goalEventId }).eq("id", bookingId);
     // Stop rule "booked": the person's follow-ups end now.
     await db.rpc("forms_booking_stops_runs", { p_email: String(data.email ?? ""), p_submission_id: formLink?.id ?? null });

@@ -18,13 +18,19 @@ const BRAND_MUTED = "#6B675F";
 const BRAND_BG_SOFT = "#F5F4F0";
 const BRAND_BORDER = "#E7E3DA";
 const BODY_TEXT = "#3F3D39";
-export const LOGO_PILL_URL = "https://usemingla.com/brand/mingla-logo-white-on-orange.png";
+export const LOGO_PILL_URL = "https://usemingla.com/brand/mingla-logo-pill.png";
 
 export interface ShellInput {
   preheader: string;
   bodyHtml: string;
   supportEmail: string;
-  logoUrl: string;
+  /**
+   * #4452 (B7): no longer drawn. §5.9 puts the LOGO PILL (LOGO_PILL_URL) in
+   * the header and the footer of every shell email; callers still passed the
+   * old orange wordmark here, so most emails kept the old logo. Optional for
+   * the callers that still pass it; the shell ignores it.
+   */
+  logoUrl?: string;
   footerAddress: string;
   /**
    * Optional: when set, replaces the logo header row with a full-width
@@ -68,7 +74,8 @@ export function renderShell(input: ShellInput): string {
   const support = escapeHtml(input.supportEmail);
   const address = escapeHtml(input.footerAddress);
   const preheader = escapeHtml(input.preheader);
-  const logo = escapeHtml(input.logoUrl);
+  // #4452 (B7) §5.9: always the logo pill, whatever the caller passed.
+  const logo = escapeHtml(LOGO_PILL_URL);
   // escapeHtml(...) is inlined at the call site so the ORCH-0785-C
   // buyer-string-escape gate sees brand strings as already-escaped.
   const hasBrandBanner = input.brandHeaderImageUrl !== null &&
@@ -86,7 +93,7 @@ export function renderShell(input: ShellInput): string {
     : `<tr>
               <td style="padding:24px 28px 0 28px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                  <td align="left" valign="middle"><img src="${logo}" alt="Mingla" width="96" style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:96px;" /></td>
+                  <td align="left" valign="middle"><img src="${logo}" alt="Mingla" width="96" height="38" style="display:block;border:0;outline:none;text-decoration:none;width:96px;height:38px;max-width:96px;" /></td>
                   <td align="right" valign="middle">${labelPill}</td>
                 </tr></table>
               </td>
@@ -120,7 +127,7 @@ export function renderShell(input: ShellInput): string {
             </tr>
             <tr>
               <td style="padding:24px 28px;border-top:1px solid ${BRAND_BORDER};background:${BRAND_BG_SOFT};font-size:13px;line-height:1.5;color:${BRAND_MUTED};">
-                <img src="${logo}" alt="Mingla" width="64" style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:64px;margin:0 0 10px 0;" />
+                <img src="${logo}" alt="Mingla" width="64" height="25" style="display:block;border:0;outline:none;text-decoration:none;width:64px;height:25px;max-width:64px;margin:0 0 10px 0;" />
                 <p style="margin:0 0 8px 0;color:${BRAND_INK};">Making real life easier to find.</p>
                 <p style="margin:0 0 8px 0;">Questions? Reply to this email or write to <a href="mailto:${support}" style="color:${BRAND_INK};text-decoration:underline;">${support}</a> · ${address}</p>
                 ${

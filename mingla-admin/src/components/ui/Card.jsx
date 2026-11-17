@@ -15,18 +15,24 @@ export function StatCard({ icon: Icon, label, value, trend, trendUp, className =
       ].join(" ")}
     >
       <span aria-hidden="true" data-stat-tick="" className="absolute left-[18px] top-0 h-[3px] w-7 rounded-b-[3px] bg-[#eb7825]" />
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-full bg-[var(--a-chip)] flex items-center justify-center shrink-0">
-          {Icon && <Icon className="w-[18px] h-[18px] text-[var(--a-chip-ink)]" />}
+      {/* #4452 (B4): the icon circle is drawn only around an icon; a card
+          without one (and without a trend) starts with its label. */}
+      {(Icon || trend) && (
+        <div className={`flex items-start mb-3 ${Icon ? "justify-between" : "justify-end"}`}>
+          {Icon && (
+            <div data-stat-icon="" className="w-10 h-10 rounded-full bg-[var(--a-chip)] flex items-center justify-center shrink-0">
+              <Icon className="w-[18px] h-[18px] text-[var(--a-chip-ink)]" />
+            </div>
+          )}
+          {/* #4130: green when up, red when down, grey when level or unknown
+              (lib/trendTone.js). Pass trendUp; leaving it out reads as level. */}
+          {trend && (
+            <span className={`text-xs font-semibold ${trendTone(trendUp).className}`}>
+              <span aria-hidden="true">{trendTone(trendUp).arrow}</span> {trend}
+            </span>
+          )}
         </div>
-        {/* #4130: green when up, red when down, grey when level or unknown
-            (lib/trendTone.js). Pass trendUp; leaving it out reads as level. */}
-        {trend && (
-          <span className={`text-xs font-semibold ${trendTone(trendUp).className}`}>
-            <span aria-hidden="true">{trendTone(trendUp).arrow}</span> {trend}
-          </span>
-        )}
-      </div>
+      )}
       <p className="text-[13px] text-[var(--color-text-secondary)] mb-1">{label}</p>
       <p className="font-serif text-[34px] font-normal leading-[1.05] text-[var(--color-text-primary)]">{value}</p>
     </div>

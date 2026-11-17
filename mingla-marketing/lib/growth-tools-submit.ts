@@ -9,6 +9,7 @@
 // design: RLS denies anon writes and the edge fns write via the service role.
 // The edge fns re-validate everything; this transport only shapes the calls.
 
+import { visitorRegion } from './visitor-region'
 import { postGrowthTools, type GrowthToolsError } from './growth-tools-transport'
 import { fireBrowserHostLead, leadEventIdFrom, marketingAdContext } from './marketing-ad-context'
 export type { GrowthToolsError } from './growth-tools-transport'
@@ -479,7 +480,8 @@ export async function searchCities(
   q: string,
   signal?: AbortSignal,
 ): Promise<{ ok: true; cities: CitySuggestion[] } | { ok: false; error: GrowthToolsError }> {
-  const result = await postGrowthTools('growth-tools-geocode', { q }, signal)
+  const region = visitorRegion()
+  const result = await postGrowthTools('growth-tools-geocode', region ? { q, region } : { q }, signal)
   if (!result.ok) return result
   const cities =
     result.body && typeof result.body === 'object' && 'cities' in result.body

@@ -23,8 +23,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
-import { messagingService, DirectMessage, MentionEntry, CardTagEntry, MESSAGE_PAGE_SIZE } from "../services/messagingService";
-import { openChatRowTurnedUnread, sendFailureFeedback, toggleReactionRows } from "../utils/threadModel";
+import { messagingService, DirectMessage, MentionEntry, CardTagEntry, MESSAGE_PAGE_SIZE, type UnsendError } from "../services/messagingService";
+import { openChatRowTurnedUnread, sendFailureFeedback, toggleReactionRows, unsentStateOf } from "../utils/threadModel";
 import {
   mergeMessages,
   isLocalMessage,
@@ -1555,10 +1555,12 @@ function ConnectionsPageRefactored({
           ? (msg.card_payload as unknown as CollabDeadEndBannerPayload)
           : undefined,
       // Issue #4114 Wave 3: reactions come with each page read (undefined on a
-      // realtime row, so the merge keeps what the store already has), and an
-      // unsent message (deleted_at, via the realtime UPDATE) is hidden.
-      reactions: msg.reactions,
-      unsent: msg.deleted_at ? true : undefined,
+      // realtime row, so the merge keeps what the store already has).
+      // Issue #4456: an unsent message (deleted_at, via the realtime UPDATE or
+      // a read) becomes the unsent line when its author or a group admin
+      // removed it, and stays hidden otherwise. A tombstone has no reactions.
+      reactions: unsentStateOf(msg).tombstone ? [] : msg.reactions,
+      ...unsentStateOf(msg),
       // Issue #4114 Wave 4: view once. `mediaViews` is undefined on a realtime
       // row, so the merge keeps what the last page read found.
       viewOnce: msg.view_once === true ? true : undefined,
@@ -1837,6 +1839,8 @@ function ConnectionsPageRefactored({
       event_id?: string | null;
       linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
       program_kind?: 'local' | 'creator' | null;
+      brand_id?: string | null;
+      created_by?: string | null;
       sessionCreatorId?: string | null;
       eventBrandName?: string | null;
       eventBrandAccountId?: string | null;
@@ -1923,6 +1927,12 @@ function ConnectionsPageRefactored({
       eventPublicCard,
       isBroadcastOnly: Boolean(conversationMeta.is_broadcast_only),
       isSessionAdmin: isGroupConversation ? sessionCreatorId === user.id : undefined,
+      // Issue #4456: a plain friend group's admin is its creator (chat_group_is_admin).
+      isPlainGroupCreator: isGroupConversation
+        && (conversationMeta.linked_entity_type ?? 'direct') === 'direct'
+        && !conversationMeta.program_kind
+        && !conversationMeta.brand_id
+        && conversationMeta.created_by === user.id,
       participantCount: isGroupConversation ? conversation.participants.length : undefined,
       participants: isGroupConversation
         ? conversation.participants.map((p) => ({
@@ -3009,18 +3019,74 @@ function ConnectionsPageRefactored({
     }
   };
 
-  const handleUnsendMessage = async (messageId: string): Promise<boolean> => {
-    const conversationId = conversationOfMessage(messageId);
-    if (!user?.id || !conversationId) return false;
-    const target = (messagesCache[conversationId] ?? EMPTY_MESSAGES).find((msg) => msg.id === messageId);
-    if (!target || !target.isMe || isLocalMessage(target)) return false;
-    const { error } = await messagingService.unsendMessage(messageId, user.id);
-    if (error) {
-      showToast({ message: t('chat:unsendFailed'), type: 'error' });
-      return false;
+  // Issue #4456: Unsend for everyone (your own) or Remove for everyone (a
+  // group admin). Not optimistic: the thread changes once the server says yes.
+  // The confirm sheet shows the failure; the realtime UPDATE also arrives.
+  const handleUnsendMessages = async (messageIds: string[]): Promise<{ ok: boolean; error: UnsendError | null }> => {
+    const conversationId = messageIds.length > 0 ? conversationOfMessage(messageIds[0]) : null;
+    if (!user?.id || !conversationId) return { ok: false, error: 'failed' };
+    const result = await messagingService.unsendMessages(messageIds);
+    if (result.error) return { ok: false, error: result.error };
+    const unsentIds = new Set(result.unsent);
+    const kind = result.kind ?? 'sender';
+    const now = new Date().toISOString();
+    const targets = (messagesCache[conversationId] ?? EMPTY_MESSAGES).filter((msg) => unsentIds.has(msg.id));
+    writeConversationMessages(
+      conversationId,
+      targets.map((msg) => ({
+        ...msg,
+        content: '',
+        reactions: [],
+        tombstone: { kind, byUserId: user.id },
+      })),
+    );
+    // The Chats list preview reads the unsent line straight away.
+    setConversations((current) => current.map((conversation) => {
+      const last = conversation.last_message as (DirectMessage & { id?: string }) | undefined;
+      if (!last?.id || !unsentIds.has(last.id)) return conversation;
+      return {
+        ...conversation,
+        last_message: { ...last, content: '', deleted_at: now, unsent_at: now, unsent_by: user.id, unsent_kind: kind },
+      } as Conversation;
+    }));
+    return { ok: true, error: null };
+  };
+
+  // Issue #4456: Delete for me. Optimistic, with Undo; a failure brings the
+  // bubble back. A bubble that never reached the server leaves this phone only.
+  const handleDeleteForMe = async (
+    messageIds: string[],
+  ): Promise<{ ok: boolean; undo?: () => Promise<boolean> }> => {
+    const conversationId = messageIds.length > 0 ? conversationOfMessage(messageIds[0]) : null;
+    if (!user?.id || !conversationId) return { ok: false };
+    const ids = new Set(messageIds);
+    const targets = (messagesCache[conversationId] ?? EMPTY_MESSAGES).filter((msg) => ids.has(msg.id));
+    if (targets.length === 0) return { ok: false };
+    const serverIds = targets.filter((msg) => !isLocalMessage(msg)).map((msg) => msg.id);
+    const restore = () => writeConversationMessages(conversationId, targets.map((msg) => ({ ...msg, unsent: msg.unsent ?? false })));
+    writeConversationMessages(conversationId, targets.map((msg) => ({ ...msg, unsent: true })));
+    if (serverIds.length > 0) {
+      const { error } = await messagingService.hideMessagesForMe(serverIds);
+      if (error) {
+        restore();
+        return { ok: false };
+      }
+      void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
     }
-    writeConversationMessages(conversationId, [{ ...target, unsent: true }]);
-    return true;
+    return {
+      ok: true,
+      undo: async () => {
+        restore();
+        if (serverIds.length === 0) return true;
+        const { error } = await messagingService.unhideMessagesForMe(serverIds);
+        if (error) {
+          writeConversationMessages(conversationId, targets.map((msg) => ({ ...msg, unsent: true })));
+          return false;
+        }
+        void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
+        return true;
+      },
+    };
   };
 
   const reportMessageRef = useRef<{ id: string; content: string } | null>(null);
@@ -3503,12 +3569,10 @@ function ConnectionsPageRefactored({
 
   const handleReportSubmit = async (userId: string, reason: string, details?: string) => {
     try {
-      // Issue #4114 Wave 3: a report started from a message names that message.
+      // Issue #4456: a report started from a message names that message by id;
+      // the server keeps its own copy (the phone no longer writes the text).
       const reportedMessage = reportMessageRef.current;
-      const fullDetails = reportedMessage
-        ? [details, `Reported message ${reportedMessage.id}: ${reportedMessage.content.slice(0, 200)}`].filter(Boolean).join("\n")
-        : details;
-      const result = await reportService.submitReport(userId, reason as ReportReason, fullDetails);
+      const result = await reportService.submitReport(userId, reason as ReportReason, details, reportedMessage?.id ?? null);
       setShowReportModal(false);
       setSelectedUserToReport(null);
       if (result.success) {
@@ -4095,7 +4159,8 @@ function ConnectionsPageRefactored({
           isPairedFriend={Boolean(activeChat?.id && pairedUserIds.has(activeChat.id))}
           onOpenPairedProfile={(friendUserId) => onNavigateToFriendProfile?.(friendUserId, { focus: "paired" })}
           onToggleReaction={handleToggleReaction}
-          onUnsendMessage={handleUnsendMessage}
+          onUnsendMessages={handleUnsendMessages}
+          onDeleteForMe={handleDeleteForMe}
           onReportMessage={handleReportMessage}
           isLoadingMessages={Boolean(
             currentConversationId &&

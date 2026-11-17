@@ -194,16 +194,23 @@ END$$;
 RESET request.jwt.claim.sub;
 SET ROLE service_role;
 UPDATE public.conversations SET is_enabled=true WHERE id='10000000-0000-0000-0000-000000000202';
-UPDATE public.messages SET deleted_at=now() WHERE content='fixture';
 RESET ROLE;
 SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000201';
+-- #4456: a removed message can never be brought back (it is wiped into the
+-- private store), so the removal is probed inside a subtransaction that is
+-- rolled back, leaving the fixture live for the checks below.
 DO $$DECLARE mid uuid; BEGIN SELECT id INTO mid FROM public.messages WHERE content='fixture';
-  IF (SELECT count(*) FROM public.resolve_native_content_card_snapshots(ARRAY[mid]))<>0 THEN RAISE EXCEPTION 'deleted message resolved'; END IF;
+  BEGIN
+    UPDATE public.messages SET deleted_at=now() WHERE id=mid;
+    IF (SELECT count(*) FROM public.resolve_native_content_card_snapshots(ARRAY[mid]))<>0 THEN RAISE EXCEPTION 'deleted message resolved'; END IF;
+    RAISE EXCEPTION USING ERRCODE = 'P4456', MESSAGE = 'issue_1719_removal_probe_rollback';
+  EXCEPTION WHEN SQLSTATE 'P4456' THEN NULL;
+  END;
+  IF NOT EXISTS (SELECT 1 FROM public.messages WHERE id=mid AND deleted_at IS NULL AND content='fixture') THEN
+    RAISE EXCEPTION 'the removal probe did not roll back';
+  END IF;
 END$$;
 RESET request.jwt.claim.sub;
-SET ROLE service_role;
-UPDATE public.messages SET deleted_at=NULL WHERE content='fixture';
-RESET ROLE;
 
 SET ROLE anon;
 DO $$BEGIN

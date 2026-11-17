@@ -309,7 +309,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4420 experience stop-detail visibility migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
 // #4420 discovery coarse-point migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
 // #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
-export const BOOTSTRAP_SHA256 = "3bcc4617d86b05c6f6f27b6415936b969ed696b6fc1f05716012194c937415eb";
+// #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
+// #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "cc7ceef0250cbce794fd3d66263f618f2c4101e4c3df565dd5ebc92b0c229fc7";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

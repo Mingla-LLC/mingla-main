@@ -5,6 +5,11 @@
 // 90 days after it was sent (reason "video_retention"), keeps its thumbnail, and
 // marks the message media_expired_at instead of view_once_purged_at.
 //
+// #4456: an unsent message's file and thumbnail are kept for 30 days in the
+// private store, then listed with reason "unsent_retention"; after deleting
+// them the sweep drops the store rows (purgeUnsentEvidence), which also drops
+// due rows that had no files. A row an open report names is never listed.
+//
 // Two callers:
 //   * a signed-in recipient: POST { message_id } → one 60-second signed URL,
 //     after recording their view. A second open (any device) is refused with
@@ -43,6 +48,8 @@ export const CANONICAL_ATTACHMENT_PATH = new RegExp(
 export const CANONICAL_THUMB_PATH = new RegExp(`^(${LOWER_UUID})/${LOWER_UUID}_thumb\\.jpg$`);
 /** Sweep reasons that mark a message media_expired_at rather than view_once_purged_at. */
 export const MEDIA_EXPIRY_REASONS: ReadonlySet<string> = new Set(["video_retention"]);
+/** #4456: an unsent message's kept files, due after the 30-day store. */
+export const UNSENT_RETENTION_REASON = "unsent_retention";
 /** Returned by signUrl when the object's uploader is not the expected sender. */
 export const OBJECT_NOT_OWNED = "object_not_owned";
 
@@ -113,6 +120,12 @@ export interface OpenViewOnceDeps {
    * sweep closed (after the delete, before anything is reported as done).
    */
   markExpired?(messageIds: string[]): Promise<{ error: string | null }>;
+  /**
+   * #4456: drops the private copies whose files were just deleted, plus due
+   * copies with no files. Optional only for older test fakes; without it the
+   * sweep still runs and the copies wait for the next run.
+   */
+  purgeUnsentEvidence?(messageIds: string[]): Promise<{ data: number; error: string | null }>;
   /** Clock for the reopen grace window; Date.now when omitted. */
   now?(): number;
 }
@@ -159,7 +172,7 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
   const paths = [...new Set(rows.filter((row) =>
     MEDIA_EXPIRY_REASONS.has(row.reason)
       ? parseAttachmentPath(row.storage_path)?.once === false
-      : row.reason === "orphan"
+      : row.reason === "orphan" || row.reason === UNSENT_RETENTION_REASON
         ? isSweepablePath(row.storage_path)
         : parseAttachmentPath(row.storage_path) !== null
   ).map((row) => row.storage_path))];
@@ -171,6 +184,7 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
     }
   }
   const idsFor = (expiry: boolean) => [...new Set(rows
+    .filter((row) => row.reason !== UNSENT_RETENTION_REASON)
     .filter((row) => MEDIA_EXPIRY_REASONS.has(row.reason) === expiry && paths.includes(row.storage_path))
     .map((row) => row.message_id)
     .filter((id): id is string => !!id))];
@@ -190,9 +204,34 @@ export async function sweep(deps: OpenViewOnceDeps): Promise<Response> {
       return json({ error: "sweep_mark_failed" }, 500);
     }
   }
+  // #4456: the copies go only after their files did (a failed remove returned above).
+  // RELEASE ORDER: apply migration 20280721004456_issue_4456_unsend_and_delete_for_me
+  // BEFORE this function deploys (merge). Without it the RPC below is missing and
+  // every hourly sweep answers 500 (sweep_evidence_failed) after its deletes.
+  const unsentIds = [...new Set(rows
+    .filter((row) => row.reason === UNSENT_RETENTION_REASON && paths.includes(row.storage_path))
+    .map((row) => row.message_id)
+    .filter((id): id is string => !!id))];
+  let evidencePurged = 0;
+  if (deps.purgeUnsentEvidence) {
+    const purged = await deps.purgeUnsentEvidence(unsentIds);
+    if (purged.error) {
+      console.error("[open-view-once] sweep evidence purge failed", { code: purged.error.slice(0, 80) });
+      return json({ error: "sweep_evidence_failed" }, 500);
+    }
+    evidencePurged = purged.data;
+  }
   const byReason: Record<string, number> = {};
   for (const row of rows) byReason[row.reason] = (byReason[row.reason] ?? 0) + 1;
-  return json({ ok: true, removed: paths.length, purged: messageIds.length, expired: expiredIds.length, by_reason: byReason });
+  console.log("[open-view-once] sweep", { removed: paths.length, evidence_purged: evidencePurged });
+  return json({
+    ok: true,
+    removed: paths.length,
+    purged: messageIds.length,
+    expired: expiredIds.length,
+    evidence_purged: evidencePurged,
+    by_reason: byReason,
+  });
 }
 
 export async function openOnce(

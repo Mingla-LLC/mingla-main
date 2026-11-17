@@ -50,7 +50,7 @@ import { BrandGroupRail } from "../components/community/BrandGroupRail.jsx";
 import { BrandGroupHeader } from "../components/community/BrandGroupHeader.jsx";
 import { BrandGroupStrip } from "../components/community/BrandGroupStrip.jsx";
 import { PlanActivityCard } from "../components/community/PlanActivityCard.jsx";
-export { sideAllowed } from "../components/community/BrandGroupsPanel.jsx";
+export { sideAllowed } from "../lib/brandGroupSideAccess.js";
 export { typingEntry, TYPING_TTL_MS } from "../hooks/useBrandGroupLive.js";
 const html = (el) => renderToStaticMarkup(el);
 const inPanel = (el) => <PanelLinksContext.Provider value={{ openSide: () => {} }}>{el}</PanelLinksContext.Provider>;

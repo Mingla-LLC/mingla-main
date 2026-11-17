@@ -328,6 +328,8 @@ const CHECK_COPY = Object.freeze({
   lead_label_set: ["Lead label is set", "Every lead must say Host, Creator or Local."],
   tested: ["You sent yourself a test", 'Press "Send me a test" to see the real emails.'],
 });
+// #4452 B22: check 5 when the flow sends the person no email (the server passes it too).
+const NO_EMAILS_TO_TEST = Object.freeze(["No emails to test", "This form sends the person no email, so there is nothing to test."]);
 
 const ERROR_COPY = Object.freeze({
   bad_label: "needs a label (up to 120 characters)",
@@ -359,6 +361,21 @@ const ERROR_COPY = Object.freeze({
   bad_subject: "an email needs a subject (up to 80 characters)",
   bad_branch_field: "a branch question must be a choice question on this form",
   bad_wait: "a wait needs 1 to 60 hours, days or weeks",
+  bad_name: "needs a name (up to 60 characters)",
+  bad_to: "pick who it goes to",
+  bad_from: "pick who it is from",
+  bad_reply_to: "pick where replies go",
+  bad_button: "the button text needs 1 to 28 characters",
+  bad_show_answers: "turn \"Show their answers\" on or off",
+  bad_include_answers: "turn \"Include their answers\" on or off",
+  bad_action_bar: "pick the buttons above the footer",
+  bad_cond: "the branch condition is incomplete",
+  bad_branch: "a branch needs a Yes and a No path",
+  bad_stage: "pick a stage that is in this pipeline",
+  bad_type: "this kind of step is not supported",
+  bad_id: "has a broken step id",
+  duplicate_id: "Two steps share an id. Remove one and add it again",
+  bad_flow: "The flow could not be read. Reload the page",
 });
 
 /** A contract error as a line the builder lists ("Your city: needs a label…"). */
@@ -393,7 +410,11 @@ function findByPath(steps, path) {
 
 /** The Publish tab: the five checks (✓ / !) and every R / F error, by field. */
 export function publishReview(def, flow, testedAt, { cardOn, stages = [] } = {}) {
-  const checks = publishChecks(def, flow, testedAt).map((c) => ({ ...c, title: CHECK_COPY[c.id][0], detail: CHECK_COPY[c.id][1] }));
+  const sendsEmail = Object.values(flow ? emailKinds(flow) : {}).some((k) => k === "confirmation" || k === "follow_up");
+  const checks = publishChecks(def, flow, testedAt).map((c) => {
+    const [title, detail] = c.id === "tested" && !sendsEmail && testedAt === null ? NO_EMAILS_TO_TEST : CHECK_COPY[c.id];
+    return { ...c, title, detail };
+  });
   const defErrors = validateDefinition(def);
   const flowErrors = flow && Array.isArray(flow.steps) && flow.steps.length
     ? validateFlow(flow, { def, cardOn: cardOn ?? Boolean(def?.routing?.card?.on), stages })
@@ -410,6 +431,64 @@ export function serverCheckLines(detail, def, flow) {
   return (Array.isArray(list) ? list : []).map((e) => (e.path === "check" ? CHECK_COPY[e.code]?.[0] || e.code : errorLine(e, def, flow)));
 }
 
+/**
+ * #4452 B23: the server's invalid_flow DETAIL (a JSON list of {path, code}) mapped onto the
+ * Automations steps. `bad_step:<id>` names the step; the client contract says why. Returns
+ * `{ byStep: { [stepId]: reason }, general: [line] }`; the toast never points at Publish.
+ */
+export function flowSaveErrors(detail, flow, def, { cardOn = false, stages = [] } = {}) {
+  let list = [];
+  try { list = JSON.parse(detail || "[]"); } catch { list = []; }
+  if (!Array.isArray(list)) list = [];
+  const steps = flow?.steps || [];
+  const all = [];
+  const walk = (xs) => (xs || []).forEach((s) => {
+    if (s && typeof s === "object") all.push(s);
+    if (s?.type === "branch") { walk(s.yes); walk(s.no); }
+  });
+  walk(steps);
+  const local = flow && Array.isArray(steps) && def
+    ? validateFlow(flow, { def, cardOn, stages: stages.map((x) => (typeof x === "string" ? x : x?.id)).filter(Boolean) })
+    : [];
+  const reasonFor = (step) => {
+    const hit = local.find((e) => (e.path || "").startsWith("steps") && findByPath(steps, e.path) === step);
+    if (!hit) return "Mingla could not save this step. Check each setting.";
+    const words = ERROR_COPY[hit.code] || (/^unknown_token:(.+)$/.exec(hit.code) ? `has an unknown merge field {${hit.code.split(":")[1]}}` : hit.code.replace(/_/g, " "));
+    return words[0].toUpperCase() + words.slice(1) + ".";
+  };
+  const kinds = flow ? emailKinds(flow) : {};
+  const byStep = {};
+  const general = [];
+  const mark = (step, reason) => { if (step?.id && !byStep[step.id]) byStep[step.id] = reason; };
+  for (const e of list) {
+    const code = String(e?.code || "");
+    const bad = /^bad_step:(.+)$/.exec(code);
+    const tok = /^unknown_token:(.+)$/.exec(code);
+    if (bad) {
+      const step = all.find((s) => s.id === bad[1]);
+      if (step) mark(step, reasonFor(step));
+      else general.push("A step could not be saved. Remove it and add it again.");
+    } else if (tok) {
+      const needle = `{${tok[1]}}`;
+      const hits = all.filter((s) => s.type === "email" && JSON.stringify([s.subject, s.doc]).includes(needle));
+      if (hits.length) hits.forEach((s) => mark(s, `Unknown merge field ${needle}. Pick one from Insert.`));
+      else general.push(`Unknown merge field ${needle}.`);
+    } else if (code === "stage_needs_card") {
+      const hits = all.filter((s) => s.type === "stage");
+      if (hits.length) hits.forEach((s) => mark(s, "A pipeline move needs the pipeline card on (Settings)."));
+      else general.push(ERROR_COPY.stage_needs_card);
+    } else if (code === "follow_up_needs_consent") {
+      const hits = all.filter((s) => kinds[s.id] === "follow_up");
+      if (hits.length) hits.forEach((s) => mark(s, "A follow-up needs a consent box on the form (Fields)."));
+      else general.push(ERROR_COPY.follow_up_needs_consent);
+    } else {
+      const words = ERROR_COPY[code] || code.replace(/_/g, " ") || "The emails could not be saved";
+      general.push(words[0].toUpperCase() + words.slice(1) + ".");
+    }
+  }
+  return { byStep, general };
+}
+
 // ---------------------------------------------------------------------------
 // The forms list (§7.3)
 // ---------------------------------------------------------------------------
@@ -422,6 +501,8 @@ export const STATUS_FILTERS = Object.freeze([
 export const STATUS_PILL = Object.freeze({ live: ["live", "Live"], draft: ["draft", "Draft"], archived: ["stop", "Archived"] });
 export const DUPLICATED_TOAST = "Duplicated as a draft. It is not on any page yet.";
 export const ARCHIVED_TOAST = "Archived and taken off every page. Answers stay.";
+export const UNARCHIVED_TOAST = "Unarchived as a draft. It is not on any page until you publish it again.";
+export const unarchiveQuestion = (name) => `Unarchive '${name}'? It comes back as a draft, not on any page and with its emails off, until you publish it again. Answers stay.`;
 export const archiveQuestion = (name) => `Archive '${name}'? It is taken off every page and its emails stop. Answers stay.`;
 
 const SPOT_WORDS = Object.freeze({ popup: "Pop-up", "after-steps": "after the steps", "after-hero": "after the hero", details: "Details step", footer: "footer" });
@@ -430,10 +511,15 @@ export function placementTags(row, pageName = (k) => k) {
   return (row.placements || []).map((p) => `${pageName(p.page_key)} · ${SPOT_WORDS[p.spot] || String(p.spot || "").replace(/-/g, " ")}`);
 }
 
+/** #4452 B18: the four "Free tool follow-ups" forms are system forms (template 'tool', migration 20280714004452). */
+export const isToolForm = (row) => row?.template === "tool";
+export const TOOL_FORM_BADGE = "Free tool emails";
+export const TOOL_FORM_HINT = "The follow-up emails a free tool sends after someone uses it. Not a form on a page.";
+
 /** "n steps" or "Uses Book-a-call emails" (design list sub-line). */
 export function formSubLine(row) {
   if (row.template === "book_call_extra") return "Uses Book-a-call emails";
-  if (row.template === "tool") return "Free tool follow-ups (system form)";
+  if (row.template === "tool") return TOOL_FORM_HINT;
   const n = Number(row.fields || 0);
   return `${n} ${n === 1 ? "question" : "questions"}`;
 }
@@ -562,4 +648,25 @@ export function autosaveReducer(state, event) {
     default:
       return state;
   }
+}
+
+// ── #4452 B19: plain words when an Admin → edge function call fails ─────────
+/** The browser could not reach the function at all (network, CORS, cold-start relay). */
+export const FUNCTION_UNREACHABLE = "Couldn't reach the server. Check your connection and try again.";
+const FUNCTION_CODE_WORDS = Object.freeze({
+  forbidden: "You don't have edit access. Ask an admin for the Website editor role.",
+  form_not_found: "That form is gone. It may have been removed.",
+  server: "Something on the server failed. Try again.",
+});
+/**
+ * The toast line for a failed functions.invoke: the server's own message when
+ * it sent one, else words for its error code, else the unreachable line. The
+ * client library's raw "Failed to send a request to the Edge Function" is never shown.
+ */
+export function functionErrorWords(error, payload) {
+  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message;
+  const code = typeof payload?.error === "string" ? payload.error : "";
+  if (code) return FUNCTION_CODE_WORDS[code] || "That did not go through. Try again.";
+  if (error?.name === "FunctionsFetchError" || error?.name === "FunctionsRelayError") return FUNCTION_UNREACHABLE;
+  return "That did not go through. Try again.";
 }

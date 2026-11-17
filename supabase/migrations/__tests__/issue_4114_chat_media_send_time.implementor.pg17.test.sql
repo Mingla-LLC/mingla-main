@@ -74,15 +74,18 @@ BEGIN
     RAISE EXCEPTION 'S-01: a client chose an ordinary message''s send time (%)', v_created;
   END IF;
 
-  UPDATE public.messages
-     SET view_once = true, file_url = v_dm || '/once/' || v_obj || '.jpg'
-   WHERE id = v_id
-   RETURNING view_once, created_at INTO v_once, v_created;
-  IF v_once IS NOT TRUE THEN
-    RAISE EXCEPTION 'S-01: the message did not become view-once';
-  END IF;
-  IF v_created < now() - interval '1 minute' OR v_created > now() + interval '1 minute' THEN
-    RAISE EXCEPTION 'S-01: the view-once message carries a client-chosen send time (%)', v_created;
+  -- #4456: a client can no longer turn a sent message into view once at all
+  -- (messages can only be unsent, not changed), so no send time can ride along.
+  v_once := NULL;
+  BEGIN
+    UPDATE public.messages
+       SET view_once = true, file_url = v_dm || '/once/' || v_obj || '.jpg'
+     WHERE id = v_id
+     RETURNING view_once, created_at INTO v_once, v_created;
+  EXCEPTION WHEN insufficient_privilege THEN v_once := false;
+  END;
+  IF v_once IS NOT FALSE THEN
+    RAISE EXCEPTION 'S-01: a client changed a sent message into view once';
   END IF;
 END $s01$;
 

@@ -936,7 +936,6 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       {/* Message Context Menu */}
       <MessageContextMenu
         visible={reactionPicker.visible}
-        position={{ top: reactionPicker.top }}
         messageId={reactionPicker.messageId}
         messageContent={
           messages.find((m) => m.id === reactionPicker.messageId)?.content ?? ""
@@ -961,14 +960,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         onCopy={() => {
           // Copy handled internally by MessageContextMenu
         }}
-        onEdit={(msgId) => {
-          const msg = messages.find((m) => m.id === msgId);
-          if (msg) {
-            setEditingMessage(msg);
-            setMessageText(msg.content);
-          }
-        }}
-        onDelete={handleDeleteMessage}
+        onUnsend={handleDeleteMessage}
         onClose={() => setReactionPicker({ visible: false, messageId: "", top: 0 })}
       />
     </KeyboardAwareView>

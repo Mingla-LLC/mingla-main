@@ -198,13 +198,14 @@ BEGIN
   BEGIN
     UPDATE public.messages SET thumb_path = v_dm || '/' || v_obj || '_thumb.jpg' WHERE id = v_msg;
     v_accepted := v_accepted || 'repoint'::text;
-  EXCEPTION WHEN check_violation THEN v_refused := v_refused || 'repoint'::text;
+  -- #4456: refused by the column grants before the trigger.
+  EXCEPTION WHEN check_violation OR insufficient_privilege THEN v_refused := v_refused || 'repoint'::text;
   END;
   -- A client cannot stamp or clear media_expired_at.
   BEGIN
     UPDATE public.messages SET media_expired_at = now() WHERE id = v_msg;
     v_accepted := v_accepted || 'expire_update'::text;
-  EXCEPTION WHEN check_violation THEN v_refused := v_refused || 'expire_update'::text;
+  EXCEPTION WHEN check_violation OR insufficient_privilege THEN v_refused := v_refused || 'expire_update'::text;
   END;
   BEGIN
     INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url, media_expired_at)

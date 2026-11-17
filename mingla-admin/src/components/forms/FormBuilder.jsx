@@ -15,9 +15,9 @@ import { Tabs } from "../ui/Tabs";
 import { LoadError } from "../ui/LoadError";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
-import { AUTOSAVE_MS, BUILDER_TABS, CONFLICT_COPY, autosaveReducer, builderSubLine, publishReview } from "../../lib/formsModel";
+import { AUTOSAVE_MS, BUILDER_TABS, CONFLICT_COPY, autosaveReducer, TOOL_FORM_BADGE, TOOL_FORM_HINT, UNARCHIVED_TOAST, builderSubLine, isToolForm, publishReview } from "../../lib/formsModel";
 import { kindsOf, normalizeStops } from "../../lib/flowModel";
-import { formsErrorWords, getAutomation, getForm, saveFormDraft, sendTestEmails } from "../../services/formsService";
+import { formsErrorWords, getAutomation, getForm, saveFormDraft, sendTestEmails, siteRefreshWarning, unarchiveForm } from "../../services/formsService";
 import { ReadOnlyHint } from "./formsUi";
 import { FieldsTab } from "./FieldsTab";
 import { DesignTab } from "./DesignTab";
@@ -45,6 +45,17 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
   useEffect(() => { stateRef.current = s; }, [s]);
   const dispatch = useCallback((e) => setS((cur) => autosaveReducer(cur, e)), []);
 
+  const [unarchiving, setUnarchiving] = useState(false);
+  const unarchive = async () => {
+    setUnarchiving(true);
+    try {
+      const { refreshed } = await unarchiveForm(formId);
+      if (refreshed) addToast({ variant: "success", title: UNARCHIVED_TOAST });
+      else siteRefreshWarning(addToast, "Unarchived as a draft.");
+      await load();
+    } catch (e) { addToast({ variant: "error", title: formsErrorWords(e) }); }
+    finally { setUnarchiving(false); }
+  };
   const load = useCallback(async () => {
     setStatus((cur) => (cur === "ready" ? "refreshing" : "loading"));
     setError(null);
@@ -114,7 +125,9 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
       addToast({ variant: "success", title: `Sent you ${res.sent} test ${res.sent === 1 ? "email" : "emails"}.` });
       setMeta((m) => ({ ...m, form: { ...m.form, tested_at: new Date().toISOString() } }));
     } catch (e) {
-      addToast({ variant: "error", title: e.code === "no_email_steps" ? "Add an email step in Automations first." : formsErrorWords(e) });
+      // #4452 B22/B24: no email steps means nothing to test (check 5 passes); an info toast that closes itself.
+      if (e.code === "no_email_steps") addToast({ variant: "info", title: "This form sends no emails yet, so there is nothing to test." });
+      else addToast({ variant: "error", title: formsErrorWords(e) });
     } finally {
       setTesting(false);
     }
@@ -140,8 +153,8 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
         <PageHeader
           back={{ label: "Forms", onClick: guard(onBack) }}
           title={form.name}
-          meta={<Badge variant={pill[0]}>{pill[1]}</Badge>}
-          description={<span data-builder-sub="">{builderSubLine(def, kinds)}</span>}
+          meta={<span className="inline-flex items-center gap-2"><Badge variant={pill[0]}>{pill[1]}</Badge>{isToolForm(form) && <Badge variant="info">{TOOL_FORM_BADGE}</Badge>}</span>}
+          description={<span data-builder-sub="">{isToolForm(form) ? TOOL_FORM_HINT : builderSubLine(def, kinds)}</span>}
           actions={(
             <>
               <span className="text-xs text-[var(--color-text-tertiary)]" aria-live="polite" data-save-state="">
@@ -154,7 +167,12 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
           tabs={<Tabs tabs={tabs} activeTab={tab} onChange={onTab} />}
         />
         {!form.can_edit && <ReadOnlyHint />}
-        {form.status === "archived" && <p className="rounded-xl bg-[var(--a-stop-bg)] px-3 py-2 text-sm text-[var(--a-stop-ink)]">This form is archived. Its answers stay; unarchive it from the list to edit.</p>}
+        {form.status === "archived" && (
+          <div data-archived-banner="" className="flex flex-wrap items-center gap-3 rounded-xl bg-[var(--a-stop-bg)] px-3 py-2 text-sm text-[var(--a-stop-ink)]">
+            <span>This form is archived. Its answers stay. Unarchiving brings it back as a draft, not on any page, until you publish it again.</span>
+            <Button size="sm" variant="secondary" onClick={unarchive} loading={unarchiving} disabled={!form.can_edit}>Unarchive</Button>
+          </div>
+        )}
         {s.conflict && (
           <div role="alert" data-builder-conflict="" className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--a-line)] bg-[var(--a-stop-bg)] px-3 py-2 text-sm text-[var(--a-stop-ink)]">
             <span>{CONFLICT_COPY} Your edit is kept here until you choose.</span>
