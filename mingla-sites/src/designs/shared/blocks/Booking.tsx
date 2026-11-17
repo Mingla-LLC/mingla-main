@@ -12,6 +12,7 @@ import {
 import { formatOfferingPrice } from "../../../contracts/generated/offerings.ts";
 import { ratingLine } from "../../../contracts/generated/ratings.ts";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
+import { isPreviewPublication } from "../../../lib/previewPublication";
 import { HandoffLink, HeroBookingForm, MinglaHandoff, StickyBookingBar } from "../chrome/Handoff";
 import { Blk, Photo, rows, SecHead, sectionId, text, type SharedBlock, type SharedBlockProps, type SharedContext } from "../parts";
 
@@ -218,7 +219,8 @@ export function PageBookingChrome({ ctx }: { ctx: SharedContext }) {
   const note = text(ctx.artifact.navigation.sticky_note) || sticky?.from || "";
   return (
     <>
-      <MinglaHandoff context={ctx.analytics} preview={ctx.preview === true} />
+      {/* #4453 M8: ANY preview (the team's Draft or a shared link) opens the real Mingla page in a new tab; `ctx.preview` is only the Draft-hints flag. */}
+      <MinglaHandoff context={ctx.analytics} preview={isPreviewPublication(ctx.analytics.publicationId)} />
       {sticky ? (
         <StickyBookingBar>
           <div className="mg-sticky__txt"><p className="mg-sticky__t">{title}</p>{note ? <p className="mg-sticky__n">{note}</p> : null}</div>

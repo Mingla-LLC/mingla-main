@@ -8,7 +8,7 @@ import { menuPrice } from "../../../components/v2/neutral/RestaurantNeutral";
 import { FeatureIcon } from "../../voyage/icons";
 import { destinationHref } from "../../../lib/siteCollections";
 import { hrefForPage } from "../../../lib/pageRouting";
-import { isPreviewPublication } from "../../../lib/previewPublication";
+import { showsDraftHints } from "../../../lib/previewPublication";
 import { destinations, frozenOfferings, galleryImages, gridItems, type GridItem } from "../data";
 import { ActionButton, Arrow, Blk, Go, Label, MinglaNote, Photo, rows, SecHead, sectionId, text, type SharedBlockProps, type SharedContext } from "../parts";
 
@@ -69,7 +69,7 @@ export function GridShell({ block, index, ctx, className, children }: SharedBloc
     if (text(block.mode) === "past") return null;
     // #4453 I-SITES-NO-PUBLIC-EMPTY-STATE — left out of the public site; only a
     // Draft preview keeps the owner's hint.
-    if (!(ctx.preview ?? isPreviewPublication(ctx.analytics.publicationId))) return null;
+    if (!(ctx.preview ?? showsDraftHints(ctx.analytics.publicationId))) return null;
     body = (
       <div className="mg-empty">
         <p>{text(block.empty_text) || `New ${noun} will appear here as soon as they are on sale.`}</p>
