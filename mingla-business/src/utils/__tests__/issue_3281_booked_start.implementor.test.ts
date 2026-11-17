@@ -119,6 +119,10 @@ describe("issue #3281 — which door results name the booked start", () => {
     expect(web).toMatch(/<DoorGuestSearchPanel[^>]*timeZone=\{event\.timezone\}/);
     expect(sheet).toMatch(/doorBookedLine\(\s*lastResult\.kind,/);
   });
+  test("the reconciliation screen writes the CSV booked start in the event's zone", () => {
+    const route = fs.readFileSync(path.join(__dirname, "../../../app/event/[id]/reconciliation.tsx"), "utf8");
+    expect(route).toMatch(/bookedCell: \(iso\) => bookedStartCsvCell\(iso, event\.timezone\)/);
+  });
 });
 
 const lagos = (iso: string | null | undefined): string => bookedStartCsvCell(iso, "Africa/Lagos");

@@ -180,7 +180,7 @@ export const serializeGuestsToCsv = (
   dayLabels: ReadonlyMap<string, string> = new Map(),
   /**
    * issue #3281 — writes the "Booked start" cell (guestCsvDayOrder.ts's
-   * bookedStartCsvCell, loaded on intent by every export path). Absent =>
+   * bookedStartCsvCell, which every export path loads on intent). Absent =>
    * blank cells.
    */
   bookedCell: (iso: string | null | undefined) => string = () => "",
@@ -471,6 +471,12 @@ export interface ExportReconciliationCsvArgs {
   doorSales: DoorSaleRecord[];
   /** ReconciliationSummary from computeReconciliation; populates the 5-line summary stanza prefix. */
   summary: ReconciliationSummary;
+  /**
+   * issue #3281 — writes the "Booked start" cell in the event's zone
+   * (guestCsvDayOrder's bookedStartCsvCell, which the caller loads on intent;
+   * importing it here would be a require cycle). Absent => blank cells.
+   */
+  bookedCell?: (iso: string | null | undefined) => string;
 }
 
 /**
@@ -536,10 +542,7 @@ export const exportReconciliationCsv = async (
 
   // issue #3281 — the same offering zone as the guest export, so one order's
   // booked start reads the same in both files.
-  const { bookedStartCsvCell } = await import("./guestCsvDayOrder");
-  const csv = serializeGuestsToCsv(rows, stanza, undefined, (iso) =>
-    bookedStartCsvCell(iso, args.event.timezone),
-  );
+  const csv = serializeGuestsToCsv(rows, stanza, undefined, args.bookedCell);
   const filename = `${args.event.eventSlug}-reconciliation-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);

@@ -16,6 +16,7 @@ jest.mock("react-native", () => ({
 }));
 
 import { exportReconciliationCsv } from "../guestCsvExport";
+import { bookedStartCsvCell } from "../guestCsvDayOrder";
 
 describe("issue #3281 — reconciliation CSV booked start", () => {
   test("uses the offering's zone, and Day stays last", async () => {
@@ -41,6 +42,7 @@ describe("issue #3281 — reconciliation CSV booked start", () => {
         headlineCopy: "Live", totalLiveTickets: 1, grossRevenue: 20, totalRefunded: 0,
         doorCardMinglaFee: 0, uniqueScannedTickets: 0, currenciesPresent: ["NGN"], currencyMismatches: [],
       },
+      bookedCell: (iso: string | null | undefined) => bookedStartCsvCell(iso, "Africa/Lagos"),
     } as unknown as Parameters<typeof exportReconciliationCsv>[0]);
     const csv = mockShare.mock.calls[0][0].message;
     const records = csv.split("\r\n").filter((l) => l.length > 0 && !l.startsWith("#"));
