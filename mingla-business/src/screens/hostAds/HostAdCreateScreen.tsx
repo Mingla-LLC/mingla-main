@@ -1165,7 +1165,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
           ? hb("audience.ageError")
           : null;
   const ageErrorLine = !hostAdAgeRangeValid(ageMin, ageMax) ? hb("audience.ageError") : null;
-  // #4238 iOS P3-1: room for the age error line above the keyboard Done bar.
+  // #4238 P3-1 (iOS and Android): room for the age error line above the keyboard Done bar.
   const errorLineOffset = hostAdErrorLineBottomOffset(
     Platform.OS,
     DONE_BAR_OCCUPIED,

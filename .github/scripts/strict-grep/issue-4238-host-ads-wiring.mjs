@@ -57,7 +57,7 @@ export const RULES = [
   },
   {
     file: "src/screens/hostAds/HostAdCreateScreen.tsx",
-    why: "iOS P3-1: the age error shows inline and the scroll gets the Done-bar offset (behaviour: issue_4238_ios_age_error_offset)",
+    why: "P3-1 (iOS and Android): the age error shows inline and the scroll gets the Done-bar offset (behaviour: issue_4238_ios_age_error_offset)",
     has: [/hostAdErrorLineBottomOffset\(\s*Platform\.OS,\s*DONE_BAR_OCCUPIED/, 'testID="host-ad-age-error"', "{...scrollOffsetProps}"],
   },
 ];

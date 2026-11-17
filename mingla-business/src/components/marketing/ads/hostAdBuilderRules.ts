@@ -60,24 +60,33 @@ export function shouldHideHostAdDock(platform: string, keyboardOpen: boolean): b
 }
 
 /**
- * #4238 (iOS P3-1): the keyboard-aware scroll aligns the focused field's caret
- * line above the keyboard, not the helper line under it, so an age error line
- * sat behind the Done bar. When that line is showing, the field's bottom offset
- * grows by the Done bar the keyboard carries, the caret residual and the clear
- * gap, plus room for the error line itself, so field and line both show above
- * the bar. Android and web get no extra offset (Android hides the dock; web has
- * no accessory bar). Returns null when the default offset should stand.
+ * #4238 (P3-1, iOS then Android): the keyboard-aware scroll aligns the focused
+ * field's caret line above the keyboard, not the helper line under it, so an
+ * age error line sat behind the Done bar on both phones. When that line is
+ * showing, the field's bottom offset grows by the Done bar the keyboard
+ * carries, the caret residual and the clear gap, plus the error line's own
+ * footprint (the stack gap above it and its caption line), so field and line
+ * both show above the bar. Web has no Done bar. Returns null when the default
+ * offset should stand.
+ *
+ * The caret residuals mirror CARET_LINE_TO_FIELD_BOTTOM in
+ * wrappers/SmartScrollView.native.tsx (13.5 iOS, 3.16 Android, measured by #1834).
  */
-export const HOST_AD_CARET_BELOW_FIELD_IOS = 13.5;
-export const HOST_AD_ERROR_LINE_ROOM = 28;
+export const HOST_AD_CARET_BELOW_FIELD: Readonly<Record<"ios" | "android", number>> = {
+  ios: 13.5,
+  android: 3.16,
+};
+/** Stack gap (space[4] = 16) plus one caption line (18). */
+export const HOST_AD_ERROR_LINE_ROOM = 16 + 18;
 export function hostAdErrorLineBottomOffset(
   platform: string,
   doneBarOccupied: number,
   clearance: number,
   errorLineShown: boolean,
 ): number | null {
-  if (platform !== "ios" || !errorLineShown) return null;
-  return doneBarOccupied + HOST_AD_CARET_BELOW_FIELD_IOS + clearance + HOST_AD_ERROR_LINE_ROOM;
+  if (!errorLineShown) return null;
+  if (platform !== "ios" && platform !== "android") return null;
+  return doneBarOccupied + HOST_AD_CARET_BELOW_FIELD[platform] + clearance + HOST_AD_ERROR_LINE_ROOM;
 }
 
 /** The router calls the back link needs (expo-router's router fits). */
