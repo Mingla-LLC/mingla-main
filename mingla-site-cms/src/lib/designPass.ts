@@ -85,22 +85,48 @@ export function designPassClaimKey(tenantId: string, draftSince: string | null):
   return `design-pass:${createHash("sha256").update(`${tenantId}|${draftSince ?? "never"}`).digest("hex").slice(0, 48)}`;
 }
 
-async function claimDesignPass(ctx: AriActionContext, draftSince: string | null): Promise<void> {
+/**
+ * Milestone 7c (tester P2-2) — only a UNIQUE violation on the claim's nonce
+ * means "another pass on this draft won". Payload turns Postgres 23505 into a
+ * ValidationError naming the field; the raw driver error carries the code.
+ */
+export function isClaimDuplicate(error: unknown): boolean {
+  const record = (error ?? {}) as { code?: unknown; cause?: { code?: unknown }; data?: { errors?: Array<{ path?: unknown; message?: unknown }> } };
+  if (record.code === "23505" || record.cause?.code === "23505") return true;
+  return (record.data?.errors ?? []).some((row) => row?.path === "nonce");
+}
+
+async function claimDesignPass(ctx: AriActionContext, draftSince: string | null): Promise<string> {
+  const nonce = designPassClaimKey(ctx.tenantId, draftSince);
   try {
     await ctx.req.payload.create({
       collection: "gateway-nonces",
       overrideAccess: true,
       data: {
-        nonce: designPassClaimKey(ctx.tenantId, draftSince),
+        nonce,
         direction: "core_to_cms",
         site_id: ctx.siteId,
         operation_id: "propose_site_design_pass",
         expires_at: new Date(Date.now() + 400 * 24 * 3600 * 1000).toISOString(),
       } as never,
     });
-  } catch {
+  } catch (error) {
     // The claim already exists: another pass on this draft won the race.
-    refuse("DESIGN_PASS_ALREADY_RUN");
+    if (isClaimDuplicate(error)) refuse("DESIGN_PASS_ALREADY_RUN");
+    // Anything else (database unavailable, validation) is not "already run": the owner may simply try again.
+    console.error("[design-pass] claim failed", error);
+    refuse("DESIGN_PASS_TRY_AGAIN", { retryable: true });
+  }
+  return nonce;
+}
+
+/** Milestone 7c (tester P2-2) — a pass that fails after claiming gives the claim back, so Ari may try again on this draft. */
+async function releaseDesignPass(ctx: AriActionContext, nonce: string): Promise<void> {
+  try {
+    await ctx.req.payload.delete({ collection: "gateway-nonces", overrideAccess: true, where: { nonce: { equals: nonce } } });
+  } catch (error) {
+    // Not swallowed: logged, and the pass's own error still reaches the caller.
+    console.error("[design-pass] could not release the claim", nonce, error);
   }
 }
 
@@ -226,34 +252,39 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
       ] },
     });
     if (earlier.docs.length > 0) refuse("DESIGN_PASS_ALREADY_RUN");
-    await claimDesignPass(ctx, draftSince);
-    const similar = similarLiveSites(composed.fingerprint, signed.live_fingerprints);
-    // The design and (v2.1 §1.2) the detail bases the listing pages need, written before the pages.
-    const settingsChange: AnyDoc = {
-      ...(design !== currentDesign ? { design } : {}),
-      ...(Object.keys(composed.routes).length ? { routes: { ...(settings?.routes ?? {}), ...composed.routes } } : {}),
-    };
-    if (Object.keys(settingsChange).length) {
-      await ctx.req.payload.update({ collection: "site-settings", id: settings.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: settingsChange as never });
+    const claim = await claimDesignPass(ctx, draftSince);
+    try {
+      const similar = similarLiveSites(composed.fingerprint, signed.live_fingerprints);
+      // The design and (v2.1 §1.2) the detail bases the listing pages need, written before the pages.
+      const settingsChange: AnyDoc = {
+        ...(design !== currentDesign ? { design } : {}),
+        ...(Object.keys(composed.routes).length ? { routes: { ...(settings?.routes ?? {}), ...composed.routes } } : {}),
+      };
+      if (Object.keys(settingsChange).length) {
+        await ctx.req.payload.update({ collection: "site-settings", id: settings.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: settingsChange as never });
+      }
+      const written = await writeComposition(ctx.req, ctx.scoped, ctx.tenantId, composed);
+      const id = await deps.writeWorkLog(ctx, { part: "composition", decision, cites, tool: "propose_site_design_pass", target: `design:${design}`, revision: null });
+      return {
+        design,
+        format: composed.format,
+        pages: composed.pages.map((page) => page.slug),
+        created: written.created,
+        replaced: written.replaced,
+        kept: composed.pages.filter((page) => !composed.create.includes(page) && !composed.replace.some((entry) => entry.page === page) && composed.fillHome !== page).map((page) => page.slug),
+        left_out: composed.left_out_pages,
+        ...(Object.keys(composed.routes).length ? { detail_bases: composed.routes } : {}),
+        skipped: composed.skipped,
+        ...(similar > 0 ? { warnings: [{ code: SIMILAR_TO_LIVE_SITE, message: SIMILAR_TO_LIVE_SITE_MESSAGE, min_distance: UNIQUE_MIN_DISTANCE }] } : {}),
+        fingerprint: composed.fingerprint,
+        work_log_id: id,
+        draft_only: true,
+        review_required: true,
+      };
+    } catch (error) {
+      await releaseDesignPass(ctx, claim);
+      throw error;
     }
-    const written = await writeComposition(ctx.req, ctx.scoped, ctx.tenantId, composed);
-    const id = await deps.writeWorkLog(ctx, { part: "composition", decision, cites, tool: "propose_site_design_pass", target: `design:${design}`, revision: null });
-    return {
-      design,
-      format: composed.format,
-      pages: composed.pages.map((page) => page.slug),
-      created: written.created,
-      replaced: written.replaced,
-      kept: composed.pages.filter((page) => !composed.create.includes(page) && !composed.replace.some((entry) => entry.page === page) && composed.fillHome !== page).map((page) => page.slug),
-      left_out: composed.left_out_pages,
-      ...(Object.keys(composed.routes).length ? { detail_bases: composed.routes } : {}),
-      skipped: composed.skipped,
-      ...(similar > 0 ? { warnings: [{ code: SIMILAR_TO_LIVE_SITE, message: SIMILAR_TO_LIVE_SITE_MESSAGE, min_distance: UNIQUE_MIN_DISTANCE }] } : {}),
-      fingerprint: composed.fingerprint,
-      work_log_id: id,
-      draft_only: true,
-      review_required: true,
-    };
   }
 
   // propose_site_chrome
