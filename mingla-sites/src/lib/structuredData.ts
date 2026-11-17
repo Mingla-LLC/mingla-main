@@ -35,6 +35,21 @@ function abs(url: string | null | undefined, origin: string): string | undefined
   }
 }
 
+/**
+ * #4453 milestone 9 (tester P3-2) — where an Event happens, from real data
+ * only: the feed row's own place, else the address the brand publishes on
+ * its site (the footer's "Find us" address). Nothing is invented: with
+ * neither, `location` is left out. The feed carries no online flag, so a
+ * VirtualLocation is never emitted.
+ */
+function eventLocation(artifact: ArtifactV2, offering: SiteOffering): JsonLd | null {
+  const own = offering.destination_text?.trim();
+  if (own) return { "@type": "Place", name: own, address: own };
+  const address = artifact.footer.address?.trim();
+  if (address) return { "@type": "Place", name: artifact.brand.display_name, address };
+  return null;
+}
+
 function organizationId(origin: string): string {
   return `${origin}/#organization`;
 }
@@ -175,9 +190,7 @@ function events(artifact: ArtifactV2, page: ArtifactPage, live: LiveOfferings | 
         ...(offering.end_at ? { endDate: offering.end_at } : {}),
         eventStatus: state.cancelled ? "https://schema.org/EventCancelled" : "https://schema.org/EventScheduled",
         eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
-        ...(offering.destination_text
-          ? { location: { "@type": "Place", name: offering.destination_text, address: offering.destination_text } }
-          : {}),
+        ...((location) => (location ? { location } : {}))(eventLocation(artifact, offering)),
         ...(image ? { image: [image] } : {}),
         ...(offering.summary ? { description: offering.summary } : {}),
         url: offering.public_url,
@@ -210,7 +223,6 @@ export function detailItem(artifact: ArtifactV2, detail: OfferingDetailView, ori
   };
   const offers = offer(offering, card.state.soldOut);
   const organizer = { "@type": "Organization", name: artifact.brand.display_name, url: `${origin}/` };
-  const place = offering.destination_text ? { "@type": "Place", name: offering.destination_text, address: offering.destination_text } : null;
   if (offering.kind === "trip") {
     return {
       "@type": "TouristTrip",
@@ -230,7 +242,7 @@ export function detailItem(artifact: ArtifactV2, detail: OfferingDetailView, ori
       ...(offering.end_at ? { endDate: offering.end_at } : {}),
       eventStatus: "https://schema.org/EventScheduled",
       eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
-      ...(place ? { location: place } : {}),
+      ...((location) => (location ? { location } : {}))(eventLocation(artifact, offering)),
       organizer,
       offers,
     };

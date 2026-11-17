@@ -1,4 +1,4 @@
-import type { ArtifactV2 } from "../../../contracts/generated/artifactV2.ts";
+import { artifactActionScope, type ArtifactV2 } from "../../../contracts/generated/artifactV2.ts";
 import { isCanonicalMinglaHref, isMinglaActionHref } from "../../../contracts/generated/safety.ts";
 import type { SiteEventContext } from "../../../lib/clientAnalytics";
 import type { OfferingCard } from "../../../lib/offeringCards";
@@ -51,11 +51,16 @@ function facts(detail: OfferingDetailView): Array<[string, string]> {
   return out;
 }
 
-/** The one Mingla action: Book, or Join the waitlist; otherwise null (the status stands in its place). */
-export function detailAction(detail: OfferingDetailView): { href: string; label: string } | null {
+/**
+ * The one Mingla action: Book, or Join the waitlist; otherwise null (the
+ * status stands in its place). The href must pass the booking lock with THIS
+ * artifact's action scope (tester P3-1), so another brand's Mingla route
+ * never gets a Book button here.
+ */
+export function detailAction(artifact: ArtifactV2, detail: OfferingDetailView): { href: string; label: string } | null {
   const { card, offering } = detail;
   const href = offering.public_url;
-  if (!isCanonicalMinglaHref(href) || !isMinglaActionHref(href, null, "booking")) return null;
+  if (!isCanonicalMinglaHref(href) || !isMinglaActionHref(href, artifactActionScope(artifact), "booking")) return null;
   if (card.state.bookable) return { href, label: offering.kind === "stay" ? "Book this room" : `Book this ${detail.noun}` };
   if (card.cta === "Join the waitlist") return { href, label: "Join the waitlist" };
   return null;
@@ -154,7 +159,7 @@ export function OfferingDetailTemplate({ artifact, detail, analytics, designKey 
   }
   const price = priceParts(card);
   const status = statusLine(detail);
-  const action = detailAction(detail);
+  const action = detailAction(artifact, detail);
   const rows = facts(detail);
   const thumbs = detail.photos.slice(0, 3);
   const more = detail.photos.slice(3);

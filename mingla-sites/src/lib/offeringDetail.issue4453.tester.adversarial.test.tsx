@@ -175,7 +175,7 @@ describe("#4453 M9 tester: ended pages, JSON-LD and the Book action", () => {
     expect(view.ended).toBe(true);
     expect((await framePage("trips/last-summer")).seo?.noindex).toBe(true);
     expect(detailItem(artifactFor(), view, "https://example.test")).toBeNull();
-    expect(detailAction(view)).toBeNull();
+    expect(detailAction(artifactFor(), view)).toBeNull();
   });
 
   it("no detail JSON-LD ever carries a rating, review or aggregate, for any kind", async () => {
@@ -195,6 +195,6 @@ describe("#4453 M9 tester: ended pages, JSON-LD and the Book action", () => {
   ])("a feed row whose public_url is %j gets no Book action", async (url) => {
     feed.offerings = [{ ...trip, public_url: url }];
     const resolved = await resolve("trips/island-week");
-    if (resolved?.kind === "detail") expect(detailAction(resolved.detail)).toBeNull();
+    if (resolved?.kind === "detail") expect(detailAction(artifactFor(), resolved.detail)).toBeNull();
   });
 });

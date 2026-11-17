@@ -182,16 +182,16 @@ describe("#4453 M9 states and the hand-off (SC-DP1, SC-DP2)", () => {
 
   it("the one booking action is the feed's public_url and passes the booking lock; sold out shows the status instead", async () => {
     const view = await detailView("trips/island-week");
-    const action = detailAction(view);
+    const action = detailAction(artifactFor(), view);
     expect(action?.href).toBe(trip.public_url);
     expect(isMinglaActionHref(action?.href, null, "booking")).toBe(true);
     const full = await detailView("trips/full-up");
-    expect(detailAction(full)).toBeNull();
+    expect(detailAction(artifactFor(), full)).toBeNull();
     const html = renderToStaticMarkup(<SiteDocument artifact={artifactFor()} detail={full} page={await framePage("trips/full-up")} />);
     expect(html).toContain("Sold out");
     expect(html).not.toContain("Book this trip");
     // A feed row whose page is not a canonical Mingla page gets no action at all.
-    expect(detailAction({ ...view, offering: { ...view.offering, public_url: "https://evil.example/t/x" } })).toBeNull();
+    expect(detailAction(artifactFor(), { ...view, offering: { ...view.offering, public_url: "https://evil.example/t/x" } })).toBeNull();
   });
 
   it("every price, date and count on the page is the feed row's (the extras carry none)", async () => {
@@ -283,5 +283,50 @@ describe("#4453 M9 every design draws a detail page", () => {
     expect(roomHtml).toContain("Sleeps up to 4");
     expect(roomHtml).toContain("Book this room");
     expect(roomHtml).toMatch(/\/om\/[A-Za-z0-9_-]{43}\/original\?d=stay%3A/);
+  });
+});
+
+describe("#4453 M9 rework: Book only for THIS brand (tester P3-1) and an Event's location (P3-2)", () => {
+  function scoped(): ArtifactV2 {
+    const artifact = artifactFor();
+    artifact.action_scope = { brand_slug: "fixture-brand" };
+    return artifact;
+  }
+
+  it("another brand's Mingla route gets no Book; this brand's own route does", async () => {
+    const view = await detailView("trips/island-week");
+    const rival = { ...view, offering: { ...view.offering, public_url: "https://host.usemingla.com/t/rival-brand/island-week" } };
+    expect(detailAction(scoped(), rival)).toBeNull();
+    const html = renderToStaticMarkup(<SiteDocument artifact={scoped()} detail={rival} page={await framePage("trips/island-week")} />);
+    expect(html).not.toContain("Book this trip");
+    expect(detailAction(scoped(), view)).toEqual({ href: trip.public_url, label: "Book this trip" });
+    const room = await detailView(`rooms/${ROOM_ID}`);
+    expect(detailAction(scoped(), room)?.label).toBe("Book this room");
+    const rivalRoom = { ...room, offering: { ...room.offering, public_url: `https://host.usemingla.com/b/rival-brand/v/lagoon?tab=stay&room=${ROOM_ID}` } };
+    expect(detailAction(scoped(), rivalRoom)).toBeNull();
+  });
+
+  it("an Event with no destination_text uses the brand's published site address, never an invented one", async () => {
+    feed.offerings = [{ ...event, destination_text: null }];
+    const view = await detailView("events/harbourside");
+    const withAddress = artifactFor();
+    withAddress.footer = { ...withAddress.footer, address: "12 Marina Road, Lagos" };
+    expect(detailItem(withAddress, view, "https://example.test")).toMatchObject({
+      "@type": "Event",
+      location: { "@type": "Place", name: withAddress.brand.display_name, address: "12 Marina Road, Lagos" },
+    });
+    const bare = artifactFor();
+    bare.footer = { ...bare.footer, address: undefined };
+    const item = detailItem(bare, view, "https://example.test");
+    expect(item?.["@type"]).toBe("Event");
+    expect(item).not.toHaveProperty("location");
+    expect(JSON.stringify(item)).not.toContain("VirtualLocation");
+  });
+
+  it("the feed row's own place still wins over the site address", async () => {
+    const view = await detailView("events/harbourside");
+    const artifact = artifactFor();
+    artifact.footer = { ...artifact.footer, address: "12 Marina Road, Lagos" };
+    expect(detailItem(artifact, view, "https://example.test")).toMatchObject({ location: { address: view.offering.destination_text } });
   });
 });
