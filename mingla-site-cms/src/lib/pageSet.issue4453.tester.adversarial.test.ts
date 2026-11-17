@@ -194,8 +194,8 @@ describe("#4453 m7b tester — design-pass claim and detail bases", () => {
  * fallback hands that picture to the builder's renderMedia, which THROWS
  * MEDIA_PROCESSING for anything not READY, and a publish is all-or-nothing:
  * one stale inline image now blocks the whole site. The renderer below is the
- * builder's own rule (artifactBuilder.ts renderMedia). Marked `it.fails` until
- * the fallback skips a picture it cannot render; then flip it to `it`.
+ * builder's own rule (artifactBuilder.ts renderMedia). Fixed in milestone 7c:
+ * the fallback skips a picture it cannot render (was pinned as `it.fails`).
  */
 describe("#4453 m7b tester — a story's inline picture never blocks the site", () => {
   const READY = new Set(["m-ready"]);
@@ -212,7 +212,7 @@ describe("#4453 m7b tester — a story's inline picture never blocks the site", 
     const shaped = shapeSiteCollections({ destinations: [], stories: [story("m-ready")], categories: [], testimonials: [] } as never, builderRender as never);
     expect(shaped.stories[0]!.featured_image?.id).toBe("m-ready");
   });
-  it.fails("P2-1: an inline picture that is not READY (processing, rejected or deleted) leaves the card photo-less instead of failing the publish", () => {
+  it("P2-1: an inline picture that is not READY (processing, rejected or deleted) leaves the card photo-less instead of failing the publish", () => {
     const shaped = shapeSiteCollections({ destinations: [], stories: [story("m-processing")], categories: [], testimonials: [] } as never, builderRender as never);
     expect(shaped.stories[0]!.featured_image).toBeUndefined();
   });

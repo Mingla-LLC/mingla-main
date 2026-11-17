@@ -143,6 +143,22 @@ export function shapeSiteCollections(content: TenantContent, renderMedia: MediaR
     .map((doc) => ({ id: String(doc.id), slug: trimmed(doc.slug), title: trimmed(doc.title) }));
   const categorySlug = new Map(categories.map((row) => [row.id, row.slug]));
   const picture = (value: unknown, alt: string) => (relationId(value) ? renderMedia(value, alt) : undefined);
+  /*
+   * #4453 milestone 7c (tester P2-1) — the story's inline-picture fallback is
+   * a nicety, never a reason to fail the publish: a picture that cannot render
+   * (still processing, rejected, deleted, another tenant's) leaves THIS card
+   * without a photo (its design's empty treatment). The featured picture keeps
+   * the builder's strict rule.
+   */
+  const inlinePicture = (content: unknown, alt: string) => {
+    const value = firstUploadedPicture(content);
+    if (!relationId(value)) return undefined;
+    try {
+      return renderMedia(value, alt);
+    } catch {
+      return undefined;
+    }
+  };
 
   const destinations: SiteDestination[] = content.destinations.filter(shown).map((doc) => {
     const title = trimmed(doc.title);
@@ -202,7 +218,7 @@ export function shapeSiteCollections(content: TenantContent, renderMedia: MediaR
     if (!content || !day) return []; // a story with no words or no date is not published
     const category = categorySlug.get(relationId(doc.category));
     // #4453 milestone 7b — else the first picture inside the story itself (its own media, never made up).
-    const featured = picture(doc.featured_image, trimmed(doc.title)) ?? picture(firstUploadedPicture(doc.content), trimmed(doc.title));
+    const featured = picture(doc.featured_image, trimmed(doc.title)) ?? inlinePicture(doc.content, trimmed(doc.title));
     return [{
       id: String(doc.id),
       slug: trimmed(doc.slug),
