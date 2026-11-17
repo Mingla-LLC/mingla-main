@@ -53,10 +53,13 @@ export default async function SharedPreviewPage({
   } catch {
     notFound();
   }
-  const { key } = shared;
-  // #2830 — this page's pictures and videos come through the key, not the publication.
+  // #2830 — this page's pictures and videos come through a credential, not the publication.
+  // #4453 M11 — that credential is the share token the viewer already holds,
+  // never the preview key (which also opens /preview): `shared.key` is not used
+  // anywhere below, so it never reaches the HTML, an asset URL or the RSC payload.
+  const asset = { share: token } as const;
   // #4453 M8 — a client never sees the team's Draft-only hints or unreviewed pages.
-  const artifact = withSharedView(withPreviewMediaKey(shared.artifact, key));
+  const artifact = withSharedView(withPreviewMediaKey(shared.artifact, asset));
   const resolved = resolveSitePath(artifact, previewPath);
   // #4453 milestone 9 — an offering detail page in the shared view, like the live site.
   const detailed = resolved.kind === "not_found" && isV2Artifact(artifact)
@@ -70,8 +73,8 @@ export default async function SharedPreviewPage({
         <p className="preview-banner" role="status" style={SHARED_BANNER_STYLE}>
           {sharedBannerText(siteDisplayName(artifact), shared.expiresAt)}
         </p>
-        <PreviewLinkScope scope={{ target: { token }, path: previewPath, assetKey: key }}>
-          <SitePageView artifact={artifact} page={detailed.page} previewKey={key} live={withPreviewOfferingKey(detailed.live, key)} detail={withPreviewDetailKey(detailed.detail, key)} saveData={wantsLessData(incomingDetail)} nonce={incomingDetail.get("x-nonce") ?? undefined} />
+        <PreviewLinkScope scope={{ target: { token }, path: previewPath, assetKey: asset }}>
+          <SitePageView artifact={artifact} page={detailed.page} previewKey={asset} live={withPreviewOfferingKey(detailed.live, asset)} detail={withPreviewDetailKey(detailed.detail, asset)} saveData={wantsLessData(incomingDetail)} nonce={incomingDetail.get("x-nonce") ?? undefined} />
         </PreviewLinkScope>
       </div>
     );
@@ -94,8 +97,8 @@ export default async function SharedPreviewPage({
       <p className="preview-banner" role="status" style={SHARED_BANNER_STYLE}>
         {sharedBannerText(siteDisplayName(artifact), shared.expiresAt)}
       </p>
-      <PreviewLinkScope scope={{ target: { token }, path: previewPath, assetKey: key }}>
-        <SitePageView artifact={artifact} page={resolved.page} previewKey={key} live={withPreviewOfferingKey(live, key)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />
+      <PreviewLinkScope scope={{ target: { token }, path: previewPath, assetKey: asset }}>
+        <SitePageView artifact={artifact} page={resolved.page} previewKey={asset} live={withPreviewOfferingKey(live, asset)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />
       </PreviewLinkScope>
     </div>
   );

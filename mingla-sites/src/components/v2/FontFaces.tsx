@@ -1,5 +1,6 @@
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import { isFontFamilyName, type FontAsset } from "../../contracts/generated/fontSlots.ts";
+import { assetQuery, type AssetCredential } from "../../lib/assetCredential";
 
 /*
  * #2829 AD-3 — the site's fonts, served by the site itself.
@@ -13,6 +14,7 @@ import { isFontFamilyName, type FontAsset } from "../../contracts/generated/font
  *
  * Inside a private preview the font URLs carry the preview key, so a draft's
  * new font can load before it is ever published (the route checks the key).
+ * #4453 M11 — a share link's font URLs carry its share token, never the key.
  */
 
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -21,8 +23,8 @@ const PERCENT = /^\d{1,3}(?:\.\d{1,4})?%$/;
 /** #4453 6b — a width-axis face's range ("62% 125%"), else nothing. */
 const STRETCH = /^\d{2,3}% \d{2,3}%$/;
 
-export function fontUrl(digest: string, previewKey?: string): string {
-  return previewKey ? `/fonts/${digest}?k=${encodeURIComponent(previewKey)}` : `/fonts/${digest}`;
+export function fontUrl(digest: string, previewKey?: AssetCredential): string {
+  return previewKey ? `/fonts/${digest}?${assetQuery(previewKey)}` : `/fonts/${digest}`;
 }
 
 function safeAsset(asset: FontAsset): boolean {
@@ -32,7 +34,7 @@ function safeAsset(asset: FontAsset): boolean {
     Number.isInteger(asset.weight);
 }
 
-export function fontFacesCss(artifact: ArtifactV2, previewKey?: string): string {
+export function fontFacesCss(artifact: ArtifactV2, previewKey?: AssetCredential): string {
   const rules: string[] = [];
   for (const asset of artifact.font_assets) {
     if (!safeAsset(asset)) continue;
@@ -75,7 +77,7 @@ export function preloadDigests(artifact: ArtifactV2): string[] {
   return [...out];
 }
 
-export function FontFaces({ artifact, previewKey }: { artifact: ArtifactV2; previewKey?: string }) {
+export function FontFaces({ artifact, previewKey }: { artifact: ArtifactV2; previewKey?: AssetCredential }) {
   const css = fontFacesCss(artifact, previewKey);
   return (
     <>

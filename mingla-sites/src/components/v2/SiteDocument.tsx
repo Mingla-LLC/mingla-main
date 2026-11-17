@@ -6,6 +6,7 @@ import type { FormsContext } from "../../lib/siteForms";
 import type { CollectionEntry } from "../../lib/siteCollections";
 import type { OfferingDetailView } from "../../lib/offeringDetail";
 import { DETAIL_STYLESHEET, SHARED_STYLESHEET } from "../../designs/registry";
+import type { AssetCredential } from "../../lib/assetCredential";
 import { FontFaces } from "./FontFaces";
 import { TokenStyle } from "./TokenStyle";
 
@@ -14,7 +15,7 @@ import { TokenStyle } from "./TokenStyle";
  * fonts, then the design's page (header, main, footer). The <html> element
  * carries `data-design` (layout.tsx), which scopes the stylesheet.
  */
-export function SiteDocument({ artifact, page, previewKey, live, forms, entry, detail, saveData, nonce, notFound }: { artifact: ArtifactV2; page?: ArtifactPage; previewKey?: string; live?: LiveOfferings; forms?: FormsContext; entry?: CollectionEntry; detail?: OfferingDetailView; saveData?: boolean; nonce?: string; notFound?: boolean }) {
+export function SiteDocument({ artifact, page, previewKey, live, forms, entry, detail, saveData, nonce, notFound }: { artifact: ArtifactV2; page?: ArtifactPage; previewKey?: AssetCredential; live?: LiveOfferings; forms?: FormsContext; entry?: CollectionEntry; detail?: OfferingDetailView; saveData?: boolean; nonce?: string; notFound?: boolean }) {
   const design = DESIGN_RENDERERS[artifact.design.key];
   if (!design) return null;
   const { Page } = design;

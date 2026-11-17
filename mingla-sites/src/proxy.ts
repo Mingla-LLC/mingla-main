@@ -36,7 +36,8 @@ export function isPrivatePreviewPath(pathname: string): boolean {
 
 /** #2830 — a preview's own asset: the address carries the key. */
 export function isPreviewKeyedAsset(pathname: string, search: URLSearchParams): boolean {
-  return search.has("k") && /^\/(media|om|map|fonts)\//.test(pathname);
+  // #4453 M11 — a share link's assets carry its token (`s`) instead; private all the same.
+  return (search.has("k") || search.has("s")) && /^\/(media|om|map|fonts)\//.test(pathname);
 }
 
 export async function proxy(request: NextRequest) {
