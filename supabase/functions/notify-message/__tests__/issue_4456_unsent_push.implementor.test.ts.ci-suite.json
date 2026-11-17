@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-message/__tests__/issue_4456_unsent_push.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4456-unsent-push-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

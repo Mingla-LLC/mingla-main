@@ -41,7 +41,13 @@ export interface UserReport {
 export async function submitReport(
   reportedUserId: string,
   reason: ReportReason,
-  details?: string
+  details?: string,
+  /**
+   * Issue #4456: the message the report is about. The server checks it (a
+   * message in a chat the reporter is in, written by the reported person) and
+   * keeps its own copy for moderation; the phone sends no message text.
+   */
+  messageId?: string | null,
 ): Promise<{ success: boolean; reportId?: string; error?: string }> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -81,6 +87,7 @@ export async function submitReport(
         reported_user_id: reportedUserId,
         reason: reason,
         details: details || null,
+        ...(messageId ? { message_id: messageId } : {}),
       })
       .select('id')
       .single();

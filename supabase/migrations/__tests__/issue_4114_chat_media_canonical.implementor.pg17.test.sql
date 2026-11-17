@@ -113,7 +113,12 @@ DECLARE
 BEGIN
   INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url)
     VALUES (v_dm, v_ana, 'Photo', 'image', v_url) RETURNING id INTO v_id;
-  UPDATE public.messages SET file_url = v_url || '?v=2' WHERE id = v_id;
+  -- #4456: app clients can no longer write these columns at all (column grants).
+  BEGIN
+    UPDATE public.messages SET file_url = v_url || '?v=2' WHERE id = v_id;
+    RAISE EXCEPTION 'C-02: a client changed a message''s file';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   BEGIN
     INSERT INTO public.messages(conversation_id, sender_id, content, message_type, file_url, view_once)
       VALUES (v_dm, v_ana, 'Photo', 'image', v_url, true);
@@ -143,17 +148,24 @@ BEGIN
     VALUES (v_dm, v_ana, 'hi', 'text') RETURNING id INTO v_plain;
   BEGIN
     UPDATE public.messages SET created_at = now() + interval '10 years' WHERE id = v_once;
-  EXCEPTION WHEN check_violation THEN v_refused := v_refused + 1;
+  EXCEPTION WHEN check_violation OR insufficient_privilege THEN v_refused := v_refused + 1;
   END;
   BEGIN
     UPDATE public.messages SET created_at = now() - interval '1 year' WHERE id = v_plain;
-  EXCEPTION WHEN check_violation THEN v_refused := v_refused + 1;
+  EXCEPTION WHEN check_violation OR insufficient_privilege THEN v_refused := v_refused + 1;
   END;
   IF v_refused <> 2 THEN
     RAISE EXCEPTION 'C-03: expected 2 refused created_at changes, got %', v_refused;
   END IF;
-  -- An ordinary edit that leaves created_at alone still works.
-  UPDATE public.messages SET content = 'hi again' WHERE id = v_plain;
+  -- #4456: messages can only be unsent, not edited, so a text edit is refused too.
+  v_refused := 0;
+  BEGIN
+    UPDATE public.messages SET content = 'hi again' WHERE id = v_plain;
+  EXCEPTION WHEN insufficient_privilege THEN v_refused := 1;
+  END;
+  IF v_refused <> 1 THEN
+    RAISE EXCEPTION 'C-03: a client edited a message''s text';
+  END IF;
 END $c03$;
 
 DO $c05_client$

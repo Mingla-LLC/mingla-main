@@ -36,6 +36,9 @@ import { sendTikTokConversion } from "../tiktokEvents.ts";
 import { hostFakeDb } from "./hostFunnelFakeDb.issue4238.ts";
 import { capturePurchaseBodies } from "./issue_4452_purchase_payloads.capture.ts";
 
+// #4452 B20: a real (non-test) person; the fake answers inbound_lead_is_test false for it.
+const REAL_CONTACT = { email: "ada@example.org", name: "Ada Okafor" };
+
 const SUB = "4452aaaa-0000-4000-8000-000000000001";
 const BOOK = "4452bbbb-0000-4000-8000-000000000002";
 const req = new Request("https://fn/", { headers: { "user-agent": "UA/4452", "x-forwarded-for": "203.0.113.7" } });
@@ -87,7 +90,7 @@ function db() {
 Deno.test("T-4.1 SC-42 a creator form Lead: event id creator_lead:form:<id>, lead_label creator, event_type lead", async () => {
   const d = db();
   const c = capturing();
-  const id = await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad, source: "creators-join" }, c.fire);
+  const id = await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad, source: "creators-join", contact: REAL_CONTACT }, c.fire);
   assertEquals(id, `creator_lead:form:${SUB}`);
   const row = d.row("ad_conversions", (r) => r.event_id === id);
   assertEquals(row?.lead_label, "creator");
@@ -98,7 +101,7 @@ Deno.test("T-4.1 SC-42 a creator form Lead: event id creator_lead:form:<id>, lea
 Deno.test("T-4.2a–d SC-43–46 each platform receives the creator label in its own field", async () => {
   const d = db();
   const c = capturing();
-  await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad, source: "creators-join" }, c.fire);
+  await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad, source: "creators-join", contact: REAL_CONTACT }, c.fire);
   const meta = (c.bodies.meta as { data: Array<Record<string, any>> }).data[0];
   assertEquals(meta.event_name, "Lead");
   assertEquals(meta.custom_data.content_category, "creator_lead");
@@ -113,6 +116,9 @@ Deno.test("T-4.2a–d SC-43–46 each platform receives the creator label in its
   assertEquals(snap.event_name, "SIGN_UP");
   assertEquals(snap.custom_data.content_category, "creator_lead");
   assertEquals(snap.custom_data.event_tag, "creator_lead");
+  // #4238: same field as the browser pixel (item_category), so one Snap rule
+  // matches whichever copy Snap keeps after dedup.
+  assertEquals(snap.custom_data.item_category, "creator_lead");
   const rd = (c.bodies.reddit as { data: { events: Array<Record<string, any>> } }).data.events[0];
   assertEquals(rd.type.tracking_type, "LEAD"); // v3 upper-case standard type (redditEventType, #4238 Z5)
   assertEquals(rd.metadata.products[0].category, "creator_lead");
@@ -170,7 +176,7 @@ Deno.test("T-4.6a SC-51 a host lead keeps lead:<id> (recordHostLead is a wrapper
   const d = db();
   const c = capturing();
   assertEquals(labelledLeadEventId("host", BOOK), `lead:${BOOK}`);
-  const id = await recordHostLead(d.client, { subjectId: BOOK, ad }, c.fire);
+  const id = await recordHostLead(d.client, { subjectId: BOOK, ad, contact: REAL_CONTACT }, c.fire);
   assertEquals(id, `lead:${BOOK}`);
   assertEquals(d.row("ad_conversions", (r) => r.event_id === id)?.lead_label, "host");
 });
@@ -178,7 +184,7 @@ Deno.test("T-4.6a SC-51 a host lead keeps lead:<id> (recordHostLead is a wrapper
 Deno.test("T-4.9 SC-61 the tools gate Lead carries content_category host_lead and keeps lead:tool:<id>", async () => {
   const d = hostFakeDb({ tool_leads: [{ id: SUB, email: "v@example.org" }], ad_attribution_touches: [], ad_connections: [] });
   const c = capturing();
-  const id = await recordLabelledLead(d.client, { label: "host", subjectId: `tool:${SUB}`, ad, source: "tool:venues" }, c.fire);
+  const id = await recordLabelledLead(d.client, { label: "host", subjectId: `tool:${SUB}`, ad, source: "tool:venues", contact: REAL_CONTACT }, c.fire);
   assertEquals(id, `lead:tool:${SUB}`);
   const meta = (c.bodies.meta as { data: Array<Record<string, any>> }).data[0];
   assertEquals(meta.custom_data.content_category, "host_lead");
@@ -188,8 +194,8 @@ Deno.test("T-4.9 SC-61 the tools gate Lead carries content_category host_lead an
 Deno.test("§4.5 a booked call: <label>_call:<booking>, Schedule / RESERVE / CUSTOM CallBooked, lead_label set", async () => {
   const d = db();
   const c = capturing();
-  await recordLabelledLead(d.client, { label: "creator", subjectId: BOOK, ad }, c.fire);
-  const id = await recordCallBooked(d.client, { label: "creator", bookingId: BOOK, source: "book_a_call" }, c.fire);
+  await recordLabelledLead(d.client, { label: "creator", subjectId: BOOK, ad, contact: REAL_CONTACT }, c.fire);
+  const id = await recordCallBooked(d.client, { label: "creator", bookingId: BOOK, source: "book_a_call", contact: REAL_CONTACT }, c.fire);
   assertEquals(id, callBookedEventId("creator", BOOK));
   assertEquals(id, `creator_call:${BOOK}`);
   const row = d.row("ad_conversions", (r) => r.event_id === id);
@@ -212,9 +218,9 @@ Deno.test("§4.5 a booking from a form reads the submission's match context (for
     ad_connections: [],
   });
   const c = capturing();
-  await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad }, c.fire);
+  await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad, contact: REAL_CONTACT }, c.fire);
   const before = c.inputs.length;
-  await recordCallBooked(d.client, { label: "creator", bookingId: BOOK }, c.fire);
+  await recordCallBooked(d.client, { label: "creator", bookingId: BOOK, contact: REAL_CONTACT }, c.fire);
   const call = c.inputs.slice(before);
   assert(call.length > 0 && call.every((i) => i.eventId === `creator_call:${BOOK}`));
   assert(call.some((i) => i.fbc === "fb.1.9.FORM"), "the in-form booking is tied to the form's ad click");
@@ -224,7 +230,7 @@ Deno.test("SC-58 ads off: no browser ids stored, the server row exists, nothing 
   const d = db();
   const c = capturing();
   const off = parseHostAdContext({ fbc: "fb.1.9.NOPE", tracking_opt_out: true, page_url: "https://usemingla.com/creators" }, req);
-  const id = await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad: off }, c.fire);
+  const id = await recordLabelledLead(d.client, { label: "creator", subjectId: `form:${SUB}`, ad: off, contact: REAL_CONTACT }, c.fire);
   const ctx = d.row("ad_match_contexts", (r) => r.subject_id === `form:${SUB}`);
   assertEquals(ctx?.ad_tracking_opt_out, true);
   assertEquals(ctx?.fbc ?? null, null);

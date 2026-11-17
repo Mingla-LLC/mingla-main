@@ -527,7 +527,11 @@ export function phase3dContractDigest(manifest) {
 // #4453 milestone 11: re-sealed after merging milestone 10.
 // #4453 milestone 11 tester: re-sealed.
 // #4453 final pass: three #4453 migrations renamed to sort after 20280725004452; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "dfcc0d6e09768d3a9b2401a783a5c83ebf578b9bd456f69600f3fc3477801ff0";
+// #4453 final pass merge of main (#4460-#4465): main's 20280721004456 and 20280725004452 listed ahead of the #4453 migrations; re-sealed.
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "627f072c43c9fad73f4bfb35480fde09e5f336f40c90b8e2a202c385b81de35f";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

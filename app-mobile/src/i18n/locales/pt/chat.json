@@ -190,7 +190,6 @@
   "unsendBody": "Será removida para todos nesta conversa.",
   "unsendFailed": "Não foi possível anular o envio. Tenta novamente.",
   "unsendTitle": "Anular o envio desta mensagem?",
-  "unsentToast": "Envio anulado",
   "yesterday": "Ontem",
   "you": "tu",
   "a11yReaction_many": "{{emoji}}, {{count}} reações",

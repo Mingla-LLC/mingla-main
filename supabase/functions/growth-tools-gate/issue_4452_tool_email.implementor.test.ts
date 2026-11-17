@@ -11,7 +11,9 @@
 // the tripUnpriced branch fails TE-4; removing the `if (tips)` guard around the enrolment fails TE-7.
 import { assert, assertEquals, assertMatch, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildToolReportEmail, tripUnpriced } from "./toolEmail.ts";
-import { handler } from "./index.ts";
+import { handler, recordToolGateLead } from "./index.ts";
+import { parseHostAdContext } from "../_shared/hostFunnelConversion.ts";
+import { hostFakeDb } from "../_shared/__tests__/hostFunnelFakeDb.issue4238.ts";
 import { installStub, post } from "../growth-tools-run/__tests__/harness_1734.ts";
 
 const LINK = "https://usemingla.com/tools/venues/report?id=r1&t=tok";
@@ -144,4 +146,42 @@ Deno.test("TE-7 SC-144 follow-ups only with the tips box ticked", async () => {
   } finally {
     c.restore();
   }
+});
+
+// #4452 B20: a test or internal email (public.inbound_lead_is_test) unlocking a
+// tool report sends no Lead and answers lead_event_id null (no browser twin).
+// FAILS-ON-REVERT: removing the guard from recordLabelledLead, or the contact the
+// gate passes, fails B20-gate-a.
+const GATE_RUN = "4452a000-0000-4000-8000-0000000000aa";
+const gateReq = new Request("https://fn/", { headers: { "user-agent": "UA/9", "x-forwarded-for": "198.51.100.9" } });
+const gateDb = () => hostFakeDb({ ad_attribution_touches: [], ad_connections: [] }, { testLeadEmails: ["staff@usemingla.com"] });
+
+Deno.test("B20-gate-a an internal email sends no Lead and stores no context", async () => {
+  const d = gateDb();
+  const ad = parseHostAdContext({ fbc: "fb.1.1.GATE", tracking_opt_out: false, page_url: "https://usemingla.com/tools/venues" }, gateReq);
+  const id = await recordToolGateLead(d.client, { runId: GATE_RUN, tool: "venues", email: "staff@usemingla.com", name: "Angus Barn", ad });
+  assertEquals(id, null);
+  assertEquals(d.tables.ad_conversions?.length ?? 0, 0);
+  assertEquals(d.tables.ad_match_contexts?.length ?? 0, 0);
+  assertEquals(d.rpcCalls.find((c) => c.name === "inbound_lead_is_test")?.args, { p_email: "staff@usemingla.com", p_name: "Angus Barn" });
+});
+
+Deno.test("B20-gate-b a normal email still sends lead:tool:<id>; a real opted-out visitor keeps the opt-out-only Lead", async () => {
+  const d = gateDb();
+  const ad = parseHostAdContext({ fbc: "fb.1.1.GATE", tracking_opt_out: false }, gateReq);
+  assertEquals(await recordToolGateLead(d.client, { runId: GATE_RUN, tool: "venues", email: "owner@example.org", name: "Angus Barn", ad }), `lead:tool:${GATE_RUN}`);
+  assert(d.row("ad_conversions", (r) => r.event_id === `lead:tool:${GATE_RUN}`));
+  const o = gateDb();
+  const off = parseHostAdContext({ fbc: "fb.1.1.GATE", tracking_opt_out: true }, gateReq);
+  assertEquals(await recordToolGateLead(o.client, { runId: GATE_RUN, tool: "venues", email: "owner@example.org", name: null, ad: off }), `lead:tool:${GATE_RUN}`);
+  const ctx = o.row("ad_match_contexts", (r) => r.subject_id === `tool:${GATE_RUN}`);
+  assertEquals([ctx?.ad_tracking_opt_out, ctx?.fbc, ctx?.client_ip], [true, null, null]);
+  assertEquals(await recordToolGateLead(o.client, { runId: GATE_RUN, tool: "venues", email: "owner@example.org", name: null, ad: null }), null, "no ad object: no Lead (today's rule)");
+});
+
+Deno.test("B20-gate-c the handler passes the unlocking email and the run's name to the lead", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, '.select("id, tool, status, report, report_token, input")');
+  assertMatch(src, /await recordToolGateLead\(supabase, \{\s*runId: runId as string,\s*tool,\s*email,\s*name: leadName,\s*ad: parseHostAdContext\(body\.ad, req\),/);
+  assertStringIncludes(src, "contact: { email: input.email, name: input.name },");
 });

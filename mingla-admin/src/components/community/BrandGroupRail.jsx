@@ -31,12 +31,12 @@ const GHOST = `inline-flex min-h-11 items-center justify-center rounded-[10px] b
 export const RAIL_TAB_WORDS = Object.freeze({ plan: "Plan", host: "Host", media: "Media", people: "People" });
 
 /** The tabs a teammate sees: Media and People only without Hosts and Creators access. */
-export function railTabs(canHosts) {
+function railTabs(canHosts) {
   return canHosts ? ["plan", "host", "media", "people"] : ["media", "people"];
 }
 
 /** Tab keys: Left/Right move, Home/End jump; the new tab is chosen and focused. */
-export function railKeyTarget(tabs, current, key) {
+function railKeyTarget(tabs, current, key) {
   const i = Math.max(0, tabs.indexOf(current));
   if (key === "ArrowRight") return tabs[(i + 1) % tabs.length];
   if (key === "ArrowLeft") return tabs[(i - 1 + tabs.length) % tabs.length];
@@ -140,7 +140,13 @@ function PipelineFields({ record, online, onSaved }) {
   const [due, setDue] = useState(record.due_on || "");
   const [busy, setBusy] = useState("");
   const [problem, setProblem] = useState("");
-  useEffect(() => { setNextAction(record.next_action || ""); setDue(record.due_on || ""); }, [record.id, record.next_action, record.due_on]);
+  // The fields follow the host card when it changes underneath (adjusted while rendering).
+  const [seen, setSeen] = useState({ id: record.id, next: record.next_action, due: record.due_on });
+  if (seen.id !== record.id || seen.next !== record.next_action || seen.due !== record.due_on) {
+    setSeen({ id: record.id, next: record.next_action, due: record.due_on });
+    setNextAction(record.next_action || "");
+    setDue(record.due_on || "");
+  }
   const save = async (field, value) => {
     const current = field === "next_action" ? record.next_action || "" : record.due_on || "";
     if (value === current || !online) return;

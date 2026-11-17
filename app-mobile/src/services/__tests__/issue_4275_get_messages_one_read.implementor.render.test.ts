@@ -24,7 +24,8 @@ const mockChannels: MockChannelEntry[] = [];
 
 function mockThenable(result: unknown) {
   const query: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "is", "lte", "order", "limit", "neq"]) {
+  // #4456: thread reads keep unsent placeholders with .or(LIVE_OR_TOMBSTONE_FILTER).
+  for (const method of ["select", "eq", "is", "or", "lte", "order", "limit", "neq"]) {
     query[method] = () => query;
   }
   query.in = () => query;

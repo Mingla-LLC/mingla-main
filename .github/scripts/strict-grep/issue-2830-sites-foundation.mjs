@@ -1627,9 +1627,9 @@ function selfTest() {
     ["designRegistry", 'canvas: "#101013",', 'canvas: "#ffffff",', "Restaurant Website v1 visual contract (atelier defaults)"],
     ["designRegistry", '300: "#dfb262",\n          400: "#cda052",', '300: "#dfb262",\n          400: "#d85a22",', "Restaurant Website v1 visual contract (atelier defaults)"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
-    ["publicPackage", '"next": "16.4.2"', '"@payloadcms/next": "3.88.0",\n    "next": "16.4.2"', "production dependency isolation"],
-    ["publicPackage", '"next": "16.4.2"', '"next": "16.3.7"', "next advisory floor"],
-    ["cmsPackage", '"next": "16.4.2"', '"next": "15.5.0"', "next major must remain"],
+    ["publicPackage", '"next": "16.4.5"', '"@payloadcms/next": "3.88.0",\n    "next": "16.4.5"', "production dependency isolation"],
+    ["publicPackage", '"next": "16.4.5"', '"next": "16.3.7"', "next advisory floor"],
+    ["cmsPackage", '"next": "16.4.6"', '"next": "15.5.0"', "next major must remain"],
     ["cmsPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],
     ["publicPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],
     // [TEST-MOD-APPROVED #2829] W9r: the Mingla address line now lives in Addresses.

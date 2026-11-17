@@ -45,9 +45,11 @@ import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 // #4238 W3-3 (D7): a successful email unlock with the page's ad context is a
 // host lead (event_id lead:tool:<tool_leads.id>).
 import {
+  type HostAdContext,
   parseHostAdContext,
   recordHostLead,
 } from "../_shared/hostFunnelConversion.ts";
+import type { FireAdConversionDeps } from "../_shared/adConversionFire.ts";
 // #4452 §6.9: the smart report email (one builder for the four tools).
 import { buildToolReportEmail, TOOL_ICP } from "./toolEmail.ts";
 
@@ -226,6 +228,29 @@ export function buildLeadNotifyEmail(
 }
 
 // ── HTTP entry ───────────────────────────────────────────────────────────────
+/**
+ * #4238 W3-3: the email unlock with the page's ad context is the host lead
+ * (event id lead:tool:<id>). #4452 B20: a test or internal email or name
+ * (public.inbound_lead_is_test, checked inside recordHostLead) sends nothing
+ * and answers null, so the page's browser Lead twin stays silent. A real
+ * visitor with ads off still records the opt-out-only Lead. Never throws.
+ */
+export async function recordToolGateLead(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  input: { runId: string; tool: string; email: string; name: string | null; ad: HostAdContext | null },
+  deps: FireAdConversionDeps = {},
+): Promise<string | null> {
+  if (!input.ad) return null;
+  return await recordHostLead(supabase, {
+    subjectId: `tool:${input.runId}`,
+    ad: input.ad,
+    // #4452 §4.7: free tools are host tools; the label rides as host_lead, the source as tool:<tool>.
+    source: `tool:${input.tool}`,
+    contact: { email: input.email, name: input.name },
+  }, deps);
+}
+
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -278,7 +303,7 @@ export async function handler(req: Request): Promise<Response> {
     // ONLY #1734 change to this function.
     const { data: lead, error: leadErr } = await supabase
       .from("tool_leads")
-      .select("id, tool, status, report, report_token")
+      .select("id, tool, status, report, report_token, input")
       .eq("id", runId as string)
       .eq("lane", "web")
       .maybeSingle();
@@ -349,17 +374,18 @@ export async function handler(req: Request): Promise<Response> {
     // #4238 W3-3: the email is captured, so this is the lead. Only with the
     // page's ad context; never fails or delays the unlock past one sender
     // timeout. The same row always yields the same event id (dedup).
-    const ad = parseHostAdContext(body.ad, req);
-    const leadEventId = ad
-      // `as never`: this function's supabase-js@2 graph differs from the
-      // shared module's pinned type (the pattern every fire caller uses).
-      ? await recordHostLead(supabase as never, {
-        subjectId: `tool:${runId as string}`,
-        ad,
-        // #4452 §4.7: free tools are host tools; the label rides as host_lead, the source as tool:<tool>.
-        source: `tool:${tool}`,
-      })
+    const leadInput = (lead as { input?: unknown }).input;
+    const leadName = leadInput && typeof leadInput === "object" &&
+        typeof (leadInput as { name?: unknown }).name === "string"
+      ? (leadInput as { name: string }).name
       : null;
+    const leadEventId = await recordToolGateLead(supabase, {
+      runId: runId as string,
+      tool,
+      email,
+      name: leadName,
+      ad: parseHostAdContext(body.ad, req),
+    });
     const reportPath = tool === "events"
       ? "/tools/events/report"
       : tool === "trips"

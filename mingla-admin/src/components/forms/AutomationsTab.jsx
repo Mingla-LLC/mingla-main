@@ -3,7 +3,7 @@
 // title, sub-line and stats; the editor for the selected step (the email step
 // uses the SAME EmailBodyEditor as Communications › Email); the stop rules; the
 // On toggle, "Test the whole flow" and "Save changes" (publishes a version).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarCheck, Clock, GitBranch, Mail, MailOpen, MoveRight, Plus, Send, Trash2, Users } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Input, Select, Toggle } from "../ui/Input";
@@ -16,6 +16,7 @@ import {
   findStep, insertStep, newStep, removeStep, stepStats, stepSub, stepTitle, updateStep,
 } from "../../lib/flowModel";
 import { formTokenOptions } from "../../lib/formsTokens";
+import { flowSaveErrors } from "../../lib/formsModel";
 import { crmChoices, formsErrorWords, publishAutomation, saveAutomationDraft, sendTestEmails, setAutomationEnabled, testWholeFlow } from "../../services/formsService";
 
 const ICON = { email: Mail, team: Users, wait: Clock, branch: GitBranch, stage: MoveRight };
@@ -50,20 +51,24 @@ function AddMenu({ onAdd, disabled, cardOn, label = "Add a step" }) {
   );
 }
 
-function FlowList({ steps, path, ctx }) {
+export function FlowList({ steps, path, ctx }) {
   return (
     <div className="flex flex-col">
       <AddMenu disabled={!ctx.canEdit} cardOn={ctx.cardOn} onAdd={(t) => ctx.add(path, 0, t)} />
       {steps.map((s, i) => {
         const Icon = ICON[s.type] || Mail;
         const stats = stepStats(ctx.stats[s.id]);
+        // #4452 B23: a step the server refused is marked here, with the reason, not on Publish.
+        const err = ctx.errors?.[s.id];
         return (
           <div key={s.id}>
-            <button type="button" onClick={() => ctx.select(s.id)} data-flow-step={s.id} data-step-type={s.type}
-              className={`w-full rounded-2xl border bg-[var(--color-background-primary)] p-3 text-left ${ctx.sel === s.id ? "border-[var(--a-text)] shadow-[0_0_0_3px_rgba(235,120,37,.16)]" : "border-[var(--a-line)]"}`}>
+            <button type="button" onClick={() => ctx.select(s.id)} data-flow-step={s.id} data-step-type={s.type} data-step-error={err ? "" : undefined}
+              aria-invalid={err ? "true" : undefined}
+              className={`w-full rounded-2xl border bg-[var(--color-background-primary)] p-3 text-left ${err ? "border-[#b91c1c] shadow-[0_0_0_3px_rgba(185,28,28,.14)]" : ctx.sel === s.id ? "border-[var(--a-text)] shadow-[0_0_0_3px_rgba(235,120,37,.16)]" : "border-[var(--a-line)]"}`}>
               <span className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]"><Icon aria-hidden="true" className="h-4 w-4 text-[#eb7825]" /> {stepTitle(s, ctx.fields)}</span>
               <span className="mt-0.5 block text-xs text-[var(--color-text-tertiary)]">{stepSub(s, ctx.kinds)}</span>
               {stats && <span className="mt-1 block font-mono text-[11px] text-[var(--a-dim)]">{stats}</span>}
+              {err && <span className="mt-1.5 block text-xs font-medium text-[#991b1b]" data-step-error-reason="">{err}</span>}
             </button>
             {s.type === "branch" && (
               <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl border border-dashed border-[var(--a-line)] p-2">
@@ -83,7 +88,7 @@ function FlowList({ steps, path, ctx }) {
   );
 }
 
-function EmailEditor({ step, set, kinds, tokens, canEdit, formId, onTested }) {
+function EmailEditor({ step, set, kinds, tokens, canEdit, formId, onTested, trackStale }) {
   const { addToast } = useToast();
   const [sending, setSending] = useState(false);
   const kind = kinds[step.id] || "confirmation";
@@ -95,7 +100,9 @@ function EmailEditor({ step, set, kinds, tokens, canEdit, formId, onTested }) {
       addToast({ variant: "success", title: "Sent you this email with sample answers." });
       onTested();
     } catch (e) {
-      addToast({ variant: "error", title: e.code === "no_email_steps" ? "Save changes first: the test reads the saved emails." : formsErrorWords(e) });
+      // #4452 B24: a "save first" hint is not an error that needs closing by hand.
+      if (e.code === "no_email_steps") trackStale(addToast({ variant: "info", title: "Save changes first: the test reads the saved emails." }));
+      else addToast({ variant: "error", title: formsErrorWords(e) });
     } finally { setSending(false); }
   };
   return (
@@ -133,7 +140,7 @@ function StepEditor({ step, set, remove, ctx }) {
   const choiceFields = ctx.fields.filter((f) => ["single", "multi", "dropdown"].includes(f.type) && f.source !== "google_city");
   return (
     <div className="flex flex-col gap-3">
-      {step.type === "email" && <EmailEditor step={step} set={set} kinds={ctx.kinds} tokens={ctx.tokens} canEdit={ctx.canEdit} formId={ctx.formId} onTested={ctx.onTested} />}
+      {step.type === "email" && <EmailEditor step={step} set={set} kinds={ctx.kinds} tokens={ctx.tokens} canEdit={ctx.canEdit} formId={ctx.formId} onTested={ctx.onTested} trackStale={ctx.trackStale} />}
       {step.type === "team" && (
         <>
           <LimitedText label="Name" value={step.name} limit={60} disabled={!ctx.canEdit} onChange={(v) => set({ name: v })} />
@@ -191,8 +198,12 @@ function StepEditor({ step, set, remove, ctx }) {
 }
 
 export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setStops, kinds, auto, reloadAuto, setMeta }) {
-  const { addToast } = useToast();
+  const { addToast, removeToast } = useToast();
   const [sel, setSel] = useState(flow?.steps?.[0]?.id || null);
+  const [stepErrors, setStepErrors] = useState({});
+  // #4452 B24: error toasts a successful save makes stale; closed when the save succeeds.
+  const staleToasts = useRef([]);
+  const trackStale = (id) => { if (id) staleToasts.current.push(id); };
   const [busy, setBusy] = useState("");
   const [stages, setStages] = useState([]);
   const cardOn = Boolean(def.routing?.card?.on);
@@ -206,7 +217,7 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
 
   const ctx = {
     canEdit, cardOn, kinds, fields: def.fields, tokens, stages: cardOn ? stages : [], sel, formId: form.id,
-    stats: auto?.steps || {},
+    stats: auto?.steps || {}, errors: stepErrors, trackStale,
     select: setSel,
     add: (path, index, type) => {
       const step = newStep(type, flow, { from: def.audience === "local" ? "locals" : def.audience === "host" ? "hosts" : "creators", teamTo: def.audience === "local" ? "locals_inbox" : def.audience === "host" ? "hosts_inbox" : "creators_inbox", firstStage: stages[0]?.id });
@@ -222,12 +233,24 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
     try {
       const saved = await saveAutomationDraft(form.id, auto?.draft_rev ?? 0, flow, stops);
       await publishAutomation(form.id, saved.draft_rev);
+      setStepErrors({});
+      staleToasts.current.splice(0).forEach((id) => removeToast?.(id));
       addToast({ variant: "success", title: SAVED_TOAST });
       await reloadAuto();
     } catch (e) {
-      if (e.code === "PT409") addToast({ variant: "error", title: "Someone else changed these emails. Reload to see theirs." });
-      else if (/invalid_flow/.test(e.message || "")) addToast({ variant: "error", title: "Some steps need fixing. See Publish for the list." });
-      else addToast({ variant: "error", title: formsErrorWords(e) });
+      if (e.code === "PT409") trackStale(addToast({ variant: "error", title: "Someone else changed these emails. Reload to see theirs." }));
+      else if (/invalid_flow/.test(e.message || "")) {
+        const { byStep, general } = flowSaveErrors(e.detail, flow, def, { cardOn, stages });
+        setStepErrors(byStep);
+        const ids = Object.keys(byStep);
+        if (ids.length) setSel(ids[0]);
+        const first = ids.length ? findStep(flow?.steps, ids[0]) : null;
+        trackStale(addToast({
+          variant: "error",
+          title: ids.length ? `${ids.length === 1 ? "1 step needs" : `${ids.length} steps need`} fixing before these emails can be saved.` : "These emails could not be saved.",
+          description: first ? `${stepTitle(first, def.fields)}: ${byStep[ids[0]]}` : general[0] || "Check each step and try again.",
+        }));
+      } else trackStale(addToast({ variant: "error", title: formsErrorWords(e) }));
     } finally { setBusy(""); }
   };
   const toggle = async (on) => {
@@ -241,7 +264,7 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
     try {
       const res = await testWholeFlow(form.id);
       addToast({ variant: "success", title: res.message || "Test run sent to you: every email in order, with sample answers." });
-    } catch (e) { addToast({ variant: "error", title: e.message }); }
+    } catch (e) { addToast({ variant: "error", title: formsErrorWords(e) }); }
     finally { setBusy(""); }
   };
 
@@ -283,7 +306,7 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
           </Panel>
         </div>
         <Panel title={step ? stepTitle(step, def.fields) : "Step"} data-step-editor="">
-          <StepEditor step={step} ctx={ctx} set={(patch) => setFlow(updateStep(flow, step.id, patch))} remove={() => { setFlow(removeStep(flow, step.id)); setSel(null); }} />
+          <StepEditor step={step} ctx={ctx} set={(patch) => { setFlow(updateStep(flow, step.id, patch)); if (stepErrors[step.id]) setStepErrors((errs) => { const next = { ...errs }; delete next[step.id]; return next; }); }} remove={() => { setFlow(removeStep(flow, step.id)); setSel(null); }} />
         </Panel>
       </div>
     </div>

@@ -64,10 +64,16 @@ DO $$DECLARE mid uuid; old_mid uuid; resolved integer; code text; version intege
   IF resolved<>1 THEN RAISE EXCEPTION 'participant could not resolve snapshot'; END IF;
   SELECT count(*) INTO resolved FROM public.resolve_native_content_card_snapshots(ARRAY[old_mid]);
   IF resolved<>1 THEN RAISE EXCEPTION 'old immutable version did not resolve after version advance'; END IF;
-  UPDATE public.messages SET deleted_at=now() WHERE id=mid;
-  SELECT count(*) INTO resolved FROM public.resolve_native_content_card_snapshots(ARRAY[mid]);
-  IF resolved<>0 THEN RAISE EXCEPTION 'deleted message resolved'; END IF;
-  UPDATE public.messages SET deleted_at=NULL WHERE id=mid;
+  -- #4456: a removed message can never be brought back (it is wiped into the
+  -- private store), so the removal is probed inside a subtransaction that is
+  -- rolled back, leaving the fixture live for the checks below.
+  BEGIN
+    UPDATE public.messages SET deleted_at=now() WHERE id=mid;
+    SELECT count(*) INTO resolved FROM public.resolve_native_content_card_snapshots(ARRAY[mid]);
+    IF resolved<>0 THEN RAISE EXCEPTION 'deleted message resolved'; END IF;
+    RAISE EXCEPTION USING ERRCODE = 'P4456', MESSAGE = 'issue_1719_removal_probe_rollback';
+  EXCEPTION WHEN SQLSTATE 'P4456' THEN NULL;
+  END;
   UPDATE public.conversations SET is_enabled=false WHERE id='10000000-0000-0000-0000-000000000202';
   SELECT count(*) INTO resolved FROM public.resolve_native_content_card_snapshots(ARRAY[mid]);
   IF resolved<>0 THEN RAISE EXCEPTION 'disabled conversation resolved'; END IF;

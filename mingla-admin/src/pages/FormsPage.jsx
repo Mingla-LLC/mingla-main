@@ -3,7 +3,7 @@
 // setup card (admins only, §7.8), and Submissions (the Leads list filtered to
 // forms, A1.8). A form opens its builder at #/forms/<id>?tab=<tab>.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, ClipboardList, Copy, Inbox, Mail, Pencil, PhoneCall, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, ClipboardList, Copy, Inbox, Mail, Pencil, PhoneCall, Plus } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -20,10 +20,10 @@ import { FormBuilder } from "../components/forms/FormBuilder";
 import { GoogleConversionsCard } from "../components/forms/GoogleConversionsCard";
 import { LabelPill, ReadOnlyHint } from "../components/forms/formsUi";
 import {
-  ARCHIVED_TOAST, DUPLICATED_TOAST, STATUS_FILTERS, STATUS_PILL, archiveQuestion, formSubLine, formsHash, formsRoute,
+  ARCHIVED_TOAST, UNARCHIVED_TOAST, unarchiveQuestion, DUPLICATED_TOAST, STATUS_FILTERS, STATUS_PILL, archiveQuestion, TOOL_FORM_BADGE, formSubLine, formsHash, isToolForm, formsRoute,
   placementTags, weekChange,
 } from "../lib/formsModel";
-import { archiveForm, createForm, duplicateForm, formsErrorWords, listForms } from "../services/formsService";
+import { archiveForm, unarchiveForm, createForm, duplicateForm, formsErrorWords, listForms, siteRefreshWarning } from "../services/formsService";
 
 function useFormsRoute() {
   const [route, setRoute] = useState(() => formsRoute(window.location.hash));
@@ -84,7 +84,7 @@ function NewFormDialog({ open, onClose, onCreated }) {
   );
 }
 
-export function FormsTable({ rows, canEdit, onEdit, onDuplicate, onArchive }) {
+export function FormsTable({ rows, canEdit, onEdit, onDuplicate, onArchive, onUnarchive }) {
   if (!rows.length) {
     return (
       <div className="px-4 py-10 text-center" data-forms-empty="">
@@ -114,7 +114,7 @@ export function FormsTable({ rows, canEdit, onEdit, onDuplicate, onArchive }) {
                   <div className="text-xs text-[var(--color-text-tertiary)]">{formSubLine(f)}</div>
                 </td>
                 <td className="px-4 py-3.5"><Badge variant={variant}>{word}{f.live_version ? ` v${f.live_version}` : ""}</Badge></td>
-                <td className="px-4 py-3.5"><LabelPill label={f.audience} /></td>
+                <td className="px-4 py-3.5">{isToolForm(f) ? <span data-tool-form-badge=""><Badge variant="info">{TOOL_FORM_BADGE}</Badge></span> : <LabelPill label={f.audience} />}</td>
                 <td className="px-4 py-3.5">
                   {tags.length ? (
                     <div className="flex flex-wrap gap-1">{tags.map((t) => <span key={t} className="rounded-full bg-[var(--a-soft)] px-2 py-0.5 text-xs text-[var(--a-text2)]">{t}</span>)}{f.own_page && <span className="rounded-full bg-[var(--a-soft)] px-2 py-0.5 text-xs text-[var(--a-text2)]">/apply/{f.own_page}</span>}</div>
@@ -127,6 +127,7 @@ export function FormsTable({ rows, canEdit, onEdit, onDuplicate, onArchive }) {
                     <Button variant="ghost" size="sm" icon={Pencil} aria-label={`Edit ${f.name}`} title="Edit" onClick={() => onEdit(f.id)} />
                     <Button variant="ghost" size="sm" icon={Copy} aria-label={`Duplicate ${f.name}`} title={canEdit ? "Duplicate" : "Ask an admin for the Website editor role"} disabled={!canEdit} onClick={() => onDuplicate(f)} />
                     {f.status !== "archived" && <Button variant="ghost" size="sm" icon={Archive} aria-label={`Archive ${f.name}`} title={canEdit ? "Archive" : "Ask an admin for the Website editor role"} disabled={!canEdit} onClick={() => onArchive(f)} />}
+                    {f.status === "archived" && <Button variant="ghost" size="sm" icon={ArchiveRestore} aria-label={`Unarchive ${f.name}`} title={canEdit ? "Unarchive" : "Ask an admin for the Website editor role"} disabled={!canEdit} onClick={() => onUnarchive(f)} />}
                   </div>
                 </td>
               </tr>
@@ -146,6 +147,7 @@ function FormsList({ onOpen, tab, onTab }) {
   const { status: st, data, error, retry } = useServerRead(load);
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState(null);
+  const [unarchiving, setUnarchiving] = useState(null);
   const [busy, setBusy] = useState(false);
   const canEdit = Boolean(data?.can_edit);
   const kpis = data?.kpis || {};
@@ -165,9 +167,22 @@ function FormsList({ onOpen, tab, onTab }) {
   const confirmArchive = async () => {
     setBusy(true);
     try {
-      await archiveForm(archiving.id);
-      addToast({ variant: "success", title: ARCHIVED_TOAST });
+      const { refreshed } = await archiveForm(archiving.id);
+      if (refreshed) addToast({ variant: "success", title: ARCHIVED_TOAST });
+      else siteRefreshWarning(addToast, "Archived.");
       setArchiving(null);
+      retry();
+    } catch (e) { addToast({ variant: "error", title: formsErrorWords(e) }); }
+    finally { setBusy(false); }
+  };
+
+  const confirmUnarchive = async () => {
+    setBusy(true);
+    try {
+      const { refreshed } = await unarchiveForm(unarchiving.id);
+      if (refreshed) addToast({ variant: "success", title: UNARCHIVED_TOAST });
+      else siteRefreshWarning(addToast, "Unarchived as a draft.");
+      setUnarchiving(null);
       retry();
     } catch (e) { addToast({ variant: "error", title: formsErrorWords(e) }); }
     finally { setBusy(false); }
@@ -217,7 +232,7 @@ function FormsList({ onOpen, tab, onTab }) {
             ) : st === "error" ? (
               <LoadError message={formsErrorWords(error)} onRetry={retry} className="m-4" />
             ) : (
-              <FormsTable rows={data?.rows || []} canEdit={canEdit} onEdit={(id) => onOpen(id, "fields")} onDuplicate={duplicate} onArchive={setArchiving} />
+              <FormsTable rows={data?.rows || []} canEdit={canEdit} onEdit={(id) => onOpen(id, "fields")} onDuplicate={duplicate} onArchive={setArchiving} onUnarchive={setUnarchiving} />
             )}
           </section>
         </>
@@ -229,6 +244,13 @@ function FormsList({ onOpen, tab, onTab }) {
         <ModalFooter>
           <Button variant="secondary" onClick={() => setArchiving(null)} disabled={busy}>Keep it</Button>
           <Button variant="danger" onClick={confirmArchive} loading={busy}>Archive</Button>
+        </ModalFooter>
+      </Modal>
+      <Modal open={Boolean(unarchiving)} onClose={() => !busy && setUnarchiving(null)} title="Unarchive this form?" size="sm">
+        <ModalBody><p className="text-sm text-[var(--color-text-secondary)]">{unarchiving ? unarchiveQuestion(unarchiving.name) : ""}</p></ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setUnarchiving(null)} disabled={busy}>Keep it archived</Button>
+          <Button onClick={confirmUnarchive} loading={busy}>Unarchive</Button>
         </ModalFooter>
       </Modal>
     </div>

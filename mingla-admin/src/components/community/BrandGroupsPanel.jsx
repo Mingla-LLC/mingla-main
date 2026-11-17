@@ -8,7 +8,7 @@
 // This file is the controller: loads, realtime, read marks, sending (with
 // Try again), mute, files, the Product signal modal, the side panel's stack,
 // Esc and focus. The columns are their own components.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
@@ -69,9 +69,12 @@ import {
   sendLanded,
   typingWords,
 } from "../../lib/brandGroupInbox";
-import { BrandGroupList, useMinuteClock } from "./BrandGroupList";
+import { BrandGroupList } from "./BrandGroupList";
+import { useMinuteClock } from "../../hooks/useMinuteClock";
+import { sideAllowed } from "../../lib/brandGroupSideAccess";
 import { BrandGroupStrip } from "./BrandGroupStrip";
-import { BrandGroupHeader, assignHostToMe } from "./BrandGroupHeader";
+import { BrandGroupHeader } from "./BrandGroupHeader";
+import { assignHostToMe } from "../../lib/brandGroupHostAssign";
 import { BrandGroupThread } from "./BrandGroupThread";
 import { BrandGroupComposer } from "./BrandGroupComposer";
 import { BrandGroupRail } from "./BrandGroupRail";
@@ -85,7 +88,6 @@ const FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 const LIGHT_REFRESH_MS = 1_500;
 const FULL_REFRESH_MS = 5 * 60_000;
 // Side kinds that need Hosts and Creators; a brand needs Brands.
-const HOSTS_KINDS = new Set(["card", "host", "creator", "content", "event", "expected", "drafts", "calendar"]);
 
 function initials(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
@@ -118,11 +120,20 @@ export function HostAvatarButton({ host, photoUrl, open, onOpen }) {
   );
 }
 
-/** Whether this teammate may open a side panel of this kind. */
-export function sideAllowed(side, { canHosts, canBrands }) {
-  if (!side) return false;
-  if (side.kind === "brand") return !!canBrands;
-  return HOSTS_KINDS.has(side.kind) && !!canHosts;
+/**
+ * The panel's opener: one stable function of (kind, id) that also answers
+ * `allows(kind)`. It reads the latest openInside and powers when a link is
+ * clicked, never while rendering.
+ */
+function useSideOpener(openInside, canHosts, canBrands) {
+  const latest = useRef({ openInside, canHosts, canBrands });
+  useLayoutEffect(() => { latest.current = { openInside, canHosts, canBrands }; }, [openInside, canHosts, canBrands]);
+  const [opener] = useState(() => {
+    const open = (kind, id) => latest.current.openInside({ kind, id });
+    open.allows = (kind) => sideAllowed({ kind, id: "x" }, latest.current);
+    return open;
+  });
+  return opener;
 }
 
 function useWideScreen(px) {
@@ -196,12 +207,12 @@ export function BrandGroupsPanel({ onCounts }) {
   const lastFullRead = useRef(0);
   // D-5: the group on screen, and which thread reads may still show.
   const selectedRef = useRef(null);
-  const threadGate = useRef(null);
-  if (threadGate.current === null) threadGate.current = createAnswerGate();
+  const [initialGate] = useState(createAnswerGate);
+  const threadGate = useRef(initialGate);
   const loadingTicket = useRef(null);
   // D-2: the side panel's own history entries (lib/brandGroupPanelHistory.js).
-  const panelHistory = useRef(null);
-  if (panelHistory.current === null && typeof window !== "undefined") panelHistory.current = createPanelHistory(window);
+  const [initialPanelHistory] = useState(() => (typeof window !== "undefined" ? createPanelHistory(window) : null));
+  const panelHistory = useRef(initialPanelHistory);
 
   // X-1: set on mount too, so StrictMode's mount → unmount → mount in dev does
   // not leave it false (and the page stuck on "Loading Brand groups…").
@@ -228,7 +239,7 @@ export function BrandGroupsPanel({ onCounts }) {
     } finally {
       if (mounted.current) setLoading(false);
     }
-  }, []);
+  }, [setGroups]);
 
   // The inbox facts. Full (with plans) on open, on focus, every 5 minutes and
   // after a plan change; light (no plan reads) after each message.
@@ -310,9 +321,11 @@ export function BrandGroupsPanel({ onCounts }) {
     } finally {
       if (mounted.current && loadingTicket.current === ticket) { loadingTicket.current = null; setThreadLoading(false); }
     }
-  }, [addToast, loadGroups, announceRead]);
+  }, [addToast, loadGroups, announceRead, setSignals]);
 
-  useEffect(() => { void loadGroups(); void loadInbox(); }, [loadGroups, loadInbox]);
+  // The first reads start from a microtask: the reads set state, and an effect body
+  // must not set state in the same turn. Nothing paints in between.
+  useEffect(() => { queueMicrotask(() => { void loadGroups(); void loadInbox(); }); }, [loadGroups, loadInbox]);
   useEffect(() => {
     // D-13: a focus reads again only when the last full read is a minute old.
     const onFocus = () => { if (focusRefreshDue(lastFullRead.current)) void loadInbox(); };
@@ -321,16 +334,22 @@ export function BrandGroupsPanel({ onCounts }) {
     return () => { unsubscribe(); clearInterval(timer); };
   }, [loadInbox]);
 
-  useEffect(() => {
-    selectedRef.current = selectedId;
-    threadGate.current.open(selectedId);
+  // Opening another group clears what belonged to the last one. Done while
+  // rendering (React's "adjust state on change" pattern), not in an effect.
+  const [resetFor, setResetFor] = useState(null);
+  if (resetFor !== selectedId) {
+    setResetFor(selectedId);
     setReplyTo(null);
     setSelectedMessageIds([]);
     setComposer("");
     setMessages([]);
     setPlanPrefill(null);
     setWorkPrefill(null);
-    if (selectedId) void loadThread(selectedId);
+  }
+  useEffect(() => {
+    selectedRef.current = selectedId;
+    threadGate.current.open(selectedId);
+    if (selectedId) queueMicrotask(() => { void loadThread(selectedId); });
   }, [loadThread, selectedId]);
 
   useEffect(() => {
@@ -351,11 +370,17 @@ export function BrandGroupsPanel({ onCounts }) {
     return () => { void supabase.removeChannel(channel); };
   }, [lightRefresh, loadThread, loadInbox, selectedId]);
 
-  // The People tab and the "info (Owner)" words.
+  // The People tab and the "info (Owner)" words. A new group, or Try again,
+  // starts from an empty answer (adjusted while rendering, not in the effect).
+  const peopleKey = selectedId ? `${selectedId}|${peopleTick}` : "";
+  const [peopleFor, setPeopleFor] = useState("");
+  if (peopleFor !== peopleKey) {
+    setPeopleFor(peopleKey);
+    if (selectedId) setPeople({ conversationId: selectedId, rows: [], error: "" });
+  }
   useEffect(() => {
     if (!selectedId) return undefined;
     let live = true;
-    setPeople({ conversationId: selectedId, rows: [], error: "" });
     listBrandGroupPeople(selectedId).then(
       (rows) => { if (live) setPeople({ conversationId: selectedId, rows, error: "" }); },
       (cause) => {
@@ -373,29 +398,38 @@ export function BrandGroupsPanel({ onCounts }) {
   // #4452 (B3): the group picked before the filter settled (the first of ALL
   // groups) may not be in the filtered list; then the first one shown opens,
   // unless the address named a group.
-  useEffect(() => {
-    if (filter !== null || !loadedOnce || !inbox.length) return;
+  if (filter === null && loadedOnce && inbox.length) {
     const next = defaultInboxFilter(rows);
     setFilter(next);
     const pick = settledSelection({ selectedId, viewGroup: view.group, visible: applyInboxFilter(rows, next, query) });
     if (pick !== selectedId) setSelectedId(pick);
-  }, [filter, loadedOnce, inbox.length, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
   const activeFilter = filter || "all";
   const visibleRows = useMemo(() => applyInboxFilter(rows, activeFilter, query), [rows, activeFilter, query]);
   const summary = useMemo(() => inboxSummary(rows, nowMs), [rows, nowMs]);
   useEffect(() => { onCounts?.(summary.waiting); }, [onCounts, summary.waiting]);
 
   // #4270 W2: the address names the open thread (and, from a host card, the brand).
+  // Whenever the address, the groups or the first load change, a group named
+  // in the address becomes the open one (adjusted while rendering).
+  const [addressSeen, setAddressSeen] = useState({ loadedOnce: false, group: null, brand: null, groups: null });
+  if (addressSeen.loadedOnce !== loadedOnce || addressSeen.group !== view.group || addressSeen.brand !== view.brand || addressSeen.groups !== groups) {
+    setAddressSeen({ loadedOnce, group: view.group, brand: view.brand, groups });
+    if (loadedOnce && view.group && groups.some((g) => g.conversation_id === view.group)) setSelectedId(view.group);
+  }
+  const addressRef = useRef({ search, setSearch });
+  useLayoutEffect(() => { addressRef.current = { search, setSearch }; }, [search, setSearch]);
   useEffect(() => {
     if (!loadedOnce) return;
-    if (view.group && groups.some((g) => g.conversation_id === view.group)) {
-      setSelectedId(view.group);
-    } else if (view.brand) {
+    if (view.group && groups.some((g) => g.conversation_id === view.group)) return;
+    if (view.brand) {
       const match = groups.find((g) => g.brand_id === view.brand);
       // R-1: through the panel history, so a tagged entry keeps its tag.
-      if (match) panelHistory.current.replace(() => setSearch(brandGroupSearch(search, { group: match.conversation_id, brand: null }), { replace: true }));
+      // The address as it is when the effect runs; a new search alone must not re-run it.
+      const { search: nowSearch, setSearch: nowSetSearch } = addressRef.current;
+      if (match) panelHistory.current.replace(() => nowSetSearch(brandGroupSearch(nowSearch, { group: match.conversation_id, brand: null }), { replace: true }));
     }
-  }, [loadedOnce, view.group, view.brand, groups]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadedOnce, view.group, view.brand, groups]);
 
   const selectedGroup = rows.find((group) => group.conversation_id === selectedId) ?? null;
   // D-6: the inbox says whether there is a host card; while it cannot (its
@@ -423,7 +457,7 @@ export function BrandGroupsPanel({ onCounts }) {
   // The side in the address right now, read by callbacks a drawer kept from an
   // earlier render (RecordDrawer's toast).
   const sideRef = useRef(view.side);
-  sideRef.current = view.side;
+  useLayoutEffect(() => { sideRef.current = view.side; }, [view.side]);
   const rememberOpener = () => {
     if (!sideRef.current) opener.current = typeof document !== "undefined" ? document.activeElement : null;
   };
@@ -439,7 +473,7 @@ export function BrandGroupsPanel({ onCounts }) {
     rememberOpener();
     history.begin();
     history.push(() => stack.openSide(next));
-  }, [canHosts, canBrands, view.side, search, setSearch, stack]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canHosts, canBrands, view.side, search, setSearch, stack]);
   // From a link inside the panel: stacks, with Back.
   // A drawer's callback can outlive the panel (RecordDrawer's "Open the card"
   // toast after Close): then this opens the panel afresh, tagged, so its Close
@@ -448,15 +482,11 @@ export function BrandGroupsPanel({ onCounts }) {
     if (!sideAllowed(next, { canHosts, canBrands })) return;
     if (!sideRef.current) rememberOpener();
     panelHistory.current.follow(() => stack.openSide(next), { panelOpen: !!sideRef.current });
-  }, [canHosts, canBrands, stack]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canHosts, canBrands, stack]);
   // D-1: the opener every drawer in the panel gets, as (kind, id). `allows`
   // lets a link that this teammate could not open show as plain words
   // instead of a button that does nothing.
-  const openSideInPanel = useMemo(() => {
-    const open = (kind, id) => openInside({ kind, id });
-    open.allows = (kind) => sideAllowed({ kind, id: "x" }, { canHosts, canBrands });
-    return open;
-  }, [openInside, canHosts, canBrands]);
+  const openSideInPanel = useSideOpener(openInside, canHosts, canBrands);
   // The panel's Back and its breadcrumb rewrite the current entry: it keeps its place (D-2).
   const panelStack = useMemo(() => ({
     ...stack,
@@ -702,7 +732,7 @@ export function BrandGroupsPanel({ onCounts }) {
 
   const updateUpload = useCallback((fileId, patch) => {
     setUploads((current) => current.map((item) => item.prepared.fileId === fileId ? { ...item, ...patch } : item));
-  }, []);
+  }, [setUploads]);
 
   const transferUpload = useCallback(async (item) => {
     const fileId = item.prepared.fileId;
@@ -756,9 +786,9 @@ export function BrandGroupsPanel({ onCounts }) {
         : hostFacts.status === "unknown" ? { status: "error", retry: retryHost }
           : null;
   const summaryWords = inboxSummaryWords(summary);
-  const railButton = !selectedGroup ? null
-    : !lg ? { label: "Plan and host", onClick: () => showRail("") }
-      : sideOpen && !xl ? { label: "Plan · Host", onClick: () => closePanel() }
+  const railKind = !selectedGroup ? null
+    : !lg ? "plan"
+      : sideOpen && !xl ? "close"
         : null;
   const uploadsList = uploads.length ? (
     <div className="mb-2 space-y-2 rounded-xl border border-[var(--gray-200)] p-3">{uploads.map((item) => (
@@ -811,8 +841,8 @@ export function BrandGroupsPanel({ onCounts }) {
                 assigning={assigning}
                 onAssign={() => void assignToMe()}
                 onToggleMute={() => void toggleMute()}
-                onRailButton={railButton?.onClick}
-                railButtonLabel={railButton?.label}
+                onRailButton={railKind ? () => (railKind === "plan" ? showRail("") : closePanel()) : undefined}
+                railButtonLabel={railKind === "plan" ? "Plan and host" : railKind === "close" ? "Plan · Host" : undefined}
               />
               <BrandGroupThread
                 group={selectedGroup}

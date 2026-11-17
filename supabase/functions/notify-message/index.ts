@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { unifiedMessageIdempotencyKey, unifiedMessageTitle } from "./messageKeys.ts";
+import {
+  messagePushData,
+  unifiedMessageIdempotencyKey,
+  unifiedMessageTitle,
+  unsentBeforePush,
+} from "./messageKeys.ts";
 
 // Loose type alias for the Supabase admin client passed into helper functions. The strict
 // generic-defaulted SupabaseClient<unknown, never, ...> from ReturnType<typeof createClient>
@@ -76,6 +81,19 @@ interface NotifyMessageRequest {
   cardImageUrl?: string; // optional, reserved for rich-push v2
 }
 
+/** #4456: reads whether a message was already removed (admin client, no content). */
+function messageRowLookup(adminClient: AdminSupabaseClient) {
+  return async (messageId: string) => {
+    const { data, error } = await adminClient
+      .from("messages")
+      .select("id, deleted_at")
+      .eq("id", messageId)
+      .maybeSingle();
+    if (error) console.warn("[notify-message] message lookup failed:", error.code ?? "error");
+    return { deletedAt: (data?.deleted_at as string | null) ?? null, found: !!data, error: !!error };
+  };
+}
+
 async function callNotifyDispatch(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -120,6 +138,11 @@ async function handleUnifiedMessage(
   messagePreview: string | undefined,
   messageId?: string,
 ): Promise<{ notified: number }> {
+  // #4456: a message unsent before its push goes out pushes nothing.
+  if (await unsentBeforePush(messageId, messageRowLookup(adminClient))) {
+    return { notified: 0 };
+  }
+
   // Fetch conversation metadata (single query — includes type, name, linked_entity_type, session_id, event_id).
   const { data: conv, error: convErr } = await adminClient
     .from("conversations")
@@ -197,7 +220,7 @@ async function handleUnifiedMessage(
       // notify-dispatch (index.ts:307 `deepLink: deepLink || null`), which is
       // why 0/8 board_message_received rows carried a deep link.
       deepLink,
-      data: { deepLink },
+      data: messagePushData(deepLink, messageId),
       actorId: senderId,
       relatedId: conversationId,
       relatedType: "conversation",
@@ -225,6 +248,11 @@ async function handleUnifiedMention(
   messagePreview: string | undefined,
   mentionedUserIds: string[],
 ): Promise<{ notified: number }> {
+  // #4456: a message unsent before its push goes out pushes nothing.
+  if (await unsentBeforePush(messageId, messageRowLookup(adminClient))) {
+    return { notified: 0 };
+  }
+
   // Fetch conversation metadata for title + deep-link.
   const { data: conv } = await adminClient
     .from("conversations")
@@ -276,7 +304,7 @@ async function handleUnifiedMention(
       // ORCH-1030: top-level deepLink so notify-dispatch fills data.deepLink +
       // the deep_link column (same fix as board_message_received above).
       deepLink,
-      data: { deepLink },
+      data: messagePushData(deepLink, messageId),
       actorId: senderId,
       relatedId: messageId,
       relatedType: "message",
@@ -488,6 +516,11 @@ serve(async (req) => {
         );
       }
 
+      // #4456: a card unsent before its push goes out pushes nothing.
+      if (await unsentBeforePush(messageId, messageRowLookup(adminClient))) {
+        return jsonResponse({ success: true, notified: 0 });
+      }
+
       const titleTrunc = truncate(cardTitle, 60);
       const messageTimestamp = Date.now();
 
@@ -503,6 +536,7 @@ serve(async (req) => {
           // parser is the deprecated lossy alias). Cosmetic for direct card
           // messages (no session), but aligns the deep-link contract.
           deepLink: `mingla://chat/${conversationId}?type=direct`,
+          messageId,
           cardId: cardId ?? undefined,
         },
         actorId: senderId,

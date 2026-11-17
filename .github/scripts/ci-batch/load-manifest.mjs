@@ -318,7 +318,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4453 milestone 11: ari-add-page flag migration and its pg17 suite registered; re-sealed after merging milestone 10.
 // #4453 milestone 11 tester: the ari_add_page tester pg17 suite registered; re-sealed.
 // #4453 final pass: renamed design_keys, website_proof_part and design_keys_6a to 20280725004453, 20280725014453 and 20280725024453 so they sort after main's 20280725004452; re-sealed.
-export const BOOTSTRAP_SHA256 = "74f9a4e375d92e32ad34628d1a041ccea3cccfb08fc91d1db9f45aa40fbeb655";
+// #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "8630d900585359c2dfa9fec14d591c93f4fccfe666a30db6a7afadf0b1494cf6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

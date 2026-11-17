@@ -3,7 +3,6 @@
 // reply (oldest wait first), Mine and Plan this week (Hosts and Creators
 // access only), All. Search covers the brand, the host card and the last
 // message. Every row is a button; nothing here leaves the page.
-import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { Skeleton } from "../ui/Skeleton";
 import {
@@ -18,16 +17,6 @@ import {
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 
-/** Re-render every minute so "Waiting 12m" keeps counting. */
-export function useMinuteClock() {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
-
 export function GroupAvatar({ group, size = "md" }) {
   const box = size === "lg" ? "h-[42px] w-[42px] rounded-[13px] text-[15px]" : "h-10 w-10 rounded-xl text-[13px]";
   if (group?.brand_photo_url) return <img src={group.brand_photo_url} alt="" className={`${box} shrink-0 object-cover`} />;
@@ -39,7 +28,7 @@ export function GroupAvatar({ group, size = "md" }) {
 }
 
 /** "Harmattan Club, waiting 2h 14m, 2 unread, next Sun Doors open tonight". */
-export function rowLabel(group, nowMs) {
+function rowLabel(group, nowMs) {
   const parts = [group.brand_name || "Brand group"];
   const wait = waitingWords(group.waiting_since, nowMs);
   if (wait) parts.push(`waiting ${wait}`);

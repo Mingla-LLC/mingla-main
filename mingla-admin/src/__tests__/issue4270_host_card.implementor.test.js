@@ -190,7 +190,7 @@ describe("C-5 Brand groups open the host card", () => {
     assert.match(panel, /const host = hostFacts\.status === "ready" \? hostFacts\.host : null;/);
     assert.match(panel, /const hostButton = !canHosts \? null/);
     assert.match(code("hooks/useBrandHostFallback.js"), /await fetchBrandHostRecord\(brandId\)/);
-    assert.match(panel, /return HOSTS_KINDS\.has\(side\.kind\) && !!canHosts;/);
+    assert.match(code("lib/brandGroupSideAccess.js"), /return HOSTS_KINDS\.has\(side\.kind\) && !!canHosts;/);
     assert.match(code("services/opsService.js"), /supabase\.rpc\("ops_brand_host_record", \{ p_brand_id: brandId \}\)/);
   });
   it("the address walks list -> thread -> host card", () => {

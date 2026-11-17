@@ -385,7 +385,8 @@ BEGIN
   PERFORM pg_temp.t4261p_as('seth');
   SET LOCAL ROLE authenticated;
   v_err := pg_temp.t4261p_try(format($q$UPDATE public.messages SET content = 'edited' WHERE id = %L$q$, pg_temp.t4261p_val('msg_a')));
-  IF v_err <> '42501:not_allowed' THEN
+  -- #4456: refused by the column grants (or the plan guard) either way.
+  IF v_err NOT IN ('42501:not_allowed', '42501:permission denied for table messages') THEN
     RAISE EXCEPTION 'P-03: the sender cannot edit a plan message (got %)', v_err;
   END IF;
   v_err := pg_temp.t4261p_try(format($q$UPDATE public.messages SET deleted_at = now() WHERE id = %L$q$, pg_temp.t4261p_val('msg_a')));
@@ -393,7 +394,8 @@ BEGIN
     RAISE EXCEPTION 'P-03: the sender cannot unsend a plan message (got %)', v_err;
   END IF;
   v_err := pg_temp.t4261p_try(format($q$DELETE FROM public.messages WHERE id = %L$q$, pg_temp.t4261p_val('msg_a')));
-  IF v_err <> '42501:not_allowed' THEN
+  -- #4456: refused by the column grants (or the plan guard) either way.
+  IF v_err NOT IN ('42501:not_allowed', '42501:permission denied for table messages') THEN
     RAISE EXCEPTION 'P-03: the sender cannot delete a plan message (got %)', v_err;
   END IF;
   -- An ordinary message cannot be turned into a plan message.
@@ -403,7 +405,8 @@ BEGIN
     $q$UPDATE public.messages SET message_type = 'plan', plan_id = %L, card_payload = jsonb_build_object('kind','plan')
        WHERE conversation_id = %L AND content = 'hello'$q$, pg_temp.t4261p_val('plan_a'), pg_temp.t4261p_id('plain')));
   RESET ROLE;
-  IF v_err <> '42501:not_allowed' THEN
+  -- #4456: refused by the column grants (or the plan guard) either way.
+  IF v_err NOT IN ('42501:not_allowed', '42501:permission denied for table messages') THEN
     RAISE EXCEPTION 'P-03: a message cannot become a plan message (got %)', v_err;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.messages WHERE id = pg_temp.t4261p_val('msg_a')::uuid
@@ -657,6 +660,7 @@ END $p07$;
 DO $p08$
 DECLARE
   v_msg public.messages%ROWTYPE;
+  v_err text;
   v_expected jsonb;
   v_list jsonb;
   r jsonb;
@@ -691,13 +695,18 @@ BEGIN
     RAISE EXCEPTION 'P-08: a cross-chat plan_id is nulled (got % / %)', v_msg.plan_id, v_msg.plan_quote;
   END IF;
 
-  -- An edit cannot change the server-owned fields.
+  -- An edit cannot change the server-owned fields. #4456: a client cannot edit
+  -- a message at all now, so the row keeps every field.
   PERFORM pg_temp.t4261p_as('ada');
   SET LOCAL ROLE authenticated;
-  UPDATE public.messages SET content = 'Running very late', plan_quote = '{"title":"edited"}'::jsonb, plan_id = NULL
-   WHERE conversation_id = pg_temp.t4261p_id('plain') AND content = 'Running late';
+  v_err := pg_temp.t4261p_try(format(
+    $q$UPDATE public.messages SET content = 'Running very late', plan_quote = '{"title":"edited"}'::jsonb, plan_id = NULL
+       WHERE conversation_id = %L AND content = 'Running late'$q$, pg_temp.t4261p_id('plain')));
   RESET ROLE;
-  SELECT * INTO v_msg FROM public.messages WHERE conversation_id = pg_temp.t4261p_id('plain') AND content = 'Running very late';
+  IF v_err NOT LIKE '42501:%' THEN
+    RAISE EXCEPTION 'P-08: a client edited a message (got %)', v_err;
+  END IF;
+  SELECT * INTO v_msg FROM public.messages WHERE conversation_id = pg_temp.t4261p_id('plain') AND content = 'Running late';
   IF v_msg.plan_id IS DISTINCT FROM pg_temp.t4261p_val('plan_a')::uuid OR v_msg.plan_quote <> v_expected THEN
     RAISE EXCEPTION 'P-08: an edit keeps plan_id and plan_quote';
   END IF;

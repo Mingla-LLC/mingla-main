@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/connections/__tests__/issue_4456_chat_list_unsent.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4456-chat-list-unsent-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

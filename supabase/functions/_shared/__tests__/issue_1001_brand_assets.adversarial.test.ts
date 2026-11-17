@@ -107,7 +107,7 @@ function inviteFixture(logoUrl?: string) {
 }
 
 // #4452 (B7) §5.9: the logo pill every shell email draws.
-const PILL = "https://usemingla.com/brand/mingla-logo-white-on-orange.png";
+const PILL = "https://usemingla.com/brand/mingla-logo-pill.png";
 const HOSTILE_ENV_VALUES = ["", "   ", "\t", "\n", " \t\n ", " 	"];
 
 Deno.test("A1: hostile env values (empty/whitespace/control-ws) never leak — canonical default wins", () => {

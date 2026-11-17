@@ -48,7 +48,14 @@ export interface ChatListConversationLike {
   /** #4187 managed Mingla Local / Creator team conversation. */
   program_kind?: "local" | "creator" | null;
   participants: ChatListParticipant[];
-  last_message?: { content?: string | null; created_at?: string | null; message_type?: string | null } | null;
+  last_message?: {
+    content?: string | null;
+    created_at?: string | null;
+    message_type?: string | null;
+    /** Issue #4456: the last message was unsent ('sender' / 'admin' show the unsent line). */
+    unsent_kind?: string | null;
+    unsent_by?: string | null;
+  } | null;
   unread_count?: number;
   pinned_at?: string | null;
   marked_unread_at?: string | null;
@@ -584,4 +591,44 @@ export function chatPreviewLine(input: {
     return `${fromBrand ? brandName : message.sender_name}: ${text}`;
   }
   return text;
+}
+
+// ── Issue #4456: an unsent last message ────────────────────────────────────
+export interface ChatTombstonePreviewMessage {
+  sender_id?: string | null;
+  sender_name?: string | null;
+  unsent_kind?: string | null;
+  unsent_by?: string | null;
+}
+
+/**
+ * The Chats list line for an unsent last message, the same line as the thread
+ * ("You unsent a message", "Ana unsent a message", "Sam removed a message",
+ * "Sam removed your message"), with no "Ana:" prefix (the line names her).
+ * Null when the last message is not an unsent line. The row renders it in
+ * italics, never bold, and it never counts as unread (the server's unread
+ * count skips removed messages).
+ */
+export function chatTombstonePreview(input: {
+  message: ChatTombstonePreviewMessage | null | undefined;
+  currentUserId: string | null | undefined;
+  nameOf: (userId: string) => string | null;
+  t: ChatPreviewTranslate;
+}): string | null {
+  const message = input.message;
+  if (!message || (message.unsent_kind !== "sender" && message.unsent_kind !== "admin")) return null;
+  const firstName = (name: string | null | undefined): string =>
+    (name ?? "").trim().split(/\s+/)[0] || input.t("chat:someone");
+  const authorIsMe = !!message.sender_id && message.sender_id === input.currentUserId;
+  const actorIsMe = !!message.unsent_by && message.unsent_by === input.currentUserId;
+  if (message.unsent_kind === "admin") {
+    if (actorIsMe) return input.t("chat:tombstoneYouRemoved");
+    const actor = firstName(message.unsent_by ? input.nameOf(message.unsent_by) : null);
+    return authorIsMe
+      ? input.t("chat:tombstoneAdminRemovedYours", { name: actor })
+      : input.t("chat:tombstoneAdminRemoved", { name: actor });
+  }
+  if (authorIsMe) return input.t("chat:tombstoneYouUnsent");
+  const author = message.sender_name || (message.sender_id ? input.nameOf(message.sender_id) : null);
+  return input.t("chat:tombstoneTheyUnsent", { name: firstName(author) });
 }
