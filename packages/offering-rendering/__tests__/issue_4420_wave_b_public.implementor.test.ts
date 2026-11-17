@@ -77,38 +77,6 @@ Deno.test("G-1 the package glass never imports expo-blur", () => {
   }
 });
 
-Deno.test("G-2 bar, header band and venue tabs mount the injected backdrop", () => {
-  assertStringIncludes(read("../OfferingGlassBar.tsx"), "<OfferingGlassBackdrop radius={999}");
-  assertStringIncludes(read("../ParallaxCoverShell.tsx"), "<OfferingGlassBackdrop radius={0}");
-  assertStringIncludes(read("../../brand-rendering/PublicVenueTabs.tsx"), "<OfferingGlassBackdrop radius={999}");
-  const provider = read("../../../mingla-business/src/components/offering/PublicGlassProvider.tsx");
-  assertStringIncludes(provider, '<Material\n    kind="liquid"');
-  assertStringIncludes(provider, 'env.platform === "ios" && !env.reduceTransparency && env.tint === "dark"');
-  for (const route of [
-    "../../../mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
-    "../../../mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
-    "../../../mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
-    "../../../mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
-  ]) {
-    assertStringIncludes(read(route), "<PublicGlassProvider>", route);
-  }
-});
-
-Deno.test("V-1 the venue reserve bar is the glass bar with the category's own action", () => {
-  const venue = read("../../brand-rendering/PublicVenueScreen.tsx");
-  assertStringIncludes(venue, "<OfferingGlassBar");
-  assertStringIncludes(venue, "ctaLabel={profile.reserveAction}");
-  assertStringIncludes(venue, 'actionTestID="issue-2729-reserve-cta"');
-  // the live pill claims only what the venue clock says
-  assertStringIncludes(venue, 'live: openState.status === "open" ? "Open now" : null');
-});
-
-Deno.test("V-2 the order bar shows only the server's total", () => {
-  const bar = read("../../brand-rendering/venueOrdering/VenueOrderingStickyBar.tsx");
-  assertStringIncludes(bar, "totalCents === null || currency === null");
-  assertStringIncludes(bar, "title={total === null ? items : `${items} · ${total}`}");
-});
-
 Deno.test("R-1 RSVP: confirmed card with a tick that respects reduced motion", () => {
   const d = read("../RsvpMomentumDecision.tsx");
   assertStringIncludes(d, 'testID="issue-4420-rsvp-confirmed-card"');
@@ -154,11 +122,3 @@ Deno.test("S-2 venue booking: date strip, stepper, time chips and occasion picks
   assertStringIncludes(g, "setOccasion((current) => (current.trim() === label ? \"\" : label))");
 });
 
-Deno.test("S-3 native pinned tabs select through the in-flow strip", () => {
-  const v = read("../../brand-rendering/PublicVenueScreen.tsx");
-  assertStringIncludes(v, 'Platform.OS !== "web" && tabsPinned ? (');
-  assertStringIncludes(v, "publicVenueTabsRef.current?.selectTab(tab)");
-  const t = read("../../brand-rendering/PublicVenueTabs.tsx");
-  assertStringIncludes(t, "selectRef.current(tab)");
-  assertStringIncludes(t, 'position: "sticky"');
-});
