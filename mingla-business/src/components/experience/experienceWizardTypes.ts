@@ -172,6 +172,20 @@ export function stopPriceEntryIsValid(priceMajor: string): boolean {
   return Number.isFinite(value) && value >= 0;
 }
 
+/**
+ * #3645 bundle 2A — the per-stop ticket total in minor units, exactly as the
+ * server resolves it: each stop's price is sent as Math.round(major * 100)
+ * (empty or unreadable = 0) and biz_publish_experience sums those. A paid
+ * per-stop experience needs this above 0, or the server refuses it with
+ * experience_price_invalid.
+ */
+export function perStopTotalMinor(stops: readonly { priceMajor: string }[]): number {
+  return stops.reduce((sum, s) => {
+    const v = parseFloat(s.priceMajor);
+    return sum + (Number.isFinite(v) && v > 0 ? Math.round(v * 100) : 0);
+  }, 0);
+}
+
 let priceOptionCounter = 0;
 export const newPriceOptionClientId = (): string => {
   priceOptionCounter += 1;

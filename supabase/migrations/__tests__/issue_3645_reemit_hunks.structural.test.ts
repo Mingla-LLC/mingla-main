@@ -26,6 +26,9 @@ const DEBT_RETURN_TARGET = "20280508003645_issue_3645_payout_debt_returns.sql";
 // Bundle 4's migration likewise carries its own guard
 // (issue_3645_ledger_followup_reemit_hunks.ts).
 const LEDGER_FOLLOWUP_TARGET = "20280602003645_issue_3645_payout_ledger_followups.sql";
+// Bundle 2A's migration likewise carries its own guard
+// (issue_3645_per_stop_price_reemit_hunks.ts).
+const PER_STOP_PRICE_TARGET = "20280726003645_issue_3645_per_stop_paid_price.sql";
 
 function migrationFiles(): string[] {
   return [...Deno.readDirSync(DIR)]
@@ -77,7 +80,7 @@ Deno.test("#3645 every #3645 re-emit is declared (no undeclared money-function r
   }
   for (const file of migrationFiles().filter((f) =>
     (f.startsWith("2028020") || (f >= "20280407003645" && f !== SELL_PUBLISH_TARGET && f !== FLOAT_FORECAST_TARGET &&
-      f !== DEBT_RETURN_TARGET && f !== LEDGER_FOLLOWUP_TARGET)) &&
+      f !== DEBT_RETURN_TARGET && f !== LEDGER_FOLLOWUP_TARGET && f !== PER_STOP_PRICE_TARGET)) &&
     f.includes("_issue_3645_")
   )) {
     for (const name of definitions(Deno.readTextFileSync(`${DIR}/${file}`)).keys()) {
