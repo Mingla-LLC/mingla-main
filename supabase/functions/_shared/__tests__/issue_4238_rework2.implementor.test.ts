@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-GOAL-SWITCH-TRACKED-AT-CREATE | issue #4238 | startGoalPromotion saves new_adset_id (with cleanup_required) on its pending row immediately after Meta creates the ad set and before any ad is copied; if that save fails the new ad set is paused and the row fails.
 // Issue #4238 rework 2 (after the tester retest FAIL at 15cc1f7134), server side.
 //
 //  P1-1  planHostLiveEdit: the learning-restart confirm judges the DAILY the
