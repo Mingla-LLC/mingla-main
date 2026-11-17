@@ -10,7 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { HEAP_RAISED_COMMAND_IDS, HEAP_RAISED_ENV, decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
+import { HEAP_RAISED_ENV, isHeapRaisedStep, decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
 import { changedPathDigest, deriveChangedPaths, pathMatches, validateDecision } from "./select-phase3b-suites.mjs";
 import { loadEffectiveManifest } from "./load-manifest.mjs";
 import { POSTGRES_CHILD_ENV_NAMES, POSTGRES_WAVE, isPostgresBatchSuite, isUnfilteredPostgresSuite, postgresEvidencePath } from "./postgres-batch-contract.mjs";
@@ -34,9 +34,8 @@ const PHASE3C_AUTHORISED_ENV_NAMES = new Set([
 // The validator pins which Phase 3D steps may carry env and the exact literal on
 // each; this set is the runner's lock on the names, as PHASE3C's is for #1326.
 const PHASE3D_AUTHORISED_ENV_NAMES = new Set([...PHASE3C_AUTHORISED_ENV_NAMES, "ISSUE_2240_LIVE"]);
-// [#4420] The reviewed heap raise is pinned in validate-manifest-v2 (the
-// registry's gate); this set is the runner's lock on which commands get it.
-const HEAP_RAISED_COMMANDS = new Set(HEAP_RAISED_COMMAND_IDS);
+// [#4420] Which steps get the reviewed heap raise is decided by one predicate
+// in validate-manifest-v2 (isHeapRaisedStep): plain mingla-business jest steps.
 const PHASE3B_WAVE = "phase3b-postgres-wave";
 const PHASE3C_WAVE = "phase3c-deno-wave";
 const PHASE3D_WAVE = "phase3d-fold-wave";
@@ -1114,7 +1113,7 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         const command = postgresRuntime && invocation.command === "bash" && invocation.argv[0] === "-c"
           ? { ...invocation, argv: ["-e", "-o", "pipefail", ...invocation.argv] } : invocation;
         const result = await execute(command, { cwd, env: runtimeEnv, timeoutMs: remaining, graceMs, home: suiteHome,
-          heapRaised: HEAP_RAISED_COMMANDS.has(step.commandId),
+          heapRaised: isHeapRaisedStep(step),
           // [#3643] Only a Phase 3D step whose registry record DECLARES env may
           // receive it; the validator pins which steps and which literals.
           ...(postgresRuntime ? { allowReviewedEnv: true, reviewedEnvNames: new Set([...POSTGRES_CHILD_ENV_NAMES, ...PHASE3D_AUTHORISED_ENV_NAMES, ...suite.envNames, "RUNNER_TEMP"]),

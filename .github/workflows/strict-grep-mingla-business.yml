@@ -891,6 +891,10 @@ jobs:
     name: "Strict grep — web-export deprecation parser (class C)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # #4420 — reviewed heap raise (Seth): this job's ts-jest steps type-check
+    # every file they transform and outgrew the runner's ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -910,10 +914,6 @@ jobs:
           src/utils/__tests__/issue_1919_provider_neutral_paid_readiness.tester_adversarial.test.ts
       - name: "Issue #1384: Business authoring and buyer rendering suite"
         working-directory: mingla-business
-        # #4420 — reviewed heap raise (Seth): ts-jest type-checks every file it
-        # transforms and outgrew the runner's ~2 GB default V8 heap.
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           npx jest --runInBand \
             src/services/__tests__/issue1384DiscoveryCurrencyExecutable.test.ts \

@@ -333,6 +333,14 @@ test("#4420 heap raise: only the pinned jest commands get the one NODE_OPTIONS l
   assert.deepEqual(validateHeapRaisedCommands(withEnv), []);
   envStep.env = { NODE_OPTIONS: "--max-old-space-size=8192" };
   assert.ok(validateHeapRaisedCommands(withEnv).some((message) => message.includes("plain mingla-business jest step")));
+  // The runner's rule: every plain mingla-business jest step, nothing else.
+  const { isHeapRaisedStep } = await import("../validate-manifest-v2.mjs");
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest --runInBand a.test.ts" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest a", env: { NODE_PATH: "./node_modules" } }), true);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest a", env: { FOO: "1" } }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx playwright test" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-admin", run: "npx jest a" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx jest a", children: [{}] }), false);
   const home2 = fs.mkdtempSync(path.join(os.tmpdir(), "heap-raise-"));
   try {
     const env = minimalChildEnvironment({ NODE_PATH: "./node_modules" }, home2, { allowNodePath: true, heapRaised: true });
