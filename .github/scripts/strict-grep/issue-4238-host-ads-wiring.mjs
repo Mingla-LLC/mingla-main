@@ -4,8 +4,8 @@
  * issue #4238 — Host ads screens: structural wiring rules.
  * Invariant: I-4238-HOST-ADS-WIRING.
  *
- * WHY. These rules were jest files asserting on source text. I-PROPOSED-1047-
- * NO-SOLE-SOURCE-PIN forbids new jest source pins and names an additive
+ * WHY. These rules were jest files asserting on source text.
+ * I-PROPOSED-1047-NO-SOLE-SOURCE-PIN forbids new jest source pins and names an additive
  * strict-grep gate as the replacement for a genuine structural rule. Behaviour
  * (pure helpers, rendered components) stays in jest; this is the structural half.
  *

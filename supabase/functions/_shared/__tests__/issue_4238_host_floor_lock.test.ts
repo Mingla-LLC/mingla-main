@@ -1,3 +1,6 @@
+// MINGLA-INVARIANT: I-4238-FEE-ONE-RATE | issue #4238 | the Host fee is 15%; credit = floor(pay x 0.85); a full withdraw of unspent credit returns the fee share; Host-facing amounts are grossed up only through hostMinimumPayCents.
+// MINGLA-INVARIANT: I-4238-HOST-FLOOR-LOCK | issue #4238 | a Host / Ari minimum is the price of ONE ad set. In what the Host pays (HOST_FEE_RATIO via hostMinimumPayCents) a USD connection with the production floors gives Meta 118, Snapchat 589, TikTok 2353 per day, on every page and every goal. Nothing is added on top.
+// MINGLA-INVARIANT: I-4238-HOST-ONE-ADSET | issue #4238 | admin-ad-create-campaign builds staged ad sets only for Admin (owner_kind "mingla"); Host and Ari ads are one ad set per app.
 // Issue #4238 W1 — the binding floor rule (Seth, 16 Nov), the fee contract
 // (F-1..F-3) and one ad set per app for Host and Ari (item 6b).
 //

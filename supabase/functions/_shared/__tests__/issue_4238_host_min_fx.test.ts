@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-HOST-MIN-ONE-AD-SET | issue #4238 | cross-currency minimums = one ad set's floor converted, × 1.02, grossed up for the fee; never step-rounded; no rate → no amount and currency_unavailable: true.
 // Issue #4238 W4b — item 4 floor rule end to end in another currency
 // (amendment B §4, SC-B4.1): an NGN brand on a USD account gets
 // ceil(ceil(convert(F) × 1.02) ÷ 0.85) — the 2% FX margin is the only

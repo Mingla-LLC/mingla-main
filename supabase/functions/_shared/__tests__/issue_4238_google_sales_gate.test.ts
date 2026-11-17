@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-GOOGLE-NEVER-SILENT-VISITS | issue #4238 | a ticket-sales Host plan that includes Google is refused (host_ad_google_needs_setup) unless Google is ready for sales; the visits acknowledgement never applies to Google.
 // Issue #4238 W4b §6 — Google for ticket sales: "needs setup" until the
 // purchase conversion action exists AND the Z-4 docs check passes. A sales
 // plan never runs Google as page visits quietly.

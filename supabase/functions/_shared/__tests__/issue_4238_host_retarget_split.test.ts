@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-RETARGET-NEVER-RAISES-MINIMUM | issue #4238 | hostAdSetSplit adds the retarget ad set only at S >= 2F with a ready >=1,000 audience and a ready buyer exclusion, keeps every ad set >= F, and the Host minimum is never derived from it (hostDailyMinimumCents is the one-ad-set floor).
 /**
  * #4238 W3 T-2 — remind people who looked or started checkout, only when the
  * budget is big enough, and never at the cost of the minimum.

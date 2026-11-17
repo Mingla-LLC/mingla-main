@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-STATEMENT-FROM-LEDGER | issue #4238 | a statement's closing balance is the ledger's last balance_after (it equals the wallet); receipts show no VAT until VAT_ON_AD_FEE is decided.
 // Issue #4238 W4b §10 — ad credit receipts and statements (no VAT line until
 // decided), and the NGN withdrawal settle path with Paystack mocked.
 //

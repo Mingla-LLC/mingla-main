@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-COPY-CHECK-WARN-ONLY | issue #4238 | The shared copy checker (adCopyPolicy.ts) only ever returns warnings: ad-plan returns them as copy_warnings[] and never refuses a plan for them; Admin policyLinter.js and this file give identical findings on the shared fixture table.
 /**
  * #4238 W3 T-5 — one copy checker for Admin, Host and Ari.
  *

@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-LIVE-EDIT-ALLOWLIST | issue #4238 | host-ad-campaign change_live refuses every body key outside HOST_LIVE_EDIT_FIELDS with 400 host_ad_live_edit_field_not_editable:<key> before any claim or push.
 /**
  * #4238 W4a, amendment B item 7 (SC-B7): a live Host ad changes budget and
  * end date only. Any other key (area, audience, goal, creatives, the wider

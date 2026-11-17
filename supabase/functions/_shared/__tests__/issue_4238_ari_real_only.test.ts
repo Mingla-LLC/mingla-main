@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-ARI-REAL-ONLY | issue #4238 | Ari plans with AI-generated media or ad words naming a person or venue outside the event record are refused at create_version; Host plans are not checked.
 /**
  * #4238 W5 (8c) — Ari's creative rule: real people and venues only, from the
  * event's own record and the brand's own media; AI-generated media refused.

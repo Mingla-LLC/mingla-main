@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-LIVE-DAILY-NOW | issue #4238 | The learning-restart rule (server planHostLiveEdit and the Host edit sheet) and the edit sheet's starting daily judge the daily the apps get now: a daily app's current daily, a lifetime app's pace (cap - spent) / days left, both at the frozen ratio; never the plan total.
 // Issue #4238 rework 2 (after the tester retest FAIL at 15cc1f7134), Host app.
 //
 //  P1-1  hostAdEditDailyMoney.restartsLearning judges the DAILY amount (and

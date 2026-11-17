@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-ARI-RAISE-CAP | issue #4238 | change_live with a suggestion_id recomputes the suggestion, applies only the recomputed amount, refuses ad_suggestion_stale / ad_suggestion_over_cap / ad_suggestion_learning, and never carries a learning-reset acknowledgement.
 /**
  * #4238 W5 (item 8 + amendment B item 8) — Ari's one suggestion on a running
  * Host ad, the server recompute (stale id, +20% cap in pay terms, no learning

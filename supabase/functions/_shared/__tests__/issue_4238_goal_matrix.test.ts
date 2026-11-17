@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-NO-PURCHASE-GOAL-WITHOUT-PURCHASE | issue #4238 | a Host plan never optimises for an event the page cannot fire. An all-free page cannot run sales; sign-ups only on RSVP or all-free pages; Meta's promoted event follows the goal.
 // Issue #4238 W1 item 3 — Host goals by page type and platform: sign-ups for
 // RSVP and all-free pages, no ticket sales on a free event, live readiness,
 // and the visits fallback the Host must acknowledge (amendment A U-3).

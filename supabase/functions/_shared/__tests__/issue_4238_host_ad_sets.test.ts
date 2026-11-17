@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-4238-LIVE-EDIT-NEVER-BELOW-AD-SET-FLOOR | issue #4238 | hostLiveAdSetBudgets never gives a running ad set less than the one-ad-set floor F; below 2F the retarget ad set is paused and prospecting carries the whole daily spend.
+// MINGLA-INVARIANT: I-4238-RETARGET-FOLDS-BACK | issue #4238 | hostAdSetUnits builds a retarget ad set only when the frozen split asked for it AND the create-time hostAdSetSplit still gives two ad sets each >= F; otherwise one prospecting ad set at the full daily spend.
 /**
  * #4238 W4a T-2 + 6b: the retarget ad set is built at create from the frozen
  * split, folds back to one ad set when anything changed, and live budget

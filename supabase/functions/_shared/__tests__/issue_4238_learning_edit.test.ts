@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-LEARNING-CONFIRM | issue #4238 | inside the first 7 days live, a change of over 20% in the DAILY amount the apps get (rework 2: never the total) or any end-date change is refused with host_ad_live_edit_learning_reset (409) unless acknowledge_learning_reset is literally true.
 // Issue #4238 W2 item 6a — confirm-before edits that reset the apps'
 // learning, enforced on the server.
 //

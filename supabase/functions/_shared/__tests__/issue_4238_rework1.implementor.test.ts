@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-4238-GOAL-SWITCH-AT-MOST-ONE-EXTRA | issue #4238 | A goal-ladder switch whose new ad set could not be paused stays pending with cleanup_required (never failed, so it is never re-claimed) until a later sweep pauses that ad set; the old ad set is never paused on that path.
+// MINGLA-INVARIANT: I-4238-PLAN-DAILY-IN-BRAND-MONEY | issue #4238 | The Host ad detail's daily amount comes from the plan allocation (amendment-aware, frozen-rate converted to the brand's money), never from ad_campaigns.daily_budget_cents; an unreadable app gives null, never 0.
 // Issue #4238 rework 1 (after the tester FAIL on 27212fe70f) — server side.
 //
 //  P1-2 / P1-3  hostPlanDailyCreditCents: the detail's daily amount comes

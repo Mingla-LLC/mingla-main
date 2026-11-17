@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-4238-AD-NOTICE-ONCE | issue #4238 | every Host ad notice has a stable key per event (live per plan, rejected per version, part per rejected-id set, paused per pause row, credit low per latest top-up, ended per plan, signals per automation row), suffixed per recipient, so a repeat sweep sends nothing new. "Ended" waits for the settled hold.
+// MINGLA-INVARIANT: I-4238-CREDIT-LOW-HELD-RUNWAY | issue #4238 | decideCreditLowNotice fires only when a running Host ad's remaining held budget runs out more than 2 days before ends_at and the free Ads credit (converted at the ad's own host/provider rate) is less than what reaching ends_at needs; the top-up is (need − free) ÷ (1 − HOST_FEE_RATIO), stepped up, at least the minimum top-up.
 // Issue #4238 W4b (amendment B §1, §9) — Host ad notices on the Host rail.
 //
 // @invariant I-4238-AD-NOTICE-ONCE

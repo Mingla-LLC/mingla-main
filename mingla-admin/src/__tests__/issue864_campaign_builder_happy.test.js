@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-META-FLOOR-FOLLOWS-BILLING | issue #4238 | Meta's daily floor follows the billing event, not the optimisation goal: an ad billed on impressions needs the imp floor ($1 a day), one billed on link clicks needs high_freq ($5), and low-frequency billing needs low_freq.
 // ISSUE-864 WP4 [Full Rooms Ad Engine — Campaign Builder UI] — HAPPY-PATH
 // regression suite (node:test — the house admin pattern: pure-logic module
 // tests + fs source assertions, no DOM).

@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-LIVE-RETARGET-ADD-ONLY-PAST-2F | issue #4238 | hostRetargetLiveAddDecision adds a retarget ad set to a live one-ad-set Host plan only on Snapchat/TikTok, only when the original daily was < 2F and the raised daily is >= 2F with a ready audience and buyer exclusion; both ad sets stay >= F.
 /**
  * #4238 W4c (sub-item 3): a Host raise past 2F on a one-ad-set Snapchat or
  * TikTok plan adds the retarget ad set live — only past the thresholds,

@@ -1,7 +1,7 @@
 /**
  * #4238 W6b — the Host ad lines on Ari's proposal card, loaded lazily so the
  * Host Ads words and services stay out of the Ari chunk until an ad card
- * shows (I-4238 one lazy chunk).
+ * shows (#4238: one lazy chunk).
  *
  * - propose_ad_plan: the goal, the apps the Host agreed may count page
  *   visits for now, and how many videos and photos are picked.

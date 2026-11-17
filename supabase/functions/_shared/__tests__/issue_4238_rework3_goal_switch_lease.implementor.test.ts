@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-GOAL-SWITCH-COPY-LEASE | issue #4238 | finishGoalPromotion never pauses, fails or applies a goal-switch row whose detail says copying_ads with an unexpired copy_lease_until; only the run that holds the lease clears it. Enforced by issue_4238_rework3_goal_switch_lease.implementor.test.ts.
 // Issue #4238 rework 3 (after retest 3), server side.
 //
 //  P3-1 race  An overlapping sweep's finishGoalPromotion read the goal-switch

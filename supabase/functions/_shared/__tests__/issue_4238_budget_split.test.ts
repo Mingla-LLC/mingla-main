@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-FEWER-APPS-VIABLE | issue #4238 | Under "Let Mingla choose" an app is funded only at max(F, 500) ad spend a day (or alone at F with learning "slow" when nothing reaches that); the split conserves the total and matches Admin splitBudget.
 /**
  * #4238 W3 T-6 + amendment B item 3 — fewer apps for small budgets, and the
  * smallest working amount when the budget funds no app.

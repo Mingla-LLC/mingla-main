@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-CAPABILITY-SAME-AUTHORITY | issue #4238 | plan/launch/pause/end call ad_can_host_action with that action, change_live calls it with 'fund' (as host-ad-campaign does), and top_up/withdraw call biz_can_manage_payments_for_brand (as ad-credit does). The UI never gets a restated rule.
 // Issue #4238 W4b §2 — capabilities: each answer comes from the same
 // authority the action uses, and says who to ask.
 //

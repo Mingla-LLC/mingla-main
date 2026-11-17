@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-GUIDANCE-ONE-SOURCE | issue #4238 | Host and Ari budget numbers come only from hostBudgetGuidance via ad-plan host_budget_guidance (Ari's get_ad_budget_guidance calls the same action); the old 1.6 x minimum rule is not used.
 // Issue #4238 W1 item 2 — Host budget guidance: the minimum, the "enough to
 // learn" budget and the expected results per week, in what the Host pays.
 //

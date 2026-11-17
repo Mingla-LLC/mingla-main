@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-FATIGUE-THRESHOLDS | issue #4238 | creativeFatigueDue fires only on Meta/TikTok/Snapchat at >= 7 days live, >= 3,000 impressions in the last 3 days, frequency >= 3 (>= 6 retarget) and last-3-day CTR <= 70% of the days 2-4 baseline, and never twice for one creative inside 7 days.
 /**
  * #4238 W3 T-4 — the "your ad is getting tired" signal.
  */
