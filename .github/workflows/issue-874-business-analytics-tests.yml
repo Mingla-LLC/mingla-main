@@ -83,6 +83,9 @@ jobs:
     if: ${{ (github.event.pull_request.draft != true) && (needs.route.outputs.selected == 'true') }}
     needs: [route]
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     timeout-minutes: 30
     defaults:
       run:
@@ -106,10 +109,6 @@ jobs:
       - name: Install render-only test dependencies
         run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native
       - name: Pure contract tests
-        # #4420 — reviewed heap raise (Seth): ts-jest type-checks every file it
-        # transforms and outgrew the runner's ~2 GB default V8 heap.
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
         run: npm test -- --runInBand brandAnalyticsService.issue874 useBrandAnalytics.issue874 businessAnalyticsEvents.issue874 brandCache.issue874 brandAnalyticsService.issue874.tester.adversarial
       - name: Native render contracts
         run: npx jest --config jest.issue874.render.cjs --runInBand
