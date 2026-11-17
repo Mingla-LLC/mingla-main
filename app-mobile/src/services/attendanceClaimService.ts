@@ -64,6 +64,12 @@ export type ClaimedEntry = {
   sentByFirstName: string | null;
   chatJoined: boolean | null;
   conversationId: string | null;
+  /**
+   * #4473 — the contact that matched this purchase is also confirmed on another
+   * Mingla account, so the purchase shows on both. Optional on the wire: the
+   * backend starts sending it later, and anything but `true` reads as false.
+   */
+  sharedWithAnotherAccount: boolean;
 };
 
 const CLAIM_KINDS = new Set<ClaimedEntry["kind"]>([
@@ -145,6 +151,7 @@ export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
       conversationId: typeof row.conversationId === "string"
         ? row.conversationId
         : null,
+      sharedWithAnotherAccount: row.sharedWithAnotherAccount === true,
     }];
   });
 }
