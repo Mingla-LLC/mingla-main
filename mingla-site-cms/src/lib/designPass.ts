@@ -105,9 +105,13 @@ export function isClaimDuplicate(error: unknown): boolean {
  */
 export const DESIGN_PASS_CLAIM_TTL_MS = 10 * 60 * 1000;
 
-async function claimDesignPass(ctx: AriActionContext, draftSince: string | null): Promise<string> {
+/** The claim this pass made: its key and the exact expiry it wrote (so it releases only its own row). */
+type DesignPassClaim = { nonce: string; expiresAt: string };
+
+async function claimDesignPass(ctx: AriActionContext, draftSince: string | null): Promise<DesignPassClaim> {
   const nonce = designPassClaimKey(ctx.tenantId, draftSince);
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    const expiresAt = new Date(Date.now() + DESIGN_PASS_CLAIM_TTL_MS).toISOString();
     try {
       await ctx.req.payload.create({
         collection: "gateway-nonces",
@@ -117,10 +121,10 @@ async function claimDesignPass(ctx: AriActionContext, draftSince: string | null)
           direction: "core_to_cms",
           site_id: ctx.siteId,
           operation_id: "propose_site_design_pass",
-          expires_at: new Date(Date.now() + DESIGN_PASS_CLAIM_TTL_MS).toISOString(),
+          expires_at: expiresAt,
         } as never,
       });
-      return nonce;
+      return { nonce, expiresAt };
     } catch (error) {
       if (!isClaimDuplicate(error)) {
         // Anything else (database unavailable, validation) is not "already run": the owner may simply try again.
@@ -152,10 +156,15 @@ async function clearExpiredClaim(ctx: AriActionContext, nonce: string): Promise<
   return true;
 }
 
-/** Milestone 7c (tester P2-2) — a pass that fails after claiming gives the claim back, so Ari may try again on this draft. */
-async function releaseDesignPass(ctx: AriActionContext, nonce: string): Promise<void> {
+/**
+ * Milestone 7c (tester P2-2) — a pass that fails after claiming gives the claim back, so Ari may try again on this draft.
+ * #4453 final pass (tester P3, comment 6939904180): only its OWN claim. A pass that ran past the TTL may find its expired
+ * claim cleared and re-taken by a newer pass; the delete matches the expiry this pass wrote, so the newer claim survives.
+ */
+async function releaseDesignPass(ctx: AriActionContext, claim: DesignPassClaim): Promise<void> {
+  const { nonce, expiresAt } = claim;
   try {
-    await ctx.req.payload.delete({ collection: "gateway-nonces", overrideAccess: true, where: { nonce: { equals: nonce } } });
+    await ctx.req.payload.delete({ collection: "gateway-nonces", overrideAccess: true, where: { nonce: { equals: nonce }, expires_at: { equals: expiresAt } } });
   } catch (error) {
     // Not swallowed: logged, and the pass's own error still reaches the caller.
     console.error("[design-pass] could not release the claim", nonce, error);

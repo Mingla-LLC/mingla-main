@@ -79,11 +79,14 @@ function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
       writes.push({ op: "create", collection, data });
       return { id: `new-${writes.length}` };
     }),
-    delete: vi.fn(async ({ collection, where }: { collection: string; where: { nonce: { equals: string }; expires_at?: { less_than: string } } }) => {
+    delete: vi.fn(async ({ collection, where }: { collection: string; where: { nonce: { equals: string }; expires_at?: { less_than?: string; equals?: string } } }) => {
       if (collection === "gateway-nonces") {
         const nonce = where.nonce.equals;
-        // The real delete re-checks the expiry in its WHERE clause.
-        if (!where.expires_at || String(nonces.get(nonce)) < where.expires_at.less_than) nonces.delete(nonce);
+        const stored = String(nonces.get(nonce));
+        // The real delete re-checks the expiry in its WHERE clause (older than now, or exactly the one written).
+        const lessThan = where.expires_at?.less_than;
+        const equals = where.expires_at?.equals;
+        if ((lessThan === undefined || stored < lessThan) && (equals === undefined || stored === equals)) nonces.delete(nonce);
       }
       return { docs: [] };
     }),

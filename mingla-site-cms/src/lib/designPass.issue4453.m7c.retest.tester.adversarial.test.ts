@@ -77,11 +77,14 @@ function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
       writes.push({ op: "create", collection, data });
       return { id: `new-${writes.length}` };
     }),
-    delete: vi.fn(async ({ collection, where }: { collection: string; where: { nonce: { equals: string }; expires_at?: { less_than: string } } }) => {
+    delete: vi.fn(async ({ collection, where }: { collection: string; where: { nonce: { equals: string }; expires_at?: { less_than?: string; equals?: string } } }) => {
       if (collection === "gateway-nonces") {
         const nonce = where.nonce.equals;
-        // The real delete re-checks the expiry in its WHERE clause.
-        if (!where.expires_at || String(nonces.get(nonce)) < where.expires_at.less_than) nonces.delete(nonce);
+        const stored = String(nonces.get(nonce));
+        // The real delete re-checks the expiry in its WHERE clause (older than now, or exactly the one written).
+        const lessThan = where.expires_at?.less_than;
+        const equals = where.expires_at?.equals;
+        if ((lessThan === undefined || stored < lessThan) && (equals === undefined || stored === equals)) nonces.delete(nonce);
       }
       return { docs: [] };
     }),
@@ -160,13 +163,12 @@ describe("#4453 m7c retest tester — the claim's expiry under races and the clo
   });
 
   /*
-   * Residual (P3, needs a pass that runs longer than the 10-minute TTL): the
-   * release deletes by nonce only, so a pass whose claim expired and was
-   * re-taken by a second pass deletes the SECOND pass's claim when it fails.
-   * Fix: release only the claim you made (delete where nonce = key AND
-   * expires_at = the value you wrote, or by the created row id). Flip to `it`.
+   * Was the residual P3 (a pass that runs longer than the 10-minute TTL): the
+   * release deleted by nonce only, so a pass whose claim expired and was
+   * re-taken by a second pass deleted the SECOND pass's claim when it failed.
+   * Fixed in the #4453 final pass: the release matches the expiry it wrote.
    */
-  it.fails("a stale pass that fails after its claim expired and was re-taken does not release the new pass's claim", async () => {
+  it("a stale pass that fails after its claim expired and was re-taken does not release the new pass's claim", async () => {
     const gateA = deferred();
     (deps.writeWorkLog as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => gateA.promise);
     const first = run(ctx(signed()));
