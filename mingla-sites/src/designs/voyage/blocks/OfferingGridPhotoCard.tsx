@@ -1,7 +1,8 @@
 /* eslint-disable @next/next/no-img-element -- covers are served by the token-bound /om route (immutable, same origin). */
 import { localDate, offeringTimeZone, selectGridOfferings, type OfferingGridConfig, type SiteOffering } from "../../../contracts/generated/offerings.ts";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
-import { isPreviewPublication, type SiteEventContext } from "../../../lib/clientAnalytics";
+import type { SiteEventContext } from "../../../lib/clientAnalytics";
+import { isPreviewPublication } from "../../../lib/previewPublication";
 import type { OfferingCard } from "../../../lib/offeringCards";
 import { hrefForPage } from "../../../lib/pageRouting";
 import { TrackedLink } from "../../../components/TrackedLink";
@@ -136,7 +137,7 @@ export function OfferingGridPhotoCard({ block, index, ctx }: VoyageBlockProps) {
   const source = live?.source ?? "none";
   // #4453 I-SITES-NO-PUBLIC-EMPTY-STATE — an empty upcoming list is left out
   // of the public site; only a Draft preview keeps the owner's hint.
-  const preview = isPreviewPublication(ctx.analytics.publicationId);
+  const preview = ctx.preview ?? isPreviewPublication(ctx.analytics.publicationId);
 
   if (result.kind === "check_dates") {
     return (
