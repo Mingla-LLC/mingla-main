@@ -215,6 +215,15 @@ const SITES_NAMED_CODES: Readonly<Record<string, string>> = {
   REVIEW_SOURCE_MISMATCH: "VALIDATION_FAILED",
   PAGE_NOT_FOUND: "VALIDATION_FAILED",
   PATH_COLLISION: "CONFLICT",
+  // #4453 PR 2 — a question form may not take bookings (siteAri.ts).
+  BOOKING_THROUGH_ENQUIRY: "VALIDATION_FAILED",
+  // #4453 milestone 7c (tester P1-2) — the design pass (siteAri.ts). Without
+  // these, Core's plain sentence reached the owner as "could not reach Website
+  // tools". TRY_AGAIN rides the retryable envelope Ari already retries.
+  STYLE_DOES_NOT_FIT: "VALIDATION_FAILED",
+  DESIGN_PASS_OFF: "DOMAIN_ACTION_REFUSED",
+  DESIGN_PASS_ALREADY_RUN: "CONFLICT",
+  DESIGN_PASS_TRY_AGAIN: "SERVICE_TEMPORARILY_UNAVAILABLE",
 };
 
 const SITE_SERVICE_UNAVAILABLE_MESSAGE =

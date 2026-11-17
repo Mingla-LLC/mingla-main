@@ -956,4 +956,6 @@ export const ARI_REFUSAL_CODES = new Set([
   "BOOKING_THROUGH_ENQUIRY",
   // #4453 milestone 7 — the design pass.
   "STYLE_DOES_NOT_FIT", "DESIGN_PASS_OFF", "DESIGN_PASS_ALREADY_RUN",
+  // #4453 milestone 7c — the claim could not be made (not a duplicate): retryable, nothing written.
+  "DESIGN_PASS_TRY_AGAIN",
 ]);

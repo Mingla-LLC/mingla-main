@@ -1231,7 +1231,8 @@ export async function buildPublicationArtifact(
         page,
         path: pagePaths.get(String(page.id)) ?? "",
         rendered,
-        enabled: isHome ? page.enabled === true : page.enabled === true && rendered.length > 0,
+        // #4453 milestone 7c (tester P3-2) — "Keep exploring" alone is not content: a page with nothing else never publishes enabled.
+        enabled: isHome ? page.enabled === true : page.enabled === true && rendered.some((block) => block?.type !== "page_links"),
       };
     })
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));

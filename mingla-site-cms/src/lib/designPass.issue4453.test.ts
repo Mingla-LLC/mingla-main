@@ -24,7 +24,8 @@ vi.mock("./designPassInputs", async (importOriginal) => {
   };
 });
 
-import { designPassClaimKey, runDesignPassAction } from "./designPass";
+import { designPassClaimKey, isClaimDuplicate, runDesignPassAction } from "./designPass";
+import { ARI_REFUSAL_CODES } from "./ariSiteActions";
 import { parseSignedDesignPass } from "./designPassInputs";
 import type { AriActionContext } from "./ariSiteActions";
 import { designFingerprint } from "../contracts/generated/formats.ts";
@@ -48,6 +49,7 @@ let writes: Write[];
 let workLog: Array<Record<string, unknown>>;
 let publications: Array<{ createdAt: string }>;
 let nonces: Set<string>;
+let claimFailure: Error | null = null;
 let clock: number;
 const tick = (): string => new Date(Date.UTC(2026, 10, 16, 12, 0, clock++)).toISOString();
 
@@ -66,12 +68,18 @@ function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
       if (collection === "gateway-nonces") {
         // The real column is UNIQUE: a second claim on the same key fails.
         const nonce = String((data as { nonce: string }).nonce);
-        if (nonces.has(nonce)) throw new Error("duplicate key value violates unique constraint");
+        if (claimFailure) throw claimFailure;
+        // Payload's shape for a Postgres 23505 on the nonce.
+        if (nonces.has(nonce)) throw Object.assign(new Error("The following field is invalid: nonce"), { data: { errors: [{ path: "nonce", message: "Value must be unique" }] } });
         nonces.add(nonce);
         return { id: nonce };
       }
       writes.push({ op: "create", collection, data });
       return { id: `new-${writes.length}` };
+    }),
+    delete: vi.fn(async ({ collection, where }: { collection: string; where: { nonce: { equals: string } } }) => {
+      if (collection === "gateway-nonces") nonces.delete(where.nonce.equals);
+      return { docs: [] };
     }),
     update: vi.fn(async ({ collection, data }: { collection: string; data: unknown }) => {
       writes.push({ op: "update", collection, data });
@@ -110,6 +118,7 @@ beforeEach(() => {
   workLog = [];
   publications = [];
   nonces = new Set();
+  claimFailure = null;
   clock = 0;
 });
 
@@ -152,6 +161,27 @@ describe("#4453 design pass — gating and refusals", () => {
     const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
     expect(String(rejected.reason)).toContain("DESIGN_PASS_ALREADY_RUN");
     expect(workLog.filter((entry) => entry.tool === "propose_site_design_pass")).toHaveLength(1);
+  });
+
+  it("a pass that fails after claiming gives the claim back: the next pass on the same draft runs (P2-2)", async () => {
+    const writeWorkLog = deps.writeWorkLog as unknown as ReturnType<typeof vi.fn>;
+    writeWorkLog.mockImplementationOnce(async () => { throw new Error("work log down"); });
+    await expect(pass("terra")).rejects.toThrow("work log down");
+    expect(nonces.size).toBe(0);
+    await expect(pass("journal")).resolves.toMatchObject({ design: "journal", draft_only: true });
+  });
+
+  it("only a real duplicate reads as DESIGN_PASS_ALREADY_RUN; any other claim error is DESIGN_PASS_TRY_AGAIN (P2-2)", async () => {
+    claimFailure = new Error("connection refused");
+    await expect(pass("terra")).rejects.toThrow("DESIGN_PASS_TRY_AGAIN");
+    claimFailure = null;
+    expect(isClaimDuplicate({ data: { errors: [{ path: "nonce", message: "Value must be unique" }] } })).toBe(true);
+    expect(isClaimDuplicate({ cause: { code: "23505" } })).toBe(true);
+    expect(isClaimDuplicate(new Error("connection refused"))).toBe(false);
+    expect(isClaimDuplicate({ data: { errors: [{ path: "site_id", message: "required" }] } })).toBe(false);
+    await expect(pass("terra")).resolves.toMatchObject({ design: "terra" });
+    // Studio passes the code through to Core (an unknown code would read as a generic outage).
+    expect(ARI_REFUSAL_CODES.has("DESIGN_PASS_TRY_AGAIN")).toBe(true);
   });
 
   it("the claim key is per tenant and per draft start", () => {

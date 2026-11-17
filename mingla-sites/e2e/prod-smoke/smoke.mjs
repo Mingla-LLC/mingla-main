@@ -93,6 +93,15 @@ if (FIXTURE === "ys") {
   sites = JSON.parse(readFileSync(join(dir, "sites.json"), "utf8"));
   upcomingFeed = JSON.parse(readFileSync(join(dir, "feed.json"), "utf8"));
 }
+// PROD_SMOKE_DESIGN=<design_key>[,<design_key>] runs only those designs (a quick re-run of one design).
+if (process.env.PROD_SMOKE_DESIGN) {
+  const keep = new Set(process.env.PROD_SMOKE_DESIGN.split(",").map((key) => key.trim()));
+  sites = Object.fromEntries(Object.entries(sites).filter(([, site]) => keep.has(site.design_key)));
+  if (!Object.keys(sites).length) {
+    console.error(`prod-smoke: PROD_SMOKE_DESIGN=${process.env.PROD_SMOKE_DESIGN} matches no design`);
+    process.exit(2);
+  }
+}
 let feedOn = false;
 // #4453 milestone 10 — the plan previews the fixtures step wrote (absent for --fixture ys).
 const plans = !ys && existsSync(join(dir, "plans.json")) ? JSON.parse(readFileSync(join(dir, "plans.json"), "utf8")) : [];
@@ -246,22 +255,50 @@ async function waitForApp() {
  * control (link or button) sits fully inside the viewport and is at least
  * 44 x 44 px. "No sideways scroll" alone missed a half-clipped menu button.
  */
+// #4453 milestone 7c — sensitivity proof only: PROD_SMOKE_BREAK_HEADER=1 pushes every header menu toggle a full screen right, so the check must fail in every design.
+const BREAK_HEADER = process.env.PROD_SMOKE_BREAK_HEADER === "1";
+// #4453 milestone 7c (tester P2-1) — sensitivity proof only: PROD_SMOKE_COVER_HEADER=1 lays an opaque layer over the
+// top-right corner (where every design's menu toggle sits), so the check must report the toggle as covered.
+const COVER_HEADER = process.env.PROD_SMOKE_COVER_HEADER === "1";
+
 async function headerControlsCheck(page, label, out) {
+  // Voyage's .btn animates transform, so the break also turns transitions off; otherwise the check measures the toggle mid-slide.
+  if (BREAK_HEADER) await page.addStyleTag({ content: ".mg-menu-btn, .v-drawer__toggle, [aria-controls][aria-haspopup], header button, header summary { transform: translateX(100vw) !important; transition: none !important; }" });
+  if (COVER_HEADER) await page.addStyleTag({ content: "body::after { content: ''; position: fixed; top: 0; right: 0; width: 110px; height: 140px; background: #000; z-index: 2147483647; pointer-events: auto; }" });
   const problems = await page.evaluate(() => {
     const header = document.querySelector("[data-mg-header]") ?? document.querySelector("body header");
     if (!header) return ["no header"];
     const found = [];
-    for (const el of header.querySelectorAll("a[href], button")) {
+    // The menu toggle wherever it sits (Voyage's own drawer toggle is outside <header>).
+    const controls = new Set([...header.querySelectorAll("a[href], button"), ...document.querySelectorAll(".v-drawer__toggle, .mg-menu-btn, [aria-controls][aria-haspopup]")]);
+    const nameOf = (node) => (node.getAttribute("aria-label") || node.textContent || node.className || node.tagName).replace(/\s+/g, " ").trim().slice(0, 40);
+    let toggleMeasured = false;
+    for (const el of controls) {
       // A closed menu (dialog, or a drawer marked data-open="false") is not on screen.
       if (el.closest("dialog:not([open]), [hidden], [aria-hidden='true'], [inert], [data-open='false']")) continue;
       const style = getComputedStyle(el);
       if (style.visibility === "hidden" || style.display === "none") continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
-      const name = (el.getAttribute("aria-label") || el.textContent || el.className || el.tagName).replace(/\s+/g, " ").trim().slice(0, 40);
+      const name = nameOf(el);
+      if (el.tagName === "BUTTON" || el.tagName === "SUMMARY") toggleMeasured = true;
+      // #4453 milestone 7c (tester P2-1) — what the user can tap: when the control's centre is on screen, the
+      // topmost element there must be the control or inside it. Anything else covering it fails ("covered"); the
+      // only skip is a same-named twin control lying on top (a duplicate). A centre off screen fails below.
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
+        const top = document.elementFromPoint(cx, cy);
+        if (top && top !== el && !el.contains(top)) {
+          const twin = top.closest("a[href], button, summary");
+          if (twin && twin !== el && nameOf(twin) === name) continue;
+          found.push(`"${name}" is covered by ${top.tagName.toLowerCase()}${typeof top.className === "string" && top.className ? `.${top.className.trim().split(/\s+/)[0]}` : ""}`);
+        }
+      }
       if (r.left < -0.5 || r.right > window.innerWidth + 0.5) found.push(`"${name}" leaves the screen (x ${Math.round(r.left)}-${Math.round(r.right)})`);
       if (r.width < 43.5 || r.height < 43.5) found.push(`"${name}" is ${Math.round(r.width)}x${Math.round(r.height)} px (under 44)`);
     }
+    if (!toggleMeasured) found.push("no visible menu button found");
     return found;
   });
   if (problems.length) for (const problem of problems) out.push(`${label} header: ${problem}`);
@@ -279,15 +316,19 @@ async function phoneWidthCheck(out) {
   // The pinned Playwright browser, else the machine's Chrome (no download at run time).
   const browser = await chromium.launch().catch(() => chromium.launch({ channel: "chrome" }));
   try {
-    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
-    for (const [host, site] of Object.entries(sites)) {
-      for (const path of [...site.smoke_paths, ...(site.detail_paths ?? []).map((detail) => detail.path)]) {
-        await page.goto(`http://${host}:${APP_PORT}${path}`, { waitUntil: "networkidle" });
-        const width = await page.evaluate(() => document.documentElement.scrollWidth);
-        if (width > 375) out.push(`375 ${site.design_key} ${path}: the page is ${width}px wide (scrolls sideways)`);
-        else console.log(`ok 375 ${site.design_key} ${path} (${width}px)`);
-        await headerControlsCheck(page, `375 ${site.design_key} ${path}`, out);
+    // #4453 milestone 7c (tester P2-3) — 375 px and the narrowest common phone, 320 px.
+    for (const vw of [375, 320]) {
+      const page = await browser.newPage({ viewport: { width: vw, height: 812 } });
+      for (const [host, site] of Object.entries(sites)) {
+        for (const path of [...site.smoke_paths, ...(site.detail_paths ?? []).map((detail) => detail.path)]) {
+          await page.goto(`http://${host}:${APP_PORT}${path}`, { waitUntil: "networkidle" });
+          const width = await page.evaluate(() => document.documentElement.scrollWidth);
+          if (width > vw) out.push(`${vw} ${site.design_key} ${path}: the page is ${width}px wide (scrolls sideways)`);
+          else console.log(`ok ${vw} ${site.design_key} ${path} (${width}px)`);
+          await headerControlsCheck(page, `${vw} ${site.design_key} ${path}`, out);
+        }
       }
+      await page.close();
     }
   } finally {
     await browser.close();
@@ -404,7 +445,12 @@ async function ysChecks(out) {
         const scroll = await page.evaluate(() => document.documentElement.scrollWidth);
         if (scroll > width) out.push(`ys ${width} ${path}: the page is ${scroll}px wide (scrolls sideways)`);
         else console.log(`ok ys ${width} ${path} (${scroll}px)`);
-        if (width === 375) await headerControlsCheck(page, `ys 375 ${path}`, out);
+        if (width === 375) {
+          await headerControlsCheck(page, `ys 375 ${path}`, out);
+          await page.setViewportSize({ width: 320, height: 812 });
+          await headerControlsCheck(page, `ys 320 ${path}`, out);
+          await page.setViewportSize({ width: 375, height: 812 });
+        }
         if (SHOTS) {
           // Walk the page once so lazy images and reveal observers fire, then shoot from the top.
           await page.evaluate(async () => {
@@ -442,6 +488,13 @@ for (const state of ["empty", "upcoming"]) {
           if (found.length) failures.push(`${label}: empty-grid markup on the public page (${found.join(", ")})`);
         }
         if (html.includes(upcomingFeed.offerings[0]?.title ?? "Smoke Trip 1")) sawTrip = true;
+        // #4453 milestone 7c (tester P3-1) — the fixtures put "Keep exploring" (page_links) and "Good to know"
+        // (facts_table) on every design's Home; each must actually be drawn, not just present in the artifact.
+        if (!ys && path === "/") {
+          const missing = ["Keep exploring", "Good to know", "Twelve at most"].filter((text) => !html.includes(text));
+          if (missing.length) failures.push(`${label}: page_links / facts_table not drawn on Home (missing ${missing.map((text) => `"${text}"`).join(", ")})`);
+          else console.log(`ok ${label} Keep exploring + Good to know drawn`);
+        }
         if (path === "/" && site.expects_booking && !(html.includes("mg-slots") && html.includes("mg-tiers") && (!site.expects_rating || html.includes("reviews on Mingla")))) {
           failures.push(`${label}: the live booking blocks are not drawn on Home (saved ${site.design_key}-home.html)`);
           writeFileSync(join(dir, `${site.design_key}-home.html`), html);

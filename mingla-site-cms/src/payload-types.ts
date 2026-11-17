@@ -225,7 +225,7 @@ export interface Page {
              */
             show_search?: boolean | null;
             /**
-             * Blank date, time and guest fields that open your Mingla booking page pre-filled.
+             * Blank date, time and guest fields that open your Mingla booking page pre-filled. Shown only by layouts that draw it (Full bleed, Editorial, Arch, Voyage's cover).
              */
             booking_bar?: ('none' | 'venue_table' | 'stay' | 'experience' | 'trip_search') | null;
             /**
@@ -233,9 +233,19 @@ export interface Page {
              */
             booking_target_id?: string | null;
             /**
-             * Your score from approved Mingla reviews. Shown only with 20 or more reviews.
+             * Your score from approved Mingla reviews. Shown only with 20 or more reviews, by layouts that draw it.
              */
             show_rating?: boolean | null;
+            /**
+             * Up to three short facts in your words, for example 90° / sauna. Drawn by layouts that show badges.
+             */
+            fact_badges?:
+              | {
+                  big: string;
+                  small: string;
+                  id?: string | null;
+                }[]
+              | null;
             media: string | Media;
             /**
              * Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.
@@ -1340,6 +1350,58 @@ export interface Page {
             blockType: 'process_steps';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            mode: 'teaser' | 'next';
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'cards' | 'list') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'page_links';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            items: {
+              label: string;
+              value: string;
+              id?: string | null;
+            }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'facts_table';
+          }
+        | {
             heading?: string | null;
             body?: string | null;
             email?: string | null;
@@ -1833,6 +1895,10 @@ export interface SiteSetting {
      * Default "stories". Leave empty to put stories at the site root.
      */
     stories?: string | null;
+    /**
+     * Rooms and places. Default "rooms".
+     */
+    stays?: string | null;
   };
   language?: string | null;
   timezone?: string | null;
@@ -2204,6 +2270,13 @@ export interface PagesSelect<T extends boolean = true> {
               booking_bar?: T;
               booking_target_id?: T;
               show_rating?: T;
+              fact_badges?:
+                | T
+                | {
+                    big?: T;
+                    small?: T;
+                    id?: T;
+                  };
               media?: T;
               video?: T;
               ctas?:
@@ -2726,6 +2799,34 @@ export interface PagesSelect<T extends boolean = true> {
               id?: T;
               blockName?: T;
             };
+        page_links?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              mode?: T;
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        facts_table?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              items?:
+                | T
+                | {
+                    label?: T;
+                    value?: T;
+                    id?: T;
+                  };
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
         contact_details?:
           | T
           | {
@@ -2934,6 +3035,7 @@ export interface SiteSettingsSelect<T extends boolean = true> {
         experiences?: T;
         destinations?: T;
         stories?: T;
+        stays?: T;
       };
   language?: T;
   timezone?: T;

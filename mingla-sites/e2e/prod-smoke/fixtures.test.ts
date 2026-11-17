@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DESIGN_KEYS, HERO_LAYOUTS_WITH_BOOKING, type DesignKey } from "../../src/contracts/generated/designs.ts";
+import { DESIGN_KEYS, DESIGNS, HERO_LAYOUTS_WITH_BOOKING, type DesignKey } from "../../src/contracts/generated/designs.ts";
 import { assertArtifactV2, type ArtifactV2 } from "../../src/contracts/generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "../../src/contracts/generated/upgradeV1ToV2.ts";
 import { gogiV1Fixture } from "../../src/contracts/gogiV1.fixture";
@@ -56,12 +56,42 @@ function withBookingBlocks(artifact: ArtifactV2): ArtifactV2 {
   return a;
 }
 
+/** #4453 milestone 7c (tester P2-3) — the long brand name the phone header must survive. */
+// One long word (no space to wrap at), the hardest case for a phone header (milestone 7c).
+export const SMOKE_LONG_NAME = "Wanderlustandsupperclubcompany";
+export const SMOKE_LONG_BUTTON = "Book your next weekend away";
+
+/*
+ * #4453 milestone 7c — every design's fixture carries what broke Young and
+ * Stamped's phone header (a long brand name AND a header button), so the
+ * header check guards all 11 designs; and the page-set blocks ("Keep
+ * exploring" with the pages a publish would compute, and the owner's facts),
+ * so every design draws them on a production build.
+ */
+function withHeaderAndPageSet(artifact: ArtifactV2, key: DesignKey): ArtifactV2 {
+  const a = artifact as ArtifactV2 & { navigation: Record<string, unknown> };
+  a.navigation.wordmark = SMOKE_LONG_NAME;
+  const live = a.pages.filter((page) => page.enabled && page.path !== "");
+  const target = live.find((page) => page.blocks.some((block) => block.type === "offering_grid")) ?? live[0];
+  a.navigation.header_cta = { label: SMOKE_LONG_BUTTON, href: target ? `/${target.path}` : "/" };
+  const variants = DESIGNS[key].variants;
+  const home = a.pages.find((page) => page.path === "");
+  if (home && variants.page_links.length && variants.facts_table.length) {
+    const blocks = home.blocks as unknown as Array<Record<string, unknown>>;
+    const links = live.slice(0, 4).map((page) => ({ label: (page.title || page.path).slice(0, 40), href: `/${page.path}`, description: `About ${page.path}`.slice(0, 120) }));
+    const at = Math.max(0, blocks.length - 1);
+    if (links.length >= 2) blocks.splice(at, 0, { type: "page_links", variant: variants.page_links[0], heading: "Keep exploring", mode: "teaser", items: links });
+    blocks.splice(at, 0, { type: "facts_table", variant: variants.facts_table[0], heading: "Good to know", items: [{ label: "Group size", value: "Twelve at most" }, { label: "Guides", value: "Two on every trip" }] });
+  }
+  return a;
+}
+
 function artifactFor(key: DesignKey): ArtifactV2 {
   // The stored Voyage site (Young and Stamped's shape); every other key is the gallery composition.
-  if (key === "voyage") return withBookingBlocks(voyageSyntheticArtifact());
+  if (key === "voyage") return withHeaderAndPageSet(withBookingBlocks(voyageSyntheticArtifact()), key);
   // Atelier (frozen) draws no booking block.
-  if (key === "atelier") return upgradeV1ToV2(gogiV1Fixture()) as ArtifactV2;
-  return withBookingBlocks(galleryArtifact(key));
+  if (key === "atelier") return withHeaderAndPageSet(upgradeV1ToV2(gogiV1Fixture()) as ArtifactV2, key);
+  return withHeaderAndPageSet(withBookingBlocks(galleryArtifact(key)), key);
 }
 
 const PLAN_BRAND = "aaaaaaaa-1111-4111-8111-0000000010b1";
