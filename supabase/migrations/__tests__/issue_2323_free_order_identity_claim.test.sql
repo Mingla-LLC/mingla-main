@@ -219,10 +219,15 @@ BEGIN
                   WHERE id = pg_temp.i2323_uuid('o-free') AND buyer_user_id = v_founder) THEN
     RAISE EXCEPTION 'R-02e the free order did not transfer to the founder';
   END IF;
-  -- …and the event chat, which is the product promise printed on the card.
-  IF NOT EXISTS (SELECT 1 FROM public.conversation_participants
-                  WHERE conversation_id = pg_temp.i2323_uuid('conv') AND user_id = v_founder) THEN
-    RAISE EXCEPTION 'R-02f the claimed buyer was not added to the event chat';
+  -- …and the group chat, which is the product promise printed on the card.
+  -- Since #4459 that is the brand's one Guest chat (linked_entity_type =
+  -- 'brand_guests'); the retired per-listing room gains no member.
+  IF NOT EXISTS (SELECT 1 FROM public.conversation_participants cp
+                   JOIN public.conversations c ON c.id = cp.conversation_id
+                  WHERE c.brand_id = pg_temp.i2323_uuid('brand')
+                    AND c.linked_entity_type = 'brand_guests'
+                    AND cp.user_id = v_founder) THEN
+    RAISE EXCEPTION 'R-02f the claimed buyer was not added to the brand Guest chat';
   END IF;
 
   -- ── R-03 THE ARMING IS LOAD-BEARING — this is #2323 itself.
