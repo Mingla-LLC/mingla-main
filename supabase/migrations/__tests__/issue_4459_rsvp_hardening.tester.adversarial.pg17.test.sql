@@ -250,4 +250,26 @@ BEGIN
       pg_temp.chat('a'), pg_temp.u('guest'))) = 0 AND pg_temp.member('a', 'guest'));
 END $client$;
 
+-- Retest 2026-11-17: a waitlisted guest must not promote itself in two steps
+-- (waitlisted -> not_going -> going). Capacity stays full, so only the server
+-- may move it to going.
+DO $twostep$
+DECLARE v_rsvp uuid; v1 text; v2 text;
+BEGIN
+  PERFORM pg_temp.as_server();
+  PERFORM pg_temp.person('w2');
+  UPDATE public.events SET rsvp_capacity = (
+    SELECT count(*) FROM public.event_rsvps WHERE event_id = pg_temp.u('auto') AND rsvp_status = 'going')
+   WHERE id = pg_temp.u('auto');
+  INSERT INTO public.event_rsvps(event_id, user_id, guest_name, rsvp_status, approval_status, waitlisted_at)
+    VALUES (pg_temp.u('auto'), pg_temp.u('w2'), 'W2', 'waitlisted', 'approved', now())
+    RETURNING id INTO v_rsvp;
+  v1 := pg_temp.try_as('w2', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'not_going', v_rsvp));
+  v2 := pg_temp.try_as('w2', format('UPDATE public.event_rsvps SET rsvp_status = %L WHERE id = %L', 'going', v_rsvp));
+  RAISE NOTICE 'two-step: leave=% rejoin=%', v1, v2;
+  PERFORM pg_temp.ok('T4-WAITLIST-TWO-STEP a waitlisted guest cannot reach going (or the chat) by leaving and re-joining',
+    (SELECT rsvp_status FROM public.event_rsvps WHERE id = v_rsvp) <> 'going'
+    AND NOT pg_temp.member('a', 'w2'));
+END $twostep$;
+
 ROLLBACK;

@@ -81,6 +81,10 @@ module.exports = {
     // issue #4459 rework — the Chats page and an open Guest chat mount together
     // (one enquiries channel); the Message <Brand> sheet closes on send.
     "**/__tests__/issue_4459_guest_chat_enquiry.implementor.render.test.tsx",
+    // issue #4459 tester retest — two Chats pages alive at once (the booking
+    // card's Open/Rejoin guest chat replaces to /) must not throw on the
+    // enquiries channel.
+    "**/__tests__/issue_4459_chats_remount.tester.adversarial.render.test.tsx",
     // issue #4251 — RSVP covers keep their media type, and the compact
     // Purchases card draws a fixed 72 x 72 cover or its date tile.
     "**/__tests__/issue_4251_purchase_card_cover.implementor.happy.render.test.tsx",
