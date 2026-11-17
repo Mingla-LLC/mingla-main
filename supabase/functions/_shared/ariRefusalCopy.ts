@@ -107,6 +107,13 @@ export const ARI_REFUSAL_COPY: Readonly<Record<string, AriRefusalCopy>> = Object
       fixRoute: null,
       who: "anyone",
     },
+    // #3645 bundle 2A — a paid experience (whole or per-stop) priced at 0.
+    experience_price_invalid: {
+      message:
+        "This experience isn't marked free, so it needs a price above zero. Set a price, or mark it free when you edit the experience, then ask me again. Nothing was saved.",
+      fixRoute: null,
+      who: "anyone",
+    },
     // #3355 P8 — the Ari trip create refuses what the owner hasn't given.
     trip_timezone_required: {
       message:

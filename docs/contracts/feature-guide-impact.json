@@ -2627,7 +2627,9 @@
         "mingla-business/app/(tabs)/hub/experiences.tsx",
         "mingla-business/app/experience/[id]/index.tsx",
         "mingla-business/src/utils/experienceDateSubline.ts",
-        "supabase/migrations/20280722004420_issue_4420_experience_stop_detail_visibility.sql"
+        "supabase/migrations/20280722004420_issue_4420_experience_stop_detail_visibility.sql",
+        "mingla-business/src/components/experience/ExperiencePricingStep.tsx",
+        "supabase/migrations/20280801003645_issue_3645_per_stop_paid_price.sql"
       ]
     },
     {

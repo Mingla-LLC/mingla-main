@@ -133,10 +133,9 @@ describe("CHANGE 1 — validation errors are gated, never shown on step entry", 
 
   test("PricingStep gates its inline errors on showErrors", () => {
     const src = read("experience/ExperiencePricingStep.tsx");
-    // [TEST-MOD-APPROVED #3281] — R2 lead option row; still gated on showErrors.
-    expect(src).toMatch(
-      /showErrors &&\s*\n?\s*num\(defaultOption\?\.priceMajor \?\? wholePriceMajor\) <= 0/,
-    );
+    // [TEST-MOD-APPROVED #3645] — the whole-price error reads the minor-unit
+    // `unpriced` rule (bundle 2A); still gated on showErrors.
+    expect(src).toMatch(/\{showErrors && unpriced \? \(/);
     expect(src).toMatch(/showErrors && \(parseInt\(capacity, 10\) \|\| 0\) <= 0/);
   });
 
