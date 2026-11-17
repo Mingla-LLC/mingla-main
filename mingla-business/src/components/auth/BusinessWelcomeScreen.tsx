@@ -36,7 +36,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
-import { s, vs } from "../../utils/responsive";
+import { vs } from "../../utils/responsive";
 import { MINGLA_WORDMARK } from "@mingla/brand-assets";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 // @ts-ignore -- Expo resolves the required .native/.web implementation per platform.
@@ -62,6 +62,14 @@ const WELCOME_DESKTOP_BREAKPOINT = 768;
 /** #4420 round-3 item 1 — desktop sign-in: video pane left, sign-in panel right. */
 const WELCOME_DESKTOP_PANEL_WIDTH = 560;
 const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";
+/**
+ * #4420 — the sign-in controls' width cap. A plain number, never `s(400)`:
+ * `s()` reads the window width once at module load, and a browser tab that
+ * loads the bundle while it has no width yet (a background tab, a pane
+ * still opening) read 0, so every button rendered as a 0-wide line with a
+ * squashed Google mark on first load. The auth group already caps at 400.
+ */
+const WELCOME_CONTROL_MAX_WIDTH = 400;
 
 /**
  * #4420 — a sign-in failure the screen shows inline. `Alert.alert` is a no-op
@@ -1080,7 +1088,7 @@ const styles = StyleSheet.create({
   },
   appleButton: {
     width: "100%",
-    maxWidth: s(400),
+    maxWidth: WELCOME_CONTROL_MAX_WIDTH,
     // #2211 — `minHeight`, NOT `height`: at accessibility text sizes the
     // label must grow the button rather than crop to "Continue wi".
     minHeight: size.btn.phoneLg,
@@ -1100,7 +1108,7 @@ const styles = StyleSheet.create({
   // Apple keeps its required white button and black mark.
   googleButton: {
     width: "100%",
-    maxWidth: s(400),
+    maxWidth: WELCOME_CONTROL_MAX_WIDTH,
     // #2211 — `minHeight`, NOT `height` (see appleButton).
     minHeight: size.btn.phoneLg,
     backgroundColor: materials.control.glassFill,
@@ -1149,7 +1157,7 @@ const styles = StyleSheet.create({
   // Cycle 15 — email + OTP styles (DEC-097).
   emailButton: {
     width: "100%",
-    maxWidth: s(400),
+    maxWidth: WELCOME_CONTROL_MAX_WIDTH,
     // #2211 — `minHeight`, NOT `height` (see appleButton).
     minHeight: size.btn.phoneLg,
     backgroundColor: materials.control.glassFill,
@@ -1207,7 +1215,7 @@ const styles = StyleSheet.create({
   },
   modeWrapper: {
     width: "100%",
-    maxWidth: s(400),
+    maxWidth: WELCOME_CONTROL_MAX_WIDTH,
     alignSelf: "center",
     alignItems: "stretch",
     gap: space[3],
