@@ -90,7 +90,8 @@ function render(artifact: ArtifactV2, page?: ArtifactPage, live?: LiveOfferings)
 
 describe("#4453 6b SC-D1 journal, grid and terra are design keys everywhere", () => {
   it("DESIGN_KEYS lists all eight, each new one with a renderer, the shared stylesheet and its own stylesheet", () => {
-    expect(DESIGN_KEYS).toEqual(["atelier", "voyage", "nocturne", "haven", "maison", "journal", "grid", "terra"]);
+    // #4453 6c appended pop, sunset and pulse (designs6c pins the whole list).
+    expect(DESIGN_KEYS.slice(0, 8)).toEqual(["atelier", "voyage", "nocturne", "haven", "maison", "journal", "grid", "terra"]);
     for (const design of NEW) {
       const renderer = DESIGN_RENDERERS[design.key];
       expect(renderer.sharedStylesheet).toBe(SHARED_STYLESHEET);
@@ -124,11 +125,9 @@ describe("#4453 6b SC-D1 journal, grid and terra are design keys everywhere", ()
     expect(sql).toContain("SELECT ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra']::text[]");
     expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
     expect(sql).not.toMatch(/ALTER TABLE|DROP |INSERT |UPDATE |DELETE /);
-    // #4453 milestone 5 — later #4453 migrations (the booking reads) follow; none of them may
-    // re-issue brand_site_design_keys() after 6b (tester P3-3: by content, not file name).
-    const later = fs.readdirSync(dir).filter((file) => /^\d{14}_.*\.sql$/.test(file) && file.slice(0, 14) > "20280725104453");
-    for (const file of later) expect(read(`supabase/migrations/${file}`), file).not.toMatch(/FUNCTION\s+public\.brand_site_design_keys\s*\(/);
-    expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra']");
+    const prefixes = fs.readdirSync(dir).filter((file) => /^\d{14}_/.test(file)).map((file) => file.slice(0, 14)).sort();
+    expect(prefixes).toContain("20280725104453");
+    expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra',");
   });
 
   it("Ari's declared designs stay atelier and voyage until PR 7 (#3355 frozen declarations)", () => {
@@ -230,8 +229,6 @@ describe("#4453 6b §3.3 every signature layout draws every field its block defi
         it(`${design.key} ${type}:${variant}`, () => {
           expect(design.variants[type as BlockType][0]).toBe(variant);
           const { block, expected } = sentinelBlock(type as BlockType, artifact);
-          // #4453 milestone 5 (§5.2) — a caption names one of the gallery's own photographs.
-          if (type === "gallery" && Array.isArray(block.captions) && Array.isArray(block.images)) (block.captions as Array<Record<string, unknown>>).forEach((row, i) => { row.media_id = (block.images as Array<{ id: string }>)[i]?.id; });
           const Component = Layout as unknown as React.ComponentType<{ block: Record<string, unknown>; index: number; ctx: SharedContext }>;
           // #4453 (milestone 3) — the sentinel grid is empty (only ended trips): its designed empty state,
           // with every field, is drawn in a Draft preview; publicly the section is left out.
@@ -702,8 +699,7 @@ describe("#4453 6b Journal's columns draw a trip's cover, and leave no plate for
 describe("#4453 6b production-build findings", () => {
   it("the centred header keeps its menu button on a phone (Nocturne's sat at 438-486 px on a 375 px screen with real fonts)", () => {
     const shared = css(SHARED_STYLESHEET);
-    // #4453 milestone 5 — later phone blocks (the booking layouts) follow it; read the one holding the fix.
-    const phone = shared.slice(shared.lastIndexOf("@media (max-width: 720px)", shared.lastIndexOf(".mg-hd--center .mg-hd__bar { display: flex;")));
+    const phone = shared.slice(shared.lastIndexOf("@media (max-width: 720px)"));
     expect(phone).toContain("[data-design] .mg-hd--center .mg-hd__bar { display: flex; justify-content: space-between; gap: 10px; }");
     expect(phone).toContain("[data-design] .mg-hd--center .mg-mark { min-width: 0; flex: 0 1 auto; overflow: hidden; justify-self: auto; }");
     expect(phone).toContain("[data-design] .mg-hd--center .mg-hd__end { flex: none; }");

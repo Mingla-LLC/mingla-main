@@ -22,6 +22,7 @@ import * as migration_20261116_103000_issue_4453_content_foundation from './2026
 import * as migration_20261116_120000_issue_4453_designs_6a from './20261116_120000_issue_4453_designs_6a';
 import * as migration_20261116_140000_issue_4453_designs_6b from './20261116_140000_issue_4453_designs_6b';
 import * as migration_20261116_150000_issue_4453_booking_blocks from './20261116_150000_issue_4453_booking_blocks';
+import * as migration_20261116_160000_issue_4453_designs_6c from './20261116_160000_issue_4453_designs_6c';
 
 export const migrations = [
   {
@@ -143,5 +144,10 @@ export const migrations = [
     up: migration_20261116_150000_issue_4453_booking_blocks.up,
     down: migration_20261116_150000_issue_4453_booking_blocks.down,
     name: '20261116_150000_issue_4453_booking_blocks',
+  },
+  {
+    up: migration_20261116_160000_issue_4453_designs_6c.up,
+    down: migration_20261116_160000_issue_4453_designs_6c.down,
+    name: '20261116_160000_issue_4453_designs_6c',
   },
 ];

@@ -28,7 +28,7 @@ const pub = (file: string) => fs.readFileSync(path.join(process.cwd(), "public/d
 const SHARED = pub("_shared/blocks-1.css");
 /** Every design that links the shared library (atelier draws its own markup only). */
 // #4453 6b: Journal, Grid and Terra draw the shared library too.
-const KEYS: readonly DesignKey[] = ["voyage", "nocturne", "haven", "maison", "journal", "grid", "terra"];
+const KEYS: readonly DesignKey[] = ["voyage", "nocturne", "haven", "maison", "journal", "grid", "terra", "pop", "sunset", "pulse"];
 
 /* ---------------- colour resolution from the real stylesheets ---------------- */
 

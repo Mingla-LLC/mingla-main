@@ -58,10 +58,10 @@ DO $t3b$
 BEGIN
   BEGIN
     -- #4453 6b: journal shipped, so the probe is a key from the last batch (6c).
-    INSERT INTO k6_probe VALUES ('pop');
-    RAISE EXCEPTION 'issue #4453 6a design keys FAIL: T-3b a key from a later batch (pop) was accepted';
+    INSERT INTO k6_probe VALUES ('not_a_design');
+    RAISE EXCEPTION 'issue #4453 6a design keys FAIL: T-3b a key no design has (not_a_design) was accepted';
   EXCEPTION WHEN check_violation THEN
-    RAISE NOTICE 'PASS  T-3b a key not yet shipped (pop) is refused (23514)';
+    RAISE NOTICE 'PASS  T-3b a key no design has (not_a_design) is refused (23514)';
   END;
 END
 $t3b$;

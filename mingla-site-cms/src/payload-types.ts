@@ -262,6 +262,9 @@ export interface Page {
                   | 'journal-front'
                   | 'grid-index'
                   | 'terra-pebble'
+                  | 'pop-stack'
+                  | 'sunset-sun'
+                  | 'pulse-stage'
                 )
               | null;
             review?:
@@ -1751,7 +1754,21 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison' | 'journal' | 'grid' | 'terra') | null;
+  design?:
+    | (
+        | 'atelier'
+        | 'voyage'
+        | 'nocturne'
+        | 'haven'
+        | 'maison'
+        | 'journal'
+        | 'grid'
+        | 'terra'
+        | 'pop'
+        | 'sunset'
+        | 'pulse'
+      )
+    | null;
   tokens?:
     | {
         [k: string]: unknown;
