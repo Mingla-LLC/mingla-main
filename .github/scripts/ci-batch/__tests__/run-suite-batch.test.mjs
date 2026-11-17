@@ -345,6 +345,8 @@ test("#4420 heap raise: only the pinned jest commands get the one NODE_OPTIONS l
   assert.equal(isHeapRaisedStep({ cwd: ".", run: "node gate.mjs\ncd mingla-business\nnpx jest --runInBand a" }), true);
   assert.equal(isHeapRaisedStep({ cwd: ".", run: "cd mingla-admin\nnpx jest a" }), false);
   assert.equal(isHeapRaisedStep({ cwd: ".", run: "node .github/scripts/strict-grep/x.mjs" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "set +e\nnpx tsc --noEmit --pretty false" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-admin", run: "npx tsc --noEmit" }), false);
   const home2 = fs.mkdtempSync(path.join(os.tmpdir(), "heap-raise-"));
   try {
     const env = minimalChildEnvironment({ NODE_PATH: "./node_modules" }, home2, { allowNodePath: true, heapRaised: true });
