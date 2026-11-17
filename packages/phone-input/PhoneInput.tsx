@@ -490,7 +490,7 @@ export const PhoneInput = ({
 
       {error ? (
         <Text
-          style={[errorTextStyle, reserveErrorSpace ? styles.errorSlotText : null]}
+          style={reserveErrorSpace ? [errorTextStyle, styles.errorSlotText] : errorTextStyle}
           accessibilityRole="alert"
           aria-live="polite"
           testID={testID ? `${testID}-error` : undefined}

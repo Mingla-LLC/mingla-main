@@ -104,6 +104,7 @@ jest.mock("../../../../src/hooks/usePublicTripById", () => ({
         brandSlug: "minglanigeria",
         currency: "NGN",
         pricingTiers: [],
+        businessTrip: { startAt: "2026-12-01T18:00:00.000Z", endAt: "2026-12-03T18:00:00.000Z" },
       },
     },
     isLoading: false,
@@ -153,6 +154,11 @@ jest.mock("../../../../src/components/ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../../src/components/ui/Toast", () => ({ Toast: () => null }));
 jest.mock("../../../../src/components/checkout/CheckoutHeader", () => ({
   CheckoutHeader: () => null,
+  CheckoutStatusBanner: ({ body }: { body: string }) => {
+    const { Text } = jest.requireActual("react-native");
+    const { createElement } = jest.requireActual("react");
+    return createElement(Text, null, body);
+  },
 }));
 jest.mock("../../../../src/components/trip/TripPaymentChoice", () => ({
   TripPaymentChoice: () => null,

@@ -95,16 +95,18 @@ describe("issue #1014 §9(6) — NULL-currency event CTA never fabricates a glyp
     }
   });
 
-  it("mixed set: free NULL ticket + paid GBP ticket formats ONLY the paid tier's own currency", () => {
+  it("mixed set: free NULL ticket + paid GBP ticket leads with the free tier and invents no currency", () => {
     const state = cta([
       ticket({}),
       ticket({ id: "t2", name: "VIP", isFree: false, priceGbp: 10, currency: "GBP" }),
     ]);
     expect(state.kind).toBe("buy");
     if (state.kind === "buy") {
-      // The paid tier carries its own GBP — formatting it is CORRECT (the
-      // ticket's real currency), and the NULL fallback must not corrupt it.
-      expect(state.price).toContain("£");
+      // #4420: the public bar leads with the cheapest tier ("From Free"). The
+      // paid tier's GBP never leaks onto the free NULL-currency tier, and no
+      // currency is invented for it.
+      expect(state.price).toBe("From Free");
+      expect(state.price).not.toMatch(CURRENCY_GLYPHS);
     }
   });
 });
