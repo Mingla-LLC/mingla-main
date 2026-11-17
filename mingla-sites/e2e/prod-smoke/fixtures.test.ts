@@ -94,6 +94,9 @@ function artifactFor(key: DesignKey): ArtifactV2 {
   return withHeaderAndPageSet(withBookingBlocks(galleryArtifact(key)), key);
 }
 
+const PLAN_BRAND = "aaaaaaaa-1111-4111-8111-0000000010b1";
+const SAMPLE_STRIP = "Sample listings. Your real Mingla listings replace these when you add them.";
+
 describe.skipIf(!OUT)("#4453 prod smoke fixtures", () => {
   it("writes one publication per design key, plus the upcoming feed", () => {
     mkdirSync(OUT!, { recursive: true });
@@ -147,5 +150,27 @@ describe.skipIf(!OUT)("#4453 prod smoke fixtures", () => {
       }))],
     }));
     expect(Object.keys(sites)).toHaveLength(DESIGN_KEYS.length);
+    // #4453 milestone 10 — the three-style plan preview (Ari's trips picks, Voyage, Terra and
+    // Journal), as plan artifacts on the reserved host: real trips in one, labelled samples
+    // (no listings yet) in the others. Served from /plan-preview by the smoke.
+    const plans = (["voyage", "terra", "journal"] as const).map((key, index) => {
+      const base = artifactFor(key) as unknown as Record<string, unknown>;
+      const withSamples = index > 0;
+      const plan = {
+        ...base,
+        brand_id: PLAN_BRAND,
+        generated_at: new Date().toISOString(),
+        preview_kind: "plan",
+        ...(withSamples ? { offerings_snapshot: [], plan_samples: { strip: SAMPLE_STRIP, listings: [
+          { sample: true, kind: "trip", title: "A long weekend by the sea", summary: "A small-group trip with a guide, planned and booked through Mingla." },
+          { sample: true, kind: "trip", title: "Mountains in the spring", summary: "Days on the trails and evenings together, with everything arranged." },
+        ] } } : {}),
+      };
+      const bytes = Buffer.from(JSON.stringify(plan));
+      const digest = createHash("sha256").update(bytes).digest("hex");
+      writeFileSync(join(OUT!, `${digest}.json`), bytes);
+      return { design_key: key, samples: withSamples, key: `plan-previews/${PLAN_BRAND}/plan-${String(index + 1).repeat(32)}/${digest}.json`, paths: (plan.pages as { path: string }[]).map((page) => page.path) };
+    });
+    writeFileSync(join(OUT!, "plans.json"), JSON.stringify(plans, null, 1));
   });
 });

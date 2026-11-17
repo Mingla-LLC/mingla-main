@@ -27,7 +27,9 @@ $a$;
 SELECT pg_temp.p_assert(
   (SELECT array_agg(p.proname::text ORDER BY p.proname) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.proname <> 'stay_room_night_available' AND p.prosrc ~ '\mstay_room_night_available\M')
-  <@ ARRAY['brand_site_booking_target', 'brand_site_offerings_feed', 'brand_site_stay_nights']::text[]
+  -- brand_site_offerings_feed_for_brand (#4453 M10) holds the site feed's one body; its rooms-left
+  -- read is proven equal to Mingla's own sell rule in issue_4453_plan_preview_feed.implementor (T-8).
+  <@ ARRAY['brand_site_booking_target', 'brand_site_offerings_feed', 'brand_site_offerings_feed_for_brand', 'brand_site_stay_nights']::text[]
   AND NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public' AND p.prosrc ~ '\mstay_room_night_available\M'
       AND p.proname ~ '^(issue_1388_|issue_4188_|biz_manage_stay_|discover_v2_|issue_1387_|issue_1389_)'),

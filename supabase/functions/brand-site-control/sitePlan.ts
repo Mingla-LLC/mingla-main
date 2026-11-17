@@ -11,6 +11,7 @@
  *   GET  /v1/brands/<id>/setup-content              #4453 staged reviews, destinations, stories (rank 20)
  *   POST /v1/brands/<id>/setup-content              #4453 create / update / delete one (reviews rank 50)
  *   POST /v1/brands/<id>/past-trips                 #4453 a trip run before Mingla (rank 50)
+ *   POST /v1/brands/<id>/plan-previews              #4453 M10 three-style preview (rank 20; planPreview.ts)
  *
  * Every check is Core's (the RPCs re-derive the caller's rank from the user
  * JWT); this module only maps routes and refusals. "Create website draft" is
@@ -18,6 +19,7 @@
  * fabricated tick), with exactly the pages Studio reported.
  */
 import { brandFlagOn, composeFacts } from "./designPass.ts";
+import { handlePlanPreviewRoute, planPreviewOn } from "./planPreview.ts";
 import { sitesJson } from "../_shared/sitesContracts.ts";
 import { PLANNED_PAGE_ORDER, splitBrandDescription } from "../_shared/siteContracts/sitePlan.ts";
 import { isDesignKey } from "../_shared/siteContracts/designs.ts";
@@ -169,6 +171,9 @@ export async function handleSitePlanRoute(
   input: JsonObject,
   ctx: SitePlanContext,
 ): Promise<Response | null> {
+  // #4453 milestone 10 — SITES_PLAN_PREVIEW (planPreview.ts).
+  const planPreview = await handlePlanPreviewRoute(path, method, input, ctx);
+  if (planPreview) return planPreview;
   const plan = path.match(/^\/v1\/brands\/([^/]+)\/site-plan(?:\/(heartbeat|take-over|design))?$/);
   const start = path.match(/^\/v1\/brands\/([^/]+)\/site-start-request$/);
   const compose = path.match(/^\/v1\/brands\/([^/]+)\/site\/compose-from-plan$/);
@@ -187,8 +192,15 @@ export async function handleSitePlanRoute(
     const styleLibrary = await brandFlagOn(ctx.serviceRpc, "SITES_STYLE_LIBRARY", brandId);
     // #4453 milestone 11 — SITES_ARI_ADD_PAGE for this brand: the Host app shows "Add a page with Ari" only while it is on.
     const ariAddPage = await brandFlagOn(ctx.serviceRpc, "SITES_ARI_ADD_PAGE", brandId);
+    // #4453 milestone 10 — SITES_PLAN_PREVIEW for this brand: only then is plan_preview present (flag off = the same body as before).
+    const planPreview = await planPreviewOn(ctx.serviceRpc, brandId);
     const body = joined.data && typeof joined.data === "object" && !Array.isArray(joined.data)
-      ? { ...(joined.data as JsonObject), style_library: styleLibrary, ari_add_page: ariAddPage }
+      ? {
+        ...(joined.data as JsonObject),
+        style_library: styleLibrary,
+        ari_add_page: ariAddPage,
+        ...(planPreview ? { plan_preview: true } : {}),
+      }
       : joined.data;
     return sitesJson({ ok: true, data: body });
   }

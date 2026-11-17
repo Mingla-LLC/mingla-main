@@ -44,6 +44,8 @@ export type OfferingCard = {
    * card links to Mingla exactly as before. `href` (Book) is always Mingla.
    */
   detailHref: string | null;
+  /** #4453 milestone 10 — a plan preview's labelled sample (no link, no price, no date). */
+  sample?: boolean;
 };
 
 export type LiveOfferings = {

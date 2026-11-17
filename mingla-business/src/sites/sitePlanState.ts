@@ -112,6 +112,8 @@ export type SitePlanState = {
   styleLibrary: boolean;
   /** #4453 milestone 11 — SITES_ARI_ADD_PAGE for this brand (Core's value): "Add a page with Ari" shows. */
   ariAddPage: boolean;
+  /** #4453 M10 — SITES_PLAN_PREVIEW for this brand (Core sends `plan_preview` only while it is on). */
+  planPreview: boolean;
   proofCounts: { reviews: number; pastTrips: number; destinations: number; stories: number };
 };
 
@@ -208,6 +210,7 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     proofEnabled: raw.proof_enabled === true,
     styleLibrary: raw.style_library === true,
     ariAddPage: raw.ari_add_page === true,
+    planPreview: raw.plan_preview === true,
     proofCounts: {
       reviews: num(obj(raw.proof_counts).reviews),
       pastTrips: num(obj(raw.proof_counts).past_trips),

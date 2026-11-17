@@ -21,6 +21,8 @@ export const brandSiteKeys = {
   enquiries: (siteId: string | null) =>
     ["brand-sites", siteId, "enquiries"] as const,
   plan: (brandId: string) => ["brand-sites", brandId, "plan"] as const,
+  /** #4453 M10 — the three-style plan preview for one plan revision. */
+  planPreview: (brandId: string, revision: number | null) => ["brand-sites", brandId, "plan", "preview", revision] as const,
   /** #4453 — the setup part's staged reviews, destinations and stories. */
   setupContent: (brandId: string) => ["brand-sites", brandId, "plan", "setup-content"] as const,
   /** #4453 — each page's Draft sections ("N sections to review"). */

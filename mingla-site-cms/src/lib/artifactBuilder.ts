@@ -268,6 +268,12 @@ export async function buildPublicationArtifact(
      * page and everything under it out.
      */
     includeAriDrafts?: boolean;
+    /**
+     * #4453 milestone 10 — a plan preview (dry run): Core's projection is
+     * given (the brand's feed by brand; there may be no site), and nothing is
+     * written — the caller stores the bytes under `plan-previews/`.
+     */
+    planMode?: { projection: Record<string, unknown> };
   },
 ): Promise<BuiltPublication> {
   const scopedReq = await tenantRequest(req, input.tenant);
@@ -412,7 +418,7 @@ export async function buildPublicationArtifact(
   let brandSlug: string | null = null;
   let offeringsSnapshot: SiteOffering[] = [];
   if (offeringIds.size || wantsMenu || wantsVenue || wantsFeed) {
-    const projection = await readCoreProjection(
+    const projection = input.planMode ? input.planMode.projection : await readCoreProjection(
       `/internal/v1/sites/${input.tenant.core_site_id}/projection`,
       input.tenant.core_site_id,
       input.operationId,
@@ -1553,6 +1559,17 @@ export async function buildPublicationArtifact(
   // last good site stays.
   const digest = await sha256(serialized);
   const key = `publications/${input.tenant.core_site_id}/${input.publicationId}/${digest}.json`;
+  // #4453 milestone 10 — a plan preview writes nothing here (the caller stores it under plan-previews/).
+  if (input.planMode) {
+    return {
+      artifact,
+      serialized,
+      artifactKey: "",
+      artifactDigest: digest,
+      generation: { artifact_schema_version: 2, renderer_key: "sites-v2", design_key: design.key, design_version: design.version },
+      fontWarnings: fonts.warnings,
+    };
+  }
   await writeObject(
     cmsConfig().artifactBucket,
     key,

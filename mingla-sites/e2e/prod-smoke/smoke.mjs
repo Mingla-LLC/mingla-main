@@ -103,6 +103,9 @@ if (process.env.PROD_SMOKE_DESIGN) {
   }
 }
 let feedOn = false;
+// #4453 milestone 10 — the plan previews the fixtures step wrote (absent for --fixture ys).
+const plans = !ys && existsSync(join(dir, "plans.json")) ? JSON.parse(readFileSync(join(dir, "plans.json"), "utf8")) : [];
+const PLAN_HOST = "preview.sites.localhost";
 
 const VENUE = "22222222-2222-4222-8222-000000000001";
 const EVENT = "22222222-2222-4222-8222-000000000002";
@@ -332,6 +335,57 @@ async function phoneWidthCheck(out) {
   }
 }
 
+/**
+ * #4453 milestone 10 — the three-style plan preview on the production build:
+ * every page of each plan renders on the reserved host with the plan banner,
+ * the samples are tagged and never link to Mingla, the same key is a 404 on a
+ * site host, an unknown key is a 404, and nothing scrolls sideways at 375 px.
+ */
+async function planChecks(out) {
+  for (const plan of plans) {
+    for (const path of plan.paths) {
+      const url = `/plan-preview?k=${encodeURIComponent(plan.key)}${path ? `&path=${encodeURIComponent(path)}` : ""}`;
+      const { status, html } = await request(PLAN_HOST, url);
+      const label = `plan ${plan.design_key} /${path}`;
+      if (status !== 200) { out.push(`${label}: HTTP ${status}`); continue; }
+      if (!html.includes("Preview · nothing built yet") || !/noindex/.test(html)) { out.push(`${label}: no plan banner or not noindex`); continue; }
+      if (plan.samples && !html.includes("Sample listings. Your real Mingla listings replace these")) { out.push(`${label}: no sample strip`); continue; }
+      if (html.includes('href="https://host.usemingla.com/"')) { out.push(`${label}: a sample links to Mingla`); continue; }
+      console.log(`ok ${label}`);
+    }
+    const crossHost = await request(`${plan.design_key}.sites.localhost`, `/plan-preview?k=${encodeURIComponent(plan.key)}`);
+    if (crossHost.status !== 404) out.push(`plan ${plan.design_key}: HTTP ${crossHost.status} on a site host, expected 404`);
+    else console.log(`ok plan ${plan.design_key} on a site host (404)`);
+  }
+  if (plans.length) {
+    const bogus = await request(PLAN_HOST, `/plan-preview?k=${encodeURIComponent(plans[0].key.replace(/[0-9a-f]{64}\.json$/, `${"0".repeat(64)}.json`))}`);
+    if (bogus.status !== 404) out.push(`plan: unknown key HTTP ${bogus.status}, expected 404`);
+    const samplesShown = await request(PLAN_HOST, `/plan-preview?k=${encodeURIComponent(plans[1].key)}&path=${encodeURIComponent(plans[1].paths.find((p) => p.includes("trip")) ?? "")}`);
+    if (!/Sample listing/.test(samplesShown.html)) out.push(`plan ${plans[1].design_key}: no Sample-tagged listing drawn`);
+    else console.log(`ok plan ${plans[1].design_key} draws Sample-tagged listings`);
+  }
+  let chromium;
+  try {
+    ({ chromium } = await import("@playwright/test"));
+  } catch {
+    return;
+  }
+  const browser = await chromium.launch().catch(() => chromium.launch({ channel: "chrome" }));
+  try {
+    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    for (const plan of plans) {
+      for (const path of plan.paths) {
+        await page.goto(`http://${PLAN_HOST}:${APP_PORT}/plan-preview?k=${encodeURIComponent(plan.key)}&path=${encodeURIComponent(path)}`, { waitUntil: "networkidle" });
+        const width = await page.evaluate(() => document.documentElement.scrollWidth);
+        if (width > 375) out.push(`375 plan ${plan.design_key} /${path}: ${width}px wide`);
+        else console.log(`ok 375 plan ${plan.design_key} /${path} (${width}px)`);
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
 /** Text of a block's own heading, as the artifact holds it (hero and ticker carry none). */
 const headingOf = (block) => (typeof block.heading === "string" && block.heading.trim() ? block.heading.trim() : null);
 const decode = (html) => html.replace(/&amp;/g, "&").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"');
@@ -478,6 +532,7 @@ for (const state of ["empty", "upcoming"]) {
     }
     // #4453 milestone 5 (tester P1-3) — at 375 px no page scrolls sideways, on every design, Home and Trips.
     if (state === "upcoming") await (ys ? ysChecks(failures) : phoneWidthCheck(failures));
+    if (state === "upcoming" && plans.length) await planChecks(failures);
     if (state === "upcoming" && SERVE) {
       console.log(`prod-smoke: serving ${Object.keys(sites).map((host) => `http://${host}:${APP_PORT}/`).join(" ")} (Ctrl-C stops it)`);
       await new Promise((done) => { process.once("SIGINT", done); process.once("SIGTERM", done); });
@@ -500,4 +555,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
-console.log(`prod-smoke: PASS (${Object.keys(sites).length} designs x 2 feed states, ${Object.values(sites).reduce((sum, site) => sum + (site.detail_paths?.length ?? 0), 0)} detail pages)`);
+console.log(`prod-smoke: PASS (${Object.keys(sites).length} designs x 2 feed states, ${Object.values(sites).reduce((sum, site) => sum + (site.detail_paths?.length ?? 0), 0)} detail pages, ${plans.length} plan previews)`);

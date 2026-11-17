@@ -68,6 +68,8 @@ function ClockIcon() {
  * grid), so the browser picks the publish-time rendition that fits.
  */
 function CardLink({ card, analytics, children }: { card: OfferingCard; analytics: SiteEventContext; children: React.ReactNode }) {
+  // #4453 M10 — a plan preview's labelled sample is never a link (no Mingla page, no "#").
+  if (card.sample) return <div className="mg-sample-card" data-sample="1">{children}</div>;
   return card.detailHref
     ? <a href={card.detailHref} className="mg-to-detail-card">{children}</a>
     : <TrackedLink href={card.href} context={analytics} ctaKind="offering" offeringId={card.id}>{children}</TrackedLink>;
@@ -102,7 +104,7 @@ export function PhotoCard({ card, offering, analytics, sizes }: { card: Offering
                 : <p className="meta v-card__price">{price}</p>
             ) : null}
           </div>
-          <span className="sr-only">{card.detailHref ? `: details and booking` : `${card.cta}: ${card.title} on Mingla`}</span>
+          {card.sample ? null : <span className="sr-only">{card.detailHref ? `: details and booking` : `${card.cta}: ${card.title} on Mingla`}</span>}
         </div>
       </CardLink>
     </article>
