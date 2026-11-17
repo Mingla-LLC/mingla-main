@@ -25,9 +25,14 @@ function linkTexts(html: string): string[] {
 }
 
 describe("#4453 generic menu labels get the page's name", () => {
-  it("names the page from the owner's sub-menu, never invents one", () => {
+  it("names the page the link opens, from the owner's sub-menu, never invents one", () => {
     expect(descriptiveSuffix(items[2])).toBe("About us");
-    expect(descriptiveSuffix({ label: "More", href: "/x", children: [{ label: "Team", href: "/team" }] })).toBe("Team");
+    // P3-1: the hidden name is the page the link opens (same href), never another child.
+    expect(descriptiveSuffix({ label: "More", href: "/x", children: [{ label: "Team", href: "/team" }] })).toBeNull();
+    expect(descriptiveSuffix({ label: "More", href: "/contact-us", children: [
+      { label: "About us", href: "/about-us" },
+      { label: "Contact", href: "/contact-us" },
+    ] })).toBe("Contact");
     expect(descriptiveSuffix({ label: "More", href: "/x" })).toBeNull();
     expect(descriptiveSuffix({ label: "Trips", href: "/trips" })).toBeNull();
   });

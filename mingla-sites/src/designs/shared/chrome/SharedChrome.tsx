@@ -35,15 +35,16 @@ export type ChromeNavItem = { label: string; href: string; children?: Array<{ la
  * titled "More" (or another generic word) linking to a page reads, to search
  * engines and screen readers, as a link with no meaning. The visible label
  * stays the owner's; the link also carries the name of the page it opens,
- * taken from the owner's own sub-menu (the child with the same address, else
- * the first child), as visually hidden text. Never invented.
+ * taken from the owner's own sub-menu (only the child with the same address,
+ * so the hidden name always matches the page the link opens), as visually
+ * hidden text. No such child: no suffix. Never invented.
  */
 const GENERIC_LINK_TEXT = new Set(["more", "read more", "learn more", "see more", "view more", "click here", "here", "details", "info", "more info"]);
 
 export function descriptiveSuffix(item: ChromeNavItem): string | null {
   if (!GENERIC_LINK_TEXT.has(item.label.trim().toLowerCase())) return null;
   const children = item.children ?? [];
-  const named = children.find((child) => child.href === item.href) ?? children[0];
+  const named = children.find((child) => child.href === item.href);
   const name = named?.label.trim();
   return name && !GENERIC_LINK_TEXT.has(name.toLowerCase()) ? name : null;
 }
