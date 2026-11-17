@@ -1,25 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { showAlert } from "../../components/ui/showAlert";
 import { Button } from "../../components/ui/Button";
 import { GlassCard } from "../../components/ui/GlassCard";
 import {
-  accent,
-  androidOpaque,
-  canvas,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { CONTACT_IMPORT_ATTESTATION_VERSION } from "../../constants/contactImportAttestation";
 import {
@@ -223,7 +219,7 @@ export function ContactImportFlow({
           data: { action: unknown };
         };
         event.preventDefault();
-        Alert.alert(
+        showAlert(
           "Your import is still running",
           "You can leave and check its status later.",
           [
@@ -547,7 +543,7 @@ export function ContactImportFlow({
               label={`Confirm and import ${preview.counts.rowCount} contacts`}
               size="lg"
               fullWidth
-              accentColor={accent.warm}
+              accentColor={color.accent}
               disabled={
                 !online ||
                 previewExpired ||
@@ -691,10 +687,10 @@ export function ContactImportFlow({
   );
 }
 const s = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover },
+  host: { flex: 1, backgroundColor: color.canvas },
   section: {
-    padding: spacing.md,
-    gap: spacing.md,
+    padding: space[4],
+    gap: space[4],
     maxWidth: 960,
     width: "100%",
     alignSelf: "center",
@@ -703,57 +699,57 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    backgroundColor: canvas.discover,
-    padding: spacing.lg,
+    gap: space[4],
+    backgroundColor: color.canvas,
+    padding: space[6],
   },
-  h2: { ...typography.h1, color: text.primary },
-  h3: { ...typography.h3, color: text.primary },
-  body: { ...typography.body, color: text.secondary },
-  eyebrow: { ...typography.labelCap, color: text.tertiary },
+  h2: { ...type.title, color: color.text1 },
+  h3: { ...type.h1, color: color.text1 },
+  body: { ...type.body, color: color.text2 },
+  eyebrow: { ...type.label, color: color.text3 },
   fileCard: {
     minHeight: 176,
-    padding: spacing.lg,
+    padding: space[6],
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
     overflow: "hidden",
     ...(Platform.OS === "android"
       ? {
-          backgroundColor: androidOpaque.rowFill,
-          borderColor: androidOpaque.rowBorder,
+          backgroundColor: materials.pane.solidFill,
+          borderColor: color.card2,
           elevation: 0,
         }
       : null),
   },
   mapRow: {
-    padding: spacing.md,
+    padding: space[4],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
-    gap: spacing.sm,
+    borderBottomColor: color.line,
+    gap: space[2],
   },
   grow: { flex: 1 },
-  mapHeader: { ...typography.body, color: text.primary, fontWeight: "600" },
-  sample: { ...typography.bodySm, color: text.tertiary },
-  targetWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  mapHeader: { ...type.body, color: color.text1, fontWeight: "600" },
+  sample: { ...type.small, color: color.text3 },
+  targetWrap: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   choice: {
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
-  choiceActive: { backgroundColor: accent.tint, borderColor: accent.border },
-  choiceText: { ...typography.bodySm, color: text.secondary },
-  choiceActiveText: { color: text.primary, fontWeight: "600" },
-  footer: { padding: spacing.md, gap: spacing.sm },
-  err: { ...typography.bodySm, color: semantic.error },
-  attestation: { padding: spacing.md, gap: spacing.sm },
+  choiceActive: { backgroundColor: color.accentLine, borderColor: color.accentLine },
+  choiceText: { ...type.small, color: color.text2 },
+  choiceActiveText: { color: color.text1, fontWeight: "600" },
+  footer: { padding: space[4], gap: space[2] },
+  err: { ...type.small, color: color.danger },
+  attestation: { padding: space[4], gap: space[2] },
   checkRow: {
     minHeight: 44,
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
   box: {
@@ -761,16 +757,16 @@ const s = StyleSheet.create({
     height: 24,
     borderRadius: radius.sm,
     borderWidth: 1.5,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
-  boxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  check: { color: canvas.depth, fontWeight: "700" },
-  legal: { ...typography.body, color: text.primary, flex: 1 },
+  boxOn: { backgroundColor: color.accent, borderColor: color.accent },
+  check: { color: color.canvas, fontWeight: "700" },
+  legal: { ...type.body, color: color.text1, flex: 1 },
   row: {
-    padding: spacing.md,
+    padding: space[4],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
 });

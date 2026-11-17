@@ -171,6 +171,10 @@
       "readyBank": "Cuenta bancaria en {{country}}",
       "readyBankAny": "Cuenta bancaria en tu país",
       "readyTax": "NIF (solo empresas registradas)"
+    },
+    "stepper": {
+      "saved": "Guardado",
+      "steps": "Pasos"
     }
   },
   "doorMode": {

@@ -12,11 +12,9 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../constants/designSystem";
 import {
   type BrandRole,
@@ -91,7 +89,7 @@ export const RolePickerSheet: React.FC<RolePickerSheetProps> = ({
                 <Text style={styles.roleRowSub}>{roleDescription(role)}</Text>
               </View>
               {!readOnly && active ? (
-                <Icon name="check" size={18} color={accent.warm} />
+                <Icon name="check" size={18} color={color.text1} />
               ) : null}
             </Pressable>
           );
@@ -115,33 +113,33 @@ export const RolePickerSheet: React.FC<RolePickerSheetProps> = ({
 
 const styles = StyleSheet.create({
   sheetContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingTop: space[4],
+    paddingBottom: space[7],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   sheetTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   roleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2] + 2,
+    borderRadius: radius.sm,
     overflow: "hidden",
-    marginBottom: spacing.xs + 2,
-    backgroundColor: glass.tint.profileBase,
+    marginBottom: space[1] + 2,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   roleRowActive: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    borderColor: color.paper,
+    backgroundColor: color.fill.tabOn,
   },
   roleRowTextCol: {
     flex: 1,
@@ -150,19 +148,19 @@ const styles = StyleSheet.create({
   roleRowLabel: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   roleRowLabelActive: {
-    color: accent.warm,
+    color: color.text1,
   },
   roleRowSub: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 3,
     lineHeight: 17,
   },
   gotItWrap: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 });
 

@@ -46,15 +46,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import {
-  accent,
-  androidOpaque,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
+import { color, edge, materials, radius, space, type } from "../../../constants/designSystem";
 import type { PersonalizationToken } from "../../../services/marketing/tenTapTokenBridge";
 import type { EventCardOption } from "../../../services/marketing/brandEvents";
 import {
@@ -310,7 +302,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           </ScrollView>
           {fadeLeft ? (
             <LinearGradient
-              colors={["rgba(19, 21, 25, 1)", "rgba(19, 21, 25, 0)"]}
+              colors={[color.card, color.transparent]}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               pointerEvents="none"
@@ -322,7 +314,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           ) : null}
           {fadeRight ? (
             <LinearGradient
-              colors={["rgba(19, 21, 25, 0)", "rgba(19, 21, 25, 1)"]}
+              colors={[color.transparent, color.card]}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               pointerEvents="none"
@@ -577,14 +569,14 @@ const styles = StyleSheet.create({
   root: {
     flexShrink: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   foot: {
     height: 44,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: space[2],
+    gap: space[1],
   },
   railWrap: {
     flex: 1,
@@ -606,12 +598,12 @@ const styles = StyleSheet.create({
   pillRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   glyph: {
     height: 32,
     minWidth: 32,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
@@ -620,23 +612,23 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   glyphActive: {
-    backgroundColor: accent.tint,
-    borderColor: glass.border.control,
+    backgroundColor: color.fill.tabOn,
+    borderColor: edge.ringInputFocus.borderColor,
   },
   glyphActiveOpaque: {
-    backgroundColor: androidOpaque.accentFill,
-    borderColor: androidOpaque.controlBorder,
+    backgroundColor: materials.selected.solidFill,
+    borderColor: edge.ringInputFocus.borderColor,
   },
   glyphPressed: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   glyphText: {
-    ...typography.buttonMd,
+    ...type.btnSm,
     fontSize: 15,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   glyphTextActive: {
-    color: accent.warm,
+    color: color.text1,
   },
   glyphTextItalic: {
     fontStyle: "italic",
@@ -646,7 +638,7 @@ const styles = StyleSheet.create({
   },
   textBtn: {
     height: 32,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
@@ -655,83 +647,83 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   textBtnOpen: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tile,
+    borderColor: color.lineStrong,
   },
   textBtnOpenOpaque: {
-    backgroundColor: androidOpaque.accentFill,
-    borderColor: accent.border,
+    backgroundColor: materials.selected.solidFill,
+    borderColor: color.lineStrong,
   },
   textBtnLabel: {
-    ...typography.buttonMd,
-    color: textTokens.secondary,
+    ...type.btnSm,
+    color: color.text2,
   },
   textBtnLabelOpen: {
-    color: textTokens.primary,
+    color: color.text1,
   },
 
   // Events panel
   eventsScroller: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     // F.9m: paddingTop md gives breathing room between the pill row and
     // the events carousel (operator directive — pill was sitting flush
     // against the carousel chips).
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingTop: space[4],
+    paddingBottom: space[2],
   },
   eventCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     minHeight: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     maxWidth: 220,
   },
   eventCardPressed: {
     opacity: 0.7,
   },
   eventCardGlyph: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   eventCardText: {
     flexShrink: 1,
   },
   eventCardTitle: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   eventCardDate: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
 
   // Personalization grid
   personalizeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
     // F.9m: paddingTop md — breathing room from pill row.
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingTop: space[4],
+    paddingBottom: space[2],
   },
   tokenChip: {
     minHeight: 44, // I-WCAG-AA-TOUCH-44PT — relaxed via hitSlop visually compact
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -739,47 +731,47 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   tokenChipText: {
-    ...typography.monoMd,
-    color: textTokens.primary,
+    ...type.mono,
+    color: color.text1,
   },
 
   // Overflow list
   overflowList: {
     // F.9m: paddingTop md — breathing room from pill row.
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingTop: space[4],
+    paddingBottom: space[2],
   },
   overflowItem: {
     minHeight: 44, // I-WCAG-AA-TOUCH-44PT
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    marginBottom: spacing.xs,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    marginBottom: space[1],
+    backgroundColor: color.fill.inset,
   },
   overflowItemPressed: {
     opacity: 0.7,
   },
   overflowItemText: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   overflowItemHint: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[1],
   },
 
   // Empty state
   panelEmpty: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[4],
+    paddingHorizontal: space[2],
   },
   panelEmptyText: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
 });

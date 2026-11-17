@@ -15,7 +15,7 @@
  *     business_publish_event_draft call from trip code)
  *   - Edge function changes (confirmation dispatch trip branch + discover-fn
  *     filter)
- *   - Locked routing (Universal "+" rewired, /trip/coming-soon is a redirect)
+ *   - Locked routing (Universal "+" rewired, the /trip/coming-soon stub retired)
  *   - Scope-leak guardrail (trip-specific literals confined to expected files)
  *
  * Exit 0 = PASS, 1 = FAIL. Wire into
@@ -259,17 +259,31 @@ function read(path) {
   }
 }
 
-// ---------- A-12: trip/coming-soon is a redirect (not the M0 placeholder) ----------
+// ---------- A-12: the retired /trip/coming-soon stub stays gone ----------
+// #4420 wave 6 deleted app/trip/coming-soon.tsx (the M0 stub's redirect had
+// outlived its 3-day link window by months). The intent is unchanged: no
+// in-app caller may send an operator to the M0 stub. Creating a trip is
+// /trip/create (A-11); a stale /trip/coming-soon link now resolves to the
+// trip detail route's "Trip not found" state.
 {
   const path = join(BUSINESS, "app", "trip", "coming-soon.tsx");
-  const src = read(path);
-  if (!/router\.replace\(\s*["']\/trip\/create["']/.test(src)) {
-    fail(
-      "A-12",
-      "trip/coming-soon.tsx is not a redirect to /trip/create — operators tapping old deep links would still hit the M0 stub",
-    );
+  const callers = [];
+  function walkCallers(dir) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name.startsWith(".") || entry.name === "__tests__") continue;
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) walkCallers(abs);
+      else if (/\.(ts|tsx)$/.test(entry.name) && /["'`]\/trip\/coming-soon/.test(readFileSync(abs, "utf8"))) callers.push(abs);
+    }
+  }
+  walkCallers(join(BUSINESS, "app"));
+  walkCallers(join(BUSINESS, "src"));
+  if (existsSync(path)) {
+    fail("A-12", "trip/coming-soon.tsx is back — the M0 stub was retired by #4420 wave 6; create trips at /trip/create");
+  } else if (callers.length > 0) {
+    fail("A-12", `in-app callers still route to /trip/coming-soon: ${callers.join(", ")}`);
   } else {
-    pass("A-12", "trip/coming-soon.tsx redirects to /trip/create (preserves shared deep links)");
+    pass("A-12", "trip/coming-soon.tsx is retired and nothing in the app routes to it");
   }
 }
 

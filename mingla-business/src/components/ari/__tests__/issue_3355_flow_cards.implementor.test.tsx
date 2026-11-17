@@ -78,7 +78,12 @@ jest.mock("react-native", () => {
   };
 });
 jest.mock("lucide-react-native", () => ({ Check: () => null }));
-jest.mock("../../../constants/designSystem", () => ({
+// [TEST-MOD-APPROVED #4420] the Graphite token names (color/space/type/…) join
+// the partial mock: the screens now read them instead of the retired names.
+jest.mock("../../../constants/designSystem", () => {
+  const token: object = new Proxy({}, { get: (_t, key) => (key === Symbol.toPrimitive ? () => 0 : token) });
+  return {
+    color: token, space: token, type: token, edge: token, materials: token, scrim: token, shadow: token, size: token, ariPalette: token,
   ariThread: {
     gapGroup: 4,
     gapTurn: 10,
@@ -92,7 +97,8 @@ jest.mock("../../../constants/designSystem", () => ({
   semantic: { error: "red", success: "green", successTint: "green" },
   spacing: { xs: 4, sm: 8, md: 16, xl: 32 },
   typography: { bodySm: { fontSize: 13 }, caption: { fontSize: 12 } },
-}));
+  };
+});
 jest.mock("../ChatBubble", () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   ChatBubble: () => require("react").createElement("chat-bubble"),

@@ -203,8 +203,12 @@ describe("#1564 — the form is painted from the page's palette", () => {
     expect(colours.join("|")).not.toContain("12, 14, 18");
   });
 
+  // [TEST-MOD-APPROVED #4420] the redesigned booking controls (date strip,
+  // stepper, time chips) mark the choice in the palette's INK, keeping the
+  // accent for the action; the accent reaches the form once a time is
+  // picked, so these two read the open form. Still the venue's own palette.
   test("the venue's OWN accent reaches the rendered tree", () => {
-    const colours = renderWith(VENUE_GREEN);
+    const colours = renderWith(VENUE_GREEN, true);
     expect(colours).toContain(VENUE_GREEN.accent.toLowerCase());
     // …and the blue brand's accent is nowhere near it, which is the whole
     // point of a venue carrying its own colours.
@@ -212,8 +216,8 @@ describe("#1564 — the form is painted from the page's palette", () => {
   });
 
   test("changing the venue's palette changes what renders", () => {
-    const blue = renderWith(BRAND_BLUE);
-    const green = renderWith(VENUE_GREEN);
+    const blue = renderWith(BRAND_BLUE, true);
+    const green = renderWith(VENUE_GREEN, true);
     expect(blue.join("|")).not.toBe(green.join("|"));
     expect(blue).toContain(BRAND_BLUE.accent.toLowerCase());
     expect(green).toContain(VENUE_GREEN.accent.toLowerCase());
@@ -236,11 +240,12 @@ describe("#1564 — the form is painted from the page's palette", () => {
     );
     const colours = renderWith(RED_VENUE, true);
     expect(colours.length).toBeGreaterThan(15);
-    // `#ef4444` is passed to the phone field's borderError/errorText on every
-    // palette; it is a constant by design.
-    expect(colours).toContain("#ef4444");
+    // [TEST-MOD-APPROVED #4420] the phone field's borderError is the Graphite
+    // danger token on every palette; it is a constant by design.
+    const { color: graphite } = jest.requireActual<{ color: { danger: string } }>("../../../constants/designSystem");
+    expect(colours).toContain(graphite.danger);
     // …and the red venue's own accent is a DIFFERENT value, so the two are
     // still distinguishable to a guest.
-    expect(RED_VENUE.accent.toLowerCase()).not.toBe("#ef4444");
+    expect(RED_VENUE.accent.toLowerCase()).not.toBe(graphite.danger);
   });
 });

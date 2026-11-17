@@ -7,7 +7,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { Input } from "../../ui/Input";
-import { text as textTokens } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import { hostAdPlaceName, platformName } from "./hostAdCopy";
 import { countryName } from "./hostAdCountries";
 import { HOST_AD_APP_BADGES, hostAdStyles as s } from "./hostAdBuilderStyles";
@@ -198,7 +198,7 @@ export function HostAdPlacesEditor(
           testID={`${prefix}-search`}
         >
           {searching ? (
-            <ActivityIndicator size="small" color={textTokens.primary} />
+            <ActivityIndicator size="small" color={color.text1} />
           ) : (
             <Text style={s.searchButtonLabel}>{kind === "pin" ? "Add" : "Search"}</Text>
           )}

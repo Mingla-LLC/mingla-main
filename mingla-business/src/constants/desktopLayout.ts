@@ -6,9 +6,16 @@
  */
 
 /**
- * Fixed left rail width on desktop web.
+ * Fixed left rail width on desktop web. #4420: this is the COLLAPSED sidebar
+ * (the 80px icon rail used on wizard and full-screen routes).
  */
 export const DESKTOP_RAIL_WIDTH = 80;
+
+/**
+ * #4420 Graphite Glass — the grouped desktop sidebar at >= 1024px
+ * (kit `--size-sidebar`).
+ */
+export const DESKTOP_SIDEBAR_WIDTH = 248;
 
 /**
  * Compact bezel between persistent desktop chrome and page content.
@@ -29,7 +36,8 @@ export const DESKTOP_HUB_GRID_COLUMNS = 4;
 
 /**
  * Desktop wizard rail gives creation flows a navigable left pane while the
- * form stays in a readable column.
+ * form stays in a readable column. #4420: the clickable step list is 280 wide
+ * (kit `--size-step-list`) and the form column is 720 (was 260 / 1120).
  */
-export const DESKTOP_WIZARD_RAIL_WIDTH = 260;
-export const DESKTOP_WIZARD_FORM_MAX_WIDTH = 1120;
+export const DESKTOP_WIZARD_RAIL_WIDTH = 280;
+export const DESKTOP_WIZARD_FORM_MAX_WIDTH = 720;

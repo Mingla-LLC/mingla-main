@@ -77,6 +77,9 @@ import {
 } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { type RsvpCtaState } from "./offeringCta";
+// issue #4420 — the confirmed card's tick springs in unless motion is reduced.
+import { useReduceMotionPreference } from "./useReduceMotionPreference";
+import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 // ORCH-1340 — the ONE shared disk system (photo|glyph|+N|see-row); the entry
 // type is the 1338 frozen shape that physically cannot carry names.
 import { GuestAvatarCluster } from "./GuestAvatarCluster";
@@ -463,6 +466,38 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
             ? "Saving…"
             : "Going";
 
+  // issue #4420 — the inline mount (with the momentum) gets the roomy big
+  // answers; the compact floating card keeps its one-row three buttons.
+  const roomy = showMomentum;
+  const goingSub = goingResolved || pendingResolved || waitlistedResolved
+    ? null
+    : goingIsWaitlist
+      ? "Get the next spot"
+      : ctaState === "full" && !waitlistEnabled
+        ? "This one is full"
+        : "Hold my spot";
+  const reduceMotion = useReduceMotionPreference();
+  const tickIn = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  useEffect(() => {
+    if (!goingResolved) return undefined;
+    if (reduceMotion) {
+      tickIn.setValue(1);
+      return undefined;
+    }
+    tickIn.setValue(0);
+    const anim = Animated.timing(tickIn, {
+      toValue: 1,
+      duration: 480,
+      delay: 120,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+      isInteraction: false,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [goingResolved, reduceMotion, tickIn]);
+  const tickScale = tickIn.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
+
   // ── party-type vibe chips (accent-wash pills; glyph-free, per the mockup) ──
   const chips =
     partyTypes.length > 0 || capacityChipLabel !== null ? (
@@ -565,6 +600,17 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   // Each button is a glyph + label column, equal width, theme-accent driven.
   const dbtnBase = [styles.dbtn, { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder }];
 
+  const goingGlyph = (
+goingIsWaitlist || waitlistedResolved ? (
+        <ListGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
+      ) : pendingResolved ? (
+        <ClockGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
+      ) : goingResolved ? (
+        <CheckGlyph color={palette.accentText} />
+      ) : (
+        <UserPlusGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
+      )
+  );
   const GoingButton = (
     <Pressable
       onPress={onGoing}
@@ -574,31 +620,37 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       accessibilityLabel={goingLabel}
       accessibilityHint={goingDisabled ? undefined : needsDetailsHint}
       style={[
-        styles.dbtn,
+        roomy ? styles.bigBtn : styles.dbtn,
         goingFilled
           ? accentFillWithBorder(palette)
           : { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder },
       ]}
       testID={goingTestID ?? "orch-1157-rsvp-going"}
     >
-      {goingIsWaitlist || waitlistedResolved ? (
-        <ListGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
-      ) : pendingResolved ? (
-        <ClockGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
-      ) : goingResolved ? (
-        <CheckGlyph color={palette.accentText} />
-      ) : (
-        <UserPlusGlyph color={goingFilled ? palette.accentText : palette.tertiaryText} />
-      )}
-      <Text
-        style={[styles.dbtnText, { color: goingFilled ? palette.accentText : palette.tertiaryText, ...boldFace }]}
-        numberOfLines={1}
-      >
-        {goingLabel}
-      </Text>
+      {roomy ? null : goingGlyph}
+      <View style={roomy ? styles.bigLabelRow : styles.compactLabel}>
+        {roomy ? goingGlyph : null}
+        <Text
+          style={[roomy ? styles.bigText : styles.dbtnText, { color: goingFilled ? palette.accentText : palette.tertiaryText, ...boldFace }]}
+          numberOfLines={1}
+        >
+          {goingLabel}
+        </Text>
+      </View>
+      {roomy && goingSub !== null ? (
+        <Text
+          style={[styles.bigSub, { color: goingFilled ? palette.accentText : palette.tertiaryText }]}
+          numberOfLines={1}
+        >
+          {goingSub}
+        </Text>
+      ) : null}
     </Pressable>
   );
 
+  const maybeGlyph = (
+    <MaybeGlyph {...(maybeDisabled ? { color: palette.tertiaryText } : accentIcon(palette))} />
+  );
   const MaybeButton = (
     <Pressable
       onPress={onMaybe}
@@ -608,7 +660,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       accessibilityLabel="Maybe"
       accessibilityHint={maybeDisabled ? undefined : needsDetailsHint}
       style={[
-        styles.dbtn,
+        roomy ? styles.bigBtn : styles.dbtn,
         maybeDisabled
           ? // disabled: OPAQUE neutral surface + dimmed text/border (no see-through).
             { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder }
@@ -620,30 +672,47 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       ]}
       testID={maybeTestID ?? "orch-1157-rsvp-maybe"}
     >
-      <MaybeGlyph {...(maybeDisabled ? { color: palette.tertiaryText } : accentIcon(palette))} />
+      {roomy ? null : maybeGlyph}
+      <View style={roomy ? styles.bigLabelRow : styles.compactLabel}>
+      {roomy ? maybeGlyph : null}
       <Text
         style={[
-          styles.dbtnText,
+          roomy ? styles.bigText : styles.dbtnText,
           { color: maybeDisabled ? palette.tertiaryText : palette.accent, ...boldFace },
         ]}
         numberOfLines={1}
       >
         Maybe
       </Text>
+      </View>
+      {roomy && !maybeResolved ? (
+        <Text style={[styles.bigSub, { color: palette.secondaryText }]} numberOfLines={1}>
+          Remind me
+        </Text>
+      ) : null}
     </Pressable>
   );
 
+  // issue #4420 — in the roomy inline mount "Can't go" is a quiet text
+  // button under the two big answers (design file → P.rsvp); the compact
+  // floating card keeps it as the third button.
   const NotGoingButton = (
     <Pressable
       onPress={onNotGoing}
       disabled={submitting || locked}
       accessibilityRole="button"
       accessibilityLabel="Can't go"
-      style={[...dbtnBase]}
+      style={roomy ? styles.linkBtn : [...dbtnBase]}
       testID={notGoingTestID ?? "orch-1157-rsvp-not-going"}
     >
-      <XGlyph color={palette.secondaryText} />
-      <Text style={[styles.dbtnText, { color: palette.secondaryText, ...boldFace }]} numberOfLines={1}>
+      {roomy ? null : <XGlyph color={palette.secondaryText} />}
+      <Text
+        style={[
+          roomy ? styles.linkText : styles.dbtnText,
+          { color: palette.secondaryText, ...boldFace },
+        ]}
+        numberOfLines={1}
+      >
         Can't go
       </Text>
     </Pressable>
@@ -656,52 +725,87 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   //  - maybe → switch-to-Going + Can't
   //  - not_going → switch-to-Going
   //  - open / full+waitlist → Going(/Join waitlist) + Maybe + Can't
+  // issue #4420 — the roomy inline mount lays the answers out as two big
+  // buttons with "Can't go" under them, and a confirmed "going" becomes the
+  // calm confirmed card (tick, "You're going", change your reply). The set of
+  // controls per state is unchanged; only their arrangement is.
+  const row = (...buttons: React.ReactNode[]): React.ReactNode => (
+    <View style={styles.decisionRow}>{buttons}</View>
+  );
+  const withNotGoing = (...buttons: React.ReactNode[]): React.ReactNode =>
+    roomy ? (
+      <View style={styles.roomyStack}>
+        {row(...buttons)}
+        {NotGoingButton}
+      </View>
+    ) : (
+      row(...buttons, NotGoingButton)
+    );
   let decisionButtons: React.ReactNode;
   if (pendingResolved) {
-    decisionButtons = <View style={styles.decisionRow}>{GoingButton}</View>;
+    decisionButtons = row(GoingButton);
   } else if (waitlistedResolved) {
-    decisionButtons = <View style={styles.decisionRow}>{GoingButton}</View>;
+    decisionButtons = row(GoingButton);
   } else if (notGoingResolved) {
-    decisionButtons = <View style={styles.decisionRow}>{GoingButton}</View>;
+    decisionButtons = row(GoingButton);
   } else if (maybeResolved) {
-    decisionButtons = (
-      <View style={styles.decisionRow}>
-        {GoingButton}
-        {NotGoingButton}
-      </View>
-    );
+    decisionButtons = withNotGoing(GoingButton);
   } else if (goingResolved) {
-    decisionButtons = (
-      <View style={styles.decisionRow}>
-        {GoingButton}
-        {MaybeButton}
-        {NotGoingButton}
+    decisionButtons = roomy ? (
+      <View
+        style={[
+          styles.doneCard,
+          { backgroundColor: opaqueCardFill(palette), borderColor: palette.panelBorder },
+        ]}
+        testID="issue-4420-rsvp-confirmed-card"
+      >
+        <View
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={goingLabel}
+          accessibilityState={{ disabled: true, selected: true }}
+          style={styles.doneHead}
+          testID={goingTestID ?? "orch-1157-rsvp-going"}
+        >
+          <View style={[styles.doneTick, accentFill(palette)]}>
+            <ThemeAccentGradientLayer theme={theme} palette={palette} borderRadius={27} />
+            <Animated.View style={{ opacity: tickIn, transform: [{ scale: tickScale }] }}>
+              <CheckGlyph color={palette.accentText} />
+            </Animated.View>
+          </View>
+          <Text style={[styles.doneTitle, { color: palette.primaryText, ...boldFace }]}>
+            {goingLabel}
+          </Text>
+          {plusCount > 0 ? (
+            <Text style={[styles.doneSub, { color: palette.secondaryText }]}>
+              {plusCount === 1 ? "You and 1 guest." : `You and ${plusCount} guests.`}
+            </Text>
+          ) : null}
+        </View>
+        <Text style={[styles.doneChangeLabel, { color: palette.tertiaryText }]}>
+          Change your reply
+        </Text>
+        {/* Maybe stays offered only while it can still be chosen. */}
+        {maybeDisabled ? (
+          NotGoingButton
+        ) : (
+          <View style={styles.decisionRow}>
+            {MaybeButton}
+            {NotGoingButton}
+          </View>
+        )}
       </View>
+    ) : (
+      row(GoingButton, MaybeButton, NotGoingButton)
     );
   } else if (ctaState === "full" && !waitlistEnabled) {
     // Hard-full, no waitlist → Going disabled (informational) + Can't.
-    decisionButtons = (
-      <View style={styles.decisionRow}>
-        {GoingButton}
-        {NotGoingButton}
-      </View>
-    );
+    decisionButtons = withNotGoing(GoingButton);
   } else if (goingIsWaitlist) {
     // Full + waitlist → "Join waitlist" + Can't (no Maybe on a full waitlist).
-    decisionButtons = (
-      <View style={styles.decisionRow}>
-        {GoingButton}
-        {NotGoingButton}
-      </View>
-    );
+    decisionButtons = withNotGoing(GoingButton);
   } else {
-    decisionButtons = (
-      <View style={styles.decisionRow}>
-        {GoingButton}
-        {MaybeButton}
-        {NotGoingButton}
-      </View>
-    );
+    decisionButtons = withNotGoing(GoingButton, MaybeButton);
   }
 
   // Plus-ones stepper (only in an unresolved, non-binding state). ORCH-1163: the
@@ -872,6 +976,59 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   dbtnText: { fontSize: 13, fontWeight: "900" },
+  // issue #4420 — the roomy inline answers (design file → .duo .big).
+  bigBtn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 68,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    overflow: "hidden",
+  },
+  bigLabelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  compactLabel: {},
+  bigText: { fontSize: 16, fontWeight: "800" },
+  bigSub: { fontSize: 12, fontWeight: "500", opacity: 0.85 },
+  roomyStack: { gap: 6 },
+  linkBtn: {
+    alignSelf: "center",
+    minHeight: 44,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  linkText: { fontSize: 14, fontWeight: "700" },
+  doneCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 22,
+    gap: 12,
+    overflow: "hidden",
+  },
+  doneHead: { alignItems: "center", gap: 8 },
+  doneTick: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  doneTitle: { fontSize: 18, fontWeight: "800", textAlign: "center" },
+  doneSub: { fontSize: 13, lineHeight: 19, textAlign: "center" },
+  doneChangeLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    textAlign: "center",
+    marginTop: 4,
+  },
   // ORCH-1163 R4 — self-sizing pill (hugs the text), centered under the buttons.
   microPill: {
     alignSelf: "center",

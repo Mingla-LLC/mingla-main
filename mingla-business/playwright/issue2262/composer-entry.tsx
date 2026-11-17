@@ -65,7 +65,7 @@ import { ComposerCanvas } from "../../src/components/marketing/ComposerV2/Compos
 // mounts it — inside the keyboard host, per the sub-sheet rule.
 import { SchedulePickerSheet } from "../../src/components/marketing/ComposerV2/SchedulePickerSheet";
 import { ComposerV2Editor } from "../../src/components/marketing/ComposerV2/ComposerV2Editor";
-import { canvas, spacing } from "../../src/constants/designSystem";
+import { color, space } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 
 interface HarnessFlags {
@@ -355,13 +355,13 @@ const WEB_RECOVERY =
   Platform.OS === "web" ? ({ overflow: "auto" } as unknown as object) : null;
 
 const styles = StyleSheet.create({
-  routeHost: { flex: 1, backgroundColor: canvas.discover },
+  routeHost: { flex: 1, backgroundColor: color.canvas },
   topBar: {
     height: 56,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     flexShrink: 0,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   topBarText: { color: "rgba(255,255,255,0.96)", fontSize: 16 },
   composerHost: { flex: 1, minHeight: 0 },
@@ -372,19 +372,19 @@ const styles = StyleSheet.create({
   topRowsShort: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
   },
   whoRow: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    gap: spacing.xxs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
+    gap: 2,
   },
-  desktopWhoRow: { paddingTop: spacing.sm, paddingBottom: spacing.xs },
+  desktopWhoRow: { paddingTop: space[2], paddingBottom: space[1] },
   whoRowShort: { flex: 1, minWidth: 0, paddingHorizontal: 0 },
-  channelRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  channelRow: { paddingHorizontal: space[4], paddingVertical: space[1] },
   channelRowShort: { flexShrink: 0, paddingHorizontal: 0 },
-  previewStub: { flex: 1, padding: spacing.md },
+  previewStub: { flex: 1, padding: space[4] },
   // A stand-in for ComposerReviewSheet. Only its OPEN/DISMISS lifecycle matters
   // to amendment 10.4 — the assertion is that backing out of it leaves the chip
   // holding the chosen time, which is composer state, not review-sheet state.
@@ -398,9 +398,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(12,14,18,0.94)",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
-  reviewBack: { padding: spacing.md },
+  reviewBack: { padding: space[4] },
 });
 
 const container = globalThis.document?.getElementById("root");

@@ -21,10 +21,9 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { Sheet } from "../ui/Sheet";
@@ -191,7 +190,7 @@ export function VenueOrderDetailSheet({
                   value={declineNote}
                   onChangeText={setDeclineNote}
                   placeholder="Why not? (needed to decline)"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   style={styles.noteInput}
                   multiline
                   accessibilityLabel="Reason for declining the refund"
@@ -323,69 +322,69 @@ function ActionButton({
 
 const styles = StyleSheet.create({
   body: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   destination: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   venue: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: spacing.xxs,
+    gap: 2,
   },
   statusLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   statusValue: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   statusMeta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   escalation: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
   lines: {
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   line: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   lineQty: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
     minWidth: 28,
   },
   lineText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   lineName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   lineMods: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   lineNote: {
-    ...typography.caption,
-    color: "#eb7825",
+    ...type.caption,
+    color: color.accent,
   },
   moneyRow: {
     flexDirection: "row",
@@ -393,73 +392,73 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   moneyLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   moneyValue: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   refundBlock: {
-    gap: spacing.xs,
-    padding: spacing.sm,
+    gap: space[1],
+    padding: space[2],
     borderRadius: radius.md,
-    backgroundColor: "rgba(245, 158, 11, 0.10)",
+    backgroundColor: color.accentText,
   },
   refundTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   refundBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   noteInput: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     minHeight: 64,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     textAlignVertical: "top",
   },
   actionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    paddingTop: spacing.xs,
+    gap: space[1],
+    paddingTop: space[1],
   },
   actionBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     minHeight: 44,
     justifyContent: "center",
   },
   safeBtn: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
   },
   destructiveBtn: {
-    backgroundColor: "rgba(239, 68, 68, 0.18)",
+    backgroundColor: color.errorTint,
   },
   armedBtn: {
-    backgroundColor: semantic.error,
+    backgroundColor: color.danger,
   },
   disabledBtn: {
     opacity: 0.5,
   },
   actionLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   terminalNote: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
 });
 

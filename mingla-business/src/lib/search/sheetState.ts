@@ -16,6 +16,7 @@ import {
   jumpToSuggestions,
   nearestSuggestions,
 } from "./globalSearch";
+import { pushRecent } from "./recents";
 import type { SearchIndexEntry, SearchResult } from "./types";
 
 /** Discriminated body-state the sheet renders. */
@@ -63,22 +64,11 @@ export function computeBodyState(args: ComputeBodyArgs): SheetBodyState {
   return { kind: "populated", results: outcome.results };
 }
 
-/**
- * Recents helper — MRU-ordered, deduped (case-insensitive on the trimmed
- * value), capped at `cap` (default 6). Pure (SPEC §3.4.1 pushRecent
- * semantics). Ephemeral — never persisted (R-4).
- */
-export function pushRecent(
-  recents: readonly string[],
-  query: string,
-  cap = 6,
-): string[] {
-  const trimmed = query.trim();
-  if (trimmed.length === 0) return [...recents];
-  const lower = trimmed.toLowerCase();
-  const deduped = recents.filter((r) => r.trim().toLowerCase() !== lower);
-  return [trimmed, ...deduped].slice(0, cap);
-}
+// #4420 — pushRecent lives in ./recents so the always-mounted sheet store
+// (useGlobalSearchSheet, in the tabs shell) can use it without pulling the
+// search engine + registry into the eager `__common` boot chunk. Re-exported
+// here so this module's API is unchanged.
+export { pushRecent };
 
 export interface RowPressEffects {
   route: string;

@@ -20,13 +20,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TurboModuleRegistry } from "react-native";
 
-import { accent, radius, semantic } from "../../constants/designSystem";
 import { fetchBrandStripeAccountSession } from "../../services/brandStripeAccountSessionService";
 import {
   CONNECT_ONBOARDING_COLLECTION_OPTIONS,
   CONNECT_ONBOARDING_PRIVACY_URL,
   CONNECT_ONBOARDING_TERMS_URL,
 } from "./nativeConnectOnboarding";
+import { MINGLA_CONNECT_APPEARANCE } from "./connectAppearance";
 
 /**
  * The iOS native modal dismisses only on a visible true -> false change, never
@@ -96,14 +96,8 @@ const readPublishableKey = (): string | null => {
   return typeof fromEnv === "string" && fromEnv.length > 0 ? fromEnv : null;
 };
 
-/** Mingla tokens the SDK's appearance variables accept. */
-const APPEARANCE = {
-  variables: {
-    colorPrimary: accent.warm,
-    colorDanger: semantic.error,
-    borderRadius: `${radius.md}px`,
-  },
-} as const;
+/** #4420: the shared Graphite appearance (same tokens as the web pages). */
+const APPEARANCE = MINGLA_CONNECT_APPEARANCE;
 
 export const ConnectOnboardingNative: React.FC<ConnectOnboardingNativeProps> = ({
   brandId,

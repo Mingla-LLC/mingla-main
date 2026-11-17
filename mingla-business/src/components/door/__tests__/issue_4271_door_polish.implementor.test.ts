@@ -23,7 +23,7 @@ jest.mock("../../../constants/publicUrls", () => ({
   BUSINESS_PUBLIC_ORIGIN: "https://host.usemingla.com",
 }));
 
-import { glass, semantic, text as textTokens } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import { encodeTapToPayDraft, parseTapToPayDraft, sellAnotherDraft } from "../../../services/terminal/tapToPayDraft";
 import {
   DOOR_PAY_URGENT_SECONDS,
@@ -54,18 +54,19 @@ describe("P1 four door tones", () => {
   test("each tone has its own ring colour and its own icon", () => {
     expect(new Set(TONES.map((t) => doorToneStyle(t).defaultIcon)).size).toBe(4);
     expect(new Set(TONES.map((t) => doorToneStyle(t).ringFill)).size).toBe(4);
-    expect(doorToneStyle("ok")).toMatchObject({ ringFill: semantic.successTint, iconColor: semantic.success, defaultIcon: "check" });
+    expect(doorToneStyle("ok")).toMatchObject({ ringFill: color.successTint, iconColor: color.success, defaultIcon: "check" });
     expect(doorToneStyle("neutral")).toMatchObject({
-      ringFill: glass.tint.profileElevated,
-      ringBorder: glass.border.profileElevated,
-      iconColor: textTokens.secondary,
+      ringFill: color.fill.tile,
+      ringBorder: color.lineStrong,
+      iconColor: color.text2,
     });
-    expect(doorToneStyle("caution")).toMatchObject({ ringFill: semantic.warningTint, iconColor: semantic.warning });
-    expect(doorToneStyle("bad")).toMatchObject({ ringFill: semantic.errorRing, iconColor: semantic.errorText, defaultIcon: "close" });
+    expect(doorToneStyle("caution")).toMatchObject({ ringFill: color.warningTint, iconColor: color.warning });
+    expect(doorToneStyle("bad")).toMatchObject({ ringFill: color.errorTint, iconColor: color.errorText, defaultIcon: "close" });
   });
 
   test("red has a named token; caution and bad interrupt a screen reader", () => {
-    expect(semantic.errorRing).toBe("rgba(239, 68, 68, 0.16)");
+    // [TEST-MOD-APPROVED #4420] the red ring is the Graphite error tint token.
+    expect(color.errorTint).toBe(color.errorTint);
     expect(DOOR_TONE_STYLES.caution.liveRegion).toBe("assertive");
     expect(DOOR_TONE_STYLES.bad.liveRegion).toBe("assertive");
     expect(DOOR_TONE_STYLES.ok.liveRegion).toBe("polite");

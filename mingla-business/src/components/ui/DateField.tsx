@@ -38,14 +38,7 @@ import {
 import React, { useCallback, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, type } from "../../constants/designSystem";
 import { WebDateTimeInput } from "./WebDateTimeInput";
 
 export interface DateFieldProps {
@@ -154,11 +147,11 @@ export function DateField({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   label: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   // Mirrors WebDateTimeInput's BASE_STYLE so the two halves of the pair look
   // identical: 48pt tall, 1px glass border, dark glass fill, 16px primary text.
@@ -168,22 +161,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   rowError: {
-    borderColor: semantic.error,
+    borderColor: color.errorText,
   },
   rowDisabled: {
     opacity: 0.45,
   },
   rowValue: {
     fontSize: 16,
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowPlaceholder: {
     fontSize: 16,
-    color: textTokens.quaternary,
+    color: color.text4,
   },
 });
 

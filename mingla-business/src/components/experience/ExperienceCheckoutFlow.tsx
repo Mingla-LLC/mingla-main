@@ -21,14 +21,16 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
-import { formatExperienceDateSubline } from "../../utils/experienceDateSubline";
+import {
+  experienceBuyerVenueLine,
+  formatExperienceDateSubline,
+} from "../../utils/experienceDateSubline";
 import type {
   PublicExperience,
   PublicExperienceBrand,
@@ -117,7 +119,8 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
           </Text>
           <Text style={styles.ticketSubline} numberOfLines={1}>
             {formatExperienceDateSubline({
-              venueText: experience.venueText,
+              // #4420 — city and country only before booking, like the public page.
+              venueText: experienceBuyerVenueLine(experience.venueText),
               dateStartIsos: dateIsos,
               whenMode: experience.whenMode,
               recurrenceRule: experience.recurrenceRule,
@@ -125,7 +128,7 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
           </Text>
         </View>
         <View style={styles.ticketBadge}>
-          <Icon name="check" size={14} color={accent.warm} />
+          <Icon name="check" size={14} color={color.accent} />
         </View>
       </View>
 
@@ -147,46 +150,46 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: space[6],
+    gap: space[4],
   },
   brandByline: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   ticketCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(235, 120, 37, 0.06)",
+    backgroundColor: color.accentTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.5)",
+    borderColor: color.accentLine,
   },
   ticketTextCol: {
     flex: 1,
   },
   ticketName: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   ticketPrice: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     marginTop: 2,
   },
   ticketSubline: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 4,
   },
   ticketBadge: {
@@ -195,27 +198,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 14,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    backgroundColor: color.accentTint,
   },
   endedBanner: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(239, 68, 68, 0.10)",
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.4)",
+    borderColor: color.errorLine,
   },
   endedText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   helper: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     textAlign: "center",
   },
   errorText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
 });

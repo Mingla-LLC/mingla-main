@@ -171,6 +171,10 @@
       "readyBank": "Konto bankowe w kraju: {{country}}",
       "readyBankAny": "Konto bankowe w Twoim kraju",
       "readyTax": "NIP (tylko zarejestrowane spółki)"
+    },
+    "stepper": {
+      "saved": "Zapisano",
+      "steps": "Kroki"
     }
   },
   "doorMode": {

@@ -21,7 +21,7 @@
  * so boot-shared services do not pull banner styling into `__common`.
  */
 
-import { accent, semantic } from "../constants/designSystem";
+import { color } from "../constants/designSystem";
 import type { BrandStripeBannerConfig } from "./brandStripeUiState";
 import { formatPayoutReleaseDate } from "./payoutBreakdown";
 import type { BrandPayoutVisibilityDTO } from "./brandPayoutVisibilityData";
@@ -126,7 +126,7 @@ export function payoutStatusToBannerConfig(
   const success = status.kind === "next_payout";
   return {
     icon: success ? "check" : status.kind === "payouts_paused" ? "clock" : "bank",
-    iconColor: success ? semantic.success : accent.warm,
+    iconColor: success ? color.success : color.accent,
     title: status.title,
     sub: status.sub,
     ctaLabel: hasCta ? status.ctaLabel : null,

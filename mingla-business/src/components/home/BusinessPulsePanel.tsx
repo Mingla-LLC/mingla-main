@@ -23,15 +23,12 @@ import Svg, {
 } from "react-native-svg";
 
 import {
-  accent,
   durations,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
   trafficAnalytics,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
 import { useBrandPayoutScreen } from "../../hooks/useBrandPayoutScreen";
@@ -139,15 +136,15 @@ const TrafficSparkline: React.FC<{ values: readonly number[] }> = ({ values }) =
       <Svg width="100%" height={64} viewBox="0 0 300 64">
         <Defs>
           <SvgLinearGradient id="pulseTrafficArea" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={accent.warm} stopOpacity="0.32" />
-            <Stop offset="1" stopColor={accent.warm} stopOpacity="0.02" />
+            <Stop offset="0" stopColor={color.text1} stopOpacity="0.32" />
+            <Stop offset="1" stopColor={color.text1} stopOpacity="0.02" />
           </SvgLinearGradient>
         </Defs>
         <Path d={geometry.area} fill="url(#pulseTrafficArea)" />
         <Path
           d={geometry.line}
           fill="none"
-          stroke={accent.warm}
+          stroke={color.text1}
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -156,8 +153,8 @@ const TrafficSparkline: React.FC<{ values: readonly number[] }> = ({ values }) =
           cx={geometry.last.x}
           cy={geometry.last.y}
           r="4"
-          fill={accent.warm}
-          stroke={textTokens.primary}
+          fill={color.text1}
+          stroke={color.text1}
           strokeWidth="2"
         />
       </Svg>
@@ -188,7 +185,7 @@ const FollowerSparkline: React.FC<{ values: readonly number[] }> = ({ values }) 
         <Path
           d={geometry.line}
           fill="none"
-          stroke={accent.warm}
+          stroke={color.text1}
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -197,8 +194,8 @@ const FollowerSparkline: React.FC<{ values: readonly number[] }> = ({ values }) 
           cx={geometry.last.x}
           cy={geometry.last.y}
           r="3"
-          fill={accent.warm}
-          stroke={textTokens.primary}
+          fill={color.text1}
+          stroke={color.text1}
           strokeWidth="2"
         />
       </Svg>
@@ -883,7 +880,10 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
           </Text>
           {followerData.newThisWeek > 0 ? (
             <View style={styles.followerPill}>
-              <Text style={styles.followerPillText}>
+              {/* #4420 (device round 2, Android): one line, simple breaking.
+                The bold caption was measured on one line and drawn on two, so
+                the pill showed "+2 this" with "week" cut off. */}
+              <Text style={styles.followerPillText} numberOfLines={1} textBreakStrategy="simple">
                 +{formatCount(followerData.newThisWeek)} this week
               </Text>
             </View>
@@ -955,13 +955,15 @@ export const BusinessPulsePanel: React.FC<BusinessPulsePanelProps> = ({
 };
 
 const styles = StyleSheet.create({
-  root: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
+  root: { paddingHorizontal: space[4], marginBottom: space[4] },
+  // #4420 (device round 2): the phone keeps the page's one gutter (root's
+  // space[4]); the old 12 made these cards 4pt wider than the top bar and
+  // the To-do card on each side.
   rootNarrow: {
     width: "100%",
-    paddingHorizontal: spacing.sm + spacing.xs,
   },
   liveCardGlow: {
-    shadowColor: semantic.liveGlow,
+    shadowColor: color.errorLine,
     shadowOpacity: 1,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 18 },
@@ -970,134 +972,134 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
     borderRadius: radius.xl,
-    borderColor: semantic.live,
+    borderColor: color.live,
     opacity: 0.38,
   },
   zones: { flexDirection: "row", alignItems: "stretch" },
-  zonesAfterBand: { borderTopWidth: 1, borderTopColor: glass.border.profileBase },
+  zonesAfterBand: { borderTopWidth: 1, borderTopColor: color.line },
   zoneWrap: { minWidth: 0 },
-  zoneDivider: { borderLeftWidth: 1, borderLeftColor: glass.border.profileBase },
-  zone: { minHeight: 196, padding: spacing.lg, minWidth: 0 },
+  zoneDivider: { borderLeftWidth: 1, borderLeftColor: color.line },
+  zone: { minHeight: 196, padding: space[6], minWidth: 0 },
   fillZone: { flex: 1 },
   moneyZone: { minWidth: 0, paddingBottom: 0 },
   moneyZonePhone: {
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingTop: space[4],
+    paddingHorizontal: space[4],
   },
   moneyZoneCompact: { minHeight: 147 },
   moneyZoneCompactPhone: { minHeight: 130 },
   metricZonePhone: {
     minHeight: 222,
-    padding: spacing.md,
+    padding: space[4],
   },
-  moneyZoneOnly: { flexDirection: "row", alignItems: "stretch", gap: spacing.lg },
+  moneyZoneOnly: { flexDirection: "row", alignItems: "stretch", gap: space[6] },
   moneyHeadline: { flex: 1, minWidth: 0 },
   moneyRows: {
-    marginTop: spacing.md,
-    paddingBottom: spacing.xs,
+    marginTop: space[4],
+    paddingBottom: space[1],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
-  moneyRowsOnly: { flex: 1, marginTop: 0, paddingLeft: spacing.lg, borderTopWidth: 0, borderLeftWidth: 1 },
-  eyebrow: { ...typography.labelCap, color: textTokens.tertiary },
+  moneyRowsOnly: { flex: 1, marginTop: 0, paddingLeft: space[6], borderTopWidth: 0, borderLeftWidth: 1 },
+  eyebrow: { ...type.label, color: color.text3 },
   zoneHeading: {
     minHeight: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   zoneChevron: {
-    color: textTokens.tertiary,
+    color: color.text3,
     fontSize: 20,
     lineHeight: 20,
     fontWeight: "700",
   },
   moneyAmount: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 44,
     lineHeight: 48,
     fontWeight: "800",
     letterSpacing: -0.88,
     fontVariant: ["tabular-nums"],
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   moneyAmountPhone: { fontSize: 38, lineHeight: 44, letterSpacing: -0.76 },
   // #4389 HT — breathing room around the figure when the panel carries
   // Take a payment (Seth: "more breathing room").
-  moneyAmountRoomy: { marginTop: spacing.md, marginBottom: spacing.xs },
-  // Full width inside the panel's padding, spacing.lg under the door line.
-  moneyAction: { alignSelf: "stretch", marginTop: spacing.lg, paddingBottom: spacing.md },
-  moneySkeleton: { marginTop: spacing.sm },
-  subline: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.xs },
-  moneyRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  moneyAmountRoomy: { marginTop: space[4], marginBottom: space[1] },
+  // Full width inside the panel's padding, space[6] under the door line.
+  moneyAction: { alignSelf: "stretch", marginTop: space[6], paddingBottom: space[4] },
+  moneySkeleton: { marginTop: space[2] },
+  subline: { ...type.small, color: color.text2, marginTop: space[1] },
+  moneyRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] },
   moneyRowPhone: { minHeight: 44 },
   rowCopy: { flex: 1, minWidth: 0 },
-  rowLabel: { ...typography.caption, color: textTokens.secondary, flex: 1 },
-  rowStatus: { ...typography.micro, color: textTokens.secondary, marginTop: spacing.xxs },
-  warningText: { color: semantic.warning },
-  rowValue: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  miniValueRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
-  miniValue: { color: textTokens.primary, fontSize: 30, lineHeight: 36, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  rowLabel: { ...type.caption, color: color.text2, flex: 1 },
+  rowStatus: { ...type.label, color: color.text2, marginTop: space[1] },
+  warningText: { color: color.warning },
+  rowValue: { color: color.text1, fontSize: 15, lineHeight: 20, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  miniValueRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space[2], marginTop: space[2] },
+  miniValue: { color: color.text1, fontSize: 30, lineHeight: 36, fontWeight: "800", fontVariant: ["tabular-nums"] },
   miniValuePhone: { fontSize: 24, lineHeight: 30 },
-  deltaPill: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: trafficAnalytics.positiveDeltaTint },
+  deltaPill: { paddingHorizontal: space[2], paddingVertical: space[1], borderRadius: radius.full, backgroundColor: trafficAnalytics.positiveDeltaTint },
   deltaPillNeutral: { backgroundColor: trafficAnalytics.neutralDeltaTint },
-  deltaText: { ...typography.caption, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
+  deltaText: { ...type.caption, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
   deltaTextNeutral: { color: trafficAnalytics.neutralDelta },
-  followerPill: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: trafficAnalytics.positiveDeltaTint },
-  followerPillText: { ...typography.caption, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
-  sparkline: { flex: 1, minHeight: 64, marginTop: spacing.sm },
-  followerSparkline: { flex: 1, minHeight: 46, marginTop: spacing.md },
-  footer: { ...typography.caption, color: textTokens.secondary, marginTop: "auto", paddingTop: spacing.sm },
+  followerPill: { paddingHorizontal: space[2], paddingVertical: space[1], borderRadius: radius.full, backgroundColor: trafficAnalytics.positiveDeltaTint },
+  followerPillText: { ...type.caption, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
+  sparkline: { flex: 1, minHeight: 64, marginTop: space[2] },
+  followerSparkline: { flex: 1, minHeight: 46, marginTop: space[4] },
+  footer: { ...type.caption, color: color.text2, marginTop: "auto", paddingTop: space[2] },
   footerRow: {
     marginTop: "auto",
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   footerRowText: { marginTop: 0, paddingTop: 0 },
-  footerLink: { ...typography.caption, color: accent.warm, fontWeight: "600" },
-  phoneStrip: { flexDirection: "row", alignItems: "stretch", borderTopWidth: 1, borderTopColor: glass.border.profileBase },
+  footerLink: { ...type.caption, color: color.text1, fontWeight: "600" },
+  phoneStrip: { flexDirection: "row", alignItems: "stretch", borderTopWidth: 1, borderTopColor: color.line },
   pressed: { opacity: 0.72 },
-  liveBand: { padding: spacing.md, position: "relative", overflow: "hidden" },
+  liveBand: { padding: space[4], position: "relative", overflow: "hidden" },
   liveBandWide: {
     minHeight: 74,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
   liveBandActive: {},
   liveBandTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: semantic.liveGlow,
+    backgroundColor: color.errorLine,
     opacity: 0.32,
   },
-  soonBandTint: { backgroundColor: semantic.warningTint, opacity: 1 },
-  liveBandCard: { gap: spacing.md },
+  soonBandTint: { backgroundColor: color.warningTint, opacity: 1 },
+  liveBandCard: { gap: space[4] },
   liveBandCardWide: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
-  liveBandTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  liveBandTop: { flexDirection: "row", alignItems: "center", gap: space[2] },
   liveBandTopWide: { minWidth: 0, flexShrink: 1 },
   soonBandTopNarrow: {
     flexDirection: "column",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: space[4],
   },
-  livePill: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: semantic.live },
-  soonPill: { backgroundColor: glass.tint.profileBase, borderWidth: 1, borderColor: semantic.warning },
-  livePillText: { ...typography.micro, color: textTokens.inverse, fontWeight: "800" },
-  soonPillText: { color: semantic.warning },
-  liveDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: textTokens.inverse },
-  soonDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: semantic.warning },
-  offeringName: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700", flex: 1 },
-  liveStats: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
+  livePill: { flexDirection: "row", alignItems: "center", gap: space[1], paddingHorizontal: space[2], paddingVertical: space[1], borderRadius: radius.full, backgroundColor: color.live },
+  soonPill: { backgroundColor: color.fill.inset, borderWidth: 1, borderColor: color.warning },
+  livePillText: { ...type.label, color: color.textStrong, fontWeight: "800" },
+  soonPillText: { color: color.warning },
+  liveDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: color.textStrong },
+  soonDot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: color.warning },
+  offeringName: { ...type.small, color: color.text1, fontWeight: "700", flex: 1 },
+  liveStats: { flexDirection: "row", alignItems: "center", gap: space[6] },
   liveStatsWide: { flex: 1, justifyContent: "flex-end" },
   liveStatsNarrow: { justifyContent: "space-between" },
   soonStatsNarrow: { flexDirection: "column", alignItems: "stretch" },
@@ -1105,32 +1107,32 @@ const styles = StyleSheet.create({
   soldStat: { flex: 1, minWidth: 150 },
   soldStatWide: { flex: 0, width: 150 },
   soldStatSoonNarrow: { width: 112, flex: 0 },
-  liveStatValue: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  liveStatLabel: { ...typography.micro, color: textTokens.tertiary, marginTop: spacing.xxs },
-  rsvpLine: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700", flex: 1 },
-  progressTrack: { height: 5, borderRadius: radius.full, overflow: "hidden", backgroundColor: glass.border.profileElevated, marginTop: spacing.xs },
-  progressFill: { height: "100%", borderRadius: radius.full, backgroundColor: semantic.warning },
-  liveProgressFill: { backgroundColor: semantic.live },
-  liveAction: { minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: accent.warm },
+  liveStatValue: { ...type.small, color: color.text1, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  liveStatLabel: { ...type.label, color: color.text3, marginTop: space[1] },
+  rsvpLine: { ...type.small, color: color.text1, fontWeight: "700", flex: 1 },
+  progressTrack: { height: 5, borderRadius: radius.full, overflow: "hidden", backgroundColor: color.lineStrong, marginTop: space[1] },
+  progressFill: { height: "100%", borderRadius: radius.full, backgroundColor: color.warning },
+  liveProgressFill: { backgroundColor: color.live },
+  liveAction: { minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: space[4], borderRadius: radius.md, backgroundColor: color.paper },
   liveActionNarrow: { width: "100%" },
-  soonAction: { backgroundColor: glass.tint.profileElevated, borderWidth: 1, borderColor: semantic.warning },
-  liveActionText: { ...typography.buttonMd, color: textTokens.inverse },
-  soonActionText: { color: semantic.warning },
-  refreshError: { ...typography.caption, color: textTokens.secondary },
-  liveTabs: { flexDirection: "row", gap: spacing.xs, minWidth: 0, flexShrink: 1 },
-  liveTab: { minHeight: 32, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.full, backgroundColor: glass.tint.profileBase },
-  liveTabSelected: { backgroundColor: semantic.liveGlow },
-  liveTabText: { ...typography.caption, color: textTokens.secondary },
-  liveTabTextSelected: { color: textTokens.primary, fontWeight: "700" },
-  pagerRow: { minHeight: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: spacing.xs },
-  dots: { flexDirection: "row", gap: spacing.xs },
-  dot: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: textTokens.quaternary },
-  dotActive: { backgroundColor: semantic.live },
-  pageCount: { ...typography.micro, color: textTokens.tertiary, alignSelf: "flex-end" },
-  errorLine: { minHeight: 52, borderTopWidth: 1, borderTopColor: glass.border.profileBase, paddingHorizontal: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  errorText: { ...typography.bodySm, color: textTokens.primary },
-  retry: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm },
-  retryText: { ...typography.bodySm, color: accent.warm, fontWeight: "700" },
+  soonAction: { backgroundColor: color.fill.tile, borderWidth: 1, borderColor: color.warning },
+  liveActionText: { ...type.btnSm, color: color.ink },
+  soonActionText: { color: color.warning },
+  refreshError: { ...type.caption, color: color.text2 },
+  liveTabs: { flexDirection: "row", gap: space[1], minWidth: 0, flexShrink: 1 },
+  liveTab: { minHeight: 32, justifyContent: "center", paddingHorizontal: space[4], borderRadius: radius.full, backgroundColor: color.fill.inset },
+  liveTabSelected: { backgroundColor: color.errorLine },
+  liveTabText: { ...type.caption, color: color.text2 },
+  liveTabTextSelected: { color: color.text1, fontWeight: "700" },
+  pagerRow: { minHeight: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: space[1] },
+  dots: { flexDirection: "row", gap: space[1] },
+  dot: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: color.text4 },
+  dotActive: { backgroundColor: color.live },
+  pageCount: { ...type.label, color: color.text3, alignSelf: "flex-end" },
+  errorLine: { minHeight: 52, borderTopWidth: 1, borderTopColor: color.line, paddingHorizontal: space[4], flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[4] },
+  errorText: { ...type.small, color: color.text1 },
+  retry: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[2] },
+  retryText: { ...type.small, color: color.text1, fontWeight: "700" },
 });
 
 export default BusinessPulsePanel;

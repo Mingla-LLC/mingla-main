@@ -25,7 +25,12 @@ import {
   withBuildingNumber,
   type TapAddressDraft,
 } from "../../../../src/components/brand/tapLocationAddress";
-import { canvas, radius, semantic, spacing, text as textTokens, typography } from "../../../../src/constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../../../src/constants/designSystem";
 import { useBrandSetupChecklist } from "../../../../src/hooks/useBrandSetupChecklist";
 import { useSetTapLocationAddress } from "../../../../src/hooks/useSetTapLocationAddress";
 import { useNetInfoSafe } from "../../../../src/lib/netinfoSafe";
@@ -155,17 +160,17 @@ export default function TapToPayAddressRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: canvas.discover },
+  root: { flex: 1, backgroundColor: color.canvas },
   fill: { flex: 1 },
-  body: { padding: spacing.md, gap: spacing.sm, maxWidth: 560, width: "100%", alignSelf: "center" },
-  footer: { padding: spacing.md, maxWidth: 560, width: "100%", alignSelf: "center" },
-  h1: { ...typography.h1, color: textTokens.primary },
-  sub: { ...typography.body, color: textTokens.secondary },
-  helper: { ...typography.bodySm, color: textTokens.tertiary },
-  err: { color: semantic.errorText },
-  label: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.sm },
-  input: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: spacing.md, backgroundColor: "rgba(255,255,255,0.06)", color: textTokens.primary },
-  card: { padding: spacing.md, gap: spacing.xs, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.06)" },
-  cardLine: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
-  cardSub: { ...typography.bodySm, color: textTokens.secondary },
+  body: { padding: space[4], gap: space[2], maxWidth: 560, width: "100%", alignSelf: "center" },
+  footer: { padding: space[4], maxWidth: 560, width: "100%", alignSelf: "center" },
+  h1: { ...type.title, color: color.text1 },
+  sub: { ...type.body, color: color.text2 },
+  helper: { ...type.small, color: color.text3 },
+  err: { color: color.errorText },
+  label: { ...type.small, color: color.text2, marginTop: space[2] },
+  input: { minHeight: 48, borderRadius: radius.sm, paddingHorizontal: space[4], backgroundColor: color.fill.tile, color: color.text1 },
+  card: { padding: space[4], gap: space[1], borderRadius: radius.sm, backgroundColor: color.fill.tile },
+  cardLine: { ...type.body, color: color.text1, fontWeight: "600" },
+  cardSub: { ...type.small, color: color.text2 },
 });

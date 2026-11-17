@@ -41,9 +41,16 @@ jest.mock("../../../services/guestFunnelLink", () => ({
   detectClientPlatform: () => mockDetectClientPlatform(),
   openAppScheme: jest.fn(),
   openExternal: (...args: unknown[]) => mockOpenExternal(...args),
-  resolveConfirmationAppTarget: () => ({
+  // #4420 — device-aware like the real resolver: a phone gets its own store,
+  // a desktop gets the one device-routing download URL.
+  resolveConfirmationAppTarget: (_entity: unknown, platform: string) => ({
     mode: "store_direct",
-    ctaUrl: "https://usemingla.com/download",
+    ctaUrl:
+      platform === "ios"
+        ? "https://store.test/ios"
+        : platform === "android"
+          ? "https://store.test/android"
+          : "https://usemingla.com/download",
     qrUrl: "https://usemingla.com/download",
     store: "download_page",
   }),
@@ -121,7 +128,7 @@ describe("#4063 BuyerClaimCard", () => {
     mockDetectClientPlatform.mockReset().mockReturnValue("other");
   });
 
-  test("phone has one claim action and opens its short URL synchronously", async () => {
+  test("an iPhone gets one App Store button that carries the claim short link", async () => {
     mockDetectClientPlatform.mockReturnValue("ios");
     const tree = await mount({ variant: "phone" });
 
@@ -130,7 +137,8 @@ describe("#4063 BuyerClaimCard", () => {
     );
     expect(visibleText(tree)).toContain("buyer@example.com");
     expect(visibleText(tree)).toContain("4432");
-    expect(visibleText(tree)).toContain("Get my tickets");
+    expect(visibleText(tree)).toContain("Get Mingla on the App Store");
+    expect(visibleText(tree)).not.toContain("Google Play");
     expect(nodesByTestId(tree, "buyer-claim-primary").length).toBeGreaterThan(
       0,
     );
@@ -144,7 +152,20 @@ describe("#4063 BuyerClaimCard", () => {
     await unmount(tree);
   });
 
-  test("desktop without a handoff shows recovery truth but no QR or error", async () => {
+  test("an Android phone with no claim gets one plain Google Play button", async () => {
+    mockDetectClientPlatform.mockReturnValue("android");
+    const tree = await mount({ variant: "phone", shortUrl: null });
+
+    expect(visibleText(tree)).toContain("Get Mingla on Google Play");
+    expect(visibleText(tree)).not.toContain("App Store");
+    nodesByTestId(tree, "buyer-claim-primary")[0]?.props.onPress?.();
+    expect(mockOpenExternal).toHaveBeenCalledWith(
+      "https://store.test/android",
+    );
+    await unmount(tree);
+  });
+
+  test("fallback: desktop with no claim to hand off shows the store-routing QR, never an error", async () => {
     const tree = await mount({ variant: "desktop", handoff: null });
     const text = visibleText(tree);
 
@@ -154,9 +175,39 @@ describe("#4063 BuyerClaimCard", () => {
     expect(text).toContain(
       "We also texted the link to the number ending 4432.",
     );
-    expect(text).not.toContain("We couldn't prepare a code");
-    expect(nodesByTestId(tree, "claim-handoff-qr")).toHaveLength(0);
+    expect(text).toContain(
+      "Scan with your phone camera to get the Mingla app.",
+    );
+    expect(text).not.toContain("couldn't prepare");
+    expect(
+      nodesByTestId(tree, "claim-handoff-qr").some(
+        (node) =>
+          node.props.accessibilityLabel === "https://usemingla.com/download",
+      ),
+    ).toBe(true);
     expect(nodesByTestId(tree, "buyer-claim-primary")).toHaveLength(0);
+    expect(nodesByTestId(tree, "buyer-claim-scan-refresh")).toHaveLength(0);
+    await unmount(tree);
+  });
+
+  test("fallback: a failed claim hand-off mint shows the store-routing QR, never an error", async () => {
+    const mint = jest.fn().mockResolvedValue({
+      ok: false,
+      reason: "network",
+      retryAfterSeconds: null,
+    });
+    const tree = await mount({ variant: "desktop", handoff: { mint } });
+
+    expect(visibleText(tree)).not.toContain("couldn't prepare");
+    expect(visibleText(tree)).toContain(
+      "Scan with your phone camera to get the Mingla app.",
+    );
+    expect(
+      nodesByTestId(tree, "claim-handoff-qr").some(
+        (node) =>
+          node.props.accessibilityLabel === "https://usemingla.com/download",
+      ),
+    ).toBe(true);
     expect(nodesByTestId(tree, "buyer-claim-scan-refresh")).toHaveLength(0);
     await unmount(tree);
   });
@@ -195,7 +246,7 @@ describe("#4063 BuyerClaimCard", () => {
     jest.useRealTimers();
   });
 
-  test("a rate limit is honest and offers no retry button", async () => {
+  test("a rate limit still leaves a working store QR and no retry button", async () => {
     const mint = jest.fn().mockResolvedValue({
       ok: false,
       reason: "rate_limited",
@@ -204,9 +255,14 @@ describe("#4063 BuyerClaimCard", () => {
     const tree = await mount({ variant: "desktop", handoff: { mint } });
 
     expect(visibleText(tree)).toContain(
-      "Too many codes for this ticket. Try again in a few minutes.",
+      "Scan with your phone camera to get the Mingla app.",
     );
-    expect(nodesByTestId(tree, "claim-handoff-qr")).toHaveLength(0);
+    expect(
+      nodesByTestId(tree, "claim-handoff-qr").some(
+        (node) =>
+          node.props.accessibilityLabel === "https://usemingla.com/download",
+      ),
+    ).toBe(true);
     expect(nodesByTestId(tree, "buyer-claim-scan-refresh")).toHaveLength(0);
     await unmount(tree);
   });

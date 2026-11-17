@@ -58,7 +58,7 @@ export function check(files) {
     "useSafeAreaInsets",
     "useKeyboardIsVisible",
     "if (keyboardVisible) return null",
-    "paddingBottom: insets.bottom + spacing.md",
+    "paddingBottom: insets.bottom + space[4]",
   ]) {
     need(actionBar, token, "native/narrow pinned action contract", failures);
   }

@@ -19,10 +19,10 @@ import React, { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim as scrimToken,
 } from "../../../constants/designSystem";
 import {
   pickGalleryPhotos,
@@ -348,33 +348,33 @@ export const ClaimStepPhotos: React.FC<ClaimStepPhotosProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   counter: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   counterOk: {
-    color: "#22c55e",
+    color: color.successText,
     fontWeight: "700",
   },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   tileWrap: {
     width: 92,
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
   // Reduced-motion-safe "held" treatment (M-4 fallback): 2px accent border.
   tileHeld: {
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.accent,
   },
   firstBadge: {
     position: "absolute",
@@ -402,14 +402,14 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrimToken.modal,
   },
   firstBadgeText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
-    color: textTokens.secondary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text2,
   },
   tileChip: {
     position: "absolute",
@@ -423,72 +423,72 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: scrimToken.modal,
     alignItems: "center",
     justifyContent: "center",
   },
   removeText: {
-    color: "#ffffff",
+    color: color.text1,
     fontSize: 16,
     lineHeight: 18,
     fontWeight: "700",
   },
   moveMenu: {
     position: "absolute",
-    top: 92 + spacing.xs,
+    top: 92 + space[1],
     left: 0,
     minWidth: 140,
     borderRadius: 10,
-    backgroundColor: "#191c21",
+    backgroundColor: color.canvas,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    paddingVertical: spacing.xs,
+    borderColor: color.lineStrong,
+    paddingVertical: space[1],
     zIndex: 10,
     elevation: 10,
   },
   moveItem: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   moveItemText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   removedStrip: {
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.16)",
+    backgroundColor: color.fill.inset,
   },
   removedTitle: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   removedRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   removedLabel: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   undoBtn: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
   },
   undoText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   warn: {
-    fontSize: typography.caption.fontSize,
-    color: "#F59E0B",
+    fontSize: type.caption.fontSize,
+    color: color.accentText,
   },
 });
 

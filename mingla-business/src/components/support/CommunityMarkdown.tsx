@@ -5,7 +5,10 @@ import {
   parseCommunityMarkdown,
   type CommunityMarkdownInline,
 } from "../../utils/communityMarkdown";
-import { spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../constants/designSystem";
 
 function Inline({
   item,
@@ -74,20 +77,20 @@ export function CommunityMarkdown({
 
 const styles = StyleSheet.create({
   root: {
-    marginTop: spacing.md,
-    gap: spacing.xs,
+    marginTop: space[4],
+    gap: space[1],
   },
   line: {
     fontSize: 14,
     lineHeight: 21,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   heading: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   headingOne: {
     fontSize: 18,
@@ -97,14 +100,14 @@ const styles = StyleSheet.create({
   italic: { fontStyle: "italic" },
   code: {
     fontFamily: "monospace",
-    color: textTokens.primary,
+    color: color.text1,
   },
   link: {
-    color: "#78A9FF",
+    color: color.infoText,
     textDecorationLine: "underline",
   },
   quote: {
     fontStyle: "italic",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });

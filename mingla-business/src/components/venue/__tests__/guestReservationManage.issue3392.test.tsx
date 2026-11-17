@@ -133,7 +133,7 @@ jest.mock("../../ui/Icon", () => ({ __esModule: true, Icon: () => null }));
 jest.mock("../../ui/Sheet", () => ({ __esModule: true, Sheet: mockHost("Sheet") }));
 jest.mock("../../ui/SafeScreen", () => ({ __esModule: true, SafeScreen: mockHost("SafeScreen") }));
 
-import { canvas } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import type { Reservation } from "../../../types/venueReservation";
 import {
   guestManageErrorCode,
@@ -338,7 +338,7 @@ describe("#3392 — the manage page opens, cancels and reads on the dark canvas"
     await flush();
     const frame = tree.root.findAll((n) => n.type === "SafeScreen")[0];
     expect(StyleSheet.flatten(frame.props.style as object)).toMatchObject({
-      backgroundColor: canvas.discover,
+      backgroundColor: color.canvas,
     });
     const texts = tree.root.findAll((n) => n.type === "Text");
     expect(texts.length).toBeGreaterThan(2);

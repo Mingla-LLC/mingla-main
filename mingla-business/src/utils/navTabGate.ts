@@ -45,6 +45,9 @@ export const MIN_RANK_FOR_TAB = {
   ari: BRAND_ROLE_RANK.finance_manager, // 30
   marketing: BRAND_ROLE_RANK.marketing_manager, // 20
   account: 0,
+  // #4420 B5: the centred Create ember — the same rank that may create an
+  // event (event_manager). Not a route; it opens the UniversalCreatorSheet.
+  create: BRAND_ROLE_RANK.event_manager, // 40
 } as const;
 
 export type TabId = keyof typeof MIN_RANK_FOR_TAB;
@@ -94,3 +97,13 @@ export const visibleTabsForRank = <T extends BottomNavTab>(
  */
 export const isScannerOnlyRank = (rank: number): boolean =>
   rank === BRAND_ROLE_RANK.scanner;
+
+/**
+ * #4420 B5 — the phone tab bar shows only when at least TWO destinations
+ * remain. Create is an action, not a destination, so it does not count. A
+ * scanner (Home only) and a first-run host (Ari only) get no tab bar and reach
+ * Account through the top-bar profile button.
+ */
+export const shouldShowTabBar = (tabs: readonly { id: string }[]): boolean =>
+  tabs.filter((tab) => tab.id !== "create").length >= 2;
+

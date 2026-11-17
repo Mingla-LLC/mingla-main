@@ -21,10 +21,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../src/constants/designSystem";
 import type { DoorSaleRecord } from "../../../../src/types/doorSales";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
@@ -196,7 +194,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -227,7 +225,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -270,7 +268,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -310,7 +308,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
 
         {/* TICKETS */}
         <Text style={styles.sectionLabel}>TICKETS</Text>
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
+        <GlassCard variant="base" radius="md" padding={space[4]}>
           <View style={styles.ticketsList}>
             {expandedTickets.map((t, idx) => {
               const lineRefunded =
@@ -342,7 +340,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
 
         {/* PAYMENT */}
         <Text style={styles.sectionLabel}>PAYMENT</Text>
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
+        <GlassCard variant="base" radius="md" padding={space[4]}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Payment method</Text>
             <Text style={styles.summaryValue}>{paymentMethodLabel}</Text>
@@ -393,7 +391,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
         {hasBuyerDetails ? (
           <>
             <Text style={styles.sectionLabel}>BUYER</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               {sale.buyerName.length > 0 ? (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Name</Text>
@@ -426,7 +424,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
         {hasNotes ? (
           <>
             <Text style={styles.sectionLabel}>NOTES</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               <Text style={styles.notesText}>{sale.notes}</Text>
             </GlassCard>
           </>
@@ -436,7 +434,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
         {hasRefunds ? (
           <>
             <Text style={styles.sectionLabel}>REFUND HISTORY</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <GlassCard variant="base" radius="md" padding={space[4]}>
               {sale.refunds.map((r) => (
                 <View key={r.id} style={styles.refundRow}>
                   <View style={styles.refundCol}>
@@ -502,16 +500,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -522,44 +520,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
 
   // Hero -------------------------------------------------------------
   hero: {
     alignItems: "center",
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingTop: space[4],
+    paddingBottom: space[2],
   },
   heroEyebrow: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.quaternary,
+    color: color.text4,
     marginBottom: 6,
     fontVariant: ["tabular-nums"],
   },
   heroName: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   heroDate: {
     fontSize: 12,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   heroPills: {
     flexDirection: "row",
@@ -572,20 +570,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    color: color.text3,
+    marginTop: space[2],
+    marginBottom: space[1],
   },
 
   // Tickets ----------------------------------------------------------
   ticketsList: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   ticketRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 4,
   },
   ticketCol: {
@@ -595,11 +593,11 @@ const styles = StyleSheet.create({
   ticketName: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   ticketSub: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
 
@@ -612,57 +610,57 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   summaryLabelStrong: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   summaryValue: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
     fontVariant: ["tabular-nums"],
   },
   summaryValueWarn: {
     fontSize: 13,
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "500",
     fontVariant: ["tabular-nums"],
   },
   summaryValueStrong: {
     fontSize: 16,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   divider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
 
   // Notes ------------------------------------------------------------
   notesText: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.primary,
+    color: color.text1,
   },
 
   cardPayoutHint: {
     fontSize: 12,
     lineHeight: 17,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    color: color.text3,
+    marginTop: space[1],
   },
 
   // Refund history --------------------------------------------------
   refundRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   refundCol: {
     minWidth: 96,
@@ -670,25 +668,25 @@ const styles = StyleSheet.create({
   refundAmount: {
     fontSize: 14,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   refundTime: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   refundReason: {
     flex: 1,
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.primary,
+    color: color.text1,
   },
 
   // CTA --------------------------------------------------------------
   ctaWrap: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.md,
+    marginTop: space[6],
+    marginBottom: space[4],
   },
 
   // Toast ------------------------------------------------------------

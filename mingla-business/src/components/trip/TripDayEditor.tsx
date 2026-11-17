@@ -29,11 +29,11 @@ import {
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type { TripDayMedia } from "../../services/tripsService";
@@ -72,8 +72,8 @@ const NARRATIVE_MAX = 1000;
 
 // ORCH-1119 — opaque Android fill for gallery tiles (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
 const TILE_BG = Platform.select({
-  android: "#1A1A1C",
-  default: "rgba(255, 255, 255, 0.06)",
+  android: color.canvas,
+  default: color.fill.tile,
 }) as string;
 
 export const TripDayEditor: React.FC<TripDayEditorProps> = ({
@@ -117,7 +117,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
             style={[styles.iconBtn, !canMoveUp && styles.iconBtnDisabled]}
             hitSlop={8}
           >
-            <Icon name="chevU" size={16} color={textTokens.secondary} />
+            <Icon name="chevU" size={16} color={color.text2} />
           </Pressable>
           <Pressable
             onPress={onMoveDown}
@@ -128,7 +128,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
             style={[styles.iconBtn, !canMoveDown && styles.iconBtnDisabled]}
             hitSlop={8}
           >
-            <Icon name="chevD" size={16} color={textTokens.secondary} />
+            <Icon name="chevD" size={16} color={color.text2} />
           </Pressable>
           <Pressable
             onPress={onDelete}
@@ -142,7 +142,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
             ]}
             hitSlop={8}
           >
-            <Icon name="trash" size={16} color={textTokens.tertiary} />
+            <Icon name="trash" size={16} color={color.text3} />
           </Pressable>
         </View>
       </View>
@@ -152,7 +152,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
         value={day.title}
         onChangeText={(v) => onChange({ title: v })}
         placeholder={`e.g. Day ${day.ordinal} — Arrival + sunset welcome dinner`}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         editable={!disabled}
         accessibilityLabel={`Day ${day.ordinal} title`}
         style={styles.titleInput}
@@ -164,7 +164,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
         value={day.narrative}
         onChangeText={(v) => onChange({ narrative: v.slice(0, NARRATIVE_MAX) })}
         placeholder="Briefly describe what travelers will do on this day"
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         multiline
         numberOfLines={3}
         maxLength={NARRATIVE_MAX}
@@ -237,7 +237,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
                     hitSlop={8}
                     style={styles.reorderBtn}
                   >
-                    <Icon name="chevU" size={12} color="#FFFFFF" />
+                    <Icon name="chevU" size={12} color={color.text1} />
                   </Pressable>
                 ) : null}
                 <Pressable
@@ -248,7 +248,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
                   hitSlop={8}
                   style={styles.removeBtn}
                 >
-                  <Icon name="close" size={12} color="#FFFFFF" />
+                  <Icon name="close" size={12} color={color.text1} />
                 </Pressable>
               </View>
             ))}
@@ -265,7 +265,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
               accessibilityState={{ disabled: disabled === true || atMediaCap }}
               style={[styles.addTile, (disabled || atMediaCap) && styles.addTileDisabled]}
             >
-              <Icon name="plus" size={20} color={accent.warm} />
+              <Icon name="plus" size={20} color={color.accent} />
               <Text style={styles.addTileLabel}>
                 {atMediaCap ? `${MAX_TRIP_DAY_MEDIA} max` : "Add"}
               </Text>
@@ -277,34 +277,34 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
   );
 };
 
-const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
-const INPUT_BG = "rgba(255, 255, 255, 0.04)";
+const INPUT_BORDER = color.lineStrong;
+const INPUT_BG = color.fill.inset;
 
 const styles = StyleSheet.create({
   card: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: color.fill.tableHead,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    gap: spacing.xs,
+    gap: space[1],
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   ordinalLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: 0.5,
   },
   headerActions: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   iconBtn: {
     width: 28,
@@ -317,11 +317,11 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    color: color.text2,
+    marginTop: space[1],
   },
   titleInput: {
     height: 44,
@@ -331,8 +331,8 @@ const styles = StyleSheet.create({
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   narrativeInput: {
     minHeight: 72,
@@ -344,23 +344,23 @@ const styles = StyleSheet.create({
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   charCounter: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     alignSelf: "flex-end",
   },
   // ORCH-1119 — gallery
   mediaSection: {
-    marginTop: spacing.xs,
-    gap: spacing.xs,
+    marginTop: space[1],
+    gap: space[1],
   },
   mediaRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 2,
   },
   mediaTile: {
@@ -385,13 +385,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.64)",
+    backgroundColor: scrim.modal,
   },
   videoBadgeText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     lineHeight: 16,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   removeBtn: {
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: scrim.modal,
   },
   reorderBtn: {
     position: "absolute",
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: scrim.modal,
   },
   addTile: {
     width: 88,
@@ -422,19 +422,19 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
-    backgroundColor: "rgba(235, 120, 37, 0.06)",
+    backgroundColor: color.accentTint,
   },
   addTileDisabled: {
     opacity: 0.4,
   },
   addTileLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
 });
 

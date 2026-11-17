@@ -12,13 +12,10 @@ import React, { useCallback, useMemo as useThemeMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { type Brand } from "../../store/currentBrandStore";
 import { validateRsvpPublish } from "../../utils/draftRsvpValidation";
@@ -68,7 +65,7 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
   const venueLine =
     draft.format === "online" ? "Online" : draft.venueName ?? "Set a location in Step 3";
 
-  // #1022 A/F-12 — this preview was THEME-BLIND (accent.warm unconditionally),
+  // #1022 A/F-12 — this preview was THEME-BLIND (color.accent unconditionally),
   // so a review row would have advertised a theme the preview could not show.
   const brandTheme = brand?.theme ?? null;
   const themePalette = useThemeMemo(
@@ -187,9 +184,9 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
       {/* Status card (money-free) */}
       <View style={styles.statusCardWrap}>
         {isReady ? (
-          <GlassCard variant="base" padding={spacing.md}>
+          <GlassCard variant="base" padding={space[4]}>
             <View style={styles.statusRow}>
-              <Icon name="check" size={20} color={semantic.success} />
+              <Icon name="check" size={20} color={color.success} />
               <View style={styles.statusTextCol}>
                 <Text style={styles.statusTitle}>Ready to publish</Text>
                 <Text style={styles.statusSub}>
@@ -199,9 +196,9 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
             </View>
           </GlassCard>
         ) : (
-          <GlassCard variant="base" padding={spacing.md} style={styles.warnCard}>
+          <GlassCard variant="base" padding={space[4]} style={styles.warnCard}>
             <View style={styles.statusRow}>
-              <Icon name="flag" size={20} color={accent.warm} />
+              <Icon name="flag" size={20} color={color.accent} />
               <View style={styles.statusTextCol}>
                 <Text style={styles.statusTitle}>
                   {errors.length === 1 ? "1 thing to fix" : `${errors.length} things to fix`}
@@ -219,7 +216,7 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
         accessibilityLabel="Preview public page"
         style={styles.previewLinkBtn}
       >
-        <Icon name="eye" size={16} color={accent.warm} />
+        <Icon name="eye" size={16} color={color.accent} />
         <Text style={styles.previewLinkLabel}>Preview public page</Text>
       </Pressable>
       <ThemeSheet
@@ -243,10 +240,10 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
     borderWidth: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   miniCover: { height: 140, width: "100%" },
-  miniBody: { padding: spacing.md },
+  miniBody: { padding: space[4] },
   miniDate: {
     fontSize: 11,
     fontWeight: "700",
@@ -260,65 +257,65 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   miniVenue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     marginTop: 2,
   },
-  recurrencePillRow: { flexDirection: "row", marginTop: spacing.xs },
+  recurrencePillRow: { flexDirection: "row", marginTop: space[1] },
   recurrencePill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
     borderRadius: 999,
     overflow: "hidden",
     borderWidth: 1,
   },
   recurrencePillLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
   },
-  ctaRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
+  ctaRow: { flexDirection: "row", gap: space[2], marginTop: space[4] },
   ctaBtn: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
     alignItems: "center",
   },
-  ctaGoingLabel: { fontSize: typography.bodySm.fontSize, fontWeight: "700" },
+  ctaGoingLabel: { fontSize: type.small.fontSize, fontWeight: "700" },
   ctaNotGoingLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
-  statusCardWrap: { marginBottom: spacing.sm },
+  statusCardWrap: { marginBottom: space[2] },
   previewLinkBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   previewLinkLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
-  statusRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  statusRow: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
   statusTextCol: { flex: 1 },
   statusTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   statusSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 2,
-    lineHeight: typography.caption.lineHeight * 1.4,
+    lineHeight: type.caption.lineHeight * 1.4,
   },
-  warnCard: { borderColor: accent.border, borderWidth: 1 },
+  warnCard: { borderColor: color.accentLine, borderWidth: 1 },
 });

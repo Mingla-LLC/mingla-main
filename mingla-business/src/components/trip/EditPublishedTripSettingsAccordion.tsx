@@ -39,11 +39,9 @@ import React from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
 
 import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -158,11 +156,11 @@ export const EditPublishedTripSettingsAccordion: React.FC<
             onValueChange={onBookingsClosedChange}
             disabled={submitting}
             trackColor={{
-              false: "rgba(255,255,255,0.16)",
-              true: accent.warm,
+              false: color.fill.step,
+              true: color.accent,
             }}
-            thumbColor="#ffffff"
-            ios_backgroundColor="rgba(255,255,255,0.16)"
+            thumbColor={color.paper}
+            ios_backgroundColor={color.fill.step}
             accessibilityRole="switch"
             accessibilityLabel="Bookings closed"
             accessibilityState={{ checked: bookingsClosed, disabled: submitting }}
@@ -192,11 +190,11 @@ export const EditPublishedTripSettingsAccordion: React.FC<
             onValueChange={onPrivateGuestListChange}
             disabled={submitting}
             trackColor={{
-              false: "rgba(255,255,255,0.16)",
-              true: accent.warm,
+              false: color.fill.step,
+              true: color.accent,
             }}
-            thumbColor="#ffffff"
-            ios_backgroundColor="rgba(255,255,255,0.16)"
+            thumbColor={color.paper}
+            ios_backgroundColor={color.fill.step}
             accessibilityRole="switch"
             accessibilityLabel="Private guest list"
             accessibilityState={{ checked: privateGuestList, disabled: submitting }}
@@ -225,11 +223,11 @@ export const EditPublishedTripSettingsAccordion: React.FC<
             onValueChange={onHideRemainingCountChange}
             disabled={submitting || hideRemainingLocked}
             trackColor={{
-              false: "rgba(255,255,255,0.16)",
-              true: accent.warm,
+              false: color.fill.step,
+              true: color.accent,
             }}
-            thumbColor="#ffffff"
-            ios_backgroundColor="rgba(255,255,255,0.16)"
+            thumbColor={color.paper}
+            ios_backgroundColor={color.fill.step}
             accessibilityRole="switch"
             accessibilityLabel="Hide remaining count"
             accessibilityState={{
@@ -248,7 +246,7 @@ export const EditPublishedTripSettingsAccordion: React.FC<
       {hasSales ? (
         <GlassCard
           variant="base"
-          padding={spacing.md}
+          padding={space[4]}
           radius="lg"
           style={styles.warningBanner}
         >
@@ -256,7 +254,7 @@ export const EditPublishedTripSettingsAccordion: React.FC<
             <Icon
               name="bell"
               size={20}
-              color={semantic.warning}
+              color={color.warning}
               strokeWidth={2}
             />
             <Text style={styles.warningText}>
@@ -271,61 +269,61 @@ export const EditPublishedTripSettingsAccordion: React.FC<
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.md,
+    gap: space[4],
   },
   block: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   blockLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
     letterSpacing: 0.2,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   blockHelp: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
   },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
-    paddingVertical: spacing.xs,
+    gap: space[4],
+    paddingVertical: space[1],
   },
   switchRowText: {
     flex: 1,
     gap: 2,
   },
   switchLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   switchHelp: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   warningBanner: {
-    borderColor: semantic.warning,
+    borderColor: color.warning,
     borderWidth: 1,
-    backgroundColor: semantic.warningTint,
-    marginTop: spacing.sm,
+    backgroundColor: color.warningTint,
+    marginTop: space[2],
   },
   warningRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   warningText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
 });
 

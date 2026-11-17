@@ -29,13 +29,7 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
+import { color, radius, space, type } from "../../../constants/designSystem";
 import type { PersonalizationToken } from "../../../services/marketing/tenTapTokenBridge";
 
 export interface SubjectTokenOption {
@@ -96,17 +90,17 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    gap: space[1],
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
   },
   chip: {
     minHeight: 36,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -114,8 +108,8 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   chipText: {
-    ...typography.monoMd,
-    color: textTokens.primary,
+    ...type.mono,
+    color: color.text1,
   },
 });
 

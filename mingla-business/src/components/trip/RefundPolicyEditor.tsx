@@ -44,12 +44,9 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import {
   EVENT_FLEXIBLE_POLICY,
@@ -385,7 +382,7 @@ export const RefundPolicyEditor: React.FC<RefundPolicyEditorProps> = ({
                     }
                     keyboardType="number-pad"
                     placeholder="0"
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     accessibilityLabel={`Tier ${idx + 1} days before ${offeringType} start`}
                     accessibilityHint={`Number of days before the ${offeringType} when this tier applies`}
                   />
@@ -404,7 +401,7 @@ export const RefundPolicyEditor: React.FC<RefundPolicyEditorProps> = ({
                     }
                     keyboardType="number-pad"
                     placeholder="0"
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     accessibilityLabel={`Tier ${idx + 1} refund percentage`}
                     accessibilityHint="Percent refund at this tier"
                   />
@@ -535,45 +532,45 @@ const ClearPolicyControl: React.FC<ClearPolicyControlProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   eyebrow: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: accent.warm,
-    marginBottom: spacing.sm,
+    color: color.accent,
+    marginBottom: space[2],
   },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    // issue #3284 E6 — was spacing.xs (4) with an 8pt slop: the next chip's slop
+    // issue #3284 E6 — was space[1] (4) with an 8pt slop: the next chip's slop
     // covered the right edge of the previous chip.
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    gap: space[2],
+    marginBottom: space[4],
   },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     minHeight: 34,
     borderRadius: radius.full,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     justifyContent: "center",
   },
   chipActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   // issue #3284 E12 — web hover on an unselected chip.
   chipHovered: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   // issue #3284 E12 — web keyboard focus ring (same values as the kit Button).
   focusRing: {
-    outlineColor: accent.warm,
+    outlineColor: color.accent,
     outlineWidth: 2,
     outlineStyle: "solid",
     outlineOffset: 2,
@@ -584,28 +581,28 @@ const styles = StyleSheet.create({
   chipLabel: {
     fontSize: 13,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   chipLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   helper: {
     fontSize: 13,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    color: color.text3,
+    marginTop: space[1],
   },
   previewWrap: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   // issue #3284 E3 — the "No refunds" body (13 / text.secondary).
   noRefundsBody: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   linkRow: {
-    paddingVertical: spacing.xs,
-    marginTop: spacing.xs,
+    paddingVertical: space[1],
+    marginTop: space[1],
     // issue #3284 E11 — a 44pt target (was ≈41pt with its slop).
     minHeight: 44,
     justifyContent: "center",
@@ -615,67 +612,67 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "500",
   },
   linkTextMuted: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   tierEditor: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   tierEditorHeader: {
     fontSize: 13,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    marginBottom: space[2],
   },
   tierRow: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   tierFields: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     // issue #3284 E8 — the five-part row overflows a 375pt phone at the largest
     // Dynamic Type sizes; let it wrap.
     flexWrap: "wrap",
-    rowGap: spacing.xs,
+    rowGap: space[1],
   },
   tierInput: {
     minWidth: 56,
     // issue #3284 E7 — a 44pt target (was ≈30pt tall).
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 6,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
     fontSize: 14,
     textAlign: "center",
   },
   // issue #3284 E12 — web focus cue on a tier input.
   tierInputFocused: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   tierInputError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   tierLabel: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   trashButton: {
     marginLeft: "auto",
     width: 32,
     height: 32,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -687,24 +684,24 @@ const styles = StyleSheet.create({
   },
   trashIcon: {
     fontSize: 18,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "300",
   },
   errorText: {
     fontSize: 12,
     // issue #3284 E10 — AA error text on the Android opaque card (borders keep
-    // semantic.error).
-    color: semantic.errorText,
-    marginTop: spacing.xs,
-    paddingLeft: spacing.xs,
+    // color.danger).
+    color: color.errorText,
+    marginTop: space[1],
+    paddingLeft: space[1],
   },
   addTierButton: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
+    marginTop: space[2],
+    paddingVertical: space[1],
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     backgroundColor: "transparent",
     alignSelf: "flex-start",
     minHeight: 34,
@@ -712,42 +709,42 @@ const styles = StyleSheet.create({
   },
   addTierButtonDisabled: {
     opacity: 0.4,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   addTierButtonPressed: {
     opacity: 0.7,
   },
   addTierLabel: {
     fontSize: 13,
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "500",
   },
   clearConfirmRow: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    marginTop: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.danger,
+    backgroundColor: color.fill.inset,
   },
   clearConfirmText: {
     fontSize: 13,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginBottom: space[2],
   },
   clearConfirmButtons: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     justifyContent: "flex-end",
   },
   clearKeepButton: {
     paddingVertical: 8,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     minHeight: 36,
     minWidth: 72,
@@ -759,16 +756,16 @@ const styles = StyleSheet.create({
   },
   clearKeepLabel: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "500",
   },
   clearConfirmButton: {
     paddingVertical: 8,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.error,
+    borderColor: color.danger,
+    backgroundColor: color.danger,
     minHeight: 36,
     minWidth: 96,
     alignItems: "center",
@@ -779,7 +776,7 @@ const styles = StyleSheet.create({
   },
   clearConfirmLabel: {
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
 });

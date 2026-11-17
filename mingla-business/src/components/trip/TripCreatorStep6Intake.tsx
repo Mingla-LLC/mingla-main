@@ -19,16 +19,14 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  shadow,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -166,7 +164,7 @@ export const TripCreatorStep6Intake: React.FC<TripCreatorStep6IntakeProps> = ({
                   <Icon
                     name="plus"
                     size={14}
-                    color={accent.warm}
+                    color={color.accent}
                     strokeWidth={2.5}
                   />
                   <Text style={styles.tabAddLabel}>
@@ -214,7 +212,7 @@ export const TripCreatorStep6Intake: React.FC<TripCreatorStep6IntakeProps> = ({
         ]}
       >
         <View style={[styles.pane, isWide ? styles.paneHalf : styles.paneFull]}>
-          <GlassCard variant="base" padding={spacing.md} radius="lg">
+          <GlassCard variant="base" padding={space[4]} radius="lg">
             <IntakeSchemaBuilder
               schema={activeSchema}
               activeTicketTypeId={activeTicketTypeId ?? ""}
@@ -234,7 +232,7 @@ export const TripCreatorStep6Intake: React.FC<TripCreatorStep6IntakeProps> = ({
           </GlassCard>
         </View>
         <View style={[styles.pane, isWide ? styles.paneHalf : styles.paneFull]}>
-          <GlassCard variant="base" padding={spacing.md} radius="lg">
+          <GlassCard variant="base" padding={space[4]} radius="lg">
             <IntakeQuestionPreview
               schema={activeSchema}
               activeTierName={activeTier?.tierName ?? "All travelers"}
@@ -246,99 +244,89 @@ export const TripCreatorStep6Intake: React.FC<TripCreatorStep6IntakeProps> = ({
   );
 };
 
-// Suppress unused-import warning on platforms that don't surface shadows
-// reference in current style table. shadows.glassChromeActive is part of
-// the DESIGN §3.2 active-tab orange-glow contract; consumers can drop into
-// it via tabUnderline style extension without re-importing.
-void shadows;
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.md,
+    gap: space[4],
   },
   emptyTiersWrap: {
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[7],
+    paddingHorizontal: space[4],
     alignItems: "center",
   },
   emptyTiersText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
   singleTierLabelWrap: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   singleTierLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
   },
   tabRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   tabWithUnderline: {
     alignItems: "stretch",
   },
   tab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     minHeight: 36,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xxs,
+    gap: 2,
   },
   tabActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
-    shadowColor: "#eb7825",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    // META-ORCH-1002 Sub-1 (S5): zero the Android elevation so no hard rectangular
-    // shadow draws under the rounded pill (mirrors androidSafeElevation). iOS glow kept.
-    elevation: Platform.select({ ios: 8, android: 0, default: 8 }),
+    backgroundColor: color.accentLine,
+    borderColor: color.accentLine,
+    // #4420 — the orange glow is retired (shadow tokens only); Android stays 0.
+    ...shadow.none,
   },
   tabAdd: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     backgroundColor: "transparent",
   },
   tabPressed: {
     opacity: 0.8,
   },
   tabLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   tabLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   tabAddLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: accent.warm,
+    color: color.accent,
   },
   tabUnderline: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     height: 2,
     width: "100%",
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     borderRadius: 1,
   },
   body: {
-    gap: spacing.md,
+    gap: space[4],
   },
   bodyWide: {
     flexDirection: "row",

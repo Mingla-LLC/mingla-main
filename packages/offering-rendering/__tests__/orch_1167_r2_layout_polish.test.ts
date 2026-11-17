@@ -58,10 +58,11 @@ describe("ORCH-1167-R2 — event-page layout polish (source-structural)", () => 
     expect(body).toMatch(/cityCountry/);
   });
 
-  it("change 3 — pills + date chips are ONE tight flex-wrap band (even gap)", () => {
-    // Both rows flex-wrap with an even gap and a near-zero seam between them.
-    expect(body).toMatch(/pillsRow:\s*\{[^}]*flexWrap:\s*"wrap"[^}]*\}/s);
-    expect(body).toMatch(/metaRow:\s*\{[^}]*flexWrap:\s*"wrap"[^}]*\}/s);
+  it("change 3 — the date and the tags read as ONE fact block (issue #4420)", () => {
+    // The pills + date band became the shared fact rows with the tag line
+    // under them, rendered by ONE OfferingFactRows (no separate bands).
+    expect(body.match(/<OfferingFactRows\b/g)?.length).toBe(1);
+    expect(body).toMatch(/<OfferingFactRows[\s\S]*?facts=\{facts\}[\s\S]*?tags=\{tagLine\}/);
   });
 
   it("change 4 — the floating Get-tickets bar is PERSISTENT on both hosts", () => {
@@ -80,10 +81,13 @@ describe("ORCH-1167-R2 — event-page layout polish (source-structural)", () => 
     expect(index).toMatch(/EventTicketBoxProps/);
     expect(body).toMatch(/hideTicketBox/);
     expect(body).toMatch(/onTicketBoxLayout/);
-    // The desktop web host mounts the box in the sticky panel + hides it inline.
+    // issue #4420 — the premium frame keeps the ticket cards INLINE on every
+    // width (desktop: the right column), hiding them only when sales are
+    // closed, and the glass bar is the one place to continue.
     const web = stripComments(read(WEB));
-    expect(web).toMatch(/EventTicketBox/);
-    expect(web).toMatch(/hideTicketBox=\{isDesktop\}/);
+    expect(web).toMatch(/hideTicketBox=\{acquisitionState\.kind !== "current"\}/);
+    expect(web).toMatch(/inlineProceed=\{false\}/);
+    expect(web).not.toMatch(/hideTicketBox=\{isDesktop/);
   });
 
   it("change 6 — bottom inset clears the floating bar on both hosts", () => {

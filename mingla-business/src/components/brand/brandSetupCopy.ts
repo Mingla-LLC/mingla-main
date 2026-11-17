@@ -100,6 +100,10 @@ export const BRAND_SETUP_COPY = {
     noAccess: (brand: string | null): string =>
       brand ? t("common.noAccess", { brand }) : t("common.thisBrandNoAccess"),
     progress: (step: number): string => t("common.progress", { step }),
+    /** #4420 B7 — a passed setup step that is not reopened from the stepper. */
+    get saved(): string { return t("stepper.saved"); },
+    /** #4420 B7 — the phone Steps sheet title. */
+    get steps(): string { return t("stepper.steps"); },
     get offline(): string { return BRAND_SETUP_SHARED_COPY.common.offline; },
     get serverError(): string { return BRAND_SETUP_SHARED_COPY.common.serverError; },
   },

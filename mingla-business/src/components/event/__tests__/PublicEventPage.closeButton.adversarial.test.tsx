@@ -303,6 +303,8 @@ const renderPublicEventPage = (
       // [TEST-MOD-APPROVED #1023] Harness registration only: the gradient-aware
       // accent helpers, real; no close assertion changed.
       case "@mingla/offering-rendering/themeAccentStyle":
+      // issue #4420 audit — the desktop bar's flyer-column dock (pure).
+      case "@mingla/offering-rendering/offeringFrameMetrics":
         return require(request);
       case "./FoundationEventPreview":
         return { FoundationEventPreview: "FoundationEventPreview" };
@@ -552,6 +554,12 @@ const renderPublicEventPage = (
       // close assertion below is untouched.
       case "../ui/SimpleConfirmDialog":
         return { SimpleConfirmDialog: () => null };
+      // [TEST-MOD-APPROVED #4420] Harness registration only — Add to calendar
+      // (built only from real times) is outside this close-callback contract.
+      case "@mingla/offering-rendering/offeringCalendar":
+        return { offeringCalendarEntry: () => null };
+      case "../../utils/offeringCalendarAction":
+        return { addOfferingToCalendar: () => undefined };
       // [TEST-MOD-APPROVED #4063] Harness registration only — the shared
       // approval toast copy does not participate in the close contract.
       case "../../constants/buyerClaimCopy":

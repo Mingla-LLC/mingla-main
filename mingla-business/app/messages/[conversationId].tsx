@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { webPrivacyMaxHeight } from "../../src/components/messages/webViewportPin";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -19,6 +19,7 @@ import {
   type TextInputSelectionChangeEventData,
   type ViewStyle,
 } from "react-native";
+import { showAlert } from "../../src/components/ui/showAlert";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -39,7 +40,7 @@ import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { Toast, type ToastKind } from "../../src/components/ui/Toast";
 import { brandGroupChat } from "../../src/constants/brandGroupChatTokens";
-import { accent, spacing } from "../../src/constants/designSystem";
+import { color, radius, size, space } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { useBrandGroupLive } from "../../src/hooks/useBrandGroupLive";
@@ -157,7 +158,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   if (lookup.isPending === true && lookup.fetchStatus === "fetching") {
     return (
       <SafeScreen edges={["top"]} style={styles.screen}>
-        <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
+        <View style={styles.state}><ActivityIndicator color={color.text2} /></View>
       </SafeScreen>
     );
   }
@@ -192,6 +193,8 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
       style={[
         styles.desktopShell,
         Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null,
+        // #4420: capped clear of the Privacy & ad choices strip.
+        webPrivacyMaxHeight(),
       ]}
       testID="brand-group-desktop-shell"
     >
@@ -551,7 +554,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     setHighlightedMessageId(messageId);
     setTimeout(() => {
       const y = messageOffsets.current.get(messageId);
-      if (typeof y === "number") scrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.md), animated: true });
+      if (typeof y === "number") scrollRef.current?.scrollTo({ y: Math.max(0, y - space[4]), animated: true });
     }, 0);
     setTimeout(() => setHighlightedMessageId((value) => value === messageId ? null : value), 2_000);
   }, [conversationId, messages, t]);
@@ -607,7 +610,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       autoFollowLatest.current = true;
       await refresh();
     } catch (cause) {
-      Alert.alert("Message not sent", cause instanceof Error ? cause.message : "Try again.");
+      showAlert("Message not sent", cause instanceof Error ? cause.message : "Try again.");
     } finally {
       setSending(false);
     }
@@ -736,7 +739,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   if (!showRail && planPanelOpen && planBrandId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
-        <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={accent.warm} /></View>}>
+        <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={color.text2} /></View>}>
           <LazyBrandPlanPanel
             brandId={planBrandId}
             onBack={() => {
@@ -752,7 +755,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   if (!showRail && mediaPanelOpen && conversationId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
-        <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={accent.warm} /></View>}>
+        <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={color.text2} /></View>}>
           <LazyBrandGroupMediaPanel
             conversationId={conversationId}
             groupName={group?.brand_name ?? "Brand group"}
@@ -799,6 +802,8 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
         Platform.OS === "web" && windowHeight > 0
           ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
           : null,
+        // #4420: capped clear of the Privacy & ad choices strip.
+        webPrivacyMaxHeight(),
       ]}
       testID="brand-group-thread"
     >
@@ -876,7 +881,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       >
       <View style={styles.threadColumn}>
       {loading ? (
-        <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
+        <View style={styles.state}><ActivityIndicator color={color.text2} /></View>
       ) : error ? (
         <View style={styles.state}>
           <Text style={styles.stateText}>{error}</Text>
@@ -966,7 +971,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
                       onLongPress={openMenu}
                       style={isMedia ? styles.mediaBubble : styles.fileCard}
                     >
-                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineText : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
+                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineText : color.accent} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
                   ) : <BrandGroupMessageText content={message.content} mine={mine} mentionNames={mentionNames} />}
                 />
@@ -985,7 +990,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           {
             paddingBottom: liftedBottomSpacer(
               keyboardHeight > 0,
-              Math.max(insets.bottom, spacing.sm),
+              Math.max(insets.bottom, space[2]),
             ),
           },
         ]}
@@ -1025,7 +1030,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           <View style={styles.mentionMenu} accessibilityLabel="Brand group mention suggestions">
             {mentionLoading ? (
               <View style={styles.mentionState}>
-                <ActivityIndicator size="small" color={accent.warm} />
+                <ActivityIndicator size="small" color={color.text2} />
                 <Text style={styles.mentionStateText}>Finding teammates…</Text>
               </View>
             ) : mentionCandidates.length ? mentionCandidates.map((candidate) => (
@@ -1049,6 +1054,10 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
             )}
           </View>
         ) : null}
+        {/* #4420 round 3 (6, 24): floating composer. Attach sits inside the
+            field; send is an icon-only Paper circle outside it, dimmed until
+            there is text. Nothing the bar did before is lost. */}
+        <View style={styles.composerRow}>
         <View style={styles.composerLine}>
           <Pressable
             accessibilityRole="button"
@@ -1077,6 +1086,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
             accessibilityLabel="Brand group message"
             testID="brand-group-composer"
           />
+        </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Send"
@@ -1086,7 +1096,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
             style={[styles.sendButton, (!composer.trim() || sending) && styles.sendButtonDisabled]}
             testID="brand-group-send"
           >
-            {sending ? <ActivityIndicator size="small" color={brandGroupChat.mineText} /> : <Icon name="send" size={18} color={brandGroupChat.mineText} />}
+            {sending ? <ActivityIndicator size="small" color={color.ink} /> : <Icon name="send" size={20} color={composer.trim() ? color.ink : color.text4} />}
           </Pressable>
         </View>
       </View>
@@ -1116,13 +1126,13 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
             />
           ) : detailTab === "plan" && planBrandId ? (
             <View style={styles.mediaRail}>
-              <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
+              <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={color.text2} /></View>}>
                 <LazyBrandPlanPanel compact brandId={planBrandId} />
               </React.Suspense>
             </View>
           ) : (
             <View style={styles.mediaRail}>
-              <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
+              <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={color.text2} /></View>}>
                 <LazyBrandGroupMediaPanel
                   compact
                   conversationId={conversationId}
@@ -1230,46 +1240,46 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
 const styles = StyleSheet.create({
   screen: { backgroundColor: brandGroupChat.screenBg },
   desktopShell: { flex: 1, flexDirection: "row", backgroundColor: brandGroupChat.screenBg },
-  desktopList: { width: 280, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline, paddingTop: spacing.sm },
+  desktopList: { width: 280, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline, paddingTop: space[2] },
   desktopThread: { flex: 1, minWidth: 0 },
-  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.screenBg },
+  header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[2], paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.screenBg },
   iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   headerCopy: { flex: 1, minWidth: 0 },
   peopleTrigger: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: "row", alignItems: "center", gap: 10 },
   title: { color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
   subtitle: { color: brandGroupChat.textSoft, fontSize: 12, marginTop: 1 },
   subtitleTyping: { color: brandGroupChat.accent, fontWeight: "600" },
-  mediaButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.08)" },
-  mediaButtonActive: { borderColor: "rgba(235,120,37,0.7)", shadowColor: accent.warm, shadowOpacity: 0.35, shadowRadius: 10 },
+  mediaButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.pressed },
+  mediaButtonActive: { borderColor: color.lineStrong, shadowColor: color.accent, shadowOpacity: 0.35, shadowRadius: 10 },
   mediaButtonText: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "700" },
   detailsRail: { width: 340, minWidth: 300, maxWidth: "36%", borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   mediaRail: { flex: 1, minHeight: 0 },
-  railTabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
-  railTab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 999 },
-  railTabActive: { borderWidth: 1, borderColor: "rgba(235,120,37,0.38)", backgroundColor: "rgba(235,120,37,0.10)" },
+  railTabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: space[2], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  railTab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
+  railTabActive: { borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
   railTabText: { color: brandGroupChat.textSoft, fontSize: 12, fontWeight: "700" },
   railTabTextActive: { color: brandGroupChat.textPrimary, fontSize: 12, fontWeight: "800" },
   mediaPanelLoading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  mutedNote: { paddingHorizontal: spacing.md, paddingVertical: 6, backgroundColor: brandGroupChat.accentSoft },
+  mutedNote: { paddingHorizontal: space[4], paddingVertical: 6, backgroundColor: brandGroupChat.accentSoft },
   mutedNoteText: { color: brandGroupChat.textSecondary, fontSize: 12, textAlign: "center" },
-  notice: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: brandGroupChat.accentSoft },
+  notice: { paddingHorizontal: space[4], paddingVertical: space[2], backgroundColor: brandGroupChat.accentSoft },
   noticeText: { color: brandGroupChat.textSecondary, fontSize: 12, textAlign: "center" },
   workspace: { flex: 1, flexDirection: "row" },
   threadColumn: { flex: 1, minWidth: 0 },
-  state: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
+  state: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
   stateText: { color: brandGroupChat.textSecondary, textAlign: "center", lineHeight: 20 },
   messages: { flex: 1 },
-  messagesContent: { paddingHorizontal: 12, paddingTop: spacing.md, paddingBottom: spacing.lg },
-  empty: { margin: spacing.lg, padding: spacing.xl, borderRadius: 20, backgroundColor: brandGroupChat.surface },
+  messagesContent: { paddingHorizontal: 12, paddingTop: space[4], paddingBottom: space[6] },
+  empty: { margin: space[6], padding: space[7], borderRadius: 20, backgroundColor: brandGroupChat.surface },
   dayRow: { alignItems: "center", marginVertical: 12 },
   dayText: { color: brandGroupChat.textSoft, fontSize: 12, fontWeight: "700", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: "hidden", backgroundColor: brandGroupChat.strip },
-  systemLine: { alignItems: "center", paddingHorizontal: spacing.xl, marginVertical: 8 },
+  systemLine: { alignItems: "center", paddingHorizontal: space[7], marginVertical: 8 },
   systemLineText: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, textAlign: "center" },
   cardRow: { marginVertical: 8 },
   messageTextMine: { color: brandGroupChat.mineText },
-  fileCard: { minWidth: 220, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  fileCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.10)" },
-  fileCardIconMine: { backgroundColor: "rgba(16,18,22,0.12)" },
+  fileCard: { minWidth: 220, flexDirection: "row", alignItems: "center", gap: space[2] },
+  fileCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tabOn },
+  fileCardIconMine: { backgroundColor: color.spinnerTrackOnPaper },
   fileCardCopy: { flex: 1, minWidth: 0 },
   fileName: { color: brandGroupChat.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: "800" },
   fileMeta: { color: brandGroupChat.textMuted, fontSize: 11, marginTop: 3 },
@@ -1277,13 +1287,13 @@ const styles = StyleSheet.create({
   mediaBubble: { width: 210, marginHorizontal: -10, marginVertical: -5, borderRadius: 16, overflow: "hidden" },
   mediaBubbleThumb: { width: 210, height: 160 },
   mediaBubbleFooter: { color: brandGroupChat.textPrimary, fontSize: 11, paddingHorizontal: 10, paddingVertical: 7 },
-  composer: { paddingHorizontal: spacing.sm, paddingTop: 6, gap: 6, backgroundColor: brandGroupChat.screenBg },
-  actorBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 4 },
+  composer: { paddingHorizontal: space[3], paddingTop: space[2], gap: space[2] },
+  actorBar: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 4 },
   actorLabel: { color: brandGroupChat.textMuted, fontSize: 12 },
   actorChoice: { minHeight: 32, justifyContent: "center", paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline },
-  actorChoiceActive: { borderColor: accent.warm, backgroundColor: brandGroupChat.accentSoft },
+  actorChoiceActive: { borderColor: color.lineStrong, backgroundColor: brandGroupChat.accentSoft },
   actorChoiceText: { color: brandGroupChat.textSecondary, fontSize: 12 },
-  actorChoiceTextActive: { color: accent.warm, fontWeight: "700" },
+  actorChoiceTextActive: { color: color.text1, fontWeight: "700" },
   replyBar: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 16, backgroundColor: brandGroupChat.surfaceRaised },
   replyBarAccent: { width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: brandGroupChat.quoteBar },
   contextTitle: { color: brandGroupChat.textPrimary, fontSize: 12, fontWeight: "700" },
@@ -1293,20 +1303,21 @@ const styles = StyleSheet.create({
   selectedNote: { color: brandGroupChat.selected, fontSize: 12, fontWeight: "700" },
   selectedClear: { color: brandGroupChat.accent, fontSize: 12, fontWeight: "700" },
   mentionMenu: { maxHeight: 220, overflow: "hidden", borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
-  mentionState: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.sm },
-  mentionStateText: { color: brandGroupChat.textMuted, fontSize: 12, padding: spacing.sm },
-  mentionOption: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  mentionState: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space[2], padding: space[2] },
+  mentionStateText: { color: brandGroupChat.textMuted, fontSize: 12, padding: space[2] },
+  mentionOption: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingVertical: space[2], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
   mentionOptionPressed: { backgroundColor: brandGroupChat.strip },
   mentionAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: brandGroupChat.mentionBg },
   mentionAvatarText: { color: brandGroupChat.mentionText, fontSize: 13, fontWeight: "800" },
   mentionName: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "700" },
   mentionUsername: { color: brandGroupChat.textMuted, fontSize: 11, marginTop: 1 },
-  composerLine: { flexDirection: "row", alignItems: "flex-end", gap: 6, padding: 4, borderRadius: brandGroupChat.composerRadius, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised },
+  composerRow: { flexDirection: "row", alignItems: "flex-end", gap: space[2] },
+  composerLine: { flex: 1, flexDirection: "row", alignItems: "flex-end", gap: space[1], padding: space[1], borderRadius: brandGroupChat.composerRadius, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised },
   attachButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   input: { flex: 1, minHeight: COMPOSER_MIN, maxHeight: COMPOSER_MAX, paddingHorizontal: 4, paddingTop: 10, paddingBottom: 10, color: brandGroupChat.textPrimary, fontSize: 16, lineHeight: 20 },
-  sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: brandGroupChat.accent },
-  sendButtonDisabled: { opacity: 0.4 },
-  optionsScrim: { flex: 1, alignItems: "flex-end", paddingTop: 64, paddingHorizontal: spacing.md, backgroundColor: brandGroupChat.scrim },
+  sendButton: { width: size.btn.phone, height: size.btn.phone, borderRadius: radius.full, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
+  sendButtonDisabled: { backgroundColor: color.card2 },
+  optionsScrim: { flex: 1, alignItems: "flex-end", paddingTop: 64, paddingHorizontal: space[4], backgroundColor: brandGroupChat.scrim },
   optionsCard: { width: 240, overflow: "hidden", borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   optionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   optionRowPressed: { backgroundColor: brandGroupChat.strip },

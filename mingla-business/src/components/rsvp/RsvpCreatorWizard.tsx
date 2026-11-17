@@ -42,13 +42,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 
 import {
-  accent,
-  canvas,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   DESKTOP_BEZEL_MARGIN,
@@ -89,6 +85,7 @@ import { isChipInPayoutReady } from "../../utils/chipInPayoutReadiness";
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { UNSAVED_AUTOSAVE_FAILED_DIALOG } from "../../utils/unsavedChangesGuard";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
@@ -110,6 +107,11 @@ import {
   PENDING_WIZARD_INVITE_SUMMARY,
   type WizardInvitePlanSummary,
 } from "../invites/LazyInvitePeopleStep";
+import {
+  wizardInviteEstimateFailed,
+  wizardInviteListFailed,
+  wizardInviteSummaryReady,
+} from "../invites/wizardInvitePublishGate";
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
@@ -148,14 +150,16 @@ const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
   },
 );
 
-const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
-  { title: "Basics", subtitle: "Name, format, and party type" },
-  { title: "When", subtitle: "Date and time" },
+// #4420: a step keeps a subheading only when it adds something the title
+// doesn't already say (Seth, 2026-11-16). Steps without one show no line.
+const STEP_DEFS: readonly { title: string; subtitle?: string }[] = [
+  { title: "Basics" },
+  { title: "When" },
   { title: "Where", subtitle: "Venue or online link" },
-  { title: "Cover", subtitle: "Pick a cover style" },
+  { title: "Cover" },
   { title: "RSVP", subtitle: "Capacity, plus-ones, approvals" },
   { title: "Invite people", subtitle: "Your Book, followers and groups" },
-  { title: "Preview", subtitle: "How it looks to guests" },
+  { title: "Preview" },
 ];
 
 const TOTAL_STEPS = STEP_DEFS.length;
@@ -163,7 +167,7 @@ const TOTAL_STEPS = STEP_DEFS.length;
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
   { label: "Hub", icon: "calendar", href: "/(tabs)/hub/events", active: true },
-  { label: "Ari", icon: "sparkle", href: "/(tabs)/ari", active: false },
+  { label: "Ari", icon: "ari", href: "/(tabs)/ari", active: false },
   { label: "Blast", icon: "send", href: "/(tabs)/marketing", active: false },
 ] as const;
 
@@ -347,6 +351,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const [pendingErrors, setPendingErrors] = useState<ValidationError[]>([]);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
+  // #4420 — edit mode, last autosave failed: confirm before leaving.
+  const [autosaveLeaveVisible, setAutosaveLeaveVisible] = useState<boolean>(false);
   const [coverVideoProcessing, setCoverVideoProcessing] =
     useState<boolean>(false);
   const coverIntentVersionRef = useRef(0);
@@ -398,12 +404,13 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       setCurrentStep((value) => value === 5 ? 6 : value);
     }
   }, [inviteFlag.data, persistedInvite.plan.data?.selectedCount]);
-  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
-    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
-    inviteQuote.selectionHash === invitePlan.selectionHash &&
-    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
-    !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
-    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError);
+  // #4420 — nobody invited: Publish never waits on the delivery estimate.
+  const inviteGateInput = {
+    inviteEnabled, plan: invitePlan, quote: inviteQuote, summary: persistedInvite,
+  };
+  const inviteSummaryReady = wizardInviteSummaryReady(inviteGateInput);
+  const inviteEstimateFailed = wizardInviteEstimateFailed(inviteGateInput);
+  const inviteListFailed = wizardInviteListFailed(inviteGateInput);
   const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     plan: WizardInvitePlan | null,
@@ -419,14 +426,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       .filter(({ index }) => inviteEnabled || index !== 5),
     [inviteEnabled],
   );
-  const visibleStepperSteps = useMemo<StepperStep[]>(
-    () => visibleStepDefs.map(({ definition, index }) => ({
-      id: `step-${index + 1}`,
-      label: definition.title,
-    })),
-    [visibleStepDefs],
-  );
   const visibleStepNumber = !inviteEnabled && currentStep === 6 ? 6 : currentStep + 1;
+  const stepSubtitle: string | undefined = currentStep === 5
+    ? "Choose who to invite. Nothing sends until this RSVP is published."
+    : STEP_DEFS[currentStep]?.subtitle;
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -600,6 +603,30 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const stepErrors: ValidationError[] = useMemo(
     () => validateRsvpStep(currentStep, liveDraft),
     [currentStep, liveDraft],
+  );
+
+  // #4420 B7 — the clickable stepper. Indices are ordinals among the VISIBLE
+  // steps (Invite people hides when the invite flag is off). A step is
+  // reachable up to the first step the EXISTING validator rejects; no new rule.
+  const currentOrdinal = Math.max(
+    0,
+    visibleStepDefs.findIndex(({ index }) => index === currentStep),
+  );
+  const furthestValidOrdinal = useMemo((): number => {
+    const firstInvalid = visibleStepDefs.findIndex(
+      ({ index }) => validateRsvpStep(index, liveDraft).length > 0,
+    );
+    return firstInvalid === -1 ? visibleStepDefs.length - 1 : firstInvalid;
+  }, [visibleStepDefs, liveDraft]);
+  const visibleStepperSteps = useMemo<StepperStep[]>(
+    () => visibleStepDefs.map(({ definition, index }) => {
+      const firstError =
+        index === currentStep && showStepErrors ? stepErrors[0]?.message : undefined;
+      return firstError !== undefined
+        ? { id: `step-${index + 1}`, label: definition.title, state: "error" as const, firstError }
+        : { id: `step-${index + 1}`, label: definition.title };
+    }),
+    [visibleStepDefs, currentStep, showStepErrors, stepErrors],
   );
 
   // ORCH-1335 — provider-aware chip-in payout readiness (mirrors pg_brand_can_collect).
@@ -797,11 +824,16 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         setDiscardError(null);
         setDiscardDialogVisible(true);
       }
+    } else if (serverSaveState?.hasError === true) {
+      // #4420 — edit mode autosaves, so leaving loses nothing, unless the
+      // last autosave failed: then ask before the unsaved edits are dropped.
+      setAutosaveLeaveVisible(true);
     } else {
       // Edit mode: auto-save semantics — simple exit, no dialog.
       onExit("abandoned");
     }
   }, [
+    serverSaveState?.hasError,
     isCreateMode,
     isDraftPristine,
     discardDraft,
@@ -813,16 +845,37 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // Dock "Back" button — decrement step. Step 1's dock has no Back
   // (chrome X handles wizard exit instead).
   const handleStepBack = useCallback((): void => {
-    if (currentStep === 5 && inviteNavigation?.phase !== "ready") return;
+    if (currentStep === 5 && inviteNavigation?.phase === "saving") return;
     setShowStepErrors(false);
     setCurrentStep((prev) => prev === 6 && !inviteEnabled ? 4 : Math.max(0, prev - 1));
   }, [currentStep, inviteEnabled, inviteNavigation?.phase]);
+
+  // #4420 B7 — jump to a reachable step from the stepper. Same guards as the
+  // dock Back: never while Invite people is still saving its selection, and
+  // never while Publish is re-reading the invite plan (#1780).
+  const handleStepPress = useCallback((ordinal: number): void => {
+    const target = visibleStepDefs[ordinal]?.index;
+    if (target === undefined || target === currentStep) return;
+    if (currentStep === 5 && inviteNavigation?.phase === "saving") return;
+    if (checkingInvitePublish || isPublishing) return;
+    if (ordinal > Math.max(furthestValidOrdinal, currentOrdinal)) return;
+    setShowStepErrors(false);
+    setCurrentStep(target);
+  }, [
+    visibleStepDefs,
+    currentStep,
+    inviteNavigation?.phase,
+    checkingInvitePublish,
+    isPublishing,
+    furthestValidOrdinal,
+    currentOrdinal,
+  ]);
 
   // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
   useWizardHardwareBack({
     isFirstStep,
     busy: isPublishing || checkingInvitePublish || isDiscarding || isAutosaving,
-    exitSurfaced: discardDialogVisible || toast.visible,
+    exitSurfaced: discardDialogVisible || autosaveLeaveVisible || toast.visible,
     onStepBack: handleStepBack,
     onExit: handleClose,
   });
@@ -920,7 +973,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       setInvitePlan(latest.plan);
       setInviteQuote(latest.quote);
       if (latest.quote === null) {
-        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+        if (latest.plan.selectedCount === 0) {
           setPublishError(null);
           setPublishConfirmVisible(true);
         } else {
@@ -1210,7 +1263,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       case 6:
         return (
           <><RsvpStep7Preview {...baseProps} brand={brand} onTapMiniCard={onOpenPreview} />
-          <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} /></>
+          <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
+            estimateFailed={inviteEstimateFailed}
+            listFailed={inviteListFailed}
+            onRetry={() => void persistedInvite.refreshAuthoritative().then((latest) => { setInvitePlan(latest.plan); setInviteQuote(latest.quote); }).catch(() => undefined)} /></>
         );
       default:
         return <CreatorStep1Basics {...baseProps} />;
@@ -1248,7 +1304,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
           <Icon
             name={item.icon}
             size={22}
-            color={item.active ? accent.warm : textTokens.tertiary}
+            color={item.active ? color.accent : color.text3}
           />
           <Text
             style={[
@@ -1266,7 +1322,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const renderDesktopStepRail = (): React.ReactElement => (
     <GlassCard
       variant="base"
-      padding={spacing.md}
+      padding={space[4]}
       radius="lg"
       style={styles.desktopStepRail}
     >
@@ -1276,53 +1332,27 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
           {liveDraft.name.trim().length > 0 ? liveDraft.name : "Untitled RSVP"}
         </Text>
         <Text style={styles.desktopStepRailSub} numberOfLines={1}>
-          {brand?.displayName ?? "Brand"} · Draft saved
+          {brand?.displayName ?? "Brand"}
+          {serverSaveState === undefined
+            ? ""
+            : serverSaveState.hasError
+              ? " · Unsaved changes - retrying"
+              : serverSaveState.isSaving
+                ? " · Saving..."
+                : serverSaveState.lastSavedAt !== null
+                  ? " · Saved"
+                  : " · Not saved yet"}
         </Text>
       </View>
-      <View style={styles.desktopStepList}>
-        {visibleStepDefs.map(({ definition: step, index }, ordinal) => {
-          const active = index === currentStep;
-          return (
-            <View
-              key={step.title}
-              style={[
-                styles.desktopStepItem,
-                active ? styles.desktopStepItemActive : null,
-              ]}
-            >
-              <View
-                style={[
-                  styles.desktopStepIndex,
-                  active ? styles.desktopStepIndexActive : null,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.desktopStepIndexText,
-                    active ? styles.desktopStepIndexTextActive : null,
-                  ]}
-                >
-                  {ordinal + 1}
-                </Text>
-              </View>
-              <View style={styles.desktopStepCopy}>
-                <Text
-                  style={[
-                    styles.desktopStepTitle,
-                    active ? styles.desktopStepTitleActive : null,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {step.title}
-                </Text>
-                <Text style={styles.desktopStepSub} numberOfLines={1}>
-                  {step.subtitle}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
+      {/* #4420 B7 — the 280 clickable step list (done / current / error / todo). */}
+      <Stepper
+        layout="list"
+        steps={visibleStepperSteps}
+        currentIndex={currentOrdinal}
+        furthestValidIndex={furthestValidOrdinal}
+        onStepPress={handleStepPress}
+        testID="rsvp-wizard-steps"
+      />
     </GlassCard>
   );
 
@@ -1354,7 +1384,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         styles.host,
         {
           paddingTop: isWideDesktop ? 0 : insets.top,
-          backgroundColor: canvas.discover,
+          backgroundColor: color.canvas,
         },
       ]}
     >
@@ -1376,53 +1406,57 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
           />
         </View>
       ) : (
-        <View style={styles.chromeRow}>
-          <IconChrome
-            icon="close"
-            size={36}
-            onPress={handleClose}
-            accessibilityLabel="Close wizard"
-          />
-          <View style={styles.stepperWrap}>
-            <Stepper
-              steps={visibleStepperSteps}
-              currentIndex={visibleStepNumber - 1}
-              showCaption={false}
+        // #4420 — the phone wizard chrome matches the event wizard and the
+        // mockup: close, the RSVP's name over "Brand · save state", then the
+        // stepper's own progress, chips and n / N Steps button (the separate
+        // "1/7" counter and the "Step 1 of 7" subtitle repeated it).
+        <View style={styles.mobileChrome}>
+          <View style={styles.chromeRow}>
+            <IconChrome
+              icon="close"
+              size={44}
+              onPress={handleClose}
+              accessibilityLabel="Close wizard"
             />
+            <View style={styles.chromeTitleCol}>
+              <Text style={styles.chromeTitle} numberOfLines={1}>
+                {liveDraft.name.trim().length > 0 ? liveDraft.name : "Untitled RSVP"}
+              </Text>
+              <Text
+                style={[
+                  styles.chromeSub,
+                  serverSaveState?.hasError === true ? styles.saveStateError : null,
+                ]}
+                numberOfLines={1}
+              >
+                {brand?.displayName ?? "Brand"}
+                {serverSaveState === undefined
+                  ? ""
+                  : ` · ${
+                      serverSaveState.hasError
+                        ? "Unsaved changes - retrying"
+                        : serverSaveState.isSaving
+                          ? "Saving..."
+                          : serverSaveState.lastSavedAt !== null
+                            ? "Saved"
+                            // issue #3040 — this branch means NOTHING has been
+                            // written to `events` yet, so it never says "Server draft".
+                            : "Not saved yet"
+                    }`}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.stepCounter}>
-            {visibleStepNumber}/{visibleStepDefs.length}
-          </Text>
+          {/* #4420 B7 — progress segments, tappable step chips and the n / N Steps sheet. */}
+          <Stepper
+            layout="chips"
+            steps={visibleStepperSteps}
+            currentIndex={currentOrdinal}
+            furthestValidIndex={furthestValidOrdinal}
+            onStepPress={handleStepPress}
+            sheetTitle="Steps"
+            testID="rsvp-wizard-stepper"
+          />
         </View>
-      )}
-
-      {/* Brand subtitle */}
-      {isWideDesktop ? null : (
-      <View style={styles.subtitleRow}>
-        <Text style={styles.subtitle}>
-              {brand?.displayName ?? "Brand"} · Step {visibleStepNumber} of{" "}
-              {visibleStepDefs.length}
-        </Text>
-        {serverSaveState !== undefined ? (
-          <Text
-            style={[
-              styles.saveState,
-              serverSaveState.hasError ? styles.saveStateError : null,
-            ]}
-          >
-            {serverSaveState.hasError
-              ? "Unsaved changes - retrying"
-              : serverSaveState.isSaving
-                ? "Saving..."
-                : serverSaveState.lastSavedAt !== null
-                  ? "Saved"
-                  // issue #3040 — see EventCreatorWizard: this branch means
-                  // NOTHING has been written to `events` yet, so "Server draft"
-                  // stated the opposite of the truth.
-                  : "Not saved yet"}
-          </Text>
-        ) : null}
-      </View>
       )}
 
       <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
@@ -1450,14 +1484,15 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         <Text style={styles.eyebrow}>
           Step {visibleStepNumber} of {visibleStepDefs.length}
         </Text>
-              <Text accessibilityRole={currentStep === 5 ? "header" : undefined} style={styles.stepTitle}>
+              <Text
+                accessibilityRole={currentStep === 5 ? "header" : undefined}
+                style={[styles.stepTitle, stepSubtitle === undefined && styles.stepTitleAlone]}
+              >
                 {STEP_DEFS[currentStep].title}
               </Text>
-              <Text style={styles.stepSub}>
-                {currentStep === 5
-                  ? "Choose who to invite. Nothing sends until this RSVP is published."
-                  : STEP_DEFS[currentStep].subtitle}
-              </Text>
+              {stepSubtitle !== undefined ? (
+                <Text style={styles.stepSub}>{stepSubtitle}</Text>
+              ) : null}
         <View style={styles.stepBodyWrap} onLayout={handleStepBodyLayout}>
           {renderStepBody()}
         </View>
@@ -1476,7 +1511,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         radius="xxl"
                 style={[
                   styles.dock,
-                  { marginBottom: insets.bottom + spacing.lg },
+                  { marginBottom: insets.bottom + space[6] },
                 ]}
       >
         {isLastStep ? (
@@ -1528,7 +1563,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
                 variant="ghost"
                 size="md"
                 onPress={handleStepBack}
-                disabled={currentStep === 5 && inviteNavigation?.phase !== "ready"}
+                disabled={currentStep === 5 && inviteNavigation?.phase === "saving"}
                 fullWidth
               />
             </View>
@@ -1552,6 +1587,20 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
       {/* Overlays — at root for I-13 portal contract */}
       <ConfirmDialog
+        visible={autosaveLeaveVisible}
+        onClose={() => setAutosaveLeaveVisible(false)}
+        onConfirm={() => {
+          setAutosaveLeaveVisible(false);
+          onExit("abandoned");
+        }}
+        title={UNSAVED_AUTOSAVE_FAILED_DIALOG.title}
+        description={UNSAVED_AUTOSAVE_FAILED_DIALOG.description}
+        confirmLabel={UNSAVED_AUTOSAVE_FAILED_DIALOG.confirmLabel}
+        cancelLabel={UNSAVED_AUTOSAVE_FAILED_DIALOG.cancelLabel}
+        destructive
+        testID="wizard-autosave-failed-leave-dialog"
+      />
+      <ConfirmDialog
         visible={discardDialogVisible}
         onClose={handleCloseDiscardDialog}
         onConfirm={handleConfirmDiscard}
@@ -1569,7 +1618,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       <InvitePlanSummaryBridge
         eventId={/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null}
         enabled={true}
-        quoteWhenEmpty={inviteFlag.data === true}
+        quoteWhenEmpty={false}
         onChange={setPersistedInvite}
       />
 
@@ -1642,15 +1691,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: DESKTOP_RAIL_WIDTH,
     alignItems: "center",
-    paddingTop: spacing.xl,
-    gap: spacing.sm,
+    paddingTop: space[7],
+    gap: space[2],
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: "rgba(255, 255, 255, 0.06)",
+    borderRightColor: color.line,
   },
   desktopRailBrandMark: {
     width: 42,
     height: 42,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1669,28 +1718,28 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   desktopRailItemActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.055)",
-    borderColor: "rgba(235, 120, 37, 0.45)",
+    backgroundColor: color.fill.tile,
+    borderColor: color.accentLine,
   },
   desktopRailItemText: {
     fontSize: 9,
     lineHeight: 11,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   desktopRailItemTextActive: {
-    color: accent.warm,
+    color: color.accent,
   },
   desktopTopBarWrap: {
     paddingTop: DESKTOP_TOP_INSET,
     paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
     paddingRight: DESKTOP_BEZEL_MARGIN,
-    paddingBottom: spacing.sm,
+    paddingBottom: space[2],
   },
   desktopShell: {
     flex: 1,
     flexDirection: "row",
-    gap: spacing.md,
+    gap: space[4],
     paddingLeft: DESKTOP_RAIL_WIDTH + DESKTOP_BEZEL_MARGIN,
     paddingRight: DESKTOP_BEZEL_MARGIN,
     paddingBottom: DESKTOP_BEZEL_MARGIN,
@@ -1700,77 +1749,26 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   desktopStepRailHeader: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   desktopStepEyebrow: {
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.sm,
+    color: color.accent,
+    marginBottom: space[2],
   },
   desktopStepRailTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   desktopStepRailSub: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-  },
-  desktopStepList: {
-    gap: spacing.sm,
-  },
-  desktopStepItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-  },
-  desktopStepItemActive: {
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(235, 120, 37, 0.45)",
-  },
-  desktopStepIndex: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-  },
-  desktopStepIndexActive: {
-    backgroundColor: accent.warm,
-  },
-  desktopStepIndexText: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "800",
-    color: textTokens.tertiary,
-  },
-  desktopStepIndexTextActive: {
-    color: textTokens.inverse,
-  },
-  desktopStepCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  desktopStepTitle: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "700",
-    color: textTokens.tertiary,
-  },
-  desktopStepTitleActive: {
-    color: textTokens.primary,
-  },
-  desktopStepSub: {
-    marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
+    marginTop: space[1],
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   desktopFormPane: {
     flex: 1,
@@ -1778,75 +1776,71 @@ const styles = StyleSheet.create({
     minWidth: 0,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.018)",
+    borderColor: color.line,
+    backgroundColor: color.fill.tableHead,
     overflow: "hidden",
+  },
+  mobileChrome: {
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[3],
+    gap: space[3],
   },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    gap: space[3],
   },
-  stepperWrap: {
+  chromeTitleCol: {
     flex: 1,
+    minWidth: 0,
   },
-  stepCounter: {
-    fontSize: 12,
-    color: textTokens.tertiary,
-    fontVariant: ["tabular-nums"],
-    minWidth: 28,
-    textAlign: "right",
+  chromeTitle: {
+    ...type.h2,
+    color: color.text1,
   },
-  subtitleRow: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.md,
-  },
-  subtitle: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-  },
-  saveState: {
-    marginTop: 2,
-    fontSize: typography.caption.fontSize,
-    color: textTokens.quaternary,
+  chromeSub: {
+    ...type.caption,
+    color: color.text3,
   },
   saveStateError: {
-    color: semantic.error,
+    color: color.danger,
   },
   body: {
-    paddingHorizontal: spacing.md + 8,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[4] + 8,
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   eyebrow: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
+    color: color.accent,
     marginBottom: 6,
   },
   stepTitle: {
     fontSize: 26,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 6,
+  },
+  // #4420 — a title with no subheading keeps the same gap to the step body.
+  stepTitleAlone: {
+    marginBottom: space[6],
   },
   stepSub: {
     fontSize: 14,
-    color: textTokens.secondary,
-    marginBottom: spacing.lg,
+    color: color.text2,
+    marginBottom: space[6],
   },
   stepBodyWrap: {
     // step body content
   },
   dock: {
-    marginHorizontal: spacing.md,
-    // marginBottom is applied inline as insets.bottom + spacing.lg so the
+    marginHorizontal: space[4],
+    // marginBottom is applied inline as insets.bottom + space[6] so the
     // floating dock clears the phone's bottom nav / home-indicator on both
     // Android gesture-nav and iOS (META-ORCH-1059 Sub-A footer-bleed fix).
     // Sleek + compact: tight vertical padding, generous horizontal.
@@ -1872,11 +1866,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingTop: space[6],
+    paddingHorizontal: space[4],
   },
   // suppress unused
   _unused: {
-    color: glass.tint.profileBase,
+    color: color.fill.inset,
   },
 });

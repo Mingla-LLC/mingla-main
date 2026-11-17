@@ -28,12 +28,10 @@ import {
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { Button } from "../../../src/components/ui/Button";
 import {
-  canvas,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { formatCurrency } from "../../../src/utils/currency";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
@@ -153,7 +151,7 @@ export default function GuestReservationManageRoute() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
         >
-          <ActivityIndicator color={textTokens.secondary} />
+          <ActivityIndicator color={color.text2} />
           <Text style={styles.body}>Loading reservation…</Text>
         </ScrollView>
       </SafeScreen>
@@ -277,29 +275,29 @@ const styles = StyleSheet.create({
   // #2211 — `host` keeps only the frame; centring lives in `scrollContent`.
   // #3392 — the frame paints Mingla's dark canvas so every text token below
   // is legible (the page used to set no colours at all).
-  host: { flex: 1, backgroundColor: canvas.discover },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1, overflow: "hidden" },
   // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
+    padding: space[7],
+    gap: space[4],
   },
   eyebrow: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  title: { ...typography.h2, color: textTokens.primary },
-  body: { ...typography.body, color: textTokens.secondary },
+  title: { ...type.h1, color: color.text1 },
+  body: { ...type.body, color: color.text2 },
   card: {
-    gap: spacing.xs,
-    padding: spacing.md,
+    gap: space[1],
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
-  cardTitle: { ...typography.bodyLg, color: textTokens.primary },
-  error: { ...typography.bodySm, color: semantic.errorText },
+  cardTitle: { ...type.row, color: color.text1 },
+  error: { ...type.small, color: color.errorText },
 });

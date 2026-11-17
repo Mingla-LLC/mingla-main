@@ -20,6 +20,7 @@ import { BrandSitesError } from "../../../../services/brandSitesService";
 import { formatTripDates } from "../../../../sites/websiteCopy";
 import type { CollectionSection } from "../../../../sites/websiteNav";
 
+import { color, scrim } from "../../../../constants/designSystem";
 /*
  * #2829 W9r — what every collection editor shares: the breadcrumb, Save /
  * Cancel (a sticky bar on desktop, Save in the top bar on phones), the "saved
@@ -343,12 +344,12 @@ const styles = StyleSheet.create({
   crumbSep: { color: ui.t3, fontSize: 13 },
   crumbCurrent: { color: ui.t3, fontSize: 13, flexShrink: 1 },
   delete: { flexDirection: "row", marginTop: 4, marginBottom: 24 },
-  toolbar: { flexDirection: "row", flexWrap: "wrap", gap: 4, padding: 6, borderWidth: 1, borderColor: ui.border2, borderBottomWidth: 0, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: "rgba(255,255,255,0.03)" },
+  toolbar: { flexDirection: "row", flexWrap: "wrap", gap: 4, padding: 6, borderWidth: 1, borderColor: ui.border2, borderBottomWidth: 0, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: color.fill.tableHead },
   tool: { minWidth: 36, height: 36, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  toolOn: { backgroundColor: "rgba(255,255,255,0.09)" },
+  toolOn: { backgroundColor: color.fill.railOn },
   toolText: { color: ui.t2, fontWeight: "700", fontSize: 14 },
   italic: { fontStyle: "italic" },
-  editor: { minHeight: 220, borderWidth: 1, borderColor: ui.border2, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.02)" },
+  editor: { minHeight: 220, borderWidth: 1, borderColor: ui.border2, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: color.fill.tableHead },
   blockRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   bullet: { color: ui.t2, fontSize: 15, lineHeight: 24, paddingTop: 6, minWidth: 16 },
   blockInput: { flex: 1, color: ui.t1, fontSize: 15, lineHeight: 24, paddingVertical: 6, minHeight: 36, textAlignVertical: "top" },
@@ -357,8 +358,8 @@ const styles = StyleSheet.create({
   quote: { borderLeftWidth: 3, borderLeftColor: ui.accent, paddingLeft: 12, color: ui.t2 },
   addBlock: { alignSelf: "flex-start", marginTop: 6 },
   rteHint: { marginTop: 6 },
-  scrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 16 },
-  dialog: { width: "100%", maxWidth: 520, maxHeight: "90%", backgroundColor: "#16181c", borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20 },
+  scrim: { flex: 1, backgroundColor: scrim.modal, alignItems: "center", justifyContent: "center", padding: 16 },
+  dialog: { width: "100%", maxWidth: 520, maxHeight: "90%", backgroundColor: color.card, borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20 },
   dialogTitle: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: ui.t1, marginBottom: 6 },
   dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 16 },
   linkInput: { marginTop: 12, minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, paddingHorizontal: 12, color: ui.t1, fontFamily: mono },

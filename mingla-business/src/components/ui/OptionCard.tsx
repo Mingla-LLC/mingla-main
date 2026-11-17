@@ -43,15 +43,13 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import {
-  accent,
-  androidOpaque,
-  glass,
+  color,
+  materials,
   optionCardMinHeight,
   optionCardMinWidth,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 import { Icon } from "./Icon";
@@ -109,7 +107,7 @@ export const OptionCard: React.FC<OptionCardProps> = ({
           <Icon
             name={icon}
             size={18}
-            color={selected ? accent.warm : textTokens.secondary}
+            color={selected ? color.text1 : color.text2}
           />
         ) : null}
         <Text style={styles.label} numberOfLines={2}>
@@ -117,7 +115,7 @@ export const OptionCard: React.FC<OptionCardProps> = ({
         </Text>
         {selected ? (
           <View style={styles.checkWrap} testID={`${testID}-check`}>
-            <Icon name="check" size={14} color={accent.warm} />
+            <Icon name="check" size={14} color={color.text1} />
           </View>
         ) : null}
       </View>
@@ -136,23 +134,23 @@ export const OptionCard: React.FC<OptionCardProps> = ({
  */
 const IDLE_SURFACE = Platform.select({
   android: {
-    backgroundColor: androidOpaque.rowFill,
-    borderColor: androidOpaque.rowBorder,
+    backgroundColor: materials.pane.solidFill,
+    borderColor: color.card2,
   },
   default: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
 }) as ViewStyle;
 
 const SELECTED_SURFACE = Platform.select({
   android: {
-    backgroundColor: androidOpaque.accentFill,
-    borderColor: accent.warm,
+    backgroundColor: materials.selected.solidFill,
+    borderColor: color.paper,
   },
   default: {
-    backgroundColor: accent.tint,
-    borderColor: accent.warm,
+    backgroundColor: materials.selected.glassFill,
+    borderColor: color.paper,
   },
 }) as ViewStyle;
 
@@ -167,11 +165,11 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     minWidth: optionCardMinWidth,
     minHeight: optionCardMinHeight,
-    gap: spacing.xxs,
+    gap: 2,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   cardIdle: IDLE_SURFACE,
   cardSelected: {
@@ -184,18 +182,18 @@ const styles = StyleSheet.create({
   headRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   // NOT accent-coloured when selected: contrast beats decoration.
   label: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
     flexShrink: 1,
   },
   checkWrap: { marginLeft: "auto" },
-  helper: { ...typography.caption, color: textTokens.secondary },
-  example: { ...typography.caption, color: textTokens.tertiary },
+  helper: { ...type.caption, color: color.text2 },
+  example: { ...type.caption, color: color.text3 },
 });
 
 export default OptionCard;

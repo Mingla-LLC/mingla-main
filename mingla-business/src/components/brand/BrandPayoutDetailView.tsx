@@ -3,11 +3,9 @@ import { StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandPayoutScreen } from "../../hooks/useBrandPayoutScreen";
 import { formatCurrency } from "../../utils/currency";
@@ -55,15 +53,15 @@ const payoutTiming = (release: PayoutScreenReleaseDTO): string => {
 };
 
 const detailTone = (state: PayoutScreenReleaseDTO["hostState"]): { backgroundColor: string; color: string } => {
-  if (state === "paid") return { backgroundColor: semantic.successTint, color: semantic.success };
-  if (state === "couldnt_send") return { backgroundColor: semantic.errorTint, color: semantic.error };
+  if (state === "paid") return { backgroundColor: color.successTint, color: color.success };
+  if (state === "couldnt_send") return { backgroundColor: color.errorTint, color: color.errorText };
   if (["waiting_for_bank", "late_on_us", "needs_you"].includes(state)) {
-    return { backgroundColor: semantic.warningTint, color: semantic.warning };
+    return { backgroundColor: color.warningTint, color: color.warning };
   }
   if (state === "paused" || state === "cancelled") {
-    return { backgroundColor: glass.tint.profileElevated, color: textTokens.secondary };
+    return { backgroundColor: color.fill.tile, color: color.text2 };
   }
-  return { backgroundColor: semantic.infoTint, color: semantic.info };
+  return { backgroundColor: color.infoTint, color: color.info };
 };
 
 const BreakdownLine: React.FC<{
@@ -83,7 +81,7 @@ const PayoutBreakdown: React.FC<{ release: PayoutScreenReleaseDTO }> = ({ releas
   const debtWithheld = release.permanentDebtWithheldCents + release.temporaryDebtWithheldCents;
   const arithmetic = payoutWaterfallMath(release);
   return (
-    <GlassCard variant="base" padding={spacing.lg}>
+    <GlassCard variant="base" padding={space[6]}>
       <Text style={styles.sectionTitle}>How we got to this number</Text>
       {(release.discountCents ?? 0) > 0 ? <BreakdownLine label="Discounts you gave" value={`−${money(release.discountCents ?? 0)}`} /> : null}
       <BreakdownLine label="Buyers paid" value={money(release.grossCents)} />
@@ -130,21 +128,21 @@ export const BrandPayoutDetailView: React.FC<BrandPayoutDetailViewProps> = ({
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {query.isLoading ? <Skeleton width="100%" height={160} radius="lg" /> : null}
         {query.isError ? (
-          <GlassCard variant="base" padding={spacing.lg}>
+          <GlassCard variant="base" padding={space[6]}>
             <Text style={styles.sectionTitle}>Couldn’t load this payout</Text>
             <Text style={styles.body}>Check your connection and try again.</Text>
             <View style={styles.action}><Button label="Try again" onPress={() => void query.refetch()} variant="secondary" size="md" /></View>
           </GlassCard>
         ) : null}
         {!query.isLoading && !query.isError && release === null ? (
-          <GlassCard variant="base" padding={spacing.lg}>
+          <GlassCard variant="base" padding={space[6]}>
             <Text style={styles.sectionTitle}>Payout not found</Text>
             <Text style={styles.body}>It may belong to another brand or no longer be available.</Text>
           </GlassCard>
         ) : null}
         {release !== null && copy !== null ? (
           <>
-            <GlassCard variant="elevated" padding={spacing.lg}>
+            <GlassCard variant="elevated" padding={space[6]}>
               <View style={[
                 styles.statusPill,
                 { backgroundColor: tone?.backgroundColor },
@@ -169,7 +167,7 @@ export const BrandPayoutDetailView: React.FC<BrandPayoutDetailViewProps> = ({
               {action === "support" ? <View style={styles.action}><Button label={release.hostState === "late_on_us" ? "Ask about this payout" : "Contact support"} onPress={onContactSupport} variant="secondary" size="md" /></View> : null}
             </GlassCard>
 
-            <GlassCard variant="base" padding={spacing.lg}>
+            <GlassCard variant="base" padding={space[6]}>
               <Text style={styles.sectionTitle}>Timeline</Text>
               <View style={styles.timeline}>
                 <View style={styles.timelineItem}>
@@ -227,7 +225,7 @@ export const BrandPayoutDetailView: React.FC<BrandPayoutDetailViewProps> = ({
               </GlassCard>
             </View>
 
-            <GlassCard variant="base" padding={spacing.lg}>
+            <GlassCard variant="base" padding={space[6]}>
               <Text style={styles.sectionTitle}>Bank & timing</Text>
               <Text style={styles.body}>{release.bankMask === null ? "No bank is shown for this payout." : `Destination ${release.bankMask}`}</Text>
               <Text style={styles.body}>{release.provider === "paystack" ? "Transferred to your verified bank." : "Paid from your connected balance."}</Text>
@@ -241,35 +239,35 @@ export const BrandPayoutDetailView: React.FC<BrandPayoutDetailViewProps> = ({
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
-  scroll: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
-  statusPill: { alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  statusPillText: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, fontWeight: "700" },
-  heroLabel: { marginTop: spacing.lg, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, fontWeight: "700", letterSpacing: 1.1, color: textTokens.tertiary },
-  sectionTitle: { fontSize: typography.h3.fontSize, lineHeight: typography.h3.lineHeight, fontWeight: typography.h3.fontWeight, color: textTokens.primary },
-  heroAmount: { marginTop: spacing.xs, fontSize: 34, lineHeight: 40, fontWeight: "800", fontVariant: ["tabular-nums"], color: textTokens.primary },
-  body: { marginTop: spacing.xs, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.secondary },
-  due: { marginTop: spacing.sm, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, fontWeight: "700", color: textTokens.primary },
-  action: { marginTop: spacing.md, alignSelf: "flex-start" },
-  line: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: spacing.md, paddingVertical: spacing.sm },
-  lineLabel: { flex: 1, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.secondary },
-  lineValue: { fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.primary, textAlign: "right" },
-  totalLine: { marginTop: spacing.xs, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
-  totalText: { fontSize: typography.body.fontSize, lineHeight: typography.body.lineHeight, fontWeight: "800", color: textTokens.primary },
-  positive: { color: semantic.success },
-  note: { marginTop: spacing.sm, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: textTokens.tertiary },
-  creditNote: { marginTop: spacing.sm, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: semantic.warning },
-  reconcileWarning: { marginTop: spacing.sm, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: semantic.error },
-  eyebrow: { marginBottom: spacing.sm, fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, fontWeight: "700", letterSpacing: 1.2, color: textTokens.tertiary },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
-  emptySales: { padding: spacing.lg, fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, color: textTokens.secondary },
-  timeline: { marginTop: spacing.sm, gap: spacing.md },
-  timelineItem: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  scroll: { padding: space[4], gap: space[4], paddingBottom: space[9] },
+  statusPill: { alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: space[2], paddingVertical: space[1] },
+  statusPillText: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, fontWeight: "700" },
+  heroLabel: { marginTop: space[6], fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, fontWeight: "700", letterSpacing: 1.1, color: color.text3 },
+  sectionTitle: { fontSize: type.h1.fontSize, lineHeight: type.h1.lineHeight, fontWeight: type.h1.fontWeight, color: color.text1 },
+  heroAmount: { marginTop: space[1], fontSize: 34, lineHeight: 40, fontWeight: "800", fontVariant: ["tabular-nums"], color: color.text1 },
+  body: { marginTop: space[1], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 },
+  due: { marginTop: space[2], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, fontWeight: "700", color: color.text1 },
+  action: { marginTop: space[4], alignSelf: "flex-start" },
+  line: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: space[4], paddingVertical: space[2] },
+  lineLabel: { flex: 1, fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 },
+  lineValue: { fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text1, textAlign: "right" },
+  totalLine: { marginTop: space[1], paddingTop: space[4], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  totalText: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, fontWeight: "800", color: color.text1 },
+  positive: { color: color.success },
+  note: { marginTop: space[2], fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.text3 },
+  creditNote: { marginTop: space[2], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.warning },
+  reconcileWarning: { marginTop: space[2], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.errorText },
+  eyebrow: { marginBottom: space[2], fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, fontWeight: "700", letterSpacing: 1.2, color: color.text3 },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  emptySales: { padding: space[6], fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, color: color.text2 },
+  timeline: { marginTop: space[2], gap: space[4] },
+  timelineItem: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
   timelineDot: { width: 12, height: 12, marginTop: 5, borderRadius: 6 },
-  timelineDotDone: { backgroundColor: semantic.success },
-  timelineDotCurrent: { backgroundColor: semantic.warning },
-  timelineDotTodo: { backgroundColor: "transparent", borderWidth: 2, borderColor: "rgba(255,255,255,0.32)" },
+  timelineDotDone: { backgroundColor: color.success },
+  timelineDotCurrent: { backgroundColor: color.warning },
+  timelineDotTodo: { backgroundColor: "transparent", borderWidth: 2, borderColor: color.lineStrong },
   timelineText: { flex: 1 },
-  timelineTitle: { fontSize: typography.bodySm.fontSize, lineHeight: typography.bodySm.lineHeight, fontWeight: "700", color: textTokens.primary },
+  timelineTitle: { fontSize: type.small.fontSize, lineHeight: type.small.lineHeight, fontWeight: "700", color: color.text1 },
 });
 
 export default BrandPayoutDetailView;

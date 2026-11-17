@@ -18,10 +18,9 @@ import { ChevronRight } from "lucide-react-native";
 
 import {
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { GlassCard } from "../ui/GlassCard";
@@ -36,12 +35,12 @@ import {
 } from "./venueOrderViews";
 
 const TONE_COLOR: Record<string, string> = {
-  neutral: textTokens.secondary,
-  success: semantic.success,
-  warm: "#eb7825",
-  muted: textTokens.tertiary,
-  error: semantic.error,
-  faded: textTokens.tertiary,
+  neutral: color.text2,
+  success: color.success,
+  warm: color.accent,
+  muted: color.text3,
+  error: color.danger,
+  faded: color.text3,
 };
 
 export interface VenueOrderCardProps {
@@ -115,7 +114,7 @@ export function VenueOrderCard({
             </>
           ) : null}
           <View style={styles.chevronWrap}>
-            <ChevronRight size={16} color={textTokens.tertiary} />
+            <ChevronRight size={16} color={color.text3} />
           </View>
         </View>
 
@@ -137,7 +136,7 @@ export function VenueOrderCard({
 
 const styles = StyleSheet.create({
   card: {
-    gap: spacing.xs,
+    gap: space[1],
     width: "100%",
     alignSelf: "stretch",
   },
@@ -145,53 +144,53 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   topText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   destination: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   venue: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   pill: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   pillLabel: {
-    ...typography.caption,
+    ...type.caption,
     fontWeight: "700",
   },
   summary: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   meta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   chevronWrap: {
     marginLeft: "auto",
   },
   refundNote: {
-    ...typography.caption,
-    color: semantic.warning,
+    ...type.caption,
+    color: color.warning,
   },
   escalation: {
-    ...typography.caption,
-    color: semantic.error,
+    ...type.caption,
+    color: color.danger,
   },
 });
 

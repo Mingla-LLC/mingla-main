@@ -17,23 +17,16 @@
 import React from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { smsBlastBodyWithFollow } from "../../utils/marketing/blastFollow";
 import { bodyWithFooter, estimateSmsCost } from "../../utils/smsCost";
 
-// Phone-canvas palette — a dark iMessage-like screen. Local constants (not
-// design tokens) because this is a literal device chrome, not app UI.
-const PHONE_CANVAS = "#0B0D12";
-const RECEIVED_BUBBLE = "#26282E";
-const BUBBLE_TEXT = "#F2F3F5";
-const IMAGE_TILE_BG = "#1A1C22";
+// Phone-canvas palette — a dark iMessage-like screen, drawn from the
+// Graphite tokens (#4420: no literal colours outside designSystem.ts).
+const PHONE_CANVAS = color.ink;
+const RECEIVED_BUBBLE = color.card3;
+const BUBBLE_TEXT = color.textStrong;
+const IMAGE_TILE_BG = color.card;
 
 const URL_RE = /(https?:\/\/[^\s]+)/g;
 
@@ -240,38 +233,38 @@ const styles = StyleSheet.create({
     backgroundColor: PHONE_CANVAS,
   },
   scrollContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   senderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   avatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarLetter: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   senderLabelCol: {
     flex: 1,
   },
   senderName: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   senderCaption: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   bubble: {
     alignSelf: "flex-start",
@@ -291,31 +284,31 @@ const styles = StyleSheet.create({
     backgroundColor: IMAGE_TILE_BG,
   },
   bubbleText: {
-    ...typography.body,
+    ...type.body,
     color: BUBBLE_TEXT,
     lineHeight: 21,
   },
   link: {
-    color: accent.warm,
+    color: color.text1,
     textDecorationLine: "underline",
   },
   emptyText: {
-    ...typography.body,
-    color: textTokens.tertiary,
+    ...type.body,
+    color: color.text3,
     fontStyle: "italic",
   },
   linkCaption: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   countLine: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     textAlign: "center",
   },
   footerNote: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
     textAlign: "center",
     fontStyle: "italic",
   },

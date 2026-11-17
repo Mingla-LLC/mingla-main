@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4420",
+  "suite": {
+    "id": "issue-4420-public-wave2-render",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "packages/brand-rendering/**",
+      "packages/offering-rendering/**",
+      "mingla-business/jest.issue679.cfg.cjs"
+    ],
+    "steps": [
+      {
+        "name": "Public brand, venue and stay wave 2 RN-web render",
+        "cwd": "mingla-business",
+        "run": "npx jest --config ../packages/brand-rendering/__tests__/jest.issue4420.public-wave2.cjs --runInBand",
+        "commandId": "assert:issue-4420-public-wave2-render:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config ../packages/brand-rendering/__tests__/jest.issue4420.public-wave2.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4420",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "packages/brand-rendering/__tests__/issue_4420_public_wave2.brand.render.test.tsx",
+      "packages/brand-rendering/__tests__/jest.issue4420.public-wave2.cjs"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.issue679.cfg.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 40,
+      "p95": 60,
+      "evidence": "Local targeted run 2026-11-16"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 180
+  }
+}

@@ -42,6 +42,10 @@ module.exports = {
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",
   ],
+  // #4420 — checkout now reads the host palette from packages/offering-rendering,
+  // which has no node_modules of its own; let its bare imports (react-native,
+  // @babel/runtime helpers) fall back to this app's install, as Metro does.
+  modulePaths: ["<rootDir>/node_modules"],
   moduleNameMapper: {
     "^react-native-safe-area-context$": path.join(
       businessRoot,

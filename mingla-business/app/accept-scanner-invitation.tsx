@@ -59,13 +59,7 @@ import { Button } from "../src/components/ui/Button";
 // [65,-103] (off the TOP of the screen) and the only Button was absent from
 // the accessibility tree with no gesture that recovered it.
 import { InviteScreenShell } from "../src/components/invite/InviteScreenShell";
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../src/constants/designSystem";
+
 import { useAuth } from "../src/context/AuthContext";
 import { useAcceptScannerInvitation } from "../src/hooks/useScannerInvitations";
 import {
@@ -73,6 +67,7 @@ import {
   type AcceptScannerInvitationResult,
 } from "../src/services/scannerInvitationsService";
 
+import { color, space } from "../src/constants/designSystem";
 type Phase =
   | { kind: "loading" }
   | { kind: "success"; result: AcceptScannerInvitationResult }
@@ -252,7 +247,7 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
   // The ONLY legitimate spinners.
   return (
     <InviteScreenShell>
-      <ActivityIndicator size="large" color={accent.warm} />
+      <ActivityIndicator size="large" color={color.text1} />
       <Text style={styles.copy}>
         {authStatus === "signed_in_ready"
           ? "Accepting your invitation…"
@@ -310,25 +305,25 @@ const styles = StyleSheet.create({
   // #2211 — `host` is GONE, not merely unused: `flex: 1` +
   // `justifyContent: "center"` with no scroll container is the exact shape that
   // stranded an invited scanner. InviteScreenShell owns the layout host now.
+  // #4420 — flat and centred (the mockup); on wide web the shell draws the
+  // one card around this and its action.
   card: {
     maxWidth: 480,
     width: "100%",
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.lg,
-    padding: spacing.xl,
-    gap: spacing.md,
+    alignItems: "center",
+    gap: space[3],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
+    textAlign: "center",
   },
   copy: {
     fontSize: 15,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 22,
+    textAlign: "center",
   },
 });

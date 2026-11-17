@@ -11,14 +11,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
+import { color, radius, space, type } from "../../../constants/designSystem";
 import type { HostAdAudience } from "../../../services/hostAdPlanService";
 import {
   HOST_AD_AUDIENCE_COPY,
@@ -175,37 +168,37 @@ export function HostAdAudiencePicker({
 }
 
 const styles = StyleSheet.create({
-  section: { gap: spacing.sm, marginTop: spacing.md },
+  section: { gap: space[2], marginTop: space[4] },
   title: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "700",
   },
-  helper: { ...typography.bodySm, color: textTokens.secondary },
-  note: { ...typography.bodySm, color: textTokens.tertiary },
+  helper: { ...type.small, color: color.text2 },
+  note: { ...type.small, color: color.text3 },
   card: {
     minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: space[4],
+    padding: space[4],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
-  cardSelected: { borderColor: accent.border, backgroundColor: accent.tint },
+  cardSelected: { borderColor: color.paper, backgroundColor: color.fill.tabOn },
   cardDisabled: { opacity: 0.6 },
   cardText: { flex: 1, gap: 2 },
-  cardTitle: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
-  cardSubtitle: { ...typography.bodySm, color: textTokens.secondary },
-  statusLine: { ...typography.caption, color: textTokens.tertiary },
-  reason: { ...typography.caption, color: textTokens.secondary },
+  cardTitle: { ...type.body, color: color.text1, fontWeight: "600" },
+  cardSubtitle: { ...type.small, color: color.text2 },
+  statusLine: { ...type.caption, color: color.text3 },
+  reason: { ...type.caption, color: color.text2 },
   box: {
     width: 22,
     height: 22,
     borderRadius: radius.sm,
     borderWidth: 2,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
   },
-  boxSelected: { borderColor: accent.warm, backgroundColor: accent.warm },
+  boxSelected: { borderColor: color.paper, backgroundColor: color.paper },
 });

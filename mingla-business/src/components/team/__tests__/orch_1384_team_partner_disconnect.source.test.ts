@@ -60,14 +60,21 @@ describe("SC-9 — #3660 general member removal is wired (no longer ORCH-1051 no
 });
 
 describe("partner badge — exactly the matched member row", () => {
-  test("badge testID renders exactly once, gated on partnerLinkId", () => {
-    expect(countOf(TEAM_SRC, 'testID="team-partner-badge"')).toBe(1);
-    const idx = TEAM_SRC.indexOf('testID="team-partner-badge"');
-    const gate = TEAM_SRC.slice(Math.max(0, idx - 700), idx);
-    expect(gate).toContain("row.partnerLinkId !== null ? (");
-    // Badge copy.
-    const after = TEAM_SRC.slice(idx, idx + 400);
-    expect(after).toContain("Mingla Partner");
+  // [TEST-MOD-APPROVED #4420] the desktop layout is a Member / Role / Status
+  // table (TeamTable) and phone keeps the row list; the two are mutually
+  // exclusive (`isWideDesktop ? <TeamTable/> : <SectionList/>`), so the badge
+  // appears once per layout, each gated on the matched partner row.
+  test("badge testID renders exactly once per layout, gated on partnerLinkId", () => {
+    expect(countOf(TEAM_SRC, 'testID="team-partner-badge"')).toBe(2);
+    expect(TEAM_SRC).toMatch(/isWideDesktop \? \([\s\S]{0,200}<TeamTable[\s\S]{0,200}\) : \(/);
+    let from = 0;
+    for (let i = 0; i < 2; i += 1) {
+      const idx = TEAM_SRC.indexOf('testID="team-partner-badge"', from);
+      const gate = TEAM_SRC.slice(Math.max(0, idx - 700), idx);
+      expect(gate).toContain("row.partnerLinkId !== null ? (");
+      expect(TEAM_SRC.slice(idx, idx + 400)).toContain("Mingla Partner");
+      from = idx + 1;
+    }
   });
 
   test("the matcher admits ONLY accepted, non-cancelled links", () => {

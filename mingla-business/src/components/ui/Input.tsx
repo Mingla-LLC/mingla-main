@@ -5,7 +5,7 @@
  * Complete defaults so callers don't have to remember the right combo per
  * field type. `search` variant injects a leading magnifying-glass icon.
  *
- * Border animates from idle 1px to focus 1.5px `accent.warm` over 120ms.
+ * Border animates from idle 1px to the 1.5px input focus ring (#4420) over 120ms.
  *
  * # Phone variant (ORCH-BIZ-0a-E2)
  * Renders a country chip on the left (flag + dial code + chevron-down).
@@ -45,14 +45,12 @@ type TextInputFocusHandler = NonNullable<TextInputProps["onFocus"]>;
 type TextInputFocusEvent = Parameters<TextInputFocusHandler>[0];
 
 import {
-  accent,
+  color,
   durations,
-  glass,
+  edge,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  type,
+  space,
 } from "../../constants/designSystem";
 
 import { Icon } from "./Icon";
@@ -441,8 +439,8 @@ export interface InputProps
 const HEIGHT = 48;
 const PADDING_X = 14;
 const ICON_SIZE = 18;
-const IDLE_BORDER = "rgba(255, 255, 255, 0.12)";
-const BACKGROUND = "rgba(255, 255, 255, 0.04)";
+const IDLE_BORDER = color.lineStrong;
+const BACKGROUND = color.fill.input;
 const COUNTRY_CHIP_GAP = 8;
 
 // ---------------------------------------------------------------------------
@@ -470,19 +468,19 @@ const PickerSearchInput: React.FC<PickerSearchInputProps> = ({
       style={[
         styles.container,
         {
-          borderColor: focused ? accent.warm : IDLE_BORDER,
+          borderColor: focused ? edge.ringInputFocus.borderColor : IDLE_BORDER,
           borderWidth: focused ? 1.5 : 1,
         },
       ]}
     >
       <View style={styles.leadingIcon}>
-        <Icon name="search" size={ICON_SIZE} color={textTokens.tertiary} />
+        <Icon name="search" size={ICON_SIZE} color={color.text3} />
       </View>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder="Search country or dial code"
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={color.text4}
         autoCapitalize="none"
         autoCorrect={false}
         underlineColorAndroid="transparent"
@@ -492,9 +490,9 @@ const PickerSearchInput: React.FC<PickerSearchInputProps> = ({
         style={[
           styles.input,
           {
-            color: textTokens.primary,
-            fontSize: typography.body.fontSize,
-            fontWeight: typography.body.fontWeight,
+            color: color.text1,
+            fontSize: type.body.fontSize,
+            fontWeight: type.body.fontWeight,
             paddingLeft: 0,
             paddingRight: PADDING_X,
           },
@@ -642,16 +640,16 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           styles.container,
           {
             borderColor: hasError
-              ? semantic.error
+              ? edge.ringError.borderColor
               : focused
-                ? accent.warm
+                ? edge.ringInputFocus.borderColor
                 : IDLE_BORDER,
             borderWidth: focused ? 1.5 : 1,
             opacity: disabled ? 0.5 : 1,
           },
           Platform.OS === "web" && focused
             ? ({
-                outlineColor: accent.warm,
+                outlineColor: edge.ringFocus.ring,
                 outlineOffset: 2,
                 outlineStyle: "solid",
                 outlineWidth: 2,
@@ -679,7 +677,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             ) : (
               <Text style={styles.countryFlag}>{country.flag}</Text>
             )}
-            <Icon name="chevD" size={14} color={textTokens.tertiary} />
+            <Icon name="chevD" size={14} color={color.text3} />
           </Pressable>
         ) : null}
 
@@ -688,7 +686,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <Icon
               name={resolvedLeadingIcon}
               size={ICON_SIZE}
-              color={textTokens.tertiary}
+              color={color.text3}
             />
           </View>
         ) : null}
@@ -698,7 +696,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={textTokens.quaternary}
+          placeholderTextColor={color.text4}
           editable={!disabled}
           onFocus={handleFocus}
           onBlur={handleBlur}
@@ -710,9 +708,9 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           style={[
             styles.input,
             {
-              color: textTokens.primary,
-              fontSize: typography.body.fontSize,
-              fontWeight: typography.body.fontWeight,
+              color: color.text1,
+              fontSize: type.body.fontSize,
+              fontWeight: type.body.fontWeight,
               // No `lineHeight` — TextInput on iOS treats lineHeight as
               // line-box height, drifting the text baseline toward the
               // bottom (visible bottom-skew on the text variant). Container
@@ -729,7 +727,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
               ? ({
                   outlineWidth: 0,
                   outlineStyle: "none",
-                  caretColor: accent.warm,
+                  caretColor: color.paper,
                 } as unknown as TextStyle)
               : null,
           ]}
@@ -751,7 +749,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <Icon
               name="eye"
               size={ICON_SIZE}
-              color={secureRevealed ? textTokens.tertiary : textTokens.primary}
+              color={secureRevealed ? color.text3 : color.text1}
             />
           </Pressable>
         ) : null}
@@ -764,7 +762,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             style={styles.trailingButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Icon name="close" size={ICON_SIZE} color={textTokens.tertiary} />
+            <Icon name="close" size={ICON_SIZE} color={color.text3} />
           </Pressable>
         ) : null}
       </View>
@@ -830,7 +828,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
                       <Text style={styles.pickerDialCode}>{c.dialCode}</Text>
                     </View>
                     {isSelected ? (
-                      <Icon name="check" size={ICON_SIZE} color={accent.warm} />
+                      <Icon name="check" size={ICON_SIZE} color={color.text1} />
                     ) : null}
                   </Pressable>
                 );
@@ -882,10 +880,10 @@ const styles = StyleSheet.create({
     textAlignVertical: "center",
   },
   errorText: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.errorText,
     fontWeight: "600",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   trailingButton: {
     paddingLeft: 8,
@@ -901,14 +899,14 @@ const styles = StyleSheet.create({
     paddingRight: COUNTRY_CHIP_GAP,
     gap: 6,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: glass.border.profileBase,
+    borderRightColor: color.line,
   },
   countryFlag: {
     fontSize: 18,
   },
   countryPlaceholder: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   pickerColumn: {
     // Explicit flex-column wrapper inside the Sheet — gives the ScrollView
@@ -919,33 +917,33 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pickerSearchWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   pickerEmpty: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
     textAlign: "center",
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
   },
   pickerScroll: {
     flex: 1,
   },
   pickerScrollContent: {
-    paddingBottom: spacing.lg,
+    paddingBottom: space[6],
   },
   pickerRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
-    gap: spacing.md,
+    borderBottomColor: color.line,
+    gap: space[4],
   },
   pickerRowPressed: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   pickerFlag: {
     fontSize: 22,
@@ -957,14 +955,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   pickerName: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     flex: 1,
   },
   pickerDialCode: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
-    marginLeft: spacing.sm,
+    fontSize: type.small.fontSize,
+    color: color.text3,
+    marginLeft: space[2],
   },
 });
 

@@ -76,7 +76,7 @@ export function check(files) {
   // the pinned component rather than being approximated at a call site.
   for (const token of [
     "if (keyboardVisible) return null",
-    "paddingBottom: insets.bottom + spacing.md",
+    "paddingBottom: insets.bottom + space[4]",
     'position: "absolute"',
     "bottom: 0",
   ]) {

@@ -53,7 +53,8 @@ describe("#3563 options editor containment", () => {
       "You cannot save this group with this account. Your changes are still here.",
     );
     expect(editor).toContain('accessibilityRole="alert"');
-    expect(editor).toContain("color: semantic.errorText");
+    // [TEST-MOD-APPROVED #4420] semantic.errorText retired → color.errorText.
+    expect(editor).toContain("color: color.errorText");
     expect(editor).toContain("style={styles.mutationError}");
   });
 });

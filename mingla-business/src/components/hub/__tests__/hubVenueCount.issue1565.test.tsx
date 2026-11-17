@@ -331,8 +331,7 @@ describe("#1565 — hubPillLabel rules", () => {
     ["events", "Events", 4, "Events · 4"],
     ["trips", "Trips", 2, "Trips · 2"],
     ["experiences", "Experiences", 9, "Experiences · 9"],
-    ["getstarted", "Get started", 7, "Get started"], // pre-existing rule
-    ["getstarted", "Get started", undefined, "Get started"],
+    // [TEST-MOD-APPROVED #4420] — the retired "getstarted" pill is gone (wave 6).
   ];
 
   test("T-9 — the case table is non-empty and every row holds", () => {

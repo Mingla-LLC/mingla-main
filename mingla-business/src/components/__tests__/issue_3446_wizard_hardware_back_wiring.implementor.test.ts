@@ -91,8 +91,11 @@ const WIZARDS: WizardSpec[] = [
     isFirstStepLocal: false,
     onStepBack: "goBack",
     onExit: "goBack",
-    busyFlags: ["submitting", "checkingInvitePublish"],
-    exitFlags: null,
+    // #4420 — the wizard now saves a draft before leaving (creatingDraft is
+    // busy) and asks before discarding (the discard dialog is the surfaced
+    // exit; back closes it instead of leaving).
+    busyFlags: ["submitting", "checkingInvitePublish", "creatingDraft"],
+    exitFlags: ["discardOpen"],
   },
   {
     name: "Trip",
@@ -399,10 +402,18 @@ describe("#3446 hook platform split and the overlays it relies on", () => {
     expect(native).not.toMatch(/\busePreventRemove\(/);
   });
 
+  // [TEST-MOD-APPROVED #4420] Toast is non-modal now (B4): it renders no native
+  // <Modal>, so it no longer owns a back press and never traps one either. A
+  // wizard's back press reaches the wizard while a toast shows; the toast is
+  // dismissed by its close button, a tap on the card, a swipe up or its timer.
   test("T-15 overlay primitives still consume back natively (onRequestClose)", () => {
-    for (const file of ["components/ui/Modal.tsx", "components/ui/SheetMobile.tsx", "components/ui/Toast.tsx"]) {
+    for (const file of ["components/ui/Modal.tsx", "components/ui/SheetMobile.tsx"]) {
       expect(read(file)).toContain("onRequestClose=");
     }
+    const toast = read("components/ui/Toast.tsx");
+    expect(toast).not.toMatch(/import\s*\{[^}]*\bModal\b[^}]*\}\s*from\s*"react-native"/);
+    expect(toast).toContain('accessibilityLabel="Dismiss notification"');
+    expect(toast).toContain("runOnJS(onDismiss)()");
   });
 });
 

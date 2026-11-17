@@ -9,6 +9,10 @@ import {
 } from "../../../../sites/previewDevice";
 import { PREVIEW_TOKENS_MESSAGE } from "../../../../sites/previewFrame";
 
+import {
+  color,
+  scrim,
+} from "../../../../constants/designSystem";
 /*
  * #2829 W9r (DESIGN_SPEC §1.7) — the draft at a simulated device size on
  * Business web: an iframe rendered at the device's real CSS width (so the
@@ -87,7 +91,7 @@ export function ScaledPreviewFrame({ url, preference, maxHeight = 520, fill = fa
           },
           width,
           height,
-          style: { border: 0, width: `${width}px`, height: `${height}px`, display: "block", background: "#ffffff" },
+          style: { border: 0, width: `${width}px`, height: `${height}px`, display: "block", background: color.paper },
           referrerPolicy: "no-referrer",
           sandbox: "allow-scripts allow-same-origin allow-forms",
         })}
@@ -102,15 +106,15 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: "100%",
     borderRadius: 12,
-    backgroundImage: "repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0 10px, transparent 10px 20px)",
+    backgroundImage: `repeating-linear-gradient(45deg, ${color.fill.tableHead} 0 10px, transparent 10px 20px)`,
   } as object,
   fill: { flex: 1, minHeight: 200 },
   viewport: {
     position: "absolute",
     top: 0,
     overflow: "hidden",
-    backgroundColor: "#ffffff",
+    backgroundColor: color.paper,
     transformOrigin: "top left",
-    boxShadow: "0 0 0 2px rgba(255,255,255,0.14), 0 12px 40px rgba(0,0,0,0.5)",
+    boxShadow: `0 0 0 2px ${color.fill.step}, 0 12px 40px ${scrim.modal}`,
   } as object,
 });

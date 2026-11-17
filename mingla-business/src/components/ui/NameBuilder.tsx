@@ -47,16 +47,14 @@ import {
 } from "react-native";
 
 import {
-  androidOpaque,
-  glass,
   namePatternNumBasis,
   namePatternPrefixMinWidth,
   radius,
-  semantic,
-  spacing,
   stayProseMaxWidth,
-  text as textTokens,
-  typography,
+  color,
+  materials,
+  type,
+  space,
 } from "../../constants/designSystem";
 import { STAY_SPACING } from "../stay/stayLayoutContracts";
 
@@ -219,7 +217,7 @@ export const NameBuilder: React.FC<NameBuilderProps> = ({
             value={prefix}
             onChangeText={setPrefix}
             placeholder={patternPlaceholder}
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             editable={editable}
             style={styles.input}
             testID={`${testID}-prefix`}
@@ -232,7 +230,7 @@ export const NameBuilder: React.FC<NameBuilderProps> = ({
             value={from}
             onChangeText={setFrom}
             placeholder="101"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             keyboardType="numeric"
             editable={editable}
             style={styles.input}
@@ -246,7 +244,7 @@ export const NameBuilder: React.FC<NameBuilderProps> = ({
             value={to}
             onChangeText={setTo}
             placeholder="120"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             keyboardType="numeric"
             editable={editable}
             style={styles.input}
@@ -297,7 +295,7 @@ export const NameBuilder: React.FC<NameBuilderProps> = ({
         blurOnSubmit={false}
         returnKeyType="done"
         placeholder={placeholder}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         editable={editable && values.length < NAME_LIST_HARD_CAP}
         style={styles.input}
         testID={testID}
@@ -332,12 +330,12 @@ export const NameBuilder: React.FC<NameBuilderProps> = ({
 
 const CHIP_SURFACE = Platform.select({
   android: {
-    backgroundColor: androidOpaque.rowFill,
-    borderColor: androidOpaque.rowBorder,
+    backgroundColor: materials.pane.solidFill,
+    borderColor: color.card2,
   },
   default: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
 }) as { backgroundColor: string; borderColor: string };
 
@@ -349,11 +347,11 @@ const styles = StyleSheet.create({
   // input and the editor's own `LabeledInput` cannot drift apart.
   field: { width: "100%", minWidth: 0, gap: STAY_SPACING.helperToInput },
   labelBlock: { gap: STAY_SPACING.labelToHelper },
-  label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700" },
-  subLabel: { ...typography.caption, color: textTokens.secondary },
+  label: { ...type.small, color: color.text1, fontWeight: "700" },
+  subLabel: { ...type.caption, color: color.text2 },
   helper: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     maxWidth: stayProseMaxWidth,
   },
   // SPEC AMENDMENT 1 — the pattern row. `alignItems: "flex-start"` keeps the
@@ -361,8 +359,8 @@ const styles = StyleSheet.create({
   patternRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    columnGap: spacing.sm,
-    rowGap: spacing.sm,
+    columnGap: space[2],
+    rowGap: space[2],
     alignItems: "flex-start",
   },
   // ROW-ONLY (I-AXIS-SCOPED-FLEX): the name field takes the REMAINDER.
@@ -371,7 +369,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     flexBasis: 0,
     minWidth: namePatternPrefixMinWidth,
-    gap: spacing.xxs,
+    gap: 2,
   },
   // ROW-ONLY: fixed basis, never grows, never shrinks — a four-digit room
   // number always fits and never steals the prefix's space.
@@ -379,39 +377,39 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     flexShrink: 0,
     flexBasis: namePatternNumBasis,
-    gap: spacing.xxs,
+    gap: 2,
   },
   preview: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     maxWidth: stayProseMaxWidth,
   },
-  warning: { ...typography.caption, color: semantic.warning },
-  error: { ...typography.caption, color: semantic.error },
+  warning: { ...type.caption, color: color.warning },
+  error: { ...type.caption, color: color.danger },
   input: {
     minHeight: 46,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    color: textTokens.primary,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    ...type.body,
+    color: color.text1,
   },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     minHeight: CHIP_MIN_HEIGHT,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     ...CHIP_SURFACE,
   },
-  chipText: { ...typography.bodySm, color: textTokens.primary },
-  chipRemove: { ...typography.bodySm, color: textTokens.tertiary },
+  chipText: { ...type.small, color: color.text1 },
+  chipRemove: { ...type.small, color: color.text3 },
 });
 
 export default NameBuilder;

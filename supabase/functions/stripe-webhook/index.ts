@@ -14,7 +14,7 @@ import {
 } from "../_shared/stripeIpAllowlist.ts";
 import { routeStripeEvent } from "../_shared/stripeWebhookRouter.ts";
 import {
-  isStripeWebhookRetryableError,
+  classifyStripeWebhookFailure,
   stripeWebhookResponseStatus,
 } from "../_shared/stripeWebhookRetry.ts";
 import {
@@ -147,6 +147,49 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     }
   }
 
+  return await processVerifiedStripeEvent(event, {
+    supabase,
+    route: (routedEvent) =>
+      routeStripeEvent(supabase, stripe, routedEvent, {
+        // Issue #4402 — a late gig payment is refunded in full; reconcile
+        // retries it if this call does not land.
+        requestLateRefund: (contractId: string) =>
+          requestGigLateRefund(contractId, {
+            supabaseUrl: SUPABASE_URL,
+            serviceKey: SUPABASE_SERVICE_ROLE_KEY,
+          }),
+      }),
+  }, { secretName: verified.secretName, ipAllowed });
+}
+
+// deno-lint-ignore no-explicit-any
+type WebhookEvent = any;
+// deno-lint-ignore no-explicit-any
+type WebhookSupabase = any;
+
+export interface ProcessVerifiedStripeEventDeps {
+  supabase: WebhookSupabase;
+  route: (
+    event: WebhookEvent,
+  ) => Promise<{ gigMismatchReason?: string | null } | void>;
+}
+
+/**
+ * Records a signature-verified event once, routes it, and answers Stripe.
+ *
+ * Issue #4420 — the answer tells Stripe whether to redeliver: 503/500 while a
+ * transient or configuration failure has attempts left (and when the event
+ * row itself could not be read or written), 200 for success, a replay of an
+ * already processed event, a permanently invalid event, or an exhausted one.
+ * A processed event is never routed again, so a redelivery cannot double a
+ * sale, a refund, a ledger row or an email.
+ */
+export async function processVerifiedStripeEvent(
+  event: WebhookEvent,
+  deps: ProcessVerifiedStripeEventDeps,
+  meta: { secretName: string | null; ipAllowed: boolean },
+): Promise<Response> {
+  const { supabase } = deps;
   const { data: existingRow, error: selectError } = await supabase
     .from("payment_webhook_events")
     .select("id, processed, retry_count, retries_exhausted")
@@ -158,7 +201,8 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
       fn: "stripe-webhook",
       eventId: event.id,
     });
-    return plainResponse({ status: "select_failed" }, 200);
+    // #4420 — the event was not recorded; Stripe must redeliver it.
+    return plainResponse({ status: "select_failed" }, 503);
   }
 
   let eventRowId: string;
@@ -207,24 +251,18 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
         fn: "stripe-webhook",
         eventId: event.id,
       });
-      return plainResponse({ status: "insert_failed" }, 200);
+      // #4420 — not recorded (or a concurrent delivery holds the id): Stripe
+      // redelivers, and the redelivery reads the recorded row.
+      return plainResponse({ status: "insert_failed" }, 503);
     }
     eventRowId = insertedRow.id;
   }
 
   let processingError: string | null = null;
-  let processingRetryable = false;
+  let failureClass: "transient" | "config" | "permanent" | null = null;
   try {
-    const routed = await routeStripeEvent(supabase, stripe, event, {
-      // Issue #4402 — a late gig payment is refunded in full; reconcile
-      // retries it if this call does not land.
-      requestLateRefund: (contractId: string) =>
-        requestGigLateRefund(contractId, {
-          supabaseUrl: SUPABASE_URL,
-          serviceKey: SUPABASE_SERVICE_ROLE_KEY,
-        }),
-    });
-    if (routed.gigMismatchReason) {
+    const routed = await deps.route(event);
+    if (routed && routed.gigMismatchReason) {
       await supabase.from("payment_webhook_events").update({
         match_status: "mismatched",
         match_reason_code: `gig_${routed.gigMismatchReason}`,
@@ -234,7 +272,7 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     }
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
-    processingRetryable = isStripeWebhookRetryableError(err);
+    failureClass = classifyStripeWebhookFailure(err);
     if (
       processingError.includes("source_refund_exact_match_missing") ||
       processingError.includes("source_identity_missing")
@@ -285,25 +323,27 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     });
   }
 
-  // Issue #3645 — a retryable failure (the event arrived before the row it
-  // depends on) answers 503 so Stripe redelivers; every other outcome keeps
-  // the 200 contract.
+  // Issue #3645 / #4420 — a transient (503) or configuration (500) failure
+  // with attempts left asks Stripe to redeliver; success, a permanent failure
+  // and an exhausted event answer 200.
   const responseStatus = stripeWebhookResponseStatus({
     processingFailed: processingError !== null,
-    retryable: processingRetryable,
+    retryable: failureClass === "transient" || failureClass === "config",
     exhausted,
+    config: failureClass === "config",
   });
 
   return plainResponse({
     status: processingError === null
       ? "ok"
-      : responseStatus === 503
+      : responseStatus === 503 || responseStatus === 500
       ? "processing_retry"
       : "processing_failed",
     event_id: event.id,
     attempts: nextRetryCount,
-    signature_secret: verified.secretName,
-    ip_allowed: ipAllowed,
+    failure_class: failureClass,
+    signature_secret: meta.secretName,
+    ip_allowed: meta.ipAllowed,
   }, responseStatus);
 }
 

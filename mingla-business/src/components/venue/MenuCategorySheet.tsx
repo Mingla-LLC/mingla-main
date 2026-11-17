@@ -33,13 +33,10 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  androidOpaque,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -741,7 +738,7 @@ export function MenuCategorySheet({
                 mode="time"
                 display="spinner"
                 onChange={handleTimePickerChange}
-                textColor="#FFFFFF"
+                textColor={color.text1}
                 themeVariant="dark"
                 style={styles.timePicker}
                 testID="menu-category-native-time-picker"
@@ -851,13 +848,13 @@ function Field({ label, children }: FieldProps): React.ReactElement {
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   heading: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    ...type.h1,
+    color: color.text1,
+    marginBottom: space[2],
   },
   // ORCH-1193: bound the scroll viewport to the fixed-height panel so the CTA
   // scrolls into view instead of overflowing past the panel's overflow:hidden.
@@ -865,23 +862,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.xs,
+    paddingBottom: space[9],
+    gap: space[1],
   },
   field: {
-    gap: spacing.xxs,
-    marginBottom: spacing.xs,
+    gap: 2,
+    marginBottom: space[1],
   },
   fieldHeader: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   menuTextFieldLabel: {
     flexShrink: 1,
@@ -892,42 +889,42 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   fieldError: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
     fontWeight: "600",
   },
   groupLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   windowRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   windowCol: {
     flex: 1,
   },
   timeTrigger: {
     minHeight: 48,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     alignItems: "flex-start",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   timeTriggerError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   timeTriggerText: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   timeTriggerPlaceholder: {
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   clearTimes: {
     alignSelf: "flex-start",
@@ -935,8 +932,8 @@ const styles = StyleSheet.create({
   dayRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   dayChip: {
     minWidth: 56,
@@ -944,25 +941,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   windowSummary: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    ...type.small,
+    color: color.text3,
+    marginTop: space[1],
   },
   windowError: {
-    ...typography.bodySm,
-    color: semantic.error,
-    marginTop: spacing.xxs,
+    ...type.small,
+    color: color.danger,
+    marginTop: 2,
   },
   pressed: {
     opacity: 0.6,
   },
   pickerDockWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
   },
   pickerDockCard: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   pickerDoneRow: {
     flexDirection: "row",
@@ -970,32 +967,32 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   pickerDockTitle: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   timePicker: {
     width: "100%",
   },
   saveError: {
-    gap: spacing.xxs,
-    padding: spacing.sm,
+    gap: 2,
+    padding: space[2],
     borderWidth: 1,
     borderRadius: radius.md,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     overflow: "hidden",
     backgroundColor:
-      Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
+      Platform.OS === "android" ? color.solidTint.error : color.errorTint,
   },
   saveErrorText: {
-    ...typography.bodySm,
-    color: semantic.errorText,
+    ...type.small,
+    color: color.errorText,
   },
   saveBtn: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   deleteBtn: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

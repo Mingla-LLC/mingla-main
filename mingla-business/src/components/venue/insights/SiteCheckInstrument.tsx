@@ -27,11 +27,9 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import type { GrowthToolsAppError } from "../../../services/growthToolsService";
 import type {
@@ -137,7 +135,7 @@ function IntelProgress({ domain }: { domain: string }): React.ReactElement {
         return (
           <View key={line} style={styles.progressRow}>
             {current ? (
-              <ActivityIndicator size="small" color={accent.warm} />
+              <ActivityIndicator size="small" color={color.accent} />
             ) : (
               <Text
                 style={[
@@ -516,18 +514,18 @@ export function SiteCheckInstrument({
 
 const styles = StyleSheet.create({
   cardContent: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   standingWrap: {
-    gap: spacing.md,
+    gap: space[4],
   },
   headline: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   bodySm: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   actionRow: {
     flexDirection: "row",
@@ -536,72 +534,72 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   websiteCap: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   websiteValue: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   errorLine: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
   offlineLine: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   cachedLine: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   staleLine: {
-    ...typography.bodySm,
-    color: semantic.warning,
+    ...type.small,
+    color: color.warning,
   },
   // progress
   progressReserve: {
     minHeight: PROGRESS_MIN_HEIGHT,
   },
   progressWrap: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   progressRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   progressGlyph: {
     width: 20,
     textAlign: "center",
-    ...typography.bodySm,
+    ...type.small,
   },
   progressGlyphDone: {
-    color: semantic.success,
+    color: color.success,
   },
   progressGlyphPending: {
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   progressLine: {
     flex: 1,
-    ...typography.bodySm,
+    ...type.small,
   },
   progressLineDone: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   progressLineCurrent: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   progressLinePending: {
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   progressHonesty: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   // verdict
   verdictDim: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   verdictStale: {
     opacity: 0.5,
@@ -609,24 +607,24 @@ const styles = StyleSheet.create({
   verdictHeadRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   verdictTextWrap: {
     flex: 1,
     gap: 2,
   },
   verdictStrength: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   verdictFixes: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   verdictChecked: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
 });
 

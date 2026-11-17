@@ -7,14 +7,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../constants/designSystem";
+import { color, radius, space, type } from "../../../../constants/designSystem";
 import { HOST_AD_RESULTS_COPY, hostAdResultLabel } from "../hostAdCopy";
 import type { FunnelStep } from "./adResultsSeries";
 
@@ -57,20 +50,20 @@ export function AdFunnelRow(props: {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[4] },
   tile: {
     flexGrow: 1,
     flexBasis: 72,
     minWidth: 72,
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    gap: spacing.xxs,
+    borderColor: color.lineStrong,
+    gap: space[1],
   },
-  number: { ...typography.statValue, color: textTokens.primary },
-  label: { ...typography.caption, color: textTokens.secondary },
-  track: { height: 3, borderRadius: radius.full, backgroundColor: glass.border.profileElevated, overflow: "hidden", marginTop: spacing.xs },
-  fill: { height: 3, borderRadius: radius.full, backgroundColor: accent.warm },
-  note: { ...typography.caption, color: textTokens.tertiary, marginTop: spacing.xs },
+  number: { ...type.stat, color: color.text1 },
+  label: { ...type.caption, color: color.text2 },
+  track: { height: 3, borderRadius: radius.full, backgroundColor: color.lineStrong, overflow: "hidden", marginTop: space[1] },
+  fill: { height: 3, borderRadius: radius.full, backgroundColor: color.paper },
+  note: { ...type.caption, color: color.text3, marginTop: space[1] },
 });

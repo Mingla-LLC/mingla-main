@@ -4,12 +4,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { RetryableLazyErrorBoundary } from "../../../src/components/ui/RetryableLazyBoundary";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
-import {
-  canvas,
-  spacing,
-  text,
-  typography,
-} from "../../../src/constants/designSystem";
+import { color, type, space } from "../../../src/constants/designSystem";
 
 const loadContactImportFlow = async () => {
   const module = await import("../../../src/features/contact-import/ContactImportFlow");
@@ -56,6 +51,6 @@ export default function ContactImportRoute(): React.ReactElement {
   );
 }
 const s = StyleSheet.create({
-  host: { backgroundColor: canvas.discover },
-  empty: { ...typography.body, color: text.secondary, padding: spacing.lg },
+  host: { backgroundColor: color.canvas },
+  empty: { ...type.body, color: color.text2, padding: space[6] },
 });

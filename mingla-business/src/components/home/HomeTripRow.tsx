@@ -2,7 +2,7 @@
  * ORCH-0965 [Home dashboard intelligent KPIs + tri-kind upcoming]
  *
  * HomeTripRow — visual mirror of the home Upcoming event row for trip
- * items. Reuses `EventCoverMedia` + `Pill` + `glass.tint.profileBase`
+ * items. Reuses `EventCoverMedia` + `Pill` + `color.fill.inset`
  * background so trips visually integrate with events/experiences in
  * the same list. Trip-typed routing (via `routeForEventRowDefensive`)
  * is wired by the home screen, not here.
@@ -15,14 +15,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { Trip } from "../../services/tripsService";
 import {
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Pill } from "../ui/Pill";
+import { formatTripCalendarRange } from "../../utils/tripCalendarDates";
 
 interface HomeTripRowProps {
   trip: Trip;
@@ -32,20 +32,13 @@ interface HomeTripRowProps {
 }
 
 function formatTripDateLine(trip: Trip): string {
-  const startStr = trip.businessTrip.startAt;
-  const endStr = trip.businessTrip.endAt;
-  if (startStr === null) return "Dates to be confirmed";
-  const start = new Date(startStr);
-  const opts: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-  };
-  const startLabel = start.toLocaleDateString("en-GB", opts);
-  if (endStr === null) return startLabel;
-  const end = new Date(endStr);
-  const endLabel = end.toLocaleDateString("en-GB", opts);
-  if (startLabel === endLabel) return startLabel;
-  return `${startLabel} – ${endLabel}`;
+  // #4420 — calendar dates read at UTC (src/utils/tripCalendarDates.ts).
+  const line = formatTripCalendarRange(
+    trip.businessTrip.startAt,
+    trip.businessTrip.endAt,
+    "en-GB",
+  );
+  return line.length > 0 ? line : "Dates to be confirmed";
 }
 
 export const HomeTripRow: React.FC<HomeTripRowProps> = ({ trip, status, onPress }) => {
@@ -102,13 +95,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   coverWrap: {
     width: 56,
@@ -124,16 +117,16 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   when: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   soldCol: {
     alignItems: "flex-end",
@@ -141,13 +134,13 @@ const styles = StyleSheet.create({
     minWidth: 74,
   },
   soldValue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   soldLabel: {
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });
 

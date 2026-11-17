@@ -9,13 +9,10 @@ import {
   View,
 } from "react-native";
 import {
-  androidOpaque,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -77,7 +74,7 @@ export function IdentityOperationReceipt(
         styles.warningReceipt,
         fontScale >= 2 ? styles.largeTextReceipt : null,
       ]}>
-        <Icon name="shield" size={48} color={semantic.warning} />
+        <Icon name="shield" size={48} color={color.warning} />
         <Text ref={headingRef} accessible accessibilityRole="header" style={styles.title}>
           We can’t split this automatically
         </Text>
@@ -101,7 +98,7 @@ export function IdentityOperationReceipt(
       styles.successReceipt,
       fontScale >= 2 ? styles.largeTextReceipt : null,
     ]}>
-      <Icon name="check" size={48} color={semantic.success} />
+      <Icon name="check" size={48} color={color.success} />
       <Text ref={headingRef} accessible accessibilityRole="header" style={styles.title}>
         {merge ? "Merge complete" : promote ? "Primary changed" : "Split complete"}
       </Text>
@@ -126,23 +123,23 @@ export function IdentityOperationReceipt(
 
 const styles = StyleSheet.create({
   receipt: {
-    padding: spacing.lg,
+    padding: space[6],
     alignItems: "center",
-    gap: spacing.lg,
+    gap: space[6],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
+    borderColor: Platform.OS === "android" ? color.card2 : color.line,
   },
   successReceipt: {
-    backgroundColor: Platform.OS === "android" ? androidOpaque.successFill : glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? color.solidTint.success : color.fill.inset,
   },
   warningReceipt: {
-    backgroundColor: Platform.OS === "android" ? androidOpaque.warningFill : glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? color.solidTint.warning : color.fill.inset,
   },
   largeTextReceipt: { alignItems: "stretch" },
-  title: { ...typography.h2, color: text.primary, textAlign: "center" },
-  message: { ...typography.body, color: text.secondary, textAlign: "center" },
-  unchanged: { ...typography.body, fontWeight: "600", color: text.primary },
-  reference: { ...typography.monoMd, color: text.secondary },
-  actions: { width: "100%", gap: spacing.sm },
+  title: { ...type.h1, color: color.text1, textAlign: "center" },
+  message: { ...type.body, color: color.text2, textAlign: "center" },
+  unchanged: { ...type.body, fontWeight: "600", color: color.text1 },
+  reference: { ...type.mono, color: color.text2 },
+  actions: { width: "100%", gap: space[2] },
 });

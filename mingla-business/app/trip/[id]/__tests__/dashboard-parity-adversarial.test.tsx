@@ -75,14 +75,14 @@ const KPI_SRC = readFileSync(KPI_PATH, "utf8");
 // onPress handlers elsewhere in the file (manage menu, share modal, cancel
 // dialog) MUST NOT contaminate destination-route assertions.
 //
-// ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the following-element terminator went
-// stale (META-ORCH-1059 Pass 2 now renders <EventDetailKpiCard> after the grid).
-// The grid's ActionTiles are all self-closing, so its single `</View>` is the
-// reliable terminator; drop the fragile following-element anchor.
-const ACTION_GRID_MATCH = DASHBOARD_SRC.match(
-  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>/,
-);
-const ACTION_GRID = ACTION_GRID_MATCH?.[1] ?? "";
+// [TEST-MOD-APPROVED #4420] TILE_MATRIX P10: the trip home renders its tiles
+// through the shared <OfferingTilePage>; each tile (route, label, sub) is
+// built as data between `const configTiles` and `const tripMoreTiles`. That
+// block is the tile scope now (it holds no manage-menu / share / cancel press).
+const TILE_START = DASHBOARD_SRC.indexOf("const configTiles");
+const TILE_END = DASHBOARD_SRC.indexOf("const tripMoreTiles");
+const ACTION_GRID =
+  TILE_START > -1 && TILE_END > TILE_START ? DASHBOARD_SRC.slice(TILE_START, TILE_END) : "";
 
 // Carve out the recent-activity useMemo so adversarial null-handling
 // assertions don't false-pass on unrelated code paths. The block ends with a
@@ -129,8 +129,9 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
   // longer exists in the ACTION_GRID source — dropped as covered-elsewhere.
 
   test("T-A04 Group chat tile preserves existing /event/<id>/group-chat route (ORCH-0897 [Trips + Events Group Chat] shared substrate)", () => {
+    // [TEST-MOD-APPROVED #4420] the tile is data (`label: "Group chat"`).
     expect(ACTION_GRID).toMatch(
-      /label="Group chat"[\s\S]{0,300}router\.push\(`\/event\/\$\{trip\.id\}\/group-chat`/,
+      /label: "Group chat",[\s\S]{0,300}router\.push\(`\/event\/\$\{trip\.id\}\/group-chat`/,
     );
   });
 
@@ -201,20 +202,13 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
   // renders"; we check that the deliberate-divergence comment + primary
   // flag are guarded against accidental removal) ---
 
-  test("T-A10 Edit-primary deliberate divergence: file-header JSDoc + tile-local comment + `primary` flag all present", () => {
-    expect(DASHBOARD_SRC).toContain(
-      "[ORCH-0913 deliberate divergence from event] Edit trip remains a primary",
-    );
-    expect(DASHBOARD_SRC).toContain(
-      "[ORCH-0913 deliberate divergence from event] Edit remains primary.",
-    );
-    // The Edit tile JSX must carry `primary` (with no preceding `// primary`
-    // comment to fake it).
-    const editTileMatch = ACTION_GRID.match(
-      /<ActionTile[\s\S]*?label=\{trip\.status[\s\S]*?\/>/,
-    );
-    expect(editTileMatch).not.toBeNull();
-    expect(editTileMatch?.[0]).toMatch(/^\s*primary\s*$/m);
+  // [TEST-MOD-APPROVED #4420] round-3 item 10 + TILE_MATRIX P10: every home
+  // has one Edit tile and the shared tile page has no "primary" styling; the
+  // ORCH-0913 divergence is kept as position — Edit is the trip's FIRST tile.
+  test("T-A10 Edit-first deliberate divergence: documented, and Edit leads the trip's tiles", () => {
+    expect(DASHBOARD_SRC).toContain("[ORCH-0913 deliberate divergence from event]");
+    expect(ACTION_GRID).toMatch(/const editTile: OfferingTile = \{[\s\S]*?label: "Edit",[\s\S]*?router\.push\(`\/trip\/\$\{trip\.id\}\/edit`/);
+    expect(DASHBOARD_SRC).toMatch(/const tripCoreTiles: OfferingTile\[\] = \[\s*editTile,/);
   });
 
   // --- Strict-grep gate functionality (angle: implementor wrote the gate

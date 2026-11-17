@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { spacing, text, typography } from "../../constants/designSystem";
+import { space, type, color } from "../../constants/designSystem";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 type LazyLoader<Props extends object> = () => Promise<{
@@ -76,10 +76,10 @@ const styles = StyleSheet.create({
     minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.sm,
+    padding: space[2],
   },
   loadingText: {
-    ...typography.bodySm,
-    color: text.secondary,
+    ...type.small,
+    color: color.text2,
   },
 });

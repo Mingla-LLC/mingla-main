@@ -8,7 +8,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { spacing, text as textTokens, typography } from "../../constants/designSystem";
+import { color, type } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
@@ -62,6 +62,6 @@ export const AriBrandSwitchConfirmSheet: React.FC<AriBrandSwitchConfirmSheetProp
 );
 
 const styles = StyleSheet.create({
-  title: { ...typography.h3, color: textTokens.primary },
-  sub: { ...typography.body, color: textTokens.secondary },
+  title: { ...type.h1, color: color.text1 },
+  sub: { ...type.body, color: color.text2 },
 });

@@ -31,9 +31,10 @@ import * as Haptics from "expo-haptics";
 import type { CtaState } from "@mingla/offering-rendering";
 import {
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 
 export interface FloatingOfferingBarProps {
@@ -49,26 +50,27 @@ export interface FloatingOfferingBarProps {
 }
 
 const DARK = {
-  fill: "rgba(18,20,24,0.92)",
-  fillAndroid: "#16181b",
-  border: "rgba(255,255,255,0.12)",
-  primary: textTokens.primary,
-  tertiary: textTokens.tertiary,
-  strip: "rgba(255,255,255,0.06)",
-  stripTitle: textTokens.secondary,
+  fill: materials.pane.solidFill,
+  fillAndroid: color.canvas,
+  border: color.lineStrong,
+  primary: color.text1,
+  tertiary: color.text3,
+  strip: color.fill.tile,
+  stripTitle: color.text2,
 } as const;
 
+// #4420 — the light (paper) surface reads the paper/ink tokens.
 const LIGHT = {
-  fill: "rgba(255,255,255,0.94)",
-  fillAndroid: "#f4f6f9",
-  border: "rgba(16,20,31,0.12)",
-  primary: "#0c0e12",
-  tertiary: "rgba(16,20,31,0.56)",
-  strip: "rgba(16,20,31,0.05)",
-  stripTitle: "rgba(16,20,31,0.72)",
+  fill: color.paper,
+  fillAndroid: color.paperEnd,
+  border: color.spinnerTrackOnPaper,
+  primary: color.ink,
+  tertiary: color.text4,
+  strip: color.paperEnd,
+  stripTitle: color.text4,
 } as const;
 
-const ACCENT = "#eb7825";
+const ACCENT = color.accent;
 
 export const FloatingOfferingBar: React.FC<FloatingOfferingBarProps> = ({
   cta,
@@ -102,7 +104,7 @@ export const FloatingOfferingBar: React.FC<FloatingOfferingBarProps> = ({
           {
             backgroundColor: fill,
             borderTopColor: tone.border,
-            paddingBottom: insets.bottom + spacing.sm,
+            paddingBottom: insets.bottom + space[2],
             ...(elevation !== undefined
               ? { elevation, shadowOpacity: 0 }
               : {}),
@@ -196,10 +198,10 @@ const styles = StyleSheet.create({
   bar: {
     overflow: "hidden",
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
     // iOS/web upward shadow (Android suppressed inline — opaque-fill rule).
-    shadowColor: "#000000",
+    shadowColor: color.mask,
     shadowOpacity: 0.28,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: -8 },
@@ -222,12 +224,12 @@ const styles = StyleSheet.create({
   },
   button: {
     minHeight: 56,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
     borderRadius: radiusTokens.lg,
     backgroundColor: ACCENT,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: spacing.md,
+    marginLeft: space[4],
   },
   // ORCH-1128 — full-width sole CTA (free / waitlist): fill the bar, drop the
   // left margin that only exists to separate the button from the price column.
@@ -242,17 +244,17 @@ const styles = StyleSheet.create({
   buttonLabel: {
     fontSize: 17,
     fontWeight: "900",
-    color: "#ffffff",
+    color: color.text1,
   },
   strip: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     minHeight: 56,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radiusTokens.lg,
-    gap: spacing.sm,
+    gap: space[2],
   },
   stripGlyph: {
     fontSize: 18,
@@ -262,11 +264,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stripTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   stripSubline: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     marginTop: 2,
   },
 });

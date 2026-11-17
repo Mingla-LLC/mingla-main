@@ -19,7 +19,7 @@ import {
 } from "react-native";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { spacing } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import type { BrandGroupSummary } from "../../services/brandGroupsService";
 import {
   brandGroupInboxPreview,
@@ -252,8 +252,8 @@ export function BrandGroupInboxList({
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  list: { paddingBottom: spacing.xxl },
-  row: { minHeight: brandGroupChat.inboxRowHeight, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: spacing.md, paddingVertical: 10 },
+  list: { paddingBottom: space[9] },
+  row: { minHeight: brandGroupChat.inboxRowHeight, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: space[4], paddingVertical: 10 },
   rowPressed: { backgroundColor: brandGroupChat.strip },
   rowSelected: { backgroundColor: brandGroupChat.accentSoft },
   rowCopy: { flex: 1, minWidth: 0, gap: 3 },
@@ -266,18 +266,18 @@ const styles = StyleSheet.create({
   previewUnread: { color: brandGroupChat.textPrimary, fontWeight: "600" },
   muteIcon: { width: 16, alignItems: "center" },
   badge: { minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: brandGroupChat.accent },
-  badgeText: { color: "#101216", fontSize: 11, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: spacing.md + TILE + 12, backgroundColor: brandGroupChat.hairline },
-  searchWrap: { minHeight: 40, marginHorizontal: spacing.md, marginTop: spacing.sm, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: brandGroupChat.surfaceRaised },
+  badgeText: { color: color.ink, fontSize: 11, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  separator: { height: StyleSheet.hairlineWidth, marginLeft: space[4] + TILE + 12, backgroundColor: brandGroupChat.hairline },
+  searchWrap: { minHeight: 40, marginHorizontal: space[4], marginTop: space[2], flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: brandGroupChat.surfaceRaised },
   search: { flex: 1, minHeight: 40, color: brandGroupChat.textPrimary, fontSize: 15, paddingVertical: 0 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: space[4], paddingVertical: space[2] },
   chip: { minHeight: 34, justifyContent: "center", paddingHorizontal: 14, borderRadius: 17, borderWidth: 1, borderColor: brandGroupChat.hairline },
   chipActive: { borderColor: brandGroupChat.accent, backgroundColor: brandGroupChat.accentSoft },
   chipText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600" },
   chipTextActive: { color: brandGroupChat.accent, fontWeight: "800" },
-  sectionTitle: { color: brandGroupChat.textMuted, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7, paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 4 },
+  sectionTitle: { color: brandGroupChat.textMuted, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7, paddingHorizontal: space[4], paddingTop: space[4], paddingBottom: 4 },
   skeletonBlock: { backgroundColor: brandGroupChat.surfaceRaised, borderRadius: 6 },
-  state: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
+  state: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
   stateText: { color: brandGroupChat.textSecondary, textAlign: "center" },
-  emptyText: { color: brandGroupChat.textSoft, paddingHorizontal: spacing.md, paddingVertical: spacing.lg, textAlign: "center" },
+  emptyText: { color: brandGroupChat.textSoft, paddingHorizontal: space[4], paddingVertical: space[6], textAlign: "center" },
 });

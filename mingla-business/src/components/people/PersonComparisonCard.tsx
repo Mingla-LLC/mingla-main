@@ -8,13 +8,11 @@ import {
   View,
 } from "react-native";
 import {
-  accent,
-  androidOpaque,
-  glass,
   radius,
-  spacing,
-  text,
-  typography,
+  color,
+  materials,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { BrandPersonIdentitySummary } from "../../types/people";
 import { Avatar } from "../ui/Avatar";
@@ -62,7 +60,7 @@ export function PersonComparisonCard({
       {selectable ? (
         <View style={[styles.radioRow, largeText ? styles.largeTextRow : null]}>
           <View style={[styles.radio, selected ? styles.radioSelected : null]}>
-            {selected ? <Icon name="check" size={14} color={text.inverse} /> : null}
+            {selected ? <Icon name="check" size={14} color={color.textStrong} /> : null}
           </View>
           <Text style={styles.radioLabel}>Keep {person.displayName}</Text>
         </View>
@@ -117,18 +115,18 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileBase,
+    borderColor: Platform.OS === "android" ? color.card2 : color.line,
+    backgroundColor: Platform.OS === "android" ? materials.pane.solidFill : color.fill.inset,
     padding: 12,
-    gap: spacing.sm,
+    gap: space[2],
   },
   selected: {
     borderWidth: 1.5,
-    borderColor: accent.border,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.accentFill : accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: Platform.OS === "android" ? materials.selected.solidFill : color.accentLine,
   },
   pressed: { opacity: 0.78 },
-  radioRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  radioRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[2] },
   largeTextRow: { flexDirection: "column", alignItems: "stretch" },
   largeTextCard: { minWidth: 0, width: "100%" },
   radio: {
@@ -136,16 +134,16 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: glass.border.pending,
+    borderColor: color.fill.pager,
     alignItems: "center",
     justifyContent: "center",
   },
-  radioSelected: { borderColor: accent.warm, backgroundColor: accent.warm },
-  radioLabel: { ...typography.bodySm, fontWeight: "600", color: text.primary, flex: 1 },
-  identity: { alignItems: "center", gap: spacing.sm },
-  name: { ...typography.bodySm, fontWeight: "600", color: text.primary, textAlign: "center" },
-  field: { gap: spacing.xs },
-  label: { ...typography.caption, color: text.secondary },
-  value: { ...typography.monoMd, color: text.primary, flexWrap: "wrap" },
-  account: { ...typography.bodySm, color: text.primary },
+  radioSelected: { borderColor: color.accent, backgroundColor: color.accent },
+  radioLabel: { ...type.small, fontWeight: "600", color: color.text1, flex: 1 },
+  identity: { alignItems: "center", gap: space[2] },
+  name: { ...type.small, fontWeight: "600", color: color.text1, textAlign: "center" },
+  field: { gap: space[1] },
+  label: { ...type.caption, color: color.text2 },
+  value: { ...type.mono, color: color.text1, flexWrap: "wrap" },
+  account: { ...type.small, color: color.text1 },
 });

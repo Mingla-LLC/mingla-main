@@ -171,6 +171,10 @@
       "readyBank": "{{country}} में बैंक खाता",
       "readyBankAny": "आपके देश में बैंक खाता",
       "readyTax": "टैक्स आईडी (केवल पंजीकृत कंपनियाँ)"
+    },
+    "stepper": {
+      "saved": "सहेजा गया",
+      "steps": "चरण"
     }
   },
   "doorMode": {

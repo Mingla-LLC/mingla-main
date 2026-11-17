@@ -21,12 +21,7 @@
 import React from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
-import {
-  ariPalette,
-  ariThread,
-  glass,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { ariPalette, ariThread, color, materials } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
 import {
   parseInlineRuns,
@@ -286,8 +281,8 @@ const styles = StyleSheet.create({
     // glass tint + hairline border.
     backgroundColor:
       Platform.OS === "android"
-        ? ariThread.ariBubbleAndroid
-        : glass.tint.profileBase,
+        ? materials.pane.solidFill
+        : color.fill.inset,
     borderRadius: ariThread.bubbleRadius, // 16 base
     paddingHorizontal: ariThread.bubblePadH,
     paddingVertical: ariThread.bubblePadV,
@@ -298,7 +293,7 @@ const styles = StyleSheet.create({
       android: {},
       default: {
         borderWidth: 1,
-        borderColor: glass.border.profileBase,
+        borderColor: color.line,
       },
     }),
   },
@@ -311,25 +306,25 @@ const styles = StyleSheet.create({
   userText: {
     fontSize: ariThread.bodyFont,
     lineHeight: ariThread.bodyLine,
-    color: ariThread.onUserBubble,
+    color: color.ink,
     letterSpacing: -0.1,
   },
   ariText: {
     fontSize: ariThread.bodyFont,
     lineHeight: ariThread.bodyLine,
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   bulletRow: {
     flexDirection: "row",
   },
   bulletGlyph: {
-    color: textTokens.tertiary,
+    color: color.text3,
     width: 6,
     marginRight: 6,
   },
   numberGlyph: {
-    color: textTokens.tertiary,
+    color: color.text3,
     width: 18,
     marginRight: 6,
   },
@@ -338,7 +333,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: 0.2,
   },
   strong: {

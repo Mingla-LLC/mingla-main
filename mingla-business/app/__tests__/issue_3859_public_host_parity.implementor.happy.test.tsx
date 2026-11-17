@@ -304,7 +304,10 @@ describe("issue #3859 — buyer web public-host parity", () => {
     const opaque = readBusiness("api/shared-card.js");
     expect(venue).toContain("classifyPublicVenueRouteState({");
     expect(stay).toContain("loading={query.isLoading}");
-    expect(stay).toContain("Linking.openURL(session.authorizationUrl)");
+    // issue #4420 wave 2 (§2.4) — Paystack now opens in this tab through
+    // the Secure payment step (never window.open, which blockers stop).
+    expect(stay).toContain("setHandoffUrl(session.authorizationUrl)");
+    expect(stay).not.toContain("Linking.openURL(session.authorizationUrl)");
     expect(share).toContain("asText(destination.kind) !== factsKind");
     expect(share).toContain("asText(destination.webPath, \"\") !== path");
     expect(share).toContain("window.location.replace");

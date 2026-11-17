@@ -70,6 +70,7 @@ import {
 import { type EventChipSize } from "./tiptapNodes/EventChip.web";
 import { EventChipWithResize } from "./tiptapNodes/EventChipResizable.web";
 import { PersonalizationChip } from "./tiptapNodes/PersonalizationChip.web";
+import { color } from "../../../constants/designSystem";
 
 /**
  * Subset of pell's `editorStyle` prop we honor. The native pell side has
@@ -404,7 +405,7 @@ export const RichEditor = React.forwardRef<RichEditorHandle, RichEditorProps>(
       [editor],
     );
 
-    const textColor = editorStyle?.color ?? "rgba(255, 255, 255, 0.96)";
+    const textColor = editorStyle?.color ?? color.textStrong;
     const backgroundColor = editorStyle?.backgroundColor ?? "transparent";
 
     // #2262 RC-2 layer 3 — the CLICK BACKSTOP, and it is only a backstop.

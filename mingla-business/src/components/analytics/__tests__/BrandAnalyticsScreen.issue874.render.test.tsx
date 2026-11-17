@@ -159,9 +159,10 @@ describe("issue #874 Analytics screen real RN render", () => {
       />,
     );
     expect(screen.getByText("Analytics")).toBeTruthy();
+    // #4420 copy trim: the header is the title alone, no filler line under it.
     expect(
-      screen.getByText("See how people reach your pages and take action."),
-    ).toBeTruthy();
+      screen.queryByText("See how people reach your pages and take action."),
+    ).toBeNull();
     expect(screen.getByTestId("analytics-totals-loading")).toBeTruthy();
     expect(screen.getByTestId("analytics-regulars-loading")).toBeTruthy();
     expect(screen.getByTestId("analytics-patterns-loading")).toBeTruthy();

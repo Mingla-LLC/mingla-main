@@ -16,10 +16,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InvitePendingSheet } from "../src/components/team/InvitePendingSheet";
 import { TopBar } from "../src/components/ui/TopBar";
-import { accent, canvas, spacing, text as textTokens } from "../src/constants/designSystem";
+
 import { useAuth } from "../src/context/AuthContext";
 import { useMyPendingInvites } from "../src/hooks/useBrandInvitations";
 
+import { color, radius, space, type } from "../src/constants/designSystem";
 function firstParam(value: string | string[] | undefined): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value) && typeof value[0] === "string") return value[0];
@@ -84,7 +85,7 @@ export default function PendingBrandInviteRoute(): React.ReactElement {
         </View>
       ) : showLoading ? (
         <View style={styles.loading} testID="pending-brand-invite-loading">
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text1} />
         </View>
       ) : matchedInvite === null ? (
         <View style={styles.missing}>
@@ -109,28 +110,33 @@ export default function PendingBrandInviteRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
-    paddingBottom: spacing.md,
+    backgroundColor: color.canvas,
+    paddingBottom: space[4],
   },
   loading: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
+  // #4420 — the notice is one pane under the bar (the mockup).
   missing: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    marginHorizontal: space[4],
+    marginTop: space[4],
+    padding: space[4],
+    gap: space[1],
+    borderRadius: radius.lg,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
   },
   missingTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    ...type.row,
+    fontWeight: "600",
+    color: color.text1,
   },
   missingBody: {
-    fontSize: 15,
-    color: textTokens.secondary,
-    lineHeight: 22,
+    ...type.small,
+    color: color.text2,
   },
 });

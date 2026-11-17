@@ -1,14 +1,19 @@
 /**
- * Pill — small chip primitive.
+ * Pill — the status pill, plus (#4420) the Chip and Segmented controls.
  *
- * Six variants (`live | draft | warn | accent | error | info`) each map to
- * a tinted background, a fixed border colour, and a 6×6 status dot. With
- * `livePulse` the dot breathes (scale 1.0 ↔ 1.4) over 1.5s. Reduce-motion
- * collapses to opacity 0.5 ↔ 1.0, no scale.
+ * Pill variants (`live | draft | warn | accent | error | info`, #4420 adds
+ * `ok | muted`) all share ONE neutral graphite body (`fill.status` + hairline)
+ * and differ only by the 6×6 dot, so status reads from the dot, never a
+ * coloured slab (Graphite Glass). `accent` is the orange "upcoming" dot — one
+ * of the few places orange is allowed. With `livePulse` the dot breathes
+ * (scale 1.0 ↔ 1.4) over 1.5s; reduce-motion collapses to opacity only.
+ *
+ * `Chip` (filter / tag, on = selected material) and `Segmented` (2–5
+ * options, one line, stretches before it scrolls) are new and additive.
  */
 
 import React, { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   Easing,
@@ -21,15 +26,14 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
+  color,
+  materials,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 
-export type PillVariant = "live" | "draft" | "warn" | "accent" | "error" | "info";
+export type PillVariant = "live" | "draft" | "warn" | "accent" | "error" | "info" | "ok" | "muted";
 
 export interface PillProps {
   variant: PillVariant;
@@ -46,43 +50,22 @@ interface VariantTokens {
   text: string;
 }
 
+const body = (dot: string, text: string = color.text1): VariantTokens => ({
+  background: color.fill.status,
+  border: color.line,
+  dot,
+  text,
+});
+
 const VARIANT_TOKENS: Record<PillVariant, VariantTokens> = {
-  live: {
-    background: semantic.successTint,
-    border: "rgba(34, 197, 94, 0.45)",
-    dot: semantic.success,
-    text: textTokens.primary,
-  },
-  draft: {
-    background: "rgba(255, 255, 255, 0.06)",
-    border: "rgba(255, 255, 255, 0.14)",
-    dot: textTokens.tertiary,
-    text: textTokens.secondary,
-  },
-  warn: {
-    background: semantic.warningTint,
-    border: "rgba(245, 158, 11, 0.45)",
-    dot: semantic.warning,
-    text: textTokens.primary,
-  },
-  accent: {
-    background: accent.tint,
-    border: accent.border,
-    dot: accent.warm,
-    text: textTokens.primary,
-  },
-  error: {
-    background: semantic.errorTint,
-    border: "rgba(239, 68, 68, 0.45)",
-    dot: semantic.error,
-    text: textTokens.primary,
-  },
-  info: {
-    background: semantic.infoTint,
-    border: "rgba(59, 130, 246, 0.45)",
-    dot: semantic.info,
-    text: textTokens.primary,
-  },
+  live: body(color.live),
+  draft: body(color.status.neutral, color.text2),
+  warn: body(color.warning),
+  accent: body(color.accent),
+  error: body(color.danger),
+  info: body(color.info),
+  ok: body(color.success),
+  muted: body(color.status.muted, color.text2),
 };
 
 const PULSE_DURATION = 1500;
@@ -155,10 +138,10 @@ export const Pill: React.FC<PillProps> = ({
           styles.label,
           {
             color: tokens.text,
-            fontSize: typography.micro.fontSize,
-            lineHeight: typography.micro.lineHeight,
-            fontWeight: typography.micro.fontWeight,
-            letterSpacing: typography.micro.letterSpacing,
+            fontSize: type.label.fontSize,
+            lineHeight: type.label.lineHeight,
+            fontWeight: type.label.fontWeight,
+            letterSpacing: type.label.letterSpacing,
           },
         ]}
         numberOfLines={1}
@@ -177,7 +160,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: radiusTokens.full,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.xs + 2, // 6px between dot + text
+    gap: 6, // between dot + text
     alignSelf: "flex-start",
   },
   dot: {
@@ -188,6 +171,169 @@ const styles = StyleSheet.create({
   label: {
     textTransform: "uppercase",
   },
+});
+
+// ---------------------------------------------------------------------------
+// #4420 Chip and Segmented
+// ---------------------------------------------------------------------------
+
+export interface ChipProps {
+  label: string;
+  selected?: boolean;
+  disabled?: boolean;
+  error?: boolean;
+  count?: number;
+  onPress?: () => void;
+  testID?: string;
+  style?: StyleProp<ViewStyle>;
+}
+
+/** Filter / tag chip. On = the selected material with its rim. */
+export const Chip: React.FC<ChipProps> = ({ label, selected = false, disabled = false, error = false, count, onPress, testID, style }) => (
+  <Pressable
+    onPress={disabled ? undefined : onPress}
+    disabled={disabled || onPress === undefined}
+    accessibilityRole={onPress !== undefined ? "button" : "text"}
+    accessibilityState={{ selected, disabled }}
+    accessibilityLabel={count !== undefined ? `${label}, ${count}` : label}
+    testID={testID}
+    style={[
+      chipStyles.chip,
+      selected ? chipStyles.on : null,
+      error ? chipStyles.error : null,
+      disabled ? chipStyles.disabled : null,
+      style,
+    ]}
+  >
+    <Text style={[chipStyles.label, selected ? chipStyles.labelOn : null]} numberOfLines={1}>
+      {label}
+    </Text>
+    {count !== undefined ? (
+      <Text style={[chipStyles.count, selected ? chipStyles.countOn : null]}>{count}</Text>
+    ) : null}
+  </Pressable>
+);
+
+export interface SegmentedOption<K extends string = string> {
+  key: K;
+  label: string;
+  count?: number;
+  disabled?: boolean;
+  testID?: string;
+}
+
+export interface SegmentedProps<K extends string = string> {
+  options: readonly SegmentedOption<K>[];
+  value: K;
+  onChange: (key: K) => void;
+  /** Stretch the options across the row (kit `.seg.full`). Default true. */
+  full?: boolean;
+  accessibilityLabel?: string;
+  testID?: string;
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * One-line 2–5 option switcher (kit `.seg`). It first stretches and tightens;
+ * only when it still cannot fit does it scroll inside its own track.
+ */
+export function Segmented<K extends string = string>({
+  options,
+  value,
+  onChange,
+  full = true,
+  accessibilityLabel,
+  testID,
+  style,
+}: SegmentedProps<K>): React.ReactElement {
+  return (
+    <View style={[chipStyles.segTrack, style]} testID={testID} accessibilityRole="tablist" accessibilityLabel={accessibilityLabel}>
+      <ScrollView
+        horizontal
+        scrollEnabled={!full}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[chipStyles.segRow, full ? chipStyles.segRowFull : null]}
+      >
+        {options.map((option) => {
+          const on = option.key === value;
+          return (
+            <Pressable
+              key={option.key}
+              onPress={() => {
+                if (!option.disabled) onChange(option.key);
+              }}
+              disabled={option.disabled}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on, disabled: option.disabled === true }}
+              accessibilityLabel={option.count !== undefined ? `${option.label}, ${option.count}` : option.label}
+              testID={option.testID}
+              style={[chipStyles.seg, full ? chipStyles.segFull : null, on ? chipStyles.segOn : null, option.disabled ? chipStyles.disabled : null]}
+            >
+              <Text style={[chipStyles.segLabel, on ? chipStyles.labelOn : null]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                {option.label}
+              </Text>
+              {option.count !== undefined ? (
+                <Text style={[chipStyles.count, on ? chipStyles.segCountOn : null]}>{option.count}</Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const chipStyles = StyleSheet.create({
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[1],
+    minHeight: 36,
+    paddingHorizontal: space[3],
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.fill.tile,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    alignSelf: "flex-start",
+  },
+  on: {
+    backgroundColor: materials.selected.solidFill,
+    borderColor: materials.selected.rim.edge,
+    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
+  },
+  error: { borderColor: color.errorLine },
+  disabled: { opacity: 0.4 },
+  label: { ...type.chip, color: color.text2 },
+  labelOn: { color: color.textStrong },
+  count: { ...type.caption, color: color.text3 },
+  countOn: { color: color.textSelectedChipMeta },
+  segTrack: {
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.fill.inset,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    padding: 3,
+    overflow: "hidden",
+  },
+  segRow: { flexDirection: "row", gap: 2 },
+  segRowFull: { flexGrow: 1 },
+  seg: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space[1],
+    minHeight: 36,
+    paddingHorizontal: space[3],
+    borderRadius: radiusTokens.full,
+  },
+  segFull: { flex: 1, minWidth: 0 },
+  segOn: {
+    backgroundColor: materials.selected.solidFill,
+    borderTopWidth: 1,
+    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
+  },
+  segLabel: { ...type.chip, color: color.text2, flexShrink: 1 },
+  segCountOn: { color: color.textSelectedMeta },
 });
 
 export default Pill;

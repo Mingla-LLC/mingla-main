@@ -42,12 +42,10 @@ import {
 import { ScrollView } from "../../../wrappers/SmartScrollView";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { currencyCodeOrNull, formatCurrency } from "../../../utils/currency";
 import {
@@ -520,7 +518,7 @@ export function VenueOrderPadSheet({
                   value={billName}
                   onChangeText={setBillName}
                   placeholder="Name"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   style={styles.input}
                   accessibilityLabel="Guest's name"
                   testID="venue-order-pad-tab-bill-name"
@@ -529,7 +527,7 @@ export function VenueOrderPadSheet({
                   value={billEmail}
                   onChangeText={setBillEmail}
                   placeholder="Email"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   style={styles.input}
                   autoCapitalize="none"
                   keyboardType="email-address"
@@ -578,7 +576,7 @@ export function VenueOrderPadSheet({
               value={spotQuery}
               onChangeText={setSpotQuery}
               placeholder="Find a table or room"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               style={styles.input}
               accessibilityLabel="Find a table or room"
               testID="venue-order-pad-spot-search"
@@ -675,7 +673,7 @@ export function VenueOrderPadSheet({
                 value={buyerName}
                 onChangeText={setBuyerName}
                 placeholder="Guest's name"
-                placeholderTextColor={textTokens.quaternary}
+                placeholderTextColor={color.text4}
                 style={styles.input}
                 accessibilityLabel="Guest's name for the collection"
                 testID="venue-order-pad-buyer-name"
@@ -740,7 +738,7 @@ export function VenueOrderPadSheet({
                       value={openNote}
                       onChangeText={setOpenNote}
                       placeholder="Anything for the kitchen?"
-                      placeholderTextColor={textTokens.quaternary}
+                      placeholderTextColor={color.text4}
                       style={styles.input}
                       maxLength={ORDER_PAD_MAX_NOTE_CHARS}
                       accessibilityLabel="Note for the kitchen"
@@ -774,7 +772,7 @@ export function VenueOrderPadSheet({
                   value={menuQuery}
                   onChangeText={setMenuQuery}
                   placeholder="Find something on the menu"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   style={styles.input}
                   accessibilityLabel="Find something on the menu"
                   testID="venue-order-pad-menu-search"
@@ -1009,7 +1007,7 @@ export function VenueOrderPadSheet({
                   value={billName}
                   onChangeText={setBillName}
                   placeholder="Name"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   style={styles.input}
                   accessibilityLabel="Guest's name"
                   testID="venue-order-pad-bill-name"
@@ -1018,7 +1016,7 @@ export function VenueOrderPadSheet({
                   value={billEmail}
                   onChangeText={setBillEmail}
                   placeholder="Email"
-                  placeholderTextColor={textTokens.quaternary}
+                  placeholderTextColor={color.text4}
                   style={styles.input}
                   autoCapitalize="none"
                   keyboardType="email-address"
@@ -1169,177 +1167,177 @@ function newSubmitKey(): string {
 
 const styles = StyleSheet.create({
   body: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   stepWrap: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   helper: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   input: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     minHeight: 44,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
   },
   // A plain View, deliberately: this used to be a second ScrollView, and two
   // same-axis scrollables inside one sheet compete for the gesture. The ONE
   // scroll is the SmartScrollView above, which is also what lifts a focused
   // field above the keyboard.
   pane: {
-    gap: spacing.sm,
-    paddingBottom: spacing.xs,
+    gap: space[2],
+    paddingBottom: space[1],
   },
   group: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   groupTitle: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     fontWeight: "700",
     textTransform: "uppercase",
   },
   chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     minHeight: 44,
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
   },
   chipActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   chipOff: {
     opacity: 0.4,
   },
   chipLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   chipMeta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   counterRow: {
-    gap: spacing.xxs,
-    padding: spacing.sm,
+    gap: 2,
+    padding: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
     minHeight: 44,
   },
   counterTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   counterBody: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   destinationRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   destination: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     flex: 1,
   },
   linkBtn: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
   linkLabel: {
-    ...typography.bodySm,
-    color: accent.warm,
+    ...type.small,
+    color: color.accent,
     fontWeight: "700",
   },
   optionPane: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   optionTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   optionActions: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
     minHeight: 44,
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   itemName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     flex: 1,
   },
   itemPrice: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   cart: {
-    gap: spacing.xs,
-    paddingTop: spacing.sm,
+    gap: space[1],
+    paddingTop: space[2],
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.10)",
+    borderTopColor: color.lineStrong,
   },
   cartLine: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   cartQty: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
     minWidth: 28,
   },
   cartText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   cartName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   cartMods: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   cartNote: {
-    ...typography.caption,
-    color: accent.warm,
+    ...type.caption,
+    color: color.accent,
   },
   stepBtn: {
     width: 44,
@@ -1347,11 +1345,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
   },
   stepLabel: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   moneyRow: {
@@ -1360,85 +1358,85 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   moneyLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   moneyValue: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   discountAmounts: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   listPrice: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
     textDecorationLine: "line-through",
   },
   discountLabel: {
-    ...typography.bodySm,
-    color: semantic.success,
+    ...type.small,
+    color: color.success,
     fontWeight: "700",
   },
   discountValue: {
-    ...typography.bodySm,
-    color: semantic.success,
+    ...type.small,
+    color: color.success,
     fontWeight: "700",
   },
   freeOrder: {
-    ...typography.bodySm,
-    color: semantic.success,
+    ...type.small,
+    color: color.success,
     fontWeight: "700",
   },
   blocker: {
-    ...typography.bodySm,
-    color: semantic.warning,
+    ...type.small,
+    color: color.warning,
   },
   settleRow: {
-    gap: spacing.xxs,
-    padding: spacing.sm,
+    gap: 2,
+    padding: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
     minHeight: 44,
   },
   settleRowOff: {
     opacity: 0.45,
   },
   settleTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   settleBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   settleOffNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   payBlock: {
-    gap: spacing.xs,
-    padding: spacing.sm,
+    gap: space[1],
+    padding: space[2],
     borderRadius: radius.md,
-    backgroundColor: "rgba(34, 197, 94, 0.10)",
+    backgroundColor: color.successTint,
   },
   payTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   payBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   payLink: {
-    ...typography.caption,
-    color: accent.warm,
+    ...type.caption,
+    color: color.accent,
   },
 });
 

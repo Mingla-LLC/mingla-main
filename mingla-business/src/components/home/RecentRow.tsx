@@ -2,12 +2,10 @@ import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { BusinessRecentPointer } from "../../store/businessRecentStore";
 import { formatRelativeTime } from "../../utils/relativeTime";
@@ -74,7 +72,7 @@ export function RecentRow({
         </Text>
         <Text style={styles.opened}>{opened}</Text>
       </View>
-      <Icon name="chevR" size={18} color={textTokens.tertiary} />
+      <Icon name="chevR" size={18} color={color.text3} />
     </Pressable>
   );
 }
@@ -84,37 +82,37 @@ const styles = StyleSheet.create({
     minHeight: 84,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   rowPressed: { opacity: 0.72 },
-  rowFocused: { borderColor: accent.warm, borderWidth: 2 },
+  rowFocused: { borderColor: color.lineStrong, borderWidth: 2 },
   rowText: { flex: 1, minWidth: 0 },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     marginBottom: 2,
   },
   type: {
-    color: textTokens.tertiary,
-    fontSize: typography.micro.fontSize,
+    color: color.text3,
+    fontSize: type.label.fontSize,
     fontWeight: "700",
     textTransform: "uppercase",
   },
   title: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
   },
   opened: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
 });

@@ -42,7 +42,10 @@ describe("ORCH-1150-R2 D-4 — RSVP host dashboard exists + is RSVP-tailored", (
   });
 
   test("KEEP: renders the hero (cover + status pill + title + date·venue)", () => {
-    expect(source).toContain("EventCoverMedia");
+    // [TEST-MOD-APPROVED #4420] TILE_MATRIX P10: the cover is the compact identity
+    // card's thumb (OfferingHomeHeader renders EventCoverMedia from these props).
+    expect(source).toContain("OfferingHomeHeader");
+    expect(source).toContain("mediaUrl={event.coverMediaUrl}");
     expect(source).toContain("EventDetailHeroStatusPill");
     expect(source).toContain("formatDraftDateLine");
     expect(source).toContain("event.venueName");
@@ -139,7 +142,8 @@ describe("ORCH-1150-R2 D-8 — RSVP detail keeps Blasts + Group-chat tiles", () 
   });
 
   test("renders a Blasts tile routing to the event-scoped /event/{id}/blasts", () => {
-    expect(source).toContain('label="Blasts"');
+    // [TEST-MOD-APPROVED #4420] TILE_MATRIX P10: the tile reads "Blast" on every home.
+    expect(source).toContain('label="Blast"');
     expect(source).toContain("handleBlasts");
     expect(source).toMatch(/router\.push\(`\/event\/\$\{id\}\/blasts`/);
   });

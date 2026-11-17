@@ -14,6 +14,7 @@ import { BrandSitesError } from "../../../../services/brandSitesService";
 import { useComposeBrandSiteFromPlan, useSaveBrandSitePlan } from "../../../../sites/planApi";
 import { PLAN_OFFERING_OPTIONS } from "../../../../../../packages/site-contracts/src/sitePlan.ts";
 
+import { color, scrim } from "../../../../constants/designSystem";
 const OFFERING_KIND_WORDS: Record<string, { plural: string; kind: string }> = {
   trips: { plural: "trips", kind: "trip" },
   events: { plural: "events", kind: "event" },
@@ -242,14 +243,14 @@ const styles = StyleSheet.create({
   sub: { fontSize: 12.5, lineHeight: 17, color: ui.t3 },
   minis: { flexDirection: "row", gap: 4 },
   menuToggle: { flexDirection: "row", alignItems: "center", gap: 8 },
-  menuPreview: { borderRadius: 12, backgroundColor: "#ffffff", flexGrow: 0 },
+  menuPreview: { borderRadius: 12, backgroundColor: color.paper, flexGrow: 0 },
   menuPreviewInner: { flexDirection: "row", alignItems: "center", gap: 18, paddingVertical: 12, paddingHorizontal: 16, minWidth: "100%" },
-  menuLogo: { fontSize: 20, color: "#124e70", marginRight: "auto", fontWeight: "700" },
-  menuItem: { fontSize: 13, fontWeight: "600", color: "#131c26" },
+  menuLogo: { fontSize: 20, color: color.ink, marginRight: "auto", fontWeight: "700" },
+  menuItem: { fontSize: 13, fontWeight: "600", color: color.ink },
   help: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 6, marginBottom: 14 },
   group: { fontSize: 15, fontWeight: "600", color: ui.t1, marginTop: 24, marginBottom: 8 },
-  scrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 16 },
-  dialog: { width: "100%", maxWidth: 560, backgroundColor: "#16181c", borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20, ...(Platform.OS === "web" ? { cursor: "default" } : {}) } as object,
+  scrim: { flex: 1, backgroundColor: scrim.modal, alignItems: "center", justifyContent: "center", padding: 16 },
+  dialog: { width: "100%", maxWidth: 560, backgroundColor: color.card, borderWidth: 1, borderColor: ui.border2, borderRadius: 24, padding: 20, ...(Platform.OS === "web" ? { cursor: "default" } : {}) } as object,
   dialogTitle: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: ui.t1, marginBottom: 6 },
   dialogList: { marginTop: 12, borderWidth: 1, borderColor: ui.cardBorder, borderRadius: 16, overflow: "hidden" },
   dialogActions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 16 },

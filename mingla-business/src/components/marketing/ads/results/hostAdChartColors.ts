@@ -5,17 +5,19 @@
  * app name. Kept beside the charts so the tokens load with the ad results
  * screen, not in the boot chunk.
  */
-import { accent, trafficAnalytics } from "../../../../constants/designSystem";
+import { color, trafficAnalytics } from "../../../../constants/designSystem";
 
 export const hostAdCharts = {
+  // #4420: the same analytics hues, read from the trafficAnalytics content
+  // palette in designSystem.ts (no literal here).
   platform: {
-    meta: "#7aa7ff",
-    snapchat: "#ffd2a8",
-    tiktok: "#5fd4d0",
-    google: "#b49cff",
-    reddit: "#f6a15f",
+    meta: trafficAnalytics.sources.own_links,
+    snapchat: trafficAnalytics.sources.search,
+    tiktok: trafficAnalytics.tapMeter,
+    google: trafficAnalytics.sources.social,
+    reddit: trafficAnalytics.sources.mingla_ads,
   },
-  spend: accent.warm,
+  spend: color.text1,
   results: trafficAnalytics.positiveDelta,
   costPerResult: trafficAnalytics.sources.mingla_ads,
 } as const;

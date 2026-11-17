@@ -6,7 +6,11 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 import type { BrandSetupFacts } from "../../services/brandSetupService";
 import { Button } from "../ui/Button";
 import { Icon, type IconName } from "../ui/Icon";
@@ -67,7 +71,7 @@ export const HomeSetupPromptSheet: React.FC<HomeSetupPromptSheetProps> = ({
       <View style={styles.list}>
         {homeSetupMissing(facts).map((row) => (
           <View key={row.key} style={styles.row}>
-            <Icon name={row.icon} size={18} color={textTokens.secondary} />
+            <Icon name={row.icon} size={18} color={color.text2} />
             <Text style={styles.rowText}>{row.label}</Text>
           </View>
         ))}
@@ -77,11 +81,11 @@ export const HomeSetupPromptSheet: React.FC<HomeSetupPromptSheetProps> = ({
 );
 
 const styles = StyleSheet.create({
-  title: { ...typography.h3, color: textTokens.primary },
-  list: { gap: spacing.sm },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },
-  rowText: { ...typography.body, color: textTokens.primary },
+  title: { ...type.h1, color: color.text1 },
+  list: { gap: space[2] },
+  row: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 44 },
+  rowText: { ...type.body, color: color.text1 },
   // Side by side; each label wraps at large text instead of clipping.
-  btns: { flexDirection: "row", gap: spacing.sm, alignItems: "stretch" },
+  btns: { flexDirection: "row", gap: space[2], alignItems: "stretch" },
   btn: { flex: 1 },
 });

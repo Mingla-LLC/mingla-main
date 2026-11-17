@@ -21,6 +21,7 @@
 
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // `@types/react-dom` is not installed in this workspace and package manifests
 // are do-not-touch, so an `import` of `react-dom/client` would add a TS7016 to
@@ -95,16 +96,27 @@ globalThis.__issue2099 = globalThis.__issue2099 ?? {
   preview: PREVIEW,
 };
 
+// #4420 — every Modal window now mounts the non-modal ToastHost, which reads
+// the safe-area insets. The real app wraps everything in SafeAreaProvider
+// (app/_layout.tsx); the harness does the same, with zero web insets so the
+// first paint is not held back waiting for a measurement.
+const WEB_METRICS = {
+  frame: { x: 0, y: 0, width: 0, height: 0 },
+  insets: { top: 0, left: 0, right: 0, bottom: 0 },
+};
+
 function Harness(): React.ReactElement {
   return (
-    <QueryClientProvider client={new QueryClient()}>
-      <PendingVenueIdentityCorrectionDialog
-        visible
-        venueId={PREVIEW.venue_id}
-        onClose={() => undefined}
-        onSuccess={() => undefined}
-      />
-    </QueryClientProvider>
+    <SafeAreaProvider initialMetrics={WEB_METRICS}>
+      <QueryClientProvider client={new QueryClient()}>
+        <PendingVenueIdentityCorrectionDialog
+          visible
+          venueId={PREVIEW.venue_id}
+          onClose={() => undefined}
+          onSuccess={() => undefined}
+        />
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }
 

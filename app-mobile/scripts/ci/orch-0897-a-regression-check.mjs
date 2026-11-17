@@ -131,7 +131,8 @@ check(
   "T-A05 Composer floats: uses insets.bottom + spacing.lg for paddingBottom; top border dropped",
   groupChatPanel !== null &&
     /useSafeAreaInsets/.test(groupChatPanel) &&
-    /Math\.max\(insets\.bottom,\s*0\)\s*\+\s*spacing\.lg/.test(groupChatPanel) &&
+    // #4420 — spacing.lg (24) retired; space[6] is the same 24.
+    /Math\.max\(insets\.bottom,\s*0\)\s*\+\s*(?:spacing\.lg|space\[6\])/.test(groupChatPanel) &&
     !/borderTopWidth:\s*1[\s\S]{0,200}borderTopColor:\s*glass\.border\.profileBase[\s\S]{0,400}composer:/.test(groupChatPanel),
   "Composer must apply safe-area + breathing room and have NO top border (the 'backdrop' line per operator screenshot).",
 );

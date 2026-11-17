@@ -35,10 +35,15 @@ function alphaOf(color: string): number {
 }
 
 describe("ORCH-1207 Bug 1 — SheetWeb panel is effectively opaque on web", () => {
+  // [TEST-MOD-APPROVED #4420] the literal moved into designSystem.ts: the web
+  // bottom sheet paints the sheet material's SOLID fill. Same opacity contract.
   it("defines WEB_OPAQUE_BACKGROUND as an effectively-opaque color (alpha >= 0.97)", () => {
-    const m = SRC.match(/const\s+WEB_OPAQUE_BACKGROUND\s*=\s*["']([^"']+)["']/);
-    expect(m).not.toBeNull();
-    const alpha = alphaOf(m![1]);
+    expect(SRC).toMatch(/const\s+WEB_OPAQUE_BACKGROUND\s*=\s*materials\.sheet\.solidFill/);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { materials } = require("../../../constants/designSystem") as {
+      materials: { sheet: { solidFill: string } };
+    };
+    const alpha = alphaOf(materials.sheet.solidFill);
     expect(alpha).toBeGreaterThanOrEqual(0.97);
   });
 

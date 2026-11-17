@@ -69,6 +69,7 @@ describe("#3431 tickets-left pill with an unlimited tier", () => {
     expect(body).toMatch(
       /ticketsLeftSummaryLabel\(visibleTickets, hideRemainingCount\)/,
     );
-    expect(body).toMatch(/ticketsLeftLabel !== null \? \(\s*<Pill/);
+    // issue #4420 — the pill is now the last entry of the quiet tag line.
+    expect(body).toMatch(/ticketsLeftLabel !== null \? \[ticketsLeftLabel\] : \[\]/);
   });
 });

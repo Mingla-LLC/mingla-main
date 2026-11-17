@@ -79,6 +79,12 @@ export interface PhoneInputLabels {
 export interface PhoneInputTheme {
   /** Background color for the input container + picker modal surface. */
   backgroundPrimary?: string;
+  /**
+   * Issue #4420 — the input container's fill when it differs from the picker
+   * surface (e.g. a translucent field over an opaque picker). Omitted → the
+   * field uses `backgroundPrimary`.
+   */
+  fieldBackground?: string;
   /** Body text and selected dial-code color. */
   textPrimary?: string;
   /** Secondary / placeholder / icon color. */

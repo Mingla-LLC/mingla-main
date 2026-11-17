@@ -27,8 +27,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  scrim,
 } from "../../constants/designSystem";
 import { useManagedEventRoute } from "../../hooks/useManagedEventRoute";
 
@@ -86,7 +87,7 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
 
       <View style={styles.body}>
         <EmptyState
-          illustration={<Icon name="qr" size={48} color={textTokens.primary} />}
+          illustration={<Icon name="qr" size={48} color={color.text1} />}
           title="Scan RSVP invites in the app"
           description="Door scanning uses your phone camera in the Mingla Host app. Open the app on your phone to scan RSVP invite QR codes; manage the guest list here on the web."
         />
@@ -108,22 +109,22 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: color.mask,
   },
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
+    backgroundColor: scrim.modal,
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: "#ffffff",
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -132,14 +133,14 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingVertical: space[7],
     justifyContent: "center",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
   actions: {
     alignSelf: "stretch",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
 });

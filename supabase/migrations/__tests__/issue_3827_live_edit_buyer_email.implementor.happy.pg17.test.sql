@@ -1,5 +1,20 @@
 \set ON_ERROR_STOP on
 
+-- #4420 (20280724004420): while an event hides its address its stored theme keeps no
+-- street; the exact location lives in event_withheld_location. The assertions below
+-- read the host's view of the theme (the stored theme with that location merged).
+CREATE OR REPLACE FUNCTION pg_temp.i4420_host_theme(p_id uuid, p_theme jsonb)
+RETURNS jsonb LANGUAGE plpgsql AS $i4420$
+BEGIN
+  IF to_regprocedure('public.issue_4420_event_theme_full(uuid,jsonb)') IS NULL THEN
+    RETURN p_theme;
+  END IF;
+  EXECUTE 'SELECT public.issue_4420_event_theme_full($1, $2)' INTO p_theme USING p_id, p_theme;
+  RETURN p_theme;
+END
+$i4420$;
+
+
 -- Issue #3827 — implementor proof that a material change to a live listing is
 -- recorded on the server, that the server alone decides whether buyers are
 -- emailed, and that the feature ships switched off without silencing anything
@@ -69,6 +84,7 @@ BEGIN
         'date', to_char(now() + interval '12 days', 'YYYY-MM-DD'),
         'doorsOpen', '20:00', 'endsAt', '23:00')))), 1);
   SELECT * INTO v_row FROM public.events WHERE id = v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.status IS DISTINCT FROM 'scheduled'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Lantern Room'
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '61 Wythe Avenue, Brooklyn' THEN
@@ -172,6 +188,7 @@ BEGIN
       'clientRevision', 1))), NULL, NULL);
   PERFORM public.business_publish_rsvp_graph(v_event, gen_random_uuid());
   SELECT * INTO v_row FROM public.events WHERE id = v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.status IS NULL OR v_row.status NOT IN ('scheduled', 'live') THEN
     RAISE EXCEPTION 'fixture: the RSVP did not publish (status %)', v_row.status;
   END IF;

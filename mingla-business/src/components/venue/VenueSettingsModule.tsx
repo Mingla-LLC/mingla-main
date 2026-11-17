@@ -38,12 +38,11 @@ import { useRouter } from "expo-router";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useVenueListing } from "../../hooks/useVenueListings";
@@ -713,7 +712,7 @@ export const VenueSettingsModule = forwardRef<
           </Text>
         ) : hoursDraft === null ? (
           <View style={styles.hoursLoading}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.accent} />
           </View>
         ) : (
           <View
@@ -878,46 +877,46 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   saveBar: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-    backgroundColor: "rgba(12,14,18,.96)",
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[6],
+    backgroundColor: materials.pane.solidFill,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,.12)",
+    borderTopColor: color.lineStrong,
   },
   section: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   sectionTitle: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   bandCaption: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[2],
   },
   saveBtn: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   hoursLoading: {
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
     alignItems: "center",
   },
   hoursSaved: {
-    ...typography.bodySm,
-    color: semantic.success,
-    marginTop: spacing.sm,
+    ...type.small,
+    color: color.success,
+    marginTop: space[2],
   },
   hoursError: {
-    ...typography.bodySm,
-    color: semantic.error,
-    marginTop: spacing.sm,
+    ...type.small,
+    color: color.danger,
+    marginTop: space[2],
   },
   editorLocked: {
     opacity: 0.6,
@@ -926,108 +925,108 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   rowText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   rowTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   rowSub: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   feePreview: {
-    ...typography.bodySm,
-    color: semantic.success,
-    marginTop: spacing.xs,
+    ...type.small,
+    color: color.success,
+    marginTop: space[1],
   },
   amountBlock: {
-    marginTop: spacing.sm,
-    gap: spacing.xs,
+    marginTop: space[2],
+    gap: space[1],
   },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   amountWarn: {
-    ...typography.bodySm,
-    color: semantic.warning,
+    ...type.small,
+    color: color.warning,
   },
   discountControls: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   blockCard: {
-    marginTop: spacing.sm,
-    padding: spacing.md,
+    marginTop: space[2],
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: semantic.warningTint,
-    gap: spacing.sm,
+    backgroundColor: color.warningTint,
+    gap: space[2],
   },
   blockTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   blockBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   segment: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   segmentItem: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
     alignItems: "center",
   },
   segmentItemActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   segmentLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
   segmentLabelActive: {
-    color: "#0c0e12",
+    color: color.ink,
   },
   legend: {
-    marginTop: spacing.xs,
-    gap: spacing.xs,
+    marginTop: space[1],
+    gap: space[1],
   },
   legendRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   legendRole: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   legendPerms: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
     flex: 1,
     textAlign: "right",
   },
   inlineBtn: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     alignSelf: "flex-start",
   },
   readOnlyNote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     textAlign: "center",
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
 });
 

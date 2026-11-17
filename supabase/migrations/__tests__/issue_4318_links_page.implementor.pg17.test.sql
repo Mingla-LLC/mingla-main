@@ -213,7 +213,9 @@ BEGIN
   END IF;
 
   SELECT * INTO v_row FROM public.links_page_week() week WHERE week.item_slug = 'i4318-garden-walk';
-  IF v_row.place_label <> 'Issue 4318 Rose Garden' OR v_row.lat <> 35.78 OR v_row.lng <> -78.66 THEN
+  -- #4420: the walk's theme has no hideAddressUntilTicket, so its address is hidden
+  -- and the point is the one-decimal coarse point (35.78, -78.66 -> 35.8, -78.7).
+  IF v_row.place_label <> 'Issue 4318 Rose Garden' OR v_row.lat <> 35.8 OR v_row.lng <> -78.7 THEN
     RAISE EXCEPTION 'W: experience row wrong: %', to_jsonb(v_row);
   END IF;
   SELECT * INTO v_row FROM public.links_page_week() week WHERE week.item_slug = 'i4318-beach';

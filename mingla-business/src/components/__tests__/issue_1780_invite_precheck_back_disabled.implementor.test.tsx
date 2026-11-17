@@ -91,6 +91,7 @@ const mockInvite = {
   },
   refreshes: [] as Deferred[],
   summary: null as unknown,
+  reviewProps: null as Record<string, unknown> | null,
 };
 const settledIdle = { isPending: false, isFetching: false, isError: false };
 mockInvite.summary = {
@@ -232,7 +233,37 @@ jest.mock("../ui/Input", () => ({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("InputProbe", props),
 }));
-jest.mock("../ui/Stepper", () => ({ Stepper: (): null => null }));
+// [TEST-MOD-APPROVED #4420] — the Event wizard's footer is the shared
+// StepperFooter now; its probe renders the two buttons with the props the real
+// footer passes (Back's `disabled` is `backDisabled`), so the Back assertion
+// still reads the control the host presses.
+jest.mock("../ui/Stepper", () => ({
+  Stepper: (): null => null,
+  StepperFooter: (props: Record<string, unknown>) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createElement, Fragment } = require("react");
+    const id = props.testID as string | undefined;
+    return createElement(
+      Fragment,
+      null,
+      props.previousLabel !== undefined && props.onBack !== undefined
+        ? createElement("ButtonProbe", {
+            label: props.previousLabel,
+            onPress: props.onBack,
+            disabled: props.backDisabled === true,
+            testID: id !== undefined ? `${id}-back` : undefined,
+          })
+        : null,
+      createElement("ButtonProbe", {
+        label: props.continueLabel,
+        onPress: props.onContinue,
+        disabled: props.continueDisabled === true,
+        loading: props.continueLoading === true,
+        testID: props.continueTestID ?? (id !== undefined ? `${id}-continue` : undefined),
+      }),
+    );
+  },
+}));
 jest.mock("../ui/GlassCard", () => ({
   GlassCard: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -268,7 +299,11 @@ jest.mock("../invites/InvitePeopleStep", () => {
       return null;
     },
     InvitePeoplePublishConfirmation: (): null => null,
-    InvitePlanReviewSummary: (): null => null,
+    // #4420 — records what the Preview step tells the host about invites.
+    InvitePlanReviewSummary: (props: Record<string, unknown>): null => {
+      mockInvite.reviewProps = props;
+      return null;
+    },
     // #1780 [bundle budget] — the wizards read the saved selection through this
     // module now. The stand-in hands up the same summary the hook mock gave, so
     // every assertion in this file keeps its meaning.
@@ -460,6 +495,10 @@ const BOUNDARY: Record<string, () => unknown> = {
   lazySettingsSteps: () => ({ CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: leaf("RsvpStep5Setup") }),
   // issue #3827 going-box — the wizard's extras copy + error matcher (pure; real module).
   guestListPrivacy: () => jest.requireActual("../../constants/guestListPrivacy"),
+  // #4420 — the wizards' invite publish gate (pure; real module).
+  wizardInvitePublishGate: () => jest.requireActual("../invites/wizardInvitePublishGate"),
+  // #4420 — the unsaved-changes dialog copy and rules (pure; real module).
+  unsavedChangesGuard: () => jest.requireActual("../../utils/unsavedChangesGuard"),
   offeringTheme: () => ({
     normalizeThemeOverrides: (value: unknown) => value ?? null,
     patchOfferingTheme: asyncNoop,
@@ -609,7 +648,10 @@ const expectBackWaitsForPreCheck = async (
   expect(tree.root).toBeDefined();
 };
 
+const defaultSummary = mockInvite.summary;
 beforeEach(() => {
+  mockInvite.summary = defaultSummary;
+  mockInvite.reviewProps = null;
   mockInvite.refreshes.length = 0;
   mockRpc.mockReset();
   mockRpc.mockResolvedValue({ data: { event: { id: EVENT_ID } }, error: null });
@@ -646,9 +688,11 @@ describe("#1780 A1 — on-screen Back waits for the invite pre-check", () => {
       />,
     );
     await settle();
+    // [TEST-MOD-APPROVED #4420] — the phone footer's Back is named after the
+    // previous step (B7), so the probe finds it by its testID.
     await expectBackWaitsForPreCheck(
       tree,
-      () => buttons(tree, "Back")[0],
+      () => tree.root.findAll((node) => node.type === "ButtonProbe" && node.props.testID === "event-wizard-back")[0],
       () => buttons(tree, "Publish event")[0],
     );
   });
@@ -811,5 +855,96 @@ describe("#1780 A1 — on-screen Back waits for the invite pre-check", () => {
       return found[0];
     };
     await expectBackWaitsForPreCheck(tree, header, publish);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #4420 — the Preview step never dead-ends on the delivery estimate.
+//
+// PE-1 Event and RSVP: nobody invited and the estimate failed → Publish is
+//      enabled (it never needed the estimate).
+// PE-2 Event and RSVP: people invited and the estimate failed → Publish waits,
+//      and the Preview step is told to say why with Try again.
+// PE-3 Try again re-reads the plan and estimate.
+// PE-4 Event and RSVP: the saved list failed → Publish waits and says why.
+// FAILS-ON-REVERT: restore the wizards' inline `inviteSummaryReady` (which
+// required a quote for every enabled plan) and PE-1 goes red; drop the
+// `estimateFailed` prop and PE-2 goes red.
+// ---------------------------------------------------------------------------
+
+const failedEstimateSummary = (selectedCount: number): unknown => {
+  const ids = Array.from({ length: selectedCount }, (_, i) =>
+    `bbbbbbbb-bbbb-4bbb-8bbb-${String(i).padStart(12, "0")}`);
+  return {
+    plan: { ...settledIdle, data: { ...mockInvite.plan, selectedCount, brandPersonIds: ids } },
+    quote: { isPending: false, isFetching: false, isError: true, data: undefined },
+    refreshAuthoritative: (defaultSummary as { refreshAuthoritative: () => Promise<unknown> })
+      .refreshAuthoritative,
+  };
+};
+
+const PREVIEW_HOSTS = [
+  {
+    name: "Event",
+    publishLabel: "Publish event",
+    render: (): React.ReactElement => {
+      const EventCreatorWizard = loadCompiledCreator("event/EventCreatorWizard.tsx", "EventCreatorWizard");
+      return (
+        <EventCreatorWizard draft={seedDraft(false)} brand={null} isCreateMode={false} initialStep={7}
+          onExit={jest.fn()} onOpenPreview={jest.fn()} onOpenPaymentOnboarding={jest.fn()} />
+      );
+    },
+  },
+  {
+    name: "RSVP",
+    publishLabel: "Publish RSVP",
+    render: (): React.ReactElement => {
+      const RsvpCreatorWizard = loadCompiledCreator("rsvp/RsvpCreatorWizard.tsx", "RsvpCreatorWizard");
+      return (
+        <RsvpCreatorWizard draft={seedDraft(true)} brand={null} isCreateMode={false} initialStep={6}
+          onExit={jest.fn()} onOpenPreview={jest.fn()} />
+      );
+    },
+  },
+];
+
+describe("#4420 the Preview step never dead-ends on the delivery estimate", () => {
+  test.each(PREVIEW_HOSTS)("PE-1 $name: nobody invited, estimate failed → Publish enabled", async (host) => {
+    mockInvite.summary = failedEstimateSummary(0);
+    const tree = await mount(host.render());
+    await settle();
+    expect(buttons(tree, host.publishLabel)[0].props.disabled ?? false).toBe(false);
+    expect(mockInvite.reviewProps?.estimateFailed).toBe(false);
+  });
+
+  test.each(PREVIEW_HOSTS)("PE-2 $name: people invited, estimate failed → Publish waits and says why", async (host) => {
+    mockInvite.summary = failedEstimateSummary(2);
+    const tree = await mount(host.render());
+    await settle();
+    expect(buttons(tree, host.publishLabel)[0].props.disabled).toBe(true);
+    expect(mockInvite.reviewProps?.estimateFailed).toBe(true);
+    expect(typeof mockInvite.reviewProps?.onRetry).toBe("function");
+  });
+
+  test("PE-3 Try again re-reads the plan and estimate", async () => {
+    mockInvite.summary = failedEstimateSummary(2);
+    await mount(PREVIEW_HOSTS[0].render());
+    await settle();
+    await act(async () => {
+      (mockInvite.reviewProps?.onRetry as () => void)();
+    });
+    expect(mockInvite.refreshes).toHaveLength(1);
+  });
+
+  test.each(PREVIEW_HOSTS)("PE-4 $name: the saved list failed → Publish waits and says why", async (host) => {
+    mockInvite.summary = {
+      ...(failedEstimateSummary(0) as Record<string, unknown>),
+      plan: { isPending: false, isFetching: false, isError: true, data: undefined },
+      quote: { isPending: true, isFetching: false, isError: false, data: undefined },
+    };
+    const tree = await mount(host.render());
+    await settle();
+    expect(buttons(tree, host.publishLabel)[0].props.disabled).toBe(true);
+    expect(mockInvite.reviewProps?.listFailed).toBe(true);
   });
 });

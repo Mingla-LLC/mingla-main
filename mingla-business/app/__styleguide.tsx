@@ -55,18 +55,15 @@ import type { ToastKind } from "../src/components/ui/Toast";
 import { TopBar } from "../src/components/ui/TopBar";
 import { WebStatusBar } from "../src/components/ui/StatusBar";
 import {
-  accent,
-  blurIntensity,
-  canvas,
   durations,
   easings,
-  glass,
   radius,
-  semantic,
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  color as dsColor,
+  materials,
+  scrim,
+  shadow as dsShadow,
+  type,
 } from "../src/constants/designSystem";
 import { formatGbpRound } from "../src/utils/currency";
 
@@ -86,7 +83,7 @@ const Section: React.FC<SectionProps> = ({ title, subtitle, children }) => (
     {subtitle !== undefined ? (
       <Text style={sectionStyles.subtitle}>{subtitle}</Text>
     ) : null}
-    <GlassCard variant="base" padding={spacing.md} style={sectionStyles.card}>
+    <GlassCard variant="base" padding={space[4]} style={sectionStyles.card}>
       {children}
     </GlassCard>
   </View>
@@ -200,7 +197,7 @@ export default function StyleguideScreen(): React.ReactElement {
           accessibilityRole="button"
           accessibilityLabel="Back to Account"
         >
-          <Icon name="chevL" size={20} color={textTokens.primary} />
+          <Icon name="chevL" size={20} color={dsColor.text1} />
           <Text style={styles.backLabel}>Back</Text>
         </Pressable>
         <Text style={styles.pageTitle}>Styleguide</Text>
@@ -215,72 +212,72 @@ export default function StyleguideScreen(): React.ReactElement {
         <Section title="1. Tokens" subtitle="Colour swatches, shadows, spacing, radius">
           <Text style={sectionStyles.label}>Accent</Text>
           <View style={demoStyles.swatchRow}>
-            <Swatch label="warm" color={accent.warm} />
-            <Swatch label="tint" color={accent.tint} />
-            <Swatch label="border" color={accent.border} />
-            <Swatch label="glow" color={accent.glow} />
+            <Swatch label="warm" color={dsColor.accent} />
+            <Swatch label="tint" color={dsColor.accentLine} />
+            <Swatch label="border" color={dsColor.accentLine} />
+            <Swatch label="glow" color={dsColor.accentLine} />
           </View>
 
           <Text style={sectionStyles.label}>Canvas</Text>
           <View style={demoStyles.swatchRow}>
-            <Swatch label="discover" color={canvas.discover} />
-            <Swatch label="profile" color={canvas.profile} />
-            <Swatch label="depth" color={canvas.depth} />
+            <Swatch label="discover" color={dsColor.canvas} />
+            <Swatch label="profile" color={dsColor.canvas} />
+            <Swatch label="depth" color={dsColor.canvas} />
           </View>
 
           <Text style={sectionStyles.label}>Glass tint</Text>
           <View style={demoStyles.swatchRow}>
-            <Swatch label="badge.idle" color={glass.tint.badge.idle} />
-            <Swatch label="chrome.idle" color={glass.tint.chrome.idle} />
-            <Swatch label="backdrop" color={glass.tint.backdrop} />
-            <Swatch label="profile.base" color={glass.tint.profileBase} />
-            <Swatch label="profile.elev" color={glass.tint.profileElevated} />
+            <Swatch label="badge.idle" color={materials.onPhoto.solidFill} />
+            <Swatch label="chrome.idle" color={materials.chrome.glassFill} />
+            <Swatch label="backdrop" color={scrim.ambient.colors[0]} />
+            <Swatch label="profile.base" color={dsColor.fill.inset} />
+            <Swatch label="profile.elev" color={dsColor.fill.tile} />
           </View>
 
           <Text style={sectionStyles.label}>Glass border</Text>
           <View style={demoStyles.swatchRow}>
-            <Swatch label="badge" color={glass.border.badge} />
-            <Swatch label="chrome" color={glass.border.chrome} />
-            <Swatch label="profile.base" color={glass.border.profileBase} />
-            <Swatch label="profile.elev" color={glass.border.profileElevated} />
+            <Swatch label="badge" color={dsColor.lineStrong} />
+            <Swatch label="chrome" color={dsColor.lineStrong} />
+            <Swatch label="profile.base" color={dsColor.line} />
+            <Swatch label="profile.elev" color={dsColor.lineStrong} />
           </View>
 
           <Text style={sectionStyles.label}>Semantic</Text>
           <View style={demoStyles.swatchRow}>
-            <Swatch label="success" color={semantic.success} />
-            <Swatch label="warning" color={semantic.warning} />
-            <Swatch label="error" color={semantic.error} />
-            <Swatch label="info" color={semantic.info} />
+            <Swatch label="success" color={dsColor.success} />
+            <Swatch label="warning" color={dsColor.warning} />
+            <Swatch label="error" color={dsColor.danger} />
+            <Swatch label="info" color={dsColor.info} />
           </View>
 
           <Text style={sectionStyles.label}>Text</Text>
           <View style={demoStyles.swatchRow}>
-            <Swatch label="primary" color={textTokens.primary} />
-            <Swatch label="secondary" color={textTokens.secondary} />
-            <Swatch label="tertiary" color={textTokens.tertiary} />
-            <Swatch label="quaternary" color={textTokens.quaternary} />
+            <Swatch label="primary" color={dsColor.text1} />
+            <Swatch label="secondary" color={dsColor.text2} />
+            <Swatch label="tertiary" color={dsColor.text3} />
+            <Swatch label="quaternary" color={dsColor.text4} />
           </View>
 
           <Text style={sectionStyles.label}>Shadow specimens</Text>
           <View style={demoStyles.shadowRow}>
-            <ShadowSpecimen label="md" shadow={shadows.md} />
-            <ShadowSpecimen label="lg" shadow={shadows.lg} />
-            <ShadowSpecimen label="xl" shadow={shadows.xl} />
-            <ShadowSpecimen label="glassChrome" shadow={shadows.glassChrome} />
-            <ShadowSpecimen label="glassChromeActive" shadow={shadows.glassChromeActive} />
-            <ShadowSpecimen label="glassCardBase" shadow={shadows.glassCardBase} />
-            <ShadowSpecimen label="glassCardElevated" shadow={shadows.glassCardElevated} />
+            <ShadowSpecimen label="md" shadow={dsShadow.pane} />
+            <ShadowSpecimen label="lg" shadow={dsShadow.menu} />
+            <ShadowSpecimen label="xl" shadow={dsShadow.dialog} />
+            <ShadowSpecimen label="glassChrome" shadow={dsShadow.liquid} />
+            <ShadowSpecimen label="glassChromeActive" shadow={dsShadow.liquid} />
+            <ShadowSpecimen label="glassCardBase" shadow={dsShadow.pane} />
+            <ShadowSpecimen label="glassCardElevated" shadow={dsShadow.menu} />
           </View>
 
           <Text style={sectionStyles.label}>Spacing scale</Text>
           <View style={demoStyles.spacingRow}>
-            <SpacingBar label="xxs" value={spacing.xxs} />
-            <SpacingBar label="xs" value={spacing.xs} />
-            <SpacingBar label="sm" value={spacing.sm} />
-            <SpacingBar label="md" value={spacing.md} />
-            <SpacingBar label="lg" value={spacing.lg} />
-            <SpacingBar label="xl" value={spacing.xl} />
-            <SpacingBar label="xxl" value={spacing.xxl} />
+            <SpacingBar label="xxs" value={2} />
+            <SpacingBar label="xs" value={space[1]} />
+            <SpacingBar label="sm" value={space[2]} />
+            <SpacingBar label="md" value={space[4]} />
+            <SpacingBar label="lg" value={space[6]} />
+            <SpacingBar label="xl" value={space[7]} />
+            <SpacingBar label="xxl" value={space[9]} />
           </View>
 
           <Text style={sectionStyles.label}>Radius scale</Text>
@@ -297,14 +294,14 @@ export default function StyleguideScreen(): React.ReactElement {
             durations.fast = {durations.fast}ms · easings.press is the standard press curve.
           </Text>
           <Text style={sectionStyles.note}>
-            blurIntensity.chrome = {blurIntensity.chrome} · cardElevated = {blurIntensity.cardElevated} · modal = {blurIntensity.modal}
+            blurIntensity.chrome = {materials.chrome.blur.intensity} · cardElevated = {materials.pane.blur.intensity} · modal = {materials.sheet.blur.intensity}
           </Text>
         </Section>
 
         {/* ============== 2. TYPOGRAPHY ============== */}
-        <Section title="2. Typography" subtitle="14 type roles">
-          {(Object.keys(typography) as Array<keyof typeof typography>).map((key) => {
-            const t = typography[key];
+        <Section title="2. Typography" subtitle="16 type roles">
+          {(Object.keys(type) as Array<keyof typeof type>).map((key) => {
+            const t = type[key];
             return (
               <View key={key} style={demoStyles.typoRow}>
                 <Text style={sectionStyles.rowLabel}>{key}</Text>
@@ -314,7 +311,7 @@ export default function StyleguideScreen(): React.ReactElement {
                     lineHeight: t.lineHeight,
                     fontWeight: t.fontWeight,
                     letterSpacing: t.letterSpacing,
-                    color: textTokens.primary,
+                    color: dsColor.text1,
                   }}
                 >
                   Live event tonight
@@ -360,7 +357,7 @@ export default function StyleguideScreen(): React.ReactElement {
           <View style={demoStyles.iconGrid}>
             {ALL_ICON_NAMES.map((name) => (
               <View key={name} style={demoStyles.iconCell}>
-                <Icon name={name} size={22} color={textTokens.primary} />
+                <Icon name={name} size={22} color={dsColor.text1} />
                 <Text style={demoStyles.iconLabel}>{name}</Text>
               </View>
             ))}
@@ -501,13 +498,13 @@ export default function StyleguideScreen(): React.ReactElement {
           <Text style={sectionStyles.label}>GlassCard variants</Text>
           <View style={demoStyles.glassCardRow}>
             <View style={demoStyles.glassCardItem}>
-              <GlassCard variant="base" padding={spacing.md}>
+              <GlassCard variant="base" padding={space[4]}>
                 <Text style={demoStyles.glassCardTitle}>Base</Text>
                 <Text style={demoStyles.glassCardBody}>Default content card</Text>
               </GlassCard>
             </View>
             <View style={demoStyles.glassCardItem}>
-              <GlassCard variant="elevated" padding={spacing.md}>
+              <GlassCard variant="elevated" padding={space[4]}>
                 <Text style={demoStyles.glassCardTitle}>Elevated</Text>
                 <Text style={demoStyles.glassCardBody}>Lifted content card</Text>
               </GlassCard>
@@ -616,7 +613,7 @@ export default function StyleguideScreen(): React.ReactElement {
           <ErrorBoundary onReset={handleErrorReset}>
             <View style={demoStyles.errorBoundaryScope}>
               <ErrorTrigger shouldThrow={errorThrow} />
-              <View style={{ marginTop: spacing.sm }}>
+              <View style={{ marginTop: space[2] }}>
                 <Button
                   label="Throw inside ErrorBoundary"
                   onPress={() => setErrorThrow(true)}
@@ -719,7 +716,7 @@ export default function StyleguideScreen(): React.ReactElement {
           Drag the handle down past 80px to dismiss, or tap the scrim. Spring open
           uses (damping 22, stiffness 200, mass 1.0) per dispatch.
         </Text>
-        <View style={{ marginTop: spacing.md }}>
+        <View style={{ marginTop: space[4] }}>
           <Button label="Close" onPress={() => setSheetOpen(false)} variant="secondary" size="md" />
         </View>
       </Sheet>
@@ -729,7 +726,7 @@ export default function StyleguideScreen(): React.ReactElement {
         <Text style={demoStyles.sheetBody}>
           Tap the scrim or press Escape (web) to dismiss.
         </Text>
-        <View style={{ marginTop: spacing.md, flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" }}>
+        <View style={{ marginTop: space[4], flexDirection: "row", gap: space[2], justifyContent: "flex-end" }}>
           <Button label="Close" onPress={() => setModalOpen(false)} variant="primary" size="md" />
         </View>
       </Modal>
@@ -822,88 +819,88 @@ void easings; // referenced in token doc text — keep import live for IDE intel
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: dsColor.canvas,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   backButton: {
     flexDirection: "row",
     alignItems: "center",
     minWidth: 80,
-    gap: spacing.xs,
+    gap: space[1],
   },
   backLabel: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: dsColor.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
   },
   pageTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: dsColor.text1,
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xxl,
-    gap: spacing.lg,
+    paddingHorizontal: space[4],
+    paddingBottom: space[9],
+    gap: space[6],
   },
   footer: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingTop: space[6],
+    paddingBottom: space[6],
   },
 });
 
 const sectionStyles = StyleSheet.create({
   section: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: dsColor.text1,
   },
   subtitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.xs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: dsColor.text3,
+    marginBottom: space[1],
   },
   card: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   label: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: dsColor.text3,
     textTransform: "uppercase",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   note: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.quaternary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: dsColor.text4,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
     minHeight: 44,
   },
   rowLabel: {
     width: 120,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: dsColor.text3,
   },
   rowContent: {
     flex: 1,
@@ -915,7 +912,7 @@ const demoStyles = StyleSheet.create({
   swatchRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   swatch: {
     width: 88,
@@ -927,35 +924,35 @@ const demoStyles = StyleSheet.create({
     height: 32,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: dsColor.line,
   },
   swatchLabel: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    color: dsColor.text3,
     textAlign: "center",
   },
   shadowRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[4],
+    paddingVertical: space[2],
   },
   shadowItem: {
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   shadowBox: {
     width: 56,
     height: 56,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: dsColor.fill.tile,
     borderRadius: radius.md,
   },
   spacingRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
   spacingItem: {
     alignItems: "center",
@@ -963,13 +960,13 @@ const demoStyles = StyleSheet.create({
   },
   spacingBlock: {
     height: 24,
-    backgroundColor: accent.warm,
+    backgroundColor: dsColor.accent,
     borderRadius: 2,
   },
   radiusRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   radiusItem: {
     alignItems: "center",
@@ -978,56 +975,56 @@ const demoStyles = StyleSheet.create({
   radiusBox: {
     width: 56,
     height: 56,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: dsColor.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: dsColor.lineStrong,
   },
   typoRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
     minHeight: 32,
   },
   iconGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconCell: {
     width: 72,
     alignItems: "center",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
     gap: 4,
   },
   iconLabel: {
     fontSize: 10,
-    color: textTokens.quaternary,
+    color: dsColor.text4,
   },
   buttonGrid: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   pulseToggle: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   pulseToggleLabel: {
-    fontSize: typography.caption.fontSize,
-    color: accent.warm,
+    fontSize: type.caption.fontSize,
+    color: dsColor.accent,
   },
   pillRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconChromeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.md,
+    gap: space[4],
     alignItems: "center",
   },
   glassChromeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   glassChromeBox: {
     width: 140,
@@ -1036,14 +1033,14 @@ const demoStyles = StyleSheet.create({
     justifyContent: "center",
   },
   glassChromeLabel: {
-    color: textTokens.primary,
-    fontSize: typography.caption.fontSize,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    color: dsColor.text1,
+    fontSize: type.caption.fontSize,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
   },
   glassCardRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     flexWrap: "wrap",
   },
   glassCardItem: {
@@ -1051,20 +1048,20 @@ const demoStyles = StyleSheet.create({
     flexGrow: 1,
   },
   glassCardTitle: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: dsColor.text1,
   },
   glassCardBody: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
+    fontSize: type.small.fontSize,
+    color: dsColor.text2,
+    marginTop: 2,
   },
   eventCoverRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   eventCoverItem: {
     width: 110,
@@ -1072,7 +1069,7 @@ const demoStyles = StyleSheet.create({
   kpiRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   kpiItem: {
     flexBasis: 160,
@@ -1081,32 +1078,32 @@ const demoStyles = StyleSheet.create({
   toastTriggerRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   errorBoundaryScope: {
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
+    paddingVertical: space[2],
+    gap: space[1],
   },
   errorTriggerHint: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: dsColor.text2,
   },
   stepperWrap: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   chromeWrap: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   sheetTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: dsColor.text1,
   },
   sheetBody: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: dsColor.text2,
+    marginTop: space[2],
   },
 });

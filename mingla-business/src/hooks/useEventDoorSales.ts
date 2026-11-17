@@ -50,6 +50,9 @@ export function useRefundDoorSale(eventId: string | null) {
     onSuccess: () => {
       if (eventId !== null) {
         void queryClient.invalidateQueries({ queryKey: doorSaleKeys.byEvent(eventId) });
+        // A door sale is also an order: the Orders list and detail show its
+        // refunded amount and status, so they re-read too.
+        void queryClient.invalidateQueries({ queryKey: ["event-orders", eventId] });
       }
     },
   });

@@ -248,10 +248,10 @@ import { StyleSheet } from "react-native";
 import type { ViewStyle } from "react-native";
 
 import {
-  spacing,
   stayFieldNumMaxWidth,
   stayFieldNumMinWidth,
   stayProseMaxWidth,
+  space,
 } from "../../../constants/designSystem";
 import {
   CHIP_MAX_COUNT,
@@ -866,7 +866,7 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
     // With a zero basis the clamp floor is `minWidth`, so the real question is
     // whether TWO MINIMUMS plus the gap fit — and it must hold at 320 too, not
     // just 390, which is why `stayFieldNumMinWidth` came down to 112.
-    const gutters = spacing.md * 2 + spacing.md * 2;
+    const gutters = space[4] * 2 + space[4] * 2;
     const cases = [
       { phone: 390, available: 390 - gutters },
       { phone: 320, available: 320 - gutters },
@@ -874,8 +874,8 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
     expect(cases.map((c) => c.available)).toEqual([326, 256]);
 
     for (const { phone, available } of cases) {
-      const clampedLine = stayFieldNumMinWidth * 2 + spacing.md;
-      const shareEach = (available - spacing.md) / 2;
+      const clampedLine = stayFieldNumMinWidth * 2 + space[4];
+      const shareEach = (available - space[4]) / 2;
       expect({
         phone,
         fitsOneLine: clampedLine <= available,
@@ -889,15 +889,15 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
       });
     }
     // 155pt each at 390, 120pt at 320 — the claimed figures, derived not quoted.
-    expect(Math.floor((326 - spacing.md) / 2)).toBe(155);
-    expect(Math.floor((256 - spacing.md) / 2)).toBe(120);
+    expect(Math.floor((326 - space[4]) / 2)).toBe(155);
+    expect(Math.floor((256 - space[4]) / 2)).toBe(120);
 
     // REGRESSION TRIPWIRE. Re-introducing a desktop-width flex BASIS — the
     // shape that shipped and stacked both pairs on every phone — breaks the
     // line at both widths. Stated as arithmetic so the reason survives even if
     // someone only reads this line.
-    expect(stayFieldNumMaxWidth * 2 + spacing.md).toBeGreaterThan(326);
-    expect(stayFieldNumMaxWidth * 2 + spacing.md).toBeGreaterThan(256);
+    expect(stayFieldNumMaxWidth * 2 + space[4]).toBeGreaterThan(326);
+    expect(stayFieldNumMaxWidth * 2 + space[4]).toBeGreaterThan(256);
     await unmount(tree);
   });
 });

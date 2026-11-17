@@ -92,6 +92,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/** #4420 — the server could not send the host back to this web address. */
+const UNTRUSTED_WEB_ADDRESS_DETAILS: ReadonlySet<string> = new Set([
+  "return_url_invalid_scheme",
+  "business_web_origin_override_unrecognized",
+]);
+export const UNTRUSTED_WEB_ADDRESS_MESSAGE =
+  "Bank setup can't start from this web address. Open Mingla Host at host.usemingla.com and try again.";
+
 function formatFunctionErrorPayload(payload: unknown): string | null {
   if (!isRecord(payload)) return null;
   const error = typeof payload.error === "string" ? payload.error : null;
@@ -174,6 +182,17 @@ function mapFunctionErrorPayload(
     return new OrganiserEmailRequiredError("brand");
   }
   if (!isRecord(payload)) return null;
+  // #4420 — the return address is refused when the page's web address is not
+  // the Host web address this server is configured for (host.usemingla.com in
+  // production, a mingla-business Vercel preview, or BUSINESS_WEB_ORIGIN on a
+  // local stack). The raw code reached the "Add your bank" screen.
+  if (
+    payload.error === "validation_error" &&
+    typeof payload.detail === "string" &&
+    UNTRUSTED_WEB_ADDRESS_DETAILS.has(payload.detail)
+  ) {
+    return new Error(UNTRUSTED_WEB_ADDRESS_MESSAGE);
+  }
   const formatted = formatFunctionErrorPayload(payload);
   return formatted ? new Error(formatted) : null;
 }

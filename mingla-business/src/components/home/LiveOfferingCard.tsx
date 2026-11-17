@@ -23,12 +23,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { Trip } from "../../services/tripsService";
@@ -188,7 +186,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
         ]}
         testID="home-live-card-scan-button"
       >
-        <Icon name="qr" size={18} color={accent.warm} />
+        <Icon name="qr" size={18} color={color.text1} />
         <Text style={styles.scanButtonText}>{isRsvp ? "Scan guests" : "Scan QR codes"}</Text>
       </Pressable>
     </>
@@ -210,7 +208,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
   return (
     <GlassCard
       variant="elevated"
-      padding={spacing.lg}
+      padding={space[6]}
       style={width !== undefined ? { width } : undefined}
       testID={testID}
     >
@@ -229,54 +227,54 @@ const styles = StyleSheet.create({
   },
   liveTagRow: {
     flexDirection: "row",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   offeringName: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     marginBottom: 2,
   },
   offeringDate: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginBottom: 4,
   },
   amountRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   amountValue: {
     fontSize: 32,
     lineHeight: 36,
     fontWeight: "700",
     letterSpacing: -0.4,
-    color: textTokens.primary,
+    color: color.text1,
   },
   amountSuffix: {
     fontSize: 18,
     lineHeight: 22,
     fontWeight: "500",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   refreshStatus: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    marginBottom: space[2],
   },
   progressTrack: {
     height: 4,
     borderRadius: 999,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   progressFill: {
     height: "100%",
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     borderRadius: 999,
   },
   statRow: {
@@ -287,15 +285,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   statLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
   },
   // ORCH-1143 — contained, full-width warm-tinted primary action. Replaces the
@@ -305,24 +303,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    marginTop: spacing.lg,
+    gap: space[1],
+    marginTop: space[6],
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    paddingHorizontal: spacing.md,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[4],
   },
   scanButtonPressed: {
     opacity: 0.7,
   },
   scanButtonText: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-    color: accent.warm,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
+    letterSpacing: type.btnSm.letterSpacing,
+    color: color.text1,
   },
 });
 

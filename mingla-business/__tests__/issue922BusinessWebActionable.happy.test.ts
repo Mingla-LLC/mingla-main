@@ -97,9 +97,16 @@ describe("issue #922 dedicated invitation entry", () => {
     expect(output).not.toContain("Nothing is tracked until you accept");
     expect(output).toContain('key==="mingla_privacy_v2"');
     expect(output).toContain('window.addEventListener("mingla:privacy-saved",function(){protect(boot)})');
-    expect(button).toContain("const SIZE_HEIGHT: Record<ButtonSize, number> = { sm: 36, md: 44, lg: 52 }");
-    expect(tokens).toContain('warm: "#eb7825"');
-    expect(tokens).toContain('discover: "#0c0e12"');
+    // [TEST-MOD-APPROVED #4420] Button reads its web heights (36/44/52) from size.btn.
+    expect(button).toContain("lg: PHONE ? sizeTokens.btn.phone : sizeTokens.btn.lg,");
+    expect(tokens).toContain("btn: { sm: 36, md: 44, lg: 52,");
+    // [TEST-MOD-APPROVED #4420] Graphite Glass keeps the brand orange the static
+    // entry copies; the canvas moved #0c0e12 → #0f0f11 and (wave 6) the static
+    // entry paints the same Graphite canvas.
+    expect(tokens).toMatch(/orange:\s*\{\s*500:\s*"#eb7825"/);
+    expect(tokens).toContain('950: "#0f0f11"');
+    expect(output).toContain("background:#0f0f11");
+    expect(output).not.toContain("#0c0e12");
   });
 
   test.each([

@@ -1,7 +1,10 @@
 import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
-import { accent, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../constants/designSystem";
 import type { PublicUpcomingRow } from "../../services/publicEventsService";
 import { formatCurrencyRound } from "../../utils/currency";
 
@@ -63,23 +66,23 @@ const formatStartsAt = (iso: string): string => {
 
 const styles = StyleSheet.create({
   nextTeaser: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
+    marginTop: space[2],
+    marginBottom: space[4],
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
   },
   nextTeaserPressed: {
     opacity: 0.82,
   },
   nextTeaserLabel: {
-    color: accent.warm,
+    color: color.text1,
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 0,
@@ -87,12 +90,12 @@ const styles = StyleSheet.create({
   nextTeaserBody: {
     flex: 1,
     minWidth: 0,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 13,
     fontWeight: "700",
   },
   nextTeaserArrow: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 18,
     fontWeight: "800",
   },

@@ -26,11 +26,10 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import {
   commitExistingVenueDiscoveryRange,
@@ -855,7 +854,7 @@ export function VenueDeckReadinessSetup({
             value={website}
             onChangeText={setWebsite}
             placeholder="yourvenue.com"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             style={styles.input}
             autoCapitalize="none"
             keyboardType="url"
@@ -888,7 +887,7 @@ export function VenueDeckReadinessSetup({
                 value={priceMinInput}
                 onChangeText={setPriceMinInput}
                 placeholder="0"
-                placeholderTextColor={textTokens.tertiary}
+                placeholderTextColor={color.text3}
                 style={styles.input}
                 keyboardType="decimal-pad"
                 accessibilityLabel={`Typical spend from in ${
@@ -900,7 +899,7 @@ export function VenueDeckReadinessSetup({
                 value={priceMaxInput}
                 onChangeText={setPriceMaxInput}
                 placeholder="No upper limit"
-                placeholderTextColor={textTokens.tertiary}
+                placeholderTextColor={color.text3}
                 style={styles.input}
                 keyboardType="decimal-pad"
                 accessibilityLabel={`Typical spend up to in ${
@@ -1032,51 +1031,51 @@ export function VenueDeckReadinessSetup({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   chromeSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   scroll: {
     flex: 1,
   },
   deckHeader: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-    gap: spacing.xs,
+    paddingHorizontal: space[6],
+    paddingTop: space[7],
+    paddingBottom: space[4],
+    gap: space[1],
   },
   deckTitle: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   deckBody: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     lineHeight: 20,
   },
   deckContent: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   deckBlock: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   blockTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   blockBody: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     lineHeight: 20,
   },
   heroPreview: {
@@ -1085,20 +1084,20 @@ const styles = StyleSheet.create({
   },
   stagedRing: {
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.accent,
     borderRadius: 12,
   },
   stagedCaption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: accent.warm,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.accent,
+    marginTop: 2,
     fontWeight: "600",
   },
   galleryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   galleryTile: {
     width: 92,
@@ -1113,46 +1112,46 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
   galleryRemoveText: {
-    color: "#fff",
+    color: color.text1,
     fontSize: 16,
     lineHeight: 18,
     fontWeight: "700",
   },
   galleryCountOk: {
-    color: "#4ADE80",
+    color: color.successText,
     fontWeight: "700",
   },
   fieldLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginTop: spacing.xs,
+    color: color.text1,
+    marginTop: space[1],
   },
   fieldHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     lineHeight: 17,
   },
   facetRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 4,
   },
   facetQ: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
   },
   facetBtns: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   facetBtn: {
     minWidth: 52,
@@ -1160,78 +1159,78 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   facetBtnYes: {
-    borderColor: "rgba(74,222,128,0.7)",
-    backgroundColor: "rgba(74,222,128,0.16)",
+    borderColor: color.successTint,
+    backgroundColor: color.successTint,
   },
   facetBtnNo: {
-    borderColor: "rgba(248,113,113,0.6)",
-    backgroundColor: "rgba(248,113,113,0.14)",
+    borderColor: color.errorLine,
+    backgroundColor: color.errorTint,
   },
   facetBtnText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     fontWeight: "700",
   },
   input: {
     minHeight: 48,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
     borderRadius: 12,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: "rgba(0,0,0,0.18)",
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    backgroundColor: color.fill.input,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   chip: {
     minHeight: 36,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   chipActive: {
-    borderColor: "rgba(255,138,76,0.7)",
-    backgroundColor: "rgba(255,138,76,0.16)",
+    borderColor: color.accentLine,
+    backgroundColor: color.accentTint,
   },
   chipText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     textTransform: "capitalize",
   },
   chipTextActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
   },
   coachCard: {
-    gap: spacing.xs,
-    padding: spacing.sm,
+    gap: space[1],
+    padding: space[2],
     borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.16)",
+    backgroundColor: color.fill.inset,
   },
   coachTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   coachBody: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     lineHeight: 18,
   },
   submitErr: {
-    fontSize: typography.caption.fontSize,
-    color: "#F59E0B",
+    fontSize: type.caption.fontSize,
+    color: color.accentText,
   },
 });

@@ -171,6 +171,10 @@
       "readyBank": "{{country}}の銀行口座",
       "readyBankAny": "お住まいの国の銀行口座",
       "readyTax": "納税者番号（登記済みの会社のみ）"
+    },
+    "stepper": {
+      "saved": "保存済み",
+      "steps": "ステップ"
     }
   },
   "doorMode": {

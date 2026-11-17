@@ -350,6 +350,26 @@ describe("issue #874 Home integration real render", () => {
     expect(panel[0]?.props.upcomingItems).toEqual(mockUpcoming.items);
   });
 
+  // [TEST-MOD-APPROVED #4420] B5: phone has no top-bar "+" (Create is the
+  // centre BottomNav button); desktop web keeps exactly one.
+  it.each([
+    ["phone", false, 0],
+    ["desktop", true, 1],
+  ])("top-bar Create on %s", async (_label, wide, count) => {
+    mockIsWideDesktop = wide;
+    const screen = await render(<HomeTab />);
+    const bar = findNodes(
+      screen.root as unknown as TestNode,
+      (node) => node.type === "TopBar",
+    );
+    expect(bar).toHaveLength(1);
+    const slot = bar[0]?.props.extraRightSlot as
+      | React.ReactElement<{ testID?: string }>
+      | undefined;
+    expect(slot ? 1 : 0).toBe(count);
+    if (slot) expect(slot.props.testID).toBe("home-universal-creator-button");
+  });
+
   it("keeps the desktop top section and Recent on one compact rhythm", async () => {
     mockIsWideDesktop = true;
     const screen = await render(<HomeTab />);

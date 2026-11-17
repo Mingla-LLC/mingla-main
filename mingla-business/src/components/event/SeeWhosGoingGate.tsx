@@ -76,6 +76,7 @@ import {
 import { GateQr } from "./GateQr";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 
+import { color, scrim } from "../../constants/designSystem";
 export interface SeeWhosGoingGateProps {
   visible: boolean;
   onClose: () => void;
@@ -537,7 +538,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   scrim: {
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
   },
   // §3.1 phone panel.
   panel: {
@@ -654,7 +655,7 @@ const styles = StyleSheet.create({
   },
   qrCard: {
     alignSelf: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: color.paper,
     borderRadius: 22,
     padding: 20,
     marginTop: 24,

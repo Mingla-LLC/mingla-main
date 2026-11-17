@@ -34,13 +34,14 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  scrim,
+  size,
+  space,
+  type,
 } from "../../src/constants/designSystem";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useAuth } from "../../src/context/AuthContext";
 import {
   useCreatorAccount,
@@ -73,6 +74,7 @@ const NAME_MAX_LENGTH = 80;
 
 export default function EditProfileRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const { user } = useAuth();
   const { data: account, isLoading, isError, refetch } = useCreatorAccount();
@@ -282,12 +284,12 @@ export default function EditProfileRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <ChromeRow title="Edit profile" onBack={handleBack} />
         <View style={styles.loadingHost}>
-          <ActivityIndicator size="large" color={accent.warm} />
+          <ActivityIndicator size="large" color={color.text1} />
         </View>
       </View>
     );
@@ -298,7 +300,7 @@ export default function EditProfileRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <ChromeRow title="Edit profile" onBack={handleBack} />
@@ -333,7 +335,7 @@ export default function EditProfileRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <ChromeRow title="Edit profile" onBack={handleBack} />
@@ -341,12 +343,14 @@ export default function EditProfileRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
+        {/* #4420 — desktop: the form sits in one 560 pane (mockup). */}
+        <View style={isWideDesktop ? styles.formPaneDesktop : styles.formCol}>
         {/* Avatar section */}
         <View style={styles.avatarSection}>
           <Pressable
@@ -378,7 +382,7 @@ export default function EditProfileRoute(): React.ReactElement {
             )}
             {uploadingPhoto ? (
               <View style={styles.avatarOverlay}>
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={color.text1} />
               </View>
             ) : (
               <View style={styles.avatarEditBadge}>
@@ -394,7 +398,7 @@ export default function EditProfileRoute(): React.ReactElement {
           <TextInput
             style={styles.textInput}
             placeholder="Your name"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             value={name}
             onChangeText={setName}
             maxLength={NAME_MAX_LENGTH + 10}
@@ -426,29 +430,25 @@ export default function EditProfileRoute(): React.ReactElement {
           </Text>
         </View>
 
-        {/* Save CTA — only when the name has unsaved edits (avatar auto-saves on pick) */}
-        {nameDirty ? (
-          <View style={styles.saveRow}>
-            <Button
-              label={updating ? "Saving..." : "Save"}
-              onPress={handleSave}
-              variant="primary"
-              size="md"
-              fullWidth
-              disabled={updating || uploadingPhoto}
-            />
-          </View>
-        ) : null}
-
-        <View style={styles.deleteAccountRow}>
+        {/* #4420 — one action row: Delete account left, Save right. Save is
+            always shown and enabled only with unsaved name edits (the avatar
+            still auto-saves on pick). */}
+        <View style={styles.actionRow}>
           <Button
             label="Delete account"
             onPress={handleDeleteAccount}
             variant="destructive"
             size="md"
-            fullWidth
             leadingIcon="trash"
           />
+          <Button
+            label={updating ? "Saving..." : "Save"}
+            onPress={handleSave}
+            variant="primary"
+            size="md"
+            disabled={!nameDirty || updating || uploadingPhoto}
+          />
+        </View>
         </View>
       </ScrollView>
 
@@ -509,16 +509,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -529,9 +529,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    gap: spacing.lg,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
+    gap: space[6],
   },
   loadingHost: {
     flex: 1,
@@ -540,21 +540,21 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     flex: 1,
-    paddingTop: spacing.xl * 2,
+    paddingTop: space[7] * 2,
   },
 
   // Avatar -----------------------------------------------------------
   avatarSection: {
     alignItems: "center",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   avatarWrap: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 2,
-    borderColor: accent.border,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -572,12 +572,12 @@ const styles = StyleSheet.create({
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
   },
   avatarInitials: {
     fontSize: 36,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
     letterSpacing: -0.5,
   },
   avatarOverlay: {
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    backgroundColor: scrim.modal,
     paddingVertical: 6,
     alignItems: "center",
   },
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.8,
-    color: "#ffffff",
+    color: color.text1,
     textTransform: "uppercase",
   },
 
@@ -612,55 +612,66 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   fieldLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    color: textTokens.tertiary,
-    textTransform: "uppercase",
+    ...type.caption,
+    fontWeight: "600",
+    color: color.text2,
   },
   textInput: {
     fontSize: 15,
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileBase,
+    color: color.text1,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.md,
-    paddingHorizontal: spacing.md - 2,
-    paddingVertical: spacing.sm + 2,
-    minHeight: 44,
+    borderColor: color.line,
+    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    minHeight: size.input,
   },
   fieldHint: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   emailRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[2],
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.md,
-    paddingHorizontal: spacing.md - 2,
-    paddingVertical: spacing.sm + 2,
-    minHeight: 44,
+    borderColor: color.line,
+    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    minHeight: size.input,
   },
   emailValue: {
     flex: 1,
     fontSize: 15,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
-  // Save -------------------------------------------------------------
-  saveRow: {
-    marginTop: spacing.lg,
+  // Actions ----------------------------------------------------------
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: space[3],
+    marginTop: space[2],
   },
-  deleteAccountRow: {
-    marginTop: spacing.lg,
-    paddingTop: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+  formCol: {
+    gap: space[6],
+  },
+  formPaneDesktop: {
+    gap: space[6],
+    width: "100%",
+    maxWidth: size.modal,
+    alignSelf: "center",
+    padding: space[6],
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
   },
 
   // Toast ------------------------------------------------------------

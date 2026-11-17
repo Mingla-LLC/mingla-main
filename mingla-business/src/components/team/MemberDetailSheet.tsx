@@ -23,11 +23,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
 } from "../../constants/designSystem";
 import { roleDescription, roleDisplayName } from "../../utils/brandRoleCopy";
 import {
@@ -225,7 +223,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
           </View>
           {isPartnerRow ? (
             <View style={styles.partnerBadge}>
-              <Icon name="award" size={10} color={accent.warm} />
+              <Icon name="award" size={10} color={color.text1} />
               <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
             </View>
           ) : null}
@@ -391,19 +389,19 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingTop: space[4],
+    paddingBottom: space[7],
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   title: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
   email: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 2,
   },
   rolePillRow: {
@@ -413,20 +411,20 @@ const styles = StyleSheet.create({
     // role pill; DESIGN §2.4).
     flexWrap: "wrap",
     rowGap: 4,
-    marginTop: spacing.sm + 2,
+    marginTop: space[2] + 2,
   },
   rolePill: {
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: space[2] + 2,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.32)",
+    borderColor: color.lineStrong,
   },
   rolePillText: {
     fontSize: 12,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   // ORCH-1384 — "Mingla Partner" badge. Text is text.primary on accent.tint
   // (10.66:1/9.41:1 measured, DESIGN §4.3) — deliberately NOT the role pill's
@@ -435,59 +433,59 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
-    borderRadius: radiusTokens.full,
-    backgroundColor: accent.tint,
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
-    marginLeft: spacing.xs + 2,
+    borderColor: color.lineStrong,
+    marginLeft: space[1] + 2,
   },
   partnerBadgeText: {
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 0.2,
-    color: textTokens.primary,
+    color: color.text1,
   },
   statusText: {
     fontSize: 13,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    color: color.text3,
+    marginTop: space[2],
   },
   descriptionCard: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
+    marginTop: space[4],
+    padding: space[4],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   venueAccessBlock: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   descriptionLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: 6,
   },
   descriptionText: {
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     lineHeight: 20,
   },
   actions: {
-    paddingTop: spacing.lg,
+    paddingTop: space[6],
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
   gateCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 6,
     textAlign: "center",
   },

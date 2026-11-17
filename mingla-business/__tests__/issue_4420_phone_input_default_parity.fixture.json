@@ -1,0 +1,906 @@
+{
+ "idle": {
+  "type": "View",
+  "props": {
+   "ref": null
+  },
+  "children": [
+   {
+    "type": "Animated.View",
+    "props": {
+     "style": [
+      {
+       "flexDirection": "row",
+       "alignItems": "center",
+       "minHeight": 56,
+       "borderRadius": 12,
+       "borderWidth": 2,
+       "backgroundColor": "#ffffff",
+       "borderColor": "#d1d5db"
+      },
+      null,
+      {
+       "transform": [
+        {
+         "translateX": "[animated 0]"
+        }
+       ]
+      }
+     ],
+     "ref": null
+    },
+    "children": [
+     {
+      "type": "TouchableOpacity",
+      "props": {
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "paddingLeft": 16,
+        "paddingRight": 8,
+        "minHeight": 56
+       },
+       "onPress": "[fn]",
+       "activeOpacity": 0.6,
+       "disabled": false,
+       "accessibilityRole": "button",
+       "accessibilityLabel": "Country: United States",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": [
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 18,
+          "marginRight": 4
+         },
+         "ref": null
+        },
+        "children": [
+         "🇺🇸"
+        ]
+       },
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 14,
+          "lineHeight": 20,
+          "fontWeight": "500",
+          "marginRight": 4,
+          "color": "#111827"
+         },
+         "ref": null
+        },
+        "children": [
+         "+1"
+        ]
+       },
+       {
+        "type": "Icon",
+        "props": {
+         "name": "chevronDown",
+         "size": 16,
+         "color": "#6b7280"
+        },
+        "children": null
+       }
+      ]
+     },
+     {
+      "type": "View",
+      "props": {
+       "style": {
+        "width": 1,
+        "alignSelf": "center",
+        "height": 28,
+        "backgroundColor": "#e5e7eb"
+       },
+       "ref": null
+      },
+      "children": null
+     },
+     {
+      "type": "TextInput",
+      "props": {
+       "style": {
+        "flex": 1,
+        "minHeight": 56,
+        "paddingHorizontal": 16,
+        "fontSize": 16,
+        "lineHeight": 24,
+        "color": "#111827"
+       },
+       "value": "2025550123",
+       "onChangeText": "[fn]",
+       "keyboardType": "phone-pad",
+       "returnKeyType": "done",
+       "maxLength": 15,
+       "placeholder": "Phone number",
+       "placeholderTextColor": "#6b7280",
+       "editable": true,
+       "onFocus": "[fn]",
+       "onBlur": "[fn]",
+       "onSubmitEditing": "[fn]",
+       "blurOnSubmit": true,
+       "accessibilityLabel": "Phone number",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": null
+     }
+    ]
+   }
+  ]
+ },
+ "focused": {
+  "type": "View",
+  "props": {
+   "ref": null
+  },
+  "children": [
+   {
+    "type": "Animated.View",
+    "props": {
+     "style": [
+      {
+       "flexDirection": "row",
+       "alignItems": "center",
+       "minHeight": 56,
+       "borderRadius": 12,
+       "borderWidth": 2,
+       "backgroundColor": "#ffffff",
+       "borderColor": "#f97316"
+      },
+      {
+       "shadowColor": "#000",
+       "shadowOffset": {
+        "width": 0,
+        "height": 1
+       },
+       "shadowOpacity": 0.1,
+       "shadowRadius": 3,
+       "elevation": 2
+      },
+      {
+       "transform": [
+        {
+         "translateX": "[animated 0]"
+        }
+       ]
+      }
+     ],
+     "ref": null
+    },
+    "children": [
+     {
+      "type": "TouchableOpacity",
+      "props": {
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "paddingLeft": 16,
+        "paddingRight": 8,
+        "minHeight": 56
+       },
+       "onPress": "[fn]",
+       "activeOpacity": 0.6,
+       "disabled": false,
+       "accessibilityRole": "button",
+       "accessibilityLabel": "Country: United States",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": [
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 18,
+          "marginRight": 4
+         },
+         "ref": null
+        },
+        "children": [
+         "🇺🇸"
+        ]
+       },
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 14,
+          "lineHeight": 20,
+          "fontWeight": "500",
+          "marginRight": 4,
+          "color": "#111827"
+         },
+         "ref": null
+        },
+        "children": [
+         "+1"
+        ]
+       },
+       {
+        "type": "Icon",
+        "props": {
+         "name": "chevronDown",
+         "size": 16,
+         "color": "#6b7280"
+        },
+        "children": null
+       }
+      ]
+     },
+     {
+      "type": "View",
+      "props": {
+       "style": {
+        "width": 1,
+        "alignSelf": "center",
+        "height": 28,
+        "backgroundColor": "#e5e7eb"
+       },
+       "ref": null
+      },
+      "children": null
+     },
+     {
+      "type": "TextInput",
+      "props": {
+       "style": {
+        "flex": 1,
+        "minHeight": 56,
+        "paddingHorizontal": 16,
+        "fontSize": 16,
+        "lineHeight": 24,
+        "color": "#111827"
+       },
+       "value": "2025550123",
+       "onChangeText": "[fn]",
+       "keyboardType": "phone-pad",
+       "returnKeyType": "done",
+       "maxLength": 15,
+       "placeholder": "Phone number",
+       "placeholderTextColor": "#6b7280",
+       "editable": true,
+       "onFocus": "[fn]",
+       "onBlur": "[fn]",
+       "onSubmitEditing": "[fn]",
+       "blurOnSubmit": true,
+       "accessibilityLabel": "Phone number",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": null
+     }
+    ]
+   }
+  ]
+ },
+ "error": {
+  "type": "View",
+  "props": {
+   "ref": null
+  },
+  "children": [
+   {
+    "type": "Animated.View",
+    "props": {
+     "style": [
+      {
+       "flexDirection": "row",
+       "alignItems": "center",
+       "minHeight": 56,
+       "borderRadius": 12,
+       "borderWidth": 2,
+       "backgroundColor": "#ffffff",
+       "borderColor": "#ef4444"
+      },
+      null,
+      {
+       "transform": [
+        {
+         "translateX": "[animated 0]"
+        }
+       ]
+      }
+     ],
+     "ref": null
+    },
+    "children": [
+     {
+      "type": "TouchableOpacity",
+      "props": {
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "paddingLeft": 16,
+        "paddingRight": 8,
+        "minHeight": 56
+       },
+       "onPress": "[fn]",
+       "activeOpacity": 0.6,
+       "disabled": false,
+       "accessibilityRole": "button",
+       "accessibilityLabel": "Country: United States",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": [
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 18,
+          "marginRight": 4
+         },
+         "ref": null
+        },
+        "children": [
+         "🇺🇸"
+        ]
+       },
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 14,
+          "lineHeight": 20,
+          "fontWeight": "500",
+          "marginRight": 4,
+          "color": "#111827"
+         },
+         "ref": null
+        },
+        "children": [
+         "+1"
+        ]
+       },
+       {
+        "type": "Icon",
+        "props": {
+         "name": "chevronDown",
+         "size": 16,
+         "color": "#6b7280"
+        },
+        "children": null
+       }
+      ]
+     },
+     {
+      "type": "View",
+      "props": {
+       "style": {
+        "width": 1,
+        "alignSelf": "center",
+        "height": 28,
+        "backgroundColor": "#e5e7eb"
+       },
+       "ref": null
+      },
+      "children": null
+     },
+     {
+      "type": "TextInput",
+      "props": {
+       "style": {
+        "flex": 1,
+        "minHeight": 56,
+        "paddingHorizontal": 16,
+        "fontSize": 16,
+        "lineHeight": 24,
+        "color": "#111827"
+       },
+       "value": "2025550123",
+       "onChangeText": "[fn]",
+       "keyboardType": "phone-pad",
+       "returnKeyType": "done",
+       "maxLength": 15,
+       "placeholder": "Phone number",
+       "placeholderTextColor": "#6b7280",
+       "editable": true,
+       "onFocus": "[fn]",
+       "onBlur": "[fn]",
+       "onSubmitEditing": "[fn]",
+       "blurOnSubmit": true,
+       "accessibilityLabel": "Phone number",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": null
+     }
+    ]
+   },
+   {
+    "type": "Text",
+    "props": {
+     "style": {
+      "fontSize": 14,
+      "lineHeight": 20,
+      "marginTop": 4,
+      "paddingLeft": 4,
+      "color": "#ef4444"
+     },
+     "accessibilityRole": "alert",
+     "aria-live": "polite",
+     "ref": null
+    },
+    "children": [
+     "Enter a valid number"
+    ]
+   }
+  ]
+ },
+ "smartEntryRequired": {
+  "type": "View",
+  "props": {
+   "ref": null
+  },
+  "children": [
+   {
+    "type": "Animated.View",
+    "props": {
+     "style": [
+      {
+       "flexDirection": "row",
+       "alignItems": "center",
+       "minHeight": 56,
+       "borderRadius": 12,
+       "borderWidth": 2,
+       "backgroundColor": "#ffffff",
+       "borderColor": "#d1d5db"
+      },
+      null,
+      {
+       "transform": [
+        {
+         "translateX": "[animated 0]"
+        }
+       ]
+      }
+     ],
+     "ref": null
+    },
+    "children": [
+     {
+      "type": "TouchableOpacity",
+      "props": {
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "paddingLeft": 16,
+        "paddingRight": 8,
+        "minHeight": 56
+       },
+       "onPress": "[fn]",
+       "activeOpacity": 0.6,
+       "disabled": false,
+       "accessibilityRole": "button",
+       "accessibilityLabel": "Country: United States",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "testID": "explorer-phone-country",
+       "ref": {
+        "current": null
+       }
+      },
+      "children": [
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 18,
+          "marginRight": 4
+         },
+         "ref": null
+        },
+        "children": [
+         "🇺🇸"
+        ]
+       },
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 14,
+          "lineHeight": 20,
+          "fontWeight": "500",
+          "marginRight": 4,
+          "color": "#111827"
+         },
+         "ref": null
+        },
+        "children": [
+         "+1"
+        ]
+       },
+       {
+        "type": "Icon",
+        "props": {
+         "name": "chevronDown",
+         "size": 16,
+         "color": "#6b7280"
+        },
+        "children": null
+       }
+      ]
+     },
+     {
+      "type": "View",
+      "props": {
+       "style": {
+        "width": 1,
+        "alignSelf": "center",
+        "height": 28,
+        "backgroundColor": "#e5e7eb"
+       },
+       "ref": null
+      },
+      "children": null
+     },
+     {
+      "type": "TextInput",
+      "props": {
+       "style": {
+        "flex": 1,
+        "minHeight": 56,
+        "paddingHorizontal": 16,
+        "fontSize": 16,
+        "lineHeight": 24,
+        "color": "#111827"
+       },
+       "value": "2025550123",
+       "onChangeText": "[fn]",
+       "keyboardType": "phone-pad",
+       "returnKeyType": "done",
+       "maxLength": 32,
+       "textContentType": "telephoneNumber",
+       "autoComplete": "tel",
+       "placeholder": "Phone number",
+       "placeholderTextColor": "#6b7280",
+       "editable": true,
+       "onFocus": "[fn]",
+       "onBlur": "[fn]",
+       "onSubmitEditing": "[fn]",
+       "blurOnSubmit": true,
+       "accessibilityLabel": "Phone number, required",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "testID": "explorer-phone-input",
+       "ref": {
+        "current": null
+       }
+      },
+      "children": null
+     }
+    ]
+   }
+  ]
+ },
+ "explorerTheme": {
+  "type": "View",
+  "props": {
+   "ref": null
+  },
+  "children": [
+   {
+    "type": "Animated.View",
+    "props": {
+     "style": [
+      {
+       "flexDirection": "row",
+       "alignItems": "center",
+       "minHeight": 56,
+       "borderRadius": 12,
+       "borderWidth": 2,
+       "backgroundColor": "#ffffff",
+       "borderColor": "#e5e7eb"
+      },
+      null,
+      {
+       "transform": [
+        {
+         "translateX": "[animated 0]"
+        }
+       ]
+      }
+     ],
+     "ref": null
+    },
+    "children": [
+     {
+      "type": "TouchableOpacity",
+      "props": {
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "paddingLeft": 16,
+        "paddingRight": 8,
+        "minHeight": 56
+       },
+       "onPress": "[fn]",
+       "activeOpacity": 0.6,
+       "disabled": false,
+       "accessibilityRole": "button",
+       "accessibilityLabel": "Country: United States",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": [
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 18,
+          "marginRight": 4
+         },
+         "ref": null
+        },
+        "children": [
+         "🇺🇸"
+        ]
+       },
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 14,
+          "lineHeight": 20,
+          "fontWeight": "500",
+          "marginRight": 4,
+          "color": "#111827"
+         },
+         "ref": null
+        },
+        "children": [
+         "+1"
+        ]
+       },
+       {
+        "type": "Icon",
+        "props": {
+         "name": "chevronDown",
+         "size": 16,
+         "color": "#6b7280"
+        },
+        "children": null
+       }
+      ]
+     },
+     {
+      "type": "View",
+      "props": {
+       "style": {
+        "width": 1,
+        "alignSelf": "center",
+        "height": 28,
+        "backgroundColor": "#e5e7eb"
+       },
+       "ref": null
+      },
+      "children": null
+     },
+     {
+      "type": "TextInput",
+      "props": {
+       "style": {
+        "flex": 1,
+        "minHeight": 56,
+        "paddingHorizontal": 16,
+        "fontSize": 16,
+        "lineHeight": 24,
+        "color": "#111827"
+       },
+       "value": "2025550123",
+       "onChangeText": "[fn]",
+       "keyboardType": "phone-pad",
+       "returnKeyType": "done",
+       "maxLength": 15,
+       "placeholder": "Phone number",
+       "placeholderTextColor": "#6b7280",
+       "editable": true,
+       "onFocus": "[fn]",
+       "onBlur": "[fn]",
+       "onSubmitEditing": "[fn]",
+       "blurOnSubmit": true,
+       "accessibilityLabel": "Phone number",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": null
+     }
+    ]
+   }
+  ]
+ },
+ "explorerThemeFocused": {
+  "type": "View",
+  "props": {
+   "ref": null
+  },
+  "children": [
+   {
+    "type": "Animated.View",
+    "props": {
+     "style": [
+      {
+       "flexDirection": "row",
+       "alignItems": "center",
+       "minHeight": 56,
+       "borderRadius": 12,
+       "borderWidth": 2,
+       "backgroundColor": "#ffffff",
+       "borderColor": "#f97316"
+      },
+      {
+       "shadowColor": "#000",
+       "shadowOffset": {
+        "width": 0,
+        "height": 1
+       },
+       "shadowOpacity": 0.1,
+       "shadowRadius": 3,
+       "elevation": 2
+      },
+      {
+       "transform": [
+        {
+         "translateX": "[animated 0]"
+        }
+       ]
+      }
+     ],
+     "ref": null
+    },
+    "children": [
+     {
+      "type": "TouchableOpacity",
+      "props": {
+       "style": {
+        "flexDirection": "row",
+        "alignItems": "center",
+        "paddingLeft": 16,
+        "paddingRight": 8,
+        "minHeight": 56
+       },
+       "onPress": "[fn]",
+       "activeOpacity": 0.6,
+       "disabled": false,
+       "accessibilityRole": "button",
+       "accessibilityLabel": "Country: United States",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": [
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 18,
+          "marginRight": 4
+         },
+         "ref": null
+        },
+        "children": [
+         "🇺🇸"
+        ]
+       },
+       {
+        "type": "Text",
+        "props": {
+         "style": {
+          "fontSize": 14,
+          "lineHeight": 20,
+          "fontWeight": "500",
+          "marginRight": 4,
+          "color": "#111827"
+         },
+         "ref": null
+        },
+        "children": [
+         "+1"
+        ]
+       },
+       {
+        "type": "Icon",
+        "props": {
+         "name": "chevronDown",
+         "size": 16,
+         "color": "#6b7280"
+        },
+        "children": null
+       }
+      ]
+     },
+     {
+      "type": "View",
+      "props": {
+       "style": {
+        "width": 1,
+        "alignSelf": "center",
+        "height": 28,
+        "backgroundColor": "#e5e7eb"
+       },
+       "ref": null
+      },
+      "children": null
+     },
+     {
+      "type": "TextInput",
+      "props": {
+       "style": {
+        "flex": 1,
+        "minHeight": 56,
+        "paddingHorizontal": 16,
+        "fontSize": 16,
+        "lineHeight": 24,
+        "color": "#111827"
+       },
+       "value": "2025550123",
+       "onChangeText": "[fn]",
+       "keyboardType": "phone-pad",
+       "returnKeyType": "done",
+       "maxLength": 15,
+       "placeholder": "Phone number",
+       "placeholderTextColor": "#6b7280",
+       "editable": true,
+       "onFocus": "[fn]",
+       "onBlur": "[fn]",
+       "onSubmitEditing": "[fn]",
+       "blurOnSubmit": true,
+       "accessibilityLabel": "Phone number",
+       "accessibilityState": {
+        "disabled": false
+       },
+       "ref": {
+        "current": null
+       }
+      },
+      "children": null
+     }
+    ]
+   }
+  ]
+ }
+}

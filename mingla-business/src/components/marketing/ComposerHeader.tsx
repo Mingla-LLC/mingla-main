@@ -7,13 +7,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../ui/Icon";
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface ComposerHeaderProps {
@@ -50,7 +44,7 @@ export const ComposerHeader: React.FC<ComposerHeaderProps> = ({
         ]}
         hitSlop={8}
       >
-        <Icon name="arrowL" size={24} color={textTokens.primary} />
+        <Icon name="arrowL" size={24} color={color.text1} />
       </Pressable>
       <Text style={styles.title} numberOfLines={1}>{title}</Text>
       {/* F.9: Save-draft restored to header (canonical placement per
@@ -88,12 +82,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs, // F.9b even rhythm
+    paddingHorizontal: space[4],
+    paddingVertical: space[1], // F.9b even rhythm
     minHeight: 44,
-    gap: spacing.sm,
+    gap: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth, // F.9b: separator
-    borderBottomColor: "rgba(255, 255, 255, 0.06)",
+    borderBottomColor: color.line,
   },
   iconBtn: {
     width: 36, // F.8: was 44 (still hits 44pt total with hitSlop)
@@ -102,27 +96,27 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   iconBtnPressed: {
     opacity: 0.78,
   },
   desktopIconBtn: {
     backgroundColor: "transparent",
-    borderColor: "rgba(255, 255, 255, 0.14)",
+    borderColor: color.lineStrong,
   },
   title: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "600",
     flex: 1,
     textAlign: "center",
   },
   saveBtn: {
     minHeight: 44,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
@@ -137,11 +131,11 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   saveLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   saveLabelDisabled: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });

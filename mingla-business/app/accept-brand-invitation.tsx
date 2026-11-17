@@ -70,13 +70,7 @@ import { WrongAccountRecovery } from "../src/components/invite/WrongAccountRecov
 // left the accessibility tree with no gesture that recovered it.
 import { InviteScreenShell } from "../src/components/invite/InviteScreenShell";
 import { sanitizeNextRoute } from "../src/utils/nextRoute";
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../src/constants/designSystem";
+
 import { useAuth } from "../src/context/AuthContext";
 import { useAcceptBrandInvitation } from "../src/hooks/useBrandInvitations";
 import {
@@ -88,6 +82,7 @@ import {
   withInviteFunnelParam,
 } from "../src/utils/bankFirstPartnerInvite";
 
+import { color, space } from "../src/constants/designSystem";
 type Phase =
   | { kind: "loading" }
   | { kind: "success"; result: AcceptBrandInvitationResult }
@@ -334,7 +329,7 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
   // genuinely in flight.
   return (
     <InviteScreenShell>
-      <ActivityIndicator size="large" color={accent.warm} />
+      <ActivityIndicator size="large" color={color.text1} />
       <Text style={styles.copy}>
         {authStatus === "signed_in_ready"
           ? "Accepting your invitation…"
@@ -441,25 +436,25 @@ const styles = StyleSheet.create({
   // out of the accessibility tree. InviteScreenShell owns the layout host now,
   // and deleting this entry means the broken shape cannot be reintroduced by
   // copying it.
+  // #4420 — flat and centred (the mockup); on wide web the shell draws the
+  // one card around this and its action.
   card: {
     maxWidth: 480,
     width: "100%",
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.lg,
-    padding: spacing.xl,
-    gap: spacing.md,
+    alignItems: "center",
+    gap: space[3],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
+    textAlign: "center",
   },
   copy: {
     fontSize: 15,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 22,
+    textAlign: "center",
   },
 });

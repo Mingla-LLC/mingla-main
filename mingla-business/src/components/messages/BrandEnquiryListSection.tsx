@@ -10,13 +10,7 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import type { BrandEnquirySummary } from "../../services/brandEnquiriesService";
 import {
@@ -29,10 +23,10 @@ import {
 import { Button } from "../ui/Button";
 
 const PILL_COLORS: Record<BrandEnquiryPillTone, { background: string; color: string }> = {
-  new: { background: "#16304f", color: "#8ec1ff" },
-  waiting: { background: "#4a3410", color: "#ffc66b" },
-  replied: { background: "#173a2a", color: "#7fdcaa" },
-  resolved: { background: "#2c2c31", color: textTokens.tertiary },
+  new: { background: color.infoTint, color: color.infoText },
+  waiting: { background: color.warningTint, color: color.warningText },
+  replied: { background: color.successTint, color: color.successText },
+  resolved: { background: color.fill.tile, color: color.text3 },
 };
 
 export function BrandEnquiryStatusPill({ status }: { status: BrandEnquirySummary["status"] }): React.ReactElement {
@@ -144,20 +138,20 @@ export function BrandEnquiryListSection({
 }
 
 const styles = StyleSheet.create({
-  section: { gap: spacing.sm },
-  sectionTitle: { color: textTokens.tertiary, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7 },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 72, padding: spacing.md, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase },
+  section: { gap: space[2] },
+  sectionTitle: { color: color.text3, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7 },
+  row: { flexDirection: "row", alignItems: "center", gap: space[4], minHeight: 72, padding: space[4], borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, backgroundColor: color.fill.inset },
   rowPressed: { opacity: 0.72 },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.14)", borderWidth: 1, borderColor: "rgba(235,120,37,0.35)" },
-  avatarText: { color: accent.warm, fontSize: 15, fontWeight: "800" },
+  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile, borderWidth: 1, borderColor: color.lineStrong },
+  avatarText: { color: color.text1, fontSize: 15, fontWeight: "800" },
   rowCopy: { flex: 1, minWidth: 0, gap: 4 },
-  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  rowTitle: { flexShrink: 1, color: textTokens.primary, fontSize: 16, fontWeight: "700" },
-  preview: { color: textTokens.secondary, fontSize: 13 },
-  pill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, flexShrink: 0 },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  rowTitle: { flexShrink: 1, color: color.text1, fontSize: 16, fontWeight: "700" },
+  preview: { color: color.text2, fontSize: 13 },
+  pill: { borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 3, flexShrink: 0 },
   pillText: { fontSize: 11, fontWeight: "700" },
-  resolvedRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase },
-  resolvedText: { flex: 1, color: textTokens.secondary, fontSize: 14, fontWeight: "600" },
-  resolvedChevron: { color: textTokens.tertiary, fontSize: 16 },
-  errorRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase },
+  resolvedRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, backgroundColor: color.fill.inset },
+  resolvedText: { flex: 1, color: color.text2, fontSize: 14, fontWeight: "600" },
+  resolvedChevron: { color: color.text3, fontSize: 16 },
+  errorRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[4], padding: space[4], borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, backgroundColor: color.fill.inset },
 });

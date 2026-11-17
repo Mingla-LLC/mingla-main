@@ -36,13 +36,13 @@ jest.mock("react-native", () => {
     View: host("view"),
   };
 });
+// [TEST-MOD-APPROVED #4420] wave 6: the preview reads the Graphite names.
 jest.mock("../../../constants/designSystem", () => ({
-  accent: { warm: "#eb7825" },
-  glass: { border: { profileBase: "x" }, tint: { profileBase: "x" } },
+  color: { accent: "#eb7825", line: "x", text1: "white", text4: "grey", fill: { inset: "x" } },
   radius: { lg: 16, full: 999 },
-  spacing: { xs: 4, sm: 8, md: 16 },
-  text: { primary: "white", quaternary: "grey" },
-  typography: { caption: { fontSize: 12 } },
+  space: { 1: 4, 2: 8, 4: 16 },
+  type: { caption: { fontSize: 12 } },
+  scrim: { modal: "x" },
 }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 const buildStaticMapUrl = jest.fn(

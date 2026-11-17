@@ -15,7 +15,12 @@ import {
   View,
 } from "react-native";
 
-import { glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  scrim,
+  space,
+} from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import { MAX_SUPPORT_IMAGES, supportCopy, type SupportPickedImage } from "./supportRequestModel";
 
@@ -44,7 +49,7 @@ export const SupportImageStrip: React.FC<SupportImageStripProps> = ({
             hitSlop={8}
             style={styles.thumbRemove}
           >
-            <Icon name="close" size={12} color="#ffffff" />
+            <Icon name="close" size={12} color={color.text1} />
           </Pressable>
         ) : null}
       </View>
@@ -58,7 +63,7 @@ export const SupportImageStrip: React.FC<SupportImageStripProps> = ({
         accessibilityState={{ disabled }}
         style={({ pressed }) => [styles.addTile, pressed && styles.pressed, disabled && styles.disabled]}
       >
-        <Icon name="plus" size={20} color={textTokens.secondary} />
+        <Icon name="plus" size={20} color={color.text2} />
       </Pressable>
     ) : null}
   </View>
@@ -87,7 +92,7 @@ export const SupportImageViewer: React.FC<SupportImageViewerProps> = ({ url, onC
           style={styles.viewerClose}
           hitSlop={12}
         >
-          <Icon name="close" size={22} color="#ffffff" />
+          <Icon name="close" size={22} color={color.text1} />
         </Pressable>
         {url !== null && !failed ? (
           <Image
@@ -101,7 +106,7 @@ export const SupportImageViewer: React.FC<SupportImageViewerProps> = ({ url, onC
             }}
           />
         ) : null}
-        {loading && !failed ? <ActivityIndicator style={styles.viewerSpinner} color="#ffffff" /> : null}
+        {loading && !failed ? <ActivityIndicator style={styles.viewerSpinner} color={color.text1} /> : null}
         {failed ? <Text style={styles.viewerError}>{supportCopy("thread.image_failed")}</Text> : null}
       </View>
     </Modal>
@@ -114,14 +119,14 @@ const styles = StyleSheet.create({
   strip: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   thumb: {
     width: THUMB,
     height: THUMB,
-    borderRadius: radius.sm,
+    borderRadius: radius.xs,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   thumbImage: {
     width: "100%",
@@ -136,15 +141,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.65)",
+    backgroundColor: scrim.modal,
   },
   addTile: {
     width: THUMB,
     height: THUMB,
-    borderRadius: radius.sm,
+    borderRadius: radius.xs,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -152,7 +157,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   viewer: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.94)",
+    backgroundColor: color.canvas,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -166,7 +171,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: color.fill.step,
   },
   viewerImage: {
     width: "100%",
@@ -176,8 +181,8 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   viewerError: {
-    color: textTokens.primary,
-    paddingHorizontal: spacing.lg,
+    color: color.text1,
+    paddingHorizontal: space[6],
     textAlign: "center",
   },
 });

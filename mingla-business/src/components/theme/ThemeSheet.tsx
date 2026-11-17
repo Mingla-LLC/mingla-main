@@ -24,13 +24,7 @@ import {
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeAccentGradientLayer } from "../../../../packages/offering-rendering/ThemeAccentFill";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, color as dsColor, space } from "../../constants/designSystem";
 import { themeAxisIsInherited } from "../../services/offeringTheme";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -452,7 +446,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
 
 const TabLoading: React.FC = () => (
   <View style={styles.tabLoading} accessibilityLabel="Loading">
-    <ActivityIndicator color={textTokens.tertiary} />
+    <ActivityIndicator color={dsColor.text3} />
   </View>
 );
 
@@ -486,7 +480,7 @@ const MotionTile: React.FC<MotionTileProps> = ({ label, selected, onPress, still
     </Text>
     {selected ? (
       <View style={styles.motionCheck}>
-        <Icon name="check" size={16} color={accent.warm} />
+        <Icon name="check" size={16} color={dsColor.accent} />
       </View>
     ) : null}
   </Pressable>
@@ -496,13 +490,13 @@ const styles = StyleSheet.create({
   preview: {
     borderRadius: radius.lg,
     overflow: "hidden",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     justifyContent: "center",
     gap: 4,
   },
   previewOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2 },
-  previewRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  previewRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   previewText: { flex: 1, minWidth: 0, gap: 4 },
   previewCover: {
     width: 96,
@@ -528,32 +522,32 @@ const styles = StyleSheet.create({
   },
   previewCtaLabel: { color: "#ffffff", fontSize: 14, lineHeight: 20, fontWeight: "700" },
   replay: { height: 20, justifyContent: "center", alignSelf: "flex-start" },
-  replayLabel: { fontSize: 12, color: textTokens.tertiary, fontWeight: "600" },
+  replayLabel: { fontSize: 12, color: dsColor.text3, fontWeight: "600" },
   tabs: {
     height: 40,
     flexDirection: "row",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: dsColor.fill.inset,
     borderRadius: radius.full,
     padding: 3,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   tab: { flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
-  tabActive: { backgroundColor: glass.tint.profileElevated },
-  tabLabel: { fontSize: 13, fontWeight: "600", color: textTokens.tertiary },
-  tabLabelActive: { color: textTokens.primary },
+  tabActive: { backgroundColor: dsColor.fill.tile },
+  tabLabel: { fontSize: 13, fontWeight: "600", color: dsColor.text3 },
+  tabLabelActive: { color: dsColor.text1 },
   // MANDATORY flex:1 — see the header note (ORCH-1193).
   bodyScroll: { flex: 1 },
-  bodyContent: { paddingTop: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
-  tabBody: { gap: spacing.md },
+  bodyContent: { paddingTop: space[4], paddingBottom: space[4], gap: space[4] },
+  tabBody: { gap: space[4] },
   tabLoading: { minHeight: 88, alignItems: "center", justifyContent: "center" },
-  fallbackNote: { fontSize: 12, color: textTokens.tertiary, marginTop: 4 },
-  motionGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  motionGroup: { marginTop: spacing.md },
+  fallbackNote: { fontSize: 12, color: dsColor.text3, marginTop: 4 },
+  motionGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  motionGroup: { marginTop: space[4] },
   motionGroupLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: textTokens.tertiary,
-    marginBottom: spacing.xs,
+    color: dsColor.text3,
+    marginBottom: space[1],
   },
   motionTileArt: {
     ...StyleSheet.absoluteFillObject,
@@ -570,22 +564,22 @@ const styles = StyleSheet.create({
     width: 167,
     height: 88,
     borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: dsColor.fill.inset,
     borderWidth: 1.5,
     borderColor: "transparent",
-    padding: spacing.sm,
+    padding: space[2],
     justifyContent: "flex-end",
   },
-  motionTileSelected: { backgroundColor: accent.tint, borderColor: accent.border },
-  motionTileLabel: { fontSize: 13, fontWeight: "600", color: textTokens.primary },
-  motionCheck: { position: "absolute", top: spacing.sm, right: spacing.sm },
+  motionTileSelected: { backgroundColor: dsColor.accentLine, borderColor: dsColor.accentLine },
+  motionTileLabel: { fontSize: 13, fontWeight: "600", color: dsColor.text1 },
+  motionCheck: { position: "absolute", top: space[2], right: space[2] },
   footer: {
     height: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   resetBtn: { minHeight: 44, justifyContent: "center" },
-  resetLabel: { fontSize: 13, fontWeight: "600", color: textTokens.tertiary },
+  resetLabel: { fontSize: 13, fontWeight: "600", color: dsColor.text3 },
 });

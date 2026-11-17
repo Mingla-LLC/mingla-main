@@ -69,17 +69,20 @@ import {
 } from "../../utils/paidPublishGuards";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
+import {
+  hasUnsavedTripEdits,
+  shouldConfirmLeave,
+  UNSAVED_CHANGES_DIALOG,
+} from "../../utils/unsavedChangesGuard";
 // issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
 // LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
 // route chunks (Event, Trip and Experience management), so a static import
@@ -98,7 +101,8 @@ import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 
-import { ChangeSummaryModal } from "../event/ChangeSummaryModal";
+// #4420 — lazy: the sheet is mounted hidden and opens on intent.
+import { ChangeSummaryModal } from "../event/LazyChangeSummaryModal";
 import { EditAfterPublishTripBanner } from "./EditAfterPublishTripBanner";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — new accordion section body.
 import { EditPublishedTripIntakeAccordion } from "./EditPublishedTripIntakeAccordion";
@@ -785,6 +789,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     [trip],
   );
   const [editState, setEditState] = useState<LocalTripEditState>(initialState);
+  // #4420 — the state the editor was last seeded with (see the close guard).
+  const seededEditStateRef = useRef<LocalTripEditState>(initialState);
 
   // Issue #3291 — rank-only proximity for both address fields. A published
   // trip already holds its own departure + destination points (publish
@@ -844,11 +850,15 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   const prevTripIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevTripIdRef.current !== trip.id) {
-      setEditState(tripToLocalEditState(trip));
+      const reseeded = tripToLocalEditState(trip);
+      seededEditStateRef.current = reseeded;
+      setEditState(reseeded);
       prevTripIdRef.current = trip.id;
     }
   }, [trip]);
 
+  // #4420: the Eligible buyers section card's own open state (web only).
+  const [buyersOpen, setBuyersOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<SectionKey | null>("basics");
 
   // ORCH-1118 — reveal the inline "pick from suggestions" error on a
@@ -1629,7 +1639,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   }, [submitting]);
 
   // ---- Back/close ----
-  const handleBack = useCallback((): void => {
+  const leaveEdit = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
     } else {
@@ -1637,6 +1647,27 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       router.replace(`/trip/${trip.id}` as never);
     }
   }, [router, trip.id]);
+
+  // #4420 — a published trip edit is not saved until Save, so closing with
+  // pending changes asks first (close control, Android back, web reload).
+  const [discardOpen, setDiscardOpen] = useState<boolean>(false);
+  // Both: the host changed something since the seed AND it would be saved.
+  const editedSinceSeed = useMemo(
+    () => JSON.stringify(editState) !== JSON.stringify(seededEditStateRef.current),
+    [editState],
+  );
+  const hasUnsavedEdits = shouldConfirmLeave({
+    dirty: editedSinceSeed && hasUnsavedTripEdits(computed),
+    busy: submitting,
+  });
+  const handleBack = useCallback((): void => {
+    if (hasUnsavedEdits) {
+      setDiscardOpen(true);
+      return;
+    }
+    leaveEdit();
+  }, [hasUnsavedEdits, leaveEdit]);
+  useUnsavedChangesGuard({ dirty: hasUnsavedEdits, onRequestLeave: handleBack });
 
   // ---- Section body renderer ----
   const renderSectionBody = useCallback(
@@ -1651,7 +1682,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   value={editState.title}
                   onChangeText={(v) => updateBasics({ title: v })}
                   placeholder="Trip title"
-                  placeholderTextColor={textTokens.tertiary}
+                  placeholderTextColor={color.text3}
                   style={styles.textInput}
                   accessibilityLabel="Trip title"
                   testID="edit-trip-title"
@@ -1667,7 +1698,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     })
                   }
                   placeholder="Optional — what makes this trip special"
-                  placeholderTextColor={textTokens.tertiary}
+                  placeholderTextColor={color.text3}
                   style={[styles.textInput, styles.textArea]}
                   multiline
                   numberOfLines={4}
@@ -1924,7 +1955,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       });
                     }}
                     placeholder="12"
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     keyboardType="number-pad"
                     style={styles.textInput}
                     accessibilityLabel="Trip capacity"
@@ -2175,7 +2206,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -2230,7 +2261,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 <Icon
                   name={isOpen ? "chevU" : "chevD"}
                   size={16}
-                  color={textTokens.tertiary}
+                  color={color.text3}
                 />
               </Pressable>
               {isOpen ? (
@@ -2247,10 +2278,35 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             owner; no per-offering-type policy logic). Web-only by filename
             resolution: the .native.tsx sibling is a typed null renderer. */}
         {Platform.OS === "web" ? (
+          // #4420: the same collapsible section card as the sections above
+          // (it read as a raw form under them).
           <View style={styles.sectionCard}>
-            <React.Suspense fallback={null}>
-              <EventTicketCheckoutAccessCard eventId={trip.id} />
-            </React.Suspense>
+            <Pressable
+              onPress={() => setBuyersOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityLabel={`Eligible buyers section${buyersOpen ? " (expanded)" : " (collapsed)"}`}
+              style={({ pressed }) => [
+                styles.sectionHeader,
+                pressed && styles.sectionHeaderPressed,
+              ]}
+              testID="eligible-buyers-section-header"
+            >
+              <View style={styles.sectionHeaderLeft}>
+                <Text style={styles.sectionLabel}>Eligible buyers</Text>
+              </View>
+              <Icon
+                name={buyersOpen ? "chevU" : "chevD"}
+                size={16}
+                color={color.text3}
+              />
+            </Pressable>
+            {buyersOpen ? (
+              <View style={styles.sectionBody}>
+                <React.Suspense fallback={null}>
+                  <EventTicketCheckoutAccessCard eventId={trip.id} embedded />
+                </React.Suspense>
+              </View>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>
@@ -2260,7 +2316,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         <View
           style={[
             styles.dock,
-            { paddingBottom: insets.bottom + spacing.md },
+            { paddingBottom: insets.bottom + space[4] },
           ]}
         >
           <Button
@@ -2307,6 +2363,23 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         variant="simple"
       />
 
+      {/* #4420 — unsaved changes on close */}
+      <ConfirmDialog
+        visible={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={() => {
+          setDiscardOpen(false);
+          leaveEdit();
+        }}
+        title={UNSAVED_CHANGES_DIALOG.title}
+        description={UNSAVED_CHANGES_DIALOG.description}
+        confirmLabel={UNSAVED_CHANGES_DIALOG.confirmLabel}
+        cancelLabel={UNSAVED_CHANGES_DIALOG.cancelLabel}
+        variant="simple"
+        destructive
+        testID="edit-published-trip-discard-dialog"
+      />
+
       {/* Toast */}
       <Toast
         visible={toast.visible}
@@ -2325,16 +2398,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -2345,93 +2418,93 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md + 8,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4] + 8,
+    paddingTop: space[4],
   },
   sectionCard: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     minHeight: 56,
   },
   sectionHeaderPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   sectionHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     flex: 1,
   },
   sectionLabel: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   editedBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: radiusTokens.full,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   editedBadgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.accent,
     letterSpacing: 1.0,
     textTransform: "uppercase",
   },
   sectionBody: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingTop: 0,
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   basicsFields: {
-    gap: spacing.md,
-    paddingTop: spacing.sm,
+    gap: space[4],
+    paddingTop: space[2],
   },
   fieldGroup: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   capacityReadOnly: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
   editAddressHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.warning,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.warning,
   },
   textInput: {
     height: 48,
     paddingHorizontal: 14,
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    borderColor: color.lineStrong,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   textArea: {
     height: 100,
@@ -2440,8 +2513,8 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   coverWrap: {
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+    paddingTop: space[2],
+    gap: space[2],
   },
   coverPreviewWrap: {
     borderRadius: 12,
@@ -2452,7 +2525,7 @@ const styles = StyleSheet.create({
   // room so planner immediately sees what their buyers will see.
   plannerPlanPreviewWrap: {
     width: "100%",
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
   // ORCH-1120 — settingsWrap/settingsHint/settingsField/settingsLabel/
   // settingsValue deleted: the read-only Settings snapshot + dead-end hint is
@@ -2462,11 +2535,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.pane.solidFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
 });
 

@@ -30,13 +30,7 @@ import { useRouter } from "expo-router";
 import { Sheet } from "./Sheet";
 import { Input } from "./Input";
 import { Icon } from "./Icon";
-import {
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type as dsType } from "../../constants/designSystem";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import { useGlobalSearchSheet } from "../../hooks/useGlobalSearchSheet";
 import { useGlobalSearchIndex } from "../../hooks/useGlobalSearchIndex";
@@ -82,12 +76,12 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, onPress }) => {
         styles.row,
         {
           minHeight: offering ? ROW_MIN_HEIGHT_OFFERING : ROW_MIN_HEIGHT_REGISTRY,
-          backgroundColor: pressed ? glass.tint.profileBase : "transparent",
+          backgroundColor: pressed ? color.fill.inset : "transparent",
         },
       ]}
     >
       <View style={styles.rowIcon}>
-        <Icon name={result.iconName} size={20} color={textTokens.secondary} />
+        <Icon name={result.iconName} size={20} color={color.text2} />
       </View>
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1}>
@@ -99,7 +93,7 @@ const ResultRow: React.FC<ResultRowProps> = ({ result, onPress }) => {
           </Text>
         ) : null}
       </View>
-      <Icon name="chevR" size={18} color={textTokens.quaternary} />
+      <Icon name="chevR" size={18} color={color.text4} />
     </Pressable>
   );
 };
@@ -227,7 +221,7 @@ export const GlobalSearchSheet: React.FC = () => {
                         {
                           minHeight: ROW_MIN_HEIGHT_REGISTRY,
                           backgroundColor: pressed
-                            ? glass.tint.profileBase
+                            ? color.fill.inset
                             : "transparent",
                         },
                       ]}
@@ -236,7 +230,7 @@ export const GlobalSearchSheet: React.FC = () => {
                         <Icon
                           name="search"
                           size={20}
-                          color={textTokens.secondary}
+                          color={color.text2}
                         />
                       </View>
                       <View style={styles.rowText}>
@@ -330,7 +324,7 @@ export const GlobalSearchSheet: React.FC = () => {
 
           {body.kind === "error" ? (
             <View style={styles.errorRow}>
-              <Icon name="flag" size={20} color={semantic.error} />
+              <Icon name="flag" size={20} color={color.danger} />
               <Text style={styles.errorText}>
                 Something went wrong searching. Try again.
               </Text>
@@ -345,90 +339,90 @@ export const GlobalSearchSheet: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
     // Edge gutter so the search input, group headings ("JUMP TO") and rows
     // are not flush to the sheet edge (META-ORCH-1073 Sub-A2 QA). Matches the
     // standard sheet content inset used across mingla-business UI.
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   divider: {
     height: 1,
-    backgroundColor: glass.border.profileBase,
-    marginTop: spacing.sm,
+    backgroundColor: color.line,
+    marginTop: space[2],
   },
   list: {
     flex: 1,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   group: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   groupHeading: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: dsType.label.fontSize,
+    lineHeight: dsType.label.lineHeight,
+    fontWeight: dsType.label.fontWeight,
+    letterSpacing: dsType.label.letterSpacing,
+    color: color.text3,
     textTransform: "uppercase",
-    paddingTop: spacing.sm + spacing.xs,
-    paddingBottom: spacing.xs,
+    paddingTop: space[2] + space[1],
+    paddingBottom: space[1],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   rowIcon: {
     width: 20,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: spacing.md,
+    marginRight: space[4],
   },
   rowText: {
     flex: 1,
-    paddingRight: spacing.sm,
+    paddingRight: space[2],
   },
   rowTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: typography.body.fontWeight,
-    color: textTokens.primary,
+    fontSize: dsType.body.fontSize,
+    lineHeight: dsType.body.lineHeight,
+    fontWeight: dsType.body.fontWeight,
+    color: color.text1,
   },
   rowSubtitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.tertiary,
+    fontSize: dsType.small.fontSize,
+    lineHeight: dsType.small.lineHeight,
+    fontWeight: dsType.small.fontWeight,
+    color: color.text3,
   },
   muted: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.tertiary,
-    paddingVertical: spacing.xs,
+    fontSize: dsType.small.fontSize,
+    lineHeight: dsType.small.lineHeight,
+    fontWeight: dsType.small.fontWeight,
+    color: color.text3,
+    paddingVertical: space[1],
   },
   zeroHeadline: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: typography.body.fontWeight,
-    color: textTokens.primary,
-    paddingTop: spacing.sm,
+    fontSize: dsType.body.fontSize,
+    lineHeight: dsType.body.lineHeight,
+    fontWeight: dsType.body.fontWeight,
+    color: color.text1,
+    paddingTop: space[2],
   },
   zeroSuggestHeading: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.md,
+    paddingVertical: space[4],
   },
   errorText: {
     flex: 1,
-    marginLeft: spacing.sm,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: typography.body.fontWeight,
-    color: textTokens.primary,
+    marginLeft: space[2],
+    fontSize: dsType.body.fontSize,
+    lineHeight: dsType.body.lineHeight,
+    fontWeight: dsType.body.fontWeight,
+    color: color.text1,
   },
 });
 

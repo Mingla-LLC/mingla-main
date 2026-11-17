@@ -1,12 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import {
-  accent,
-  semantic,
-  spacing,
-  text,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { postHogService } from "../../services/postHogService";
 import { formatRelativeTime } from "../../utils/relativeTime";
 import { formatTurnoutCount } from "../../utils/turnoutDisplayCopy";
@@ -98,7 +92,7 @@ export const TurnoutGateSection: React.FC = () => {
       style={styles.card}
     >
       <View style={styles.header}>
-        <Icon name="sparkle" size={20} color={accent.warm} />
+        <Icon name="sparkle" size={20} color={color.accent} />
         <Text style={styles.eyebrow}>BEFORE YOU PUBLISH</Text>
       </View>
       {blocked !== null ? (
@@ -226,19 +220,19 @@ export const TurnoutGateSection: React.FC = () => {
   );
 };
 const styles = StyleSheet.create({
-  card: { marginBottom: spacing.md },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  eyebrow: { ...typography.labelCap, color: text.secondary },
-  stack: { gap: spacing.sm },
-  reco: { gap: spacing.xs },
-  truthRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  bandRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  band: { ...typography.h2, color: text.primary, flex: 1 },
-  modePill: { ...typography.micro, color: text.secondary },
-  severity: { ...typography.caption, fontWeight: "700" },
-  warning: { color: semantic.warning },
-  info: { color: semantic.info },
-  body: { ...typography.bodySm, color: text.primary },
-  note: { ...typography.caption, color: text.tertiary },
+  card: { marginBottom: space[4] },
+  header: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  eyebrow: { ...type.label, color: color.text2 },
+  stack: { gap: space[2] },
+  reco: { gap: space[1] },
+  truthRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  bandRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  band: { ...type.h1, color: color.text1, flex: 1 },
+  modePill: { ...type.label, color: color.text2 },
+  severity: { ...type.caption, fontWeight: "700" },
+  warning: { color: color.warning },
+  info: { color: color.info },
+  body: { ...type.small, color: color.text1 },
+  note: { ...type.caption, color: color.text3 },
 });
 export default TurnoutGateSection;

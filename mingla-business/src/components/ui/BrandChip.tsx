@@ -11,18 +11,17 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 // issue #3345 — loading vs absent. Store selectors only (no new query mounts).
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { isCurrentBrandPending } from "../../utils/currentBrandPending";
 
-import { BrandMark, brandMarkPhotoUrl } from "../brand/BrandMark";
+import { BrandMark } from "../brand/BrandMark";
 import { Icon } from "./Icon";
 
 export const BRAND_LABEL_MAX_CHARS = 18;
@@ -71,7 +70,7 @@ export const BrandChip: React.FC<BrandChipProps> = ({
         testID="topbar-brand-loading"
       >
         <View style={styles.brandLabelPlaceholder} />
-        <Icon name="chevD" size={16} color={textTokens.tertiary} />
+        <Icon name="chevD" size={16} color={color.text3} />
       </Pressable>
     );
   }
@@ -93,10 +92,10 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       style={fullNameLabel ? [styles.brandRow, styles.brandRowShrink] : styles.brandRow}
       testID={testID}
     >
-      {/* #3355 bug 17 — the brand's uploaded logo beside its name. The
-          chip never showed a mark, so a brand without a logo keeps the
-          name-only chip. */}
-      {currentBrand !== null && brandMarkPhotoUrl(currentBrand) !== null ? (
+      {/* #3355 bug 17 — the brand's uploaded logo beside its name.
+          #4420: a brand without a logo shows its initial on the surface
+          fill (BrandMark's fallback), the same mark the switcher uses. */}
+      {currentBrand !== null ? (
         <BrandMark
           brand={currentBrand}
           size={BRAND_MARK_SIZE}
@@ -109,7 +108,7 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       >
         {label}
       </Text>
-      <Icon name="chevD" size={16} color={textTokens.tertiary} />
+      <Icon name="chevD" size={16} color={color.text3} />
     </Pressable>
   );
 };
@@ -118,7 +117,7 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     minWidth: 0,
   },
   brandRowShrink: {
@@ -128,9 +127,9 @@ const styles = StyleSheet.create({
   // #4255 W5 — four icons on a 320pt phone: the brand name truncates.
   brandLabel: {
     flexShrink: 1,
-    color: textTokens.primary,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    color: color.text1,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "600",
   },
   brandLabelShrink: {
@@ -140,11 +139,11 @@ const styles = StyleSheet.create({
   // glass tint as Home's Recent skeletons, one label-line tall.
   brandLabelPlaceholder: {
     width: 112,
-    height: typography.bodyLg.fontSize,
+    height: type.row.fontSize,
     borderRadius: radiusTokens.sm,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     opacity: 0.55,
   },
 });

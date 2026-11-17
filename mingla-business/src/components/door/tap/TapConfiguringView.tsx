@@ -5,7 +5,12 @@
 import React from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
-import { accent, radius as radiusTokens, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import {
+  radius as radiusTokens,
+  color,
+  space,
+  type,
+} from "../../../constants/designSystem";
 import { TAP_CONFIGURING_BODY, tapConfiguringTitle } from "../../../constants/tapToPayCopy";
 import { Spinner } from "../../ui/Spinner";
 
@@ -42,17 +47,17 @@ export const TapConfiguringView = ({ progress }: TapConfiguringViewProps): React
 };
 
 const styles = StyleSheet.create({
-  host: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, paddingHorizontal: spacing.lg },
-  title: { ...typography.h3, color: textTokens.primary, textAlign: "center" },
-  body: { ...typography.bodySm, color: textTokens.secondary, textAlign: "center" },
-  barWrap: { alignSelf: "stretch", alignItems: "center", gap: spacing.xs },
+  host: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], paddingHorizontal: space[6] },
+  title: { ...type.h1, color: color.text1, textAlign: "center" },
+  body: { ...type.small, color: color.text2, textAlign: "center" },
+  barWrap: { alignSelf: "stretch", alignItems: "center", gap: space[1] },
   barTrack: {
     alignSelf: "stretch",
     height: 6,
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: color.fill.step,
     overflow: "hidden",
   },
-  barFill: { height: 6, backgroundColor: accent.warm },
-  percent: { ...typography.caption, color: textTokens.secondary },
+  barFill: { height: 6, backgroundColor: color.accent },
+  percent: { ...type.caption, color: color.text2 },
 });

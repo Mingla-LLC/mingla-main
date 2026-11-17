@@ -106,9 +106,8 @@ describe("server-backed draft lifecycle guards", () => {
     expect(source).toContain("Client-side draft promotion is disabled");
     expect(businessEvents).toContain("business_publish_event_draft");
     expect(wizardSource).toContain("if (isPublishing) return;");
-    expect(wizardSource).toContain(
-      "disabled={publishDisabled || isPublishing}",
-    );
+    // [TEST-MOD-APPROVED #4420] Publish is the StepperFooter primary on the last step.
+    expect(wizardSource).toMatch(/continueDisabled=\{\s*isLastStep\s*\?\s*publishDisabled \|\| isPublishing/);
     expect(wizardSource).toContain("confirmLoading={isPublishing}");
     expect(wizardSource).toContain("confirmDisabled={isPublishing}");
   });

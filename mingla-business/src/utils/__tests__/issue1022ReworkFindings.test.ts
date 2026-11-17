@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 import { readFileSync } from "fs";
 import path from "path";
 
@@ -58,8 +59,10 @@ describe("F-1 — RNGH gestures must reach inside the Sheet's Modal on Android",
   });
 
   test("this mirrors the shipped Toast precedent rather than inventing a pattern", () => {
-    // Toast.tsx already documents and ships the identical fix.
-    const toast = src("src/components/ui/Toast.tsx");
+    // [TEST-MOD-APPROVED #4420] the toast layer moved into ToastHost.tsx (B4),
+    // which documents and ships the identical fix for the Modal windows it
+    // mounts in.
+    const toast = src("src/components/ui/ToastHost.tsx");
     expect(toast).toContain("<GestureHandlerRootView");
     expect(toast).toContain("does NOT extend");
   });
@@ -70,13 +73,17 @@ describe("F-2 — the drag band must never overlay consumer content", () => {
     const s = src(SHEET_MOBILE);
     const band = /SHEET_DRAG_BAND_HEIGHT\s*=\s*(\d+)/.exec(s);
     expect(band).not.toBeNull();
-    // handleWrap paddingVertical (spacing.sm + 2 = 10) x2 + 4pt handle = 24
+    // handleWrap paddingVertical (space[2] + 2 = 10) x2 + 4pt handle = 24
     expect(Number(band?.[1])).toBeLessThanOrEqual(24);
   });
 
   test("the derivation is guarded so the band cannot silently creep back", () => {
     const s = src(SHEET_MOBILE);
-    expect(s).toMatch(/HANDLE_REGION_HEIGHT\s*=\s*2 \* \(spacing\.sm \+ 2\) \+ 4/);
+    // [TEST-MOD-APPROVED #4420] the handle grew 4 → 5 (kit 36×5) and took the
+    // point back from the bottom padding: 10 + 5 + 9 is still 24.
+    expect(s).toMatch(/HANDLE_REGION_HEIGHT\s*=\s*HANDLE_PAD_TOP \+ HANDLE_HEIGHT \+ HANDLE_PAD_BOTTOM/);
+    expect(s).toMatch(/HANDLE_PAD_TOP\s*=\s*space\[2\] \+ 2;/);
+    expect(s).toMatch(/HANDLE_PAD_BOTTOM\s*=\s*space\[2\] \+ 1;/);
     expect(s).toContain("SHEET_DRAG_BAND_HEIGHT !== HANDLE_REGION_HEIGHT");
   });
 

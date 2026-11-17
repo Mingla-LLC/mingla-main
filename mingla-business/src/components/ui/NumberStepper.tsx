@@ -50,19 +50,19 @@ import {
 } from "react-native";
 
 import {
-  glass,
+  color,
+  materials,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 // Same row fill as the RSVP step it came from — Android gets the opaque
 // fallback (ANDROID_GLASS_USES_OPAQUE_FALLBACK; #1028 tracks the composite).
 const ROW_BG = Platform.select({
-  ios: glass.tint.profileBase,
-  android: "#23262b",
-  default: glass.tint.profileBase,
+  ios: color.fill.inset,
+  android: materials.control.solidFill,
+  default: color.fill.inset,
 });
 
 /** Long-press delay before a held − / + starts repeating (ms). */
@@ -333,25 +333,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     backgroundColor: ROW_BG,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.sm,
+    borderColor: color.line,
+    marginBottom: space[2],
   },
-  labelCol: { flex: 1, marginRight: spacing.sm },
+  labelCol: { flex: 1, marginRight: space[2] },
   label: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   controls: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   btn: {
     width: 36,
@@ -359,27 +359,27 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   btnDisabled: { opacity: 0.4 },
   btnText: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   field: {
     minWidth: 64,
     height: 36,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 0,
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
     textAlign: "center",
-    fontSize: typography.bodyLg.fontSize,
+    fontSize: type.row.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
 });

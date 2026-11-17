@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
 
-import { spacing, text, typography } from "../../constants/designSystem";
+import { type, color, space } from "../../constants/designSystem";
 import { getInstalledAppVersionDisplay } from "../../services/appVersionIdentity";
 
 interface AppVersionFooterProps {
@@ -33,10 +33,10 @@ export function AppVersionFooter({
 
 const styles = StyleSheet.create({
   text: {
-    ...typography.caption,
-    color: text.tertiary,
+    ...type.caption,
+    color: color.text3,
     textAlign: "center",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[2],
+    paddingVertical: space[2],
   },
 });

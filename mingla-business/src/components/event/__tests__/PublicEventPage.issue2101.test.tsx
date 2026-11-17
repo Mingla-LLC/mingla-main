@@ -560,14 +560,16 @@ describe("issue #2101 — the fixture renders both layouts (harness sanity)", ()
       .toBeGreaterThan(0);
   });
 
-  test("desktop renders the sticky-panel box and suppresses the floating bar", () => {
+  // [TEST-MOD-APPROVED #4420] the approved premium frame replaced the desktop
+  // sticky-panel box: desktop shows the inline ticket cards and the glass
+  // bar (bottom-right) as the one place to continue, exactly like phone.
+  test("desktop renders the inline ticket cards and the glass bar, no sticky-panel box", () => {
     mockWidth = 1440;
     const { root } = renderPage();
-    expect(findByTestId(root, PURCHASE_CONTROL_TEST_IDS.desktopBox).length)
+    expect(findByTestId(root, "orch-1167-ticket-box").length).toBeGreaterThan(0);
+    expect(findByTestId(root, PURCHASE_CONTROL_TEST_IDS.floatingBar).length)
       .toBeGreaterThan(0);
-    expect(findByTestId(root, PURCHASE_CONTROL_TEST_IDS.floatingBar)).toHaveLength(
-      0,
-    );
+    expect(findByTestId(root, PURCHASE_CONTROL_TEST_IDS.desktopBox)).toHaveLength(0);
   });
 });
 
@@ -843,14 +845,22 @@ describe("issue #2101 — empty-slug safety (A7.3 item 21)", () => {
 
 // ── item 22: per-control and per-handler revert isolation, made explicit ─────
 describe("issue #2101 — revert isolation ledger (A7.3 item 22)", () => {
-  test("the DESKTOP sticky box carries the submitting lever independently", () => {
+  // [TEST-MOD-APPROVED #4420] desktop's purchase control is now the glass
+  // bar (the sticky-panel box is gone); it must carry the lever on its own.
+  test("the DESKTOP glass bar carries the submitting lever independently", () => {
     mockWidth = 1440;
     mockAccessState = "restricted";
     const { root } = renderPage();
-    const boxes = findByTestId(root, PURCHASE_CONTROL_TEST_IDS.desktopBox);
-    expect(boxes.length).toBeGreaterThan(0);
+    const bars = findByTestId(root, PURCHASE_CONTROL_TEST_IDS.floatingBar);
+    expect(bars.length).toBeGreaterThan(0);
+    const barControls = bars[0].findAll(
+      (node) =>
+        node.type === "Pressable" && typeof node.props.disabled === "boolean",
+      { deep: true },
+    );
+    expect(barControls.length).toBeGreaterThan(0);
+    for (const control of barControls) expect(control.props.disabled).toBe(true);
     const controls = purchaseControls(root);
-    expect(controls.length).toBeGreaterThan(0);
     for (const control of controls) expect(control.props.disabled).toBe(true);
   });
 

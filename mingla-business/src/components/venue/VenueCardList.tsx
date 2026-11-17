@@ -20,12 +20,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../constants/desktopLayout";
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useBrandPipelineStates } from "../../hooks/useBrandPlacePipelineState";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -150,7 +148,7 @@ export function VenueCardList({
         showsVerticalScrollIndicator={false}
         testID={testID ?? "venue-card-list"}
       >
-        <GlassCard variant="base" padding={spacing.lg}>
+        <GlassCard variant="base" padding={space[6]}>
           <Text style={styles.errorTitle}>Couldn&apos;t load your venues</Text>
           <Text style={styles.errorBody}>Give it a second and try again.</Text>
           <View style={styles.errorCtaRow}>
@@ -178,7 +176,7 @@ export function VenueCardList({
         showsVerticalScrollIndicator={false}
         testID={testID ?? "venue-card-list"}
       >
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.emptyTitle}>No venues yet</Text>
           <Text style={styles.emptyBody}>
             List your place so Mingla can recommend it to people planning to go
@@ -227,7 +225,7 @@ export function VenueCardList({
           ]}
           testID="venue-card-list-add"
         >
-          <Icon name="plus" size={14} color={accent.warm} />
+          <Icon name="plus" size={14} color={color.accent} />
           <Text style={styles.addPillLabel}>Add venue</Text>
         </Pressable>
       </View>
@@ -274,7 +272,7 @@ export function VenueCardList({
         ]}
         testID="venue-card-list-add-trailing"
       >
-        <Icon name="plus" size={14} color={textTokens.secondary} />
+        <Icon name="plus" size={14} color={color.text2} />
         <Text style={styles.trailingAddLabel}>Add another venue</Text>
       </Pressable>
     </ScrollView>
@@ -283,137 +281,137 @@ export function VenueCardList({
 
 const styles = StyleSheet.create({
   scroll: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   headerTitle: {
     flex: 1,
     minWidth: 0,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   headerCount: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "400",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   addPill: {
     height: 34,
-    paddingHorizontal: spacing.md - 2,
+    paddingHorizontal: space[4] - 2,
     borderRadius: radiusTokens.full,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   addPillLabel: {
     fontSize: 13,
     lineHeight: 16,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   pillPressed: {
     opacity: 0.7,
   },
   skeletonCard: {
     flexDirection: "row",
-    gap: spacing.sm,
-    padding: spacing.sm,
+    gap: space[2],
+    padding: space[2],
     alignItems: "stretch",
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   skeletonBody: {
     flex: 1,
-    gap: spacing.sm,
+    gap: space[2],
   },
   errorTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   errorBody: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   errorCtaRow: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     alignItems: "flex-start",
   },
   emptyTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     marginBottom: 4,
   },
   emptyBody: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    color: color.text2,
+    marginBottom: space[4],
   },
   emptyCta: {
     alignSelf: "flex-start",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   emptyCtaLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   trailingAdd: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: spacing.md,
-    marginTop: spacing.sm,
+    paddingVertical: space[4],
+    marginTop: space[2],
     borderRadius: radiusTokens.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   trailingAddLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   desktopListGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 0,
-    marginHorizontal: -spacing.xs,
+    marginHorizontal: -space[1],
   },
   desktopListCell: {
     width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
-    paddingHorizontal: spacing.xs,
-    marginBottom: spacing.sm,
+    paddingHorizontal: space[1],
+    marginBottom: space[2],
   },
 });
 

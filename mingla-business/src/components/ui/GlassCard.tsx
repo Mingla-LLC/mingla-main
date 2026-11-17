@@ -1,27 +1,16 @@
 /**
- * GlassCard — content-area card with the 5-layer glass stack.
- *
- * Two variants:
- *   - `base`     — intensity 30, profile-base tint/border/highlight,
- *                  shadow `glassCardBase`, default radius `lg` (16).
- *   - `elevated` — intensity 34, profile-elevated tokens, shadow
- *                  `glassCardElevated`, default radius `xl` (24).
- *
- * Internally composes `GlassChrome` (which encapsulates the L1–L4 stack)
- * and applies the variant-specific overrides + the variant-specific shadow.
+ * GlassCard — the Pane (#4420 Graphite Glass). Every card, list and table
+ * container. Both variants draw `materials.pane` through `<Material>` (via
+ * GlassChrome); `elevated` only adds the deeper shadow. Default radius is the
+ * kit's card radius: web 24 (`xl`), phone 28 (`xxl`). Name, props and
+ * `contentStyle` contract are unchanged (168 importers).
  */
 
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import {
-  blurIntensity as blurIntensityTokens,
-  glass,
-  radius as radiusTokens,
-  shadows,
-  spacing,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, shadow as shadowTokens, space } from "../../constants/designSystem";
 
 import { GlassChrome } from "./GlassChrome";
 import type { GlassChromeRadius } from "./GlassChrome";
@@ -31,9 +20,9 @@ export type GlassCardVariant = "base" | "elevated";
 export interface GlassCardProps {
   children?: React.ReactNode;
   variant?: GlassCardVariant;
-  /** Radius token. Defaults to `lg` for `base`, `xl` for `elevated`. */
+  /** Radius token. Defaults to the card radius (web `xl` 24, phone `xxl` 28). */
   radius?: GlassCardRadius;
-  /** Inner padding. Default `spacing.md` (16). Pass `0` to render flush content. */
+  /** Inner padding. Default `space[4]` (16). Pass `0` to render flush content. */
   padding?: number;
   testID?: string;
   /**
@@ -63,54 +52,30 @@ export interface GlassCardProps {
 
 export type GlassCardRadius = GlassChromeRadius;
 
-interface VariantTokens {
-  intensity: keyof typeof blurIntensityTokens;
-  tint: string;
-  border: string;
-  highlight: string;
-  shadow: ViewStyle;
-  defaultRadius: GlassChromeRadius;
-}
+/** Kit card radius: web 24, phone 28. */
+export const PANE_DEFAULT_RADIUS: GlassChromeRadius = Platform.OS === "web" ? "xl" : "xxl";
 
-const VARIANT_TOKENS: Record<GlassCardVariant, VariantTokens> = {
-  base: {
-    intensity: "cardBase",
-    tint: glass.tint.profileBase,
-    border: glass.border.profileBase,
-    highlight: glass.highlight.profileBase,
-    shadow: shadows.glassCardBase,
-    defaultRadius: "lg",
-  },
-  elevated: {
-    intensity: "cardElevated",
-    tint: glass.tint.profileElevated,
-    border: glass.border.profileElevated,
-    highlight: glass.highlight.profileElevated,
-    shadow: shadows.glassCardElevated,
-    defaultRadius: "xl",
-  },
+const VARIANT_SHADOW: Record<GlassCardVariant, ViewStyle> = {
+  base: shadowTokens.pane,
+  elevated: shadowTokens.menu,
 };
 
 export const GlassCard: React.FC<GlassCardProps> = ({
   children,
   variant = "base",
   radius,
-  padding = spacing.md,
+  padding = space[4],
   testID,
   style,
   contentStyle,
   fillHeight = false,
 }) => {
-  const tokens = VARIANT_TOKENS[variant];
-  const resolvedRadius: GlassChromeRadius = radius ?? tokens.defaultRadius;
+  const resolvedRadius: GlassChromeRadius = radius ?? PANE_DEFAULT_RADIUS;
 
   return (
     <GlassChrome
-      intensity={tokens.intensity}
-      tintColor={tokens.tint}
-      borderColor={tokens.border}
-      highlightColor={tokens.highlight}
-      shadow={tokens.shadow}
+      material="pane"
+      shadow={VARIANT_SHADOW[variant]}
       radius={resolvedRadius}
       testID={testID}
       fillHeight={fillHeight}

@@ -13,14 +13,7 @@ import {
   createBrandMessageProductSignal,
   type BrandGroupMessage,
 } from "../../services/brandGroupsService";
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
@@ -151,7 +144,7 @@ export function BrandGroupSignalModal({
           <Text style={styles.promise}>Next Product update defaults to 24 hours from now and can be refined in the Product inbox.</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Button label="Create private signal" fullWidth disabled={!valid || saving} loading={saving} onPress={() => void submit()} />
-          {saving ? <ActivityIndicator color={accent.warm} /> : null}
+          {saving ? <ActivityIndicator color={color.text2} /> : null}
         </ScrollView>
       </View>
     </Modal>
@@ -165,7 +158,7 @@ function SignalField({ label, multiline = false, ...props }: React.ComponentProp
       <TextInput
         {...props}
         multiline={multiline}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         style={[styles.input, multiline && styles.textarea]}
       />
     </View>
@@ -173,24 +166,24 @@ function SignalField({ label, multiline = false, ...props }: React.ComponentProp
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.profile },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, paddingTop: spacing.xl, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
+  screen: { flex: 1, backgroundColor: color.canvas },
+  header: { flexDirection: "row", alignItems: "center", gap: space[4], padding: space[6], paddingTop: space[7], borderBottomWidth: 1, borderBottomColor: color.line },
   headerCopy: { flex: 1, gap: 3 },
-  title: { color: textTokens.primary, fontSize: 20, fontWeight: "800" },
-  subtitle: { color: textTokens.secondary, fontSize: 12 },
+  title: { color: color.text1, fontSize: 20, fontWeight: "800" },
+  subtitle: { color: color.text2, fontSize: 12 },
   close: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
-  closeText: { color: accent.warm, fontWeight: "700" },
-  form: { padding: spacing.lg, gap: spacing.md, paddingBottom: 48 },
-  help: { color: textTokens.secondary, lineHeight: 20, padding: spacing.md, borderRadius: radius.md, backgroundColor: "rgba(235,120,37,0.08)", borderWidth: 1, borderColor: "rgba(235,120,37,0.3)" },
-  field: { gap: spacing.xs },
-  label: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
-  input: { minHeight: 46, color: textTokens.primary, backgroundColor: glass.tint.profileElevated, borderWidth: 1, borderColor: glass.border.profileElevated, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  closeText: { color: color.text1, fontWeight: "700" },
+  form: { padding: space[6], gap: space[4], paddingBottom: 48 },
+  help: { color: color.text2, lineHeight: 20, padding: space[4], borderRadius: radius.md, backgroundColor: color.fill.tile, borderWidth: 1, borderColor: color.lineStrong },
+  field: { gap: space[1] },
+  label: { color: color.text1, fontSize: 13, fontWeight: "700" },
+  input: { minHeight: 46, color: color.text1, backgroundColor: color.fill.tile, borderWidth: 1, borderColor: color.lineStrong, borderRadius: radius.md, paddingHorizontal: space[4], paddingVertical: space[2] },
   textarea: { minHeight: 92, textAlignVertical: "top" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: { minHeight: 38, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: 19, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileBase },
-  chipActive: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.12)" },
-  chipText: { color: textTokens.secondary, textTransform: "capitalize" },
-  chipTextActive: { color: accent.warm, fontWeight: "700" },
-  promise: { color: textTokens.tertiary, fontSize: 12, lineHeight: 18 },
-  error: { color: "#ff8b8b", fontSize: 13 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  chip: { minHeight: 38, justifyContent: "center", paddingHorizontal: space[4], borderRadius: 19, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.inset },
+  chipActive: { borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
+  chipText: { color: color.text2, textTransform: "capitalize" },
+  chipTextActive: { color: color.text1, fontWeight: "700" },
+  promise: { color: color.text3, fontSize: 12, lineHeight: 18 },
+  error: { color: color.errorText, fontSize: 13 },
 });

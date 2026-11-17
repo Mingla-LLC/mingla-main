@@ -173,16 +173,13 @@ test("reverse Expo mod execution leaves Light final, and the forbidden order doe
 test("fixed native Light keeps ShareModal on its approved legible Light palette", () => {
   const source = read(SHARE_MODAL);
   assert.match(source, /const dark = useColorScheme\(\) === ['"]dark['"]/);
-  assert.match(source, /dark \? ['"]#0C0E12['"] : ['"]#FFFFFF['"]/);
-  assert.match(source, /dark \? ['"]#17191F['"] : ['"]#F9FAFB['"]/);
-  assert.match(
-    source,
-    /dark \? ['"]rgba\(255,255,255,\.96\)['"] : ['"]#111827['"]/,
-  );
-  assert.match(
-    source,
-    /dark \? ['"]rgba\(255,255,255,\.72\)['"] : ['"]#6B7280['"]/,
-  );
+  // [TEST-MOD-APPROVED #4420] the light/dark pairs are Graphite tokens now
+  // (Paper panel, paperEnd surface, ink text, on-paper secondary) — still a
+  // Light palette under fixed native Light.
+  assert.match(source, /dark \? materials\.sheet\.solidFill : color\.paper/);
+  assert.match(source, /dark \? color\.card : color\.paperEnd/);
+  assert.match(source, /dark \? color\.text1 : color\.ink/);
+  assert.match(source, /dark \? color\.text2 : color\.onPaper\.text2/);
   assert.doesNotMatch(source, /Appearance\.setColorScheme/);
 });
 
@@ -207,7 +204,7 @@ test("PaymentPlan containment cannot leak the native picker onto business web", 
   const pickerEnd = source.indexOf("/>", picker);
   const pickerSource = source.slice(picker, pickerEnd + 2);
   assert.match(pickerSource, /themeVariant="dark"/);
-  assert.match(pickerSource, /textColor=\{textTokens\.primary\}/);
+  assert.match(pickerSource, /textColor=\{color\.text1\}/);
   assert.match(pickerSource, /minimumDate=\{new Date\(`/);
   assert.match(pickerSource, /onChange=\{onDateChange\(inst\.ordinal\)\}/);
 });

@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
-import { spacing, text, typography } from "../../constants/designSystem";
+import { space, type, color } from "../../constants/designSystem";
 import type { TurnoutReport } from "../../types/growthTools";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -49,20 +49,20 @@ export const IntelReportSheet: React.FC<IntelReportSheetProps> = ({
 );
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  root: { flex: 1, paddingHorizontal: space[6], paddingBottom: space[6] },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingBottom: spacing.md,
+    gap: space[4],
+    paddingBottom: space[4],
   },
   headerCopy: { flex: 1 },
-  eyebrow: { ...typography.labelCap, color: text.tertiary },
-  title: { ...typography.h2, color: text.primary },
+  eyebrow: { ...type.label, color: color.text3 },
+  title: { ...type.h1, color: color.text1 },
   context: {
-    ...typography.caption,
-    color: text.secondary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text2,
+    marginTop: space[1],
   },
-  scroll: { paddingBottom: spacing.xl },
+  scroll: { paddingBottom: space[7] },
 });

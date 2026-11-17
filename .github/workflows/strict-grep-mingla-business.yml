@@ -891,6 +891,10 @@ jobs:
     name: "Strict grep — web-export deprecation parser (class C)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # #4420 — reviewed heap raise (Seth): this job's ts-jest steps type-check
+    # every file they transform and outgrew the runner's ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

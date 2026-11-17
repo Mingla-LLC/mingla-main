@@ -21,11 +21,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { GlassCard } from "../ui/GlassCard";
 import {
-  spacing,
+  color,
   radius,
-  typography,
-  text as textTokens,
-  semantic,
+  space,
+  type,
 } from "../../constants/designSystem";
 
 interface BrandStripeDeadlineBannerProps {
@@ -49,23 +48,23 @@ interface TierConfig {
 
 const TIER_CONFIG: Record<Exclude<Tier, "none">, TierConfig> = {
   "7d": {
-    borderColor: semantic.info,
-    tint: semantic.infoTint,
-    ctaColor: semantic.info,
+    borderColor: color.info,
+    tint: color.infoTint,
+    ctaColor: color.info,
     daysLabel: "7 days left",
     severity: "info",
   },
   "3d": {
-    borderColor: semantic.warning,
-    tint: semantic.warningTint,
-    ctaColor: semantic.warning,
+    borderColor: color.warning,
+    tint: color.warningTint,
+    ctaColor: color.warning,
     daysLabel: "3 days left",
     severity: "warning",
   },
   "1d": {
-    borderColor: semantic.error,
-    tint: semantic.errorTint,
-    ctaColor: semantic.error,
+    borderColor: color.danger,
+    tint: color.errorTint,
+    ctaColor: color.errorText,
     daysLabel: "Less than 24 hours",
     severity: "blocking",
   },
@@ -108,7 +107,7 @@ export function BrandStripeDeadlineBanner({
   return (
     <GlassCard
       variant="base"
-      padding={spacing.md}
+      padding={space[4]}
       style={[
         styles.card,
         { borderColor: config.borderColor, backgroundColor: config.tint },
@@ -144,42 +143,42 @@ export function BrandStripeDeadlineBanner({
 
 const styles = StyleSheet.create({
   card: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     borderWidth: 1,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   title: {
     flex: 1,
-    fontSize: typography.h3.fontSize,
+    fontSize: type.h1.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   chip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
   },
   chipText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: "#ffffff",
+    color: color.text1,
     letterSpacing: 0.6,
   },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    marginBottom: space[4],
+    lineHeight: type.small.lineHeight,
   },
   cta: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
+    borderRadius: radius.sm,
     alignSelf: "flex-start",
     minHeight: 44,
     justifyContent: "center",
@@ -188,9 +187,9 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   ctaText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: "#ffffff",
+    color: color.text1,
     letterSpacing: 0.4,
   },
 });

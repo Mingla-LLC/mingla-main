@@ -22,11 +22,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  canvas,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
@@ -43,29 +41,17 @@ import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { Pill } from "../../../src/components/ui/Pill";
 import { Sheet } from "../../../src/components/ui/Sheet";
 import { Toast } from "../../../src/components/ui/Toast";
+import { Avatar } from "../../../src/components/ui/Avatar";
 import { Button } from "../../../src/components/ui/Button";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { Table } from "../../../src/components/ui/Table";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
 import { LazyInviteScannerSheet } from "../../../src/components/scanners/LazyInviteScannerSheet";
-
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
-};
-
-const getInitials = (name: string | null | undefined): string => {
-  const safe = name ?? "";
-  const parts = safe.trim().split(/\s+/).filter((p) => p.length > 0);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-};
 
 interface InvitationStatusPillSpec {
   variant: "info" | "warn" | "draft" | "accent";
@@ -93,6 +79,7 @@ const invitationStatusPill = (
 
 export default function BrandScannersListRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const params = useLocalSearchParams<{ id: string | string[] }>();
@@ -174,7 +161,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -222,26 +209,43 @@ export default function BrandScannersListRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
+      {/* #4420 — back chevron + title; desktop names the invite action. */}
       <View style={styles.chromeRow}>
         <IconChrome
-          icon="close"
-          size={36}
+          icon="chevL"
           onPress={handleBack}
           accessibilityLabel="Back"
         />
-        <Text style={styles.chromeTitle}>Brand scanners</Text>
+        <Text
+          style={[styles.chromeTitle, isWideDesktop && styles.chromeTitleDesktop]}
+          numberOfLines={1}
+          accessibilityRole="header"
+        >
+          Brand scanners
+        </Text>
         <View style={styles.chromeRight}>
           {canManageScanners ? (
-            <IconChrome
-              icon="plus"
-              size={36}
-              onPress={() => setInviteSheetOpen(true)}
-              accessibilityLabel="Invite brand scanner"
-            />
-          ) : null}
+            isWideDesktop ? (
+              <Button
+                label="Invite brand scanner"
+                variant="primary"
+                size="sm"
+                onPress={() => setInviteSheetOpen(true)}
+                accessibilityLabel="Invite brand scanner"
+              />
+            ) : (
+              <IconChrome
+                icon="plus"
+                onPress={() => setInviteSheetOpen(true)}
+                accessibilityLabel="Invite brand scanner"
+              />
+            )
+          ) : (
+            <View style={styles.chromeRightSlot} />
+          )}
         </View>
       </View>
 
@@ -249,6 +253,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
+          isWideDesktop && styles.scrollContentDesktop,
           { paddingBottom: insets.bottom + 120 },
         ]}
         showsVerticalScrollIndicator={false}
@@ -286,44 +291,85 @@ export default function BrandScannersListRoute(): React.ReactElement {
             />
           </View>
         ) : (
-          <View style={styles.list}>
-            {invitations.map((inv) => {
-              const displayName = inv.invitee_name ?? inv.email;
-              const initials = getInitials(displayName);
-              const hue = hashStringToHue(inv.id);
-              const pill = invitationStatusPill(inv.status);
-              return (
-                <Pressable
-                  key={inv.id}
-                  onPress={() => setActionSheetForId(inv.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Brand scanner ${displayName}, ${pill.label}`}
-                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                >
-                  <View
-                    style={[
-                      styles.avatar,
-                      { backgroundColor: `hsl(${hue}, 60%, 45%)` },
+          isWideDesktop ? (
+            // #4420 — desktop (T2): Scanner / Status / Scope.
+            <Table<ScannerInvitationRow>
+              rows={invitations}
+              rowKey={(inv) => inv.id}
+              onRowPress={(inv) => setActionSheetForId(inv.id)}
+              columns={[
+                {
+                  key: "scanner",
+                  title: "Scanner",
+                  flex: 3,
+                  render: (inv) => (
+                    <View style={styles.tableMember}>
+                      <Avatar name={inv.invitee_name ?? inv.email} size="row" />
+                      <View style={styles.rowBody}>
+                        <Text style={styles.rowName} numberOfLines={1}>
+                          {inv.invitee_name ?? inv.email}
+                        </Text>
+                        <Text style={styles.rowSubline} numberOfLines={1}>
+                          {inv.email}
+                        </Text>
+                      </View>
+                    </View>
+                  ),
+                },
+                {
+                  key: "status",
+                  title: "Status",
+                  flex: 2,
+                  render: (inv) => {
+                    const pill = invitationStatusPill(inv.status);
+                    return <Pill variant={pill.variant}>{pill.label}</Pill>;
+                  },
+                },
+                {
+                  key: "scope",
+                  title: "Scope",
+                  flex: 1,
+                  align: "right",
+                  render: () => <Pill variant="draft">Brand-wide</Pill>,
+                },
+              ]}
+            />
+          ) : (
+            // #4420 — phone: one grouped pane, status and scope on the right.
+            <GlassCard variant="base" padding={0}>
+              {invitations.map((inv, index) => {
+                const displayName = inv.invitee_name ?? inv.email;
+                const pill = invitationStatusPill(inv.status);
+                return (
+                  <Pressable
+                    key={inv.id}
+                    onPress={() => setActionSheetForId(inv.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Brand scanner ${displayName}, ${pill.label}`}
+                    style={({ pressed }) => [
+                      styles.row,
+                      index > 0 && styles.rowDivider,
+                      pressed && styles.rowPressed,
                     ]}
                   >
-                    <Text style={styles.avatarText}>{initials}</Text>
-                  </View>
-                  <View style={styles.rowBody}>
-                    <Text style={styles.rowName} numberOfLines={1}>
-                      {displayName}
-                    </Text>
-                    <Text style={styles.rowSubline} numberOfLines={1}>
-                      {inv.email}
-                    </Text>
+                    <Avatar name={displayName} size="row" />
+                    <View style={styles.rowBody}>
+                      <Text style={styles.rowName} numberOfLines={2}>
+                        {displayName}
+                      </Text>
+                      <Text style={styles.rowSubline} numberOfLines={1}>
+                        {inv.email}
+                      </Text>
+                    </View>
                     <View style={styles.rowPills}>
                       <Pill variant={pill.variant}>{pill.label}</Pill>
-                      <Pill variant="info">BRAND-WIDE</Pill>
+                      <Pill variant="draft">Brand-wide</Pill>
                     </View>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+                  </Pressable>
+                );
+              })}
+            </GlassCard>
+          )
         )}
       </ScrollView>
 
@@ -359,7 +405,7 @@ export default function BrandScannersListRoute(): React.ReactElement {
               >
                 {invitationStatusPill(activeActionInvitation.status).label}
               </Pill>
-              <Pill variant="info">BRAND-WIDE</Pill>
+              <Pill variant="draft">Brand-wide</Pill>
             </View>
             <View style={styles.actionSpacer} />
             {activeActionInvitation.status === "pending" ? (
@@ -412,107 +458,90 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: "600",
-    color: textTokens.primary,
-    letterSpacing: -0.2,
+    minWidth: 0,
+    ...type.h2,
+    color: color.text1,
     textAlign: "center",
   },
-  chromeRight: { flexDirection: "row", gap: spacing.xs },
-  chromeRightSlot: { width: 36 },
+  chromeTitleDesktop: {
+    ...type.h1,
+    textAlign: "left",
+  },
+  chromeRight: { flexDirection: "row", gap: space[1] },
+  chromeRightSlot: { width: 44 },
   scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
+  scrollContentDesktop: { paddingHorizontal: space[6] },
   lede: {
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
+    paddingHorizontal: space[1],
   },
   ledeText: {
-    fontSize: 13,
-    color: textTokens.secondary,
-    lineHeight: 19,
+    ...type.small,
+    color: color.text2,
   },
-  emptyHost: { paddingTop: spacing.xl },
+  emptyHost: { paddingTop: space[7] },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
-  list: { gap: spacing.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.md - 2,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[3],
+    minHeight: 64,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
   },
-  rowPressed: { backgroundColor: "rgba(255, 255, 255, 0.04)" },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
+  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  rowPressed: { backgroundColor: color.fill.rowHover },
   rowBody: { flex: 1, minWidth: 0 },
-  rowName: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
-  rowSubline: {
-    fontSize: 12,
-    color: textTokens.tertiary,
-    marginTop: 2,
-  },
+  rowName: { ...type.row, fontWeight: "600", color: color.text1 },
+  rowSubline: { ...type.caption, color: color.text3, marginTop: 2 },
   rowPills: {
     flexDirection: "row",
-    gap: 6,
-    marginTop: 6,
     flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: space[1] + 2,
+    flexShrink: 0,
+    maxWidth: "50%",
   },
+  tableMember: { flexDirection: "row", alignItems: "center", gap: space[3], alignSelf: "stretch" },
   actionSheet: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   actionTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   actionEmail: {
     fontSize: 13,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    marginBottom: space[2],
   },
   actionPills: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
-  actionSpacer: { height: spacing.sm },
+  actionSpacer: { height: space[2] },
   actionDisabledNote: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   toastWrap: {
     position: "absolute",

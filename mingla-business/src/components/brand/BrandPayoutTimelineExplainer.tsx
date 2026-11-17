@@ -12,12 +12,10 @@ import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -88,7 +86,7 @@ export const BrandPayoutTimelineExplainer: React.FC<
               <View key={step.title} style={styles.stepRow}>
                 <View style={styles.stepRail}>
                   <View style={styles.stepChip}>
-                    <Icon name={step.icon} size={16} color={textTokens.secondary} />
+                    <Icon name={step.icon} size={16} color={color.text2} />
                   </View>
                   {!isLast ? <View style={styles.stepConnector} /> : null}
                 </View>
@@ -140,23 +138,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.md,
-    gap: spacing.md,
+    paddingBottom: space[4],
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
   },
   timeline: {
     gap: 0,
   },
   stepRow: {
     flexDirection: "row",
-    gap: spacing.md,
+    gap: space[4],
   },
   stepRail: {
     alignItems: "center",
@@ -168,66 +165,66 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   stepConnector: {
     width: 2,
     flex: 1,
-    minHeight: spacing.md,
-    backgroundColor: glass.border.profileElevated,
+    minHeight: space[4],
+    backgroundColor: color.lineStrong,
   },
   stepTextCol: {
     flex: 1,
     minWidth: 0,
-    paddingBottom: spacing.lg,
+    paddingBottom: space[6],
   },
   stepTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   stepBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginTop: space[1],
   },
   legendHeading: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   legendList: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   legendRow: {
-    gap: spacing.xxs,
+    gap: space[1],
   },
   legendTerm: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   legendDef: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   ngNote: {
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: semantic.infoTint,
+    padding: space[4],
+    borderRadius: radius.sm,
+    backgroundColor: color.infoTint,
   },
   ngNoteText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   footer: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });
 

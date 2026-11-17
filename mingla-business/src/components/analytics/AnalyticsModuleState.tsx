@@ -1,12 +1,10 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
-  accent,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  color,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Skeleton } from "../ui/Skeleton";
@@ -60,50 +58,50 @@ export const RefreshFailureBanner: React.FC<{ onRetry: () => void }> = ({
 
 const styles = StyleSheet.create({
   skeletonCard: { width: "100%", minHeight: 260 },
-  skeletonStack: { gap: spacing.md },
+  skeletonStack: { gap: space[4] },
   errorCard: { minHeight: 180 },
   errorTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
   errorBody: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.sm,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[2],
   },
   retry: {
     minHeight: 44,
     alignSelf: "flex-start",
     justifyContent: "center",
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   retryText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.accent,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
   pressed: { opacity: 0.65 },
   banner: {
     minHeight: 48,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    borderColor: color.danger,
+    backgroundColor: color.errorTint,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   bannerText: {
     flex: 1,
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text1,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   bannerAction: { minHeight: 44, justifyContent: "center" },
 });

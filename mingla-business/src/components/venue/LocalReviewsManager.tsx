@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button } from "../ui/Button";
+import { CenteredState } from "../ui/CenteredState";
+import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { Spinner } from "../ui/Spinner";
 import { SheetBody } from "../programs/ProgramKit";
 import type { BrandLocalReview } from "../../services/localReviewsService";
 import { replyState } from "./localReplyState";
@@ -11,15 +14,34 @@ import {
   shortDate,
 } from "../../utils/creatorProgramFormat";
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  edge,
 } from "../../constants/designSystem";
 
-type Props = { brandId: string; placePoolId: string };
+type Props = {
+  brandId: string;
+  placePoolId: string;
+  /**
+   * #4420 — "panel" (default) is an optional block inside another screen: it
+   * hides itself while loading, on a failed read and when there is nothing to
+   * show. "module" is the venue Reviews module, where the panel IS the page,
+   * so it shows loading, an empty state and an error state with Try again.
+   */
+  variant?: "panel" | "module";
+};
+
+type LoadState = "loading" | "ready" | "error";
+
+/** #4420 — empty and error copy: one line plus one short line. */
+export const LOCAL_REVIEWS_STATE_COPY = {
+  emptyTitle: "No reviews yet",
+  emptyBody: "Mingla Local reviews of this place show up here.",
+  errorTitle: "We couldn't load reviews",
+  errorBody: "Check your connection and try again.",
+  retry: "Try again",
+} as const;
 
 /*
  * #3872 round 2 (H2.7, keyboard rule): the reply is written in a sheet whose
@@ -32,8 +54,10 @@ type Props = { brandId: string; placePoolId: string };
 export function LocalReviewsManager({
   brandId,
   placePoolId,
+  variant = "panel",
 }: Props): React.ReactElement | null {
   const [reviews, setReviews] = useState<BrandLocalReview[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   // Which published reply is open for editing, and per-review outcome text.
@@ -60,11 +84,20 @@ export function LocalReviewsManager({
     });
   }, [brandId, placePoolId]);
 
-  useEffect(() => {
-    void load().catch(() => {
-      // This optional public-review module stays absent if its scoped read is unavailable.
-    });
+  const runLoad = useCallback((): void => {
+    setLoadState("loading");
+    void load()
+      .then(() => setLoadState("ready"))
+      .catch(() => {
+        // Panel: the optional block stays absent. Module: the error state below
+        // says so and offers Try again.
+        setLoadState("error");
+      });
   }, [load]);
+
+  useEffect(() => {
+    runLoad();
+  }, [runLoad]);
 
   const save = async (review: BrandLocalReview): Promise<void> => {
     const reply = drafts[review.local_month_id]?.trim() ?? "";
@@ -111,7 +144,48 @@ export function LocalReviewsManager({
     }
   };
 
-  if (reviews.length === 0) return null;
+  if (reviews.length === 0) {
+    if (variant === "panel") return null;
+    if (loadState === "loading") {
+      return (
+        <View style={styles.stateWrap} testID="venue-local-reviews-loading">
+          <Spinner />
+        </View>
+      );
+    }
+    if (loadState === "error") {
+      return (
+        <View style={styles.stateWrap}>
+          <CenteredState
+            tone="error"
+            icon={<Icon name="wifiOff" size={28} color={color.errorText} />}
+            title={LOCAL_REVIEWS_STATE_COPY.errorTitle}
+            body={LOCAL_REVIEWS_STATE_COPY.errorBody}
+            accessibilityRole="alert"
+            testID="venue-local-reviews-error"
+          >
+            <Button
+              label={LOCAL_REVIEWS_STATE_COPY.retry}
+              size="md"
+              variant="secondary"
+              onPress={runLoad}
+              testID="venue-local-reviews-retry"
+            />
+          </CenteredState>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.stateWrap}>
+        <CenteredState
+          icon={<Icon name="star" size={28} color={color.text3} />}
+          title={LOCAL_REVIEWS_STATE_COPY.emptyTitle}
+          body={LOCAL_REVIEWS_STATE_COPY.emptyBody}
+          testID="venue-local-reviews-empty"
+        />
+      </View>
+    );
+  }
   const editingReview =
     editingId === null
       ? null
@@ -246,7 +320,7 @@ export function LocalReviewsManager({
                 }))
               }
               placeholder="Write one public reply (500 characters max)"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               multiline
               maxLength={500}
               autoFocus
@@ -267,77 +341,83 @@ export function LocalReviewsManager({
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  wrap: { paddingHorizontal: space[4], paddingBottom: space[2] },
+  stateWrap: {
+    paddingHorizontal: space[4],
+    paddingVertical: space[9],
+    alignItems: "center",
+    justifyContent: "center",
+  },
   card: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: space[6],
+    gap: space[4],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  header: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  grow: { flex: 1, gap: spacing.xs },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: space[4] },
+  grow: { flex: 1, gap: space[1] },
   eyebrow: {
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "900",
     fontSize: 11,
     letterSpacing: 1.2,
   },
-  heading: { color: textTokens.primary, fontWeight: "900", fontSize: 20 },
-  count: { color: accent.warm, fontWeight: "900", fontSize: 20 },
-  explainer: { color: textTokens.secondary, lineHeight: 20 },
+  heading: { color: color.text1, fontWeight: "900", fontSize: 20 },
+  count: { color: color.accent, fontWeight: "900", fontSize: 20 },
+  explainer: { color: color.text2, lineHeight: 20 },
   review: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: textTokens.tertiary,
-    paddingTop: spacing.md,
-    gap: spacing.sm,
+    borderTopColor: color.text3,
+    paddingTop: space[4],
+    gap: space[2],
   },
   reviewTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  name: { flex: 1, color: textTokens.primary, fontWeight: "900" },
-  rating: { color: accent.warm, letterSpacing: 1 },
-  title: { color: textTokens.primary, fontWeight: "800", fontSize: 16 },
-  body: { color: textTokens.secondary, lineHeight: 20 },
-  visited: { color: textTokens.tertiary, fontSize: 12 },
+  name: { flex: 1, color: color.text1, fontWeight: "900" },
+  rating: { color: color.accent, letterSpacing: 1 },
+  title: { color: color.text1, fontWeight: "800", fontSize: 16 },
+  body: { color: color.text2, lineHeight: 20 },
+  visited: { color: color.text3, fontSize: 12 },
   input: {
     minHeight: 96,
     borderWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileElevated,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: color.fill.tile,
+    color: color.text1,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     textAlignVertical: "top",
   },
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  counter: { color: textTokens.tertiary, fontSize: 12 },
-  buttons: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
-  hint: { color: textTokens.tertiary, fontSize: 12 },
-  error: { color: semantic.errorText, fontSize: 13, fontWeight: "600" },
-  notice: { color: semantic.success, fontSize: 13, fontWeight: "600" },
+  counter: { color: color.text3, fontSize: 12 },
+  buttons: { flexDirection: "row", gap: space[2], alignItems: "center" },
+  hint: { color: color.text3, fontSize: 12 },
+  error: { color: color.errorText, fontSize: 13, fontWeight: "600" },
+  notice: { color: color.success, fontSize: 13, fontWeight: "600" },
   closedReply: {
     borderRadius: 12,
-    backgroundColor: semantic.infoTint,
-    padding: spacing.md,
-    gap: spacing.xs,
+    backgroundColor: color.infoTint,
+    padding: space[4],
+    gap: space[1],
   },
   replyLabel: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "900",
     fontSize: 10,
     letterSpacing: 1,
   },
-  reply: { color: textTokens.primary, lineHeight: 20 },
-  closed: { color: textTokens.secondary, fontSize: 12 },
+  reply: { color: color.text1, lineHeight: 20 },
+  closed: { color: color.text2, fontSize: 12 },
 });

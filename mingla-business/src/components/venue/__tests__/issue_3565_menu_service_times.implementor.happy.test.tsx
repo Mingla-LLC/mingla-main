@@ -72,6 +72,9 @@ jest.mock("../../ui/Button", () => ({
 }));
 
 jest.mock("../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
+// [TEST-MOD-APPROVED #4420] round-3 item 16: the menu rows draw chevron and pencil icons;
+// the SVG icon is a leaf here (react-native is partially mocked in this suite).
+jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 
 jest.mock("../../ui/GlassCard", () => ({
   GlassCard: ({ children, ...props }: { children?: React.ReactNode }) => (

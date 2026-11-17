@@ -17,7 +17,10 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 const read = (relativePath: string): string =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-const disclosure = read("mingla-business/src/constants/consentDisclosure.ts");
+// #4420 — the purchase strings moved to their own module (consentDisclosure
+// re-exports them) so the checkout routes keep the full consent body out of
+// the eager boot chunk.
+const disclosure = read("mingla-business/src/constants/purchaseTermsDisclosure.ts");
 const cartContext = read("mingla-business/src/components/checkout/CartContext.tsx");
 const buyerRoutes = [
   "mingla-business/app/checkout/[eventId]/buyer.tsx",
@@ -59,6 +62,7 @@ describe("#3859 buyer-web checkout consent split", () => {
     );
     expect(disclosure).toContain('"2026-10-14-purchase-v1"');
     expect(disclosure).not.toContain("Send me occasional updates");
+    expect(read("mingla-business/src/constants/consentDisclosure.ts")).not.toContain("Send me occasional updates");
     expect(disclosure).toContain("CHECKOUT_MARKETING_NOTICE");
   });
 

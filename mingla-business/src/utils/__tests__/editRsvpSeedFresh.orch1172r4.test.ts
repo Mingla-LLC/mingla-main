@@ -217,7 +217,7 @@ describe("ORCH-1172 R4 — guarded re-seed re-hydrates editState on stale→fres
     expect(source).toMatch(/if \(nextKey === hydratedKeyRef\.current\) return;/);
     expect(source).toMatch(/if \(fieldDiffs\.length > 0\) return;/);
     expect(source).toMatch(
-      /setEditState\(liveEventToEditableDraft\(liveEvent\)\);/,
+      /liveEventToEditableDraft\(liveEvent\);[\s\S]*?setEditState\(reseeded\);/,
     );
   });
 });

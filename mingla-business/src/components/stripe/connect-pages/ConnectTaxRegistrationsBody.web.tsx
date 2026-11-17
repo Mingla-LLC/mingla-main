@@ -20,7 +20,8 @@ import {
 import { loadConnectAndInitialize } from "@stripe/connect-js";
 import { useLocalSearchParams } from "expo-router";
 
-const MINGLA_BRAND_COLOR = "#eb7825" as const;
+import { color } from "../../../constants/designSystem";
+import { CONNECT_FONT_FAMILY, MINGLA_CONNECT_APPEARANCE } from "../connectAppearance";
 
 export default function ConnectTaxRegistrationsBody(): React.ReactElement {
   const params = useLocalSearchParams<{
@@ -50,11 +51,7 @@ export default function ConnectTaxRegistrationsBody(): React.ReactElement {
       return loadConnectAndInitialize({
         publishableKey,
         fetchClientSecret: async () => clientSecret,
-        appearance: {
-          variables: {
-            colorPrimary: MINGLA_BRAND_COLOR,
-          },
-        },
+        appearance: MINGLA_CONNECT_APPEARANCE,
       });
     } catch (err) {
       setInitError(err instanceof Error ? err.message : String(err));
@@ -137,16 +134,15 @@ function ErrorShell(
 
 const pageWrapperStyle: React.CSSProperties = {
   minHeight: "100vh",
-  backgroundColor: "#FAFAFA",
-  color: "#0F172A",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  backgroundColor: color.canvas,
+  color: color.text1,
+  fontFamily: CONNECT_FONT_FAMILY,
 };
 
 const headerStyle: React.CSSProperties = {
   padding: "24px",
-  backgroundColor: "#FFFFFF",
-  borderBottom: "1px solid #E5E7EB",
+  backgroundColor: color.canvas,
+  borderBottom: `1px solid ${color.line}`,
 };
 
 const headerTitleStyle: React.CSSProperties = {
@@ -180,8 +176,8 @@ const errorCardStyle: React.CSSProperties = {
   maxWidth: "560px",
   margin: "72px auto",
   padding: "24px",
-  backgroundColor: "#FFFFFF",
-  border: "1px solid #E5E7EB",
+  backgroundColor: color.card,
+  border: `1px solid ${color.errorLine}`,
   borderRadius: "12px",
 };
 
@@ -192,5 +188,5 @@ const errorTitleStyle: React.CSSProperties = {
 
 const errorBodyStyle: React.CSSProperties = {
   margin: 0,
-  color: "#475569",
+  color: color.text2,
 };

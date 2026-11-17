@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { spacing } from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 
 export interface IntelCardProps {
@@ -21,7 +21,7 @@ export const IntelCard: React.FC<IntelCardProps> = ({
   <GlassCard
     variant="base"
     radius="lg"
-    padding={spacing.md}
+    padding={space[4]}
     style={style}
     contentStyle={styles.content}
     testID={testID}
@@ -33,5 +33,5 @@ export const IntelCard: React.FC<IntelCardProps> = ({
 );
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.sm },
+  content: { gap: space[2] },
 });

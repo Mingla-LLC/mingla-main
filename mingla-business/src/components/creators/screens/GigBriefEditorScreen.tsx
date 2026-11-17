@@ -12,6 +12,8 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { Button } from "../../../components/ui/Button";
+import { Stepper, type StepperStep } from "../../../components/ui/Stepper";
+import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import { DateField } from "../../../components/ui/DateField";
 import { NumberStepper } from "../../../components/ui/NumberStepper";
 import { ProgramSheet } from "../../../components/programs/ProgramSheet";
@@ -75,14 +77,7 @@ import {
 } from "../../../utils/creatorProgramFormat";
 import { formatCurrencyRound } from "../../../utils/currency";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
-import {
-  accent,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../../constants/designSystem";
+import { color, radius, space } from "../../../constants/designSystem";
 
 const SHARE_OPTIONS = [5, 10, 15, 20] as const;
 /** A tall brief box with its label and a character count under it. */
@@ -112,7 +107,7 @@ function BriefBox({
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
-        placeholderTextColor={textTokens.tertiary}
+        placeholderTextColor={color.text3}
         multiline
         textAlignVertical="top"
         maxLength={max}
@@ -156,6 +151,7 @@ export default function GigBriefEditor(): React.ReactElement {
   const [serverErrors, setServerErrors] = useState<BriefErrors>({});
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<BriefStep>(1);
+  const { isWideDesktop } = useResponsiveLayout();
   const [formatOpen, setFormatOpen] = useState(false);
   const today = toIsoDay(new Date());
   const editingGigId = params.gigId ?? null;
@@ -324,12 +320,37 @@ export default function GigBriefEditor(): React.ReactElement {
         .join(" · ")
     : null;
 
+  // #4420 spec 3.5: the brief is a two-step wizard on the clickable Stepper.
+  // It reuses the existing per-step validator (validateBriefStep) and adds no
+  // rule: step 2 is reachable once step 1 validates; pressing it runs next().
+  const stepOneValid = Object.keys(validateBriefStep(1, form, ctx, payMinor)).length === 0 && Boolean(listingId);
+  const firstStepError = touched ? Object.values(errors).find((m): m is string => typeof m === "string" && m.length > 0) : undefined;
+  const briefSteps: StepperStep[] = [
+    { id: "brief", label: "Brief", ...(step === 1 && firstStepError ? { state: "error" as const, firstError: firstStepError } : {}) },
+    { id: "timing", label: "Timing and pay", ...(step === 2 && firstStepError ? { state: "error" as const, firstError: firstStepError } : {}) },
+  ];
+  const onBriefStepPress = (index: number): void => {
+    if (index === 0) setStep(1);
+    else if (step === 1) next();
+  };
+  const briefStepper = (
+    <Stepper
+      layout={isWideDesktop ? "list" : "chips"}
+      steps={briefSteps}
+      currentIndex={step - 1}
+      furthestValidIndex={stepOneValid || step === 2 ? 1 : 0}
+      onStepPress={onBriefStepPress}
+      sheetTitle={editingGigId ? "Edit gig" : "Hire a creator"}
+      testID="gig-brief-steps"
+    />
+  );
+
   return (
     <ProgramScreen
+      desktopWidth="detail"
       title={editingGigId ? "Edit gig" : "Hire a creator"}
       leading={step === 1 ? "close" : "back"}
       onBack={step === 2 ? () => setStep(1) : undefined}
-      right={<Text style={styles.stepCount}>{`${step}/2`}</Text>}
       fallback={blastHubHref("creators")}
       footer={
         ready ? (
@@ -406,6 +427,13 @@ export default function GigBriefEditor(): React.ReactElement {
         </ProgramSheet>
       }
     >
+      {/* #4420 wizard template: desktop is the 280 step list beside the
+          720 form; the phone has the step chips above the form. */}
+      <View style={isWideDesktop ? styles.wizardWide : styles.wizardStack}>
+      {ready ? (
+        <View style={isWideDesktop ? styles.wizardRail : null}>{briefStepper}</View>
+      ) : null}
+      <View style={isWideDesktop ? styles.wizardForm : styles.wizardStack}>
       {!ready ? (
         <ProgramLoading />
       ) : step === 1 ? (
@@ -420,6 +448,7 @@ export default function GigBriefEditor(): React.ReactElement {
             <FieldError message="Open this from Blast › Creators and pick what creators promote." />
           )}
           <Segmented
+            fill
             options={
               [
                 ["sell", "Sell tickets"],
@@ -630,7 +659,7 @@ export default function GigBriefEditor(): React.ReactElement {
               }
               keyboardType="number-pad"
               placeholder="300"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               accessibilityLabel={`Pay each creator up to, in ${currency}`}
               style={styles.moneyInput}
             />
@@ -686,38 +715,44 @@ export default function GigBriefEditor(): React.ReactElement {
           </ListGroup>
         </>
       )}
+      </View>
+      </View>
     </ProgramScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  footer: { gap: spacing.xs },
+  wizardStack: { gap: 12 },
+  wizardWide: { flexDirection: "row", alignItems: "flex-start", gap: 24 },
+  wizardRail: { width: 280, flexShrink: 0 },
+  wizardForm: { flex: 1, minWidth: 0, maxWidth: 720, gap: 12 },
+  footer: { gap: space[1] },
   spendRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
-  spendLabel: { color: textTokens.secondary, fontSize: 13 },
+  spendLabel: { color: color.text2, fontSize: 13 },
   spendValue: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "800",
     flexShrink: 1,
     textAlign: "right",
   },
-  stepCount: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  cityGroup: { gap: spacing.xs },
-  fieldLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
-  optional: { color: textTokens.tertiary, fontSize: 12 },
+  stepCount: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  cityGroup: { gap: space[1] },
+  fieldLabel: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  tiny: { color: color.text3, fontSize: 12, lineHeight: 16 },
+  optional: { color: color.text3, fontSize: 12 },
   labelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
   },
-  check: { color: semantic.success, fontWeight: "700", fontSize: 13 },
+  check: { color: color.success, fontWeight: "700", fontSize: 13 },
   listingChip: {
     alignSelf: "flex-start",
     maxWidth: "100%",
@@ -726,30 +761,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
-  listingChipText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
+  listingChipText: { color: color.text1, fontSize: 13, fontWeight: "700" },
   boxWrap: { gap: 6 },
   box: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     lineHeight: 21,
     padding: 14,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  boxFocused: { borderColor: accent.warm },
-  boxError: { borderColor: semantic.error },
+  boxFocused: { borderColor: color.lineStrong },
+  boxError: { borderColor: color.danger },
   counterRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
-  counter: { color: textTokens.tertiary, fontSize: 12, flexShrink: 1 },
-  pair: { flexDirection: "row", gap: spacing.sm },
+  counter: { color: color.text3, fontSize: 12, flexShrink: 1 },
+  pair: { flexDirection: "row", gap: space[2] },
   pairDate: { flex: 1.4 },
   money: {
     flexDirection: "row",
@@ -759,15 +794,15 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  moneyGlyph: { color: textTokens.secondary, fontSize: 17, fontWeight: "700" },
+  moneyGlyph: { color: color.text2, fontSize: 17, fontWeight: "700" },
   moneyInput: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 17,
     fontWeight: "700",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
 });

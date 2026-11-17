@@ -43,13 +43,7 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 
 import { Icon } from "../ui/Icon";
-import {
-  accent,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, scrim, space, type } from "../../constants/designSystem";
 import {
   partialSendLine,
   unpricedSmsLine,
@@ -184,7 +178,7 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
             style={[styles.pulseRing, pulseAnimatedStyle]}
           />
           <Animated.View style={[styles.iconCircle, iconAnimatedStyle]}>
-            <Icon name="check" size={36} color={textTokens.primary} />
+            <Icon name="check" size={36} color={color.successText} />
           </Animated.View>
         </View>
         <Animated.View style={copyAnimatedStyle}>
@@ -272,32 +266,32 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.88)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
+    padding: space[6],
     zIndex: 999,
   },
   card: {
     width: "100%",
     maxWidth: 360,
-    padding: spacing.xl,
+    padding: space[7],
     borderRadius: radius.xl,
     // Solid dark card — not the translucent profile tint. Operators need
     // this to feel like a definitive "done" confirmation, not a peek-
     // through panel that the composer is still half-visible behind.
-    backgroundColor: "#15171c",
+    backgroundColor: color.card,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.line,
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   // ORCH-0891 M3 — stage hosts both the radial pulse + the scale-in
   // icon circle. Pulse is absolutely positioned behind the icon.
   iconStage: {
     width: 72,
     height: 72,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -305,7 +299,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: accent.warm,
+    backgroundColor: color.successTint,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -315,28 +309,28 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.success,
   },
   ctaStack: {
     width: "100%",
     alignItems: "center",
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
   ctaBtn: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     width: "100%",
     minHeight: 52,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -344,14 +338,14 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   ctaLabel: {
-    ...typography.body,
-    color: "#FFFFFF",
+    ...type.body,
+    color: color.ink,
     fontWeight: "700",
   },
   dismissBtn: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     minHeight: 44,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -359,8 +353,8 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   dismissLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "500",
   },
 });

@@ -1,29 +1,22 @@
 /**
  * toward #3697 Wave 7c / 8 — Host ad campaign detail (spend vs cap,
  * pause / Cancel-before-spend / End-after-spend — never both).
+ *
+ * #4420 B2: Pause on a live ad asks once ("Pause this ad?") before the pause
+ * call runs; Keep running calls nothing.
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { Banner } from "../../components/ui/Banner";
+import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { GlassCard } from "../../components/ui/GlassCard";
-import {
-  canvas,
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { IconChrome } from "../../components/ui/IconChrome";
+import { color, radius, size, space, type } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -98,6 +91,9 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [resumeConfirmVisible, setResumeConfirmVisible] = useState(false);
+  // #4420 B2: a live ad pauses only after the host confirms once.
+  const [pauseConfirmVisible, setPauseConfirmVisible] = useState(false);
+  const [pauseError, setPauseError] = useState<string | null>(null);
   const [resumePhrase, setResumePhrase] = useState("");
   const [destructiveAction, setDestructiveAction] = useState<
     "cancel" | "end" | null
@@ -203,11 +199,13 @@ export default function HostAdDetailRoute(): React.ReactElement {
       return;
     setBusy(true);
     setError(null);
+    setPauseError(null);
     try {
       await pauseHostAdCampaign({ brandId, campaignId });
+      setPauseConfirmVisible(false);
       await load();
     } catch {
-      setError("Could not pause this ad.");
+      setPauseError("Could not pause this ad.");
     } finally {
       setBusy(false);
     }
@@ -294,7 +292,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
   if (permissions.isLoading) {
     return (
       <View style={styles.host} testID="ads-detail-permission-loading">
-        <ActivityIndicator color={textTokens.secondary} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   }
@@ -315,7 +313,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
   if (payload === null && error === null) {
     return (
       <View style={styles.host} testID="ads-detail-skeleton">
-        <ActivityIndicator color={textTokens.secondary} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   }
@@ -418,16 +416,14 @@ export default function HostAdDetailRoute(): React.ReactElement {
           { paddingBottom: scrollBottomPadding },
         ]}
       >
-        <Pressable
+        <IconChrome
+          icon="chevL"
           onPress={() => goBackToAds(router)}
-          accessibilityRole="button"
           accessibilityLabel="Back to Ads"
           testID="ads-detail-back"
-        >
-          <Text style={styles.back}>← Ads</Text>
-        </Pressable>
+        />
 
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.kicker}>
             {payload.plan_campaigns
               .map((row) => platformName(String(row.platform)))
@@ -498,16 +494,22 @@ export default function HostAdDetailRoute(): React.ReactElement {
             return (
               <>
                 {learning ? (
-                  <View style={styles.banner} testID="ads-detail-learning">
-                    <Text style={styles.bannerTitle}>{learning.title}</Text>
-                    <Text style={styles.muted}>{learning.body}</Text>
-                  </View>
+                  <Banner
+                    tone="info"
+                    title={learning.title}
+                    body={learning.body}
+                    style={styles.banner}
+                    testID="ads-detail-learning"
+                  />
                 ) : null}
                 {pacing ? (
-                  <View style={styles.banner} testID="ads-detail-pacing">
-                    <Text style={styles.bannerTitle}>{pacing.title}</Text>
-                    <Text style={styles.muted}>{pacing.body}</Text>
-                  </View>
+                  <Banner
+                    tone="warning"
+                    title={pacing.title}
+                    body={pacing.body}
+                    style={styles.banner}
+                    testID="ads-detail-pacing"
+                  />
                 ) : null}
               </>
             );
@@ -533,16 +535,16 @@ export default function HostAdDetailRoute(): React.ReactElement {
             />
           ) : null}
           {payload.plan_id && permissions.canPlan ? (
-            <Pressable
-              style={styles.actionBtn}
+            <Button
+              label="Duplicate"
+              variant="secondary"
+              size="md"
               disabled={busy}
               onPress={() => void onDuplicate()}
-              accessibilityRole="button"
               accessibilityLabel="Duplicate this ad"
               testID="ads-detail-duplicate"
-            >
-              <Text style={styles.actionLabel}>Duplicate</Text>
-            </Pressable>
+              style={styles.duplicate}
+            />
           ) : null}
           {capUsed !== null ? (
             <Text style={styles.progress}>{capUsed}% of budget used</Text>
@@ -550,14 +552,14 @@ export default function HostAdDetailRoute(): React.ReactElement {
         </GlassCard>
 
         {endState ? (
-          <GlassCard variant="elevated" padding={spacing.md}>
+          <GlassCard variant="elevated" padding={space[4]}>
             <Text style={styles.sectionTitle}>What happened</Text>
             <Text style={styles.body}>{endState}</Text>
           </GlassCard>
         ) : null}
 
         {settlements.length > 0 ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.sectionTitle}>Getting your money back</Text>
             <Text style={styles.muted}>
               We return unspent Ads credit once every app confirms your ad has
@@ -605,7 +607,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </GlassCard>
         ) : null}
 
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.sectionTitle}>Results</Text>
           <AdResultsSection
             daily={payload.daily ?? []}
@@ -631,7 +633,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
         </GlassCard>
 
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.sectionTitle}>Your video</Text>
           {payload.creatives.length === 0 ? (
             <Text style={styles.body}>No video added yet.</Text>
@@ -656,7 +658,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           )}
         </GlassCard>
 
-        <GlassCard variant="elevated" padding={spacing.lg}>
+        <GlassCard variant="elevated" padding={space[6]}>
           <Text style={styles.sectionTitle}>Timeline</Text>
           {payload.timeline.length === 0 ? (
             <Text style={styles.body}>No status changes yet.</Text>
@@ -692,24 +694,24 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
         ) : null}
 
-        <Pressable
-          style={styles.askAriBtn}
-          onPress={() => router.push("/(tabs)/ari" as never)}
-          accessibilityRole="button"
-          accessibilityLabel="Ask Ari about this ad"
-          testID="ads-detail-ask-ari"
-        >
-          <Text style={styles.actionLabel}>
-            {payload.creatives.some((creative) =>
+        <Button
+          label={
+            payload.creatives.some((creative) =>
               creative.review_status?.toUpperCase().includes("REJECT"),
             )
               ? "Ask Ari to help fix the rejection"
-              : "Ask Ari about this ad"}
-          </Text>
-        </Pressable>
+              : "Ask Ari about this ad"
+          }
+          variant="secondary"
+          size="lg"
+          fullWidth
+          onPress={() => router.push("/(tabs)/ari" as never)}
+          accessibilityLabel="Ask Ari about this ad"
+          testID="ads-detail-ask-ari"
+        />
 
         {resumeConfirmVisible ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.sectionTitle}>Restart your ad?</Text>
             <Text style={styles.muted}>
               Type LAUNCH to restart your ad on every app. It will start
@@ -719,6 +721,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
               value={resumePhrase}
               onChangeText={setResumePhrase}
               placeholder="LAUNCH"
+              placeholderTextColor={color.text3}
               autoCapitalize="characters"
               autoCorrect={false}
               style={styles.confirmInput}
@@ -726,32 +729,27 @@ export default function HostAdDetailRoute(): React.ReactElement {
               testID="ads-detail-resume-phrase"
             />
             <View style={styles.actions}>
-              <Pressable
+              <Button
+                label="Not now"
+                variant="secondary"
+                size="md"
                 style={styles.actionBtn}
                 onPress={() => {
                   setResumeConfirmVisible(false);
                   setResumePhrase("");
                 }}
-                accessibilityRole="button"
                 accessibilityLabel="Cancel resume"
-              >
-                <Text style={styles.actionLabel}>Not now</Text>
-              </Pressable>
-              <Pressable
+              />
+              <Button
+                label={busy ? "Working…" : "Resume all platforms"}
+                variant="primary"
+                size="md"
                 style={styles.actionBtn}
                 disabled={busy || resumePhrase !== "LAUNCH"}
                 onPress={() => void onResume()}
-                accessibilityRole="button"
                 accessibilityLabel="Confirm resume"
-                accessibilityState={{
-                  disabled: busy || resumePhrase !== "LAUNCH",
-                }}
                 testID="ads-detail-resume-confirm"
-              >
-                <Text style={styles.actionLabel}>
-                  {busy ? "Working…" : "Resume all platforms"}
-                </Text>
-              </Pressable>
+              />
             </View>
           </GlassCard>
         ) : null}
@@ -763,72 +761,88 @@ export default function HostAdDetailRoute(): React.ReactElement {
           permissions.canEnd) ? (
           <View style={styles.actions}>
             {isLive && permissions.canPause ? (
-              <Pressable
+              <Button
+                label={busy ? "Working…" : "Pause"}
+                variant="secondary"
+                size="md"
                 style={styles.actionBtn}
                 disabled={busy}
-                onPress={() => void onPause()}
-                accessibilityRole="button"
+                onPress={() => {
+                  setPauseError(null);
+                  setPauseConfirmVisible(true);
+                }}
                 accessibilityLabel="Pause ad"
                 testID="ads-detail-pause"
-              >
-                <Text style={styles.actionLabel}>
-                  {busy ? "Working…" : "Pause"}
-                </Text>
-              </Pressable>
+              />
             ) : null}
             {!isLive &&
             permissions.canLaunch &&
             ["PAUSED", "PAUSE_REQUESTED"].includes(status.toUpperCase()) ? (
-              <Pressable
+              <Button
+                label={busy ? "Working…" : "Resume"}
+                variant="secondary"
+                size="md"
                 style={styles.actionBtn}
                 disabled={busy}
                 onPress={() => setResumeConfirmVisible(true)}
-                accessibilityRole="button"
                 accessibilityLabel="Resume ad"
                 testID="ads-detail-resume"
-              >
-                <Text style={styles.actionLabel}>
-                  {busy ? "Working…" : "Resume"}
-                </Text>
-              </Pressable>
+              />
             ) : null}
             {canCancel && permissions.canEnd ? (
-              <Pressable
-                style={[styles.actionBtn, styles.actionDanger]}
+              <Button
+                label={busy ? "Working…" : "Cancel ad"}
+                variant="dangerText"
+                size="md"
+                style={styles.actionBtn}
                 disabled={busy}
                 onPress={() => {
                   setDestructiveError(null);
                   setDestructiveAction("cancel");
                 }}
-                accessibilityRole="button"
                 accessibilityLabel="Cancel ad"
                 testID="ads-detail-cancel"
-              >
-                <Text style={styles.actionLabel}>
-                  {busy ? "Working…" : "Cancel ad"}
-                </Text>
-              </Pressable>
+              />
             ) : null}
             {canEnd && permissions.canEnd ? (
-              <Pressable
-                style={[styles.actionBtn, styles.actionDanger]}
+              <Button
+                label={busy ? "Working…" : "End ad"}
+                variant="dangerText"
+                size="md"
+                style={styles.actionBtn}
                 disabled={busy}
                 onPress={() => {
                   setDestructiveError(null);
                   setDestructiveAction("end");
                 }}
-                accessibilityRole="button"
                 accessibilityLabel="End ad"
                 testID="ads-detail-end"
-              >
-                <Text style={styles.actionLabel}>
-                  {busy ? "Working…" : "End ad"}
-                </Text>
-              </Pressable>
+              />
             ) : null}
           </View>
         ) : null}
       </ScrollView>
+      <ConfirmDialog
+        visible={pauseConfirmVisible}
+        onClose={() => {
+          if (!busy) {
+            setPauseConfirmVisible(false);
+            setPauseError(null);
+          }
+        }}
+        onConfirm={onPause}
+        variant="simple"
+        title="Pause this ad?"
+        description="It stops showing straight away."
+        confirmLabel="Pause ad"
+        cancelLabel="Keep running"
+        confirmLoading={busy}
+        closeDisabled={busy}
+        errorMessage={pauseError}
+        confirmTestID="ads-detail-pause-confirm"
+        cancelTestID="ads-detail-pause-keep"
+        testID="ads-detail-pause-dialog"
+      />
       <ConfirmDialog
         visible={destructiveAction !== null}
         onClose={() => {
@@ -864,139 +878,116 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
 const styles = StyleSheet.create({
   banner: {
-    gap: 4,
-    padding: spacing.sm,
-    marginTop: spacing.sm,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,122,24,.10)",
+    marginTop: space[3],
   },
-  bannerTitle: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
+  duplicate: {
+    marginTop: space[4],
+    alignSelf: "flex-start",
+  },
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
-  },
-  back: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[9],
+    gap: space[4],
   },
   kicker: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text3,
     textTransform: "uppercase",
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
-    marginTop: spacing.xs,
+    ...type.h1,
+    color: color.text1,
+    marginTop: space[1],
   },
   status: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    ...type.small,
+    color: color.text2,
+    marginTop: space[1],
   },
   metric: {
-    ...typography.body,
-    color: textTokens.primary,
-    marginTop: spacing.md,
+    ...type.body,
+    color: color.text1,
+    marginTop: space[4],
   },
   progress: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text2,
+    marginTop: space[1],
   },
   sectionTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    ...type.h2,
+    color: color.text1,
+    marginBottom: space[2],
   },
   body: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   muted: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   metricGrid: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    gap: space[2],
+    marginBottom: space[4],
   },
   metricCell: {
     flex: 1,
   },
   metricNumber: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.stat,
+    color: color.text1,
   },
   metricLabel: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   resultRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   timelineRow: {
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
+    gap: space[1],
+    paddingVertical: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.chrome,
+    borderBottomColor: color.lineStrong,
   },
   dest: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[2],
   },
   error: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   actions: {
     flexDirection: "row",
-    gap: spacing.sm,
-  },
-  askAriBtn: {
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: glass.tint.chrome.idle,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    flexWrap: "wrap",
+    gap: space[2],
+    marginTop: space[4],
   },
   confirmInput: {
-    ...typography.body,
-    color: textTokens.primary,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 12,
+    ...type.body,
+    color: color.text1,
+    marginTop: space[4],
+    paddingHorizontal: space[4],
+    minHeight: size.input,
+    paddingVertical: space[2],
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.input,
   },
   actionBtn: {
     flex: 1,
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: glass.tint.chrome.idle,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-  },
-  actionDanger: {
-    borderColor: "rgba(180, 60, 60, 0.35)",
-  },
-  actionLabel: {
-    ...typography.buttonMd,
-    color: textTokens.primary,
   },
 });

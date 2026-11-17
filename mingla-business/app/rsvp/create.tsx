@@ -31,10 +31,9 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { Spinner } from "../../src/components/ui/Spinner";
 import { Button } from "../../src/components/ui/Button";
@@ -207,7 +206,7 @@ export default function RsvpCreateRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         {/*
@@ -257,7 +256,7 @@ export default function RsvpCreateRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.center}>
@@ -325,11 +324,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   label: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   // #2211 — `card` is now the scroll HOST; the centring it used to apply moved
   // to `cardContent`, where `flexGrow: 1` reproduces it exactly while there is
@@ -342,22 +341,22 @@ const styles = StyleSheet.create({
     // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
+    paddingHorizontal: space[7],
+    gap: space[4],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   buttonStack: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
 });

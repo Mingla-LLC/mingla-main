@@ -21,10 +21,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { IconChrome } from "../ui/IconChrome";
 
@@ -59,7 +58,7 @@ export const IntakeAnswerFilePreview: React.FC<IntakeAnswerFilePreviewProps> = (
       statusBarTranslucent
     >
       <View
-        style={[styles.host, { backgroundColor: canvas.depth }]}
+        style={[styles.host, { backgroundColor: color.canvas }]}
       >
         <Pressable
           style={styles.backdrop}
@@ -82,8 +81,8 @@ export const IntakeAnswerFilePreview: React.FC<IntakeAnswerFilePreviewProps> = (
           style={[
             styles.closeWrap,
             {
-              paddingTop: insets.top + spacing.md,
-              paddingRight: spacing.md,
+              paddingTop: insets.top + space[4],
+              paddingRight: space[4],
             },
           ]}
           pointerEvents="box-none"
@@ -99,8 +98,8 @@ export const IntakeAnswerFilePreview: React.FC<IntakeAnswerFilePreviewProps> = (
           style={[
             styles.captionWrap,
             {
-              paddingBottom: insets.bottom + spacing.md,
-              paddingHorizontal: spacing.md,
+              paddingBottom: insets.bottom + space[4],
+              paddingHorizontal: space[4],
             },
           ]}
           pointerEvents="none"
@@ -128,8 +127,8 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   loadingText: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    color: color.text3,
   },
   closeWrap: {
     position: "absolute",
@@ -146,9 +145,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   captionText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
 });

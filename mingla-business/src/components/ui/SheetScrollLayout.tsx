@@ -20,15 +20,16 @@
  *
  * Invariant I-4389-SHEET-BOUNDED-SCROLL-BODY | issue #4389 | Every bottom sheet #4389 added or changed renders its content in SheetScrollLayout (or its own ScrollView body) inside a snap point of "half" or "full", with its buttons in the pinned footer. Enforced by issue_4389_sheets_bounded.implementor.test.tsx.
  */
-import React from "react";
+import React, { useContext } from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { spacing } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
+import { SheetKeyboardContext } from "./sheetKeyboardContext";
 
 /**
  * How far the sheet's footer must rise for the keyboard (and its Done bar).
@@ -37,7 +38,7 @@ import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
  */
 export function sheetKeyboardLift(keyboardHeight: number, bottomInset: number): number {
   if (keyboardHeight <= 0) return 0;
-  return Math.max(0, keyboardHeight + DONE_BAR_OCCUPIED - (spacing.lg + bottomInset));
+  return Math.max(0, keyboardHeight + DONE_BAR_OCCUPIED - (space[6] + bottomInset));
 }
 
 export interface SheetScrollLayoutProps {
@@ -53,11 +54,19 @@ export interface SheetScrollLayoutProps {
 export const SheetScrollLayout: React.FC<SheetScrollLayoutProps> = (props) =>
   props.keyboardAware === true ? <KeyboardLiftedLayout {...props} /> : <Layout {...props} lift={0} />;
 
-/** Only keyboard-aware sheets subscribe to the keyboard. */
+/**
+ * Only keyboard-aware sheets subscribe to the keyboard. #4420 (device round
+ * 2): inside the native bottom Sheet the panel body itself now clears the
+ * keyboard + Done bar (SheetKeyboardContext is set), so the layout adds no
+ * lift of its own there; lifting again would float the footer a keyboard-high
+ * above the bar. Outside that sheet (no context) it keeps its own lift.
+ */
 const KeyboardLiftedLayout: React.FC<SheetScrollLayoutProps> = (props) => {
   const keyboardHeight = useKeyboardHeight();
   const insets = useSafeAreaInsets();
-  return <Layout {...props} lift={sheetKeyboardLift(keyboardHeight, insets.bottom)} />;
+  const sheet = useContext(SheetKeyboardContext);
+  const lift = sheet === null ? sheetKeyboardLift(keyboardHeight, insets.bottom) : 0;
+  return <Layout {...props} lift={lift} />;
 };
 
 const Layout: React.FC<SheetScrollLayoutProps & { lift: number }> = ({
@@ -86,11 +95,19 @@ const Layout: React.FC<SheetScrollLayoutProps & { lift: number }> = ({
   </View>
 );
 
+// #4420: the sheet body already pads 20 on each side (kit `.sheet-body`), so
+// the layout adds no horizontal padding of its own. The footer is the kit's
+// sticky foot: a hairline top, 12 above the buttons, 8 between them.
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.md, gap: spacing.sm },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm },
+  content: { paddingTop: space[1], paddingBottom: space[4], gap: space[3] },
+  footer: {
+    paddingTop: space[3],
+    gap: space[2],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
 });
 
 export default SheetScrollLayout;

@@ -4,12 +4,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, color, space } from "../../constants/designSystem";
 import { useOfferingAccountInvites } from "../../hooks/useOfferingAccountInvites";
 import { Button } from "../ui/Button";
 import type {
@@ -115,21 +110,21 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: radiusTokens.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    gap: spacing.xs,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    gap: space[1],
   },
-  title: { color: textTokens.primary, fontSize: 15, fontWeight: "800" },
-  body: { color: textTokens.primary, fontSize: 14, fontWeight: "600" },
-  note: { color: textTokens.secondary, fontSize: 12 },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingTop: spacing.xs },
+  title: { color: color.text1, fontSize: 15, fontWeight: "800" },
+  body: { color: color.text1, fontSize: 14, fontWeight: "600" },
+  note: { color: color.text2, fontSize: 12 },
+  row: { flexDirection: "row", alignItems: "center", gap: space[2], paddingTop: space[1] },
   avatar: {
     width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center",
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
   },
-  avatarText: { color: textTokens.primary, fontSize: 12, fontWeight: "800" },
+  avatarText: { color: color.text1, fontSize: 12, fontWeight: "800" },
   flex: { flex: 1 },
-  retry: { alignSelf: "flex-start", paddingTop: spacing.xs },
-  name: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
+  retry: { alignSelf: "flex-start", paddingTop: space[1] },
+  name: { color: color.text1, fontSize: 14, fontWeight: "700" },
 });

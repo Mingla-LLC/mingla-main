@@ -183,6 +183,29 @@ preview's close/publish links go to `SITES_LOCAL_BUSINESS_ORIGIN` (written into
 `http://localhost:8190`, loopback only); a different Business web port needs
 `SITES_LOCAL_BUSINESS_WEB_PORT` set when the keys are generated.
 
+Business web needs the Core edge functions served (`run-local-sites.sh`, with
+`--frozen` while anyone else is previewing). Without them Kong answers 500
+("DNS resolution failed" for the edge runtime container) and stays hang on
+"Checking Stay readiness…", Ads shows "setup unavailable", maps stay blank and
+the Website section silently returns to the brand profile.
+`run-business-web.sh` warns at start when the functions do not answer.
+
+Some functions need keys the generated local env does not hold. Use only
+local or test values, never production secrets: `GOOGLE_MAPS_API_KEY` (address
+suggestions and map previews; otherwise `provider_key_missing`), and for
+checkout `MINGLA_STRIPE_MODE=test`, `STRIPE_PUBLISHABLE_KEY_TEST` (`pk_test_`),
+the `STRIPE_RAK_<ROLE>_TEST` restricted keys (`rk_test_`; at least
+`TICKET_CHECKOUT`, `ONBOARD`, `REFRESH_STATUS`, `WEBHOOK`) and
+`STRIPE_WEBHOOK_SECRET` from `stripe listen`; the app's
+`EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` must be the same real `pk_test_` key.
+If the colima VM's resolver stops answering for outside names, every Stripe
+and Google call from the functions fails ("connection to Stripe",
+`suggest_exception`). The `run-local-sites.sh` edge watcher detects this and
+adds public resolver fallbacks inside the edge container only.
+Extra seed data must use RFC 4122 ids (`randomUUID()` / `gen_random_uuid()`):
+ids such as `md5(...)::uuid` are refused by the Sites functions (400
+`VALIDATION_FAILED`), so the Website section returns to the brand profile.
+
 ## Tear-down
 
 ```bash

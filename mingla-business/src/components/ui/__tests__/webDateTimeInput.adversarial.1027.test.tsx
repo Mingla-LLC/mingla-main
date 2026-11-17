@@ -44,7 +44,7 @@ import { Platform } from "react-native";
   true;
 
 import { WebDateTimeInput } from "../WebDateTimeInput";
-import { glass, semantic } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 
 type HostNode = { type: unknown; props: Record<string, unknown> };
 type Tree = {
@@ -108,7 +108,7 @@ describe("issue #1027 Thread B ADVERSARIAL · Part A — shared WebDateTimeInput
       onChangeValue: () => undefined,
     });
     expect((err.input.props.style as Record<string, unknown>).borderColor).toBe(
-      semantic.error,
+      color.danger,
     );
     err.tree.unmount();
 
@@ -119,7 +119,7 @@ describe("issue #1027 Thread B ADVERSARIAL · Part A — shared WebDateTimeInput
       onChangeValue: () => undefined,
     });
     expect((ok.input.props.style as Record<string, unknown>).borderColor).toBe(
-      glass.border.profileBase,
+      color.line,
     );
     ok.tree.unmount();
   });

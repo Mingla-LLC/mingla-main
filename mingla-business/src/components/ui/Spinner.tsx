@@ -19,14 +19,14 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 
-import { accent } from "../../constants/designSystem";
+import { color as colorTokens } from "../../constants/designSystem";
 
 export type SpinnerSize = 24 | 36 | 48;
 
 export interface SpinnerProps {
   /** Diameter in pixels. Defaults to 24. */
   size?: SpinnerSize;
-  /** Stroke colour. Defaults to `accent.warm`. */
+  /** Stroke colour. Defaults to `color.text1` (#4420: orange is not a loading colour). */
   color?: string;
   testID?: string;
   style?: StyleProp<ViewStyle>;
@@ -37,7 +37,7 @@ const VIEW_BOX = 24;
 
 export const Spinner: React.FC<SpinnerProps> = ({
   size = 24,
-  color = accent.warm,
+  color = colorTokens.text1,
   testID,
   style,
 }) => {

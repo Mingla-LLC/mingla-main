@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { color } from "../../../constants/designSystem";
 
 /**
  * ORCH-1101 REWORK — TESTER ADVERSARIAL regression test.
@@ -156,15 +157,11 @@ describe("ORCH-1101 REWORK ADV-R2 · thinking bubble unmounts the moment the rep
 });
 
 describe("ORCH-1101 REWORK ADV-R3 · composerSurface has ZERO alpha transparency", () => {
-  const tokenLine = designSystem
-    .split("\n")
-    .find((l) => l.includes("composerSurface:")) as string;
-
   it("the token is a fully-opaque 6-digit hex — not 8-digit (#RRGGBBAA), rgba, or hsla", () => {
-    expect(tokenLine).toBeTruthy();
-    const m = tokenLine.match(/composerSurface:\s*["']([^"']+)["']/);
-    expect(m).not.toBeNull();
-    const val = m![1].trim();
+    // [TEST-MOD-APPROVED #4420] wave 6 deleted the composerSurface alias; the
+    // opaque surface is color.card, so read the RESOLVED value the app paints.
+    expect(designSystem).not.toMatch(/composerSurface:/);
+    const val = String(color.card).trim();
     // Exactly 6 hex digits => no alpha channel. 8-digit hex carries AA.
     expect(val).toMatch(/^#[0-9a-fA-F]{6}$/);
     expect(val).not.toMatch(/^#[0-9a-fA-F]{8}$/);
@@ -176,7 +173,9 @@ describe("ORCH-1101 REWORK ADV-R3 · composerSurface has ZERO alpha transparency
       inputBar.indexOf("host: {"),
       inputBar.indexOf("input: {"),
     );
-    expect(hostBlock).toMatch(/backgroundColor:\s*ariThread\.composerSurface/);
+    // [TEST-MOD-APPROVED #4420] the floating field is filled with the OPAQUE solid sheet
+    // material (alpha 1 on every platform), never a translucent wash.
+    expect(hostBlock).toMatch(/backgroundColor:\s*materials\.sheet\.solidFill/);
     // No rgba/hsla literal and no glass.tint.* fill leaked into the composer host.
     expect(hostBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/i);
     expect(hostBlock).not.toMatch(/backgroundColor:\s*glass\.tint\./);

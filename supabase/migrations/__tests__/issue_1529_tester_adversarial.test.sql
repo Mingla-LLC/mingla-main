@@ -284,9 +284,10 @@ BEGIN
   -- 20280624034255_issue_4255_team_chat_functions.sql and 58 after, so the
   -- floor rises to the live 58.
   -- [TEST-MOD-APPROVED #4255] The rework's ops_due_digest: 58 -> 59.
-  IF v_count < 59 THEN
+  -- [TEST-MOD-APPROVED #4420] The Stay booking-link resend: 59 -> 60.
+  IF v_count < 60 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_59_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_60_got_%',
       v_count;
   END IF;
 
@@ -303,9 +304,10 @@ BEGIN
   -- replay measures 40 writers on 88e51e68c0^ and 42 on cfb605f80d.
   -- [TEST-MOD-APPROVED #4255] team_chat_enqueue: 42 -> 43 writers; the
   -- rework's ops_due_digest: 43 -> 44.
-  IF v_count < 44 THEN
+  -- [TEST-MOD-APPROVED #4420] the Stay booking-link resend: 44 -> 45.
+  IF v_count < 45 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_44_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_45_got_%',
       v_count;
   END IF;
 END;
@@ -364,7 +366,11 @@ DECLARE
     'team_chat_enqueue',
     -- [TEST-MOD-APPROVED #4255] the rework's 09:00 due notice, the same way;
     -- issue_4255_team_rework.implementor.pg17 asserts it.
-    'ops_due_digest'
+    'ops_due_digest',
+    -- [TEST-MOD-APPROVED #4420] the email-only Stay booking-link resend
+    -- writes an explicit NULL country_code;
+    -- issue_4420_stay_other_contact_recovery.implementor.pg17 asserts it.
+    'issue_4420_stay_group_resend_link'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of

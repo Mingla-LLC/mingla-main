@@ -24,11 +24,9 @@ import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color as colorToken,
+  space,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
@@ -58,9 +56,9 @@ export interface OfferingManageSheetProps {
 }
 
 const TONE_COLOR: Record<OfferingActionTone, string> = {
-  default: textTokens.primary,
-  accent: accent.warm,
-  danger: semantic.error,
+  default: colorToken.text1,
+  accent: colorToken.accent,
+  danger: colorToken.danger,
 };
 
 export const OfferingManageSheet: React.FC<OfferingManageSheetProps> = ({
@@ -74,7 +72,7 @@ export const OfferingManageSheet: React.FC<OfferingManageSheetProps> = ({
 
   // Content-fit snap: heading (~44) + each row ~52 + bottom padding.
   const snapPx = useMemo<number>(
-    () => 44 + actions.length * 52 + spacing.lg,
+    () => 44 + actions.length * 52 + space[6],
     [actions.length],
   );
 
@@ -128,16 +126,16 @@ const ActionRow: React.FC<ActionRowProps> = ({ action }) => {
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[6],
   },
   heading: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: colorToken.text3,
+    marginBottom: space[2],
   },
   actionsList: {
     gap: 4,
@@ -145,14 +143,14 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2] + 4,
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.md,
     minHeight: 48,
   },
   actionRowPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: colorToken.fill.inset,
   },
   actionLabel: {
     fontSize: 15,
@@ -167,12 +165,12 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.warm,
+    backgroundColor: colorToken.accent,
   },
   badgeText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#fff",
+    color: colorToken.text1,
     fontVariant: ["tabular-nums"],
   },
 });

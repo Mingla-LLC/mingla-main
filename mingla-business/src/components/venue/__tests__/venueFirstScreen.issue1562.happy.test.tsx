@@ -171,11 +171,12 @@ jest.mock("@mingla/offering-rendering", () => {
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
-    const { children, heroEyebrow, heroTitle, stickyPanel, ...rest } = props as {
+    const { children, heroEyebrow, heroTitle, stickyPanel, desktopFlyerActions, ...rest } = props as {
       children?: React.ReactNode;
       heroEyebrow?: React.ReactNode;
       heroTitle?: React.ReactNode;
       stickyPanel?: React.ReactNode;
+      desktopFlyerActions?: React.ReactNode;
     };
     return ReactLocal.createElement(
       "ParallaxCoverShell",
@@ -183,6 +184,8 @@ jest.mock("@mingla/offering-rendering", () => {
       ReactLocal.createElement("ShellHeroEyebrow", null, heroEyebrow),
       ReactLocal.createElement("ShellHeroTitle", null, heroTitle),
       ReactLocal.createElement("ShellStickyPanel", null, stickyPanel),
+      // [TEST-MOD-APPROVED #4420] the desktop flyer actions render as a child.
+      ReactLocal.createElement("ShellFlyerActions", null, desktopFlyerActions),
       ReactLocal.createElement("ShellBody", null, children),
     );
   };
@@ -615,34 +618,55 @@ const requireByTestId = (mounted: Mounted, testID: string): TreeNode => {
   return found;
 };
 
-/** Every answer cell as its three lines, in render order. */
-const answerCells = (mounted: Mounted): string[][] => {
-  const bar = findByTestId(mounted, "issue-1561-answer-bar");
-  if (bar === null) return [];
-  return (bar.children ?? [])
-    .filter((child): child is TreeNode => typeof child !== "string")
-    .map((cell) =>
-      (cell.children ?? [])
-        .filter((line): line is TreeNode => typeof line !== "string")
-        .map((line) => flatText(line)),
+/**
+ * [TEST-MOD-APPROVED #4420 D-V1] — the answer bar's cells now read as the
+ * shared fact rows. Every row by key ("time", "where", "price", "booking"),
+ * as its drawn lines (value, then detail), in render order. Each assertion
+ * below keeps its #1562 intent; only the reading changed.
+ */
+const factRows = (mounted: Mounted): Map<string, string[]> => {
+  const out = new Map<string, string[]>();
+  if (findByTestId(mounted, "issue-4420-venue-facts") === null) return out;
+  const contains = (root: TreeNode, target: TreeNode): boolean => {
+    if (root === target) return true;
+    return (root.children ?? []).some(
+      (child) => typeof child !== "string" && contains(child, target),
     );
+  };
+  for (const node of mounted.nodes) {
+    const id = propsOf(node).testID;
+    if (typeof id !== "string") continue;
+    const m = /^issue-4420-venue-facts-(time|where|price|booking)$/.exec(id);
+    if (m === null) continue;
+    const action = mounted.nodes.find(
+      (n) => propsOf(n).testID === `${id}-action`,
+    );
+    const lines = mounted.nodes
+      .filter((n) => n.type === "Text" && contains(node, n))
+      .filter((n) => action === undefined || !contains(action, n))
+      .map((n) => flatText(n))
+      .filter((t) => t.length > 0);
+    out.set(m[1] as string, lines);
+  }
+  return out;
 };
 
-/** ONE cell by its label. THROWS when absent, naming what WAS on the bar. */
-const requireCell = (mounted: Mounted, label: string): string[] => {
-  const cells = answerCells(mounted);
-  const found = cells.find((lines) => lines[0] === label);
+/** ONE row by key. THROWS when absent, naming what WAS drawn. */
+const requireFact = (mounted: Mounted, key: string): string[] => {
+  const rows = factRows(mounted);
+  const found = rows.get(key);
   if (found === undefined) {
     throw new Error(
-      `expected an answer cell labelled "${label}"; the bar carried ` +
-        `[${cells.map((lines) => lines[0]).join(", ")}]`,
+      `expected a "${key}" fact row; the page drew [${[...rows.keys()].join(", ")}]`,
     );
   }
   return found;
 };
 
-const cellLabels = (mounted: Mounted): string[] =>
-  answerCells(mounted).map((lines) => lines[0]);
+const factKeys = (mounted: Mounted): string[] => [...factRows(mounted).keys()];
+/** The time row's first line, or "" when there is none. */
+const timeValue = (mounted: Mounted): string =>
+  factRows(mounted).get("time")?.[0] ?? "";
 
 const WIDTHS: { width: number; isDesktop: boolean }[] = [
   { width: 360, isDesktop: false },
@@ -696,10 +720,7 @@ describe("#1562 — open now, at EVERY width", () => {
     expect.assertions(3);
     const mounted = mountCase(restaurantCase(ALWAYS_OPEN_HOURS), width, isDesktop);
     // The answer bar's time cell — three lines of one cell.
-    expect(requireCell(mounted, "Right now").slice(0, 2)).toEqual([
-      "Right now",
-      "Open",
-    ]);
+    expect(requireFact(mounted, "time")[0]).toBe("Open · until 00:00");
     // …and the same state at the head of the week table, from the same resolver.
     expect(flatText(requireByTestId(mounted, "issue-1562-hours-state"))).toBe(
       "Open now · until 00:00",
@@ -719,10 +740,10 @@ describe("#1562 — open now, at EVERY width", () => {
         width,
         isDesktop,
       );
-      const cell = requireCell(mounted, "Right now");
-      expect(cell.slice(0, 2)).toEqual(["Right now", "Closed"]);
+      const cell = requireFact(mounted, "time");
+      expect(cell[0]).toBe("Closed now");
       // A permanently-shut venue has no next opening, so no third line.
-      expect(cell).toHaveLength(2);
+      expect(cell).toHaveLength(1);
       expect(flatText(requireByTestId(mounted, "issue-1562-hours-state"))).toBe(
         "Closed",
       );
@@ -736,9 +757,7 @@ describe("#1562 — open now, at EVERY width", () => {
     // ignored the state and printed a constant.
     const open = mountCase(restaurantCase(ALWAYS_OPEN_HOURS), 390, false);
     const shut = mountCase(restaurantCase(ALWAYS_CLOSED_HOURS), 390, false);
-    expect(requireCell(open, "Right now")[1]).not.toBe(
-      requireCell(shut, "Right now")[1],
-    );
+    expect(requireFact(open, "time")[0]).not.toBe(requireFact(shut, "time")[0]);
     open.unmount();
     shut.unmount();
   });
@@ -759,7 +778,8 @@ describe("#1562 — open now, at EVERY width", () => {
       390,
       false,
     );
-    expect(cellLabels(mounted)).not.toContain("Right now");
+    // No open-now claim: the time row (if any) states only the published row.
+    expect(timeValue(mounted)).not.toMatch(/^(Open|Closed now)/);
     expect(findByTestId(mounted, "issue-1562-hours-state")).toBeNull();
     // POSITIVE CONTROL on the same tree: the page really did render, and the
     // week table is still there carrying all seven days.
@@ -774,12 +794,12 @@ describe("#1562 — open now, at EVERY width", () => {
     // profile makes that unrepresentable; this asserts it stays that way even
     // though the venue row carries hours AND a timezone.
     const mounted = mountCase(stayCase(STAY_OFFERINGS), 390, false);
-    expect(cellLabels(mounted)).not.toContain("Right now");
+    expect(timeValue(mounted)).not.toMatch(/^(Open|Closed now|Today)/);
     expect(findByTestId(mounted, "issue-1562-hours-state")).toBeNull();
     // …and it DOES answer time, the way a hotel answers it.
-    expect(requireCell(mounted, "Check-in").slice(0, 2)).toEqual([
-      "Check-in",
-      "15:00",
+    expect(requireFact(mounted, "time")).toEqual([
+      "Check-in from 15:00",
+      "Check-out by 11:00",
     ]);
     mounted.unmount();
   });
@@ -798,14 +818,13 @@ describe("#1562 — a hotel finally shows a price", () => {
       // MITIGATION 1 — the number and the qualifier are three lines of the SAME
       // cell. Reading both off one node is what proves they are not separable:
       // a qualifier moved anywhere else on the page fails this lookup.
-      expect(requireCell(mounted, "From")).toEqual([
-        "From",
-        "$275",
-        "per night · before taxes and fees",
+      expect(requireFact(mounted, "price")).toEqual([
+        "From $275 a night",
+        "Before taxes and fees",
       ]);
       // $75 is the cabana — priced per BOOKING, not a night. It must not be the
       // headline, at any width.
-      expect(requireCell(mounted, "From")[1]).not.toBe("$75");
+      expect(requireFact(mounted, "price")[0]).not.toContain("$75");
       mounted.unmount();
     },
   );
@@ -813,8 +832,9 @@ describe("#1562 — a hotel finally shows a price", () => {
   test("MITIGATION 2 — a quote REPLACES the from-rate in the same slot", async () => {
     expect.assertions(5);
     const before = mountCase(stayCase(STAY_OFFERINGS), 390, false, null);
-    const beforeCell = requireCell(before, "From");
-    expect(beforeCell[1]).toBe("$275");
+    const beforeCell = requireFact(before, "price");
+    expect(beforeCell[0]).toBe("From $275 a night");
+    const beforeKeys = factKeys(before);
     before.unmount();
 
     // The quote arrives the way it really does: the guest is on the
@@ -829,17 +849,17 @@ describe("#1562 — a hotel finally shows a price", () => {
       "reservations",
     );
     // Same slot: the price cell is still the FIRST cell on the bar…
-    expect(cellLabels(after)[0]).toBe("Your dates");
+    // A Stay reads price first, and the quote takes that row's place.
+    expect(factKeys(after)[0]).toBe("price");
     // …the from-rate is GONE (not shown alongside, not pushed elsewhere)…
-    expect(cellLabels(after)).not.toContain("From");
+    expect(requireFact(after, "price")[0]).not.toMatch(/^From /);
     // …and the number is the real quoted total, all-in.
-    expect(requireCell(after, "Your dates")).toEqual([
-      "Your dates",
+    expect(requireFact(after, "price")).toEqual([
       "$826",
-      "total · taxes and fees included",
+      "Total · taxes and fees included",
     ]);
     // Same slot means same POSITION and same cell count.
-    expect(cellLabels(after)).toHaveLength(cellLabels(before).length);
+    expect(factKeys(after)).toHaveLength(beforeKeys.length);
     after.unmount();
   });
 
@@ -850,13 +870,9 @@ describe("#1562 — a hotel finally shows a price", () => {
     // Identical prices, identical everything — the ONLY difference between the
     // two fixtures is `fees[].displayMode`, so a qualifier that did not read
     // the data would print the same string twice.
-    expect(requireCell(separate, "From")[2]).toBe(
-      "per night · before taxes and fees",
-    );
-    expect(requireCell(allIn, "From")[2]).toBe(
-      "per night · all-in, taxes and fees included",
-    );
-    expect(requireCell(separate, "From")[1]).toBe(requireCell(allIn, "From")[1]);
+    expect(requireFact(separate, "price")[1]).toBe("Before taxes and fees");
+    expect(requireFact(allIn, "price")[1]).toBe("All-in, taxes and fees included");
+    expect(requireFact(separate, "price")[0]).toBe(requireFact(allIn, "price")[0]);
     separate.unmount();
     allIn.unmount();
   });
@@ -884,10 +900,10 @@ describe("#1562 — a hotel finally shows a price", () => {
       390,
       false,
     );
-    expect(cellLabels(mounted)).not.toContain("From");
+    expect(factKeys(mounted)).not.toContain("price");
     expect(mounted.json).not.toContain("$75");
     // POSITIVE CONTROL: the bar is still there with its other cells.
-    expect(cellLabels(mounted)).toContain("Check-in");
+    expect(timeValue(mounted)).toMatch(/^Check-in from /);
     mounted.unmount();
   });
 
@@ -912,7 +928,7 @@ describe("#1562 — a hotel finally shows a price", () => {
       },
     ];
     const mounted = mountCase(stayCase(mixed), 390, false);
-    expect(cellLabels(mounted)).not.toContain("From");
+    expect(factKeys(mounted)).not.toContain("price");
     expect(findByTestId(mounted, "issue-1562-stay-rate-lede")).toBeNull();
     // POSITIVE CONTROL: the SAME two rooms in ONE currency do produce a cell,
     // so the absence above is the currency rule and not a broken fixture.
@@ -921,7 +937,7 @@ describe("#1562 — a hotel finally shows a price", () => {
       390,
       false,
     );
-    expect(requireCell(single, "From")[1]).toBe("$200");
+    expect(requireFact(single, "price")[0]).toBe("From $200 a night");
     mounted.unmount();
     single.unmount();
   });

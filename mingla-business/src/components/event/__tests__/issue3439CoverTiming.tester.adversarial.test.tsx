@@ -107,8 +107,15 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/LazyCreatorStep2When")) return { CreatorStep2When: leaf("CreatorStep2When") }; // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf
     if (name.endsWith("/LazyCreatorStep5Tickets")) return { CreatorStep5Tickets: leaf("CreatorStep5Tickets") }; // #3281 route-only lazy boundary; same inert step leaf
     if (name.endsWith("/useEventDateKeys")) return { useEventDateKeys: () => ({ data: undefined }) }; // #3281 sold-date keys; unused by these hosts
+    // [TEST-MOD-APPROVED #4420] the Event wizard's footer is the shared StepperFooter; it renders the same Button leaves.
+    if (name.endsWith("/ui/Stepper")) return { Stepper: leaf("Stepper"), StepperFooter: (p: any) => React.createElement(React.Fragment, null, p.previousLabel !== undefined && p.onBack !== undefined ? React.createElement("Button", { label: p.previousLabel, onPress: p.onBack, disabled: p.backDisabled === true }) : null, React.createElement("Button", { label: p.continueLabel, onPress: p.onContinue, disabled: p.continueDisabled === true, loading: p.continueLoading === true, testID: p.continueTestID })) };
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
+    // #4420 — the unsaved-changes rules and guard hook are pure / web-inert: real modules.
+    if (exportName === "unsavedChangesGuard") return jest.requireActual("../../../utils/unsavedChangesGuard");
+    // #4420 — the wizards' invite publish gate (pure; real module).
+    if (exportName === "wizardInvitePublishGate") return jest.requireActual("../../invites/wizardInvitePublishGate");
+    if (exportName === "useUnsavedChangesGuard") return jest.requireActual("../../../hooks/useUnsavedChangesGuard");
     throw new Error(`Unclassified wizard boundary: ${name}`);
   };
   const module = { exports: {} as Record<string, React.ComponentType<any>> };

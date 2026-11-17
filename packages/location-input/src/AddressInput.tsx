@@ -647,6 +647,9 @@ export const AddressInput: React.FC<AddressInputProps> = ({
       backgroundColor: focused ? tokens.field.bgFocused : tokens.field.bg,
       paddingHorizontal: tokens.field.paddingHorizontal,
       paddingVertical: tokens.field.paddingVertical,
+      ...(tokens.field.minHeight !== undefined
+        ? { minHeight: tokens.field.minHeight }
+        : null),
       gap: 8,
     }),
     [focused, hasError, tokens.field],

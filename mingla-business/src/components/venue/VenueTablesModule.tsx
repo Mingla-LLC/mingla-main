@@ -19,10 +19,9 @@ import {
 
 import {
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import {
@@ -37,6 +36,7 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueCapacityRulesPanel } from "./VenueCapacityRulesPanel";
 import { VenueTableSheet } from "./VenueTableSheet";
+import { groupTablesByZone } from "./venueTableZones";
 import type {
   VenueTable,
   VenueTableUpsert,
@@ -79,14 +79,14 @@ const SEATING_LABEL: Record<string, string> = {
   standard: "Standard",
 };
 
-function tableMeta(t: VenueTable): string {
+function tableMeta(t: VenueTable, withZone = true): string {
   const parts: string[] = [`${t.capacity} seats`];
   if (t.minParty != null || t.maxParty != null) {
     const lo = t.minParty ?? 1;
     const hi = t.maxParty ?? t.capacity;
     parts.push(`parties ${lo}–${hi}`);
   }
-  if (t.zone != null) parts.push(ZONE_LABEL[t.zone] ?? t.zone);
+  if (withZone && t.zone != null) parts.push(ZONE_LABEL[t.zone] ?? t.zone);
   if (t.seatingType != null) parts.push(SEATING_LABEL[t.seatingType] ?? t.seatingType);
   if (t.reservationPolicy === "walk_in_only") parts.push("walk-in only");
   return parts.join(" · ");
@@ -259,7 +259,7 @@ export function VenueTablesModule({
 
       {isEmpty ? (
         <GlassCard variant="elevated" style={styles.emptyCard}>
-          <LayoutGrid size={28} color={textTokens.primary} />
+          <LayoutGrid size={28} color={color.text1} />
           <Text style={styles.emptyTitle}>Set up your tables</Text>
           <Text style={styles.emptyBody}>
             Add your tables, zones, and party-size limits. The availability engine
@@ -281,8 +281,17 @@ export function VenueTablesModule({
           )}
         </GlassCard>
       ) : (
-        <View style={styles.list}>
-          {tables.map((t) => (
+        <View style={styles.list} testID="venue-tables-zones">
+          {groupTablesByZone(tables).map((group) => (
+            <View
+              key={group.zone ?? "none"}
+              style={styles.zoneGroup}
+              testID={`venue-tables-zone-${group.zone ?? "none"}`}
+            >
+              <Text style={styles.zoneHeader} accessibilityRole="header">
+                {group.label} · {group.tables.length}
+              </Text>
+              {group.tables.map((t) => (
             <GlassCard
               key={t.id}
               variant="base"
@@ -303,10 +312,10 @@ export function VenueTablesModule({
                 >
                   <View style={styles.tableText}>
                     <Text style={styles.tableName}>{t.name}</Text>
-                    <Text style={styles.tableMeta}>{tableMeta(t)}</Text>
+                    <Text style={styles.tableMeta}>{tableMeta(t, false)}</Text>
                   </View>
                   {canMutate ? (
-                    <ChevronRight size={18} color={textTokens.tertiary} />
+                    <ChevronRight size={18} color={color.text3} />
                   ) : null}
                 </Pressable>
                 {canMutate ? (
@@ -331,6 +340,8 @@ export function VenueTablesModule({
                 ) : null}
               </View>
             </GlassCard>
+          ))}
+            </View>
           ))}
         </View>
       )}
@@ -414,9 +425,9 @@ export function VenueTablesModule({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   spotsEntry: {
     alignSelf: "flex-start",
@@ -425,36 +436,44 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   headerText: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   subtitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   emptyCard: {
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   emptyTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   emptyBody: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
   list: {
-    gap: spacing.sm,
+    gap: space[5],
+  },
+  zoneGroup: {
+    gap: space[2],
+  },
+  zoneHeader: {
+    ...type.label,
+    color: color.text3,
+    textTransform: "uppercase",
   },
   tableCard: {
     // ORCH-1190 #8 / R2 — full-width row card. On narrow widths the card
@@ -476,7 +495,7 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     // R2 — the GlassCard padding wrapper between the width:100% card and this
     // row carries no width of its own; pin the row to 100% so the flex children
     // below (tableMain/tableText with flex:1+minWidth:0) measure against the
@@ -492,46 +511,46 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   tableText: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.xxs,
+    gap: 2,
   },
   tableName: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "600",
   },
   tableMeta: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   activeToggle: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
   },
   activeToggleLabel: {
-    ...typography.caption,
+    ...type.caption,
     fontWeight: "700",
   },
   activeOn: {
-    color: semantic.success,
+    color: color.success,
   },
   activeOff: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   readOnlyNote: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
     textAlign: "center",
   },
   errorNote: {
-    ...typography.bodySm,
-    color: semantic.error,
+    ...type.small,
+    color: color.danger,
   },
 });
 

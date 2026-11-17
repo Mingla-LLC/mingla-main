@@ -16,13 +16,14 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import type { ThemePalette } from "./themePalette";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
 import type { ProjectedTripSchedule } from "./tripOfferingTypes";
 import { accentFill } from "./themeAccentStyle";
+import { OfferingRadioCard } from "./OfferingDecideParts";
 
 export type TripPaymentPlanChoice = "full" | "installments";
 
@@ -94,119 +95,74 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
       : schedule.fullPriceCents > 0
         ? Math.round((schedule.depositCents / schedule.fullPriceCents) * 100)
         : 0;
-  const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
-
+  // issue #4420 — two whole-card choices (design file → P.trip "How you
+  // pay"): "Pay over time" with the deposit as its amount and the schedule
+  // under it once chosen, then "Pay in full". Same values, same math, same
+  // onChange; the segmented tabs became radio cards.
+  const overTimeDetail = `${resolvedPct}% deposit now, then ${futureCount} payment${
+    futureCount === 1 ? "" : "s"
+  }. ${fullLabel} total, no extra cost.`;
   return (
     <View
-      style={[
-        styles.card,
-        { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder },
-      ]}
+      style={styles.choices}
+      accessibilityRole="radiogroup"
+      accessibilityLabel="How you pay"
       testID={testID}
     >
-      <View style={[styles.accentBar, accentFill(palette)]} />
-      <View style={styles.inner}>
-        {/* segmented TAB toggle */}
-        <View
-          accessibilityRole="tablist"
-          accessibilityLabel="How you pay"
-          style={[styles.seg, { borderColor: palette.panelBorder }]}
-        >
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityLabel={`Pay full ${fullLabel} now`}
-            accessibilityState={{ selected: isFull }}
-            aria-selected={isFull}
-            onPress={() => onChange("full")}
-            style={[styles.segBtn, isFull ? accentFill(palette) : null]}
-          >
-            <Text
-              style={[
-                styles.segBtnText,
-                { color: isFull ? palette.accentText : palette.secondaryText },
-              ]}
-            >
-              Pay in full
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityLabel={`Pay over time, ${depositLabel} deposit today plus ${futureCount} future payment${
-              futureCount === 1 ? "" : "s"
-            }`}
-            accessibilityState={{ selected: !isFull }}
-            aria-selected={!isFull}
-            onPress={() => onChange("installments")}
-            style={[styles.segBtn, !isFull ? accentFill(palette) : null]}
-          >
-            <Text
-              style={[
-                styles.segBtnText,
-                { color: !isFull ? palette.accentText : palette.secondaryText },
-              ]}
-            >
-              Pay over time
-            </Text>
-          </Pressable>
-        </View>
-
-        {isFull ? (
-          <View>
-            <View style={styles.amtRow}>
-              <Text style={[styles.amt, { color: palette.primaryText }, fontStyle]}>
+      <OfferingRadioCard
+        palette={palette}
+        title="Pay over time"
+        detail={overTimeDetail}
+        price={depositLabel}
+        selected={!isFull}
+        onPress={() => onChange("installments")}
+        fontFamily={fontFamily}
+        accessibilityLabel={`Pay over time, ${depositLabel} deposit today plus ${futureCount} future payment${
+          futureCount === 1 ? "" : "s"
+        }`}
+        testID={testID !== undefined ? `${testID}-over-time` : undefined}
+      >
+        {!isFull && showScheduleWhenInstallments ? (
+          <View style={[styles.schedule, { borderTopColor: palette.panelBorder }]}>
+            <ScheduleRow
+              palette={palette}
+              when="Today"
+              tag="Deposit"
+              amount={depositLabel}
+              future={false}
+              first
+            />
+            {schedule.installments.map((inst) => (
+              <ScheduleRow
+                key={inst.ordinal}
+                palette={palette}
+                when={formatScheduleDate(inst.dueAtIso)}
+                amount={formatMoneyExact(inst.amountCents, currency)}
+                future
+              />
+            ))}
+            <View style={[styles.schedTotal, { borderTopColor: palette.panelBorder }]}>
+              <Text style={[styles.schedTotalLabel, { color: palette.secondaryText }]}>
+                Total
+              </Text>
+              <Text style={[styles.schedTotalValue, { color: palette.primaryText }]}>
                 {fullLabel}
               </Text>
             </View>
-            <Text style={[styles.sub, { color: palette.secondaryText }]}>
-              One payment, all-in. Taxes &amp; fees included.
-            </Text>
           </View>
-        ) : (
-          <View>
-            <View style={styles.amtRow}>
-              <Text style={[styles.amtLabel, { color: palette.tertiaryText }]}>
-                Due today
-              </Text>
-              <Text style={[styles.amt, { color: palette.primaryText }, fontStyle]}>
-                {depositLabel}
-              </Text>
-            </View>
-            <Text style={[styles.sub, { color: palette.secondaryText }]}>
-              {resolvedPct}% deposit now, then {futureCount} payment
-              {futureCount === 1 ? "" : "s"}. {fullLabel} total — no extra cost.
-            </Text>
-            {showScheduleWhenInstallments ? (
-              <View style={[styles.schedule, { borderTopColor: palette.panelBorder }]}>
-                <ScheduleRow
-                  palette={palette}
-                  when="Today"
-                  tag="Deposit"
-                  amount={depositLabel}
-                  future={false}
-                  first
-                />
-                {schedule.installments.map((inst) => (
-                  <ScheduleRow
-                    key={inst.ordinal}
-                    palette={palette}
-                    when={formatScheduleDate(inst.dueAtIso)}
-                    amount={formatMoneyExact(inst.amountCents, currency)}
-                    future
-                  />
-                ))}
-                <View style={[styles.schedTotal, { borderTopColor: palette.panelBorder }]}>
-                  <Text style={[styles.schedTotalLabel, { color: palette.secondaryText }]}>
-                    Total
-                  </Text>
-                  <Text style={[styles.schedTotalValue, { color: palette.primaryText }]}>
-                    {fullLabel}
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-          </View>
-        )}
-      </View>
+        ) : null}
+      </OfferingRadioCard>
+      <OfferingRadioCard
+        palette={palette}
+        title="Pay in full"
+        detail="One payment, all-in. Taxes & fees included."
+        price={fullLabel}
+        selected={isFull}
+        onPress={() => onChange("full")}
+        fontFamily={fontFamily}
+        accessibilityLabel={`Pay full ${fullLabel} now`}
+        testID={testID !== undefined ? `${testID}-full` : undefined}
+      />
     </View>
   );
 };
@@ -246,36 +202,7 @@ const ScheduleRow: React.FC<{
 );
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 20, borderWidth: 1, overflow: "hidden" },
-  accentBar: { height: 4 },
-  inner: { padding: 18 },
-  seg: {
-    flexDirection: "row",
-    backgroundColor: "rgba(0,0,0,0.28)",
-    borderRadius: 12,
-    padding: 4,
-    gap: 4,
-    borderWidth: 1,
-  },
-  segBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-  },
-  segBtnText: { fontSize: 13, fontWeight: "800" },
-  amtRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 16 },
-  amtLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  amt: { fontSize: 34, fontWeight: "900", letterSpacing: -1 },
-  sub: { fontSize: 13, lineHeight: 19, marginTop: 4 },
+  choices: { gap: 10 },
   schedule: { marginTop: 16, borderTopWidth: 1, paddingTop: 14 },
   schedRow: {
     flexDirection: "row",

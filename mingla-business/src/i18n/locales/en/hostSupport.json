@@ -103,5 +103,18 @@
     "host_chip": "Host",
     "explorer_chip": "Explorer",
     "images": "{{count}} images"
+  },
+  "details": {
+    "title": "Ticket",
+    "ticket": "Ticket",
+    "topic": "Topic",
+    "shared": "Shared with",
+    "shared_brand": "Your brand",
+    "shared_person": "Only you",
+    "opened": "Opened",
+    "updated": "Updated",
+    "status": "Status",
+    "status_closed": "Closed",
+    "next_update": "Next update"
   }
 }

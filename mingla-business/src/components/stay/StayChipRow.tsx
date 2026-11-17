@@ -47,7 +47,9 @@ import React from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { spacing } from "../../constants/designSystem";
+import {
+  space,
+} from "../../constants/designSystem";
 
 export interface StayChipRowProps {
   children: React.ReactNode;
@@ -94,7 +96,7 @@ const styles = StyleSheet.create({
   content: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   /**
    * Applied LAST, after any caller override. `alignItems: "center"` is the

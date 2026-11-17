@@ -17,6 +17,12 @@
  * (which would double-inset native).
  *
  * Scope: the five mingla-business top-bar hosts in the allowlist.
+ *
+ * #4420 (Graphite Glass): the 8px step is now written `space[2]`, the new
+ * scale's name for it (`spacing.sm` survives in designSystem.ts only as a
+ * transitional alias that resolves to `space[2]`). Both spellings are the
+ * same 8px web-only gap, so both are accepted; the rule (web-gated, 8px,
+ * native +0) is unchanged.
  */
 
 import fs from "node:fs";
@@ -39,13 +45,19 @@ const TARGETS = [
 
 const violations = [];
 
-// Two accepted web-gated spacing.sm shapes:
-//   (a) ternary added to an existing inset: `(Platform.OS === "web" ? spacing.sm : 0)`
-//   (b) conditional style object:           `Platform.OS === "web" ? { paddingTop: spacing.sm } : null`
-const PATTERN_A =
-  /Platform\.OS\s*===\s*["']web["']\s*\?\s*spacing\.sm\s*:\s*0/g;
-const PATTERN_B =
-  /Platform\.OS\s*===\s*["']web["']\s*\?\s*\{\s*paddingTop:\s*spacing\.sm\s*\}\s*:\s*null/g;
+// The 8px step, in either spelling: `spacing.sm` (legacy alias) or `space[2]`.
+const GAP = String.raw`(?:spacing\.sm|space\[2\])`;
+// Two accepted web-gated 8px shapes:
+//   (a) ternary added to an existing inset: `(Platform.OS === "web" ? space[2] : 0)`
+//   (b) conditional style object:           `Platform.OS === "web" ? { paddingTop: space[2] } : null`
+const PATTERN_A = new RegExp(
+  String.raw`Platform\.OS\s*===\s*["']web["']\s*\?\s*` + GAP + String.raw`\s*:\s*0`,
+  "g",
+);
+const PATTERN_B = new RegExp(
+  String.raw`Platform\.OS\s*===\s*["']web["']\s*\?\s*\{\s*paddingTop:\s*` + GAP + String.raw`\s*\}\s*:\s*null`,
+  "g",
+);
 
 for (const { rel, min } of TARGETS) {
   let src;
@@ -80,5 +92,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "OK [I-PROPOSED-WEB-TOPBAR-BREATHING-GAP]: all five top-bar hosts carry the web-gated spacing.sm breathing gap; native untouched.",
+  "OK [I-PROPOSED-WEB-TOPBAR-BREATHING-GAP]: all five top-bar hosts carry the web-gated 8px (space[2]) breathing gap; native untouched.",
 );
