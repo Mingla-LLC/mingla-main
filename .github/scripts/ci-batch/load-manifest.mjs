@@ -315,7 +315,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4453 milestone 9: offering-detail migration and pg17 suites (implementor + tester) registered; re-sealed.
 // #4453 milestone 7 merged with milestone 9 (0b096f08f0): union of both registrations; re-sealed.
 // #4453 milestone 11: ari-add-page flag migration and its pg17 suite registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "0418b710cba4d6ef5957ee9d33ebcf3806dffe26e5294ef596d3d0bb9d0840fa";
+export const BOOTSTRAP_SHA256 = "03a56e0581b31f12cf8e4877753db68491593eb079ab993179b666d258bd9be5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
