@@ -9,6 +9,7 @@ import { WebsiteProvider, type WebsiteContextValue } from "../../src/components/
 import { PagesSection } from "../../src/components/sites/website/sections/PagesSection";
 import { ToolProposalCard } from "../../src/components/ari/ToolProposalCard";
 import { WButton } from "../../src/components/sites/website/ui";
+import { SitePreviewPanel } from "../../src/components/sites/website/preview/SitePreviewPanel";
 import { ariPagePrompt } from "../../../packages/site-contracts/src/ariPage.ts";
 import type { SitePageRow } from "../../src/sites/contentApi";
 
@@ -70,7 +71,7 @@ const PROPOSAL = {
   why: "You asked for a page about private hire.",
 };
 
-type Step = "pages" | "ari" | "draft";
+type Step = "pages" | "ari" | "draft" | "preview";
 
 export default function DevAriAddPageHarness(): React.ReactElement {
   if (!__DEV__) return <Redirect href="/" />;
@@ -125,6 +126,10 @@ function Harness(): React.ReactElement {
     style_library: true,
     ari_add_page: true,
   }), []);
+  // The plan sheet names the site's style from the cached plan (no Core call in the harness).
+  useEffect(() => {
+    queryClient.setQueryData(brandSiteKeys.plan(BRAND), { ...plan, site: { id: SITE, status: "draft", designKey: "atelier", published: false, paused: false } });
+  }, [plan, queryClient]);
   const noop = (): void => undefined;
   const value = {
     brandId: BRAND,
@@ -161,6 +166,7 @@ function Harness(): React.ReactElement {
         <View style={styles.steps}>
           <WButton label="1 · Pages" size="sm" onPress={() => setStep("pages")} testID="dev-step-pages" />
           <WButton label="2 · Ari" size="sm" onPress={() => setStep("ari")} testID="dev-step-ari" />
+          <WButton label="3 · Editor preview" size="sm" onPress={() => setStep("preview")} testID="dev-step-preview" />
         </View>
         {step === "ari" ? (
           <View style={styles.thread} testID="dev-ari-thread">
@@ -180,6 +186,19 @@ function Harness(): React.ReactElement {
               onCancel={() => setStep("pages")}
             />
           </View>
+        ) : step === "preview" ? (
+          <SitePreviewPanel
+            grant={{
+              kind: "ready",
+              previewUrl: "about:blank",
+              siteId: SITE,
+              pages: pagesRef.current.map((row) => ({ path: row.path ?? "", title: row.title, ...(row.ari_draft ? { draft_by_ari: true as const } : {}) })),
+            }}
+            preference={defaultPreviewPreference(false)}
+            onPreference={noop}
+            purpose="Your draft"
+            onOpenFullScreen={noop}
+          />
         ) : (
           <PagesSection key={step} />
         )}
