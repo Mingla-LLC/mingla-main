@@ -3,7 +3,7 @@
 -- while the host hides the address until booking. Runs on the fully replayed PG17
 -- schema; every read below runs as the real caller role; everything rolls back.
 --
--- MINGLA-INVARIANT: I-4420-EXPERIENCE-STOP-DETAIL-VISIBILITY | issue #4420 | while an experience hides its address (hideAddressUntilTicket true or absent), anon and a signed-in caller who did not book get no stop street, exact pin or map place id through experience_stops (rows and WHERE filters), pg_eligible_experiences_for_deck (payload and radius filter), links_page_week, events.theme, pg_public_experience_by_slug, pg_public_experiences_by_brand or pg_brand_experiences_for_place; the owner, a team member and a booked guest still read the exact stop rows; a visible address is unchanged; the experience writers store the area line, not the street (A-DECK, A-RADIUS, A-TABLE, A-FILTER, A-THEME, A-PUBLIC, A-LINKS, U-*, O-TABLE, T-TABLE, B-TABLE, B-OTHER, V-*, W-CREATE, G-ACL)
+-- MINGLA-INVARIANT: I-4420-EXPERIENCE-STOP-DETAIL-VISIBILITY | issue #4420 | experience stop detail follows the address visibility rule: while hidden, only the host, brand team, booked guests and the service role read exact stop rows; a visible address is unchanged; writers store the area line (A-*, U-*, O-TABLE, T-TABLE, B-*, V-*, W-CREATE, G-ACL)
 \set ON_ERROR_STOP on
 BEGIN;
 

@@ -257,7 +257,9 @@ test('H16 safe-area, accessibility-size, and recipient-state contracts are expli
   const businessSheet = read('mingla-business/src/components/ui/SheetMobile.tsx');
   assert.match(consumer, /paddingBottom: Math\.max\(insets\.bottom, 12\)/);
   // [TEST-MOD-APPROVED #4420] spacing.lg retired; space[6] is the same 24.
-  assert.match(businessSheet, /paddingBottom: space\[6\] \+ bottomInset/);
+  // The resting pad is still space[6] + bottomInset; #4420 lets a keyboard-open
+  // sheet swap in its keyboard pad, so the safe-area arm sits after a ternary.
+  assert.match(businessSheet, /paddingBottom: [^,}\n]*space\[6\] \+ bottomInset/);
   // [TEST-MOD-APPROVED #1719] Written reason: the second orchestrator review restored the binding
   // 92px/64×72 compact geometry and responsive `Share {title}` header, so the prior plain-Share
   // assertions were wrong at standard text sizes and must now pin both standard and accessibility modes.

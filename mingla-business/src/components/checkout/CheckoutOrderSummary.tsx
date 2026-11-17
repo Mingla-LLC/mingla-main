@@ -32,9 +32,13 @@ import { useCart } from "./CartContext";
 const SUMMARY_WIDTH = 400;
 const STUB_BAND_HEIGHT = 250;
 
-/** react-native-web passes `position: sticky`; RN's type has no name for it. */
+/**
+ * react-native-web passes `position: sticky`; RN's type has no name for it.
+ * The union keeps RN's own positions so the widening cast below is a legal
+ * comparison (the PublicVenueScreen `WebVenueViewStyle` pattern).
+ */
 interface WebStickyStyle {
-  position: "sticky";
+  position: ViewStyle["position"] | "sticky";
   top: number;
 }
 const stickyStub = (): StyleProp<ViewStyle> => {

@@ -5,7 +5,7 @@
 -- replayed PG17 schema; every read below runs as the real caller role; everything
 -- rolls back.
 --
--- MINGLA-INVARIANT: I-4420-EVENT-LOCATION-FOLLOWS-ADDRESS-RULE | issue #4420 | while an event hides its address (hideAddressUntilTicket true or absent) and is not a draft, anon and a signed-in caller who did not book get no street, map place id, exact pin or combined label through events.theme (select or WHERE filter), the public event views or pg_public_event_by_slug, and no host draft blob for any event; event_withheld_location is closed to anon and to them; the owner, a team member and a booked guest read the exact location (management view and the private table); a visible-address event is unchanged; the Host live-edit save and load keep the street and the guest notice snapshot still sees it (A-*, U-*, O-*, T-*, B-*, V-*, H-*, N-*, D-*, G-*)
+-- MINGLA-INVARIANT: I-4420-EVENT-LOCATION-FOLLOWS-ADDRESS-RULE | issue #4420 | event location detail follows the address visibility rule: while hidden, only the brand team, booked guests and the service role read the exact location; a visible-address event is unchanged; the Host editor load and save keep the street (A-*, U-*, O-*, T-*, B-*, V-*, H-*, N-*, D-*, G-*)
 \set ON_ERROR_STOP on
 BEGIN;
 
