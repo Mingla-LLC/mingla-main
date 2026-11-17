@@ -44,7 +44,9 @@ export interface ChatListConversationLike {
   type?: "direct" | "group";
   name?: string | null;
   session_id?: string | null;
-  linked_entity_type?: "direct" | "session" | "trip" | "event" | "brand_enquiry";
+  linked_entity_type?: "direct" | "session" | "trip" | "event" | "brand_enquiry" | "brand_guests";
+  /** #4459: the brand of a brand Guest chat (linked_entity_type 'brand_guests'). */
+  brand_id?: string | null;
   /** #4187 managed Mingla Local / Creator team conversation. */
   program_kind?: "local" | "creator" | null;
   participants: ChatListParticipant[];
@@ -55,6 +57,8 @@ export interface ChatListConversationLike {
     /** Issue #4456: the last message was unsent ('sender' / 'admin' show the unsent line). */
     unsent_kind?: string | null;
     unsent_by?: string | null;
+    /** #4459: 'brand' when the brand team posted (a brand Guest chat). */
+    sender_kind?: string | null;
   } | null;
   unread_count?: number;
   pinned_at?: string | null;
@@ -63,8 +67,8 @@ export interface ChatListConversationLike {
   live_session_id?: string | null;
   live_session_status?: string | null;
   __pendingInvite?: unknown;
-  /** Issue #4114 Wave 6: a folded brand channel row (brandChannelModel). */
-  __brandChannel?: unknown;
+  /** #4459: a Guest chat the brand removed this person from (no conversation row is readable). */
+  __removedBrandGuests?: unknown;
   /** #4111 enquiry threads (D11): a private row of their own, never folded. */
   isEnquiry?: boolean;
 }
@@ -80,8 +84,8 @@ export interface ChatListFriendLike {
   avatar_url?: string | null;
 }
 
-export type ChatFilter = "all" | "unread" | "groups" | "events";
-export const CHAT_FILTERS: readonly ChatFilter[] = ["all", "unread", "groups", "events"];
+export type ChatFilter = "all" | "unread" | "groups" | "brands";
+export const CHAT_FILTERS: readonly ChatFilter[] = ["all", "unread", "groups", "brands"];
 
 /**
  * Every kind of chat gets its own shape (design D12):
@@ -89,16 +93,18 @@ export const CHAT_FILTERS: readonly ChatFilter[] = ["all", "unread", "groups", "
  *  - direct_collab: a circle with the orange deck badge (a 1:1 chat whose
  *    collab the friend has joined: live_session_status past pending);
  *  - group: two stacked circles plus the deck badge (every group is a collab);
- *  - event: a rounded-square cover (event and trip chats; a brand team
- *    member's per-event chats);
- *  - brand_channel: the brand's rounded-square logo (Wave 6: a guest's event
- *    and trip chats of one brand, folded into one row);
+ *  - event: a rounded-square cover (the retired per-listing event and trip
+ *    chats; #4459 keeps the kind for any old row still in a cache);
+ *  - brand_channel: the brand's rounded-square logo (#4459: the brand's one
+ *    server-side Guest chat, linked_entity_type 'brand_guests', or the row of
+ *    one the brand removed you from);
  *  - enquiry: #4111's private enquiry thread (D11), kept as its own row.
  */
 export type ChatKind = "direct" | "direct_collab" | "group" | "event" | "brand_channel" | "enquiry" | "program";
 
 export function chatKind(conversation: ChatListConversationLike): ChatKind {
-  if (conversation.__brandChannel) return "brand_channel";
+  if (conversation.__removedBrandGuests) return "brand_channel";
+  if (conversation.linked_entity_type === "brand_guests") return "brand_channel";
   if (conversation.isEnquiry) return "enquiry";
   if (conversation.program_kind) return "program";
   if (conversation.type === "group") {
@@ -136,8 +142,8 @@ export function matchesChatFilter(conversation: ChatListConversationLike, filter
       return isUnreadChat(conversation);
     case "groups":
       return chatKind(conversation) === "group";
-    case "events":
-      return isEventLikeKind(chatKind(conversation));
+    case "brands":
+      return chatKind(conversation) === "brand_channel";
     default: {
       const exhaustive: never = filter;
       return exhaustive;
@@ -145,9 +151,61 @@ export function matchesChatFilter(conversation: ChatListConversationLike, filter
   }
 }
 
-/** Event chats and brand channels both belong to the Events filter and search section. */
-export function isEventLikeKind(kind: ChatKind): boolean {
-  return kind === "event" || kind === "brand_channel";
+/** #4459: a row Explorer renders as the brand's Guest chat. */
+export function isBrandGuestsRow(conversation: ChatListConversationLike): boolean {
+  return chatKind(conversation) === "brand_channel";
+}
+
+/** #4459: the row of a Guest chat the brand removed you from. */
+export function isRemovedBrandGuestsRow(conversation: ChatListConversationLike): boolean {
+  return Boolean(conversation.__removedBrandGuests);
+}
+
+/** #4459: the synthetic id of a Removed row (one per brand). */
+export const REMOVED_BRAND_GUESTS_ID_PREFIX = "removed-brand-guests:";
+export function removedBrandGuestsRowId(brandId: string): string {
+  return `${REMOVED_BRAND_GUESTS_ID_PREFIX}${brandId}`;
+}
+
+// ── #4459: host chats (Explorer is the guest app) ──────────────────────────
+/**
+ * True for a host chat: the Guest chat of a brand this user is on the team of.
+ * It is run from the Host app, so Explorer hides it everywhere (list, search,
+ * filters, unread). Edge: a team member holding a guest ticket to their own
+ * brand does not see it in Explorer either.
+ *
+ * `teamBrandIds` null means the user's teams are not known yet: nothing is hidden.
+ */
+export function isHostChatForUser(
+  conversation: ChatListConversationLike,
+  teamBrandIds: ReadonlySet<string> | null,
+): boolean {
+  if (teamBrandIds === null) return false;
+  if (conversation.linked_entity_type !== "brand_guests") return false;
+  return Boolean(conversation.brand_id) && teamBrandIds.has(conversation.brand_id as string);
+}
+
+/** Explorer's chats: everything but host chats (list, search, filters, archive). */
+export function explorerConversations<C extends ChatListConversationLike>(
+  conversations: readonly C[],
+  teamBrandIds: ReadonlySet<string> | null,
+): C[] {
+  return conversations.filter((conversation) => !isHostChatForUser(conversation, teamBrandIds));
+}
+
+/**
+ * Explorer's unread badge: host chats never count; muted chats never count.
+ * A brand Guest chat counts its own unread_count (there is no fold to sum).
+ */
+export function explorerUnreadTotal<C extends ChatListConversationLike>(
+  conversations: readonly C[],
+  teamBrandIds: ReadonlySet<string> | null,
+  isMuted: (conversation: C) => boolean = () => false,
+): number {
+  return explorerConversations(conversations, teamBrandIds).reduce(
+    (sum, conversation) => sum + (isMuted(conversation) ? 0 : conversation.unread_count || 0),
+    0,
+  );
 }
 
 function activityTime(conversation: ChatListConversationLike): number {
@@ -281,7 +339,7 @@ export function friendMatches(friend: ChatListFriendLike, query: string): boolea
 
 // ── The flat item list the FlatList renders ─────────────────────────────────
 export type ChatListItemModel<C, F> =
-  | { kind: "section"; key: string; section: "invites" | "chats" | "friends" | "events" }
+  | { kind: "section"; key: string; section: "invites" | "chats" | "friends" | "brands" }
   | { kind: "invite"; key: string; conversation: C }
   | { kind: "chat"; key: string; conversation: C }
   /** #4111: an enquiry thread, always its own row (never folded, never an event). */
@@ -342,8 +400,8 @@ export function buildBrowseItems<C extends ChatListConversationLike, F>(args: {
 
 /**
  * Search mode: Chats (name and loaded text, as before), Friends you have not
- * chatted with yet, and event chats and brand channels — each its own
- * section, empty sections left out.
+ * chatted with yet, and brand Guest chats (#4459) — each its own section,
+ * empty sections left out.
  */
 export function buildSearchItems<C extends ChatListConversationLike, F extends ChatListFriendLike>(args: {
   matchedChats: readonly C[];
@@ -352,8 +410,8 @@ export function buildSearchItems<C extends ChatListConversationLike, F extends C
   currentUserId: string;
   query: string;
 }): ChatListItemModel<C, F>[] {
-  const chats = sortChatList(args.matchedChats.filter((conversation) => !isEventLikeKind(chatKind(conversation))));
-  const events = sortChatList(args.matchedChats.filter((conversation) => isEventLikeKind(chatKind(conversation))));
+  const chats = sortChatList(args.matchedChats.filter((conversation) => !isBrandGuestsRow(conversation)));
+  const brands = sortChatList(args.matchedChats.filter(isBrandGuestsRow));
   const friends = friendsWithoutChat(args.friends, args.allConversations, args.currentUserId)
     .filter((friend) => friendMatches(friend, args.query));
   const items: ChatListItemModel<C, F>[] = [];
@@ -367,9 +425,9 @@ export function buildSearchItems<C extends ChatListConversationLike, F extends C
     items.push({ kind: "section", key: "section:friends", section: "friends" });
     for (const friend of friends) items.push({ kind: "friend", key: `friend:${friend.id}`, friend });
   }
-  if (events.length > 0) {
-    items.push({ kind: "section", key: "section:events", section: "events" });
-    for (const event of events) items.push({ kind: "chat", key: event.id, conversation: event });
+  if (brands.length > 0) {
+    items.push({ kind: "section", key: "section:brands", section: "brands" });
+    for (const brand of brands) items.push({ kind: "chat", key: brand.id, conversation: brand });
   }
   return items;
 }
@@ -394,7 +452,7 @@ export function chatListLayouts(items: readonly ChatListItemModel<unknown, unkno
  *    two overlapping for two, a triangle for three, two plus "+N" for more.
  *  - event (team members' per-event rows): the event cover (never a video),
  *    then the brand logo, then initials, in a rounded square.
- *  - brand_channel: the brand logo, then the brand's initials.
+ *  - brand_channel: the brand logo, then the brand's initials (#4459 Guest chat).
  *  - enquiry (#4111): the brand logo when the row carries one, else the person.
  *
  * Only stored URLs are used (no image transformations: the spend cap is armed).
@@ -546,6 +604,8 @@ export interface ChatPreviewLineMessage {
   sender_name?: string | null;
   message_type?: string | null;
   marketing_campaign_id?: string | null;
+  /** #4459: 'brand' when the brand team posted in a Guest chat. */
+  sender_kind?: string | null;
 }
 
 /** A system row (plan / group events, joins): written by Mingla, never by a person. */
@@ -556,18 +616,18 @@ export function isSystemPreviewRow(message: ChatPreviewLineMessage): boolean {
 /**
  * The chat list's preview line from the preview text (`chatPreviewText`):
  * "You: …" for my own message, "{sender}: …" in a group (the brand's name for
- * a brand message in an event chat), "{event} · …" in a brand channel. A system
- * row is never prefixed (it used to read "Deleted User: Seth locked in …",
- * because a system row has no sender).
+ * a brand message in an event chat or a brand Guest chat, #4459). A system row
+ * is never prefixed (it used to read "Deleted User: Seth locked in …", because
+ * a system row has no sender).
  */
 export function chatPreviewLine(input: {
   message: ChatPreviewLineMessage;
   text: string;
   isGroup: boolean;
   isEvent: boolean;
+  /** #4459: a brand Guest chat (a brand post is credited to the brand). */
   isBrandChannel: boolean;
   currentUserId: string | null | undefined;
-  eventTitle?: string | null;
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;
   t: ChatPreviewTranslate;
@@ -575,13 +635,13 @@ export function chatPreviewLine(input: {
   const { message, text, t } = input;
   const system = isSystemPreviewRow(message);
   const mine = !system && !!message.sender_id && message.sender_id === input.currentUserId;
-  if (input.isBrandChannel) {
-    const line = mine ? t("connections:preview_you", { text }) : text;
-    const eventTitle = input.eventTitle?.trim();
-    return eventTitle ? `${eventTitle} · ${line}` : line;
-  }
   if (system) return text;
   if (mine) return t("connections:preview_you", { text });
+  if (input.isBrandChannel) {
+    const brandName = input.eventBrandName?.trim();
+    if (message.sender_kind === "brand" && brandName) return `${brandName}: ${text}`;
+    return message.sender_name ? `${message.sender_name}: ${text}` : text;
+  }
   if (input.isGroup && message.sender_name) {
     const brandName = input.eventBrandName?.trim();
     const fromBrand = input.isEvent && !!brandName && (
@@ -614,8 +674,14 @@ export function chatTombstonePreview(input: {
   currentUserId: string | null | undefined;
   nameOf: (userId: string) => string | null;
   t: ChatPreviewTranslate;
+  /** #4459: the brand of a Guest chat ("Message removed by <Brand>"). */
+  brandName?: string | null;
 }): string | null {
   const message = input.message;
+  if (message?.unsent_kind === "host") {
+    const brand = (input.brandName ?? "").trim();
+    return brand ? input.t("chat:tombstoneHostRemoved", { name: brand }) : input.t("chat:tombstoneHostRemovedGeneric");
+  }
   if (!message || (message.unsent_kind !== "sender" && message.unsent_kind !== "admin")) return null;
   const firstName = (name: string | null | undefined): string =>
     (name ?? "").trim().split(/\s+/)[0] || input.t("chat:someone");

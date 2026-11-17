@@ -33,7 +33,7 @@ import {
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
@@ -114,6 +114,12 @@ interface GroupInfoSheetProps {
   session?: SessionGroupInfo | null;
   /** Open straight on Add people (the deck's "Add people" button). */
   startWithAddPeople?: boolean;
+  /**
+   * #4459: the brand's one Guest chat. No add / link tiles; the member list is
+   * privacy-aware (the team, guests who chose "show me as going", a count);
+   * Leave is sticky (rejoin from a booking).
+   */
+  brandGuests?: { brandName: string; onOpenBrand?: () => void } | null;
 }
 
 type UndoState =
@@ -144,6 +150,7 @@ export function GroupInfoSheet({
   onClearChat,
   session = null,
   startWithAddPeople = false,
+  brandGuests = null,
 }: GroupInfoSheetProps): React.ReactElement {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
@@ -158,8 +165,16 @@ export function GroupInfoSheet({
   // RN Modals never swap within one open; Back from Add people shows group
   // info (backFromAdd) until the sheet closes.
   const [backFromAdd, setBackFromAdd] = useState(false);
-  const showAdd = !managed && (addingPeople || (startWithAddPeople && !backFromAdd));
-  const { share: shareGroupLink, busy: sharingLink } = useShareGroupLink(managed ? null : conversationId, name);
+  const isBrandGuests = Boolean(brandGuests);
+  const showAdd = !managed && !isBrandGuests && (addingPeople || (startWithAddPeople && !backFromAdd));
+  const { share: shareGroupLink, busy: sharingLink } = useShareGroupLink(managed || isBrandGuests ? null : conversationId, name);
+  // #4459: the Guest chat's member sheet comes from the server (roster privacy).
+  const brandGuestMembers = useQuery({
+    queryKey: chatKeys.brandGuestMembers(conversationId),
+    queryFn: () => messagingService.listBrandGuestMembers(conversationId as string),
+    enabled: isBrandGuests && visible && Boolean(conversationId),
+    staleTime: 60_000,
+  });
   const isSession = Boolean(session) && !managed;
   const joinRequests = useGroupJoinRequests(isSession ? conversationId : null);
   const pendingRequests = useMemo(
@@ -399,7 +414,9 @@ export function GroupInfoSheet({
     if (!conversationId || !currentUserId) return;
     deferredRef.current.flush();
     setLeaving(true);
-    const { error } = await messagingService.leaveGroupConversation(conversationId, currentUserId);
+    const { error } = isBrandGuests
+      ? await messagingService.leaveBrandGuestChat(conversationId)
+      : await messagingService.leaveGroupConversation(conversationId, currentUserId);
     setLeaving(false);
     if (error) {
       onError(t("chat:leaveGroupFailed"));
@@ -411,6 +428,18 @@ export function GroupInfoSheet({
 
   const confirmLeave = () => {
     if (!conversationId || !currentUserId || leaving) return;
+    if (brandGuests) {
+      // #4459: leaving is sticky; you can rejoin from your booking.
+      Alert.alert(
+        t("connections:brand_guests_leave_title", { brand: brandGuests.brandName }),
+        t("connections:brand_guests_leave_body", { brand: brandGuests.brandName }),
+        [
+          { text: t("common:cancel"), style: "cancel" },
+          { text: t("chat:leaveGroup"), style: "destructive", onPress: () => void leaveNow() },
+        ],
+      );
+      return;
+    }
     if (!isSession) {
       Alert.alert(t("chat:leaveGroupTitle"), t("chat:leaveGroupBody", { name }), [
         { text: t("common:cancel"), style: "cancel" },
@@ -673,7 +702,7 @@ export function GroupInfoSheet({
     >
       <View style={styles.body} testID="group-info-sheet">
 
-        {!managed && conversationId ? (
+        {!managed && !isBrandGuests && conversationId ? (
           <>
             <View style={styles.tiles}>
               <TouchableOpacity
@@ -748,10 +777,82 @@ export function GroupInfoSheet({
           />
         </View>
 
-        {!managed ? <Text style={styles.sectionHeading} accessibilityRole="header">
+        {brandGuests ? (
+          <>
+            {/* #4459 design v2: who is pushed, in one line. */}
+            <View style={styles.note}>
+              <Icon name="notifications-outline" size={14} color={chatTokens.textSoft} />
+              <Text style={styles.noteText}>{t("chat:brandGuestsPushNote", { brand: brandGuests.brandName })}</Text>
+            </View>
+            {brandGuests.onOpenBrand ? (
+              <TouchableOpacity
+                style={styles.row}
+                onPress={brandGuests.onOpenBrand}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat:a11yOpenBrandPage", { name: brandGuests.brandName })}
+              >
+                <Icon name="storefront" size={20} color={chatTokens.textSecondary} style={styles.rowIcon} />
+                <Text style={styles.rowText}>{t("chat:brandGuestsViewBrand", { brand: brandGuests.brandName })}</Text>
+                <Icon name="chevron-forward" size={18} color={chatTokens.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+            <Text style={styles.sectionHeading} accessibilityRole="header">
+              {t("chat:brandGuestsMembersHeading", { count: brandGuestMembers.data?.total ?? 0 })}
+            </Text>
+            {brandGuestMembers.isLoading ? (
+              <ActivityIndicator size="small" color={chatTokens.textSoft} />
+            ) : brandGuestMembers.isError ? (
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => void brandGuestMembers.refetch()}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat:brandGuestsMembersRetry")}
+              >
+                <Text style={styles.rowText}>{t("chat:brandGuestsMembersRetry")}</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                {(brandGuestMembers.data?.members ?? []).map((member) => {
+                  const isMe = member.userId === currentUserId;
+                  const label = isMe ? t("chat:you") : member.displayName;
+                  return (
+                    <View key={member.userId} style={styles.member}>
+                      {member.avatarUrl ? (
+                        <ImageWithFallback source={{ uri: member.avatarUrl }} style={styles.avatar} />
+                      ) : (
+                        <View style={[styles.avatar, styles.avatarFallback]}>
+                          <Text style={styles.avatarText}>{(member.displayName || "?").slice(0, 1).toUpperCase()}</Text>
+                        </View>
+                      )}
+                      <View style={styles.memberText}>
+                        <View style={styles.nameRow}>
+                          <Text style={styles.rowText} numberOfLines={1}>{label}</Text>
+                          {member.isTeam ? (
+                            <View style={styles.badge}>
+                              <Text style={styles.badgeText}>{t("chat:brandGuestsHostChip")}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+                {(brandGuestMembers.data?.total ?? 0) > (brandGuestMembers.data?.members.length ?? 0) ? (
+                  <Text style={styles.memberSub}>
+                    {t("chat:brandGuestsMorePrivate", {
+                      count: (brandGuestMembers.data?.total ?? 0) - (brandGuestMembers.data?.members.length ?? 0),
+                    })}
+                  </Text>
+                ) : null}
+              </>
+            )}
+          </>
+        ) : null}
+
+        {!managed && !isBrandGuests ? <Text style={styles.sectionHeading} accessibilityRole="header">
           {isSession ? t("chat:group_members_count", { count: acceptedCount }) : t("chat:groupMembers")}
         </Text> : null}
-        {isSession ? renderSessionMembers() : !managed ? members.map((member) => {
+        {isSession ? renderSessionMembers() : !managed && !isBrandGuests ? members.map((member) => {
           const label = memberLabel(member);
           const isMe = member.id === currentUserId;
           return (
@@ -813,7 +914,7 @@ export function GroupInfoSheet({
         </TouchableOpacity> : null}
       </View>
     </BaseBottomSheet>
-    {!managed && conversationId ? (
+    {!managed && !isBrandGuests && conversationId ? (
       <AddGroupPeopleSheet
         visible={visible && showAdd}
         conversationId={conversationId}

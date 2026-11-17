@@ -410,13 +410,11 @@ Deno.test("T-A14 both page readers let a failure reach the controller", () => {
   const refresh = page.slice(page.indexOf("const refreshOpenConversation"), page.indexOf("const prevIsOfflineRef"));
   assert(/if \(msgError\) throw new Error\(msgError\);/.test(refresh), "an error result rejects");
   assert(!/catch/.test(refresh), "a timeout rejects");
-  const brand = page.slice(page.indexOf("const fetchBrandChannelNewest"), page.indexOf("const loadBrandChannelNewest"));
-  assert(/if \(msgError\) throw new Error\(msgError\);/.test(brand), "brand: an error result rejects");
-  assert(/throw e;/.test(brand), "brand: a timeout rejects");
+  // #4459: the brand channel's own loader is gone (a Guest chat is one chat).
+  assert(!page.includes("fetchBrandChannelNewest"), "no second page reader");
   assert(/channelKey: showMessageInterface && user\?\.id/.test(page), "sign-out disposes the controller");
   // P3-A: a page whose sender names failed is kept but reads again.
   assert(/if \(degraded\) throw new Error\('sender names unavailable'\);/.test(refresh), "chat: a degraded page retries");
-  assert(/if \(degraded\) throw new Error\('sender names unavailable'\);/.test(brand), "brand: a degraded page retries");
 });
 
 Deno.test("T-A8 in the background due timers do no work; resume runs once and resets the caps", async () => {
@@ -535,15 +533,12 @@ Deno.test("T-A10 a deliberate leave is never reported as a failure", () => {
   assert(/if \(released\) return;/.test(receiver), "a released receiver emits nothing");
 });
 
-Deno.test("T-A13 a brand channel catches up through its one per-conversation loader", () => {
+Deno.test("T-A13 an open chat (a brand Guest chat included, #4459) catches up through its one loader", () => {
   const page = strip(read("components/ConnectionsPage.tsx"));
   const hook = page.slice(page.indexOf("useOpenChatRecovery({"), page.indexOf("getChangesChannelState:"));
-  assert(/activeBrandChannel \? conversationChannelKey\(brandChannelMemberIds\) : currentConversationId/.test(hook),
-    "a brand channel recovers as one key");
-  assert(/await fetchBrandChannelNewest\(brandChannel, user\.id\)/.test(hook), "brand catch-up");
+  assert(/\? currentConversationId\s*: null,/.test(hook), "one key: the open chat");
   assert(/await refreshOpenConversation\(currentConversationId, user\.id\)/.test(hook), "chat catch-up");
-  const loader = page.slice(page.indexOf("const fetchBrandChannelNewest"), page.indexOf("const handleOpenBrandChannel"));
-  assert(/byConversation\.get\(raw\.conversation_id\)\?\.push/.test(loader), "rows land in their own conversation");
+  assert(!/BrandChannel/.test(hook), "no brand-channel branch left");
   assert(/onStatus: \(status: string\) => \{\s*chatChannelBus\.emit/.test(page), "the changes channel reports on the bus");
 });
 

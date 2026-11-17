@@ -34,6 +34,9 @@ export const chatKeys = {
   all: ['chat'] as const,
   participants: (conversationId: string | null) =>
     [...chatKeys.all, 'participants', conversationId ?? 'none'] as const,
+  /** #4459: a brand Guest chat's privacy-aware member sheet. */
+  brandGuestMembers: (conversationId: string | null) =>
+    [...chatKeys.all, 'brandGuestMembers', conversationId ?? 'none'] as const,
 };
 
 // #4265 — the Chats tab conversation list (useChatList), per signed-in user.
