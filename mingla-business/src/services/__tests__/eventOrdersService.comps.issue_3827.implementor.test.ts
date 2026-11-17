@@ -262,13 +262,17 @@ describe("issue #3827 — CSV: a guest-list row is COMP with no money", () => {
     const [header, line] = serializeGuestsToCsv(rows).split("\r\n");
     const cols = header.split(",");
     expect(cols[cols.length - 1]).toBe("Day");
-    expect(cols[cols.length - 2]).toBe("Came with");
+    // [TEST-MOD-APPROVED #3281] "Booked start" sits between "Came with" and
+    // "Day", inserted before "Day" the same way #3827 inserted its columns.
+    expect(cols[cols.length - 2]).toBe("Booked start");
+    expect(cols[cols.length - 3]).toBe("Came with");
     const cells = line.split(",");
     expect(cells[0]).toBe("COMP");
     expect(cells[6]).toBe("Guest list");
     expect(cells[7]).toBe("Guest list");
     expect(cells[10]).toBe("Press list");
     expect([cells[11], cells[13], cells[15]]).toEqual(["0.00", "0.00", "0.00"]);
-    expect(cells[cols.length - 2]).toBe("Ada Okoro");
+    expect(cells[cols.length - 3]).toBe("Ada Okoro");
+    expect(cells[cols.length - 2]).toBe("");
   });
 });

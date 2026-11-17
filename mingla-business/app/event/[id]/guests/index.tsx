@@ -34,6 +34,7 @@ import {
 import { useGuestStore } from "../../../../src/store/guestStore";
 import type { OrderRecord } from "../../../../src/store/orderStore";
 import { isCompOrder } from "../../../../src/utils/compOrders";
+import { formatBookedStart } from "../../../../src/utils/bookedStart";
 import {
   addTicketTypeForLinkRoute,
   isTicketLinkable,
@@ -967,6 +968,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
                 key={`${row.kind}-${row.id}`}
                 row={row}
                 plusOneCount={row.kind === "order" ? plusOneCountByLead.get(row.id) ?? 0 : 0}
+                timeZone={event?.timezone ?? null}
                 onPress={() => handleOpenRow(row)}
               />
             ))}
@@ -998,6 +1000,8 @@ interface GuestRowCardProps {
   row: GuestRow;
   /** issue #3827 — named plus-ones who came with this guest-list guest. */
   plusOneCount: number;
+  /** issue #3281 — the offering's zone, for the guest's booked start. */
+  timeZone: string | null;
   onPress: () => void;
 }
 
@@ -1023,6 +1027,7 @@ export const serverCheckInCounts = (order: OrderRecord): { live: number; checked
 const GuestRowCard: React.FC<GuestRowCardProps> = ({
   row,
   plusOneCount,
+  timeZone,
   onPress,
 }) => {
   const isOrder = row.kind === "order";
@@ -1062,6 +1067,9 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     if (plusOneCount > 0) partyFragments.push(`+${plusOneCount} plus-one${plusOneCount === 1 ? "" : "s"}`);
   }
   if (isOrder && row.order.viaLinkLabel) partyFragments.push(`via ${row.order.viaLinkLabel}`);
+  // issue #3281 — the start this guest booked, in the offering's zone.
+  // Its own line under the subline, never clipped off by a long email.
+  const booked = isOrder ? formatBookedStart(row.order.bookedStartAt, timeZone) : null;
   const subline = [`${sublineLeft}${ticketSummary}`, ...partyFragments, relativeTime].join(" · ");
 
   // Cycle 11 J-S6 + Cycle 12 — derived check-in pill state.
@@ -1100,6 +1108,7 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     a11yLabel = isCompOrder(row.order) && row.order.status !== "cancelled"
       ? `Guest-list guest ${name}, ${ticketSummary}`
       : `Guest ${name}, ${ticketSummary}, ${spec.label}`;
+    if (booked !== null) a11yLabel += `, booked for ${booked}`;
   } else {
     const spec = doorPaymentPill(row.sale.paymentMethod, row.sale.status);
     kindPillNode = <Pill variant={spec.variant}>{spec.label}</Pill>;
@@ -1125,6 +1134,11 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
         <Text style={styles.rowSubline} numberOfLines={1}>
           {subline}
         </Text>
+        {booked !== null ? (
+          <Text style={styles.rowSubline} numberOfLines={1} testID={`guest-booked-${row.id}`}>
+            {`Booked for ${booked}`}
+          </Text>
+        ) : null}
         <View style={styles.rowPills}>
           {kindPillNode}
           {checkInPillNode}

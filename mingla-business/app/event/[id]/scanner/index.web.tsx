@@ -133,7 +133,7 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
               {`No QR? Search this ${kindCfg.noun}'s guest list and ticket holders, then tap Admit.`}
             </Text>
             <Suspense fallback={<Text style={styles.findCopy}>Loading guest search…</Text>}>
-              <DoorGuestSearchPanel eventId={event.id} noun={kindCfg.noun} />
+              <DoorGuestSearchPanel eventId={event.id} noun={kindCfg.noun} timeZone={event.timezone} />
             </Suspense>
           </View>
         ) : null}

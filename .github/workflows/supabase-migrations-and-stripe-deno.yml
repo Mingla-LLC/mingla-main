@@ -67,6 +67,11 @@ on:
       # payout-release-sweep/index.ts. Listed in BOTH filters so a sweep-only
       # change re-runs them.
       - "supabase/functions/payout-release-sweep/**"
+      # Issue #3281 — the door's booked start and extras suites (deno2-discovered)
+      # guard scan-ticket/index.ts and guest-list/index.ts. Listed in BOTH
+      # filters so a handler-only change re-runs them.
+      - "supabase/functions/scan-ticket/**"
+      - "supabase/functions/guest-list/**"
       - "mingla-business/app/account/**"
       - "mingla-business/app/(tabs)/account.tsx"
       - "mingla-business/src/hooks/useAccountDeletion.ts"
@@ -504,6 +509,11 @@ on:
       # payout-release-sweep/index.ts. Listed in BOTH filters so a sweep-only
       # change re-runs them.
       - "supabase/functions/payout-release-sweep/**"
+      # Issue #3281 — the door's booked start and extras suites (deno2-discovered)
+      # guard scan-ticket/index.ts and guest-list/index.ts. Listed in BOTH
+      # filters so a handler-only change re-runs them.
+      - "supabase/functions/scan-ticket/**"
+      - "supabase/functions/guest-list/**"
       - "mingla-business/app/account/**"
       - "mingla-business/app/(tabs)/account.tsx"
       - "mingla-business/src/hooks/useAccountDeletion.ts"

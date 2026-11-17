@@ -303,3 +303,55 @@ describe("issue #3827 — guest page", () => {
     expect(r.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Cancel guest-list ticket")).toHaveLength(0);
   });
 });
+
+// issue #3281 — the guest-chosen experience start, in the offering's zone, on
+// its own line in the roster row (never clipped by a long email) and on the
+// guest page.
+describe("issue #3281 — booked start on the guest list", () => {
+  const booked = () =>
+    compOrder({
+      id: "ord-b",
+      source: "online_checkout",
+      totalGbpAtPurchase: 20,
+      paymentMethod: "card",
+      buyer: { name: "Ada Obi", email: "a.very.long.email.address.for.ada@example-experiences.test", phone: "", marketingOptIn: false },
+      // 18:30 UTC is 19:30 in Lagos.
+      bookedStartAt: "2026-11-14T18:30:00Z",
+    });
+  const withZone = async (fn: () => Promise<void>): Promise<void> => {
+    (mockEvent as Record<string, unknown>).timezone = "Africa/Lagos";
+    try {
+      await fn();
+    } finally {
+      delete (mockEvent as Record<string, unknown>).timezone;
+    }
+  };
+
+  test("the row shows it on its own line and in its spoken label", async () => {
+    await withZone(async () => {
+      mockOrders = [booked(), compOrder()];
+      const r = await mount(<GuestsRoute />);
+      const [line] = r.root.findAll((n) => n.props.testID === "guest-booked-ord-b" && typeof n.type === "string");
+      expect(line).toBeDefined();
+      expect(text(line)).toMatch(/^Booked for .*(7:30|19:30)/);
+      expect(r.root.findAll((n) => String(n.props.testID ?? "").startsWith("guest-booked-") && n.props.testID !== "guest-booked-ord-b" && typeof n.type === "string")).toHaveLength(0);
+      const rows = r.root.findAll((n) => n.type === "Pressable" && String(n.props.accessibilityLabel ?? "").startsWith("Guest Ada Obi"));
+      expect(rows).toHaveLength(1);
+      expect(String(rows[0].props.accessibilityLabel)).toMatch(/booked for .*(7:30|19:30)/);
+    });
+  });
+
+  test("the guest page shows it; a guest without one shows nothing", async () => {
+    await withZone(async () => {
+      mockOrders = [booked()];
+      mockGuestId = "order-ord-b";
+      const r = await mount(<GuestDetailRoute />);
+      const [line] = r.root.findAll((n) => n.props.testID === "guest-booked-start" && typeof n.type === "string");
+      expect(text(line)).toMatch(/^Booked for .*(7:30|19:30)/);
+      mockGuestId = "order-comp-1";
+      mockOrders = [compOrder()];
+      const r2 = await mount(<GuestDetailRoute />);
+      expect(r2.root.findAll((n) => n.props.testID === "guest-booked-start")).toHaveLength(0);
+    });
+  });
+});

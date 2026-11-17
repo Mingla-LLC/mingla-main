@@ -50,6 +50,7 @@ import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { doorExtrasLine, readDoorExtras } from "./doorExtras";
+import { bookedStartLine, doorBookedLine } from "../../utils/bookedStart";
 
 // issue #3827 — the guest-list client is its own chunk (__common ceiling).
 const loadGuestList = () => import("../../services/guestListService");
@@ -98,6 +99,8 @@ export interface DoorGuestSearchPanelProps {
   /** Called after every admit with the door copy, for overlays, haptics and the session log. */
   onAdmitted?: (copy: ScanResultCopy, response: AdmitResponse) => void;
   autoFocus?: boolean;
+  /** issue #3281 — the offering's zone, for each guest's booked start. */
+  timeZone?: string | null;
 }
 
 export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
@@ -105,6 +108,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   noun,
   onAdmitted,
   autoFocus = false,
+  timeZone = null,
 }) => {
   const queryClient = useQueryClient();
   const network = useNetInfoSafe();
@@ -203,6 +207,16 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
     admittedGuest === undefined || lastAdmitted === null
       ? null
       : doorExtrasLine(readDoorExtras(admittedGuest.extras), lastAdmitted.admittedDateIds);
+  // issue #3281 — the start the admitted guest booked. Not money, so any
+  // answer that holds their row will do (unlike the extras above).
+  const lastBooked =
+    lastAdmitted === null || lastResult === null
+      ? null
+      : doorBookedLine(
+        lastResult.kind,
+        results.find((guest) => guest.orderId === lastAdmitted.orderId)?.bookedStartAt,
+        timeZone,
+      );
 
   return (
     <View style={styles.panel}>
@@ -244,6 +258,9 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
         >
           <Text style={styles.resultMessage}>{lastResult.message}</Text>
           {lastResult.detail !== undefined ? <Text style={styles.resultDetail}>{lastResult.detail}</Text> : null}
+          {lastBooked !== null ? (
+            <Text style={styles.resultDetail} testID="door-admit-booked">{lastBooked}</Text>
+          ) : null}
           {lastExtras !== null ? (
             <Text style={styles.resultDetail} testID="door-admit-extras">{lastExtras}</Text>
           ) : null}
@@ -286,6 +303,13 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                 <Text style={styles.guestMeta}>{guest.maskedEmail ?? "No email"}</Text>
                 {guest.cameWithName !== null ? <Text style={styles.guestMeta}>{`with ${guest.cameWithName}`}</Text> : null}
                 {guest.viaLinkLabel !== null ? <Text style={styles.guestMeta}>{`via ${guest.viaLinkLabel}`}</Text> : null}
+                {(() => {
+                  // issue #3281 — the start this guest booked, in the offering's zone.
+                  const line = bookedStartLine(guest.bookedStartAt, timeZone);
+                  return line !== null ? (
+                    <Text style={styles.guestMeta} testID={`door-booked-${guest.orderId}`}>{line}</Text>
+                  ) : null;
+                })()}
                 {(() => {
                   // issue #3281 — what this order still has to be handed. Not
                   // from an answer whose refresh failed: it may owe a refund.
