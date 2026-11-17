@@ -436,9 +436,12 @@
   "brandGuestsMorePrivate_one": "עוד אורח/ת אחד/ת שומר/ת על שמו/ה פרטי",
   "brandGuestsMorePrivate_other": "עוד {{count}} אורחים שומרים על שמם פרטי",
   "brandGuestsMorePrivate_two": "עוד {{count}} אורחים שומרים על שמם פרטי",
-  "brandGuestsRateLimited": "את/ה שולח/ת מהר מדי. המתינו כמה דקות ונסו שוב.",
+  "brandGuestsRateLimitCountdown": "את/ה שולח/ת מהר מדי. אפשר לפרסם שוב בעוד {{time}}.",
   "brandGuestsAnnouncementsOnly": "כרגע רק המארח יכול לפרסם כאן.",
   "brandGuestsTextOnly": "בינתיים אפשר לשלוח רק הודעות טקסט בצ'אטי אורחים.",
   "tombstoneHostRemoved": "ההודעה הוסרה על ידי {{name}}",
-  "tombstoneHostRemovedGeneric": "ההודעה הוסרה על ידי המארח"
+  "tombstoneHostRemovedGeneric": "ההודעה הוסרה על ידי המארח",
+  "brandGuestsOpenChat": "פתיחת צ'אט האורחים",
+  "brandGuestsRejoin": "הצטרפות מחדש לצ'אט האורחים",
+  "brandGuestsRejoinFailed": "ההצטרפות מחדש נכשלה. נסו שוב."
 }

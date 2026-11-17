@@ -34,6 +34,7 @@ import {
   type MergeMessagesOptions,
 } from "../utils/mergeMessages";
 import { applyChatLiveChange, type ChatLiveChange } from "../utils/chatLiveModel";
+import { brandGuestRateLimitedUntil } from "./chat/brandGuestRateLimit";
 import { openAfterKeyboardHides } from "../utils/openAfterKeyboard";
 import {
   conversationChannelKey,
@@ -718,8 +719,8 @@ function ConnectionsPageRefactored({
     return (row as ChatListItemConversation | undefined)?.linked_entity_type === 'brand_guests'
       || (activeChatRef.current?.brandGuest?.brandId != null && activeChatRef.current?.id === conversationId);
   }, []);
-  // #4459: when a guest last hit the rate limit (the composer shows the notice).
-  const [brandGuestRateLimitedAt, setBrandGuestRateLimitedAt] = useState<number | null>(null);
+  // #4459: the Guest chat rate limit (the composer shows the amber countdown).
+  const [brandGuestRateLimit, setBrandGuestRateLimit] = useState<{ conversationId: string; until: number } | null>(null);
   const refreshListIfMissing = useCallback((conversationId: string) => {
     if (!listedConversationIdsRef.current.has(conversationId)) refreshChatListAfterConversationChange();
   }, []);
@@ -887,6 +888,8 @@ function ConnectionsPageRefactored({
   // sorted by time, pending sends kept through refreshes). There is no second
   // "visible messages" copy to drift from the store.
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
+  const messagesCacheRef = useRef<Record<string, Message[]>>({});
+  messagesCacheRef.current = messagesCache;
   const messages = useMemo<Message[]>(
     () => (currentConversationId ? messagesCache[currentConversationId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES),
     [currentConversationId, messagesCache],
@@ -2806,12 +2809,16 @@ function ConnectionsPageRefactored({
             mentionEntries,
             clientId,
           ).then(({ message, error }) => {
-            if (error === 'rate_limited') setBrandGuestRateLimitedAt(Date.now());
-            if (error === 'rate_limited' || error === 'announcements_only') {
-              showToast({
-                message: error === 'rate_limited' ? t('chat:brandGuestsRateLimited') : t('chat:brandGuestsAnnouncementsOnly'),
-                type: "error",
-              });
+            if (error === 'rate_limited') {
+              // The notice counts down to when the oldest of my sends in the
+              // window leaves it (the server's rolling 20 per 10 minutes).
+              const mine = (messagesCacheRef.current[conversationId] ?? [])
+                .filter((m) => m.isMe && !m.failed && !isLocalMessage(m))
+                .map((m) => m.timestamp);
+              setBrandGuestRateLimit({ conversationId, until: brandGuestRateLimitedUntil(mine, Date.now()) });
+            }
+            if (error === 'announcements_only') {
+              showToast({ message: t('chat:brandGuestsAnnouncementsOnly'), type: "error" });
             }
             return { message, error: error === null ? null : `brand_guests_${error}` };
           })
@@ -4020,6 +4027,7 @@ function ConnectionsPageRefactored({
           isDeletedAccount={activeChatIsDeletedAccount}
           conversationId={currentConversationId}
           onDismissRemovedBrandGuests={handleDismissRemovedFromThread}
+          rateLimitedUntil={brandGuestRateLimit && brandGuestRateLimit.conversationId === currentConversationId ? brandGuestRateLimit.until : null}
           currentUserId={user?.id || null}
           currentUserName={currentUserDisplayName}
           broadcastSeenIds={broadcastSeenIds}

@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "멤버 {{count}}명",
   "brandGuestsMembersRetry": "멤버를 불러오지 못했어요. 탭하여 다시 시도하세요.",
   "brandGuestsMorePrivate_other": "게스트 {{count}}명이 더 이름을 비공개로 했어요",
-  "brandGuestsRateLimited": "너무 빨리 보내고 있어요. 몇 분 후 다시 시도하세요.",
+  "brandGuestsRateLimitCountdown": "너무 빨리 보내고 있어요. {{time}} 후에 다시 올릴 수 있어요.",
   "brandGuestsAnnouncementsOnly": "지금은 호스트만 글을 올릴 수 있어요.",
   "brandGuestsTextOnly": "현재 게스트 채팅에서는 텍스트 메시지만 보낼 수 있어요.",
   "tombstoneHostRemoved": "{{name}}님이 메시지를 삭제했어요",
-  "tombstoneHostRemovedGeneric": "호스트가 메시지를 삭제했어요"
+  "tombstoneHostRemovedGeneric": "호스트가 메시지를 삭제했어요",
+  "brandGuestsOpenChat": "게스트 채팅 열기",
+  "brandGuestsRejoin": "게스트 채팅에 다시 참여",
+  "brandGuestsRejoinFailed": "다시 참여하지 못했어요. 다시 시도하세요."
 }

@@ -447,9 +447,12 @@
   "brandGuestsMorePrivate_few": "Jeszcze {{count}} gości ukrywa swoje imiona",
   "brandGuestsMorePrivate_many": "Jeszcze {{count}} gości ukrywa swoje imiona",
   "brandGuestsMorePrivate_other": "Jeszcze {{count}} gości ukrywa swoje imiona",
-  "brandGuestsRateLimited": "Wysyłasz bardzo szybko. Odczekaj kilka minut i spróbuj ponownie.",
+  "brandGuestsRateLimitCountdown": "Wysyłasz bardzo szybko. Znów napiszesz za {{time}}.",
   "brandGuestsAnnouncementsOnly": "Teraz tylko gospodarz może tu pisać.",
   "brandGuestsTextOnly": "W czatach gości można na razie wysyłać tylko wiadomości tekstowe.",
   "tombstoneHostRemoved": "Wiadomość usunięta przez {{name}}",
-  "tombstoneHostRemovedGeneric": "Wiadomość usunięta przez gospodarza"
+  "tombstoneHostRemovedGeneric": "Wiadomość usunięta przez gospodarza",
+  "brandGuestsOpenChat": "Otwórz czat gości",
+  "brandGuestsRejoin": "Wróć do czatu gości",
+  "brandGuestsRejoinFailed": "Nie udało się wrócić do czatu gości. Spróbuj ponownie."
 }

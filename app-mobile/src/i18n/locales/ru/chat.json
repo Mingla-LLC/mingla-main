@@ -447,9 +447,12 @@
   "brandGuestsMorePrivate_few": "Ещё {{count}} гостей скрывают имена",
   "brandGuestsMorePrivate_many": "Ещё {{count}} гостей скрывают имена",
   "brandGuestsMorePrivate_other": "Ещё {{count}} гостей скрывают имена",
-  "brandGuestsRateLimited": "Вы отправляете слишком быстро. Подождите несколько минут и попробуйте снова.",
+  "brandGuestsRateLimitCountdown": "Вы отправляете слишком быстро. Снова писать можно через {{time}}.",
   "brandGuestsAnnouncementsOnly": "Сейчас здесь может писать только хост.",
   "brandGuestsTextOnly": "Пока в чатах гостей можно отправлять только текст.",
   "tombstoneHostRemoved": "Сообщение удалено: {{name}}",
-  "tombstoneHostRemovedGeneric": "Сообщение удалено хостом"
+  "tombstoneHostRemovedGeneric": "Сообщение удалено хостом",
+  "brandGuestsOpenChat": "Открыть чат гостей",
+  "brandGuestsRejoin": "Вернуться в чат гостей",
+  "brandGuestsRejoinFailed": "Не удалось вернуться в чат гостей. Попробуйте ещё раз."
 }

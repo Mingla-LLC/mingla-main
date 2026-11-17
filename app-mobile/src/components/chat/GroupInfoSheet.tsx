@@ -119,7 +119,7 @@ interface GroupInfoSheetProps {
    * privacy-aware (the team, guests who chose "show me as going", a count);
    * Leave is sticky (rejoin from a booking).
    */
-  brandGuests?: { brandName: string; onOpenBrand?: () => void } | null;
+  brandGuests?: { brandName: string; onOpenBrand?: () => void; onMessageBrand?: () => void } | null;
 }
 
 type UndoState =
@@ -784,6 +784,19 @@ export function GroupInfoSheet({
               <Icon name="notifications-outline" size={14} color={chatTokens.textSoft} />
               <Text style={styles.noteText}>{t("chat:brandGuestsPushNote", { brand: brandGuests.brandName })}</Text>
             </View>
+            {brandGuests.onMessageBrand ? (
+              <TouchableOpacity
+                style={styles.row}
+                onPress={brandGuests.onMessageBrand}
+                accessibilityRole="button"
+                accessibilityLabel={t("chat:brandGuestsMessageBrand", { brand: brandGuests.brandName })}
+                testID="brand-guests-message-brand"
+              >
+                <Icon name="chatbubble-outline" size={20} color={chatTokens.textSecondary} style={styles.rowIcon} />
+                <Text style={styles.rowText}>{t("chat:brandGuestsMessageBrand", { brand: brandGuests.brandName })}</Text>
+                <Icon name="chevron-forward" size={18} color={chatTokens.textMuted} />
+              </TouchableOpacity>
+            ) : null}
             {brandGuests.onOpenBrand ? (
               <TouchableOpacity
                 style={styles.row}

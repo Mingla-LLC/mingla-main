@@ -176,6 +176,11 @@ import { HapticFeedback } from "../utils/hapticFeedback";
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
 import { brandGuestChatTokens, chatTokens } from "../constants/chatTokens";
+import { useMessageBrandFromGuestChat } from "./brandEnquiry/useMessageBrandFromGuestChat";
+import { formatRateCountdown, isRateLimited } from "./chat/brandGuestRateLimit";
+
+/** #4459 design v2: the rate-limit notice's amber (semantic warning). */
+const RATE_LIMIT_AMBER = "#F5B544";
 import { getFloatingBottomNavSheetInset } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -515,6 +520,8 @@ interface MessageInterfaceProps {
   conversationId?: string | null;
   /** #4459: "Remove from chat list" on the removed card (the brand removed you). */
   onDismissRemovedBrandGuests?: () => void;
+  /** #4459: the Guest chat rate limit tripped; posting opens again at this time (ms). */
+  rateLimitedUntil?: number | null;
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
@@ -595,6 +602,7 @@ function MessageInterfaceInner({
   isDeletedAccount = false,
   conversationId = null,
   onDismissRemovedBrandGuests,
+  rateLimitedUntil = null,
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
@@ -703,6 +711,21 @@ function MessageInterfaceInner({
   const brandGuest = friend.brandGuest ?? null;
   const isBrandChannel = brandGuest !== null;
   const brandSlug = brandGuest?.brandSlug ?? null;
+  // #4459: "Message <Brand>" opens the #4111 enquiry thread (or starts one).
+  const brandMessage = useMessageBrandFromGuestChat({
+    brandId: brandGuest?.brandId ?? null,
+    brandSlug: brandGuest?.brandSlug ?? null,
+    brandName: brandGuest?.brandName ?? "",
+  });
+  // #4459 design v2: the rate-limit countdown ticks once a second while it runs.
+  const [rateNow, setRateNow] = useState(() => Date.now());
+  const rateLimited = isRateLimited(rateLimitedUntil, rateNow);
+  useEffect(() => {
+    if (!isRateLimited(rateLimitedUntil, Date.now())) return undefined;
+    setRateNow(Date.now());
+    const timer = setInterval(() => setRateNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitedUntil]);
   const audienceIsTrip = isTripChat;
   const audienceTitle = eventAudienceTitle;
   const audienceSubtitle = eventAudienceSubtitle;
@@ -1361,6 +1384,8 @@ function MessageInterfaceInner({
 
   const handleSendMessage = () => {
     if (!chatController.readText().trim()) return;
+    // #4459: while the Guest chat rate limit runs, Send is held and the text stays.
+    if (isRateLimited(rateLimitedUntil, Date.now())) return;
     sendCoordinator.requestSend({
       read: chatController.readText,
       send: () => {
@@ -3498,9 +3523,10 @@ function MessageInterfaceInner({
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.removedButtonPrimary}
-                onPress={openBrandPage}
-                disabled={!brandSlug}
+                onPress={brandMessage.messageBrand}
+                disabled={brandMessage.busy}
                 accessibilityRole="button"
+                accessibilityState={{ busy: brandMessage.busy }}
                 accessibilityLabel={t('chat:brandGuestsMessageBrand', { brand: brandGuest.brandName })}
               >
                 <Text style={styles.removedButtonPrimaryText}>
@@ -3878,6 +3904,15 @@ function MessageInterfaceInner({
             } : undefined}
           />
         )}
+        {/* #4459 design v2: the Guest chat rate limit, amber, with a live countdown. */}
+        {rateLimited && typeof rateLimitedUntil === "number" ? (
+          <View style={styles.rateLimitNotice} accessibilityRole="alert" accessibilityLiveRegion="polite" testID="brand-guests-rate-limit">
+            <Icon name="time-outline" size={16} color={RATE_LIMIT_AMBER} />
+            <Text style={styles.rateLimitText}>
+              {t('chat:brandGuestsRateLimitCountdown', { time: formatRateCountdown(rateLimitedUntil, rateNow) })}
+            </Text>
+          </View>
+        ) : null}
         {/* Reply Preview Bar — Issue #4114 Wave 3: dark */}
         {replyingTo && (
           <View style={styles.replyPreviewWrap}>
@@ -4340,8 +4375,10 @@ function MessageInterfaceInner({
         brandGuests={brandGuest && !brandGuest.removed ? {
           brandName: brandGuest.brandName,
           onOpenBrand: brandSlug ? () => { setShowGroupInfo(false); openBrandPage(); } : undefined,
+          onMessageBrand: () => { setShowGroupInfo(false); brandMessage.messageBrand(); },
         } : null}
       />
+      {brandMessage.overlays}
 
       <ChatMediaSheet
         visible={showMediaSheet}
@@ -4644,7 +4681,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
-  },  // #4459 design v2: the removed state (neutral, calm, never red).
+  },  rateLimitNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(245,181,68,0.14)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(245,181,68,0.45)",
+  },
+  rateLimitText: {
+    flex: 1,
+    color: RATE_LIMIT_AMBER,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  // #4459 design v2: the removed state (neutral, calm, never red).
   removedWrap: {
     justifyContent: "center",
     paddingHorizontal: 20,

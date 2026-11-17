@@ -423,9 +423,12 @@
   "brandGuestsMembersRetry": "Ọ ma sẹ ne a rre members. Tobọ ne u dọ ẹre ọvbehe.",
   "brandGuestsMorePrivate_one": "{{count}} guest ọvbehe gu ẹvbo ẹre ye ẹkhọe",
   "brandGuestsMorePrivate_other": "{{count}} guests ọvbehe gu ẹvbo ima ye ẹkhọe",
-  "brandGuestsRateLimited": "U gie ẹmwẹ vbe ọ ghọ zẹ. Hẹ minutes esọ, gha dọ ẹre ọvbehe.",
+  "brandGuestsRateLimitCountdown": "U gie ẹmwẹ vbe ọ ghọ zẹ. U sẹtin post ọvbehe vbe {{time}}.",
   "brandGuestsAnnouncementsOnly": "Host ọkpa ọ sẹtin post vbe ẹvba nia.",
   "brandGuestsTextOnly": "Text ọkpa a sẹtin gie vbe guest chats nia.",
   "tombstoneHostRemoved": "{{name}} rri ẹmwẹ na fua",
-  "tombstoneHostRemovedGeneric": "Host rri ẹmwẹ na fua"
+  "tombstoneHostRemovedGeneric": "Host rri ẹmwẹ na fua",
+  "brandGuestsOpenChat": "Rhie guest chat",
+  "brandGuestsRejoin": "Werriẹ la guest chat",
+  "brandGuestsRejoinFailed": "Ọ ma sẹ ne u werriẹ la. Gha dọ ẹre ọvbehe."
 }

@@ -436,9 +436,12 @@
   "brandGuestsMorePrivate_one": "Altro {{count}} ospite tiene privato il nome",
   "brandGuestsMorePrivate_many": "Altri {{count}} ospiti tengono privato il nome",
   "brandGuestsMorePrivate_other": "Altri {{count}} ospiti tengono privato il nome",
-  "brandGuestsRateLimited": "Stai inviando troppo in fretta. Aspetta qualche minuto e riprova.",
+  "brandGuestsRateLimitCountdown": "Stai inviando troppo in fretta. Potrai pubblicare di nuovo tra {{time}}.",
   "brandGuestsAnnouncementsOnly": "Ora solo l'host può pubblicare qui.",
   "brandGuestsTextOnly": "Per ora nelle chat ospiti si possono inviare solo messaggi di testo.",
   "tombstoneHostRemoved": "Messaggio rimosso da {{name}}",
-  "tombstoneHostRemovedGeneric": "Messaggio rimosso dall'host"
+  "tombstoneHostRemovedGeneric": "Messaggio rimosso dall'host",
+  "brandGuestsOpenChat": "Apri la chat ospiti",
+  "brandGuestsRejoin": "Rientra nella chat ospiti",
+  "brandGuestsRejoinFailed": "Impossibile rientrare nella chat ospiti. Riprova."
 }

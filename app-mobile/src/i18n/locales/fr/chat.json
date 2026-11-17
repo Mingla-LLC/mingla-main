@@ -436,9 +436,12 @@
   "brandGuestsMorePrivate_one": "{{count}} autre invité garde son nom privé",
   "brandGuestsMorePrivate_many": "{{count}} autres invités gardent leur nom privé",
   "brandGuestsMorePrivate_other": "{{count}} autres invités gardent leur nom privé",
-  "brandGuestsRateLimited": "Vous envoyez vite. Attendez quelques minutes puis réessayez.",
+  "brandGuestsRateLimitCountdown": "Vous envoyez vite. Vous pourrez publier à nouveau dans {{time}}.",
   "brandGuestsAnnouncementsOnly": "Seul l'hôte peut publier ici pour le moment.",
   "brandGuestsTextOnly": "Seuls les messages texte peuvent être envoyés dans les chats d'invités pour l'instant.",
   "tombstoneHostRemoved": "Message retiré par {{name}}",
-  "tombstoneHostRemovedGeneric": "Message retiré par l'hôte"
+  "tombstoneHostRemovedGeneric": "Message retiré par l'hôte",
+  "brandGuestsOpenChat": "Ouvrir le chat des invités",
+  "brandGuestsRejoin": "Rejoindre le chat des invités",
+  "brandGuestsRejoinFailed": "Impossible de rejoindre le chat des invités. Réessayez."
 }

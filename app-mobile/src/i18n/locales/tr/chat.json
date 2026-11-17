@@ -421,9 +421,12 @@
   "brandGuestsMembersRetry": "Üyeler yüklenemedi. Tekrar denemek için dokun.",
   "brandGuestsMorePrivate_one": "{{count}} misafir daha adını gizli tutuyor",
   "brandGuestsMorePrivate_other": "{{count}} misafir daha adlarını gizli tutuyor",
-  "brandGuestsRateLimited": "Çok hızlı gönderiyorsun. Birkaç dakika bekle ve tekrar dene.",
+  "brandGuestsRateLimitCountdown": "Çok hızlı gönderiyorsun. {{time}} sonra tekrar paylaşabilirsin.",
   "brandGuestsAnnouncementsOnly": "Şu anda burada yalnızca ev sahibi paylaşım yapabilir.",
   "brandGuestsTextOnly": "Misafir sohbetlerinde şimdilik yalnızca metin mesajı gönderilebilir.",
   "tombstoneHostRemoved": "Mesaj {{name}} tarafından kaldırıldı",
-  "tombstoneHostRemovedGeneric": "Mesaj ev sahibi tarafından kaldırıldı"
+  "tombstoneHostRemovedGeneric": "Mesaj ev sahibi tarafından kaldırıldı",
+  "brandGuestsOpenChat": "Misafir sohbetini aç",
+  "brandGuestsRejoin": "Misafir sohbetine yeniden katıl",
+  "brandGuestsRejoinFailed": "Yeniden katılınamadı. Tekrar dene."
 }

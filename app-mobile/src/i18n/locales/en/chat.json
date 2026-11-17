@@ -640,9 +640,12 @@
   "brandGuestsMembersRetry": "Couldn't load members. Tap to try again.",
   "brandGuestsMorePrivate_one": "{{count}} more guest keeps their name private",
   "brandGuestsMorePrivate_other": "{{count}} more guests keep their names private",
-  "brandGuestsRateLimited": "You're sending fast. Wait a few minutes, then try again.",
+  "brandGuestsRateLimitCountdown": "You're sending fast. You can post again in {{time}}.",
   "brandGuestsAnnouncementsOnly": "Only the host can post here right now.",
   "brandGuestsTextOnly": "Only text messages can be sent in Guest chats for now.",
   "tombstoneHostRemoved": "Message removed by {{name}}",
-  "tombstoneHostRemovedGeneric": "Message removed by the host"
+  "tombstoneHostRemovedGeneric": "Message removed by the host",
+  "brandGuestsOpenChat": "Open guest chat",
+  "brandGuestsRejoin": "Rejoin guest chat",
+  "brandGuestsRejoinFailed": "Couldn't rejoin the Guest chat. Try again."
 }

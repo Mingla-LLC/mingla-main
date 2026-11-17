@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "Ọmọ ẹgbẹ́ {{count}}",
   "brandGuestsMembersRetry": "Kò ṣeé gbé àwọn ọmọ ẹgbẹ́ wá. Tẹ̀ láti gbìyànjú lẹ́ẹ̀kan sí i.",
   "brandGuestsMorePrivate_other": "Àwọn àlejò {{count}} mìíràn pa orúkọ wọn mọ́",
-  "brandGuestsRateLimited": "O ń fi ránṣẹ́ yára jù. Dúró fún ìṣẹ́jú díẹ̀, lẹ́yìn náà gbìyànjú lẹ́ẹ̀kan sí i.",
+  "brandGuestsRateLimitCountdown": "O ń fi ránṣẹ́ yára jù. O lè tún fi ránṣẹ́ lẹ́yìn {{time}}.",
   "brandGuestsAnnouncementsOnly": "Olùgbàlejò nìkan ló lè fi ránṣẹ́ níbí báyìí.",
   "brandGuestsTextOnly": "Ọ̀rọ̀ nìkan ni a lè fi ránṣẹ́ nínú ìjíròrò àlejò fún báyìí.",
   "tombstoneHostRemoved": "{{name}} yọ ìránṣẹ́ náà",
-  "tombstoneHostRemovedGeneric": "Olùgbàlejò yọ ìránṣẹ́ náà"
+  "tombstoneHostRemovedGeneric": "Olùgbàlejò yọ ìránṣẹ́ náà",
+  "brandGuestsOpenChat": "Ṣí ìjíròrò àlejò",
+  "brandGuestsRejoin": "Padà wọ ìjíròrò àlejò",
+  "brandGuestsRejoinFailed": "Kò ṣeé padà wọlé. Gbìyànjú lẹ́ẹ̀kan sí i."
 }

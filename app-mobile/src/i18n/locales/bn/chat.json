@@ -421,9 +421,12 @@
   "brandGuestsMembersRetry": "সদস্য লোড হয়নি। আবার চেষ্টা করতে ট্যাপ করুন।",
   "brandGuestsMorePrivate_one": "আরও {{count}} অতিথি নাম গোপন রাখেন",
   "brandGuestsMorePrivate_other": "আরও {{count}} অতিথি নাম গোপন রাখেন",
-  "brandGuestsRateLimited": "আপনি খুব দ্রুত পাঠাচ্ছেন। কয়েক মিনিট অপেক্ষা করে আবার চেষ্টা করুন।",
+  "brandGuestsRateLimitCountdown": "আপনি খুব দ্রুত পাঠাচ্ছেন। {{time}} পরে আবার পোস্ট করতে পারবেন।",
   "brandGuestsAnnouncementsOnly": "এখন শুধু হোস্ট এখানে পোস্ট করতে পারেন।",
   "brandGuestsTextOnly": "আপাতত অতিথি চ্যাটে শুধু টেক্সট বার্তা পাঠানো যায়।",
   "tombstoneHostRemoved": "বার্তাটি {{name}} সরিয়েছে",
-  "tombstoneHostRemovedGeneric": "বার্তাটি হোস্ট সরিয়েছে"
+  "tombstoneHostRemovedGeneric": "বার্তাটি হোস্ট সরিয়েছে",
+  "brandGuestsOpenChat": "অতিথি চ্যাট খুলুন",
+  "brandGuestsRejoin": "অতিথি চ্যাটে আবার যোগ দিন",
+  "brandGuestsRejoinFailed": "আবার যোগ দেওয়া যায়নি। আবার চেষ্টা করুন।"
 }

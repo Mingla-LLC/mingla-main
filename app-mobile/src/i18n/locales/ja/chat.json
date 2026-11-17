@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "メンバー{{count}}人",
   "brandGuestsMembersRetry": "メンバーを読み込めませんでした。タップして再試行。",
   "brandGuestsMorePrivate_other": "ほか{{count}}人のゲストは名前を非公開にしています",
-  "brandGuestsRateLimited": "送信が速すぎます。数分待ってからもう一度お試しください。",
+  "brandGuestsRateLimitCountdown": "送信が速すぎます。{{time}}後にまた投稿できます。",
   "brandGuestsAnnouncementsOnly": "現在はホストのみ投稿できます。",
   "brandGuestsTextOnly": "ゲストチャットでは現在テキストメッセージのみ送信できます。",
   "tombstoneHostRemoved": "{{name}}がメッセージを削除しました",
-  "tombstoneHostRemovedGeneric": "ホストがメッセージを削除しました"
+  "tombstoneHostRemovedGeneric": "ホストがメッセージを削除しました",
+  "brandGuestsOpenChat": "ゲストチャットを開く",
+  "brandGuestsRejoin": "ゲストチャットに再参加",
+  "brandGuestsRejoinFailed": "再参加できませんでした。もう一度お試しください。"
 }

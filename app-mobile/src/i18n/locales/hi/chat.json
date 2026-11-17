@@ -421,9 +421,12 @@
   "brandGuestsMembersRetry": "सदस्य लोड नहीं हुए। फिर कोशिश करने के लिए टैप करें।",
   "brandGuestsMorePrivate_one": "{{count}} और मेहमान अपना नाम निजी रखता है",
   "brandGuestsMorePrivate_other": "{{count}} और मेहमान अपना नाम निजी रखते हैं",
-  "brandGuestsRateLimited": "आप बहुत तेज़ी से भेज रहे हैं। कुछ मिनट रुककर फिर कोशिश करें।",
+  "brandGuestsRateLimitCountdown": "आप बहुत तेज़ भेज रहे हैं। {{time}} बाद फिर पोस्ट कर सकते हैं।",
   "brandGuestsAnnouncementsOnly": "अभी यहां केवल होस्ट पोस्ट कर सकता है।",
   "brandGuestsTextOnly": "फ़िलहाल गेस्ट चैट में केवल टेक्स्ट संदेश भेजे जा सकते हैं।",
   "tombstoneHostRemoved": "संदेश {{name}} ने हटाया",
-  "tombstoneHostRemovedGeneric": "संदेश होस्ट ने हटाया"
+  "tombstoneHostRemovedGeneric": "संदेश होस्ट ने हटाया",
+  "brandGuestsOpenChat": "गेस्ट चैट खोलें",
+  "brandGuestsRejoin": "गेस्ट चैट में फिर जुड़ें",
+  "brandGuestsRejoinFailed": "फिर से नहीं जुड़ सके। दोबारा कोशिश करें।"
 }

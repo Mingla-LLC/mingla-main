@@ -436,9 +436,12 @@
   "brandGuestsMorePrivate_one": "{{count}} invitado más mantiene su nombre privado",
   "brandGuestsMorePrivate_many": "{{count}} invitados más mantienen su nombre privado",
   "brandGuestsMorePrivate_other": "{{count}} invitados más mantienen su nombre privado",
-  "brandGuestsRateLimited": "Estás enviando muy rápido. Espera unos minutos y vuelve a intentarlo.",
+  "brandGuestsRateLimitCountdown": "Estás enviando muy rápido. Podrás publicar de nuevo en {{time}}.",
   "brandGuestsAnnouncementsOnly": "Ahora solo el anfitrión puede publicar aquí.",
   "brandGuestsTextOnly": "Por ahora solo se pueden enviar mensajes de texto en los chats de invitados.",
   "tombstoneHostRemoved": "Mensaje eliminado por {{name}}",
-  "tombstoneHostRemovedGeneric": "Mensaje eliminado por el anfitrión"
+  "tombstoneHostRemovedGeneric": "Mensaje eliminado por el anfitrión",
+  "brandGuestsOpenChat": "Abrir chat de invitados",
+  "brandGuestsRejoin": "Volver al chat de invitados",
+  "brandGuestsRejoinFailed": "No se pudo volver al chat de invitados. Inténtalo de nuevo."
 }

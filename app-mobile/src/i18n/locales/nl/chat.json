@@ -423,9 +423,12 @@
   "brandGuestsMembersRetry": "Leden laden mislukt. Tik om opnieuw te proberen.",
   "brandGuestsMorePrivate_one": "Nog {{count}} gast houdt de naam privé",
   "brandGuestsMorePrivate_other": "Nog {{count}} gasten houden hun naam privé",
-  "brandGuestsRateLimited": "Je verstuurt erg snel. Wacht een paar minuten en probeer het opnieuw.",
+  "brandGuestsRateLimitCountdown": "Je verstuurt erg snel. Je kunt over {{time}} weer posten.",
   "brandGuestsAnnouncementsOnly": "Op dit moment kan alleen de host hier posten.",
   "brandGuestsTextOnly": "In gastenchats kun je voorlopig alleen tekstberichten sturen.",
   "tombstoneHostRemoved": "Bericht verwijderd door {{name}}",
-  "tombstoneHostRemovedGeneric": "Bericht verwijderd door de host"
+  "tombstoneHostRemovedGeneric": "Bericht verwijderd door de host",
+  "brandGuestsOpenChat": "Gastenchat openen",
+  "brandGuestsRejoin": "Gastenchat opnieuw joinen",
+  "brandGuestsRejoinFailed": "Opnieuw joinen mislukt. Probeer het opnieuw."
 }

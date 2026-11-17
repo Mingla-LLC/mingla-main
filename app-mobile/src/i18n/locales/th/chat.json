@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "สมาชิก {{count}} คน",
   "brandGuestsMembersRetry": "โหลดสมาชิกไม่สำเร็จ แตะเพื่อลองอีกครั้ง",
   "brandGuestsMorePrivate_other": "อีก {{count}} คนเก็บชื่อเป็นส่วนตัว",
-  "brandGuestsRateLimited": "คุณส่งเร็วเกินไป รอสักครู่แล้วลองอีกครั้ง",
+  "brandGuestsRateLimitCountdown": "คุณส่งเร็วเกินไป โพสต์ได้อีกครั้งใน {{time}}",
   "brandGuestsAnnouncementsOnly": "ตอนนี้มีเพียงเจ้าภาพที่โพสต์ที่นี่ได้",
   "brandGuestsTextOnly": "ตอนนี้แชทผู้เข้าร่วมส่งได้เฉพาะข้อความ",
   "tombstoneHostRemoved": "ข้อความถูกนำออกโดย {{name}}",
-  "tombstoneHostRemovedGeneric": "ข้อความถูกนำออกโดยเจ้าภาพ"
+  "tombstoneHostRemovedGeneric": "ข้อความถูกนำออกโดยเจ้าภาพ",
+  "brandGuestsOpenChat": "เปิดแชทผู้เข้าร่วม",
+  "brandGuestsRejoin": "กลับเข้าแชทผู้เข้าร่วม",
+  "brandGuestsRejoinFailed": "กลับเข้าร่วมไม่สำเร็จ ลองอีกครั้ง"
 }

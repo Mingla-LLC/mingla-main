@@ -421,9 +421,12 @@
   "brandGuestsMembersRetry": "Ba a iya loda membobi ba. Taɓa don sake gwadawa.",
   "brandGuestsMorePrivate_one": "Ƙarin baƙo {{count}} ya ɓoye sunansa",
   "brandGuestsMorePrivate_other": "Ƙarin baƙi {{count}} sun ɓoye sunayensu",
-  "brandGuestsRateLimited": "Kana aikawa da sauri. Jira 'yan mintuna sannan ka sake gwadawa.",
+  "brandGuestsRateLimitCountdown": "Kana aikawa da sauri. Za ka iya sake rubutu bayan {{time}}.",
   "brandGuestsAnnouncementsOnly": "Mai masauki ne kaɗai zai iya rubutu a nan yanzu.",
   "brandGuestsTextOnly": "A yanzu saƙon rubutu kaɗai ake iya aikawa a hirar baƙi.",
   "tombstoneHostRemoved": "{{name}} ya cire saƙon",
-  "tombstoneHostRemovedGeneric": "Mai masauki ya cire saƙon"
+  "tombstoneHostRemovedGeneric": "Mai masauki ya cire saƙon",
+  "brandGuestsOpenChat": "Buɗe hirar baƙi",
+  "brandGuestsRejoin": "Sake shiga hirar baƙi",
+  "brandGuestsRejoinFailed": "Ba a iya sake shiga ba. Sake gwadawa."
 }

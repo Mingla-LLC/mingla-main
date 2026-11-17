@@ -23,6 +23,16 @@ import {
   matchesChatFilter,
 } from "../chatListModel.ts";
 import { loadChatList } from "../chatListLoad.ts";
+import { brandGuestBookingAction } from "../../chat/brandGuestBooking.ts";
+import { latestEnquiryForBrand, enquiryThreadHref } from "../../brandEnquiry/brandGuestEnquiry.ts";
+import {
+  BRAND_GUEST_RATE_FALLBACK_MS,
+  BRAND_GUEST_RATE_WINDOW_MS,
+  brandGuestRateLimitedUntil,
+  formatRateCountdown,
+  isRateLimited,
+} from "../../chat/brandGuestRateLimit.ts";
+import { isSystemPreviewRow } from "../chatListModel.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -147,4 +157,59 @@ Deno.test("#4459 every locale has the Brands keys and none of the old Events key
     }
     assert(!Object.keys(chat).some((key) => key.startsWith("brandChannelSubtitle") || key.startsWith("sendingTo")), `${locale} drops the fold copy`);
   }
+});
+
+Deno.test("#4459 booking card: Open, Rejoin after a sticky leave, Message <Brand> when removed", () => {
+  eq(brandGuestBookingAction({ status: "member", canRejoin: false }), "open", "member opens the chat");
+  eq(brandGuestBookingAction({ status: "left", canRejoin: true }), "rejoin", "left and still booked: Rejoin");
+  eq(brandGuestBookingAction({ status: "left", canRejoin: false }), null, "left with no booking: nothing");
+  eq(brandGuestBookingAction({ status: "removed", canRejoin: false }), "message", "removed: Message <Brand>, never Rejoin");
+  eq(brandGuestBookingAction({ status: "not_eligible", canRejoin: false }), null, "no booking: nothing");
+  eq(brandGuestBookingAction(null), null, "unknown: nothing");
+  const card = read("components/purchases/BrandGuestChatBookingAction.tsx");
+  assert(card.includes("messagingService.rejoinBrandGuestChat(brandId)") && card.includes("messagingService.getMyBrandGuestStatus(brandId)"), "the RPCs drive it");
+  const page = read("../app/purchases/[kind]/[id].tsx");
+  assert(page.includes("<BrandGuestChatBookingAction") && !page.includes("handleOpenChat"), "the booking card uses it, the per-listing chat link is gone");
+});
+
+Deno.test("#4459 Message <Brand> opens the enquiry thread, never the brand page", () => {
+  const rows = [
+    { enquiryId: "e-old", brandId: "b1", lastActivityAt: "2026-11-01T00:00:00Z" },
+    { enquiryId: "e-new", brandId: "b1", lastActivityAt: "2026-11-10T00:00:00Z" },
+    { enquiryId: "e-other", brandId: "b2", lastActivityAt: "2026-11-12T00:00:00Z" },
+  ];
+  eq(latestEnquiryForBrand(rows, "b1")?.enquiryId, "e-new", "the latest thread with that brand");
+  eq(latestEnquiryForBrand(rows, "b9"), null, "none yet: start one");
+  eq(enquiryThreadHref("e-new"), "/enquiry/e-new", "the #4111 thread route");
+  const hook = read("components/brandEnquiry/useMessageBrandFromGuestChat.tsx");
+  assert(hook.includes("router.push(enquiryThreadHref(existing.enquiryId)") && hook.includes("useExplorerBrandMessage("), "opens the thread, else the shared sheet");
+  const chat = read("components/MessageInterface.tsx");
+  assert(/onPress=\{brandMessage\.messageBrand\}/.test(chat), "the removed card's Message <Brand>");
+  assert(chat.includes("onMessageBrand: () => { setShowGroupInfo(false); brandMessage.messageBrand(); }"), "the info sheet's Message <Brand>");
+  const sheet = read("components/chat/GroupInfoSheet.tsx");
+  assert(sheet.includes('testID="brand-guests-message-brand"'), "the info sheet row");
+});
+
+Deno.test("#4459 rate limit: amber countdown to when the oldest send leaves the window; Send held", () => {
+  const now = Date.parse("2026-11-16T12:00:00Z");
+  const sends = Array.from({ length: 20 }, (_, i) => new Date(now - (9 * 60 - i) * 1000).toISOString());
+  const until = brandGuestRateLimitedUntil(sends, now);
+  eq(until, now - 9 * 60 * 1000 + BRAND_GUEST_RATE_WINDOW_MS, "opens when the oldest counted send leaves the 10 minutes");
+  eq(formatRateCountdown(until, now), "1:00", "m:ss");
+  eq(formatRateCountdown(until, until + 5000), "0:00", "never negative");
+  eq(brandGuestRateLimitedUntil([], now), now + BRAND_GUEST_RATE_FALLBACK_MS, "nothing local: a minute");
+  assert(isRateLimited(until, now) && !isRateLimited(until, until) && !isRateLimited(null, now), "limited only before until");
+  const chat = read("components/MessageInterface.tsx");
+  assert(/if \(isRateLimited\(rateLimitedUntil, Date\.now\(\)\)\) return;/.test(chat), "Send is held (the text stays)");
+  assert(chat.includes('testID="brand-guests-rate-limit"') && chat.includes("chat:brandGuestsRateLimitCountdown"), "the amber notice renders");
+  const page = read("components/ConnectionsPage.tsx");
+  assert(page.includes("setBrandGuestRateLimit({ conversationId, until: brandGuestRateLimitedUntil(mine, Date.now()) })"), "the page computes the countdown");
+  assert(!page.includes("chat:brandGuestsRateLimited'"), "no toast for the rate limit");
+});
+
+Deno.test("#4459 a brand post (no sender) is never drawn as a system line", () => {
+  assert(!isSystemPreviewRow({ sender_id: null, sender_kind: "brand", message_type: "text" }), "brand post");
+  assert(isSystemPreviewRow({ sender_id: null, message_type: "text" }), "a real system row stays one");
+  const service = read("services/messagingService.ts");
+  assert(/if \(message\.sender_id == null\) return message\.sender_kind !== 'brand';/.test(service), "thread rows too");
 });

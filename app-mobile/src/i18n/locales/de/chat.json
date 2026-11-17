@@ -423,9 +423,12 @@
   "brandGuestsMembersRetry": "Mitglieder konnten nicht geladen werden. Tippe zum Wiederholen.",
   "brandGuestsMorePrivate_one": "{{count}} weiterer Gast hält den Namen privat",
   "brandGuestsMorePrivate_other": "{{count}} weitere Gäste halten ihre Namen privat",
-  "brandGuestsRateLimited": "Du sendest sehr schnell. Warte ein paar Minuten und versuch es dann erneut.",
+  "brandGuestsRateLimitCountdown": "Du sendest sehr schnell. Du kannst in {{time}} wieder posten.",
   "brandGuestsAnnouncementsOnly": "Gerade kann nur der Gastgeber hier posten.",
   "brandGuestsTextOnly": "In Gäste-Chats können vorerst nur Textnachrichten gesendet werden.",
   "tombstoneHostRemoved": "Nachricht von {{name}} entfernt",
-  "tombstoneHostRemovedGeneric": "Nachricht vom Gastgeber entfernt"
+  "tombstoneHostRemovedGeneric": "Nachricht vom Gastgeber entfernt",
+  "brandGuestsOpenChat": "Gäste-Chat öffnen",
+  "brandGuestsRejoin": "Gäste-Chat wieder beitreten",
+  "brandGuestsRejoinFailed": "Wiederbeitritt fehlgeschlagen. Versuch es erneut."
 }

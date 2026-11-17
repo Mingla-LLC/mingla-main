@@ -436,9 +436,12 @@
   "brandGuestsMorePrivate_one": "Încă {{count}} invitat își păstrează numele privat",
   "brandGuestsMorePrivate_few": "Încă {{count}} invitați își păstrează numele private",
   "brandGuestsMorePrivate_other": "Încă {{count}} invitați își păstrează numele private",
-  "brandGuestsRateLimited": "Trimiți prea repede. Așteaptă câteva minute și încearcă din nou.",
+  "brandGuestsRateLimitCountdown": "Trimiți prea repede. Poți posta din nou în {{time}}.",
   "brandGuestsAnnouncementsOnly": "Acum doar gazda poate posta aici.",
   "brandGuestsTextOnly": "Deocamdată în chaturile invitaților se pot trimite doar mesaje text.",
   "tombstoneHostRemoved": "Mesaj eliminat de {{name}}",
-  "tombstoneHostRemovedGeneric": "Mesaj eliminat de gazdă"
+  "tombstoneHostRemovedGeneric": "Mesaj eliminat de gazdă",
+  "brandGuestsOpenChat": "Deschide chatul invitaților",
+  "brandGuestsRejoin": "Revino în chatul invitaților",
+  "brandGuestsRejoinFailed": "Nu ai putut reveni în chat. Încearcă din nou."
 }

@@ -477,9 +477,12 @@
   "brandGuestsMorePrivate_other": "{{count}} ضيوف آخرون يُبقون أسماءهم خاصة",
   "brandGuestsMorePrivate_two": "{{count}} ضيوف آخرون يُبقون أسماءهم خاصة",
   "brandGuestsMorePrivate_zero": "{{count}} ضيوف آخرون يُبقون أسماءهم خاصة",
-  "brandGuestsRateLimited": "أنت ترسل بسرعة. انتظر بضع دقائق ثم حاول مجددًا.",
+  "brandGuestsRateLimitCountdown": "أنت ترسل بسرعة. يمكنك النشر مجددًا بعد {{time}}.",
   "brandGuestsAnnouncementsOnly": "يمكن للمضيف فقط النشر هنا الآن.",
   "brandGuestsTextOnly": "يمكن إرسال الرسائل النصية فقط في محادثات الضيوف حاليًا.",
   "tombstoneHostRemoved": "أُزيلت الرسالة بواسطة {{name}}",
-  "tombstoneHostRemovedGeneric": "أُزيلت الرسالة بواسطة المضيف"
+  "tombstoneHostRemovedGeneric": "أُزيلت الرسالة بواسطة المضيف",
+  "brandGuestsOpenChat": "فتح محادثة الضيوف",
+  "brandGuestsRejoin": "العودة إلى محادثة الضيوف",
+  "brandGuestsRejoinFailed": "تعذّرت العودة إلى محادثة الضيوف. حاول مرة أخرى."
 }

@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "{{count}} ahli",
   "brandGuestsMembersRetry": "Gagal memuatkan ahli. Ketik untuk cuba lagi.",
   "brandGuestsMorePrivate_other": "{{count}} lagi tetamu merahsiakan nama",
-  "brandGuestsRateLimited": "Anda menghantar terlalu cepat. Tunggu beberapa minit dan cuba lagi.",
+  "brandGuestsRateLimitCountdown": "Anda menghantar terlalu cepat. Anda boleh menyiar semula dalam {{time}}.",
   "brandGuestsAnnouncementsOnly": "Buat masa ini hanya tuan rumah boleh menyiar di sini.",
   "brandGuestsTextOnly": "Buat masa ini hanya mesej teks boleh dihantar dalam sembang tetamu.",
   "tombstoneHostRemoved": "Mesej dibuang oleh {{name}}",
-  "tombstoneHostRemovedGeneric": "Mesej dibuang oleh tuan rumah"
+  "tombstoneHostRemovedGeneric": "Mesej dibuang oleh tuan rumah",
+  "brandGuestsOpenChat": "Buka sembang tetamu",
+  "brandGuestsRejoin": "Sertai semula sembang tetamu",
+  "brandGuestsRejoinFailed": "Gagal menyertai semula. Cuba lagi."
 }

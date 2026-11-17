@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "Ndị otu {{count}}",
   "brandGuestsMembersRetry": "Enweghị ike ibuga ndị otu. Pịa ka ị nwaa ọzọ.",
   "brandGuestsMorePrivate_other": "Ndị ọbịa {{count}} ọzọ zoro aha ha",
-  "brandGuestsRateLimited": "Ị na-eziga ngwa ngwa. Chere nkeji ole na ole wee nwaa ọzọ.",
+  "brandGuestsRateLimitCountdown": "Ị na-eziga ngwa ngwa. Ị nwere ike ide ọzọ n'ime {{time}}.",
   "brandGuestsAnnouncementsOnly": "Naanị onye nnabata nwere ike ide ebe a ugbu a.",
   "brandGuestsTextOnly": "Ugbu a, naanị ozi ederede ka enwere ike iziga na mkparịta ụka ndị ọbịa.",
   "tombstoneHostRemoved": "{{name}} wepụrụ ozi a",
-  "tombstoneHostRemovedGeneric": "Onye nnabata wepụrụ ozi a"
+  "tombstoneHostRemovedGeneric": "Onye nnabata wepụrụ ozi a",
+  "brandGuestsOpenChat": "Mepee mkparịta ụka ndị ọbịa",
+  "brandGuestsRejoin": "Sonye ọzọ na mkparịta ụka ndị ọbịa",
+  "brandGuestsRejoinFailed": "Enweghị ike isonye ọzọ. Nwaa ọzọ."
 }

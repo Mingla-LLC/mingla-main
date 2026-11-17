@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "{{count}} thành viên",
   "brandGuestsMembersRetry": "Không tải được thành viên. Chạm để thử lại.",
   "brandGuestsMorePrivate_other": "Thêm {{count}} khách giữ tên riêng tư",
-  "brandGuestsRateLimited": "Bạn đang gửi quá nhanh. Đợi vài phút rồi thử lại.",
+  "brandGuestsRateLimitCountdown": "Bạn đang gửi quá nhanh. Bạn có thể đăng lại sau {{time}}.",
   "brandGuestsAnnouncementsOnly": "Hiện chỉ chủ nhà có thể đăng ở đây.",
   "brandGuestsTextOnly": "Hiện chỉ có thể gửi tin nhắn văn bản trong trò chuyện khách.",
   "tombstoneHostRemoved": "Tin nhắn đã bị {{name}} xóa",
-  "tombstoneHostRemovedGeneric": "Tin nhắn đã bị chủ nhà xóa"
+  "tombstoneHostRemovedGeneric": "Tin nhắn đã bị chủ nhà xóa",
+  "brandGuestsOpenChat": "Mở trò chuyện khách",
+  "brandGuestsRejoin": "Tham gia lại trò chuyện khách",
+  "brandGuestsRejoinFailed": "Không tham gia lại được. Hãy thử lại."
 }

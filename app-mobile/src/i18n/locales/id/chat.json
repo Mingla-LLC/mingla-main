@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "{{count}} anggota",
   "brandGuestsMembersRetry": "Gagal memuat anggota. Ketuk untuk mencoba lagi.",
   "brandGuestsMorePrivate_other": "{{count}} tamu lagi merahasiakan namanya",
-  "brandGuestsRateLimited": "Kamu mengirim terlalu cepat. Tunggu beberapa menit lalu coba lagi.",
+  "brandGuestsRateLimitCountdown": "Kamu mengirim terlalu cepat. Kamu bisa memposting lagi dalam {{time}}.",
   "brandGuestsAnnouncementsOnly": "Saat ini hanya tuan rumah yang bisa memposting di sini.",
   "brandGuestsTextOnly": "Untuk saat ini hanya pesan teks yang bisa dikirim di chat tamu.",
   "tombstoneHostRemoved": "Pesan dihapus oleh {{name}}",
-  "tombstoneHostRemovedGeneric": "Pesan dihapus oleh tuan rumah"
+  "tombstoneHostRemovedGeneric": "Pesan dihapus oleh tuan rumah",
+  "brandGuestsOpenChat": "Buka chat tamu",
+  "brandGuestsRejoin": "Gabung lagi ke chat tamu",
+  "brandGuestsRejoinFailed": "Gagal bergabung lagi. Coba lagi."
 }

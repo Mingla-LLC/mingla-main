@@ -423,9 +423,12 @@
   "brandGuestsMembersRetry": "Τα μέλη δεν φορτώθηκαν. Πάτα για νέα προσπάθεια.",
   "brandGuestsMorePrivate_one": "Ακόμη {{count}} καλεσμένος κρατά το όνομά του ιδιωτικό",
   "brandGuestsMorePrivate_other": "Ακόμη {{count}} καλεσμένοι κρατούν τα ονόματά τους ιδιωτικά",
-  "brandGuestsRateLimited": "Στέλνεις πολύ γρήγορα. Περίμενε λίγα λεπτά και δοκίμασε ξανά.",
+  "brandGuestsRateLimitCountdown": "Στέλνεις πολύ γρήγορα. Μπορείς να αναρτήσεις ξανά σε {{time}}.",
   "brandGuestsAnnouncementsOnly": "Τώρα μόνο ο οικοδεσπότης μπορεί να αναρτά εδώ.",
   "brandGuestsTextOnly": "Προς το παρόν στις συνομιλίες καλεσμένων στέλνονται μόνο μηνύματα κειμένου.",
   "tombstoneHostRemoved": "Το μήνυμα αφαιρέθηκε από {{name}}",
-  "tombstoneHostRemovedGeneric": "Το μήνυμα αφαιρέθηκε από τον οικοδεσπότη"
+  "tombstoneHostRemovedGeneric": "Το μήνυμα αφαιρέθηκε από τον οικοδεσπότη",
+  "brandGuestsOpenChat": "Άνοιγμα συνομιλίας καλεσμένων",
+  "brandGuestsRejoin": "Επιστροφή στη συνομιλία καλεσμένων",
+  "brandGuestsRejoinFailed": "Η επιστροφή απέτυχε. Δοκίμασε ξανά."
 }

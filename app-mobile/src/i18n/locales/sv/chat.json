@@ -423,9 +423,12 @@
   "brandGuestsMembersRetry": "Kunde inte ladda medlemmar. Tryck för att försöka igen.",
   "brandGuestsMorePrivate_one": "{{count}} gäst till håller sitt namn privat",
   "brandGuestsMorePrivate_other": "{{count}} gäster till håller sina namn privata",
-  "brandGuestsRateLimited": "Du skickar snabbt. Vänta några minuter och försök igen.",
+  "brandGuestsRateLimitCountdown": "Du skickar snabbt. Du kan posta igen om {{time}}.",
   "brandGuestsAnnouncementsOnly": "Just nu kan bara värden posta här.",
   "brandGuestsTextOnly": "I gästchattar kan bara textmeddelanden skickas än så länge.",
   "tombstoneHostRemoved": "Meddelande borttaget av {{name}}",
-  "tombstoneHostRemovedGeneric": "Meddelande borttaget av värden"
+  "tombstoneHostRemovedGeneric": "Meddelande borttaget av värden",
+  "brandGuestsOpenChat": "Öppna gästchatten",
+  "brandGuestsRejoin": "Gå med i gästchatten igen",
+  "brandGuestsRejoinFailed": "Kunde inte gå med igen. Försök igen."
 }

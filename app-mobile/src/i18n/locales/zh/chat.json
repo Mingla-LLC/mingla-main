@@ -408,9 +408,12 @@
   "brandGuestsMembersHeading_other": "{{count}} 位成员",
   "brandGuestsMembersRetry": "无法加载成员，点击重试。",
   "brandGuestsMorePrivate_other": "另有 {{count}} 位宾客隐藏了姓名",
-  "brandGuestsRateLimited": "你发送得太快了。请等几分钟再试。",
+  "brandGuestsRateLimitCountdown": "你发送得太快了。{{time}} 后可以再次发帖。",
   "brandGuestsAnnouncementsOnly": "目前只有主办方可以在这里发帖。",
   "brandGuestsTextOnly": "宾客聊天目前只能发送文字消息。",
   "tombstoneHostRemoved": "消息已被 {{name}} 移除",
-  "tombstoneHostRemovedGeneric": "消息已被主办方移除"
+  "tombstoneHostRemovedGeneric": "消息已被主办方移除",
+  "brandGuestsOpenChat": "打开宾客聊天",
+  "brandGuestsRejoin": "重新加入宾客聊天",
+  "brandGuestsRejoinFailed": "无法重新加入宾客聊天，请重试。"
 }
