@@ -660,3 +660,25 @@ describe("#4453 6c an empty upcoming grid is left out of the public site on Pop,
     });
   }
 });
+
+/* ---------------- found on the production build ---------------- */
+
+describe("#4453 6c production-build findings", () => {
+  it("each new design keeps its call to action and menu button on a 375 px phone (Pop's menu button sat at 406-454 px with real fonts)", () => {
+    for (const design of NEW) {
+      const sheet = css(`/designs/${design.key}/1.css`);
+      const phone = sheet.slice(sheet.lastIndexOf("@media (max-width: 720px)"));
+      expect(phone, design.key).toContain(`[data-design="${design.key}"] .mg-page .mg-hd .mg-mark { min-width: 0; flex: 0 1 auto; overflow: hidden; font-size: 16px; }`);
+      expect(phone, design.key).toContain(`[data-design="${design.key}"] .mg-page .mg-hd__end { flex: none; }`);
+    }
+  });
+
+  it("Pop's hero highlighter is the tangerine (grape ink on it), lime elsewhere", () => {
+    expect(css("/designs/pop/1.css")).toContain('[data-design="pop"] .pp-hero .mg-h1 .mg-ln:last-child > span { background: var(--c-accent-400); color: var(--c-accent-ink); }');
+    expect(contrast(POP.tokens.colors.accent_ink, POP.tokens.colors.accent.ramp[400])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("Pop's tilted stickers and ticker tape can never widen the page: the page clips sideways overflow", () => {
+    expect(css(SHARED_STYLESHEET)).toMatch(/\[data-design\] \.mg-page \{[^}]*overflow-x: clip;/);
+  });
+});

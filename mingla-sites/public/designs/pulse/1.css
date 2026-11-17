@@ -188,3 +188,12 @@
   [data-design="pulse"] .pl-orb--2 { width: 70vw; height: 70vw; }
   [data-design="pulse"] .mg-page .mg-hd__cta { font-size: 11px; letter-spacing: .02em; padding: 0 12px; }
 }
+
+/* phones: a wide display name must never push the call to action or the menu button off screen (found on the production build: Pop's menu button sat at 406-454 px on a 375 px phone) */
+@media (max-width: 720px) {
+  [data-design="pulse"] .mg-page .mg-hd__bar { gap: 8px; }
+  [data-design="pulse"] .mg-page .mg-hd .mg-mark { min-width: 0; flex: 0 1 auto; overflow: hidden; font-size: 16px; }
+  [data-design="pulse"] .mg-page .mg-hd .mg-mark > span { overflow: hidden; text-overflow: ellipsis; }
+  [data-design="pulse"] .mg-page .mg-hd__end { flex: none; }
+  [data-design="pulse"] .mg-page .mg-hd__cta { padding: 0 12px; font-size: 11px; letter-spacing: .02em; }
+}

@@ -160,6 +160,8 @@
 [data-design="pop"] .pp-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); gap: clamp(30px, 4vw, 64px); align-items: center; }
 [data-design="pop"] .pp-copy { min-width: 0; }
 [data-design="pop"] .pp-kick { display: inline-flex; margin: 0 0 26px; padding: 10px 16px; border: var(--pp-edge); border-radius: 999px; background: var(--c-surface); font: 700 13px/1.25 var(--body); letter-spacing: .02em; transform: rotate(-2deg); box-shadow: 4px 4px 0 var(--c-ink-strong); }
+/* the hero's highlighter is tangerine (grape ink on it, 6:1), as in the gallery; lime elsewhere */
+[data-design="pop"] .pp-hero .mg-h1 .mg-ln:last-child > span { background: var(--c-accent-400); color: var(--c-accent-ink); }
 [data-design="pop"] .pp-lede { max-width: 520px; margin: 28px 0 0; font-size: 19px; line-height: 1.5; color: var(--c-ink-quiet); }
 [data-design="pop"] .pp-stack { position: relative; height: clamp(460px, 44vw, 620px); }
 [data-design="pop"] .pp-card { position: absolute; margin: 0; background: var(--c-surface); padding: 10px; border: var(--pp-edge); border-radius: calc(26px * var(--radius-scale, 1)); box-shadow: 8px 8px 0 var(--c-ink-strong); transition: transform .5s cubic-bezier(.34, 1.56, .64, 1); }
@@ -194,4 +196,13 @@
   [data-design="pop"] .mg-page .mg-mq { transform: rotate(-2deg); }
   [data-design="pop"] .mg-page .mg-btn { box-shadow: 3px 3px 0 var(--c-ink-strong); }
   [data-design="pop"] .mg-page .mg-nl-photo { border-radius: calc(26px * var(--radius-scale, 1)); }
+}
+
+/* phones: a wide display name must never push the call to action or the menu button off screen (found on the production build: Pop's menu button sat at 406-454 px on a 375 px phone) */
+@media (max-width: 720px) {
+  [data-design="pop"] .mg-page .mg-hd__bar { gap: 8px; }
+  [data-design="pop"] .mg-page .mg-hd .mg-mark { min-width: 0; flex: 0 1 auto; overflow: hidden; font-size: 16px; }
+  [data-design="pop"] .mg-page .mg-hd .mg-mark > span { overflow: hidden; text-overflow: ellipsis; }
+  [data-design="pop"] .mg-page .mg-hd__end { flex: none; }
+  [data-design="pop"] .mg-page .mg-hd__cta { padding: 0 12px; font-size: 13px; }
 }
