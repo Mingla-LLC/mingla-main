@@ -50,6 +50,7 @@ const ROUND3_KEYS = [
   "stops[].start_offset_minutes",
 ];
 
+// #3281 bundle 3 closed every gap; a new one is named here with its issue.
 const GAP_3281 = "not yet exposed to Ari; tracked on #3281";
 
 // Explicit wizard path -> Ari tool path, per Ari surface.
@@ -58,6 +59,12 @@ const PRICE_OPTION_KEYS = [
   "name", "price_cents", "price_basis", "capacity", "is_hidden",
   "group_max", "block_minutes", "min_blocks", "max_blocks",
 ].map((k) => `price_options[].${k}`);
+// The wizard's stop keys (buildPayload stops[]), as Ari's stop schema names them.
+const STOP_KEYS = [
+  "stop_order", "place_id", "place_name", "address", "city", "region",
+  "country_code", "lat", "lng", "coordinate_precision", "image_urls",
+  "start_time", "start_offset_minutes", "price_cents", "ai_description",
+].map((k) => `stops[].${k}`);
 const SWITCHES = {
   pass_tax: "set_pricing_switches:tax",
   pass_mingla_fee: "set_pricing_switches:mingla_fee",
@@ -76,6 +83,8 @@ export const WIZARD_TO_ARI = {
       "stops[].country_code", "stops[].lat", "stops[].lng",
       "stops[].coordinate_precision", "stops[].image_urls",
       "stops[].start_time", "stops[].price_cents", "stops[].ai_description",
+      // #3281 bundle 3
+      "stops[].start_offset_minutes",
       ...PRICE_OPTION_KEYS,
     ]),
     description: "create_experience:narrative",
@@ -88,8 +97,12 @@ export const WIZARD_TO_ARI = {
       "booking_spacing_minutes", "min_notice_minutes", "whenMode", "when",
       "multiDates", "recurrence_rules", "timezone", "price_options", "cover",
       ...PRICE_OPTION_KEYS,
+      // #3281 bundle 3 — options keep their stored id across an Ari edit.
+      "price_options[].id",
     ]),
     stops: "manage_experience_stops:stops",
+    // #3281 bundle 3 — manage_experience_stops types every wizard stop key.
+    ...id("manage_experience_stops", STOP_KEYS),
     ...SWITCHES,
   },
 };
@@ -103,8 +116,6 @@ export const ARI_OPAQUE = {
   },
   update: {
     cover: "cover is passed through verbatim as the wizard's cover object",
-    stops:
-      "manage_experience_stops takes untyped stop objects; stop keys are not named in its schema (only in its description); tracked on #3281",
   },
 };
 
@@ -113,13 +124,10 @@ export const ARI_REFUSES = {
   create: {
     "stops[].stop_order":
       "create_experience orders stops by their array position; there is no explicit stop_order field",
-    "stops[].start_offset_minutes": GAP_3281,
     "price_options[].id":
       "create has no stored options to reference; ids exist only after the draft is created",
   },
-  update: {
-    "price_options[].id": GAP_3281,
-  },
+  update: {},
 };
 
 // ---------------------------------------------------------------------------
@@ -457,8 +465,8 @@ if (process.argv.includes("--self-test")) {
         "        capacity_scope: capacityScope,\n        brand_new_key: true,\n"),
     }, base, "does not emit wizard key brand_new_key"],
     ["refusal with an empty reason", sources,
-      withConfig((c) => { c.ARI_REFUSES.update["price_options[].id"] = " "; }),
-      "update: price_options[].id needs a real reason"],
+      withConfig((c) => { c.ARI_REFUSES.create["price_options[].id"] = " "; }),
+      "create: price_options[].id needs a real reason"],
     ["stale refusal (wizard no longer sends the key)", sources,
       withConfig((c) => { c.ARI_REFUSES.create["stops[].retired_key"] = GAP_3281; }),
       "stale ARI_REFUSES entry stops[].retired_key"],
@@ -466,8 +474,27 @@ if (process.argv.includes("--self-test")) {
       withConfig((c) => { c.WIZARD_TO_ARI.update.retired_key = "update_experience:title"; }),
       "stale WIZARD_TO_ARI entry retired_key"],
     ["refusal removed for a real gap", sources,
-      withConfig((c) => { delete c.ARI_REFUSES.create["stops[].start_offset_minutes"]; }),
-      "create: wizard key stops[].start_offset_minutes is not carried by Ari"],
+      withConfig((c) => { delete c.ARI_REFUSES.create["stops[].stop_order"]; }),
+      "create: wizard key stops[].stop_order is not carried by Ari"],
+    // #3281 bundle 3 — the closed gaps cannot quietly reopen.
+    ["Ari create stops drop start_offset_minutes", {
+      ...sources,
+      tools: replaceOnce(sources.tools, "            start_offset_minutes: {\n", "            removed_offset: {\n"),
+    }, base, "stops[].start_offset_minutes -> create_experience:stops[].start_offset_minutes is not in"],
+    ["Ari stop updates drop start_offset_minutes", {
+      ...sources,
+      domain: replaceOnce(sources.domain, "          start_offset_minutes: {\n", "          removed_offset: {\n"),
+    }, base, "stops[].start_offset_minutes -> manage_experience_stops:stops[].start_offset_minutes is not in"],
+    ["Ari update price options drop id", {
+      ...sources,
+      domain: replaceOnce(sources.domain, "          id: {\n            type: \"string\",\n            format: \"uuid\",\n            description:\n              \"The stored option's id",
+        "          removed_id: {\n            type: \"string\",\n            format: \"uuid\",\n            description:\n              \"The stored option's id"),
+    }, base, "price_options[].id -> update_experience:price_options[].id is not in"],
+    ["Ari stop updates go untyped again", {
+      ...sources,
+      domain: replaceOnce(sources.domain, "        required: [\"place_name\", \"start_offset_minutes\"],\n        properties: {\n          stop_order:",
+        "        required: [\"place_name\", \"start_offset_minutes\"],\n        notProperties: {\n          stop_order:"),
+    }, base, "update: stops[].place_id -> manage_experience_stops:stops[].place_id is not in"],
     ["payload read-back drops a key", {
       ...sources,
       payloadSql: replaceOnce(sources.payloadSql, "'min_notice_minutes', COALESCE(v_event.min_notice_minutes, 120),\n", ""),

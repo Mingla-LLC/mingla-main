@@ -202,6 +202,11 @@ export function selectAriTools(
   const eventMoneyReadRequested =
     /\b(?:order|orders|sales|revenue|refund|payment|payments|payout|money|transaction|transactions)\b/i
       .test(query);
+  // #3281 bundle 3: the editable-experience read joins the compact window only
+  // for an experience conversation, so a generic listings question keeps its
+  // tools (request_tools still reaches it).
+  const experienceEditRequested =
+    /\b(?:experiences?|stops?|price options?|itinerary)\b/i.test(query);
   // Follow-up turns often omit "trip" but still say "per-person package".
   // Treat that as trip pricing intent so a mention of the brand's currency
   // does not route a package write into brand settings.
@@ -232,7 +237,9 @@ export function selectAriTools(
           .test(tool.name) ||
       keys.includes("listings") && !eventMoneyReadRequested &&
         /^(list_event_orders|get_event_order_reconciliation)$/
-          .test(tool.name)
+          .test(tool.name) ||
+      keys.includes("listings") && !experienceEditRequested &&
+        tool.name === "get_experience"
     )
   );
   const core = all.filter((tool) => toolBelongsTo(tool.name, "core"));

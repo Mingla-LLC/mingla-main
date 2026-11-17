@@ -44,6 +44,8 @@ import {
 import { parseFlowPlace, stayInventoryOf } from "../ariFlows/edge.ts";
 import {
   createExperienceArgs,
+  experienceHasPrice,
+  experienceIsPaid,
   experiencePublishGaps,
 } from "../ariFlows/offerings/experience.ts";
 import {
@@ -475,6 +477,7 @@ function experienceFrom(args: Record<string, unknown>): FlowExperienceRow {
     })),
     is_free: args.is_free === true,
     whole_price_cents: 0,
+    ticket_price_cents: 0,
     when: args.when as Record<string, unknown>,
   };
 }
@@ -801,6 +804,7 @@ Deno.test("P9: an experience draft missing a picked place for a stop is not publ
     stops: [{ name: "A", description: "B", address: "C", has_point: true, has_place_id: false }],
     is_free: true,
     whole_price_cents: 0,
+    ticket_price_cents: 0,
     when: { date: "2027-01-01" },
   };
   assertEquals(experiencePublishGaps(row), [
@@ -1382,4 +1386,65 @@ Deno.test("#3355: a stay's clock follows the venue's country, never the brand's"
     | undefined;
   assertEquals(zone?.timezone, "Africa/Lagos");
   assertEquals(zone?.source, "venue_country");
+});
+
+// #3281 bundle 3 (from #3645 2A follow-up 2): Ari's price check counts every
+// live ticket option in every pricing mode, not only whole price and the first
+// ticket. Both cases below read as free or unpriced before.
+for (
+  const [name, row] of [
+    [
+      "a priced per-stop draft (no whole price) is paid",
+      { whole_price_cents: null, is_free: false, ticket_price_cents: 2_500_000 },
+    ],
+    [
+      "a free first option beside a paid one is paid",
+      { whole_price_cents: 0, is_free: true, ticket_price_cents: 2_500_000 },
+    ],
+  ] as const
+) {
+  Deno.test(`#3281 bundle 3: ${name}, so publishing waits for payment setup`, async () => {
+    const world = freshWorld();
+    const store = new MemoryStore();
+    const proposed = await experienceToProposal(world, store);
+    assert(proposed.kind === "propose");
+    const saved = await confirm(
+      world,
+      store,
+      "create_experience",
+      () => world.experiences.set(EXP_ID, { ...experienceFrom(proposed.tool_args), ...row }),
+      { event: { id: EXP_ID } },
+    );
+    assert(saved.kind === "completed", `got ${saved.kind}`);
+    const next = await answer(world, store, (r) => choice(r, "yes"));
+    assert(next.kind === "artefact");
+    // Paid: the payments check applies, and it has a price.
+    assertMatch(next.artefact.text, /Can't publish yet: payment setup isn't finished/);
+    assertNotMatch(next.artefact.text, /a price/);
+    world.canSell = true;
+    const check = await answer(world, store, (r) => choice(r, "check"));
+    assert(check.kind === "artefact");
+    assertEquals(check.artefact.title, "Ready to publish");
+  });
+}
+
+Deno.test("#3281 bundle 3: experienceIsPaid and experienceHasPrice read every mode", () => {
+  const base = {
+    id: "e",
+    title: "T",
+    status: "draft",
+    updated_at: "r",
+    timezone: "Africa/Lagos",
+    description: "A long enough description.",
+    intents: ["romantic"],
+    stops: [],
+    when: null,
+  };
+  const unpriced = { ...base, is_free: false, whole_price_cents: null, ticket_price_cents: 0 };
+  assertEquals(experienceIsPaid(unpriced), false);
+  assertEquals(experienceHasPrice(unpriced), false);
+  assertEquals(experienceHasPrice({ ...unpriced, is_free: true }), true);
+  assertEquals(experienceIsPaid({ ...unpriced, ticket_price_cents: 1 }), true);
+  assertEquals(experienceIsPaid({ ...unpriced, whole_price_cents: 500 }), true);
+  assertEquals(experienceIsPaid({ ...unpriced, is_free: true, ticket_price_cents: 900 }), true);
 });

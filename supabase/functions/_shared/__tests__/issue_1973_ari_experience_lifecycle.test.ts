@@ -101,7 +101,8 @@ Deno.test("#1973 ledger covers every experience row without claiming verificatio
   const rows = (ledger.capabilities as LedgerRow[]).filter((row) =>
     row.id.startsWith("ari.experience.")
   );
-  assertEquals(rows.length, 7);
+  // [TEST-MOD-APPROVED #3281] bundle 3 adds ari.experience.get (read); 7→8.
+  assertEquals(rows.length, 8);
   const byId = new Map(rows.map((row) => [row.id, row]));
   assertEquals(
     byId.get("ari.experience.unpublish")?.ari_tool,

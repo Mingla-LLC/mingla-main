@@ -33,6 +33,7 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   set_event_guest_privacy: "event",
   discard_event_draft: "event",
   publish_experience: "experience",
+  get_experience: "experience",
   update_experience: "experience",
   manage_experience_stops: "experience",
   unpublish_experience: "experience",
@@ -99,6 +100,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   set_pricing_switches: role("finance_manager", "event"),
   set_brand_pricing_defaults: role("finance_manager", "brand"),
   publish_experience: role("event_manager", "event"),
+  // issue #3281 bundle 3 — the SQL read-back requires event_manager too.
+  get_experience: role("event_manager", "event"),
   update_experience: role("event_manager", "event"),
   manage_experience_stops: role("event_manager", "event"),
   unpublish_experience: role("event_manager", "event"),

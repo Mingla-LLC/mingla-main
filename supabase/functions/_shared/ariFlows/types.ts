@@ -273,6 +273,12 @@ export interface FlowExperienceRow {
   }[];
   is_free: boolean;
   whole_price_cents: number | null;
+  /**
+   * #3281 bundle 3 — the highest price among the live ticket options. It is
+   * the resolved price in every mode (whole, per-stop total, price options),
+   * where whole_price_cents is whole mode only.
+   */
+  ticket_price_cents: number;
   /** theme.experience_meta.when_draft.when ({ date, doorsOpen, endsAt }). */
   when: Record<string, unknown> | null;
 }

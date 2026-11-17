@@ -1013,9 +1013,18 @@ const createStep: StepDefinition = {
 
 // ── Publish-ready facts (after the draft exists) ──────────────────────────
 
-/** The Host's "price set": free, or a whole price above zero. */
+/**
+ * #3281 bundle 3 — a paid experience: any live option priced above zero, in
+ * any pricing mode (whole, per-stop total, price options). The server decides
+ * "paid" the same way (publish_experience checks any price_cents > 0).
+ */
+export function experienceIsPaid(row: FlowExperienceRow): boolean {
+  return row.ticket_price_cents > 0 || (row.whole_price_cents ?? 0) > 0;
+}
+
+/** The Host's "price set": marked free, or paid. */
 export function experienceHasPrice(row: FlowExperienceRow): boolean {
-  return row.is_free || (row.whole_price_cents ?? 0) > 0;
+  return row.is_free || experienceIsPaid(row);
 }
 
 /** The Host experience publish checks (biz_publish_experience). */
@@ -1045,7 +1054,7 @@ async function publishBlockers(
   ctx: FlowContext,
   row: FlowExperienceRow,
 ): Promise<string[]> {
-  const paid = !row.is_free && (row.whole_price_cents ?? 0) > 0;
+  const paid = experienceIsPaid(row);
   const readiness = await ctx.deps.readiness(
     paid ? "publish_paid" : "publish_free",
   );

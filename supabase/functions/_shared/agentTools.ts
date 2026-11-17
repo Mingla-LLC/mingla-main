@@ -11,7 +11,11 @@
 
 import { registerOwnerCopyToolNames } from "./ariOwnerCopy.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
+import {
+  canonicalizeExperienceStopsArgs,
+  DOMAIN_READ_ONLY,
+  DOMAIN_TOOLS,
+} from "./agentDomainTools.ts";
 import { canonicalizeCreateDiscountArgs } from "./ariDiscountArgs.ts";
 import {
   assertAgentReadBrand,
@@ -44,6 +48,7 @@ import {
 import { isValidIanaTimezone } from "./agentRelativeTime.ts";
 
 export { normalizeAriToolError, ToolError } from "./agentToolHelpers.ts";
+export { canonicalizeExperienceStopsArgs } from "./agentDomainTools.ts";
 
 // ----------------------------------------------------------------------------
 // 1. create_brand
@@ -1234,8 +1239,15 @@ export function canonicalizeAgentProposalArgs(
   if (toolName === "create_discount") {
     return canonicalizeCreateDiscountArgs(args);
   }
+  // issue #3281 bundle 3: stops are numbered by position, as the Host wizard
+  // does. The server keys offsets and live stop rows on stop_order, so a stop
+  // without one (or a mixed, colliding set) would lose its offset or a row.
+  if (toolName === "manage_experience_stops") {
+    return canonicalizeExperienceStopsArgs(args);
+  }
   return args;
 }
+
 
 const manageBrandHours: AgentToolDefinition = {
   name: "manage_brand_hours",
@@ -1609,6 +1621,15 @@ const createExperience: AgentToolDefinition = {
               enum: ["exact", "approximate"],
             },
             start_time: { type: "string" },
+            // issue #3281 bundle 3 — open-hours stops: minutes after the
+            // guest's booked start (the wizard's "starts N min in").
+            start_offset_minutes: {
+              type: "integer",
+              minimum: 0,
+              maximum: 32767,
+              description:
+                "Open-hours experiences: minutes after the guest's booked start. Use this or start_time, not both.",
+            },
             image_urls: {
               type: "array",
               maxItems: 5,

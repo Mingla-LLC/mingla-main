@@ -48,6 +48,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "get_brand_readiness",
   // #1984 — event order sold/refunded/net read; same tenant scope as other reads.
   "get_event_order_reconciliation",
+  // issue #3281 bundle 3 — the editable experience graph; get_experience
+  // asserts the event's brand membership inline (assertAgentReadEvent).
+  "get_experience",
   // issue #1978 — venue discovery reads run inline under the same tenant scope.
   "list_venue_listings",
   "get_venue_listing_status",

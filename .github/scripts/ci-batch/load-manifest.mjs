@@ -330,7 +330,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4420 Stay pay link brand theme: listed migration 20280731104420 after 20280725004452 in the #1857, #1931 and #2117 lanes (plpgsql body, no filtered-replay skip needed; both filtered replays verified) and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
-export const BOOTSTRAP_SHA256 = "33f91a97f350a7d5151c04c37fc284edc201e7637971995085d38851ac981aae";
+// #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
+export const BOOTSTRAP_SHA256 = "37fd9cabf6485b47f569f1085b8f69f54678923f64521a2787e37997fd7d23dc";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
