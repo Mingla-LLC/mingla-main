@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/scan-ticket/__tests__/issue_3281_scan_handler_contract.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-scan-handler-contract-implementor",
+  "profile": "deno-2-unit"
+}

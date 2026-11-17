@@ -328,10 +328,13 @@ describe("issue #3827 — door Find by name", () => {
     // Its own Text, with no line limit, so a long ticket or day label can't hide it.
     expect(src).toMatch(/<Text style=\{styles\.overlayDetail\} testID="scan-result-extras">/);
     // The day-label enrichment replaces the detail but keeps the extras.
-    expect(src).toMatch(/detail: copy\.detail,\s*extras,/);
-    expect(src).toMatch(/showResult\(\{ kind, message, detail, extras \}\)/);
-    // A screen reader hears the extras too, not only "Dismiss".
-    expect(src).toMatch(/accessibilityLabel=\{\[overlay\.message, overlay\.detail, overlay\.extras\]/);
+    // [TEST-MOD-APPROVED #3281] the booked start now rides beside the extras
+    // on every showResult call and in the screen-reader label.
+    expect(src).toMatch(/detail: copy\.detail,\s*extras,\s*booked,/);
+    expect(src).toMatch(/showResult\(\{ kind, message, detail, extras, booked \}\)/);
+    // A screen reader hears the booked start and the extras too, not only "Dismiss".
+    expect(src).toMatch(/accessibilityLabel=\{\[overlay\.message, overlay\.detail, overlay\.booked, overlay\.extras\]/);
+    expect(src).toMatch(/<Text style=\{styles\.overlayDetail\} testID="scan-result-booked">/);
   });
 
   test("S-3 no match: empty copy", async () => {
