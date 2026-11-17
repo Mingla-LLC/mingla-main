@@ -17921,6 +17921,7 @@
         "supabase/migrations/20280727104453_issue_4453_design_keys_6c.sql",
         "supabase/migrations/20280728004453_issue_4453_ari_design_pass.sql",
         "supabase/migrations/20280729004453_issue_4453_offering_detail.sql",
+        "supabase/migrations/20280801004453_issue_4453_plan_preview_feed.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19782,6 +19783,7 @@
         "supabase/migrations/20280727104453_issue_4453_design_keys_6c.sql",
         "supabase/migrations/20280728004453_issue_4453_ari_design_pass.sql",
         "supabase/migrations/20280729004453_issue_4453_offering_detail.sql",
+        "supabase/migrations/20280801004453_issue_4453_plan_preview_feed.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -21432,6 +21434,8 @@
         "supabase/migrations/__tests__/issue_4453_offering_detail.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_offering_detail.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_offering_detail.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4453_plan_preview_feed.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4453_plan_preview_feed.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_stay_available_parity.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_stay_available_parity.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_stay_feed_kind.implementor.pg17.test.sql",
@@ -25281,6 +25285,7 @@
         "supabase/migrations/20280727104453_issue_4453_design_keys_6c.sql",
         "supabase/migrations/20280728004453_issue_4453_ari_design_pass.sql",
         "supabase/migrations/20280729004453_issue_4453_offering_detail.sql",
+        "supabase/migrations/20280801004453_issue_4453_plan_preview_feed.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -26931,6 +26936,8 @@
         "supabase/migrations/__tests__/issue_4453_offering_detail.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_offering_detail.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_offering_detail.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4453_plan_preview_feed.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4453_plan_preview_feed.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_stay_available_parity.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_stay_available_parity.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_stay_feed_kind.implementor.pg17.test.sql",
@@ -54236,5 +54243,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "4e0d6c6bf5273af30e766b5c1b310f4a067268ffc4e478028dcb335cbd310435"
+  "phase3eContractSha256": "9a0c543ea494a6dac7b910a7b267af6a156fbf5dea8b6ea629cf88ba1ca6b255"
 }
