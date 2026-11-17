@@ -175,9 +175,10 @@ AS $function$
 BEGIN
   IF p_site_id IS NULL OR p_fingerprint IS NULL OR jsonb_typeof(p_fingerprint) <> 'object'
      OR octet_length(p_fingerprint::text) > 4096
-     OR jsonb_typeof(p_fingerprint->'design') <> 'string'
-     OR jsonb_typeof(p_fingerprint->'format') <> 'string'
-     OR jsonb_typeof(p_fingerprint->'home') <> 'array'
+     -- IS DISTINCT FROM: a MISSING key (NULL typeof) is refused too, so '{}' never wipes the stored look.
+     OR jsonb_typeof(p_fingerprint->'design') IS DISTINCT FROM 'string'
+     OR jsonb_typeof(p_fingerprint->'format') IS DISTINCT FROM 'string'
+     OR jsonb_typeof(p_fingerprint->'home') IS DISTINCT FROM 'array'
      -- An allowlist, not a denylist: any key outside the seven is refused.
      OR EXISTS (SELECT 1 FROM jsonb_object_keys(p_fingerprint) k
                 WHERE k NOT IN ('design', 'format', 'header', 'hero', 'home', 'fonts', 'colors'))

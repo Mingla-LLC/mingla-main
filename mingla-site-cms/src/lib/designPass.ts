@@ -35,6 +35,7 @@ import { findAllTenantPages } from "./tenantPages";
 import { AriRefusal, type AriActionContext } from "./ariSiteActions";
 import type { WorkLogCite } from "../contracts/generated/ariToolSchemas.ts";
 import type { PayloadRequest } from "payload";
+import { createHash } from "node:crypto";
 
 type AnyDoc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -56,14 +57,50 @@ function refuse(code: string, extra: Record<string, unknown> = {}): never {
   throw new AriRefusal(code, extra);
 }
 
-/** When the current draft began: the site's last successful publish (null = never published, so the whole history is one draft). */
+/**
+ * When the current draft began: the site's last successful publish (null =
+ * never published, so the whole history is one draft). The publish snapshots
+ * the draft when its job is CREATED, so that is the boundary (retest P3-3):
+ * a pass made while a publish is in flight is not in it, and a replay that
+ * touches the job (`updatedAt`) never moves the boundary.
+ */
 async function currentDraftSince(ctx: AriActionContext): Promise<string | null> {
   const last = await ctx.req.payload.find({
-    collection: "publication-jobs", overrideAccess: true, depth: 0, limit: 1, sort: "-updatedAt",
+    collection: "publication-jobs", overrideAccess: true, depth: 0, limit: 1, sort: "-createdAt",
     where: { and: [{ tenant: { equals: ctx.tenantId } }, { status: { equals: "published" } }] },
   });
-  const at = (last.docs[0] as AnyDoc | undefined)?.updatedAt;
+  const at = (last.docs[0] as AnyDoc | undefined)?.createdAt;
   return typeof at === "string" && at.length > 0 ? at : null;
+}
+
+/**
+ * Retest P3-2 — the atomic half of "one pass per draft". Two passes racing on
+ * one draft both pass the work-log read; only one can create this claim,
+ * because `gateway-nonces.nonce` is UNIQUE in the database (the same ledger
+ * that refuses replayed Core calls). The key is the tenant plus the draft's
+ * start, so a publish (a new draft) opens exactly one new claim.
+ */
+export function designPassClaimKey(tenantId: string, draftSince: string | null): string {
+  return `design-pass:${createHash("sha256").update(`${tenantId}|${draftSince ?? "never"}`).digest("hex").slice(0, 48)}`;
+}
+
+async function claimDesignPass(ctx: AriActionContext, draftSince: string | null): Promise<void> {
+  try {
+    await ctx.req.payload.create({
+      collection: "gateway-nonces",
+      overrideAccess: true,
+      data: {
+        nonce: designPassClaimKey(ctx.tenantId, draftSince),
+        direction: "core_to_cms",
+        site_id: ctx.siteId,
+        operation_id: "propose_site_design_pass",
+        expires_at: new Date(Date.now() + 400 * 24 * 3600 * 1000).toISOString(),
+      } as never,
+    });
+  } catch {
+    // The claim already exists: another pass on this draft won the race.
+    refuse("DESIGN_PASS_ALREADY_RUN");
+  }
 }
 
 async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc): Promise<ComposeV2Input> {
@@ -177,6 +214,7 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
       ] },
     });
     if (earlier.docs.length > 0) refuse("DESIGN_PASS_ALREADY_RUN");
+    await claimDesignPass(ctx, draftSince);
     const similar = similarLiveSites(composed.fingerprint, signed.live_fingerprints);
     if (design !== currentDesign) {
       await ctx.req.payload.update({ collection: "site-settings", id: settings.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: { design } as never });

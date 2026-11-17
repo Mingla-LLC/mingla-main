@@ -24,7 +24,7 @@ vi.mock("./designPassInputs", async (importOriginal) => {
   };
 });
 
-import { runDesignPassAction } from "./designPass";
+import { designPassClaimKey, runDesignPassAction } from "./designPass";
 import { parseSignedDesignPass } from "./designPassInputs";
 import type { AriActionContext } from "./ariSiteActions";
 import { designFingerprint } from "../contracts/generated/formats.ts";
@@ -46,7 +46,8 @@ function signed(overrides: Record<string, unknown> = {}) {
 type Write = { op: string; collection: string; data?: unknown };
 let writes: Write[];
 let workLog: Array<Record<string, unknown>>;
-let publications: Array<{ updatedAt: string }>;
+let publications: Array<{ createdAt: string }>;
+let nonces: Set<string>;
 let clock: number;
 const tick = (): string => new Date(Date.UTC(2026, 10, 16, 12, 0, clock++)).toISOString();
 
@@ -62,6 +63,13 @@ function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
       return { docs: [] };
     }),
     create: vi.fn(async ({ collection, data }: { collection: string; data: unknown }) => {
+      if (collection === "gateway-nonces") {
+        // The real column is UNIQUE: a second claim on the same key fails.
+        const nonce = String((data as { nonce: string }).nonce);
+        if (nonces.has(nonce)) throw new Error("duplicate key value violates unique constraint");
+        nonces.add(nonce);
+        return { id: nonce };
+      }
       writes.push({ op: "create", collection, data });
       return { id: `new-${writes.length}` };
     }),
@@ -101,6 +109,7 @@ beforeEach(() => {
   writes = [];
   workLog = [];
   publications = [];
+  nonces = new Set();
   clock = 0;
 });
 
@@ -132,13 +141,27 @@ describe("#4453 design pass — gating and refusals", () => {
 
   it("is once per DRAFT, not once per site: after a publish the new draft gets one fresh pass (tester P3-1)", async () => {
     await pass("terra");
-    publications.push({ updatedAt: tick() }); // the owner publishes; the next edit is a new draft
+    publications.push({ createdAt: tick() }); // the owner publishes; the next edit is a new draft
     await expect(pass("journal")).resolves.toMatchObject({ design: "journal", draft_only: true });
     await expect(pass("voyage")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
   });
 
+  it("two passes racing on one draft: exactly one runs (retest P3-2, atomic claim)", async () => {
+    const results = await Promise.allSettled([pass("terra"), pass("journal")]);
+    expect(results.map((r) => r.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(String(rejected.reason)).toContain("DESIGN_PASS_ALREADY_RUN");
+    expect(workLog.filter((entry) => entry.tool === "propose_site_design_pass")).toHaveLength(1);
+  });
+
+  it("the claim key is per tenant and per draft start", () => {
+    expect(designPassClaimKey("t1", null)).not.toBe(designPassClaimKey("t2", null));
+    expect(designPassClaimKey("t1", null)).not.toBe(designPassClaimKey("t1", "2026-11-16T12:00:00.000Z"));
+    expect(designPassClaimKey("t1", "2026-11-16T12:00:00.000Z").length).toBeLessThanOrEqual(64);
+  });
+
   it("a publish BEFORE the pass does not open a second pass on the same draft", async () => {
-    publications.push({ updatedAt: tick() });
+    publications.push({ createdAt: tick() });
     await pass("terra");
     await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
   });
@@ -159,12 +182,14 @@ describe("#4453 design pass — what it writes", () => {
   it("warns, never blocks, when a live site looks the same (D7, SIMILAR_TO_LIVE_SITE)", async () => {
     const first = await pass("terra");
     workLog = [];
+    nonces.clear();
     const { format: _format, ...look } = first.fingerprint as Record<string, unknown>;
     const twin = signed({ live_fingerprints: [look] });
     const second = await pass("terra", twin);
     expect(second.warnings).toEqual([expect.objectContaining({ code: "SIMILAR_TO_LIVE_SITE" })]);
     const different = signed({ live_fingerprints: [designFingerprint({ design: "voyage", header: "pill", hero: "arch", home: [], fonts: null })] });
     workLog = [];
+    nonces.clear();
     expect(await pass("terra", different)).not.toHaveProperty("warnings");
   });
 });
