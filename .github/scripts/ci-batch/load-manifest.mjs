@@ -321,7 +321,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
-export const BOOTSTRAP_SHA256 = "a3b82d390213468cec7b10e78341358f4f4ff4b22e74dac635dca265e0ce88e1";
+// #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
+// #4238 rework 8b: merged origin/4420-host-graphite-glass 55e6f03395 (its 20280724004420 row and #1931 filtered-replay skip kept beside the #4452 B21/B22/B25 row); re-sealed.
+export const BOOTSTRAP_SHA256 = "d0eca6054ffdce4845fcbb091b9dbb397f8e38b12caa44da40a0b87c6262f2da";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

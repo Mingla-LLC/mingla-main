@@ -92,6 +92,9 @@ import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { Input } from "../../../src/components/ui/Input";
+import { FieldErrorLine } from "../../../src/components/checkout/FieldErrorLine";
+import { useSteadyQuote } from "../../../src/components/checkout/useSteadyQuote";
+import { useRevealedFieldErrors } from "../../../src/hooks/useRevealedFieldErrors";
 
 import {
   useCart,
@@ -230,6 +233,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     partySize,
   } = useCart();
   const totals = useCartQuoteTotals();
+  const summaryQuote = useSteadyQuote(quote, quoteStatus);
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   // issue #2689 — synchronous re-entry guard (ref, not batched state). Consent
@@ -275,9 +279,6 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     if (next) setConsentHintVisible(false);
   }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer]);
 
-  const [nameTouched, setNameTouched] = useState<boolean>(false);
-  const [emailTouched, setEmailTouched] = useState<boolean>(false);
-  const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
 
   // prettier-ignore -- #3380 source contract keeps the locale fallback auditable.
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
@@ -320,25 +321,26 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     () => validate(buyer.name, buyer.email, buyer.phone, false),
     [buyer.name, buyer.email, buyer.phone],
   );
-  const visibleErrors = useMemo<{
-    name: string | null;
-    email: string | null;
-    phone: string | null;
-  }>(() => {
-    const v = validate(buyer.name, buyer.email, buyer.phone, true);
-    return {
-      name: nameTouched ? v.nameError : null,
-      email: emailTouched ? v.emailError : null,
-      phone: phoneTouched ? v.phoneError : null,
-    };
-  }, [
-    buyer.name,
-    buyer.email,
-    buyer.phone,
-    nameTouched,
-    emailTouched,
-    phoneTouched,
-  ]);
+  // #4420 — Constitution 12: an error appears on blur or Continue, never
+  // mid-typing, and clears live once the value is valid.
+  const fieldErrors = useMemo(
+    () => validate(buyer.name, buyer.email, buyer.phone, true),
+    [buyer.name, buyer.email, buyer.phone],
+  );
+  const {
+    shows: showsFieldError,
+    blur: blurField,
+    revealAll: revealAllFieldErrors,
+  } = useRevealedFieldErrors({
+    name: fieldErrors.nameError !== null,
+    email: fieldErrors.emailError !== null,
+    phone: fieldErrors.phoneError !== null,
+  });
+  const visibleErrors = {
+    name: showsFieldError("name") ? fieldErrors.nameError : null,
+    email: showsFieldError("email") ? fieldErrors.emailError : null,
+    phone: showsFieldError("phone") ? fieldErrors.phoneError : null,
+  };
 
   // ----- Defensive guard: cart empty -----
   const hasNoLines = lines.length === 0;
@@ -357,9 +359,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   }, [router, experienceEventId]);
 
   const showConsentHint = useCallback((): void => {
-    setNameTouched(true);
-    setEmailTouched(true);
-    setPhoneTouched(true);
+    revealAllFieldErrors();
     if (
       shouldShowConsentHintOnDisabledTap({
         fieldsValid: validation.isValid,
@@ -368,12 +368,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     ) {
       setConsentHintVisible(true);
     }
-  }, [termsAccepted, validation.isValid]);
+  }, [termsAccepted, validation.isValid, revealAllFieldErrors]);
 
   const handleContinue = useCallback(async (): Promise<void> => {
-    setNameTouched(true);
-    setEmailTouched(true);
-    setPhoneTouched(true);
+    revealAllFieldErrors();
     if (!validation.isValid) return;
     if (!termsAccepted) {
       setConsentHintVisible(true);
@@ -489,6 +487,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     submitInFlight.current = false;
     setSubmitting(false);
   }, [
+    revealAllFieldErrors,
     validation.isValid,
     termsAccepted,
     experienceEventId,
@@ -584,16 +583,21 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {quote !== null ? (
+            {/* #4420 — the last priced quote stays on screen while typing
+                re-quotes, so the summary never collapses under the form. */}
+            {summaryQuote.quote !== null ? (
               <React.Suspense fallback={null}>
                 <TicketQuoteSummary
-                  quote={quote}
+                  quote={summaryQuote.quote}
                   compact
                   totalLabel={BUYER_CLAIM_COPY.confirmTotalLabel}
                   totalValue={
-                    totals.isFree
+                    summaryQuote.quote.buyerTotalCents === 0
                       ? BUYER_CLAIM_COPY.receipt.free
-                      : formatCurrency(totals.allInTotal, totals.currency)
+                      : formatCurrency(
+                          summaryQuote.quote.buyerTotalCents / 100,
+                          summaryQuote.quote.currency,
+                        )
                   }
                 />
               </React.Suspense>
@@ -621,11 +625,13 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             variant="text"
             placeholder="Full name"
             accessibilityLabel="Full name, required"
-            onBlur={() => setNameTouched(true)}
+            onBlur={() => blurField("name")}
           />
-          {visibleErrors.name !== null ? (
-            <Text style={styles.errorText}>{visibleErrors.name}</Text>
-          ) : null}
+          <FieldErrorLine
+            message={visibleErrors.name}
+            style={styles.errorText}
+            testID="checkout-buyer-name-error"
+          />
         </View>
 
         <View style={styles.fieldWrap}>
@@ -639,11 +645,13 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             variant="email"
             placeholder="Email"
             accessibilityLabel="Email address, required"
-            onBlur={() => setEmailTouched(true)}
+            onBlur={() => blurField("email")}
           />
-          {visibleErrors.email !== null ? (
-            <Text style={styles.errorText}>{visibleErrors.email}</Text>
-          ) : null}
+          <FieldErrorLine
+            message={visibleErrors.email}
+            style={styles.errorText}
+            testID="checkout-buyer-email-error"
+          />
         </View>
 
         <View style={styles.fieldWrap}>
@@ -654,14 +662,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           <PhoneInput
             value={phoneLocal}
             countryCode={phoneCountry}
-            onChangePhone={(next: string) => {
-              handlePhoneLocalChange(next);
-              setPhoneTouched(true);
-            }}
-            onChangeCountry={(nextIso: string) => {
-              handlePhoneCountryChange(nextIso);
-              setPhoneTouched(true);
-            }}
+            onChangePhone={handlePhoneLocalChange}
+            onChangeCountry={handlePhoneCountryChange}
+            onBlur={() => blurField("phone")}
+            reserveErrorSpace
             error={visibleErrors.phone}
             disabled={false}
             iconRenderer={(
