@@ -74,7 +74,8 @@ function studioEnum(table: string): Set<string> {
 
 describe("#4453 6a SC-D1 nocturne, haven and maison are design keys everywhere", () => {
   it("DESIGN_KEYS lists them after atelier and voyage, each with a renderer, the shared stylesheet and its own stylesheet", () => {
-    expect(DESIGN_KEYS).toEqual(["atelier", "voyage", "nocturne", "haven", "maison"]);
+    // #4453 6b appended journal, grid and terra (designs6b pins the whole list).
+    expect(DESIGN_KEYS.slice(0, 5)).toEqual(["atelier", "voyage", "nocturne", "haven", "maison"]);
     for (const design of NEW) {
       const renderer = DESIGN_RENDERERS[design.key];
       expect(renderer.sharedStylesheet).toBe(SHARED_STYLESHEET);
@@ -96,7 +97,7 @@ describe("#4453 6a SC-D1 nocturne, haven and maison are design keys everywhere",
     }
   });
 
-  it("Core: the 6a migration replaces only brand_site_design_keys() with the five keys, and nothing is applied by hand", () => {
+  it("Core: the 6a migration replaced only brand_site_design_keys() with the five keys (6b's replaces it again), and nothing is applied by hand", () => {
     const sql = read("supabase/migrations/20280724104453_issue_4453_design_keys_6a.sql");
     expect(sql).toContain("SELECT ARRAY['atelier','voyage','nocturne','haven','maison']::text[]");
     expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
@@ -348,7 +349,8 @@ describe("#4453 6a SC-D5 font budget and no off-origin requests", () => {
    */
   const LATIN: Readonly<Record<string, { normal: number; italic?: number }>> = {
     "Bodoni Moda": { normal: 25_804, italic: 30_220 },
-    Archivo: { normal: 34_940 },
+    // #4453 6b — Nocturne now fetches Archivo with its width axis (62–125%): one larger variable file.
+    Archivo: { normal: 90_096 },
     Cormorant: { normal: 35_280, italic: 38_076 },
     Manrope: { normal: 24_436 },
     Italiana: { normal: 10_164 },

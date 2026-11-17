@@ -18,6 +18,8 @@ import { isFontFamilyName, type FontAsset } from "../../contracts/generated/font
 const DIGEST = /^[0-9a-f]{64}$/;
 const RANGE = /^(?:U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)(?:, ?U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)*$/i;
 const PERCENT = /^\d{1,3}(?:\.\d{1,4})?%$/;
+/** #4453 6b — a width-axis face's range ("62% 125%"), else nothing. */
+const STRETCH = /^\d{2,3}% \d{2,3}%$/;
 
 export function fontUrl(digest: string, previewKey?: string): string {
   return previewKey ? `/fonts/${digest}?k=${encodeURIComponent(previewKey)}` : `/fonts/${digest}`;
@@ -35,7 +37,8 @@ export function fontFacesCss(artifact: ArtifactV2, previewKey?: string): string 
   for (const asset of artifact.font_assets) {
     if (!safeAsset(asset)) continue;
     rules.push(
-      `@font-face{font-family:"${asset.family}";font-style:${asset.style};font-weight:${asset.weight};font-display:swap;` +
+      `@font-face{font-family:"${asset.family}";font-style:${asset.style};font-weight:${asset.weight};` +
+        `${asset.stretch && STRETCH.test(asset.stretch) ? `font-stretch:${asset.stretch};` : ""}font-display:swap;` +
         `src:url("${fontUrl(asset.digest, previewKey)}") format("woff2")` +
         `${asset.unicode_range ? `;unicode-range:${asset.unicode_range}` : ""}}`,
     );

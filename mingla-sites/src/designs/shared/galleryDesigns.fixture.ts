@@ -2,12 +2,13 @@ import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import type { BlockType } from "../../contracts/generated/blocks.ts";
 import { compositionFooter, compositionHeader, compositionVariant, DESIGNS, type DesignKey } from "../../contracts/generated/designs.ts";
 import { resolveTokens } from "../../contracts/generated/tokens.ts";
+import { fontStretch } from "../../contracts/generated/fontSlots.ts";
 import type { RichTextDoc } from "../../contracts/generated/richText.ts";
 import { voyageSyntheticArtifact } from "../../contracts/voyageSynthetic.fixture";
 import { FX, fixtureMedia } from "../../contracts/gogiV1.fixture";
 
 /*
- * #4453 6a — a site on a gallery design (Nocturne, Haven, Maison), built on
+ * #4453 6a — a site on a gallery design (Nocturne, Haven, Maison; 6b: Journal, Grid, Terra), built on
  * the Voyage synthetic fixture: the design's own tokens and faces, the
  * design's default chrome, every stored block moved to the design's layout
  * for a NEW composition, and a Home that carries the design's heaviest
@@ -29,7 +30,8 @@ function fixtureAssets(key: DesignKey): ArtifactV2["font_assets"] {
     const id = `${slot!.family}/${style}`;
     if (seen.has(id)) return;
     seen.add(id);
-    assets.push({ family: slot!.family, weight: slot!.weights[0]!, style, unicode_range: "U+0000-00FF", digest: String(index + 1).repeat(64).slice(0, 64), bytes: 1000 });
+    // #4453 6b — a width-axis slot's face carries its range, as the publish pipeline records it.
+    assets.push({ family: slot!.family, weight: slot!.weights[0]!, style, unicode_range: "U+0000-00FF", digest: String(index + 1).repeat(64).slice(0, 64), bytes: 1000, ...(slot!.width ? { stretch: fontStretch(slot!.width) } : {}) });
   });
   return assets;
 }

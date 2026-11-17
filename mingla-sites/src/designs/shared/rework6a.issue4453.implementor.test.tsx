@@ -27,7 +27,8 @@ import { MAX_ANIMATING_AT_ONCE, startMotion } from "./motion";
 const pub = (file: string) => fs.readFileSync(path.join(process.cwd(), "public/designs", file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 const SHARED = pub("_shared/blocks-1.css");
 /** Every design that links the shared library (atelier draws its own markup only). */
-const KEYS: readonly DesignKey[] = ["voyage", "nocturne", "haven", "maison"];
+// #4453 6b: Journal, Grid and Terra draw the shared library too.
+const KEYS: readonly DesignKey[] = ["voyage", "nocturne", "haven", "maison", "journal", "grid", "terra"];
 
 /* ---------------- colour resolution from the real stylesheets ---------------- */
 

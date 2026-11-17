@@ -10,6 +10,7 @@ import {
   slotFamilies,
   type FontSlots,
   type FontStyle,
+  fontStretch,
 } from "../contracts/generated/fontSlots.ts";
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
 import { fallbackFaceFor } from "./fontMetrics";
@@ -71,20 +72,35 @@ export type ResolvedSiteFonts = {
   warnings: FontWarning[];
 };
 
-/** The cache key for one family request (family, weights, italic, subsets). */
-export function fontRequestKey(slot: Pick<FontSlot, "family" | "weights" | "italic">, subsets: readonly string[]): string {
-  return [slot.family, [...slot.weights].sort((a, b) => a - b).join(","), slot.italic ? "i" : "", [...subsets].sort().join(","), CACHE_VERSION].join("|");
+type FontRequest = Pick<FontSlot, "family" | "weights" | "italic" | "width">;
+
+/**
+ * The cache key for one family request (family, weights, italic, subsets;
+ * #4453 6b: plus the width range, so a width-axis file is never mistaken for
+ * the normal-width one). A request without a width keeps its old key.
+ */
+export function fontRequestKey(slot: FontRequest, subsets: readonly string[]): string {
+  const parts = [slot.family, [...slot.weights].sort((a, b) => a - b).join(","), slot.italic ? "i" : "", [...subsets].sort().join(","), CACHE_VERSION];
+  if (slot.width) parts.push(`wdth${slot.width[0]}-${slot.width[1]}`);
+  return parts.join("|");
 }
 
-/** css2 URL for a family and its weights (italic adds the ital axis). */
-export function googleCssUrl(slot: Pick<FontSlot, "family" | "weights" | "italic">): string {
+/**
+ * css2 URL for a family and its weights (italic adds the ital axis; #4453 6b:
+ * a width range adds the wdth axis, e.g. `wdth,wght@62..125,400`, so Google
+ * returns the file that carries every width in the range). Axis tags are in
+ * css2's required alphabetical order: ital, wdth, wght.
+ */
+export function googleCssUrl(slot: FontRequest): string {
   if (!isFontFamilyName(slot.family)) throw new Error("FONT_FAMILY_INVALID");
   const weights = [...slot.weights].sort((a, b) => a - b);
   const family = slot.family.replace(/ /g, "+");
-  const axis = slot.italic
-    ? `ital,wght@${[...weights.map((w) => `0,${w}`), ...weights.map((w) => `1,${w}`)].join(";")}`
-    : `wght@${weights.join(";")}`;
-  return `${GOOGLE_FONTS_CSS_ORIGIN}/css2?family=${family}:${axis}&display=swap`;
+  const width = slot.width ? `${slot.width[0]}..${slot.width[1]},` : "";
+  const tags = `${slot.italic ? "ital," : ""}${width ? "wdth," : ""}wght`;
+  const tuples = slot.italic
+    ? [...weights.map((w) => `0,${width}${w}`), ...weights.map((w) => `1,${width}${w}`)]
+    : weights.map((w) => `${width}${w}`);
+  return `${GOOGLE_FONTS_CSS_ORIGIN}/css2?family=${family}:${tags}@${tuples.join(";")}&display=swap`;
 }
 
 export type ParsedFace = {
@@ -161,12 +177,15 @@ export async function fetchFontFile(deps: FontPipelineDeps, raw: string): Promis
 /** The faces of one family request: from the cache, or fetched, validated and cached. */
 export async function facesForSlot(
   deps: FontPipelineDeps,
-  slot: Pick<FontSlot, "family" | "weights" | "italic">,
+  slot: FontRequest,
   subsets: readonly string[] = DEFAULT_FONT_SUBSETS,
 ): Promise<CachedFace[]> {
   const key = fontRequestKey(slot, subsets);
+  // #4453 6b — a width-axis face draws every width in its range (the store keeps no stretch column).
+  const stretched = (faces: CachedFace[]): CachedFace[] =>
+    slot.width ? faces.map((face) => ({ ...face, stretch: fontStretch(slot.width!) })) : faces;
   const cached = await deps.cachedFaces(key);
-  if (cached && cached.length) return cached;
+  if (cached && cached.length) return stretched(cached);
   const cssUrl = exactUrl(googleCssUrl(slot), "fonts.googleapis.com");
   const css = await (await fetchStrict(deps, cssUrl)).text();
   const parsed = parseGoogleFontCss(css)
@@ -185,7 +204,7 @@ export async function facesForSlot(
     bytes: files.get(face.url)!.bytes,
   }));
   await deps.saveFaces(key, faces);
-  return faces;
+  return stretched(faces);
 }
 
 function systemSlotFor(base: FontSlot, category: string | null): FontSlot {

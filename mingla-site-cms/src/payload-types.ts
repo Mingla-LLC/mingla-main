@@ -239,7 +239,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame') | null;
+            variant?: ('atelier' | 'cover-bottom-search' | 'fullbleed' | 'editorial' | 'arch' | 'maison-frame' | 'journal-front' | 'grid-index' | 'terra-pebble') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hero';
@@ -380,7 +380,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows') | null;
+            variant?: ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows' | 'journal-columns') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_grid';
@@ -560,7 +560,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates') | null;
+            variant?: ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates' | 'journal-essay') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'gallery';
@@ -629,7 +629,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher') | null;
+            variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher' | 'journal-letters') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'testimonials';
@@ -933,7 +933,7 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'card' | 'photo') | null;
+            variant?: ('neutral' | 'card' | 'photo' | 'journal-coupon') | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'newsletter_signup';
@@ -1273,7 +1273,7 @@ export interface Navigation {
   /**
    * The header layout. Leave empty for the design's own header.
    */
-  header_variant?: ('glass' | 'center' | 'pill') | null;
+  header_variant?: ('glass' | 'center' | 'pill' | 'journal-mast' | 'grid-bar') | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1353,7 +1353,7 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison') | null;
+  design?: ('atelier' | 'voyage' | 'nocturne' | 'haven' | 'maison' | 'journal' | 'grid' | 'terra') | null;
   tokens?:
     | {
         [k: string]: unknown;

@@ -19,6 +19,7 @@ import * as migration_20261025_180000_issue_2829_w9r_content_order from './20261
 import * as migration_20261025_190000_issue_2829_w9b_work_log from './20261025_190000_issue_2829_w9b_work_log';
 import * as migration_20261116_100000_issue_4453_design_platform from './20261116_100000_issue_4453_design_platform';
 import * as migration_20261116_120000_issue_4453_designs_6a from './20261116_120000_issue_4453_designs_6a';
+import * as migration_20261116_140000_issue_4453_designs_6b from './20261116_140000_issue_4453_designs_6b';
 
 export const migrations = [
   {
@@ -125,5 +126,10 @@ export const migrations = [
     up: migration_20261116_120000_issue_4453_designs_6a.up,
     down: migration_20261116_120000_issue_4453_designs_6a.down,
     name: '20261116_120000_issue_4453_designs_6a',
+  },
+  {
+    up: migration_20261116_140000_issue_4453_designs_6b.up,
+    down: migration_20261116_140000_issue_4453_designs_6b.down,
+    name: '20261116_140000_issue_4453_designs_6b',
   },
 ];

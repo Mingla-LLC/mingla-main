@@ -32,7 +32,29 @@ export type FontSlot = {
   /** The weights the design draws this slot in (resolved to what the family has). */
   weights: number[];
   italic: boolean;
+  /**
+   * #4453 6b — the width (`wdth`) axis range the design draws this slot in,
+   * as font-stretch percentages [min, max] (Archivo: [62, 125]). Set only by a
+   * design whose family has the axis (FONT_WIDTH_AXES); absent means the
+   * family's normal width. An owner's own family never inherits it.
+   */
+  width?: readonly [number, number];
 };
+
+/**
+ * #4453 6b — the `wdth` axis of each catalogue family a design draws with
+ * its width axis, exactly as Google's public font metadata declares it
+ * (fonts.google.com/metadata/fonts, checked 2026-11-16). A design slot's
+ * `width` must sit inside its family's range (the design tests pin it).
+ */
+export const FONT_WIDTH_AXES: Readonly<Record<string, readonly [number, number]>> = {
+  Archivo: [62, 125],
+};
+
+/** `font-stretch` for a face fetched with a width range ("62% 125%"). */
+export function fontStretch(width: readonly [number, number]): string {
+  return `${width[0]}% ${width[1]}%`;
+}
 
 export type FontSlots = {
   display: FontSlot;
@@ -76,6 +98,8 @@ export type FontAsset = {
   /** SHA-256 of the woff2 bytes; the file is served at /fonts/<digest>. */
   digest: string;
   bytes: number;
+  /** #4453 6b — the face's width range ("62% 125%") when its slot has a width axis; absent = normal width. */
+  stretch?: string;
 };
 
 /** Metric overrides for a "<Family> Fallback" face over a local system font. */
@@ -106,6 +130,13 @@ const FAMILY = /^[A-Za-z0-9](?:[A-Za-z0-9 -]{0,62}[A-Za-z0-9])?$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 const UNICODE_RANGE = /^(?:U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)(?:, ?U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)*$/i;
 const PERCENT = /^\d{1,3}(?:\.\d{1,4})?%$/;
+const STRETCH = /^\d{2,3}% \d{2,3}%$/;
+
+/** A width range a slot may carry: two whole percentages, 25 to 200, min below max. */
+export function isFontWidthRange(value: unknown): value is readonly [number, number] {
+  return Array.isArray(value) && value.length === 2 && value.every((v) => Number.isInteger(v) && v >= 25 && v <= 200) &&
+    (value[0] as number) < (value[1] as number);
+}
 
 export function isFontFamilyName(value: unknown): value is string {
   return typeof value === "string" && FAMILY.test(value) && !/ {2}/.test(value);
@@ -126,7 +157,9 @@ function assertSlot(value: unknown, path: string): asserts value is FontSlot {
   if (!plain(value)) fail();
   const slot = value as Record<string, unknown>;
   const keys = ["family", "source", "weights", "italic"];
-  if (Object.keys(slot).length !== keys.length || Object.keys(slot).some((key) => !keys.includes(key))) fail();
+  // #4453 6b — `width` is optional (a design's width axis).
+  if (Object.keys(slot).some((key) => !keys.includes(key) && key !== "width") || !keys.every((key) => key in slot)) fail();
+  if (slot.width !== undefined && (!isFontWidthRange(slot.width) || slot.source !== "google")) fail();
   if (!isFontFamilyName(slot.family)) fail();
   if (slot.source !== "google" && slot.source !== "system") fail();
   if (slot.source === "system" && !(SYSTEM_FONT_FAMILIES as readonly string[]).includes(String(slot.family))) fail();
@@ -165,7 +198,9 @@ export function assertFontAssets(value: unknown, slots: FontSlots): asserts valu
     if (!plain(entry)) fail(String(index));
     const asset = entry as Record<string, unknown>;
     const keys = ["family", "weight", "style", "unicode_range", "digest", "bytes"];
-    if (Object.keys(asset).length !== keys.length || Object.keys(asset).some((key) => !keys.includes(key))) fail(String(index));
+    // #4453 6b — `stretch` is optional (a face fetched with its width axis).
+    if (Object.keys(asset).some((key) => !keys.includes(key) && key !== "stretch") || !keys.every((key) => key in asset)) fail(String(index));
+    if (asset.stretch !== undefined && (typeof asset.stretch !== "string" || !STRETCH.test(asset.stretch))) fail(`${index}.stretch`);
     if (!isFontFamilyName(asset.family) || !families.has(asset.family as string)) fail(`${index}.family`);
     if (!isFontWeight(asset.weight)) fail(`${index}.weight`);
     if (asset.style !== "normal" && asset.style !== "italic") fail(`${index}.style`);
