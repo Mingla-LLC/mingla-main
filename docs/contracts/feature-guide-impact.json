@@ -3814,7 +3814,8 @@
         "supabase/functions/forms-automation-sender/function-policy.json",
         "supabase/functions/forms-automation-sender/index.ts",
         "supabase/functions/forms-automation-sender/sender.ts",
-        "supabase/migrations/20280712024452_issue_4452_automations.sql"
+        "supabase/migrations/20280712024452_issue_4452_automations.sql",
+        "supabase/migrations/20280725004452_issue_4452_flow_validator.sql"
       ]
     },
     {
