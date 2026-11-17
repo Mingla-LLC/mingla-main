@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View, type Text as RNText } from "react-native";
 import { Redirect } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { brandSiteKeys } from "../../src/sites/brandSiteKeys";
 import { normalizeSitePlan } from "../../src/sites/sitePlanState";
 import { defaultPreviewPreference } from "../../src/sites/previewDevice";
 import { WebsiteProvider, type WebsiteContextValue } from "../../src/components/sites/website/WebsiteContext";
@@ -77,6 +79,7 @@ export default function DevAriAddPageHarness(): React.ReactElement {
 
 function Harness(): React.ReactElement {
   const headingRef = useRef<RNText | null>(null);
+  const queryClient = useQueryClient();
   const [toast, setToast] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("pages");
   const pagesRef = useRef<SitePageRow[]>(BASE_PAGES);
@@ -129,7 +132,7 @@ function Harness(): React.ReactElement {
     controller: { siteId: SITE, actions: { openStudio: noop }, isOpeningStudio: false },
     phone: false,
     section: "pages",
-    go: (target: unknown) => setToast(`(harness) would open ${JSON.stringify(target)}`),
+    go: (target: unknown) => setToast((current) => `${current ?? ""} · (harness) would open ${JSON.stringify(target)}`),
     back: noop,
     toast: (message: string) => setToast(message),
     askAdmin: noop,
@@ -153,7 +156,7 @@ function Harness(): React.ReactElement {
   return (
     <WebsiteProvider value={value}>
       <ScrollView style={styles.root} contentContainerStyle={styles.body}>
-        <Text style={styles.dev}>Dev harness · fixture data · not in release builds</Text>
+        <Text style={styles.dev}>{`Dev harness · fixture data · not in release builds · step ${step} · ${pagesRef.current.length} pages`}</Text>
         {toast ? <Text style={styles.toast} testID="dev-toast">{toast}</Text> : null}
         <View style={styles.steps}>
           <WButton label="1 · Pages" size="sm" onPress={() => setStep("pages")} testID="dev-step-pages" />
@@ -162,13 +165,14 @@ function Harness(): React.ReactElement {
         {step === "ari" ? (
           <View style={styles.thread} testID="dev-ari-thread">
             <Text style={styles.owner}>{REQUEST}</Text>
-            <Text style={styles.ari}>Here is my plan. Nothing is added until you tap Add as a Draft.</Text>
+            <Text style={styles.ari}>Here is my plan. Nothing is added until you confirm it.</Text>
             <ToolProposalCard
               toolName="propose_site_page"
               args={PROPOSAL}
               isExecuting={false}
               onConfirm={async () => {
                 pagesRef.current = [...BASE_PAGES.slice(0, 2), DRAFT_PAGE, ...BASE_PAGES.slice(2)];
+                queryClient.setQueryData(brandSiteKeys.siteData(SITE, "pages"), { revision: "r2", wordmark: "Young and Stamped", pages: pagesRef.current, footer_links: [] });
                 setToast("Page added as a Draft to review");
                 setStep("draft");
                 return { ok: true };
