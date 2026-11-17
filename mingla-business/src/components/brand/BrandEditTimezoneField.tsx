@@ -20,15 +20,20 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+
 import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
-import { formatTimezoneLabel, getAllTimezones } from "../../utils/timezones";
+  formatTimezoneLabel,
+  getAllTimezones,
+  timezoneMatchesQuery,
+} from "../../utils/timezones";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 export interface BrandEditTimezoneFieldProps {
   value: string | undefined;
   onChange: (zone: string) => void;
@@ -41,10 +46,10 @@ export function filterTimezones(
   query: string,
   limit = 40,
 ): string[] {
-  const q = query.trim().toLowerCase().replace(/\s+/g, "_");
+  const q = query.trim();
   const hits = q.length === 0
     ? zones
-    : zones.filter((zone) => zone.toLowerCase().includes(q));
+    : zones.filter((zone) => timezoneMatchesQuery(zone, q));
   return hits.slice(0, limit);
 }
 
@@ -126,40 +131,40 @@ export const BrandEditTimezoneField: React.FC<BrandEditTimezoneFieldProps> = ({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   head: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   valueCol: {
     flex: 1,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
   value: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   empty: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   picker: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   row: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingVertical: space[2],
+    paddingHorizontal: space[1],
   },
   rowText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   rowActive: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
 });

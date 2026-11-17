@@ -41,7 +41,10 @@ import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
-import { canvas, spacing } from "../../../src/constants/designSystem";
+import {
+  color,
+  space,
+} from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import {
   useCurrentBrandStore,
@@ -176,16 +179,14 @@ export default function HubTabLayout(): React.ReactElement {
     // back + nav locks"). Only run the visible-tab redirect when we are
     // actually ON a hub sub-route; never hijack navigation to another stack.
     if (!activePath.includes("/hub/")) return;
-    const active: HubTabName = activePath.includes("/hub/getstarted")
-      ? "getstarted"
-      : activePath.includes("/hub/trips")
-        ? "trips"
-        : activePath.includes("/hub/experiences")
-          ? "experiences"
-          : // ORCH-1145 — the Venue tab route file is `listing.tsx`.
-            activePath.includes("/hub/listing")
-            ? "venue"
-            : "events";
+    const active: HubTabName = activePath.includes("/hub/trips")
+      ? "trips"
+      : activePath.includes("/hub/experiences")
+        ? "experiences"
+        : // ORCH-1145 — the Venue tab route file is `listing.tsx`.
+          activePath.includes("/hub/listing")
+          ? "venue"
+          : "events";
     if (!visibleTabs.data.includes(active)) {
       // ORCH-1145 nav-away fix: resolve the target through HUB_TAB_ROUTES (the
       // SAME map HubSubNav uses) instead of string-concatenating the bare tab
@@ -204,13 +205,13 @@ export default function HubTabLayout(): React.ReactElement {
   }, []);
 
   // META-ORCH-1148 — the venue module row's "‹ Hub" chip routes back to a
-  // non-venue offering tab (the first visible one that isn't venue/getstarted),
+  // non-venue offering tab (the first visible one that isn't the venue),
   // which leaves the Venue route → the suite unmounts → its store flag clears →
   // the Hub offering pills render again. Uses the SAME HUB_TAB_ROUTES map the
   // nav-lock redirect uses; no new routing logic.
   const handleBackToHub = useCallback((): void => {
     const tabs = visibleTabs.data ?? [];
-    const fallback = tabs.find((t) => t !== "venue" && t !== "getstarted");
+    const fallback = tabs.find((t) => t !== "venue");
     const dest = fallback ?? "events";
     const segment = HUB_TAB_ROUTES[dest].replace("/(tabs)/hub/", "");
     router.replace(`/(tabs)/hub/${segment}` as never);
@@ -238,7 +239,7 @@ export default function HubTabLayout(): React.ReactElement {
       style={[
         styles.host,
         {
-          paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+          paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
         },
       ]}
     >
@@ -247,13 +248,18 @@ export default function HubTabLayout(): React.ReactElement {
           leftKind="brand"
           onBrandTap={handleOpenSwitcher}
           extraRightSlot={
-            <IconChrome
-              icon="plus"
-              size={36}
-              onPress={() => setIsUniversalCreatorOpen(true)}
-              accessibilityLabel="Create event, experience, trip, or venue listing"
-              testID="hub-universal-creator-button"
-            />
+            // #4420 B5 — phone: Create is the centre BottomNav button, so the
+            // tab-root trailing slot is only chat, bell and profile. Desktop
+            // web keeps the top-bar Create (I-DESKTOP-GATE-VIA-HOOK).
+            isWideDesktop ? (
+              <IconChrome
+                icon="plus"
+                size={36}
+                onPress={() => setIsUniversalCreatorOpen(true)}
+                accessibilityLabel="Create event, experience, trip, or venue listing"
+                testID="hub-universal-creator-button"
+              />
+            ) : undefined
           }
         />
       </View>
@@ -338,14 +344,14 @@ export default function HubTabLayout(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   todoWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
 });

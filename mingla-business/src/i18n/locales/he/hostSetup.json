@@ -171,6 +171,10 @@
       "readyBank": "חשבון בנק ב{{country}}",
       "readyBankAny": "חשבון בנק במדינה שלך",
       "readyTax": "מספר עוסק (לחברות רשומות בלבד)"
+    },
+    "stepper": {
+      "saved": "נשמר",
+      "steps": "שלבים"
     }
   },
   "doorMode": {

@@ -17,6 +17,7 @@ import { ConflictBanner, DeleteEntry, EditorCrumb, OfferingPicker, saveErrorMess
 import { useQueryClient } from "@tanstack/react-query";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 
+import { color } from "../../../../constants/designSystem";
 type Form = {
   quote: string;
   reviewer: string;
@@ -147,7 +148,7 @@ export function ReviewEditor({ entryId }: { entryId: string | "new" }): React.Re
                 {React.createElement("input", {
                   type: "date", value: f.date, disabled: readOnly, "aria-label": "Date written", "data-testid": "review-date",
                   onChange: (event: { target: { value: string } }) => set({ date: event.target.value }),
-                  style: { minHeight: 44, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.96)", padding: "0 12px", fontSize: 14, colorScheme: "dark" },
+                  style: { minHeight: 44, borderRadius: 12, border: `1px solid ${color.lineStrong}`, background: color.fill.tableHead, color: color.text1, padding: "0 12px", fontSize: 14, colorScheme: "dark" },
                 })}
               </View>
             ) : <Field label="Date written" value={f.date} placeholder="YYYY-MM-DD" editable={!readOnly} onChangeText={(date) => set({ date })} />}
@@ -172,7 +173,7 @@ export function ReviewEditor({ entryId }: { entryId: string | "new" }): React.Re
           testID="review-confirm"
         >
           <View style={[styles.checkbox, f.confirmed ? styles.checkboxOn : null, !canConfirm ? styles.checkboxDisabled : null]}>
-            {f.confirmed ? <WebsiteIcon name="check" size={14} color="#140a03" /> : null}
+            {f.confirmed ? <WebsiteIcon name="check" size={14} color={color.ink} /> : null}
           </View>
           <View style={styles.grow}>
             <Text style={styles.confirmText}>{REVIEW_CONFIRM_TEXT}</Text>
@@ -210,7 +211,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: "600", color: ui.t2, marginTop: 14, marginBottom: 6 },
   quote: { minHeight: 110 },
   confirmRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, minHeight: 44 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "rgba(255,255,255,0.34)", alignItems: "center", justifyContent: "center", marginTop: 2 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: color.lineStrong, alignItems: "center", justifyContent: "center", marginTop: 2 },
   checkboxOn: { backgroundColor: ui.accent, borderColor: ui.accent },
   checkboxDisabled: { opacity: 0.5 },
   confirmText: { fontSize: 14, fontWeight: "700", color: ui.t1 },

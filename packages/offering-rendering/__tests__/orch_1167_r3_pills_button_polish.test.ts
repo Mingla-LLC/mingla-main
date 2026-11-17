@@ -167,21 +167,22 @@ describe("ORCH-1167-R3 — source-structural deltas (changes 1, 2, 3-host, 4)", 
   const web = stripComments(read(WEB));
   const consumer = stripComments(read(CONSUMER));
 
-  it("change 1 — date/time is its OWN FULL-WIDTH row (testID orch-1167-date-row)", () => {
-    expect(body).toMatch(/testID="orch-1167-date-row"/);
-    // The dateRow style spans the full content width.
-    expect(body).toMatch(/dateRow:\s*\{[^}]*width:\s*"100%"[^}]*\}/s);
-    // The date no longer renders inside a compact MetaChip component.
+  it("change 1 — date/time is its OWN full-width fact row (issue #4420)", () => {
+    // The date + time read as the first fact row, spanning the content column.
+    expect(body).toMatch(/<OfferingFactRows/);
+    expect(body).toMatch(/key: "when"[\s\S]*?value: event\.dateLine/);
+    expect(body).toMatch(/detail: event\.dateSubline/);
+    // The date never renders inside a compact MetaChip component.
     expect(body).not.toMatch(/<MetaChip\b/);
   });
 
-  it("change 2 — EVERY pill carries the solid accent fill (no outlined card branch)", () => {
-    // The Pill renders the accentWash fill unconditionally; the old
-    // `accent ? accentWash : surface.card` ternary is gone.
+  it("change 2 — every former pill is in the quiet tag line, none dropped (issue #4420)", () => {
+    // format → vibes → party types → music → tickets-left, same order as the
+    // pills row, now one tag line under the fact rows.
     expect(body).toMatch(
-      /styles\.pill,\s*\{\s*backgroundColor:\s*palette\.accentWash/s,
+      /tagLine: string\[\] = \[\s*formatLabel,\s*\.\.\.vibeTags\.map\(taxonomyLabel\),\s*\.\.\.partyTypes\.map\(taxonomyLabel\),\s*\.\.\.musicGenres\.map\(taxonomyLabel\),\s*\.\.\.\(!acquisitionClosed && ticketsLeftLabel !== null \? \[ticketsLeftLabel\] : \[\]\),/,
     );
-    expect(body).not.toMatch(/accent\s*\?\s*\{\s*backgroundColor:\s*palette\.accentWash/s);
+    expect(body).not.toMatch(/<Pill\b/);
   });
 
   it("change 3 (box/bar) — the empty-selection enable gate is removed in the body", () => {

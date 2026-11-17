@@ -17,6 +17,9 @@
  * install a faithful stand-in for Hermes-iOS's `DateTimeFormat` (same
  * tokenising algorithm as DateTimeFormatApple::formatToParts) before loading a
  * fresh copy of the module.
+ *
+ * [TEST-MOD-APPROVED #4420] — labels read the city ("New York (GMT-5)"), never
+ * the IANA slug (round-3 item 12).
  */
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
 
@@ -148,13 +151,13 @@ describe("the offset is the one in force at the date given", () => {
         localDate: "2026-11-06",
         localTime: "20:00",
       }),
-    ).toBe("America/New_York (GMT-5)");
+    ).toBe("New York (GMT-5)");
     expect(
       formatTimezoneLabel("America/New_York", {
         localDate: "2026-09-20",
         localTime: "20:00",
       }),
-    ).toBe("America/New_York (GMT-4)");
+    ).toBe("New York (GMT-4)");
   });
 
   test("a local time either side of the spring-forward switch resolves in its own zone", () => {
@@ -170,8 +173,8 @@ describe("the offset is the one in force at the date given", () => {
   });
 
   test("Lagos is GMT+1 all year", () => {
-    expect(formatTimezoneLabel("Africa/Lagos", at("2026-01-15T12:00:00Z"))).toBe("Africa/Lagos (GMT+1)");
-    expect(formatTimezoneLabel("Africa/Lagos", at("2026-07-15T12:00:00Z"))).toBe("Africa/Lagos (GMT+1)");
+    expect(formatTimezoneLabel("Africa/Lagos", at("2026-01-15T12:00:00Z"))).toBe("Lagos (GMT+1)");
+    expect(formatTimezoneLabel("Africa/Lagos", at("2026-07-15T12:00:00Z"))).toBe("Lagos (GMT+1)");
   });
 
   test("half- and quarter-hour zones keep their minutes", () => {
@@ -186,7 +189,7 @@ describe("the offset is the one in force at the date given", () => {
 
   test("an unknown zone or unreadable date gives no offset rather than a wrong one", () => {
     expect(formatTimezoneOffset("Mars/Olympus_Mons", at("2026-09-12T12:00:00Z"))).toBe("");
-    expect(formatTimezoneLabel("Mars/Olympus_Mons")).toBe("Mars/Olympus_Mons");
+    expect(formatTimezoneLabel("Mars/Olympus_Mons")).toBe("Olympus Mons");
     expect(formatTimezoneOffset("Europe/London", new Date("not a date"))).toBe("");
     expect(formatTimezoneOffset("Europe/London", { localDate: "12/09/2026" })).toBe("");
   });
@@ -242,9 +245,9 @@ describe("on a Hermes-like runtime", () => {
   test("the field and every picker row show real offsets", () => {
     const tz = loadUnderRuntime({});
     const nov6 = { localDate: "2026-11-06", localTime: "20:00" };
-    expect(tz.formatTimezoneLabel("America/New_York", nov6)).toBe("America/New_York (GMT-5)");
-    expect(tz.formatTimezoneLabel("Africa/Lagos", nov6)).toBe("Africa/Lagos (GMT+1)");
-    expect(tz.formatTimezoneLabel("Asia/Kolkata", nov6)).toBe("Asia/Kolkata (GMT+5:30)");
+    expect(tz.formatTimezoneLabel("America/New_York", nov6)).toBe("New York (GMT-5)");
+    expect(tz.formatTimezoneLabel("Africa/Lagos", nov6)).toBe("Lagos (GMT+1)");
+    expect(tz.formatTimezoneLabel("Asia/Kolkata", nov6)).toBe("Kolkata (GMT+5:30)");
     expect(tz.formatTimezoneLabel("UTC", nov6)).toBe("UTC (GMT+0)");
     const offsets = tz.getAllTimezones().map((zone) => tz.formatTimezoneOffset(zone, nov6));
     expect(offsets.filter((o) => o === "" || o === "GMT")).toEqual([]);

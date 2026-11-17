@@ -13,24 +13,23 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { ListingStatusView, ListingTone } from "../../utils/listingStatus";
 
 const TONE_COLOR: Record<ListingTone, string> = {
-  neutral: textTokens.secondary,
-  info: semantic.info,
-  warning: semantic.warning,
-  success: semantic.success,
+  neutral: color.text2,
+  info: color.info,
+  warning: color.warning,
+  success: color.success,
 };
 const TONE_TINT: Record<ListingTone, string> = {
-  neutral: "rgba(255,255,255,0.10)",
-  info: semantic.infoTint,
-  warning: semantic.warningTint,
-  success: semantic.successTint,
+  neutral: color.fill.tabOn,
+  info: color.infoTint,
+  warning: color.warningTint,
+  success: color.successTint,
 };
 
 export interface ListingStatusChipProps {
@@ -63,13 +62,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[1],
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: 999,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  badgeText: { fontSize: typography.bodySm.fontSize, fontWeight: "700" },
+  badgeText: { fontSize: type.small.fontSize, fontWeight: "700" },
 });
 
 export default ListingStatusChip;

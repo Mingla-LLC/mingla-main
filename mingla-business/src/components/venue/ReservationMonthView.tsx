@@ -2,13 +2,11 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
   reservationCalendarLayout,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Reservation } from "../../types/venueReservation";
 import { GlassCard } from "../ui/GlassCard";
@@ -136,18 +134,18 @@ const styles = StyleSheet.create({
     minHeight: 40,
     flexDirection: "row",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   weekdayCell: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: glass.border.profileBase,
+    borderRightColor: color.line,
   },
   weekday: {
-    ...typography.micro,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
   grid: {
     flexDirection: "row",
@@ -158,54 +156,54 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     flexShrink: 0,
     minHeight: reservationCalendarLayout.monthCellMinHeight,
-    padding: spacing.xs,
+    padding: space[1],
     borderRightWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   adjacentDay: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   todayCell: {
-    borderWidth: spacing.xxs,
-    borderColor: accent.warm,
+    borderWidth: 2,
+    borderColor: color.accent,
   },
   dayHeader: {
     minHeight: 28,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.xs,
+    gap: space[1],
   },
   dayNumber: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
   adjacentText: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   dayCount: {
-    ...typography.micro,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
   slots: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   overflowButton: {
     minHeight: reservationCalendarLayout.entryMinTarget,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.accentLine,
+    backgroundColor: color.fill.tile,
   },
   overflowText: {
-    ...typography.micro,
-    color: accent.warm,
+    ...type.label,
+    color: color.accent,
   },
   pressed: {
     opacity: 0.72,

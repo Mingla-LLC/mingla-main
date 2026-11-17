@@ -44,11 +44,13 @@ import {
 // bound is venue-local. Metro swaps in StayDateRangeField.native.tsx on
 // iOS/Android; the bare module is the web-only twin.
 import { StayDateRangeField } from "./StayDateRangeField";
+// issue #4420 — the quick-pick check-in / check-out strip above the field.
+import { StayDateStrip } from "./StayDateStrip";
+import { GlassTabs } from "./GlassTabs";
 import {
-  addStayDays,
   stayDateBounds,
   stayDateErrorMessage,
-  venueToday,
+  stayDefaultRange,
   type StayDateRange,
 } from "./stayDateRules";
 import {
@@ -57,7 +59,7 @@ import {
   useBrandRenderingState as useState,
   type BrandRenderingReactElement,
 } from "./PublicVenueTabs";
-import { accentEdgeOnFill, accentFill, accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentEdgeOnFill, accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
@@ -84,6 +86,8 @@ export interface StayGuestBookingProps {
     onChangeCountry: (iso: string, resolvedE164: string | null) => void;
     invalid: boolean;
     disabled: boolean;
+    /** #4420 — the host calls this from the field's blur to reveal an error. */
+    onBlur?: () => void;
   }) => BrandRenderingReactElement;
   onConfirmQuote?: () => void | Promise<void>;
   onEditQuote?: () => void;
@@ -142,6 +146,9 @@ export function StayGuestBooking({
   const [phoneRawValue, setPhoneRawValue] = useState("");
   const [phoneCountryIso, setPhoneCountryIso] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  // #4420 — Constitution 12: the phone error shows after blur or "Confirm",
+  // never while the guest is still typing, and clears as soon as it is valid.
+  const [phoneErrorRevealed, setPhoneErrorRevealed] = useState<boolean>(false);
   // Issue #1563 — the band the guest is standing in, held as the band's own
   // VALUE (`"lt:30000"`), never its index. A refetch can drop a room that has
   // sold out, and an index-based selection would silently snap back to "show
@@ -183,10 +190,16 @@ export function StayGuestBooking({
   // seeded from `detail.timezone` the moment the read resolves without an
   // effect and without ever clobbering a guest edit. Venue-local tomorrow for
   // one night, matching what the server would call "tomorrow".
+  // issue #4420 wave 2 (D-S5) — open on the first check-in the offerings'
+  // own notice rules allow, never a night they already rule out.
   const seededRange = useMemo<StayDateRange>(() => {
     if (detail === null) return { checkIn: "", checkOut: "" };
-    const firstNight = addStayDays(venueToday(detail.timezone), 1);
-    return { checkIn: firstNight, checkOut: addStayDays(firstNight, 1) };
+    return stayDefaultRange({
+      timezone: detail.timezone,
+      checkInTime: detail.checkInTime,
+      bookingHorizonDays: detail.bookingHorizonDays,
+      offerings: detail.offerings,
+    });
   }, [detail]);
   const range = editedRange ?? seededRange;
   const checkIn = range.checkIn;
@@ -447,6 +460,7 @@ export function StayGuestBooking({
       return;
     }
     if (phoneRawValue.trim().length > 0 && cleanPhone.length === 0) {
+      setPhoneErrorRevealed(true);
       setValidationError("Select a country and enter a valid phone number.");
       return;
     }
@@ -497,6 +511,16 @@ export function StayGuestBooking({
             House rules: {detail.houseRules}
           </Text>
         ) : null}
+        <StayDateStrip
+          value={range}
+          bounds={bounds}
+          palette={palette}
+          disabled={submitting}
+          onChange={(next, field) => {
+            setEditedRange(next);
+            onAnalytics?.("stay_search_changed", { field });
+          }}
+        />
         <StayDateRangeField
           value={range}
           bounds={bounds}
@@ -534,42 +558,21 @@ export function StayGuestBooking({
             the control that caused it — one message, not two. */}
       </View>
 
-      <View style={styles.tabs} accessibilityRole="tablist">
-        {(["room", "place"] as const).map((kind) => {
-          const selected = kind === activeKind;
-          const label = kind === "room" ? "Rooms" : "Places";
-          return (
-            <Pressable
-              key={kind}
-              accessibilityRole="tab"
-              accessibilityLabel={label}
-              accessibilityState={{ selected }}
-              onPress={() => setActiveKind(kind)}
-              style={[
-                styles.tab,
-                surface.card,
-                selected && {
-                  ...accentFillWithBorder(palette),
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  {
-                    color: selected
-                      ? palette.accentText
-                      : palette.secondaryText,
-                    fontFamily: theme.fontFamilyValue,
-                  },
-                ]}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* issue #4420 wave 2 (§3.1.6) — Rooms / Places is the shared glass
+          pill at the small size; the chosen kind is ink. */}
+      <GlassTabs
+        items={[
+          { key: "room" as const, label: "Rooms" },
+          { key: "place" as const, label: "Places" },
+        ]}
+        activeKey={activeKind}
+        onSelect={setActiveKind}
+        palette={palette}
+        theme={theme}
+        size="sm"
+        listLabel="Rooms and Places"
+        style={styles.kindTabs}
+      />
 
       {activeKind === "room" && priceControl !== null ? (
         <RoomPriceFilter
@@ -706,15 +709,28 @@ export function StayGuestBooking({
             onChangeRawValue: (raw, resolvedE164) => {
               setPhoneRawValue(raw);
               setPhone(resolvedE164 ?? "");
-              if (validationError === "Select a country and enter a valid phone number.") {
+              const nowValid = raw.trim().length === 0 || resolvedE164 !== null;
+              if (nowValid) setPhoneErrorRevealed(false);
+              if (nowValid && validationError === "Select a country and enter a valid phone number.") {
                 setValidationError(null);
               }
             },
             onChangeCountry: (iso, resolvedE164) => {
               setPhoneCountryIso(iso);
               setPhone(resolvedE164 ?? "");
+              if (phoneRawValue.trim().length === 0 || resolvedE164 !== null) {
+                setPhoneErrorRevealed(false);
+              }
             },
-            invalid: phoneRawValue.trim().length > 0 && phone.trim().length === 0,
+            onBlur: () => {
+              setPhoneErrorRevealed(
+                phoneRawValue.trim().length > 0 && phone.trim().length === 0,
+              );
+            },
+            invalid:
+              phoneErrorRevealed &&
+              phoneRawValue.trim().length > 0 &&
+              phone.trim().length === 0,
             disabled: submitting,
           }) : (
             <Field
@@ -1208,15 +1224,7 @@ const styles = StyleSheet.create({
   },
   counterButtonText: { fontSize: 22, fontWeight: "700" },
   counterValue: { minWidth: 24, textAlign: "center", fontWeight: "800" },
-  tabs: { flexDirection: "row", gap: 8 },
-  tab: {
-    minHeight: 44,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-  },
-  tabText: { fontSize: 13, fontWeight: "800" },
+  kindTabs: { alignSelf: "flex-start" },
   // Issue #1563 — the price control. 44pt minimum on every tappable thing
   // (WCAG AA target size), which is why the band chips carry a minHeight rather
   // than relying on padding alone.

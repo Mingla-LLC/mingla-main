@@ -14,18 +14,14 @@
 
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { AlertTriangle, Ellipsis, Sparkles } from "lucide-react-native";
+import { AlertTriangle, Ellipsis } from "lucide-react-native";
+import { AriOrb } from "./AriOrb";
 import { useQueryClient } from "@tanstack/react-query";
 
-import {
-  ariPalette,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { ariPalette, color, radius, space } from "../../constants/designSystem";
+
+/** #4420 — the desktop conversations pane width (mockup ari-chat__conversation-drawer). */
+export const ariConversationPaneWidth = 320;
 import { Sheet } from "../ui/Sheet";
 // ORCH-0892: a file that hosts a TextInput scrolls through the keyboard-aware
 // wrapper (KeyboardAwareScrollView on native, ScrollView on web).
@@ -81,6 +77,12 @@ export interface ConversationDrawerProps {
   isError: boolean;
   onRetry: () => void;
   surface?: "main" | "website";
+  /**
+   * #4420 — "sheet" (default): the list opens in a sheet (phone, narrow web).
+   * "pane": wide desktop keeps the list open as a side pane beside the chat
+   * (mockup ari-chat__conversation-drawer); opening a chat does not close it.
+   */
+  presentation?: "sheet" | "pane";
 }
 
 export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
@@ -95,7 +97,9 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   isError,
   onRetry,
   surface = "main",
+  presentation = "sheet",
 }) => {
+  const asPane = presentation === "pane";
   const qc = useQueryClient();
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -249,9 +253,9 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         return;
       }
       onSelect(c.id);
-      onClose();
+      if (!asPane) onClose();
     },
-    [onClose, onSelect, selectMode, toggleSelect],
+    [asPane, onClose, onSelect, selectMode, toggleSelect],
   );
 
   const headerRight = conversations.length > 0
@@ -304,14 +308,12 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       >
         {selectMode ? (
           <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>{isSelected ? <Text style={styles.checkboxTick}>✓</Text> : null}</View>
-        ) : readOnly ? <AlertTriangle size={16} color={textTokens.tertiary} accessibilityElementsHidden /> : null}
+        ) : readOnly ? <AlertTriangle size={16} color={color.text3} accessibilityElementsHidden /> : null}
         <View style={styles.rowCopy}>
           <View style={styles.titleWithStatus}>
             <Text style={styles.rowTitle} numberOfLines={3}>{title}</Text>
             {c.title_source === "provisional" ? (
-              typeof Sparkles === "function"
-                ? <Sparkles size={16} color={ariPalette.flame} accessibilityLabel="Ari is naming this conversation" />
-                : <Text accessibilityLabel="Ari is naming this conversation">···</Text>
+              <AriOrb size="xs" thinking accessibilityLabel="Ari is naming this conversation" />
             ) : null}
           </View>
           <Text style={styles.rowDate}>{date}</Text>
@@ -327,7 +329,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
             {regeneratingId === c.id
               ? <ActivityIndicator color={ariPalette.flame} />
               : typeof Ellipsis === "function"
-                ? <Ellipsis size={20} color={textTokens.secondary} />
+                ? <Ellipsis size={20} color={color.text2} />
                 : <Text style={styles.moreFallback}>...</Text>}
           </Pressable>
         ) : null}
@@ -335,9 +337,8 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
     );
   };
 
-  return (
-    <Sheet visible={visible} onClose={onClose} snapPoint={0.82} style={Platform.OS === "web" ? styles.webSheet : undefined}>
-      <View style={styles.host}>
+  const body = (
+      <View style={[styles.host, asPane ? styles.paneHost : null]}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Conversations</Text>
           {headerRight}
@@ -347,7 +348,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           <Pressable
             onPress={() => {
               onSelect(null);
-              onClose();
+              if (!asPane) onClose();
             }}
             style={({ pressed }) => [styles.newBtn, pressed && styles.btnPressed]}
             accessibilityRole="button"
@@ -471,7 +472,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               maxLength={60}
               autoFocus
               placeholder="Conversation name"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               style={styles.renameInput}
               accessibilityLabel="Conversation name"
             />
@@ -516,6 +517,22 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         </React.Suspense>
         ) : null}
       </View>
+  );
+
+  if (asPane) {
+    return (
+      <View
+        style={styles.pane}
+        accessibilityLabel="Conversations"
+        testID="ari-conversation-pane"
+      >
+        {body}
+      </View>
+    );
+  }
+  return (
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.82} style={Platform.OS === "web" ? styles.webSheet : undefined}>
+      {body}
     </Sheet>
   );
 };
@@ -523,24 +540,39 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[4],
+    gap: space[2],
   },
-  webSheet: { width: 440, maxHeight: "80%" },
+  // #4420: never wider than the viewport (a 390 phone browser clipped the
+  // right edge: "Select", the New conversation row).
+  webSheet: { width: 440, maxWidth: "100%", maxHeight: "80%" },
+  // #4420 — wide-desktop side pane (mockup: 320 wide, its own card).
+  pane: {
+    width: ariConversationPaneWidth,
+    alignSelf: "stretch",
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    overflow: "hidden",
+  },
+  paneHost: {
+    paddingHorizontal: space[4],
+  },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
     minHeight: 32,
   },
   title: {
     fontSize: 20,
     lineHeight: 32,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
   headerAction: {
@@ -552,20 +584,20 @@ const styles = StyleSheet.create({
   headerControl: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   newBtn: {
     paddingVertical: 10,
-    paddingHorizontal: spacing.md,
-    backgroundColor: glass.tint.profileElevated,
+    paddingHorizontal: space[4],
+    backgroundColor: color.fill.tile,
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     minHeight: 52,
     justifyContent: "center",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   newBtnText: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   scroll: {
@@ -573,24 +605,24 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     gap: 4,
-    paddingBottom: spacing.md,
+    paddingBottom: space[4],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     minHeight: 64,
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowActive: {
-    backgroundColor: Platform.OS === "android" ? "#16181b" : glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? color.card : color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   rowSelected: {
-    backgroundColor: "rgba(230, 152, 105, 0.10)", // ariPalette.flame at 10%
+    backgroundColor: color.fill.tabOn, // ariPalette.flame at 10%
     borderWidth: 1,
     borderColor: ariPalette.proposalBorder,
   },
@@ -599,21 +631,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   rowDate: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "500",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -624,53 +656,53 @@ const styles = StyleSheet.create({
   checkboxTick: {
     fontSize: 12,
     fontWeight: "700",
-    color: textTokens.inverse,
+    color: color.textStrong,
     lineHeight: 14,
   },
   emptyHint: {
     fontSize: 13,
-    color: textTokens.tertiary,
-    paddingVertical: spacing.md,
+    color: color.text3,
+    paddingVertical: space[4],
     textAlign: "center",
   },
-  sectionCaption: { fontSize: 12, color: textTokens.secondary, paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
-  rowCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
-  titleWithStatus: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  sectionCaption: { fontSize: 12, color: color.text2, paddingHorizontal: space[2], paddingTop: space[2] },
+  rowCopy: { flex: 1, minWidth: 0, gap: space[1] },
+  titleWithStatus: { flexDirection: "row", alignItems: "center", gap: space[1] },
   moreControl: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  moreFallback: { color: textTokens.secondary, fontSize: 16 },
-  loadingRow: { minHeight: 64, borderRadius: 12, backgroundColor: Platform.OS === "android" ? "#16181b" : glass.tint.profileBase, marginBottom: 4, overflow: "hidden" },
-  errorState: { alignItems: "center", gap: spacing.sm },
-  retryBtn: { minHeight: 44, minWidth: 120, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase },
+  moreFallback: { color: color.text2, fontSize: 16 },
+  loadingRow: { minHeight: 64, borderRadius: 12, backgroundColor: Platform.OS === "android" ? color.card : color.fill.inset, marginBottom: 4, overflow: "hidden" },
+  errorState: { alignItems: "center", gap: space[2] },
+  retryBtn: { minHeight: 44, minWidth: 120, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: color.line },
   bulkBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingTop: space[2],
+    paddingHorizontal: space[2],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
-    gap: spacing.md,
+    borderTopColor: color.line,
+    gap: space[4],
   },
   bulkCount: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: -0.1,
   },
   bulkDeleteBtn: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 9,
     borderRadius: 10,
     overflow: "hidden",
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.5)",
+    borderColor: color.errorLine,
     minHeight: 44,
     justifyContent: "center",
   },
   bulkDeleteText: {
     fontSize: 13,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.danger,
     letterSpacing: -0.1,
   },
   btnPressed: {
@@ -679,16 +711,16 @@ const styles = StyleSheet.create({
   btnDisabled: {
     opacity: 0.4,
   },
-  menuBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.sm },
-  inlineNotice: { color: semantic.errorText, fontSize: 14, lineHeight: 20 },
-  menuTitle: { color: textTokens.primary, fontSize: 20, lineHeight: 32, fontWeight: "600" },
-  menuAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.md },
-  menuActionText: { color: textTokens.primary, fontSize: 15, lineHeight: 20, fontWeight: "600" },
-  deleteActionText: { color: semantic.error, fontSize: 15, lineHeight: 20, fontWeight: "600" },
-  renameInput: { minHeight: 52, color: textTokens.primary, fontSize: 16, lineHeight: 24, borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.md, backgroundColor: Platform.OS === "android" ? "#191c21" : glass.tint.profileBase, paddingHorizontal: spacing.md },
-  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
+  menuBody: { paddingHorizontal: space[6], paddingBottom: space[6], gap: space[2] },
+  inlineNotice: { color: color.errorText, fontSize: 14, lineHeight: 20 },
+  menuTitle: { color: color.text1, fontSize: 20, lineHeight: 32, fontWeight: "600" },
+  menuAction: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[4], borderRadius: radius.md },
+  menuActionText: { color: color.text1, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  deleteActionText: { color: color.danger, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  renameInput: { minHeight: 52, color: color.text1, fontSize: 16, lineHeight: 24, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, backgroundColor: Platform.OS === "android" ? color.card : color.fill.inset, paddingHorizontal: space[4] },
+  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: space[2] },
   saveAction: { minHeight: 44, minWidth: 88, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: ariPalette.userBubble },
-  saveActionText: { color: "#0c0e12", fontSize: 14, fontWeight: "700" },
+  saveActionText: { color: color.ink, fontSize: 14, fontWeight: "700" },
 });
 
 export default ConversationDrawer;

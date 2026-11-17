@@ -17,19 +17,19 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout-trip/[tripEventId]/index.tsx; insets.bottom IS applied (bottom dock); the top status-bar overlap with the banner header is the intended buyer aesthetic.
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { formatCurrency } from "../../../src/utils/currency";
-import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
+import {
+  experienceBuyerVenueLine,
+  formatExperienceDateSubline,
+} from "../../../src/utils/experienceDateSubline";
 import type { PublicExperienceTicket } from "../../../src/services/publicExperienceService";
 import type {
   TicketAvailableAt,
@@ -99,6 +99,8 @@ const allDatesPast = (isos: string[], nowMs: number = Date.now()): boolean => {
 
 export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  // issue #4420 audit — the sticky bar's real height pads the scroll.
+  const [barHeight, setBarHeight] = useState(0);
   // #4304 — wide desktop: tickets left, a static order summary right.
   const wide = useCheckoutWideLayout();
   const router = useRouter();
@@ -374,7 +376,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   const qty = line?.quantity ?? 0;
   const continueLabel = totals.isFree ? "Reserve free spot" : "Continue";
   const subline = formatExperienceDateSubline({
-    venueText: experience.venueText,
+    // #4420 — city and country only before booking, like the public page.
+    venueText: experienceBuyerVenueLine(experience.venueText),
     dateStartIsos: dateIsos,
     whenMode: experience.whenMode,
     recurrenceRule: experience.recurrenceRule,
@@ -393,11 +396,16 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: wide ? spacing.xl : insets.bottom + 140 },
+            {
+              paddingBottom: wide
+                ? space[7]
+                : Math.max(insets.bottom + 140, barHeight + space[4]),
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.miniCard}>
+          {/* #4420 — on desktop the ticket stub carries this. */}
+          <View style={[styles.miniCard, wide ? styles.hiddenOnWide : null]}>
             <EventCoverMedia
               hue={0}
               mediaUrl={experience.coverMediaUrl}
@@ -444,7 +452,13 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
         </ScrollView>
 
         {/* Sticky bottom bar (narrow) / order summary (wide) — #4304 */}
-        <CheckoutOrderSummary wide={wide} bottomInset={insets.bottom}>
+        <CheckoutOrderSummary
+          wide={wide}
+          bottomInset={insets.bottom}
+          onBarHeight={setBarHeight}
+          // #4420 §4.1 — the desktop ticket stub carries the offering.
+          stub={{ title: experience.title.trim().length > 0 ? experience.title : "Untitled experience", eyebrow: typeof subline === "string" && subline.length > 0 ? subline : null, coverUrl: experience.coverMediaUrl ?? null }}
+        >
           <React.Suspense fallback={null}>
             <CheckoutDiscountCodeField
               collapsible={!wide}
@@ -492,44 +506,45 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+const styles = checkoutStyles(() => StyleSheet.create({
+  hiddenOnWide: { display: "none" },
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
   },
-  miniCard: { marginBottom: spacing.lg },
+  miniCard: { marginBottom: space[6] },
   miniCover: {
     height: 64,
     borderRadius: radiusTokens.md,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   miniTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.3,
   },
   miniSubtitle: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   emptyWrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   emptyTitle: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     textAlign: "center",
   },
@@ -537,34 +552,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   // ORCH-1147R2 — quiet combined "Fees & tax" line above the prominent Total.
   feesTaxRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   feesTaxLabel: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   feesTaxValue: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "600",
   },
   subtotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   subtotalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

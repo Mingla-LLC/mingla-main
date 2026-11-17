@@ -36,6 +36,7 @@ import {
   type AppStateStatus,
 } from "react-native";
 import { Redirect, Stack, useRouter, usePathname } from "expo-router";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -46,6 +47,9 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { ToastHost } from "../src/components/ui/ToastHost";
+import { AlertDialogHost } from "../src/components/ui/AlertDialogHost";
+import { HostDesktopShell } from "../src/components/ui/HostDesktopShell";
 import { TapToPayAwarenessModal } from "../src/components/door/tap/TapToPayAwarenessModal";
 import { TapToPayTerminalHost } from "../src/components/door/tap/TapToPayTerminalHost";
 // #2107 (U1): the launch guard installs when this file is imported, before
@@ -71,7 +75,7 @@ import { clearBusinessRecentCachedUser } from "../src/services/businessRecentSto
 import { KeyboardRoot } from "../src/wrappers/KeyboardRoot";
 // ORCH-1165: Done-only keyboard accessory bar (native-only; web variant is null).
 import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
-import { canvas } from "../src/constants/designSystem";
+import { color } from "../src/constants/designSystem";
 // META-ORCH-1187 [Growth Analytics Hub] LEG 2 — buyer-web analytics. Both are
 // the WEB resolution of a `.web.ts(x)` split: Metro loads the real web modules
 // on web and pure no-op stubs on native (mirrors mixpanelService.web.ts), so
@@ -138,6 +142,7 @@ import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 import { syncBusinessMediaLanguage } from "../src/i18n";
+import { installFieldFocusCss } from "../src/components/ui/fieldFocusCss";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -254,7 +259,7 @@ function hasStoredSupabaseWebSession(): boolean {
 function AuthResolvingScreen(): React.ReactElement {
   return (
     <View style={authRoutingStyles.host}>
-      <ActivityIndicator size="large" color="#eb7825" />
+      <ActivityIndicator size="large" color={color.accentText} />
     </View>
   );
 }
@@ -290,6 +295,10 @@ function RootLayoutInner(): React.ReactElement {
       captureHostPublicSearchPageView(pathname);
     });
   }, [pathname]);
+  // #4420: one focus ring per multiline field on web (fieldFocusCss.web.ts).
+  useEffect(() => {
+    installFieldFocusCss();
+  }, []);
   useEffect(() => {
     if (loading || !user?.id) return;
     let current = true;
@@ -855,7 +864,12 @@ function RootLayoutInner(): React.ReactElement {
         }
       }}
     >
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* #4420 B6: desktop sidebar + web top bar for signed-in host routes
+          outside (tabs); a passthrough everywhere else (phones, native,
+          public buyer routes, auth, door / scanner). */}
+      <HostDesktopShell>
+        <Stack screenOptions={{ headerShown: false }} />
+      </HostDesktopShell>
       {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
       <TapToPayTerminalHost />
       <TapToPayAwarenessModal />
@@ -863,12 +877,16 @@ function RootLayoutInner(): React.ReactElement {
   );
 }
 
+const rootStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: color.canvas },
+});
+
 const authRoutingStyles = StyleSheet.create({
   host: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
 });
 
@@ -945,7 +963,14 @@ export default function RootLayout(): React.ReactElement {
   // route redirects to the real sign-in screen, and a warming session shows a
   // loading spinner (no dead-end card, ever).
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    // #4420 (device round 2, Android): edge-to-edge draws the status bar over
+    // the root view. The root was unpainted, so the window's light theme
+    // background showed through as a light grey band under white icons. The
+    // root now carries the dark canvas, and the app's one default status bar
+    // is light icons on that canvas (screens that need dark icons, such as
+    // the update gates, still push their own).
+    <GestureHandlerRootView style={rootStyles.root}>
+      <ExpoStatusBar style="light" />
       <SafeAreaProvider>
         {/* ORCH-0964: top-level ErrorBoundary ABOVE the provider tree. A throw
             in QueryClientProvider / AuthProvider / KeyboardRoot init previously
@@ -997,6 +1022,13 @@ export default function RootLayout(): React.ReactElement {
           </QueryClientProvider>
           </UpdateLaunchBoundary>
         </ErrorBoundary>
+        {/* #4420 B4: the root non-modal toast layer. Inside SafeAreaProvider
+            (it reads insets), outside AuthProvider (auth-free). Sheets and
+            dialogs mount their own host inside their Modal window. */}
+        <ToastHost layer="root" />
+        {/* #4420: the web confirm `showAlert` queues (Alert.alert is a no-op on
+            react-native-web). Empty on native and until a dialog is queued. */}
+        <AlertDialogHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

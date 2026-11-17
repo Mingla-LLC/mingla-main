@@ -45,6 +45,16 @@ import {
 import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { venuePublicPath } from "../../../src/constants/publicUrls";
+import { useSignedInHostViewer } from "../../../src/components/venue/guestViewHostSession";
+
+// #4420 (round-3 item 18) — "Guest view · Back to Mingla Host" for a signed-in
+// host (chrome only; a guest sees the page unchanged). The bar loads lazily,
+// only when a host session is found.
+const LazyGuestViewHostBar = React.lazy(() =>
+  import("../../../src/components/venue/GuestViewHostBar").then((m) => ({
+    default: m.GuestViewHostBar,
+  })),
+);
 
 /**
  * The status card, and the transport it needs, behind a LAZY boundary — and
@@ -76,6 +86,7 @@ const POLL_INTERVAL_MS = 3000;
 export default function BuyerVenueOrderRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const hostViewer = useSignedInHostViewer();
   const params = useLocalSearchParams<{
     orderId?: string | string[];
     bst?: string | string[];
@@ -289,6 +300,13 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
           { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 40 },
         ]}
       >
+        {hostViewer ? (
+          <View style={styles.hostBarWrap}>
+            <React.Suspense fallback={null}>
+              <LazyGuestViewHostBar />
+            </React.Suspense>
+          </View>
+        ) : null}
         <Text style={[styles.heading, { color: palette.primaryText }]}>
           Your order
         </Text>
@@ -324,6 +342,8 @@ const StateCard: React.FC<{
 );
 
 const styles = StyleSheet.create({
+  // #4420 (round-3 item 18) — the guest-view host bar, above the heading.
+  hostBarWrap: { marginBottom: 16 },
   host: { flex: 1 },
   scroll: {
     paddingHorizontal: 16,

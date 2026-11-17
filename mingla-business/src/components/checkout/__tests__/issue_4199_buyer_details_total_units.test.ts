@@ -25,7 +25,7 @@ describe("#4199 buyer-details totals keep major-unit cart values", () => {
     (relativePath) => {
       const source = read(relativePath);
       const majorUnitCalls = source.match(
-        /formatCurrency\(totals\.allInTotal,\s*totals\.currency\)/g,
+        /formatCurrency\(\s*(?:totals\.allInTotal|summaryQuote\.quote\.buyerTotalCents \/ 100),\s*(?:totals|summaryQuote\.quote)\.currency,?\s*\)/g,
       );
 
       expect(majorUnitCalls).toHaveLength(2);

@@ -36,10 +36,12 @@ jest.mock("react-native", () => {
     View: host("view"),
   };
 });
+// [TEST-MOD-APPROVED #4420] — the component now reads Graphite tokens
+// (`color`, `space`, `type`); the mock carries the new names.
 jest.mock("../../../constants/designSystem", () => ({
-  spacing: { xs: 4, sm: 8 },
-  text: { secondary: "grey" },
-  typography: { caption: { fontSize: 12 } },
+  space: { 1: 4, 2: 8 },
+  color: { text2: "grey" },
+  type: { caption: { fontSize: 13 } },
 }));
 jest.mock("../../location/AddressInput", () => ({
   AddressInput: (props: Record<string, unknown>) =>

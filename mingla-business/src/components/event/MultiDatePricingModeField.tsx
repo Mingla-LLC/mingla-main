@@ -20,7 +20,9 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { accent, glass, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+} from "../../constants/designSystem";
 import {
   draftMultiDatePricingMode,
   type MultiDatePricingMode,
@@ -142,10 +144,10 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 13,
     fontWeight: "700",
-    color: textTokens.secondary,
+    color: color.text2,
     marginBottom: 6,
   },
-  helperHint: { fontSize: 12, lineHeight: 16, color: textTokens.tertiary },
+  helperHint: { fontSize: 12, lineHeight: 16, color: color.text3 },
   pricingModeBlock: { marginTop: 18, gap: 8 },
   pricingModeRows: { gap: 8 },
   pricingModeRow: {
@@ -156,9 +158,9 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
-  pricingModeRowActive: { borderColor: accent.warm },
+  pricingModeRowActive: { borderColor: color.lineStrong },
   pricingModeRowLocked: { opacity: 0.6 },
   pricingModeRadio: {
     width: 18,
@@ -168,21 +170,21 @@ const styles = StyleSheet.create({
     marginTop: 1,
     alignItems: "center",
     justifyContent: "center",
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
-  pricingModeRadioActive: { borderColor: accent.warm },
+  pricingModeRadioActive: { borderColor: color.lineStrong },
   pricingModeDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   pricingModeCopy: { flex: 1, gap: 3 },
-  pricingModeLabel: { fontSize: 14, fontWeight: "700", color: textTokens.primary },
+  pricingModeLabel: { fontSize: 14, fontWeight: "700", color: color.text1 },
   pricingModeHelper: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });
 

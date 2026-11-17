@@ -388,3 +388,37 @@ export function formatStayDateLong(value: StayDate | ""): string {
     year: "numeric",
   });
 }
+
+/**
+ * issue #4420 wave 2 (D-S5) — the range a Stay booking opens on: the FIRST
+ * check-in every offering's own rules allow (the widest minimum notice), for
+ * one night, never "tomorrow" when the notice window already rules it out.
+ * Starts no earlier than venue-local tomorrow, the long-standing default.
+ * Returns an empty range when no check-in is bookable inside the horizon.
+ */
+export function stayDefaultRange(input: {
+  timezone: string;
+  checkInTime: string;
+  bookingHorizonDays: number;
+  offerings: ReadonlyArray<{ minNoticeMinutes: number; maxAdvanceDays: number | null }>;
+  now?: Date;
+}): StayDateRange {
+  const minNoticeMinutes = input.offerings.reduce(
+    (widest, offering) => Math.max(widest, offering.minNoticeMinutes),
+    0,
+  );
+  const bounds = stayDateBounds({
+    timezone: input.timezone,
+    checkInTime: input.checkInTime,
+    bookingHorizonDays: input.bookingHorizonDays,
+    maxAdvanceDays: null,
+    minNoticeMinutes,
+    checkIn: null,
+    now: input.now,
+  });
+  const tomorrow = addStayDays(venueToday(input.timezone, input.now), 1);
+  const first =
+    compareStayDates(bounds.minCheckIn, tomorrow) > 0 ? bounds.minCheckIn : tomorrow;
+  if (compareStayDates(first, bounds.maxCheckIn) > 0) return { checkIn: "", checkOut: "" };
+  return { checkIn: first, checkOut: addStayDays(first, 1) };
+}

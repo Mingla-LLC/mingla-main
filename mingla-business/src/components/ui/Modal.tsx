@@ -8,7 +8,7 @@
  * `easings.out`. Close: scale 1.0 → 0.96 + opacity 0 over 160ms
  * `easings.in`. Reduce-motion: opacity-only.
  *
- * Body uses `GlassCard variant="elevated"` with radius `xl`.
+ * #4420: body is `<Material kind="sheet">` (radius 28), scrolls inside itself, centred above the keyboard.
  *
  * # Overlay portal (Cycle 3 rework v3 fix)
  * Wrapped in React Native's native `Modal` component (aliased as
@@ -28,9 +28,12 @@ import {
   Modal as RNModal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   Easing,
@@ -41,13 +44,13 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import {
-  radius as radiusTokens,
-  spacing,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, scrim, shadow, size, space } from "../../constants/designSystem";
 
-import { GlassCard } from "./GlassCard";
+import { Material } from "./Material";
+import { ToastHost } from "./ToastHost";
 import { useEscapeLayer } from "./escapeLayerStack";
+import { dialogKeyboardInset, dialogMaxHeight } from "./overlayKeyboard";
+import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 // ORCH-1165: Modal inputs (e.g. CancelOrderDialog) live in this Modal's own
 // native window — mount a Done bar inside RNModal so they get the toolbar too.
 import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
@@ -76,7 +79,10 @@ export interface ModalProps {
 
 const ENTRY_DURATION = 200;
 const EXIT_DURATION = 160;
-const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
+const SCRIM_COLOR = scrim.modal;
+/** #4420: the Modal panel (kit `size.modal` 560 on web; full width minus gutters on phones). */
+export const MODAL_DEFAULT_MAX_WIDTH = size.modal;
+export const MODAL_RADIUS = radiusTokens.xxl;
 // #1360: exported (export-only, no behavior change) so deferAfterDismiss can
 // import the dialog's own unmount window as a single source of truth for the
 // payment-confirmation toast defer delay.
@@ -96,7 +102,7 @@ const ModalNative: React.FC<ModalProps> = ({
   visible,
   onClose,
   children,
-  maxWidth = 480,
+  maxWidth = MODAL_DEFAULT_MAX_WIDTH,
   dismissOnScrimTap = true,
   testID,
   style,
@@ -225,20 +231,15 @@ const ModalNative: React.FC<ModalProps> = ({
               accessibilityRole="button"
             />
           </Animated.View>
-          <View style={styles.center} pointerEvents="box-none">
-            <Animated.View
-              style={[
-                styles.panelWrap,
-                Platform.OS === "web" ? { maxWidth } : null,
-                panelStyle,
-                style,
-              ]}
-            >
-              <GlassCard variant="elevated" radius="xl" padding={spacing.lg}>
-                {children}
-              </GlassCard>
-            </Animated.View>
-          </View>
+          <ModalKeyboardFrame>
+            {(maxHeight) => (
+              <Animated.View style={[styles.panelWrap, shadow.dialog, panelStyle, style]}>
+                <ModalPanel maxHeight={maxHeight}>{children}</ModalPanel>
+              </Animated.View>
+            )}
+          </ModalKeyboardFrame>
+          {/* #4420 B4: toasts fired while this dialog is open draw above it. */}
+          <ToastHost layer="overlay" open={visible} />
           {/* ORCH-1165: Done bar for Modal-hosted inputs (CancelOrderDialog,
               future Modal forms) — last overlay child inside RNModal so it
               floats on the keyboard above the panel. Native-only (null on web).
@@ -291,7 +292,7 @@ const ModalWeb: React.FC<ModalProps> = ({
   visible,
   onClose,
   children,
-  maxWidth = 480,
+  maxWidth = MODAL_DEFAULT_MAX_WIDTH,
   dismissOnScrimTap = true,
   testID,
   style,
@@ -299,6 +300,7 @@ const ModalWeb: React.FC<ModalProps> = ({
   const [mounted, setMounted] = useState<boolean>(visible);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduceMotion = useWebReducedMotion();
+  const { height: windowHeight } = useWindowDimensions();
 
   const [animateOpen, setAnimateOpen] = useState<boolean>(false);
   const rafRef = useRef<number | null>(null);
@@ -375,6 +377,7 @@ const ModalWeb: React.FC<ModalProps> = ({
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();
   };
+  const webMaxHeight = dialogMaxHeight(windowHeight, 0, 0, 0);
 
   if (!mounted) return null;
 
@@ -416,16 +419,50 @@ const ModalWeb: React.FC<ModalProps> = ({
           />
         </View>
         <View style={styles.center} pointerEvents="box-none">
-          <View style={[styles.panelWrap, { maxWidth }, panelWebStyle, style]}>
-            <GlassCard variant="elevated" radius="xl" padding={spacing.lg}>
-              {children}
-            </GlassCard>
+          <View style={[styles.panelWrap, { maxWidth }, shadow.dialog, panelWebStyle, style]}>
+            <ModalPanel maxHeight={webMaxHeight}>{children}</ModalPanel>
           </View>
         </View>
+        <ToastHost layer="overlay" open={visible} />
       </View>
     </RNModal>
   );
 };
+
+/**
+ * #4420: the centred frame. It centres the panel in the space ABOVE the
+ * keyboard + Done bar (the panel never sits behind the keyboard) and hands the
+ * panel its max height so it never runs off screen. Lives inside the Modal
+ * window's KeyboardProvider (it reads that window's keyboard frames).
+ */
+const ModalKeyboardFrame: React.FC<{ children: (maxHeight: number) => React.ReactNode }> = ({ children }) => {
+  const keyboardHeight = useKeyboardHeight();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const maxHeight = dialogMaxHeight(height, insets.top, insets.bottom, keyboardHeight);
+  return (
+    <View
+      style={[styles.center, { paddingTop: insets.top, paddingBottom: dialogKeyboardInset(keyboardHeight) }]}
+      pointerEvents="box-none"
+    >
+      {children(maxHeight)}
+    </View>
+  );
+};
+
+/** The sheet-material dialog surface; scrolls inside itself when taller than the room. */
+const ModalPanel: React.FC<{ maxHeight: number; children: React.ReactNode }> = ({ maxHeight, children }) => (
+  <Material kind="sheet" radius={MODAL_RADIUS} style={{ maxHeight }}>
+    <ScrollView
+      bounces={false}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.panelContent}
+    >
+      {children}
+    </ScrollView>
+  </Material>
+);
 
 const styles = StyleSheet.create({
   scrimPress: {
@@ -435,11 +472,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[5],
   },
   panelWrap: {
     width: "100%",
-    borderRadius: radiusTokens.xl,
+    maxWidth: MODAL_DEFAULT_MAX_WIDTH,
+    borderRadius: MODAL_RADIUS,
+  },
+  panelContent: {
+    padding: space[6],
   },
 });
 

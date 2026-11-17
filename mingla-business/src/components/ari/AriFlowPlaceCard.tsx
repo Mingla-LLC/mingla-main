@@ -12,11 +12,7 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import type { AriFlowPlaceValue } from "../../services/agentChatService";
 import type { AriFlowPlaceMode } from "./ariFlowCards";
 import {
@@ -143,12 +139,12 @@ export const AriFlowPlaceCard: React.FC<AriFlowPlaceCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
     alignSelf: "stretch",
   },
   note: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
 });

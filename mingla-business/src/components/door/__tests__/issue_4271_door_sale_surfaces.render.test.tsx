@@ -90,6 +90,8 @@ jest.mock("../../ui/Sheet", () => ({
     visible ? children : null,
 }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+// [TEST-MOD-APPROVED #4420] the guest page shows the Spinner primitive (Reanimated) while it loads.
+jest.mock("../../ui/Spinner", () => ({ Spinner: () => null }));
 jest.mock("../tap/TapToPayIcon", () => ({ TapToPayIcon: () => null }));
 jest.mock("../../../services/terminal/tapToPaySession", () => ({ getTapToPaySession: () => ({ readerReady: false }) }));
 jest.mock("../../ui/IconChrome", () => ({ IconChrome: () => null }));

@@ -22,12 +22,7 @@ import {
   findNodeHandle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  accent,
-  backgroundWarmGlow,
-  colors,
-  spacing,
-} from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import {
   createAppVersionCoordinator,
   resolveGateLayout,
@@ -132,7 +127,7 @@ function resolveGateLayers(
 function VersionDecisionVeil(): React.ReactElement {
   return (
     <View style={styles.veil} accessibilityLabel="Checking app availability">
-      <StatusBar barStyle="dark-content" backgroundColor={backgroundWarmGlow} />
+      <StatusBar barStyle="dark-content" backgroundColor={color.paper} />
       <Image
         source={MINGLA_WORDMARK}
         resizeMode="contain"
@@ -200,14 +195,14 @@ function MandatoryUpdateScreen({
       style={styles.page}
       testID="mandatory-update-gate"
     >
-      <StatusBar barStyle="dark-content" backgroundColor={backgroundWarmGlow} />
+      <StatusBar barStyle="dark-content" backgroundColor={color.paper} />
       <ScrollView
         bounces={false}
         contentContainerStyle={[
           styles.scrollContent,
           {
-            paddingTop: insets.top + spacing.lg,
-            paddingBottom: insets.bottom + spacing.lg,
+            paddingTop: insets.top + space[6],
+            paddingBottom: insets.bottom + space[6],
           },
         ]}
       >
@@ -224,7 +219,7 @@ function MandatoryUpdateScreen({
             accessible={false}
             importantForAccessibility="no-hide-descendants"
           >
-            <Ionicons name="arrow-up" size={30} color={accent.warm} />
+            <Ionicons name="arrow-up" size={30} color={color.accent} />
           </View>
           <Text
             ref={headingRef}
@@ -272,24 +267,24 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: backgroundWarmGlow,
+    backgroundColor: color.paper,
   },
   veilLogo: { width: 88, height: 31 },
   overlay: { ...StyleSheet.absoluteFillObject, zIndex: 10_001 },
-  page: { flex: 1, backgroundColor: backgroundWarmGlow },
+  page: { flex: 1, backgroundColor: color.paper },
   scrollContent: {
     flexGrow: 1,
     width: "100%",
     maxWidth: 440,
     alignSelf: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   logo: { width: 88, height: 31, flexShrink: 0 },
   messageGroup: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "flex-start",
-    paddingVertical: spacing.xl,
+    paddingVertical: space[7],
   },
   updateIcon: {
     width: 58,
@@ -297,29 +292,29 @@ const styles = StyleSheet.create({
     borderRadius: 29,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
-    marginBottom: spacing.lg,
+    backgroundColor: color.accentTint,
+    marginBottom: space[6],
   },
   title: {
     fontSize: 32,
     lineHeight: 40,
     fontWeight: "700",
-    color: colors.text.primary,
-    marginBottom: spacing.sm + 4,
+    color: color.ink,
+    marginBottom: space[2] + 4,
   },
-  body: { fontSize: 16, lineHeight: 24, color: colors.text.secondary },
+  body: { fontSize: 16, lineHeight: 24, color: color.text4 },
   context: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     fontSize: 13,
     lineHeight: 18,
-    color: colors.text.tertiary,
+    color: color.text4,
   },
   actionGroup: { width: "100%", flexShrink: 0 },
   error: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
     fontSize: 14,
     lineHeight: 20,
-    color: "#b91c1c",
+    color: color.errorText,
   },
   button: {
     width: "100%",
@@ -327,12 +322,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.warm,
-    paddingHorizontal: spacing.lg,
+    backgroundColor: color.accent,
+    paddingHorizontal: space[6],
   },
   buttonPressed: { opacity: 0.88 },
   buttonText: {
-    color: colors.text.inverse,
+    color: color.paper,
     fontSize: 16,
     lineHeight: 24,
     fontWeight: "700",

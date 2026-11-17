@@ -9,12 +9,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrencyRound } from "../../utils/currency";
@@ -108,7 +106,7 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
             <Icon
               name="chevU"
               size={14}
-              color={isFirst ? textTokens.quaternary : textTokens.tertiary}
+              color={isFirst ? color.text4 : color.text3}
             />
           </Pressable>
           <Pressable
@@ -123,7 +121,7 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
             <Icon
               name="chevD"
               size={14}
-              color={isLast ? textTokens.quaternary : textTokens.tertiary}
+              color={isLast ? color.text4 : color.text3}
             />
           </Pressable>
         </View>
@@ -132,7 +130,7 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
         <View style={styles.cardBodyWrap}>
           <GlassCard
             variant="base"
-            padding={spacing.md}
+            padding={space[4]}
             style={[
               errorMessage !== undefined ? styles.cardError : undefined,
               isDisabled ? styles.cardDisabled : undefined,
@@ -157,7 +155,7 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
                   hitSlop={8}
                   style={styles.cardActionButton}
                 >
-                  <Icon name="plus" size={16} color={textTokens.tertiary} />
+                  <Icon name="plus" size={16} color={color.text3} />
                 </Pressable>
                 <Pressable
                   onPress={onEdit}
@@ -166,7 +164,7 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
                   hitSlop={8}
                   style={styles.cardActionButton}
                 >
-                  <Icon name="edit" size={16} color={textTokens.tertiary} />
+                  <Icon name="edit" size={16} color={color.text3} />
                 </Pressable>
                 {hasSales ? null : (
                   <Pressable
@@ -176,7 +174,7 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
                     hitSlop={8}
                     style={styles.cardActionButton}
                   >
-                    <Icon name="trash" size={16} color={semantic.error} />
+                    <Icon name="trash" size={16} color={color.danger} />
                   </Pressable>
                 )}
               </View>
@@ -234,7 +232,7 @@ export const TicketTierCard = React.memo(TicketTierCardInner);
 
 const styles = StyleSheet.create({
   cardError: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderWidth: 1,
   },
   cardDisabled: {
@@ -243,13 +241,13 @@ const styles = StyleSheet.create({
   cardOuterRow: {
     flexDirection: "row",
     alignItems: "stretch",
-    gap: spacing.xs,
+    gap: space[1],
   },
   reorderCol: {
     flexDirection: "column",
     justifyContent: "center",
     gap: 4,
-    paddingTop: spacing.xs,
+    paddingTop: space[1],
   },
   reorderBtn: {
     width: 28,
@@ -258,9 +256,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radiusTokens.sm,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   reorderBtnDisabled: {
     opacity: 0.35,
@@ -272,25 +270,25 @@ const styles = StyleSheet.create({
   cardHeaderRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   cardTitleCol: {
     flex: 1,
   },
   cardTitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   cardSub: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   cardActionsRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   cardActionButton: {
     width: 28,
@@ -298,40 +296,40 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
   },
   cardStatsRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   cardStatCell: {
     flex: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
+    backgroundColor: color.fill.inset,
     borderRadius: radiusTokens.sm,
   },
   cardStatLabel: {
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginBottom: 2,
   },
   cardStatValue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   badgesRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    gap: space[1],
+    marginTop: space[2],
   },
   helperError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
+    marginBottom: space[2],
   },
 });

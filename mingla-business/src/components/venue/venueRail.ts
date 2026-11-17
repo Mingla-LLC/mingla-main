@@ -15,14 +15,16 @@ export function deriveVenueRailModules(
 ): SuiteDesktopModule[] {
   const command = modules.filter((m) => VENUE_MODULES[m].band === "command");
   const booking = modules.filter((m) => VENUE_MODULES[m].band === "booking");
-  const orderedCommandTop = command.filter((m) => m === "overview");
-  const orderedCommandBottom = command.filter((m) => m !== "overview");
+  // #4420 — Reviews sits with Overview at the top (the "Venue" group).
+  const isVenueTop = (m: VenueModule): boolean => m === "overview" || m === "reviews";
+  const orderedCommandTop = command.filter(isVenueTop);
+  const orderedCommandBottom = command.filter((m) => !isVenueTop(m));
   return [...orderedCommandTop, ...booking, ...orderedCommandBottom].map(
     (m) => ({
       key: m,
       label: VENUE_MODULES[m].label,
       group:
-        m === "overview" ? "Venue" : isBookingModule(m) ? "Bookings" : "Operations",
+        isVenueTop(m) ? "Venue" : isBookingModule(m) ? "Bookings" : "Operations",
       dirty: dirtyModules.has(m),
     }),
   );

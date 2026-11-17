@@ -37,8 +37,10 @@ describe("ORCH-1334 P2-1 — SourceBadge app-badge text uses the AA-safe token",
   it.each([
     ["RsvpGuestConsole.tsx", CONSOLE_SRC],
     ["RsvpGuestDetailSheet.tsx", SHEET_SRC],
-  ])("%s declares APP_BADGE_TEXT = '#ffa94d'", (_name, src) => {
-    expect(src).toMatch(/const\s+APP_BADGE_TEXT\s*=\s*["']#ffa94d["']/);
+  // [TEST-MOD-APPROVED #4420] the AA-safe light accent is now the token
+  // color.accentText (#f39a55); its contrast is proven in the Graphite block below.
+  ])("%s declares APP_BADGE_TEXT = color.accentText", (_name, src) => {
+    expect(src).toMatch(/const\s+APP_BADGE_TEXT\s*=\s*color\.accentText/);
   });
 
   it.each([
@@ -65,17 +67,19 @@ describe("ORCH-1334 P2-1 — SourceBadge app-badge text uses the AA-safe token",
     ["RsvpGuestConsole.tsx", CONSOLE_SRC],
     ["RsvpGuestDetailSheet.tsx", SHEET_SRC],
   ])(
-    "%s leaves the badge FILL (accent.tint) + border (accent.border) untouched",
+    // [TEST-MOD-APPROVED #4420] fill/border read the Graphite accent tint + line.
+    "%s keeps the badge FILL (accent tint) + border (accent line)",
     (_name, src) => {
-      expect(src).toMatch(/backgroundColor:\s*accent\.tint,\s*borderColor:\s*accent\.border/);
+      expect(src).toMatch(/backgroundColor:\s*color\.accentTint,\s*borderColor:\s*color\.accentLine/);
     },
   );
 
   it.each([
     ["RsvpGuestConsole.tsx", CONSOLE_SRC],
     ["RsvpGuestDetailSheet.tsx", SHEET_SRC],
-  ])("%s keeps the web badge token #7ab0ff", (_name, src) => {
-    expect(src).toMatch(/const\s+WEB_BADGE_TEXT\s*=\s*["']#7ab0ff["']/);
+  // [TEST-MOD-APPROVED #4420] the web badge text is the token color.infoText (#8fb3ff).
+  ])("%s keeps the web badge on the info text token", (_name, src) => {
+    expect(src).toMatch(/const\s+WEB_BADGE_TEXT\s*=\s*color\.infoText/);
   });
 });
 
@@ -147,5 +151,26 @@ describe("ORCH-1334 P2-1 — composited WCAG contrast clears AA 4.5:1", () => {
   it("the OLD accent.warm #eb7825 FAILED AA on both platforms (regression documented)", () => {
     expect(contrast(OLD_APP_TEXT, IOS_APP_FILL)).toBeLessThan(AA_NORMAL);
     expect(contrast(OLD_APP_TEXT, AND_APP_FILL)).toBeLessThan(AA_NORMAL);
+  });
+});
+
+// #4420 — the same AA proof for the Graphite tokens the badge now reads:
+// canvas #0f0f11, iOS row fill.inset white .045, Android row control solid
+// #212125, tints accent/info .14, text accentText #f39a55 / infoText #8fb3ff.
+describe("#4420 — Graphite badge tokens clear AA 4.5:1", () => {
+  const G_CANVAS: RGB = hexToRgb("#0f0f11");
+  const G_IOS_ROW = over([255, 255, 255, 0.045], G_CANVAS);
+  const G_AND_ROW: RGB = hexToRgb("#212125");
+  const G_ACCENT_TINT: RGBA = [235, 120, 37, 0.14];
+  const G_INFO_TINT: RGBA = [59, 130, 246, 0.14];
+  it("accentText on the accent tint (iOS + Android)", () => {
+    const text = hexToRgb("#f39a55");
+    expect(contrast(text, over(G_ACCENT_TINT, G_IOS_ROW))).toBeGreaterThanOrEqual(AA_NORMAL);
+    expect(contrast(text, over(G_ACCENT_TINT, G_AND_ROW))).toBeGreaterThanOrEqual(AA_NORMAL);
+  });
+  it("infoText on the info tint (iOS + Android)", () => {
+    const text = hexToRgb("#8fb3ff");
+    expect(contrast(text, over(G_INFO_TINT, G_IOS_ROW))).toBeGreaterThanOrEqual(AA_NORMAL);
+    expect(contrast(text, over(G_INFO_TINT, G_AND_ROW))).toBeGreaterThanOrEqual(AA_NORMAL);
   });
 });

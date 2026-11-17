@@ -22,7 +22,12 @@ function Harness(): React.ReactElement {
     document.getElementById("issue-2160-day-row-earlier")?.focus();
   };
   return (
-    <>
+    // [TEST-MOD-APPROVED #4420] the non-modal Toast now draws as a card in a
+    // top band (top 40, about 56 tall) like every other Host toast. On the
+    // real event page the chooser sits under the cover and title, never in
+    // that band; the harness reserves the same header room so the card does
+    // not sit on the chooser. Focus, keyboard and click assertions unchanged.
+    <div style={{ paddingTop: 160 }}>
       <MultiDateDayChooser
         timezone="America/New_York"
         palette={palette}
@@ -52,7 +57,7 @@ function Harness(): React.ReactElement {
         onPresented={revealFirstDay}
         testID="issue-2399-focus-toast"
       />
-    </>
+    </div>
   );
 }
 

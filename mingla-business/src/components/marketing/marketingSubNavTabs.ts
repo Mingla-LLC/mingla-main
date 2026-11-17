@@ -30,10 +30,37 @@ export const MARKETING_SUB_NAV_TABS: ReadonlyArray<MarketingSubNavTab> = [
   { id: "templates", label: "Templates", path: "/(tabs)/marketing/templates" },
 ];
 
+/**
+ * #4420 — the desktop page title per section (the kit's "Promote" page header).
+ * The phone keeps the pill row; desktop has the sidebar, so it shows the
+ * title and the section's action instead.
+ */
+export const MARKETING_SECTION_TITLES: Readonly<Record<MarketingSubNavId, string>> = {
+  overview: "Promote",
+  campaigns: "Campaigns",
+  ads: "Ads",
+  creators: "Creators",
+  referrals: "Referrals",
+  people: "People",
+  templates: "Templates",
+};
+
+/**
+ * #4420 — a campaign or template detail / editor is a focused page with its
+ * own back header (kit: marketing-campaign-detail, marketing-template-detail),
+ * so the section pills and the section action step aside there.
+ */
+export function isMarketingDetailRoute(pathname: string): boolean {
+  const lower = pathname.toLowerCase();
+  return (
+    /\/marketing\/campaigns\/(?!compose(?:\/|$))[^/?#]+/.test(lower) ||
+    /\/marketing\/templates\/[^/?#]+/.test(lower)
+  );
+}
+
 export function detectMarketingSubNavActive(pathname: string): MarketingSubNavId {
   const lower = pathname.toLowerCase();
-  if (lower.includes("/marketing/people") || lower.includes("/marketing/audiences"))
-    return "people";
+  if (lower.includes("/marketing/people")) return "people";
   if (lower.includes("/marketing/campaigns")) return "campaigns";
   if (lower.includes("/marketing/templates")) return "templates";
   if (lower.includes("/marketing/ads")) return "ads";

@@ -6,14 +6,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  colors,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { CHANNEL_LABEL, type MarketingChannelKind } from "./ChannelTabs";
 
 export interface ComposerPreviewTabsProps {
@@ -61,6 +54,7 @@ export const ComposerPreviewTabs: React.FC<ComposerPreviewTabsProps> = ({
                 styles.tab,
                 surface === "light" ? styles.tabOnLight : null,
                 isActive ? styles.tabActive : null,
+                isActive && surface === "light" ? styles.tabActiveOnLight : null,
                 pressed ? styles.tabPressed : null,
               ]}
             >
@@ -90,9 +84,9 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[1],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     flexShrink: 0,
   },
   tab: {
@@ -101,20 +95,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   tabOnLight: {
-    borderColor: colors.gray[200],
-    backgroundColor: colors.background.primary,
+    borderColor: color.paperPressed,
+    backgroundColor: color.paper,
   },
-  tabActive: { borderColor: accent.warm, backgroundColor: accent.tint },
+  tabActive: { borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
+  tabActiveOnLight: { borderColor: color.ink, backgroundColor: color.paperPressed },
   tabPressed: { opacity: 0.8 },
-  tabLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  tabLabelActive: { color: textTokens.primary },
+  tabLabel: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  tabLabelActive: { color: color.text1 },
   // #4273: secondary #4b5563 on #F5F5F7 / #FFFFFF is 6.9:1 / 7.6:1.
-  tabLabelOnLight: { color: colors.text.secondary },
-  tabLabelActiveOnLight: { color: colors.text.primary },
+  tabLabelOnLight: { color: color.text4 },
+  tabLabelActiveOnLight: { color: color.ink },
   pane: { flex: 1, minHeight: 0 },
   paneContent: { flexGrow: 0 },
 });

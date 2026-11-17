@@ -58,10 +58,7 @@ import {
   gigZone,
 } from "../../../utils/creatorProgramFormat";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
-import {
-  spacing,
-  text as textTokens,
-} from "../../../constants/designSystem";
+import { color, space } from "../../../constants/designSystem";
 
 type Tab = "interested" | "hired" | "results";
 
@@ -187,6 +184,7 @@ export default function GigApplicants(): React.ReactElement {
   return (
     <ProgramScreen
       title={gig ? gig.title_public : "Gig"}
+      desktopWidth="detail"
       fallback={blastHubHref("creators")}
       right={
         canEdit || canClose ? (
@@ -197,7 +195,7 @@ export default function GigApplicants(): React.ReactElement {
             hitSlop={8}
             style={styles.more}
           >
-            <Icon name="moreH" size={22} color={textTokens.primary} />
+            <Icon name="moreH" size={22} color={color.text1} />
           </Pressable>
         ) : undefined
       }
@@ -399,8 +397,8 @@ export default function GigApplicants(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  summary: { color: textTokens.secondary, fontSize: 13 },
-  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  summary: { color: color.text2, fontSize: 13 },
+  tiny: { color: color.text3, fontSize: 12, lineHeight: 16 },
   more: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
 });

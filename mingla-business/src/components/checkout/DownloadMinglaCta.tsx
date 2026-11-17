@@ -60,13 +60,15 @@ import {
   buyerSignInCopy,
   type BuyerClaimNoun,
 } from "../../constants/buyerClaimCopy";
+import { radius, space } from "../../constants/designSystem";
+// #4420 — the claim card wears the host's colours on the confirmation page
+// (spec D-C1); with no host palette active it falls back to Graphite.
 import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+  checkoutAccentFill,
+  checkoutOnAccent,
+  checkoutStyles,
+  color,
+} from "./checkoutTheme";
 import {
   detectClientPlatform,
   openAppScheme,
@@ -159,6 +161,13 @@ const useReducedMotionOnWeb = (): boolean => {
 };
 
 type BuyerClaimVariant = "auto" | "phone" | "desktop";
+
+// #4420 spec §4.2 Confirm — a 168 white tile, radius 16. The 12px of white
+// around the code is the quiet zone that keeps it scannable on dark host
+// colours.
+const CLAIM_QR_TILE = 168;
+const CLAIM_QR_PADDING = 12;
+const CLAIM_QR_SIZE = CLAIM_QR_TILE - CLAIM_QR_PADDING * 2;
 type BuyerClaimCardKind = Exclude<BuyerClaimNoun, "receipt">;
 
 export type BuyerClaimHandoffMintResult =
@@ -386,6 +395,14 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
     return () => clearTimeout(timer);
   }, [analyticsSurface, kind, scan]);
 
+  /**
+   * #4420 — Seth's call: on a phone the ONE button is named for THAT phone's
+   * store. When the order has a claim short link it still goes through it:
+   * that page's button is the claim OneLink, which opens the app and claims
+   * the tickets when installed, and otherwise lands iPhone on the App Store
+   * and Android on the Play listing with the claim riding the install (deferred
+   * deep link). Without a claim it goes straight to the store.
+   */
   const open = (): void => {
     if (device === null) return;
     const target =
@@ -404,7 +421,18 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
     display === "desktop" && textSent
       ? buyerDesktopTextFallback(cleanLast4)
       : null;
-  const buttonLabel = BUYER_CLAIM_COPY.button[kind];
+  const buttonLabel =
+    device === "android"
+      ? BUYER_CLAIM_COPY.storeButton.android
+      : BUYER_CLAIM_COPY.storeButton.ios;
+  // Desktop: the minted hand-off QR (the claim, desktop to phone) whenever it
+  // is live. With no claim to hand off, or when minting fails, the QR is the
+  // device-routing download URL, so it always works and never shows an error.
+  const storeQrUrl = resolveConfirmationAppTarget(fallbackEntity, "other").qrUrl;
+  const showStoreQr =
+    scan.phase === "idle" ||
+    scan.phase === "error" ||
+    scan.phase === "rate_limited";
 
   return (
     <View
@@ -423,7 +451,7 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
         <>
           <Pressable
             accessibilityRole="link"
-            accessibilityLabel={`${buttonLabel}, opens the Mingla app or the app store`}
+            accessibilityLabel={buttonLabel}
             style={({
               pressed,
               hovered,
@@ -462,7 +490,7 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
               accessibilityLiveRegion="polite"
               role="status"
             >
-              <ActivityIndicator color={accent.warm} />
+              <ActivityIndicator color={color.accent} />
               <Text style={styles.claimScanStatus}>
                 {BUYER_CLAIM_COPY.scanPreparing}
               </Text>
@@ -474,7 +502,7 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
                 accessibilityRole="image"
                 accessibilityLabel={`${BUYER_CLAIM_COPY.scanInstruction[kind]} This is not your ticket.`}
               >
-                <GateQr value={scan.handoffUrl} size={220} />
+                <GateQr value={scan.handoffUrl} size={CLAIM_QR_SIZE} />
               </View>
               <Text style={styles.claimScanInstruction}>
                 {BUYER_CLAIM_COPY.scanInstruction[kind]}
@@ -503,22 +531,19 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
                 </Text>
               </Pressable>
             </View>
-          ) : scan.phase === "rate_limited" ? (
-            <Text
-              style={styles.claimScanStatus}
-              accessibilityLiveRegion="polite"
-              role="status"
-            >
-              {BUYER_CLAIM_COPY.scanRateLimited}
-            </Text>
-          ) : scan.phase === "error" ? (
-            <Text
-              style={styles.claimScanStatus}
-              accessibilityLiveRegion="polite"
-              role="status"
-            >
-              {BUYER_CLAIM_COPY.scanError}
-            </Text>
+          ) : showStoreQr ? (
+            <View style={styles.claimQrGroup} testID="buyer-claim-store-qr">
+              <View
+                style={styles.claimQrPlate}
+                accessibilityRole="image"
+                accessibilityLabel={BUYER_CLAIM_COPY.storeScanInstruction}
+              >
+                <GateQr value={storeQrUrl} size={CLAIM_QR_SIZE} />
+              </View>
+              <Text style={styles.claimScanInstruction}>
+                {BUYER_CLAIM_COPY.storeScanInstruction}
+              </Text>
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -657,7 +682,7 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
   return (
     <View style={styles.card} testID="confirm-app-cta">
       <View style={styles.iconWrap}>
-        <Icon name="chat" size={20} color={accent.warm} />
+        <Icon name="chat" size={20} color={color.accent} />
       </View>
       <Text style={styles.title} numberOfLines={2}>
         Join your {noun} chat in the Mingla app
@@ -688,7 +713,7 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
           testID="confirm-app-cta-primary"
           onPress={open}
         >
-          <Icon name="externalLink" size={18} color={textTokens.inverse} />
+          <Icon name="externalLink" size={18} color={color.textStrong} />
           <Text style={styles.primaryBadgeText}>Open in Mingla</Text>
         </Pressable>
       </View>
@@ -739,87 +764,88 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   claimCard: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   claimWaiting: {
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   claimSignIn: {
     fontSize: 14,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   claimEmphasis: {
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   claimUnderButton: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   claimDesktop: {
-    gap: spacing.sm,
-    alignItems: "center",
+    gap: space[3],
+    marginTop: space[2],
+    alignItems: "flex-start",
   },
   claimTextFallback: {
     alignSelf: "stretch",
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
+  // #4420 — every line in the card shares the card's left edge; a centred
+  // status line inside a left-aligned card read as a layout bug.
   claimScanState: {
-    gap: spacing.sm,
-    alignItems: "center",
+    gap: space[2],
+    alignItems: "flex-start",
   },
   claimScanStatus: {
     fontSize: 14,
     lineHeight: 20,
-    textAlign: "center",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   claimQrGroup: {
-    gap: spacing.sm,
-    alignItems: "center",
+    gap: space[2],
+    alignItems: "flex-start",
   },
   claimQrPlate: {
-    width: 220,
-    height: 220,
-    padding: 0,
-    backgroundColor: "#FFFFFF",
+    width: CLAIM_QR_TILE,
+    height: CLAIM_QR_TILE,
+    padding: CLAIM_QR_PADDING,
+    borderRadius: 16,
+    backgroundColor: color.paper,
   },
   claimScanInstruction: {
     fontSize: 14,
     lineHeight: 20,
-    textAlign: "center",
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   claimScanDisclaimer: {
     fontSize: 13,
     lineHeight: 18,
-    textAlign: "center",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   card: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   iconWrap: {
     width: 36,
@@ -827,17 +853,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
   },
   title: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   body: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   badgeRow: {
     alignSelf: "stretch",
@@ -848,10 +874,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
-    backgroundColor: accent.warm,
+    ...checkoutAccentFill(),
   },
   primaryBadgeHovered: {
     opacity: 0.94,
@@ -862,34 +888,34 @@ const styles = StyleSheet.create({
   primaryBadgeFocused: {
     outlineWidth: 2,
     outlineStyle: "solid",
-    outlineColor: accent.warm,
+    outlineColor: color.accent,
     outlineOffset: 2,
   },
   primaryBadgeText: {
-    color: textTokens.inverse,
+    color: checkoutOnAccent(),
     fontWeight: "700",
   },
   claimNoteRow: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   claimNote: {
     fontSize: 13,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   secondaryBadge: {
     minHeight: 44,
     alignSelf: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   secondaryBadgeText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
   },
-});
+}));
 
 export default DownloadMinglaCta;

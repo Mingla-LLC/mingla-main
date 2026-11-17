@@ -5,7 +5,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { canvas } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import ListingInsightsRoute from "../../../../app/insights/[id]";
 
 const LISTING_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -197,7 +197,7 @@ const renderedRouteStyle = (
   expect(routeCanvasOwners.length).toBeGreaterThan(0);
   expect(
     new Set(routeCanvasOwners.map((style) => style.backgroundColor)),
-  ).toEqual(new Set([canvas.discover]));
+  ).toEqual(new Set([color.canvas]));
   const style = routeCanvasOwners[0] ?? {};
   TestRenderer.act(() => {
     tree!.unmount();
@@ -219,7 +219,7 @@ describe("issue #1420 adversarial route-state canvas ownership", () => {
       const style = renderedRouteStyle(overrides);
 
       expect(style?.flex).toBe(1);
-      expect(style?.backgroundColor).toBe(canvas.discover);
+      expect(style?.backgroundColor).toBe(color.canvas);
       expect(style?.backgroundColor).not.toBe("transparent");
       expect(style?.backgroundColor).not.toBe("rgb(242, 242, 242)");
     },

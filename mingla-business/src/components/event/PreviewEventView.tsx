@@ -16,13 +16,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
@@ -77,7 +75,7 @@ const SectionEditPencil: React.FC<{
     hitSlop={8}
     style={styles.sectionEditPencil}
   >
-    <Icon name="edit" size={14} color={textTokens.tertiary} />
+    <Icon name="edit" size={14} color={color.text3} />
   </Pressable>
 );
 
@@ -218,7 +216,7 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
           hitSlop={8}
           style={styles.coverEditPencil}
         >
-          <Icon name="edit" size={14} color="#FFFFFF" />
+          <Icon name="edit" size={14} color={color.textStrong} />
         </Pressable>
       </View>
 
@@ -226,7 +224,7 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
       <View
         style={[
           styles.floatingChrome,
-          { top: insets.top + spacing.sm },
+          { top: insets.top + space[2] },
         ]}
         pointerEvents="box-none"
       >
@@ -257,7 +255,7 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
       {/* Scrollable body */}
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xl * 2 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + space[7] * 2 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.bodyContent}>
@@ -306,7 +304,7 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
                             <Icon
                               name="edit"
                               size={14}
-                              color={textTokens.tertiary}
+                              color={color.text3}
                             />
                           </Pressable>
                         ) : null}
@@ -346,11 +344,11 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
             <View style={styles.venueWrap}>
               <GlassCard
                 variant="base"
-                padding={spacing.md}
+                padding={space[4]}
                 style={styles.venueCard}
               >
                 <View style={styles.venueRow}>
-                  <Icon name="location" size={18} color={accent.warm} />
+                  <Icon name="location" size={18} color={color.text1} />
                   <View style={styles.venueTextCol}>
                     <Text style={styles.venueName}>{draft.venueName}</Text>
                     <Text style={styles.venueAddress}>
@@ -374,11 +372,11 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
             <View style={styles.venueWrap}>
               <GlassCard
                 variant="base"
-                padding={spacing.md}
+                padding={space[4]}
                 style={styles.venueCard}
               >
                 <View style={styles.venueRow}>
-                  <Icon name="globe" size={18} color={accent.warm} />
+                  <Icon name="globe" size={18} color={color.text1} />
                   <View style={styles.venueTextCol}>
                     <Text style={styles.venueName}>Online</Text>
                     <Text style={styles.venueAddress}>
@@ -419,7 +417,7 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
             />
           </View>
           {draft.tickets.length === 0 ? (
-            <GlassCard variant="base" padding={spacing.md}>
+            <GlassCard variant="base" padding={space[4]}>
               <Text style={styles.aboutBody}>
                 Add tickets in Step 5 to see them here.
               </Text>
@@ -454,7 +452,7 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   heroWrap: {
     position: "absolute",
@@ -466,33 +464,33 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.32)",
+    backgroundColor: scrim.modal,
   },
   floatingChrome: {
     position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
+    left: space[4],
+    right: space[4],
     flexDirection: "row",
     justifyContent: "space-between",
     zIndex: 3,
   },
   previewRibbon: {
     position: "absolute",
-    left: spacing.md,
-    paddingHorizontal: spacing.sm,
+    left: space[4],
+    paddingHorizontal: space[2],
     paddingVertical: 4,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     zIndex: 3,
   },
   previewRibbonLabel: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: accent.warm,
+    color: color.text1,
   },
   scroll: {
     flex: 1,
@@ -502,15 +500,15 @@ const styles = StyleSheet.create({
     paddingTop: 280,
   },
   bodyContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: "#0c0e12",
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    backgroundColor: color.canvas,
   },
   titleBlock: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    gap: space[2],
+    marginBottom: space[2],
   },
   titleBlockText: {
     flex: 1,
@@ -519,38 +517,38 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
+    marginTop: space[4],
+    marginBottom: space[2],
   },
   venueWrap: {
     position: "relative",
   },
   sectionEditAnchor: {
     position: "absolute",
-    top: spacing.xs,
-    right: spacing.xs,
+    top: space[1],
+    right: space[1],
   },
   sectionEditPencil: {
     width: 32,
     height: 32,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
   coverEditAnchor: {
     position: "absolute",
-    right: spacing.md,
+    right: space[4],
     zIndex: 4,
   },
   coverEditPencil: {
     width: 32,
     height: 32,
     borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -559,47 +557,47 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
+    color: color.text1,
     marginBottom: 8,
   },
   recurrencePillRow: {
     flexDirection: "row",
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginTop: space[1],
+    marginBottom: space[2],
   },
   recurrencePill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 6,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   recurrencePillLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   expandedDatesList: {
-    marginBottom: spacing.md,
-    gap: spacing.xs,
+    marginBottom: space[4],
+    gap: space[1],
   },
   expandedDateRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   expandedDateText: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
   },
   expandedRowEditBtn: {
     width: 28,
@@ -609,51 +607,51 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   showAllBtn: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     alignItems: "center",
   },
   showAllLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   titleLine: {
     fontSize: 32,
     fontWeight: "700",
     letterSpacing: -0.4,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginBottom: space[2],
   },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
+    gap: space[2],
+    marginBottom: space[6],
   },
   brandTile: {
     width: 28,
     height: 28,
     borderRadius: radiusTokens.sm,
-    backgroundColor: accent.warm,
+    backgroundColor: color.fill.step,
     alignItems: "center",
     justifyContent: "center",
   },
   brandLetter: {
     fontWeight: "700",
     fontSize: 13,
-    color: "#fff",
+    color: color.textStrong,
   },
   brandName: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   venueCard: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   venueRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
   venueTextCol: {
@@ -662,43 +660,43 @@ const styles = StyleSheet.create({
   venueName: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   venueAddress: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 2,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: textTokens.primary,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginTop: space[4],
+    marginBottom: space[2],
   },
   aboutBody: {
     fontSize: 15,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 24,
   },
   ticketsCol: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     overflow: "hidden",
   },
   ticketRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
+    gap: space[2],
   },
   ticketRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   ticketRowDisabled: {
     opacity: 0.5,
@@ -707,56 +705,55 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   ticketName: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   ticketSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   ticketBadgesRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   ticketBuyerBtn: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    marginTop: space[2],
+    paddingHorizontal: space[2],
     paddingVertical: 6,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     alignSelf: "flex-start",
   },
   ticketBuyerBtnDisabled: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   ticketBuyerBtnLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   ticketBuyerBtnLabelDisabled: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   ticketPrice: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   footerNote: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.lg,
+    marginTop: space[6],
     fontStyle: "italic",
   },
 });
 
-void semantic;

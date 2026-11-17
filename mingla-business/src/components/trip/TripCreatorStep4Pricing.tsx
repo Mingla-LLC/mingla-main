@@ -28,12 +28,10 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import {
-  accent,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
@@ -131,8 +129,8 @@ export const TRIP_PRICING_KEEP_BUILDING_TITLE = "You can keep building";
 export const TRIP_PRICING_KEEP_BUILDING_BODY =
   "This trip saves as a draft. You'll need a bank connected before you publish it with a price.";
 
-const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
-const INPUT_BG = "rgba(255, 255, 255, 0.04)";
+const INPUT_BORDER = color.lineStrong;
+const INPUT_BG = color.fill.inset;
 
 let _pkgKeySeq = 0;
 /** Generate a stable client-side list key for a freshly-added package row. */
@@ -223,7 +221,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
             style={styles.packageRemoveBtn}
             testID={`trip-step4-package-remove-${index}`}
           >
-            <Icon name="trash" size={16} color={semantic.error} />
+            <Icon name="trash" size={16} color={color.danger} />
             <Text style={styles.packageRemoveText}>Remove</Text>
           </Pressable>
         ) : null}
@@ -235,7 +233,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
           value={pkg.name}
           onChangeText={(v) => onPatch({ name: v })}
           placeholder="e.g. Standard, VIP, Double occupancy"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           editable={disabled !== true}
           accessibilityLabel={`Package ${index + 1} name`}
           style={styles.textInput}
@@ -265,7 +263,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
                 onPatch({ priceMajor: normalized });
               }}
               placeholder="0.00"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               keyboardType="decimal-pad"
               editable={disabled !== true}
               accessibilityLabel={`Package ${index + 1} price per spot`}
@@ -314,7 +312,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
             });
           }}
           placeholder="e.g. 20"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           keyboardType="number-pad"
           editable={disabled !== true}
           accessibilityLabel={`Package ${index + 1} spots`}
@@ -329,7 +327,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
           value={pkg.description}
           onChangeText={(v) => onPatch({ description: v })}
           placeholder="What's included in this package"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           editable={disabled !== true}
           multiline
           accessibilityLabel={`Package ${index + 1} description`}
@@ -380,9 +378,9 @@ const PackageCard: React.FC<PackageCardProps> = ({
             value={planEnabled}
             onValueChange={handleTogglePlan}
             disabled={disabled === true || planLocked || planSuspended}
-            trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.warm }}
-            thumbColor="#ffffff"
-            ios_backgroundColor="rgba(255,255,255,0.16)"
+            trackColor={{ false: color.fill.step, true: color.accent }}
+            thumbColor={color.paper}
+            ios_backgroundColor={color.fill.step}
             accessibilityLabel={`Package ${index + 1} payment plan switch`}
           />
         </Pressable>
@@ -556,7 +554,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
         <Icon
           name="plus"
           size={18}
-          color={canAdd ? accent.warm : textTokens.tertiary}
+          color={canAdd ? color.accent : color.text3}
         />
         <Text
           style={[
@@ -640,21 +638,21 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingTop: spacing.sm,
+    gap: space[4],
+    paddingTop: space[2],
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   packageCard: {
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: space[4],
+    padding: space[4],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    backgroundColor: color.fill.tableHead,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.line,
   },
   packageHeader: {
     flexDirection: "row",
@@ -663,30 +661,30 @@ const styles = StyleSheet.create({
   },
   packageHeaderTitle: {
     flex: 1,
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   packageRemoveBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     minHeight: 36,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   packageRemoveText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.danger,
   },
   fieldGroup: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   textInput: {
     minHeight: 48,
@@ -697,8 +695,8 @@ const styles = StyleSheet.create({
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   descriptionInput: {
     minHeight: 72,
@@ -708,118 +706,114 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 14,
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    backgroundColor: color.fill.tableHead,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.line,
     justifyContent: "center",
   },
   readonlyValue: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   priceRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   freeHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     fontStyle: "italic",
   },
   footnote: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     fontStyle: "italic",
   },
   // #3645 — informational "keep building" card (neutral glass, not a warning).
   keepBuildingCard: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    gap: spacing.xxs,
+    gap: 2,
   },
   keepBuildingTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   keepBuildingBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight * 1.35,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight * 1.35,
+    color: color.text2,
   },
   lockedHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: accent.warm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.accent,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
+    backgroundColor: color.accentTint,
     borderRadius: radiusTokens.sm,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.32)",
+    borderColor: color.accentLine,
   },
   addPackageBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     minHeight: 48,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235, 120, 37, 0.06)",
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
   },
   addPackageBtnDisabled: {
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tableHead,
   },
   addPackageText: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.accent,
   },
   addPackageTextDisabled: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   // Payment plan section styles (ORCH-0873 lineage).
   paymentPlanSection: {
-    gap: spacing.md,
+    gap: space[4],
   },
   paymentPlanToggleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderColor: color.line,
+    backgroundColor: color.fill.tableHead,
     minHeight: 56,
   },
   paymentPlanToggleLeft: {
     flex: 1,
-    paddingRight: spacing.md,
+    paddingRight: space[4],
   },
   paymentPlanTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   paymentPlanSubtitle: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
 });
-
-// Reference the imported semantic token to keep tree-shaking honest in case
-// of future styling additions.
-void semantic;
 
 export default TripCreatorStep4Pricing;

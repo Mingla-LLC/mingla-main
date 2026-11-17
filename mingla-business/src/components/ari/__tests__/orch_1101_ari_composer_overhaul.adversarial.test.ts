@@ -144,7 +144,8 @@ describe("ORCH-1101 ADV-3 · web paddingBottom short-circuits BEFORE the 80px na
     const expr = screenCode.slice(pbIdx, pbIdx + 500);
     const webBranchPos = expr.indexOf('Platform.OS === "web"');
     const navMathPos = expr.indexOf("BOTTOM_NAV_CLEARANCE_PX");
-    const webResultPos = expr.indexOf("spacing.sm");
+    // [TEST-MOD-APPROVED #4420] spacing.sm → space[2] (same 8pt).
+    const webResultPos = expr.indexOf("space[2]");
     expect(webBranchPos).toBeGreaterThan(-1);
     expect(navMathPos).toBeGreaterThan(-1);
     expect(webResultPos).toBeGreaterThan(-1);
@@ -190,7 +191,8 @@ describe("ORCH-1101 ADV-5 · no send/primary fill is translucent (Android opaque
       inputBarCode.indexOf("sendBtn:"),
       inputBarCode.indexOf("attachBtn:"),
     );
-    expect(sendBtnBlock).toMatch(/backgroundColor:\s*ariPalette\.userBubble/);
+    // [TEST-MOD-APPROVED #4420] the send disc is the opaque Paper token now.
+    expect(sendBtnBlock).toMatch(/backgroundColor:\s*color\.paper/);
     expect(sendBtnBlock).not.toMatch(/backgroundColor:\s*["']?(rgba|hsla)/i);
     // No opacity on the FILL itself (disabled-state opacity lives on a separate
     // style and is fine; the base disc must be solid).
@@ -202,8 +204,10 @@ describe("ORCH-1101 ADV-5 · no send/primary fill is translucent (Android opaque
     // references accent.warm (the dev style-guide brand action color), which
     // must remain a fully-opaque hex — an alpha channel would let the thread
     // bleed through the send disc / user bubble.
-    expect(designSystem).toMatch(/userBubble:\s*accent\.warm/);
-    const m = designSystem.match(/warm:\s*["']([^"']+)["']/);
+    // [TEST-MOD-APPROVED #4420] Graphite Glass: the token now resolves through color.accent → palette.orange[500].
+    expect(designSystem).toMatch(/userBubble:\s*color\.accent\b/);
+    expect(designSystem).toMatch(/accent:\s*palette\.orange\[500\]/);
+    const m = designSystem.match(/orange:\s*\{\s*500:\s*["']([^"']+)["']/);
     expect(m).not.toBeNull();
     expect(m![1]).toBe("#eb7825");
     expect(m![1]).not.toMatch(/hsla|rgba/i);
@@ -219,8 +223,10 @@ describe("ORCH-1101 ADV-6 · Ari thread accent stays on the Mingla brand token [
   // Ari-specific contrast goal. The invariant now guarded is the brand-token
   // linkage, so a stray "tweak" away from the canonical brand color trips here.
   it("userBubble === accent.warm (#eb7825), the canonical Mingla brand action color", () => {
-    expect(designSystem).toMatch(/userBubble:\s*accent\.warm/);
-    expect(designSystem).toMatch(/warm:\s*["']#eb7825["']/);
+    // [TEST-MOD-APPROVED #4420] Graphite Glass: the token now resolves through color.accent → palette.orange[500].
+    expect(designSystem).toMatch(/userBubble:\s*color\.accent\b/);
+    expect(designSystem).toMatch(/accent:\s*palette\.orange\[500\]/);
+    expect(designSystem).toMatch(/orange:\s*\{\s*500:\s*["']#eb7825["']/);
   });
 });
 

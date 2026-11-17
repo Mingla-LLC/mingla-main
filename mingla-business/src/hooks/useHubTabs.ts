@@ -7,7 +7,6 @@ import {
 } from "./useBrandOfferingCounts";
 
 export type HubTabName =
-  | "getstarted"
   | "events"
   | "trips"
   | "experiences"
@@ -89,8 +88,9 @@ export const pickHubInitialTab = (
   visibleTabs: readonly HubTabName[],
 ): HubTabName | null => {
   if (visibleTabs.length === 0) return null;
+  // #4420 — a stored "getstarted" (the route ORCH-1038 retired and #4420
+  // deleted) is no longer a tab: it falls through to Events like any stale value.
   if (
-    storedTab === "getstarted" ||
     storedTab === "events" ||
     storedTab === "trips" ||
     storedTab === "experiences" ||

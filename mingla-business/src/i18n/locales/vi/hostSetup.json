@@ -171,6 +171,10 @@
       "readyBank": "Tài khoản ngân hàng tại {{country}}",
       "readyBankAny": "Tài khoản ngân hàng tại quốc gia của bạn",
       "readyTax": "Mã số thuế (chỉ công ty đã đăng ký)"
+    },
+    "stepper": {
+      "saved": "Đã lưu",
+      "steps": "Các bước"
     }
   },
   "doorMode": {

@@ -104,7 +104,8 @@ export function buildTripOfferingData(
       ? isSoldOut
         ? `Sold out · ${capacity} of ${capacity} booked`
         : seatsLeft !== null
-          ? `${seatsLeft} seats left · ${capacity} max`
+          ? // issue #4420 audit — "1 seat left", never "1 seats left".
+            `${seatsLeft} ${seatsLeft === 1 ? "seat" : "seats"} left · ${capacity} max`
           : `${capacity} max`
       : null;
 

@@ -4,14 +4,15 @@
  * Shared sticky action bar shown only while selection mode is active. Floats as
  * a radius.full capsule above the floating BottomNav (DESIGN §2.2/§9.2):
  *   bottom = bottomInset + 64 (NAV_HEIGHT) + 8 (gap) + 8 (nav paddingTop) = +80
- * Left Cancel (secondary), right Delete (N) in brand WARM — NOT red (red is
- * reserved for the irreversible ConfirmDialog confirm; two-tier escalation,
+ * Left Cancel (secondary), right Delete (N) as the paper primary — NOT red (red
+ * is reserved for the irreversible ConfirmDialog confirm; two-tier escalation,
  * DESIGN §4.3). Delete disabled-but-present at count===0 (DESIGN §4.5).
  *
- * Android opaque-glass policy (ANDROID_GLASS_USES_OPAQUE_FALLBACK): opaque
- * #16181b fill, overflow:'hidden', no Android shadow/elevation (DESIGN §7).
- * The iOS shadow lives on the OUTER (non-clipped) wrapper so overflow:'hidden'
- * on the capsule doesn't clip it.
+ * #4420 — the capsule surface is `<Material kind="chrome">`, the one glass
+ * owner: iOS blur, Android / Reduce Transparency / phone web solid (the
+ * ANDROID_GLASS_USES_OPAQUE_FALLBACK policy now lives in Material). No Android
+ * shadow/elevation. The iOS shadow lives on the OUTER (non-clipped) wrapper so
+ * overflow:'hidden' on the capsule doesn't clip it.
  */
 
 import React, { useEffect, useRef } from "react";
@@ -23,28 +24,22 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
-import { BlurView } from "expo-blur";
 import { useReducedMotion } from "react-native-reanimated";
 
 import {
-  accent,
-  blurIntensity as blurIntensityTokens,
   durations,
-  glass,
   radius as radiusTokens,
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  shadow,
 } from "../../constants/designSystem";
-import { shouldUseRealBlur } from "../../utils/glassBlur";
+import { Material } from "../ui/Material";
 
 const NAV_HEIGHT = 64; // floating BottomNav capsule height (app/(tabs)/_layout.tsx)
 const BAR_TRANSLATE = 24;
-const ANDROID_OPAQUE_FILL = "#16181b"; // canonical Android opaque-glass value
 
 export interface DraftSelectBarProps {
   count: number; // selected count → "Delete (N)"
@@ -61,7 +56,6 @@ export const DraftSelectBar: React.FC<DraftSelectBarProps> = ({
   onDelete,
   bottomInset,
 }) => {
-  const { width } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -75,10 +69,9 @@ export const DraftSelectBar: React.FC<DraftSelectBarProps> = ({
   }, [anim, reducedMotion]);
 
   const deleteDisabled = count === 0 || deleting;
-  const blurOk = shouldUseRealBlur(width);
 
   // clear floating BottomNav (NAV_HEIGHT 64) + 8 gap above + 8 nav paddingTop
-  const bottom = bottomInset + NAV_HEIGHT + spacing.sm + spacing.sm;
+  const bottom = bottomInset + NAV_HEIGHT + space[2] + space[2];
 
   const translateY = reducedMotion
     ? 0
@@ -92,47 +85,18 @@ export const DraftSelectBar: React.FC<DraftSelectBarProps> = ({
       style={[
         styles.wrap,
         { bottom },
-        Platform.OS === "ios" ? shadows.glassChrome : null,
+        Platform.OS === "ios" ? shadow.liquid : null,
         { opacity: anim, transform: [{ translateY }] },
       ]}
       pointerEvents="box-none"
     >
       <View testID="draft-select-bar" style={styles.capsule}>
-        {/* L1 — fill: iOS translucent over blur, Android/mobile-web opaque */}
-        {Platform.OS === "ios" && blurOk ? (
-          <>
-            <BlurView
-              intensity={blurIntensityTokens.chrome}
-              tint="dark"
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: "rgba(12, 14, 18, 0.72)" },
-              ]}
-            />
-          </>
-        ) : (
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: ANDROID_OPAQUE_FILL },
-            ]}
-          />
-        )}
-
-        {/* L2 — hairline border */}
-        <View
+        {/* L1 — the chrome material (blur on iOS, solid elsewhere) + its rim. */}
+        <Material
+          kind="chrome"
+          radius={radiusTokens.full}
           pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              borderRadius: radiusTokens.full,
-              borderWidth: 1,
-              borderColor: glass.border.chrome,
-            },
-          ]}
+          style={StyleSheet.absoluteFill}
         />
 
         {/* Cancel (left) */}
@@ -171,7 +135,7 @@ export const DraftSelectBar: React.FC<DraftSelectBarProps> = ({
           ]}
         >
           {deleting ? (
-            <ActivityIndicator color="#ffffff" size="small" />
+            <ActivityIndicator color={color.ink} size="small" />
           ) : (
             <Text
               numberOfLines={1}
@@ -194,8 +158,8 @@ export const DraftSelectBar: React.FC<DraftSelectBarProps> = ({
 const styles = StyleSheet.create({
   wrap: {
     position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
+    left: space[4],
+    right: space[4],
   },
   capsule: {
     height: 56,
@@ -203,8 +167,8 @@ const styles = StyleSheet.create({
     overflow: "hidden", // REQUIRED for Android opaque clip (DESIGN §7)
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    gap: space[2],
   },
   spacer: {
     flex: 1,
@@ -214,48 +178,49 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     backgroundColor: "transparent",
   },
   cancelBtnPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
   cancelLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-    color: textTokens.secondary,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
+    letterSpacing: type.btnSm.letterSpacing,
+    color: color.text2,
   },
+  // #4420 — the paper primary; orange is not a button fill.
   deleteBtn: {
     minHeight: 40,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   deleteBtnPressed: {
-    backgroundColor: "#d96c1f",
+    backgroundColor: color.paperPressed,
   },
   deleteBtnDisabled: {
-    backgroundColor: "rgba(235, 120, 37, 0.32)",
+    backgroundColor: color.fill.tile,
   },
   btnDisabled: {
     opacity: 0.6,
   },
   deleteLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-    color: "#ffffff",
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
+    letterSpacing: type.btnSm.letterSpacing,
+    color: color.ink,
   },
   deleteLabelDisabled: {
-    color: "rgba(255, 255, 255, 0.5)",
+    color: color.text3,
   },
 });
 

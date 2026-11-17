@@ -2,13 +2,10 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { ContactImportCounts } from "../../services/contactImportService";
 import {
-  canvas,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  space,
+  color,
+  type,
 } from "../../constants/designSystem";
 const items: [keyof ContactImportCounts, string][] = [
   ["addedCount", "Added"],
@@ -53,30 +50,30 @@ export function ContactImportOutcomeGrid({
   );
 }
 const s = StyleSheet.create({
-  host: { gap: spacing.sm },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  host: { gap: space[2] },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   tile: {
     minWidth: 140,
     flexGrow: 1,
     flexBasis: "30%",
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  value: { ...typography.statValue, color: text.primary },
-  label: { ...typography.bodySm, color: text.secondary, fontWeight: "600" },
-  helper: { ...typography.bodySm, color: text.tertiary },
+  value: { ...type.stat, color: color.text1 },
+  label: { ...type.small, color: color.text2, fontWeight: "600" },
+  helper: { ...type.small, color: color.text3 },
   suppression: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: semantic.info,
-    backgroundColor: canvas.depth,
-    gap: spacing.xs,
+    borderColor: color.info,
+    backgroundColor: color.canvas,
+    gap: space[1],
   },
-  cardTitle: { ...typography.h3, color: text.primary },
-  overlap: { ...typography.labelCap, color: semantic.info },
-  body: { ...typography.bodySm, color: text.secondary },
+  cardTitle: { ...type.h1, color: color.text1 },
+  overlap: { ...type.label, color: color.info },
+  body: { ...type.small, color: color.text2 },
 });

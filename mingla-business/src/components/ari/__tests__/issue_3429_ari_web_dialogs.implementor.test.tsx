@@ -25,6 +25,9 @@ import React from "react";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const alertSpy = jest.fn();
+// [TEST-MOD-APPROVED #4420] ConversationDrawer shows the Ari orb (not a sparkle)
+// while Ari names a chat; the orb pulls in reanimated, so stub it like the others.
+jest.mock("../AriOrb", () => ({ AriOrb: () => null }));
 jest.mock("react-native", () => {
   const base = jest.requireActual("react-native");
   return { ...base, Alert: { alert: alertSpy, prompt: jest.fn() } };

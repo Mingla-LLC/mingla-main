@@ -225,7 +225,8 @@ const tabLabels = (tree: Renderer): string[] =>
   tree.root
     .findAll(
       (node) =>
-        node.props.accessibilityRole === "button" &&
+        // #4420 wave 2 — the strip is GlassTabs: each tab is role=tab.
+        node.props.accessibilityRole === "tab" &&
         typeof node.props.accessibilityState === "object" &&
         node.props.accessibilityState !== null &&
         "selected" in (node.props.accessibilityState as object) &&

@@ -21,13 +21,10 @@ import React, { useCallback, useMemo as useThemeMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { eventPublicUrl } from "../../constants/publicUrls";
 import {
@@ -123,7 +120,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   // Cycle 5 — aggregated event-level ticket-modifier badges.
   const ticketBadges = formatEventLevelTicketBadges(draft.tickets);
 
-  // #1022 A/F-12 — this preview was THEME-BLIND: it painted accent.warm
+  // #1022 A/F-12 — this preview was THEME-BLIND: it painted color.accent
   // unconditionally, so the review row would have advertised a theme beside a
   // preview that could not show it. Route the mini-card through the SAME call
   // PublicEventPage makes: resolveTheme(brandTheme, override) -> palette.
@@ -272,7 +269,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
         accessibilityLabel="Preview public page"
         style={styles.previewLinkBtn}
       >
-        <Icon name="eye" size={16} color={accent.warm} />
+        <Icon name="eye" size={16} color={color.text1} />
         <Text style={styles.previewLinkLabel}>Preview public page</Text>
       </Pressable>
     </View>
@@ -298,9 +295,9 @@ const ReadyCard: React.FC<ReadyCardProps> = ({
       : null;
 
   return (
-    <GlassCard variant="base" padding={spacing.md}>
+    <GlassCard variant="base" padding={space[4]}>
       <View style={styles.statusRow}>
-        <Icon name="check" size={20} color={semantic.success} />
+        <Icon name="check" size={20} color={color.success} />
         <View style={styles.statusTextCol}>
           <Text style={styles.statusTitle}>
             {isFreeOnly ? "Ready to publish (free event)" : "Ready to publish"}
@@ -321,9 +318,9 @@ interface ErrorsBlockedCardProps {
 }
 
 const ErrorsBlockedCard: React.FC<ErrorsBlockedCardProps> = ({ count }) => (
-  <GlassCard variant="base" padding={spacing.md} style={styles.warnCard}>
+  <GlassCard variant="base" padding={space[4]} style={styles.warnCard}>
     <View style={styles.statusRow}>
-      <Icon name="flag" size={20} color={accent.warm} />
+      <Icon name="flag" size={20} color={color.text1} />
       <View style={styles.statusTextCol}>
         <Text style={styles.statusTitle}>
           {count === 1 ? "1 thing to fix" : `${count} things to fix`}
@@ -343,14 +340,14 @@ const styles = StyleSheet.create({
     // Colours for the card and everything inside it are applied inline from
     // themedPreviewCardColors — the card sits on the THEMED surface.
     borderWidth: 1,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   miniCover: {
     height: 140,
     width: "100%",
   },
   miniBody: {
-    padding: spacing.md,
+    padding: space[4],
   },
   miniDate: {
     fontSize: 11,
@@ -365,72 +362,72 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   miniVenue: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     marginTop: 2,
   },
   recurrencePillRow: {
     flexDirection: "row",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   ticketBadgesRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   recurrencePill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
     borderRadius: 999,
     overflow: "hidden",
     borderWidth: 1,
   },
   recurrencePillLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
   },
   statusCardWrap: {
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   previewLinkBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    gap: space[1],
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   previewLinkLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   statusTextCol: {
     flex: 1,
   },
   statusTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   statusSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 2,
-    lineHeight: typography.caption.lineHeight * 1.4,
+    lineHeight: type.caption.lineHeight * 1.4,
   },
   warnCard: {
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     borderWidth: 1,
   },
 });

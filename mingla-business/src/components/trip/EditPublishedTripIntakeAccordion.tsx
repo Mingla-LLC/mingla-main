@@ -25,7 +25,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -35,13 +34,11 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  shadow,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -278,7 +275,7 @@ export const EditPublishedTripIntakeAccordion: React.FC<
                   <Icon
                     name="plus"
                     size={14}
-                    color={accent.warm}
+                    color={color.accent}
                     strokeWidth={2.5}
                   />
                   <Text style={styles.tabAddLabel}>
@@ -326,7 +323,7 @@ export const EditPublishedTripIntakeAccordion: React.FC<
         ]}
       >
         <View style={[styles.pane, isWide ? styles.paneHalf : styles.paneFull]}>
-          <GlassCard variant="base" padding={spacing.md} radius="lg">
+          <GlassCard variant="base" padding={space[4]} radius="lg">
             <IntakeSchemaBuilder
               schema={activeSchema}
               activeTicketTypeId={activeTicketTypeId ?? ""}
@@ -346,7 +343,7 @@ export const EditPublishedTripIntakeAccordion: React.FC<
           </GlassCard>
         </View>
         <View style={[styles.pane, isWide ? styles.paneHalf : styles.paneFull]}>
-          <GlassCard variant="base" padding={spacing.md} radius="lg">
+          <GlassCard variant="base" padding={space[4]} radius="lg">
             <IntakeQuestionPreview
               schema={activeSchema}
               activeTierName={activeTier?.tierName ?? "All travelers"}
@@ -359,7 +356,7 @@ export const EditPublishedTripIntakeAccordion: React.FC<
       {affectedTravelerCount > 0 ? (
         <GlassCard
           variant="base"
-          padding={spacing.md}
+          padding={space[4]}
           radius="lg"
           style={styles.warningBanner}
         >
@@ -367,7 +364,7 @@ export const EditPublishedTripIntakeAccordion: React.FC<
             <Icon
               name="bell"
               size={20}
-              color={semantic.warning}
+              color={color.warning}
               strokeWidth={2}
             />
             <Text style={styles.warningText}>
@@ -386,7 +383,7 @@ export const EditPublishedTripIntakeAccordion: React.FC<
       {reasonDialogVisible ? (
         <GlassCard
           variant="base"
-          padding={spacing.md}
+          padding={space[4]}
           radius="lg"
           style={styles.reasonBanner}
         >
@@ -401,7 +398,7 @@ export const EditPublishedTripIntakeAccordion: React.FC<
             value={reason}
             onChangeText={(t) => setReason(t.slice(0, REASON_MAX))}
             placeholder="e.g., Added passport scan requirement for new visa policy."
-            placeholderTextColor={textTokens.quaternary}
+            placeholderTextColor={color.text4}
             maxLength={REASON_MAX}
             multiline
             numberOfLines={3}
@@ -476,91 +473,86 @@ export const EditPublishedTripIntakeAccordion: React.FC<
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.md,
+    gap: space[4],
   },
   emptyTiersWrap: {
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[7],
+    paddingHorizontal: space[4],
     alignItems: "center",
   },
   emptyTiersText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
   singleTierLabelWrap: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   singleTierLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text3,
   },
   tabRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   tabWithUnderline: {
     alignItems: "stretch",
   },
   tab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     minHeight: 36,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xxs,
+    gap: 2,
   },
   tabActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
-    shadowColor: "#eb7825",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    // META-ORCH-1002 Sub-1 (S5): zero the Android elevation so no hard rectangular
-    // shadow draws under the rounded pill (mirrors androidSafeElevation). iOS glow kept.
-    elevation: Platform.select({ ios: 8, android: 0, default: 8 }),
+    backgroundColor: color.accentLine,
+    borderColor: color.accentLine,
+    // #4420 — the orange glow is retired (shadow tokens only); Android stays 0.
+    ...shadow.none,
   },
   tabAdd: {
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     backgroundColor: "transparent",
   },
   tabPressed: {
     opacity: 0.8,
   },
   tabLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   tabLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   tabAddLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: accent.warm,
+    color: color.accent,
   },
   tabUnderline: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     height: 2,
     width: "100%",
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     borderRadius: 1,
   },
   body: {
-    gap: spacing.md,
+    gap: space[4],
   },
   bodyWide: {
     flexDirection: "row",
@@ -577,80 +569,80 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   warningBanner: {
-    borderColor: semantic.warning,
+    borderColor: color.warning,
     borderWidth: 1,
-    backgroundColor: semantic.warningTint,
-    marginTop: spacing.sm,
+    backgroundColor: color.warningTint,
+    marginTop: space[2],
   },
   warningRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   warningText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   saveWrap: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   reasonBanner: {
-    marginTop: spacing.sm,
-    borderColor: accent.border,
+    marginTop: space[2],
+    borderColor: color.accentLine,
     borderWidth: 1,
   },
   reasonTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
+    marginBottom: space[1],
   },
   reasonDescription: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginBottom: space[4],
   },
   reasonLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   reasonInput: {
     minHeight: 80,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingVertical: 10,
     borderRadius: radius.sm,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   reasonCounter: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "right",
     marginTop: 2,
   },
   reasonError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
   },
   reasonButtons: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   reasonCancelCell: {
     flex: 1,
@@ -663,8 +655,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingTop: space[4],
+    paddingHorizontal: space[4],
     zIndex: 100,
   },
 });

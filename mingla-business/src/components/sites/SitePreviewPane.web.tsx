@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { radius, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 import type { SitePreviewPaneProps } from "./SitePreviewPane";
 import { previewUrlForFrame } from "../../sites/previewFrame";
 
@@ -22,7 +27,7 @@ export function SitePreviewPane({ url, title = "Website draft preview", height =
         src: previewUrlForFrame(url, typeof window === "undefined" ? null : window.location.origin),
         title,
         onLoad: () => setLoaded(true),
-        style: { border: 0, width: "100%", flex: 1, background: "#ffffff" },
+        style: { border: 0, width: "100%", flex: 1, background: color.paper },
         referrerPolicy: "no-referrer",
         sandbox: "allow-scripts allow-same-origin allow-forms",
       })}
@@ -31,6 +36,6 @@ export function SitePreviewPane({ url, title = "Website draft preview", height =
 }
 
 const styles = StyleSheet.create({
-  frame: { borderRadius: radius.md, overflow: "hidden", borderWidth: 1, borderColor: textTokens.quaternary, gap: spacing.xs },
-  caption: { ...typography.caption, color: textTokens.tertiary, paddingHorizontal: spacing.sm, paddingTop: spacing.xs },
+  frame: { borderRadius: radius.sm, overflow: "hidden", borderWidth: 1, borderColor: color.text4, gap: space[1] },
+  caption: { ...type.caption, color: color.text3, paddingHorizontal: space[2], paddingTop: space[1] },
 });

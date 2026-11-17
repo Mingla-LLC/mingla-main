@@ -37,12 +37,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
-import {
-  glass,
-  radius,
-  shadows,
-  spacing,
-} from "../../../constants/designSystem";
+import { color, radius, shadow, space } from "../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 
 export interface ComposerCanvasProps {
@@ -244,8 +239,8 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     flexDirection: "row",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: space[4],
+    padding: space[4],
     minHeight: 0, // RN flex-row requires explicit min-height: 0 so children can shrink
   },
   /**
@@ -259,31 +254,31 @@ const styles = StyleSheet.create({
    * the issue exists to end.
    */
   editorPane: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radius.lg,
     overflow: "hidden",
     minWidth: 0,
-    ...shadows.glassCardBase,
+    ...shadow.pane,
   },
   drawerPane: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     borderRadius: radius.lg,
     overflow: "hidden",
     flexShrink: 0,
-    ...shadows.glassCardElevated,
+    ...shadow.menu,
   },
   previewPane: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radius.lg,
     overflow: "hidden",
     minWidth: 0,
-    ...shadows.glassCardBase,
+    ...shadow.pane,
   },
 });
 

@@ -12,7 +12,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Platform,
@@ -24,12 +23,13 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { accent, radius, spacing } from "../../constants/designSystem";
+import { color, radius, size, space } from "../../constants/designSystem";
 import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import {
@@ -65,6 +65,7 @@ import { BrandGroupFileUploadSheet } from "../messages/BrandGroupFileUploadSheet
 import type { BrandGroupPickedFile } from "../messages/brandGroupFilePickerShared";
 import type { ViewerRequest } from "../media/MediaViewer";
 import { Icon } from "../ui/Icon";
+import { Material } from "../ui/Material";
 import { SafeScreen } from "../ui/SafeScreen";
 import { Toast } from "../ui/Toast";
 import { PersonAvatar, TeamAccessGate, TeamAvatar } from "./TeamCommon";
@@ -156,7 +157,7 @@ function TeamImage({ userId, attachment, style }: { userId: string; attachment: 
   });
   return (
     <View style={[styles.imageBox, style]}>
-      {signed.data ? <Image source={{ uri: signed.data }} style={styles.imageFill} resizeMode="cover" accessibilityIgnoresInvertColors /> : signed.isError ? <Icon name="flag" size={18} color={brandGroupChat.textMuted} /> : <ActivityIndicator color={accent.warm} />}
+      {signed.data ? <Image source={{ uri: signed.data }} style={styles.imageFill} resizeMode="cover" accessibilityIgnoresInvertColors /> : signed.isError ? <Icon name="flag" size={18} color={brandGroupChat.textMuted} /> : <ActivityIndicator color={color.text2} />}
     </View>
   );
 }
@@ -337,7 +338,7 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
       if (typeof window !== "undefined" && window.confirm(t("team.delete_confirm"))) go();
       return;
     }
-    Alert.alert(t("team.delete"), t("team.delete_confirm"), [
+    showAlert(t("team.delete"), t("team.delete_confirm"), [
       { text: t("team.cancel"), style: "cancel" },
       { text: t("team.delete"), style: "destructive", onPress: go },
     ]);
@@ -434,7 +435,7 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
 
       <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED} style={styles.flex}>
         {query.isPending ? (
-          <View style={styles.state}><ActivityIndicator color={accent.warm} accessibilityLabel={t("team.loading")} /></View>
+          <View style={styles.state}><ActivityIndicator color={color.text2} accessibilityLabel={t("team.loading")} /></View>
         ) : (
           <ScrollView
             ref={scrollRef}
@@ -446,7 +447,7 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
           >
             {query.hasNextPage ? (
               <Pressable accessibilityRole="button" accessibilityLabel={t("team.load_earlier")} onPress={() => void query.fetchNextPage()} style={[styles.chip, styles.center]}>
-                {query.isFetchingNextPage ? <ActivityIndicator color={accent.warm} /> : <Text style={styles.chipText}>{t("team.load_earlier")}</Text>}
+                {query.isFetchingNextPage ? <ActivityIndicator color={color.text2} /> : <Text style={styles.chipText}>{t("team.load_earlier")}</Text>}
               </Pressable>
             ) : null}
             {messages.length === 0 ? <View style={styles.state}><Text style={styles.stateText}>{t("team.empty_thread")}</Text></View> : null}
@@ -470,7 +471,7 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
           </ScrollView>
         )}
 
-        <View style={[styles.composer, { paddingBottom: liftedBottomSpacer(keyboardHeight > 0, Math.max(insets.bottom, spacing.sm)) }]}>
+        <View style={[styles.composer, { paddingBottom: liftedBottomSpacer(keyboardHeight > 0, Math.max(insets.bottom, space[2])) }]}>
           {replyTo || editing ? (
             <View style={styles.contextBar}>
               <View style={styles.contextAccent} />
@@ -531,7 +532,11 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
               ))}
             </View>
           ) : null}
+          {/* #4420 round 3 (6, 24): the floating composer. No bar behind it; attach
+              and link sit inside the field; send is an icon-only Paper circle,
+              dimmed until there is something to send. Every capability stays. */}
           <View style={styles.composerLine}>
+            <Material kind="sheet" radius={radius.xl} style={styles.field}>
             <Pressable accessibilityRole="button" accessibilityLabel={t("team.attach_title")} disabled={Boolean(editing)} onPress={() => setPickerOpen(true)} hitSlop={4} style={[styles.attach, editing && styles.disabled]} testID="team-attach">
               <Icon name="plus" size={20} color={brandGroupChat.textSecondary} />
             </Pressable>
@@ -549,16 +554,17 @@ function TeamThread({ userId, threadId }: { userId: string; threadId: string | n
               accessibilityLabel={t("team.message")}
               testID="team-composer"
             />
+            </Material>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={editing ? t("team.save") : t("team.send")}
               accessibilityState={{ disabled: !canSend, busy: sending }}
               disabled={!canSend}
               onPress={() => void send()}
-              style={[styles.send, !canSend && styles.disabled]}
+              style={[styles.send, !canSend && styles.sendIdle]}
               testID="team-send"
             >
-              {sending ? <ActivityIndicator size="small" color={brandGroupChat.mineText} /> : <Icon name={editing ? "check" : "send"} size={17} color={brandGroupChat.mineText} />}
+              {sending ? <ActivityIndicator size="small" color={color.ink} /> : <Icon name={editing ? "check" : "send"} size={20} color={canSend ? color.ink : color.text4} />}
             </Pressable>
           </View>
         </View>
@@ -749,75 +755,77 @@ const styles = StyleSheet.create({
   center: { alignSelf: "center" },
   pressed: { opacity: 0.7 },
   disabled: { opacity: 0.4 },
-  danger: { color: "#ff6b6b" },
-  header: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  danger: { color: color.errorText },
+  header: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
   headerCopy: { flex: 1, minWidth: 0 },
   title: { color: brandGroupChat.textPrimary, fontSize: 16, fontWeight: "700" },
   subtitle: { color: brandGroupChat.textSoft, fontSize: 12 },
   iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  state: { padding: spacing.lg, alignItems: "center", gap: spacing.md },
+  state: { padding: space[6], alignItems: "center", gap: space[4] },
   stateText: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
-  chip: { minHeight: 34, paddingHorizontal: spacing.md, borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised, alignItems: "center", justifyContent: "center" },
+  chip: { minHeight: 34, paddingHorizontal: space[4], borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised, alignItems: "center", justifyContent: "center" },
   chipText: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "600" },
-  messages: { padding: spacing.md, gap: spacing.md },
-  row: { flexDirection: "row", gap: spacing.sm },
+  messages: { padding: space[4], gap: space[4] },
+  row: { flexDirection: "row", gap: space[2] },
   rowBody: { flex: 1, minWidth: 0, gap: 4 },
-  who: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
+  who: { flexDirection: "row", alignItems: "baseline", gap: space[2] },
   whoName: { color: brandGroupChat.senderName, fontSize: 13, fontWeight: "700" },
   whoTime: { color: brandGroupChat.textMuted, fontSize: 11 },
   body: { color: brandGroupChat.textPrimary, fontSize: 15, lineHeight: 21 },
   mention: { color: brandGroupChat.mentionText, backgroundColor: brandGroupChat.mentionBg, fontWeight: "600" },
   deleted: { color: brandGroupChat.textMuted, fontSize: 14, fontStyle: "italic" },
-  quote: { borderLeftWidth: 3, borderLeftColor: brandGroupChat.quoteBar, backgroundColor: brandGroupChat.quoteBg, borderRadius: 6, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  quote: { borderLeftWidth: 3, borderLeftColor: brandGroupChat.quoteBar, backgroundColor: brandGroupChat.quoteBg, borderRadius: 6, paddingHorizontal: space[2], paddingVertical: 4 },
   quoteText: { color: brandGroupChat.textSoft, fontSize: 12 },
-  imageGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  imageGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   imageBox: { borderRadius: radius.md, overflow: "hidden", backgroundColor: brandGroupChat.surfaceRaised, alignItems: "center", justifyContent: "center" },
   imageFill: { width: "100%", height: "100%" },
   imageOne: { width: 220, height: 160 },
   imageMany: { width: 120, height: 96 },
-  attTile: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, maxWidth: 320 },
-  attIcon: { width: 38, height: 38, borderRadius: radius.sm, backgroundColor: "rgba(255, 107, 107, 0.16)", alignItems: "center", justifyContent: "center" },
-  attIconLink: { backgroundColor: "rgba(47, 111, 214, 0.22)" },
+  attTile: { flexDirection: "row", alignItems: "center", gap: space[2], padding: space[2], borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, maxWidth: 320 },
+  attIcon: { width: 38, height: 38, borderRadius: radius.sm, backgroundColor: color.errorTint, alignItems: "center", justifyContent: "center" },
+  attIconLink: { backgroundColor: color.infoTint },
   attIconText: { color: brandGroupChat.textPrimary, fontSize: 11, fontWeight: "800" },
   attName: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "600" },
   attMeta: { color: brandGroupChat.textSoft, fontSize: 11, maxWidth: 220 },
-  acts: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  acts: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
   act: { minHeight: 24, justifyContent: "center" },
   actText: { color: brandGroupChat.textMuted, fontSize: 12, fontWeight: "600" },
   reaction: { minHeight: 24, paddingHorizontal: 8, borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, justifyContent: "center" },
-  reactionMine: { borderColor: accent.warm, backgroundColor: brandGroupChat.accentSoft },
+  reactionMine: { borderColor: color.lineStrong, backgroundColor: brandGroupChat.accentSoft },
   reactionText: { color: brandGroupChat.textPrimary, fontSize: 12 },
-  quickReactions: { flexDirection: "row", gap: spacing.xs, padding: 4, borderRadius: radius.full, backgroundColor: brandGroupChat.surfaceRaised, alignSelf: "flex-start" },
+  quickReactions: { flexDirection: "row", gap: space[1], padding: 4, borderRadius: radius.full, backgroundColor: brandGroupChat.surfaceRaised, alignSelf: "flex-start" },
   quickReaction: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
   quickReactionText: { fontSize: 18 },
-  composer: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.screenBg },
-  contextBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: brandGroupChat.surface },
-  contextAccent: { width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: accent.warm },
+  composer: { paddingHorizontal: space[4], paddingTop: space[2], gap: space[2] },
+  contextBar: { flexDirection: "row", alignItems: "center", gap: space[2], padding: space[2], borderRadius: radius.md, backgroundColor: brandGroupChat.surface },
+  contextAccent: { width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: color.paper },
   contextTitle: { color: brandGroupChat.textPrimary, fontSize: 12, fontWeight: "700" },
   contextText: { color: brandGroupChat.textSoft, fontSize: 12 },
-  tray: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  tray: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   trayChip: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: 220, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.sm, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
-  trayChipFailed: { borderColor: "#ff6b6b" },
+  trayChipFailed: { borderColor: color.errorText },
   trayThumb: { width: 24, height: 24, borderRadius: 4 },
   trayType: { color: brandGroupChat.textPrimary, fontSize: 10, fontWeight: "800" },
   trayName: { flexShrink: 1, color: brandGroupChat.textSecondary, fontSize: 12 },
   trayMeta: { color: brandGroupChat.textMuted, fontSize: 11 },
-  trayRetry: { color: accent.warm, fontSize: 12, fontWeight: "700" },
-  trayError: { color: "#ff9b9b", fontSize: 12 },
-  linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  linkInput: { flex: 1, minHeight: 38, borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, color: brandGroupChat.textPrimary, paddingHorizontal: spacing.sm, fontSize: 14 },
+  trayRetry: { color: color.text1, fontSize: 12, fontWeight: "700" },
+  trayError: { color: color.errorText, fontSize: 12 },
+  linkRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  linkInput: { flex: 1, minHeight: 38, borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, color: brandGroupChat.textPrimary, paddingHorizontal: space[2], fontSize: 14 },
   suggestions: { borderRadius: radius.md, backgroundColor: brandGroupChat.surfaceRaised, paddingVertical: 4 },
-  suggestion: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm, minHeight: 40 },
+  suggestion: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[2], minHeight: 40 },
   suggestionText: { color: brandGroupChat.textPrimary, fontSize: 14 },
   everyoneMark: { width: 26, height: 26, borderRadius: 13, backgroundColor: brandGroupChat.mentionBg, alignItems: "center", justifyContent: "center" },
-  composerLine: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs },
-  attach: { width: 36, height: 40, alignItems: "center", justifyContent: "center" },
-  input: { flex: 1, minHeight: 40, maxHeight: 140, borderRadius: brandGroupChat.composerRadius, backgroundColor: brandGroupChat.surface, color: brandGroupChat.textPrimary, paddingHorizontal: spacing.md, paddingTop: 10, paddingBottom: 10, fontSize: 15 },
-  send: { width: 40, height: 40, borderRadius: 20, backgroundColor: accent.warm, alignItems: "center", justifyContent: "center" },
-  overlay: { flex: 1, backgroundColor: brandGroupChat.scrim, justifyContent: "flex-end", padding: spacing.md },
-  sheet: { borderRadius: radius.xl, backgroundColor: brandGroupChat.surface, padding: spacing.md, gap: spacing.xs, width: "100%", maxWidth: 560, alignSelf: "center" },
-  sheetTitle: { color: brandGroupChat.textPrimary, fontSize: 16, fontWeight: "700", paddingBottom: spacing.xs },
-  sheetButton: { minHeight: 48, justifyContent: "center", paddingVertical: spacing.xs },
+  composerLine: { flexDirection: "row", alignItems: "flex-end", gap: space[2] },
+  field: { flex: 1, minHeight: size.btn.phone, flexDirection: "row", alignItems: "flex-end", paddingLeft: space[1] },
+  attach: { width: 36, height: size.btn.phone, alignItems: "center", justifyContent: "center" },
+  input: { flex: 1, minHeight: size.btn.phone, maxHeight: 140, color: color.text1, paddingHorizontal: space[2], paddingTop: 14, paddingBottom: 14, fontSize: 15 },
+  send: { width: size.btn.phone, height: size.btn.phone, borderRadius: radius.full, backgroundColor: color.paper, alignItems: "center", justifyContent: "center" },
+  sendIdle: { backgroundColor: color.card2 },
+  overlay: { flex: 1, backgroundColor: brandGroupChat.scrim, justifyContent: "flex-end", padding: space[4] },
+  sheet: { borderRadius: radius.xl, backgroundColor: brandGroupChat.surface, padding: space[4], gap: space[1], width: "100%", maxWidth: 560, alignSelf: "center" },
+  sheetTitle: { color: brandGroupChat.textPrimary, fontSize: 16, fontWeight: "700", paddingBottom: space[1] },
+  sheetButton: { minHeight: 48, justifyContent: "center", paddingVertical: space[1] },
   sheetButtonText: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "600" },
   sheetHint: { color: brandGroupChat.textSoft, fontSize: 12 },
   toastWrap: { position: "absolute", top: 80, left: 0, right: 0, zIndex: 100, elevation: 12 },

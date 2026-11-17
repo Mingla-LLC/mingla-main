@@ -6,7 +6,9 @@
 import React from "react";
 import { Platform } from "react-native";
 
-import { text as textTokens } from "../../../constants/designSystem";
+import {
+  color,
+} from "../../../constants/designSystem";
 import { Icon } from "../../ui/Icon";
 
 interface SymbolViewProps {
@@ -29,7 +31,7 @@ const loadSymbolView = (): React.ComponentType<SymbolViewProps> | null => {
 export const TAP_TO_PAY_SF_SYMBOL = "wave.3.right.circle.fill";
 
 export const TapToPayIcon = ({ size = 20 }: { size?: number }): React.ReactElement | null => {
-  if (Platform.OS === "android") return <Icon name="tap" size={size} color={textTokens.primary} />;
+  if (Platform.OS === "android") return <Icon name="tap" size={size} color={color.text1} />;
   if (Platform.OS !== "ios") return null;
   const SymbolView = loadSymbolView();
   if (SymbolView === null) return null;
@@ -37,7 +39,7 @@ export const TapToPayIcon = ({ size = 20 }: { size?: number }): React.ReactEleme
     <SymbolView
       name={TAP_TO_PAY_SF_SYMBOL}
       size={size}
-      tintColor={textTokens.primary}
+      tintColor={color.text1}
       testID="tap-to-pay-symbol"
     />
   );

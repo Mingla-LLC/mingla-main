@@ -1,7 +1,7 @@
 import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
-import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
 import type { EventGroupParticipant } from "../../services/groupChatService";
@@ -36,13 +36,13 @@ export const GroupChatModerationSheet: React.FC<GroupChatModerationSheetProps> =
         <Switch
           value={broadcastOnly}
           onValueChange={onToggleBroadcastOnly}
-          trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.tint }}
-          thumbColor={broadcastOnly ? accent.warm : "#f4f4f5"}
+          trackColor={{ false: color.fill.step, true: color.paper }}
+          thumbColor={broadcastOnly ? color.ink : color.text1}
         />
       </View>
 
       <Text style={styles.sectionLabel}>Members</Text>
-      {loading ? <ActivityIndicator color={accent.warm} /> : null}
+      {loading ? <ActivityIndicator color={color.text2} /> : null}
       {participants.map((participant) => (
         <View key={participant.user_id} style={styles.memberRow}>
           <View style={styles.avatar}>
@@ -64,7 +64,7 @@ export const GroupChatModerationSheet: React.FC<GroupChatModerationSheetProps> =
             onPress={() => onRemoveParticipant(participant.user_id)}
             style={styles.removeButton}
           >
-            <Icon name="trash" size={16} color="#ff8a8a" />
+            <Icon name="trash" size={16} color={color.errorText} />
           </Pressable>
         </View>
       ))}
@@ -74,24 +74,24 @@ export const GroupChatModerationSheet: React.FC<GroupChatModerationSheetProps> =
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
   },
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
+    gap: space[4],
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   toggleCopy: {
     flex: 1,
@@ -99,13 +99,13 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: textTokens.tertiary,
+    color: color.text3,
     textTransform: "uppercase",
   },
   memberRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   avatar: {
     width: 36,
@@ -113,10 +113,10 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tile,
   },
   avatarText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
   },
   memberInfo: {
@@ -125,12 +125,12 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSub: {
     marginTop: 2,
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   removeButton: {
     width: 36,
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 18,
-    backgroundColor: "rgba(255, 90, 90, 0.10)",
+    backgroundColor: color.errorTint,
   },
 });
 

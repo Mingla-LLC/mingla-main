@@ -17,10 +17,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
   radius as radiusTokens,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
@@ -258,7 +259,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
               accessibilityLabel="Processing video"
               testID="cover-step-video-processing"
             >
-              <ActivityIndicator color={textTokens.primary} />
+              <ActivityIndicator color={color.text1} />
               <Text style={styles.processingTitle}>Processing video…</Text>
               <Text style={styles.processingBody}>
                 {coverStepProcessingBody(coverMediaApplyMode ?? "draft_auto")}
@@ -316,7 +317,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
 
       {/* #1022 M1/M2/M3 — the Theme row. ONE edit serves three mounts: the
           Event wizard, the RSVP wizard, and EditPublishedScreen's cover
-          section all render this step. `field.marginBottom: spacing.md`
+          section all render this step. `field.marginBottom: space[4]`
           above supplies the 16pt gap for free. */}
       {showThemeRow ? (
       <ThemeControlRow
@@ -377,53 +378,53 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
 
 const styles = StyleSheet.create({
   field: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginBottom: space[1],
   },
   preview: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   processingOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    gap: space[1],
+    paddingHorizontal: space[6],
+    backgroundColor: scrim.modal,
   },
   processingTitle: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   processingBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   prepareError: {
-    marginTop: spacing.sm,
-    gap: spacing.xs,
+    marginTop: space[2],
+    gap: space[1],
   },
   prepareErrorText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   creditText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginBottom: space[2],
   },
 });

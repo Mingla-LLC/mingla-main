@@ -27,13 +27,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import { Icon } from "../../ui/Icon";
 import type { IconName } from "../../ui/Icon";
@@ -275,7 +272,7 @@ const ChooserRow: React.FC<ChooserRowProps> = ({ label, icon, onPress }) => (
     ]}
   >
     <View style={styles.chooserIconWrap}>
-      <Icon name={icon} size={20} color={accent.warm} strokeWidth={2} />
+      <Icon name={icon} size={20} color={color.accent} strokeWidth={2} />
     </View>
     <Text style={styles.chooserLabel}>{label}</Text>
   </Pressable>
@@ -283,32 +280,32 @@ const ChooserRow: React.FC<ChooserRowProps> = ({ label, icon, onPress }) => (
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: spacing.xs,
-    gap: spacing.sm,
+    paddingTop: space[1],
+    gap: space[2],
   },
   eyebrow: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.xs,
+    color: color.accent,
+    marginBottom: space[1],
   },
   actionsWrap: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   chooserRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     minHeight: 56,
   },
   chooserRowPressed: {
@@ -318,24 +315,24 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.full,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
   },
   chooserLabel: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   cancelBtn: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    marginTop: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
@@ -345,15 +342,15 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   cancelLabel: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     fontWeight: "500",
   },
   errorText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    paddingHorizontal: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    paddingHorizontal: space[2],
   },
 });
 

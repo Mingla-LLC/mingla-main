@@ -30,9 +30,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import {
   useLiveEventStore,
@@ -47,7 +47,12 @@ import { formatRsvpGoingLabel } from "../../../src/utils/rsvpHubMetrics";
 
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
-import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
+import {
+  OfferingHomeHeader,
+  useOfferingPromote,
+} from "../../../src/components/offering/OfferingHome";
+import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal, offeringShareability } from "../../../src/components/ui/ShareModal";
@@ -184,6 +189,13 @@ export default function RsvpDetailScreen(): React.ReactElement {
     setLifecycleDialog(null);
     setToast({ visible: true, message });
   }, []);
+  const { isWideDesktop } = useResponsiveLayout();
+  // #4420 (TILE_MATRIX P10) — the Promote tile, gated like the event home's.
+  const promote = useOfferingPromote(
+    brand?.id ?? null,
+    resolvedLiveEvent?.serverEventId ?? resolvedLiveEvent?.id ?? null,
+    currentBrandRole.rank,
+  );
   const canManageLifecycle = canPerformAction(
     currentBrandRole.rank,
     "EDIT_EVENT",
@@ -301,7 +313,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
           style={[
             styles.headerWrap,
             {
-              paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+              paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
             },
           ]}
         >
@@ -328,7 +340,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
           style={[
             styles.headerWrap,
             {
-              paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+              paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
             },
           ]}
         >
@@ -351,6 +363,22 @@ export default function RsvpDetailScreen(): React.ReactElement {
   const isManualApproval = event.rsvpApprovalMode === "manual";
   const guestsSub = isManualApproval ? "Approve / deny" : goingLabel;
 
+  // Headcount card — replaces the ticketed revenue card.
+  const goingCard = (
+        <GlassCard variant="base" radius="md" padding={space[4]}>
+          <Text style={styles.goingLabel}>
+            {goingCount === 0 && status !== "past"
+              ? "No one's responded yet"
+              : goingLabel}
+          </Text>
+          <Text style={styles.goingSub}>
+            {goingCount === 0 && status !== "past"
+              ? "0 going"
+              : "confirmed attending"}
+          </Text>
+        </GlassCard>
+  );
+
   return (
     <View style={styles.host}>
       {/* Header */}
@@ -358,7 +386,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
         style={[
           styles.headerWrap,
           {
-            paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0),
+            paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0),
           },
         ]}
       >
@@ -383,10 +411,15 @@ export default function RsvpDetailScreen(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* #4420 — desktop uses the 8/4 template (as the event home): the RSVP
+            and its tiles in the main column, the headcount in the aside. */}
+        <DesktopColumns
+          main={
+            <View style={styles.colStack}>
         {/* issue #3237 — publish confirmation. Share and View public page are
             this screen's own handlers. A private RSVP has no page the public
             can open and its Share is refused, so it gets the confirmation with
@@ -402,110 +435,134 @@ export default function RsvpDetailScreen(): React.ReactElement {
             testID="rsvp-published-banner"
           />
         ) : null}
-        {/* Hero — cover band + status pill + name + date+venue */}
-        <View style={styles.hero}>
-          <View style={styles.heroCoverWrap}>
-            <EventCoverMedia
-              hue={event.coverHue}
-              mediaUrl={event.coverMediaUrl}
-              mediaType={event.coverMediaType}
-              radius={24}
-              label=""
-              height={200}
+        {/* #4420 (TILE_MATRIX P10) — the compact identity card (thumb, status,
+            name, date + venue) that replaced the 200pt photo hero, the same
+            as the event home. */}
+        <OfferingHomeHeader
+          hue={event.coverHue}
+          mediaUrl={event.coverMediaUrl}
+          mediaType={event.coverMediaType}
+          pill={
+            <EventDetailHeroStatusPill
+              status={status}
+              cancelled={event.status === "cancelled"}
             />
-          </View>
-          <View style={styles.heroOverlay} pointerEvents="none">
-            <View style={styles.heroPillRow}>
-              <EventDetailHeroStatusPill
-                status={status}
-                cancelled={event.status === "cancelled"}
-              />
-            </View>
-            <Text style={styles.heroTitle} numberOfLines={2}>
-              {event.name.trim().length > 0 ? event.name : "Untitled RSVP"}
-            </Text>
-            <Text style={styles.heroSubline} numberOfLines={1}>
-              {dateLine}
-              {event.venueName !== null && event.venueName.length > 0
-                ? ` · ${event.venueName}`
-                : ""}
-            </Text>
-          </View>
-        </View>
+          }
+          title={event.name.trim().length > 0 ? event.name : "Untitled RSVP"}
+          subline={`${dateLine}${
+            event.venueName !== null && event.venueName.length > 0
+              ? ` · ${event.venueName}`
+              : ""
+          }`}
+        />
 
-        {/* Headcount card — replaces the ticketed revenue card */}
-        <GlassCard variant="base" radius="md" padding={spacing.md}>
-          <Text style={styles.goingLabel}>
-            {goingCount === 0 && status !== "past"
-              ? "No one's responded yet"
-              : goingLabel}
-          </Text>
-          <Text style={styles.goingSub}>
-            {goingCount === 0 && status !== "past"
-              ? "0 going"
-              : "confirmed attending"}
-          </Text>
-        </GlassCard>
-
-        {/* Founder-locked RSVP door order: Scan guests → Guests → Scanners. */}
-        <View style={styles.actionGrid}>
-          <ActionTile
-            icon="qr"
-            label="Scan guests"
-            primary
-            onPress={handleScanGuests}
-          />
-          <ActionTile
-            icon="users"
-            label="Guests"
-            sub={guestsSub}
-            onPress={handleGuests}
-          />
-          <ActionTile
-            icon="users"
-            label="Scanners"
-            onPress={handleScanners}
-          />
-          {canShowListingInsights ? (
+        {isWideDesktop ? null : goingCard}
+        {/* #4420 (TILE_MATRIX P10) — the shared tile page, in rows of three
+            equal cells. Founder-locked RSVP door order inside it: Scan guests
+            → Guests → Scanners. RSVPs are free: no Orders or Reconcile. */}
+        <View style={styles.tileRows}>
+          <View style={styles.tileRow}>
+            <ActionTile fill icon="edit" label="Edit" onPress={handleEdit} />
             <ActionTile
-              icon="chart"
-              label="Insights"
-              sub="Visits, actions and bookings"
-              accessibilityLabel={`Open Insights for ${event.name}`}
-              onPress={() =>
-                router.push(`/insights/${event.id}?entry=detail_action` as never)
-              }
+              fill
+              icon="qr"
+              label="Scan guests"
+              onPress={handleScanGuests}
             />
-          ) : null}
-          <ActionTile icon="edit" label="Edit" onPress={handleEdit} />
-          {/* ORCH-1150 (D-8) — Group chat + Blasts are comms (not money):
-              re-added after D-4 dropped them. They reuse the event-scoped
-              comms screens (see handleGroupChat / handleBlasts). */}
-          <ActionTile
-            icon="send"
-            label="Blasts"
-            sub="Message going guests"
-            onPress={handleBlasts}
-          />
-          <ActionTile
-            icon="chat"
-            label="Group chat"
-            sub="Read + reply + moderate"
-            onPress={handleGroupChat}
-          />
-          <ActionTile
-            icon="eye"
-            label="Public page"
-            onPress={handleViewPublic}
-          />
-          {brand !== null ? (
             <ActionTile
+              fill
               icon="user"
-              label="Brand page"
-              onPress={handleBrandPage}
+              label="Guests"
+              sub={guestsSub}
+              onPress={handleGuests}
             />
+          </View>
+          <View style={styles.tileRow}>
+            <ActionTile
+              fill
+              icon="users"
+              label="Scanners"
+              onPress={handleScanners}
+            />
+            {/* ORCH-1150 (D-8) — Group chat + Blasts are comms (not money):
+                re-added after D-4 dropped them. They reuse the event-scoped
+                comms screens (see handleGroupChat / handleBlasts). */}
+            <ActionTile
+              fill
+              icon="chat"
+              label="Group chat"
+              onPress={handleGroupChat}
+            />
+            <ActionTile
+              fill
+              icon="send"
+              label="Blast"
+              accessibilityLabel="Message going guests"
+              onPress={handleBlasts}
+            />
+          </View>
+          {promote.enabled || canShowListingInsights ? (
+          <View style={styles.tileRow}>
+            {promote.enabled ? (
+              <ActionTile
+                fill
+                icon="megaphone"
+                label="Promote"
+                sub={promote.status}
+                accessibilityLabel={`Promote ${event.name}`}
+                onPress={promote.open}
+                testID="rsvp-tile-promote"
+              />
+            ) : null}
+            {canShowListingInsights ? (
+              <ActionTile
+                fill
+                icon="chart"
+                label="Insights"
+                sub="Visits, actions and bookings"
+                accessibilityLabel={`Open Insights for ${event.name}`}
+                onPress={() =>
+                  router.push(`/insights/${event.id}?entry=detail_action` as never)
+                }
+              />
+            ) : null}
+            {Array.from(
+              {
+                length:
+                  3 - (promote.enabled ? 1 : 0) - (canShowListingInsights ? 1 : 0),
+              },
+              (_, pad) => (
+                <View key={`pad-${pad}`} style={styles.tilePad} />
+              ),
+            )}
+          </View>
           ) : null}
+          <Text style={styles.sectionLabel}>MORE FOR THIS RSVP</Text>
+          <View style={styles.tileRow}>
+            <ActionTile
+              fill
+              icon="eye"
+              label="Public page"
+              onPress={handleViewPublic}
+            />
+            {brand !== null ? (
+              <ActionTile
+                fill
+                icon="home"
+                label="Brand page"
+                onPress={handleBrandPage}
+              />
+            ) : (
+              <View style={styles.tilePad} />
+            )}
+            <View style={styles.tilePad} />
+          </View>
         </View>
+
+            </View>
+          }
+          aside={isWideDesktop ? <View style={styles.colStack}>{goingCard}</View> : undefined}
+        />
 
         {/* #3645 — same two controls, in the same place, as the experience
             dashboard. Return to draft is offered before the RSVP starts;
@@ -590,92 +647,65 @@ export default function RsvpDetailScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   headerWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   headerRightRow: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
     alignItems: "center",
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    gap: space[4],
   },
   emptyWrap: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   loadingText: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
   },
-  hero: {
-    position: "relative",
-    height: 200,
-    borderRadius: radiusTokens.xl,
-    overflow: "hidden",
-  },
-  heroCoverWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  heroOverlay: {
-    position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.md,
-  },
-  heroPillRow: {
-    flexDirection: "row",
-    marginBottom: spacing.sm,
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: "#ffffff",
-    ...(Platform.OS === "web"
-      ? { textShadow: "0 2px 12px rgba(0, 0, 0, 0.4)" }
-      : {
-          textShadowColor: "rgba(0, 0, 0, 0.4)",
-          textShadowOffset: { width: 0, height: 2 },
-          textShadowRadius: 12,
-        }),
-    marginBottom: 4,
-  },
-  heroSubline: {
-    fontSize: 13,
-    color: "rgba(255, 255, 255, 0.85)",
-  },
   goingLabel: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   goingSub: {
-    fontSize: 12,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     marginTop: 2,
   },
-  actionGrid: {
+  colStack: {
+    gap: space[4],
+  },
+  tileRows: {
+    gap: space[3],
+  },
+  tileRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    gap: space[3],
+  },
+  tilePad: {
+    flexBasis: 0,
+    flexGrow: 1,
+  },
+  sectionLabel: {
+    ...type.label,
+    textTransform: "uppercase",
+    color: color.text3,
+    marginTop: space[2],
   },
   lifecycleCtaWrap: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   toastWrap: {
     position: "absolute",

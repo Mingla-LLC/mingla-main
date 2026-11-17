@@ -5,13 +5,8 @@ import {
   BUYER_CLAIM_COPY,
   buyerBusinessSentCopy,
 } from "../../constants/buyerClaimCopy";
-import {
-  accent,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { radius, space, type } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 import { postHogService } from "../../services/postHogService";
 import { Icon } from "../ui/Icon";
 
@@ -51,7 +46,7 @@ export function BusinessCheckoutSent({
   return (
     <View style={styles.host} testID="business-checkout-ticket-sent">
       <View style={styles.badge}>
-        <Icon name="check" size={36} color={textTokens.primary} />
+        <Icon name="check" size={36} color={color.text1} />
       </View>
       <Text style={styles.title}>{copy.title}</Text>
       <Text style={styles.body}>{copy.body}</Text>
@@ -67,13 +62,13 @@ export function BusinessCheckoutSent({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: space[7],
   },
   badge: {
     width: 72,
@@ -81,35 +76,35 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    marginBottom: spacing.lg,
+    backgroundColor: color.fill.pressed,
+    marginBottom: space[6],
   },
   title: {
-    ...typography.h2,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
     maxWidth: 440,
   },
   button: {
     minHeight: 52,
     minWidth: 220,
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: spacing.xl,
-    paddingHorizontal: spacing.xl,
+    marginTop: space[7],
+    paddingHorizontal: space[7],
   },
   buttonLabel: {
-    ...typography.buttonLg,
-    color: "#0c0e12",
+    ...type.btn,
+    color: color.ink,
   },
-});
+}));
 
 export default BusinessCheckoutSent;

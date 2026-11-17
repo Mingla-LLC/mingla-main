@@ -10,7 +10,11 @@ import React from "react";
 import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesService";
 import { StyleSheet, Text, View } from "react-native";
 
-import { spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  space,
+  type,
+} from "../../constants/designSystem";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import {
   advanceLocationRequestGeneration,
@@ -214,18 +218,18 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    gap: space[2],
+    paddingHorizontal: space[6],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    marginBottom: spacing.xs,
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    marginBottom: space[1],
   },
 });
 

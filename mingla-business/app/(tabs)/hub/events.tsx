@@ -30,13 +30,11 @@ import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Toast } from "../../../src/components/ui/Toast";
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  materials,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
 import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
@@ -824,7 +822,7 @@ export default function EventsTab(): React.ReactElement {
             // META-ORCH-1059 (bug #5) — UNIVERSAL empty state: the brand has
             // created nothing of ANY kind. No event bias; the CTA opens the
             // shared offering chooser (Event / Experience / Trip).
-            <GlassCard variant="elevated" padding={spacing.lg}>
+            <GlassCard variant="elevated" padding={space[6]}>
               <Text style={styles.emptyTitle}>Nothing created yet</Text>
               <Text style={styles.emptyBody}>
                 Create your first offering — an event, an experience, or a trip — and
@@ -843,7 +841,7 @@ export default function EventsTab(): React.ReactElement {
               ) : null}
             </GlassCard>
           ) : (
-            <GlassCard variant="elevated" padding={spacing.lg}>
+            <GlassCard variant="elevated" padding={space[6]}>
               <Text style={styles.emptyTitle}>
                 {filter === "all"
                   ? "No events yet"
@@ -1106,69 +1104,69 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
     // paddingBottom is set inline on the ScrollView with insets.bottom + 120
     // to clear the floating BottomNav (64px nav + ~16-32px margin + safe-area).
-    gap: spacing.md,
+    gap: space[4],
   },
   liveAdsBlock: {
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    gap: space[2],
+    marginBottom: space[2],
   },
   liveAdsTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   liveAdCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: materials.chrome.glassFill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   liveAdPulse: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   liveAdName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   liveAdMeta: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     marginTop: 2,
   },
   liveAdPill: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
   },
   headerTitle: {
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    letterSpacing: typography.h1.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    fontSize: type.title.fontSize,
+    lineHeight: type.title.lineHeight,
+    fontWeight: type.title.fontWeight,
+    letterSpacing: type.title.letterSpacing,
+    color: color.text1,
+    marginBottom: space[2],
   },
   pillsScroll: {
     // ORCH-0826 M0-rework: pills are now a direct child of the host (sibling
     // to the events ScrollView) rather than nested inside it. Removed the
-    // prior `marginHorizontal: -spacing.md` negative-margin hack (which was
+    // prior `marginHorizontal: -space[4]` negative-margin hack (which was
     // cancelling the parent ScrollView's padding) and added vertical padding
     // for breathing room below the HubSubNav pill row.
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     // ORCH-0857 [Hub events list flush-with-pills]: ROOT CAUSE FIX —
     // React Native's ScrollView defaults to `flexGrow: 1`, which means
     // BOTH this pills ScrollView and the sibling events ScrollView were
@@ -1186,29 +1184,29 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   pillsRow: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    gap: space[2],
   },
   pill: {
     height: 34,
-    paddingHorizontal: spacing.md - 2,
+    paddingHorizontal: space[4] - 2,
     borderRadius: radiusTokens.full,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
     // ORCH-0857 [Hub pill active-state visual parity]: idle border alpha
-    // raised from 0.08 (glass.border.profileBase) to 0.55 to match
-    // accent.border. Toggling pillActive now changes color only — never
+    // raised from 0.08 (color.line) to 0.55 to match
+    // color.accentLine. Toggling pillActive now changes color only — never
     // perceived bounding rect. Local to this file by design (Option B);
     // do NOT extract into a shared token without auditing all other
-    // glass.border.profileBase consumers first.
-    borderColor: "rgba(255, 255, 255, 0.55)",
-    backgroundColor: glass.tint.profileBase,
+    // color.line consumers first.
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   pillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   pillPressed: {
     opacity: 0.7,
@@ -1223,83 +1221,83 @@ const styles = StyleSheet.create({
     // a 1-2pt visual drift unique to the Live pill.
     lineHeight: 16,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   pillLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   pillCount: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   pillCountActive: {
-    color: accent.warm,
+    color: color.text1,
   },
   pillLiveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   // ORCH-1123 — long-press discoverability caption (DESIGN §5.1A / §4.4).
   selectHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text3,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   desktopListGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 0,
-    marginHorizontal: -spacing.xs,
+    marginHorizontal: -space[1],
   },
   desktopListCell: {
     width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
-    paddingHorizontal: spacing.xs,
-    marginBottom: spacing.sm,
+    paddingHorizontal: space[1],
+    marginBottom: space[2],
   },
   emptyTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[1],
   },
   emptyBody: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    marginBottom: space[4],
   },
   emptyCta: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
     alignSelf: "flex-start",
   },
   emptyCtaLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    bottom: space[7],
+    paddingHorizontal: space[4],
     zIndex: 100,
     elevation: 12,
   },

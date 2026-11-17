@@ -11,8 +11,8 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 
@@ -31,7 +31,7 @@ export const TripDetailKpiCard: React.FC<TripDetailKpiCardProps> = ({
     <GlassCard
       variant="elevated"
       radius="lg"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
     >
       <View style={styles.row}>
@@ -52,7 +52,7 @@ export const TripDetailKpiCard: React.FC<TripDetailKpiCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   row: {
     flexDirection: "row",
@@ -69,20 +69,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginBottom: 4,
   },
   bigValue: {
     fontSize: 26,
     fontWeight: "700",
     letterSpacing: -0.4,
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   midValue: {
     fontSize: 16,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     fontVariant: ["tabular-nums"],
   },
 });

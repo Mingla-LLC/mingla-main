@@ -82,12 +82,22 @@ DECLARE
     'discover_v2_event_base',
     'events_public_view',
     'issue_2489_public_theme',
+    'issue_4420_backfill_event_withheld_location',  -- #4420: moves a hidden event's exact location out of the theme.
+    'issue_4420_backfill_experience_venue_text',  -- #4420: rewrites a hidden experience's stored venue line.
+    'issue_4420_experience_venue_line',  -- #4420: an experience's venue line withholds the street.
+    'issue_4420_stop_coordinate',  -- #4420: a hidden stop's coarse point (deck, links page).
+    'issue_4420_stop_place_id',  -- #4420: a hidden stop's map place id (deck).
+    'issue_4420_stop_street',  -- #4420: a hidden stop's street (deck).
+    'issue_4420_stored_venue_text',  -- #4420: the venue line the experience writers store.
+    'issue_4420_withhold_event_location',  -- #4420: the trigger that keeps a hidden event's exact location out of the theme.
     'links_page_week',  -- #4318: the /links week reader withholds addresses through the gate.
+    'pg_brand_experiences_for_place',  -- #4420: the Explorer place sheet's experience stops.
     'pg_direct_event_checkout_bundle',
     'pg_discover_business_events',
     'pg_public_brand_upcoming',
     'pg_public_event_by_slug',
     'pg_public_experience_by_slug',
+    'pg_public_experiences_by_brand',  -- #4420: the brand page's experience cards.
     'pg_public_rsvp_by_slug',
     'pg_ticket_link_resolve',
     'public_search_source_facts'

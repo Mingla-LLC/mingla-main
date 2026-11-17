@@ -47,9 +47,13 @@ export function setupKeyboardOffset(topInset: number): number {
 }
 
 import { useAuth } from "../../context/AuthContext";
-import { accent, canvas, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
 import {
-  BRAND_SETUP_STEPS,
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
+import {
   BrandSetupError,
   deriveSetupStep,
   setupFlowHop,
@@ -72,6 +76,8 @@ import {
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "../ui/Button";
+import { Stepper } from "../ui/Stepper";
+import { STEP_INDEX, brandSetupStepperSteps, brandSetupStepperTarget } from "./brandSetupStepper";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Toast } from "../ui/Toast";
@@ -133,7 +139,6 @@ export interface BrandCreationFlowProps {
   onExit: () => void;
 }
 
-const STEP_INDEX: Record<BrandSetupStep, number> = { name: 1, country: 2, pay: 3, done: 4 };
 /** F4 polls the live account read at mount, 3 s, 8 s and 20 s (R-5). */
 export const F4_POLL_DELAYS_MS = [0, 3000, 8000, 20000] as const;
 
@@ -315,35 +320,44 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     );
   }
 
-  // U-6 desktop web: a left step rail beside a 560px pane. 390px web and the
-  // phones keep the single column. (No slide transitions exist, so Reduce
-  // Motion has nothing to replace.)
-  const rail = isWideDesktop ? (
-    <View style={styles.rail} testID="brand-setup-rail" accessibilityRole="list">
-      {BRAND_SETUP_STEPS.map((s, i) => {
-        const on = s === step;
-        const done = STEP_INDEX[s] < STEP_INDEX[step];
-        return (
-          <View key={s} style={styles.railRow} accessibilityState={{ selected: on }}>
-            <View style={[styles.railDot, done && styles.railDotDone, on && styles.railDotOn]}>
-              <Text style={styles.railDotText}>{done ? "✓" : String(i + 1)}</Text>
-            </View>
-            <Text style={[styles.railLabel, on && styles.railLabelOn]}>{C.stepNames[s]}</Text>
-          </View>
-        );
-      })}
-    </View>
-  ) : null;
+  // #4420 B7 (spec 3.5) — the shared clickable Stepper replaces the old 220
+  // rail and the four progress bars: desktop = the 280 step list beside the
+  // 560 pane, phone and narrow web = progress segments + step chips + the
+  // "n / N" Steps sheet. Reachability is the flow's own: see
+  // `brandSetupStepperSteps`. Forward moves stay on each step's Continue,
+  // which writes to the server first.
+  const stepperSteps = brandSetupStepperSteps(step, facts?.stripeState ?? null);
+  const handleStepPress = (index: number): void => {
+    if (brandSetupStepperTarget(step, facts?.stripeState ?? null, index) === "country") {
+      setBackTo("country");
+    }
+  };
+  const stepper = (
+    <Stepper
+      steps={stepperSteps}
+      currentIndex={STEP_INDEX[step] - 1}
+      furthestValidIndex={STEP_INDEX[step] - 1}
+      onStepPress={handleStepPress}
+      layout={isWideDesktop ? "list" : "chips"}
+      sheetTitle={C.common.steps}
+      testID="brand-setup-stepper"
+      style={isWideDesktop ? styles.stepList : styles.stepChips}
+    />
+  );
 
   return (
     <View style={[styles.root, isWideDesktop && styles.rootDesktop]} testID="brand-setup-flow">
-      {rail}
+      {isWideDesktop ? (
+        <View style={styles.rail} testID="brand-setup-rail">
+          {stepper}
+        </View>
+      ) : null}
       <KeyboardAvoidingView
         behavior="padding"
         keyboardVerticalOffset={setupKeyboardOffset(insets.top)}
         style={isWideDesktop ? styles.pane : styles.fill}
       >
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, isWideDesktop ? null : styles.topBarPhone]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={C.common.back}
@@ -362,16 +376,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         >
           <Text style={styles.backGlyph} maxFontSizeMultiplier={1.4}>‹</Text>
         </Pressable>
-        <View
-          style={styles.progress}
-          accessibilityRole="progressbar"
-          accessibilityLabel={C.common.progress(STEP_INDEX[step])}
-          accessibilityValue={{ min: 1, max: 4, now: STEP_INDEX[step] }}
-        >
-          {[1, 2, 3, 4].map((i) => (
-            <View key={i} style={[styles.segment, i <= STEP_INDEX[step] && styles.segmentOn]} />
-          ))}
-        </View>
+        {/* Phone / narrow web: segments + chips + "n / N" Steps sheet. The
+            chips say the step aloud ("2 / 4"), so no separate progress bar. */}
+        {isWideDesktop ? null : <View style={styles.progress}>{stepper}</View>}
       </View>
       {offline ? (
         <View style={styles.banner} accessibilityRole="alert">
@@ -385,7 +392,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         </Pressable>
       ) : null}
       {brandId !== null && checklistQuery.isLoading ? (
-        <View style={styles.center}><ActivityIndicator color={accent.warm} /></View>
+        <View style={styles.center}><ActivityIndicator color={color.text1} /></View>
       ) : step === "name" ? (
         <NameStep
           offline={offline}
@@ -535,7 +542,7 @@ const NameStep: React.FC<{
           returnKeyType="done"
           onSubmitEditing={submit}
           style={[styles.input, tooLong && styles.inputError]}
-          placeholderTextColor={textTokens.quaternary}
+          placeholderTextColor={color.text4}
         />
         <View style={styles.helperRow}>
           <Text style={[styles.helper, tooLong && styles.errorText]}>{tooLong ? C.f1.tooLong : C.f1.helper}</Text>
@@ -704,7 +711,7 @@ const CountryStep: React.FC<{
 
 // ── reveal a row (F2) ────────────────────────────────────────────────────
 const REVEAL_AFTER_LAYOUT_MS = 60;
-const REVEAL_MARGIN = spacing.md;
+const REVEAL_MARGIN = space[4];
 type WindowBox = { y: number; height: number };
 interface Measurable {
   measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
@@ -1084,57 +1091,45 @@ export const DraftInProgress: React.FC<{
 export { Toast };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: canvas.discover },
-  rootDesktop: { flexDirection: "row", justifyContent: "center", gap: spacing.xl, paddingTop: spacing.lg },
+  root: { flex: 1, backgroundColor: color.canvas },
+  rootDesktop: { flexDirection: "row", justifyContent: "center", gap: space[7], paddingTop: space[6] },
   fill: { flex: 1 },
   pane: { flex: 1, maxWidth: 560 },
-  rail: { width: 220, paddingTop: spacing.xl, gap: spacing.md },
-  railRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  railDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.24)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  railDotOn: { borderColor: accent.warm },
-  railDotDone: { backgroundColor: accent.warm, borderColor: accent.warm },
-  railDotText: { ...typography.caption, color: textTokens.primary, fontWeight: "700" },
-  railLabel: { ...typography.body, color: textTokens.tertiary },
-  railLabelOn: { color: textTokens.primary, fontWeight: "600" },
-  topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
+  // #4420 B7 — the 280 step list column (spec 3.5).
+  rail: { width: 280, paddingTop: space[7] },
+  stepList: { alignSelf: "stretch" },
+  stepChips: { flex: 1 },
+  topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: space[4], paddingVertical: space[2], gap: space[2] },
+  // Phone: breathing room above the progress segments; Back sits on the chip row.
+  topBarPhone: { alignItems: "flex-end", paddingTop: space[4], paddingBottom: space[3] },
   backButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  backGlyph: { fontSize: 30, color: textTokens.primary },
-  progress: { flex: 1, flexDirection: "row", gap: spacing.xs },
-  segment: { flex: 1, height: 4, borderRadius: radius.full, backgroundColor: "rgba(255,255,255,0.12)" },
-  segmentOn: { backgroundColor: accent.warm },
+  backGlyph: { fontSize: 30, color: color.text1 },
+  progress: { flex: 1, flexDirection: "row", minWidth: 0 },
   body: { flex: 1 },
   // flexGrow lets an empty / no-match state centre in the space left (#4389).
-  bodyContent: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm, maxWidth: 560, width: "100%", alignSelf: "center" },
-  footer: { padding: spacing.md, gap: spacing.xs, maxWidth: 560, width: "100%", alignSelf: "center" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
-  h1: { ...typography.h1, color: textTokens.primary },
-  h3: { ...typography.h3, color: textTokens.primary },
-  sub: { ...typography.body, color: textTokens.secondary },
-  label: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.md },
-  input: { minHeight: 52, borderRadius: radius.md, paddingHorizontal: spacing.md, backgroundColor: "rgba(255,255,255,0.06)", color: textTokens.primary, fontSize: typography.body.fontSize },
-  inputError: { borderWidth: 1, borderColor: semantic.error },
-  helperRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  helper: { ...typography.bodySm, color: textTokens.tertiary },
-  counter: { ...typography.caption, color: textTokens.tertiary },
-  errorText: { color: semantic.errorText },
-  footnote: { ...typography.bodySm, color: textTokens.secondary, marginBottom: spacing.xs },
-  banner: { marginHorizontal: spacing.md, marginVertical: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.06)" },
-  bannerAccent: { backgroundColor: accent.faint },
-  bannerText: { ...typography.bodySm, color: textTokens.primary },
-  card: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.05)", minHeight: 52 },
-  cardTitle: { ...typography.h3, color: textTokens.primary },
-  cardText: { ...typography.body, color: textTokens.primary },
-  box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },
-  boxOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  gap8: { height: spacing.sm },
+  bodyContent: { flexGrow: 1, padding: space[4], paddingBottom: space[7], gap: space[2], maxWidth: 560, width: "100%", alignSelf: "center" },
+  footer: { padding: space[4], gap: space[1], maxWidth: 560, width: "100%", alignSelf: "center" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[6] },
+  h1: { ...type.title, color: color.text1 },
+  h3: { ...type.h1, color: color.text1 },
+  sub: { ...type.body, color: color.text2 },
+  label: { ...type.small, color: color.text2, marginTop: space[4] },
+  input: { minHeight: 52, borderRadius: radius.sm, paddingHorizontal: space[4], backgroundColor: color.fill.tile, color: color.text1, fontSize: type.body.fontSize },
+  inputError: { borderWidth: 1, borderColor: color.danger },
+  helperRow: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
+  helper: { ...type.small, color: color.text3 },
+  counter: { ...type.caption, color: color.text3 },
+  errorText: { color: color.errorText },
+  footnote: { ...type.small, color: color.text2, marginBottom: space[1] },
+  banner: { marginHorizontal: space[4], marginVertical: space[1], padding: space[4], borderRadius: radius.sm, backgroundColor: color.fill.tile },
+  bannerAccent: { backgroundColor: color.fill.tabOn },
+  bannerText: { ...type.small, color: color.text1 },
+  card: { flexDirection: "row", alignItems: "center", gap: space[2], padding: space[4], borderRadius: radius.sm, backgroundColor: color.fill.tile, minHeight: 52 },
+  cardTitle: { ...type.h1, color: color.text1 },
+  cardText: { ...type.body, color: color.text1 },
+  box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: color.lineStrong },
+  boxOn: { backgroundColor: color.paper, borderColor: color.paper },
+  gap8: { height: space[2] },
 });
 
 export default BrandCreationFlow;

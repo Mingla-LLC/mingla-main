@@ -19,7 +19,11 @@ import React, { useCallback, useRef } from "react";
 import { Animated, Easing, StyleSheet, type ViewStyle } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
 
-import { accent, durations, radius as radiusTokens } from "../../constants/designSystem";
+import {
+  durations,
+  radius as radiusTokens,
+  color,
+} from "../../constants/designSystem";
 
 const HOLD_RING_DURATION = 350; // == delayLongPress (SPEC §3.7.1)
 
@@ -153,13 +157,13 @@ export const DraftSelectOverlay: React.FC<DraftSelectOverlayProps> = ({
 
 const selectedWash: ViewStyle = {
   ...StyleSheet.absoluteFillObject,
-  backgroundColor: accent.tint,
+  backgroundColor: color.accentLine,
 };
 
 const holdRing: ViewStyle = {
   ...StyleSheet.absoluteFillObject,
   borderWidth: 2,
-  borderColor: accent.warm,
+  borderColor: color.accent,
   borderRadius: radiusTokens.lg,
 };
 

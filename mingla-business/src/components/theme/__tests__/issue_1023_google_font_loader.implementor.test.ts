@@ -245,8 +245,11 @@ describe("heavy text names the bold key (native never derives bold from fontWeig
   test("the brand page draws its name and headings in the bold face and loads it", async () => {
     const read = (rel: string) => readFile(path.join(REPO, rel), "utf8");
     const page = await read("packages/brand-rendering/PublicBrandPage.tsx");
-    expect(page).toContain("styles.brandName, themedBoldFont");
-    expect(page).toContain("styles.deskBrandName,\n                themedBoldFont");
+    // #4420 wave 2 — the brand name is the premium cover title (the shared
+    // ParallaxCoverShell), and every offering card title is BrandOfferingCard's.
+    expect(page).toContain("styles.brandEmptyTitle, themedBoldFont");
+    const card = await read("packages/brand-rendering/BrandOfferingCard.tsx");
+    expect(card).toContain("styles.title, { ...themeBoldFace(theme)");
     expect(page).not.toContain("{ fontFamily: theme.fontFamilyValue");
     const host = await read("mingla-business/src/components/brand/PublicBrandPage.tsx");
     expect(host).toContain("useThemeFont(boldFontFamily(theme))");

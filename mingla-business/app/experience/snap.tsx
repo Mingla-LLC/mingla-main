@@ -43,11 +43,9 @@ import { MenuSnapInput } from "../../src/components/experience/MenuSnapInput";
 import { TopBar } from "../../src/components/ui/TopBar";
 import { Toast } from "../../src/components/ui/Toast";
 import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import {
@@ -190,7 +188,7 @@ export default function ExperienceSnapRoute(): React.ReactElement {
 
   if (currentBrand === null) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.host, { paddingTop: insets.top + space[2] }]}>
         <View style={styles.barWrap}>
           <TopBar
             leftKind="back"
@@ -210,7 +208,7 @@ export default function ExperienceSnapRoute(): React.ReactElement {
   const isDrafting = phase === "drafting";
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top + spacing.sm }]}>
+    <View style={[styles.host, { paddingTop: insets.top + space[2] }]}>
       <View style={styles.barWrap}>
         <TopBar
           leftKind="back"
@@ -232,14 +230,14 @@ export default function ExperienceSnapRoute(): React.ReactElement {
 
         {(phase === "parsing" || isParsing) && (
           <View style={styles.loadingRow}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.accent} />
             <Text style={styles.loadingText}>{copy.loadingText}</Text>
           </View>
         )}
 
         {isDrafting && (
           <View style={styles.loadingRow}>
-            <ActivityIndicator color={accent.warm} />
+            <ActivityIndicator color={color.accent} />
             <Text style={styles.loadingText}>{copy.draftingText}</Text>
           </View>
         )}
@@ -264,39 +262,39 @@ export default function ExperienceSnapRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   barWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   scrollContent: {
-    padding: spacing.md,
-    gap: spacing.md,
+    padding: space[4],
+    gap: space[4],
   },
   subtitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   body: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    color: color.text2,
   },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
   },
   loadingText: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
+    color: color.text2,
+    fontSize: type.body.fontSize,
   },
 });

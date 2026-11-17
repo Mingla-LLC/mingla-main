@@ -10,13 +10,7 @@ import {
   type ThemeInput,
 } from "@mingla/offering-rendering";
 
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, color as dsColor, space } from "../../constants/designSystem";
 
 import { THEME_ANIMATION_SLUGS } from "../../../../packages/offering-rendering/designTokens";
 import { normalizeHexColor } from "./normalizeHexColor";
@@ -146,7 +140,7 @@ export const ThemeEditorSection: React.FC<ThemeEditorSectionProps> = ({
           }
         }}
         placeholder={MINGLA_DEFAULT_THEME.color}
-        placeholderTextColor={textTokens.quaternary}
+        placeholderTextColor={dsColor.text4}
         autoCapitalize="none"
         autoCorrect={false}
         accessibilityLabel="Custom hex theme color"
@@ -204,30 +198,30 @@ export type { ThemeAnimationSlug, ThemeFontSlug };
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.md,
+    gap: space[4],
   },
   preview: {
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: dsColor.line,
+    backgroundColor: dsColor.fill.inset,
   },
   previewBand: {
     height: 96,
     overflow: "hidden",
   },
   previewBody: {
-    padding: spacing.md,
-    gap: spacing.xs,
+    padding: space[4],
+    gap: space[1],
   },
   previewTitle: {
-    color: textTokens.primary,
+    color: dsColor.text1,
     fontSize: 17,
     fontWeight: "700",
   },
   previewMeta: {
-    color: textTokens.tertiary,
+    color: dsColor.text3,
     fontSize: 12,
     fontWeight: "500",
   },
@@ -237,31 +231,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: dsColor.line,
     backgroundColor: "rgba(255, 255, 255, 0.04)",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   resetLabel: {
-    color: textTokens.secondary,
+    color: dsColor.text2,
     fontSize: 13,
     fontWeight: "700",
   },
   controlLabel: {
-    color: textTokens.secondary,
+    color: dsColor.text2,
     fontSize: 12,
     fontWeight: "700",
   },
   swatchRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   swatch: {
     width: 44,
     height: 44,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: dsColor.line,
   },
   swatchActive: {
     borderWidth: 3,
@@ -272,15 +266,15 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.md,
+    borderColor: dsColor.line,
+    backgroundColor: dsColor.fill.inset,
+    color: dsColor.text1,
+    paddingHorizontal: space[4],
   },
   optionGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   optionPill: {
     minHeight: 40,
@@ -288,20 +282,20 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
+    borderColor: dsColor.line,
+    backgroundColor: dsColor.fill.inset,
+    paddingHorizontal: space[4],
   },
   optionPillActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: dsColor.accentLine,
+    backgroundColor: dsColor.accentLine,
   },
   optionLabel: {
-    color: textTokens.secondary,
+    color: dsColor.text2,
     fontSize: 12,
     fontWeight: "600",
   },
   optionLabelActive: {
-    color: textTokens.primary,
+    color: dsColor.text1,
   },
 });

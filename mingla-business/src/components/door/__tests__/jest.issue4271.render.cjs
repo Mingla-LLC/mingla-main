@@ -26,6 +26,8 @@ module.exports = {
     "**/src/components/door/__tests__/issue_4271_review_gaps.render.test.tsx",
     // #4389 — setup never shows a background Terminal start failure; Done on "On for this brand".
     "**/src/components/door/__tests__/issue_4389_tap_setup_quiet_start.render.test.tsx",
+    // #4420 — the guest pay page on the Public status template.
+    "**/src/components/door/__tests__/issue_4420_door_guest_status.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|react-native-reanimated|react-native-svg)",

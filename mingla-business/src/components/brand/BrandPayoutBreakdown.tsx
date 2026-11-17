@@ -31,14 +31,11 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
+  color,
   durations,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { formatRelativeTime } from "../../utils/relativeTime";
@@ -80,16 +77,16 @@ export interface BrandPayoutBreakdownProps {
 const bucketChrome = (variant: PillVariant): { bg: string; fg: string } => {
   switch (variant) {
     case "live":
-      return { bg: semantic.successTint, fg: semantic.success };
+      return { bg: color.successTint, fg: color.success };
     case "warn":
-      return { bg: semantic.warningTint, fg: semantic.warning };
+      return { bg: color.warningTint, fg: color.warning };
     case "error":
-      return { bg: semantic.errorTint, fg: semantic.error };
+      return { bg: color.errorTint, fg: color.errorText };
     case "draft":
-      return { bg: glass.tint.profileElevated, fg: textTokens.tertiary };
+      return { bg: color.fill.tile, fg: color.text3 };
     case "info":
     default:
-      return { bg: semantic.infoTint, fg: semantic.info };
+      return { bg: color.infoTint, fg: color.info };
   }
 };
 
@@ -292,7 +289,7 @@ const BrandPayoutReleaseRow: React.FC<{
           importantForAccessibility="no-hide-descendants"
           accessibilityElementsHidden
         >
-          <Icon name="chevD" size={16} color={textTokens.tertiary} />
+          <Icon name="chevD" size={16} color={color.text3} />
         </Animated.View>
       </View>
 
@@ -340,7 +337,7 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
         accessibilityHint="Opens an explainer about payout timing and fees"
         style={({ pressed }) => [styles.explainerLink, pressed ? styles.explainerLinkPressed : null]}
       >
-        <Icon name="clock" size={14} color={accent.warm} />
+        <Icon name="clock" size={14} color={color.text1} />
         <Text style={styles.explainerLinkText}>How payouts work</Text>
       </Pressable>
     </View>
@@ -361,7 +358,7 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
           >
             <View style={styles.skeletonTextCol}>
               <Skeleton width="55%" height={16} radius="sm" />
-              <View style={{ marginTop: spacing.xs }}>
+              <View style={{ marginTop: space[1] }}>
                 <Skeleton width="35%" height={12} radius="sm" />
               </View>
             </View>
@@ -372,7 +369,7 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
     );
   } else if (ledgerQuery.isError) {
     body = (
-      <GlassCard variant="base" padding={spacing.md} style={styles.errorCard}>
+      <GlassCard variant="base" padding={space[4]} style={styles.errorCard}>
         <Text style={styles.errorTitle}>Couldn{"’"}t load your payouts</Text>
         <Text style={styles.errorBody}>Check your connection and try again.</Text>
         <View style={styles.errorBtnRow}>
@@ -389,10 +386,10 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
     );
   } else if (belowFinance) {
     body = (
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <View style={styles.limitedRow}>
           <View style={styles.limitedIconChip}>
-            <Icon name="shield" size={20} color={textTokens.tertiary} />
+            <Icon name="shield" size={20} color={color.text3} />
           </View>
           <View style={styles.limitedTextCol}>
             <Text style={styles.emptyTitle}>Payout details are limited</Text>
@@ -406,7 +403,7 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
     );
   } else if ((ledger?.releases.length ?? 0) === 0) {
     body = (
-      <GlassCard variant="base" padding={spacing.lg}>
+      <GlassCard variant="base" padding={space[6]}>
         <Text style={styles.emptyTitle}>No payouts yet</Text>
         <Text style={styles.emptyBody}>
           Payouts appear here about a day after each payment.
@@ -441,10 +438,10 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
       {header}
 
       {showDebtBanner ? (
-        <GlassCard variant="base" padding={spacing.md} style={styles.debtBanner}>
+        <GlassCard variant="base" padding={space[4]} style={styles.debtBanner}>
           <View style={styles.debtRow}>
             <View style={styles.debtIconChip}>
-              <Icon name="shield" size={20} color={semantic.warning} />
+              <Icon name="shield" size={20} color={color.warning} />
             </View>
             <View style={styles.debtTextCol}>
               <Text style={styles.debtTitle}>Balance carried forward</Text>
@@ -500,7 +497,7 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.md,
+    gap: space[4],
   },
 
   // Header + explainer link ------------------------------------------------
@@ -508,56 +505,56 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[1],
+    paddingTop: space[2],
   },
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   refundsLabel: {
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[1],
+    paddingTop: space[2],
   },
   explainerLink: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
     minHeight: 44,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.sm,
+    paddingVertical: space[2],
+    paddingLeft: space[2],
   },
   explainerLinkPressed: {
     opacity: 0.6,
   },
   explainerLinkText: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-    color: accent.warm,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
+    letterSpacing: type.btnSm.letterSpacing,
+    color: color.text1,
   },
 
   // Rows -------------------------------------------------------------------
   row: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     overflow: "hidden",
   },
   rowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   rowPressed: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   tierA: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconChip: {
     width: 28,
@@ -572,38 +569,38 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowMeta: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
   },
   trailingCol: {
     alignItems: "flex-end",
-    gap: spacing.xxs,
+    gap: space[1],
   },
   rowAmount: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   tierB: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   oneLiner: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
 
   // Receipt ----------------------------------------------------------------
@@ -612,76 +609,76 @@ const styles = StyleSheet.create({
   },
   measurer: {
     position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
+    left: space[4],
+    right: space[4],
     top: 0,
     opacity: 0,
     zIndex: -1,
   },
   receipt: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
-    paddingTop: spacing.sm,
+    borderTopColor: color.line,
+    paddingTop: space[2],
   },
   line: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    paddingVertical: spacing.xs,
-    gap: spacing.md,
+    paddingVertical: space[1],
+    gap: space[4],
   },
   lineLabel: {
     flexShrink: 1,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   lineQualifier: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   lineValue: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     textAlign: "right",
   },
   lineValuePrimary: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   lineValueSecondary: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
   lineValueSuccess: {
-    color: semantic.success,
+    color: color.success,
   },
   lineValueConfirming: {
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
   },
   finalLine: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    gap: spacing.md,
-    marginTop: spacing.xs,
-    paddingTop: spacing.sm,
+    gap: space[4],
+    marginTop: space[1],
+    paddingTop: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   finalLabel: {
     flexShrink: 1,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   finalValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "right",
   },
 
@@ -690,9 +687,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   skeletonTextCol: {
     flex: 1,
@@ -701,42 +698,42 @@ const styles = StyleSheet.create({
 
   // Error ------------------------------------------------------------------
   errorCard: {
-    borderColor: "rgba(251, 191, 36, 0.35)",
+    borderColor: color.line,
     borderWidth: 1,
   },
   errorTitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   errorBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
+    marginTop: space[1],
   },
   errorBtnRow: {
     flexDirection: "row",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 
   // Empty / limited --------------------------------------------------------
   emptyTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   emptyBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    marginTop: space[1],
   },
   limitedRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
   limitedIconChip: {
@@ -745,7 +742,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   limitedTextCol: {
     flex: 1,
@@ -755,11 +752,11 @@ const styles = StyleSheet.create({
   // Debt banner ------------------------------------------------------------
   debtBanner: {
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.45)",
+    borderColor: color.line,
   },
   debtRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     alignItems: "flex-start",
   },
   debtIconChip: {
@@ -768,53 +765,53 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: semantic.warningTint,
+    backgroundColor: color.warningTint,
   },
   debtTextCol: {
     flex: 1,
     minWidth: 0,
   },
   debtTitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   debtBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
+    marginTop: space[1],
   },
 
   // Refund rows ------------------------------------------------------------
   refundRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
   },
   refundTextCol: {
     flex: 1,
     minWidth: 0,
   },
   refundAmountDebit: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: semantic.error,
+    color: color.errorText,
   },
   refundAmountCredit: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: semantic.success,
+    color: color.success,
   },
   refundDate: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
 });
 

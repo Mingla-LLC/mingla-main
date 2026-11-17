@@ -2,13 +2,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StayReservationDetail } from "@mingla/brand-rendering/StayReservationDetail";
 import {
@@ -27,8 +26,15 @@ import {
 } from "../../src/analytics/publicParityWebAdapter";
 import { StayStripePayment } from "../../src/components/stay/StayStripePayment";
 import { useStayReservationGroup } from "../../src/hooks/useStayGuest";
-import { stayGuestService } from "../../src/services/stayGuestService";
+import { StayGuestError, stayGuestService } from "../../src/services/stayGuestService";
+import { StayOtherContactNotice } from "../../src/components/stay/StayOtherContactNotice";
+import { SecurePaymentHandoff } from "../../src/components/offering/LazyPublicParts";
+import { useAuth } from "../../src/context/AuthContext";
+import { useBrandMessage } from "../../src/components/brandContact/useBrandMessage";
+import { usePublicBrandIdentity } from "../../src/hooks/usePublicBrandEnquiry";
+import { showAlert } from "../../src/components/ui/showAlert";
 
+import { color } from "../../src/constants/designSystem";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -43,6 +49,61 @@ export default function StayReservationRoute(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payment, setPayment] = useState<StayPaymentSession | null>(null);
+  const [handoffUrl, setHandoffUrl] = useState<string | null>(null);
+  const router = useRouter();
+  const { user, signOut } = useAuth();
+  // issue #4420 wave 2 (D-S7) — the booking belongs to another contact.
+  const otherContactView =
+    query.error instanceof StayGuestError &&
+    query.error.code === "stay_group_other_contact"
+      ? query.error.otherContact
+      : null;
+  const otherContact =
+    otherContactView?.maskedEmail ??
+    (query.error instanceof StayGuestError &&
+    query.error.code === "stay_group_other_contact"
+      ? query.error.maskedEmail
+      : null);
+  // issue #4420 wave 2 (D-S7) — "Email me the booking link again": the server
+  // re-sends it to the booking's OWN address; the guest is told the mask only.
+  const [resending, setResending] = useState(false);
+  const resendLink = async (): Promise<void> => {
+    if (groupId === null || resending) return;
+    setResending(true);
+    captureWeb("stay_other_contact_resend", { surface: "buyer_web", group_id: groupId });
+    try {
+      const sent = await stayGuestService.resendGuestLink(groupId);
+      showAlert(`Sent to ${sent.maskedEmail}`, undefined, undefined, { kind: "success" });
+    } catch (caught) {
+      showAlert(
+        caught instanceof StayGuestError && caught.code === "stay_resend_not_available"
+          ? "This booking has no link to send again. Ask the property instead."
+          : "We couldn't send the link just now. Try again in a few minutes.",
+      );
+    } finally {
+      setResending(false);
+    }
+  };
+  // "Ask {Stay} to change the email" — the brand's own enquiry thread.
+  const otherBrandQuery = usePublicBrandIdentity(otherContactView?.brandSlug ?? null);
+  const otherBrand = otherBrandQuery.data ?? null;
+  const otherBrandTarget = useMemo(
+    () =>
+      otherBrand === null
+        ? null
+        : {
+            id: otherBrand.id,
+            name: otherBrand.name,
+            slug: otherBrand.slug,
+            theme: resolveTheme(otherBrand.theme, null),
+          },
+    [otherBrand],
+  );
+  const otherBrandMessage = useBrandMessage({
+    brand: otherBrandTarget,
+    viewer: { userId: user?.id ?? null, name: null },
+    entry: "brand_page",
+  });
   const groupViewFired = useRef(false);
   const parityViewFired = useRef(false);
   const routeState = resolveBuyerWebPublicLifecycle({
@@ -103,7 +164,8 @@ export default function StayReservationRoute(): React.ReactElement {
         provider: session.provider,
       });
       if (session.provider === "paystack") {
-        await Linking.openURL(session.authorizationUrl);
+        // issue #4420 wave 2 (§2.4) — same-tab handoff with a fallback link.
+        setHandoffUrl(session.authorizationUrl);
       } else {
         setPayment(session);
       }
@@ -131,7 +193,44 @@ export default function StayReservationRoute(): React.ReactElement {
       ]}
     >
       <Text style={[styles.eyebrow, { color: palette.accent }]}>MINGLA STAY</Text>
-      {payment?.provider === "stripe" && query.data ? (
+      {otherContact !== null ? (
+        <StayOtherContactNotice
+          palette={palette}
+          maskedEmail={otherContact}
+          currentEmail={user?.email ?? null}
+          stayName={otherContactView?.venueName ?? null}
+          reference={otherContactView?.publicReference ?? null}
+          onResend={otherContactView?.resendable === true ? () => void resendLink() : null}
+          resending={resending}
+          onAskHost={
+            otherBrandMessage.available && otherBrandTarget !== null
+              ? () => {
+                  captureWeb("stay_other_contact_ask_host", {
+                    surface: "buyer_web",
+                    group_id: groupId,
+                  });
+                  otherBrandMessage.open();
+                }
+              : null
+          }
+          onSignInOther={() => {
+            captureWeb("stay_other_contact_sign_in", { surface: "buyer_web", group_id: groupId });
+            void signOut().finally(() => {
+              router.replace(
+                `/auth?next=${encodeURIComponent(`/stay/${groupId}`)}` as never,
+              );
+            });
+          }}
+        />
+      ) : handoffUrl !== null ? (
+        <SecurePaymentHandoff
+          url={handoffUrl}
+          palette={palette}
+          holdLine="Your rooms are held while you pay."
+          onBack={() => setHandoffUrl(null)}
+          testID="issue-4420-stay-group-secure-payment"
+        />
+      ) : payment?.provider === "stripe" && query.data ? (
         <View style={[styles.payment, { backgroundColor: palette.card }]}>
           <Text style={[styles.paymentTitle, { color: palette.primaryText }]}>
             Pay {formatStayMoney(payment.amountMinor, payment.currencyCode)}
@@ -140,6 +239,7 @@ export default function StayReservationRoute(): React.ReactElement {
             session={payment}
             groupId={query.data.groupId}
             accent={palette.accent}
+            palette={palette}
             onComplete={() => {
               captureWeb("stay_payment_completed", {
                 surface: "buyer_web",
@@ -224,6 +324,7 @@ export default function StayReservationRoute(): React.ReactElement {
       {query.isFetching && !query.isLoading ? (
         <ActivityIndicator color={palette.accent} />
       ) : null}
+      {otherBrandMessage.overlays}
     </ScrollView>
   );
 }
@@ -238,7 +339,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
-  invalidTitle: { color: "#ffffff", fontSize: 20, fontWeight: "800" },
+  invalidTitle: { color: color.textStrong, fontSize: 20, fontWeight: "800" },
 });

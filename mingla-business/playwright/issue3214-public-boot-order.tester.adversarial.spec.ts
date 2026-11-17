@@ -123,6 +123,9 @@ const CLASSIFIED: Record<string, Row> = {
   'https://maps.apple.com': { verdict: 'navigation', why: 'maps deep link' },
   'https://wa.me': { verdict: 'navigation', why: 'WhatsApp share link' },
   'https://zoom.us': { verdict: 'navigation', why: 'online-event join link' },
+  // [TEST-MOD-APPROVED #4420] Add to calendar on the public event page opens
+  // Google Calendar's prefilled event as a new top-level page.
+  'https://calendar.google.com': { verdict: 'navigation', why: 'Add to Google Calendar link (offeringCalendar), opened as a top-level navigation' },
   'https://x.com': { verdict: 'navigation', why: 'social link' },
   'https://twitter.com': { verdict: 'navigation', why: 'social link' },
   'https://facebook.com': { verdict: 'navigation', why: 'social link' },

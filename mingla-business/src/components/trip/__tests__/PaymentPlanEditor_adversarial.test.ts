@@ -102,9 +102,11 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
   describe("A-01: glass.tint.chrome token-shape contract", () => {
     it("designSystem.ts confirms glass.tint.chrome is an object {idle, pressed}, NOT a string", () => {
       const designSystem = read("constants/designSystem.ts");
-      // The shape we depend on for the lint below.
-      expect(designSystem).toMatch(/chrome:\s*\{\s*idle:/);
-      expect(designSystem).toMatch(/pressed:\s*"rgba/);
+      // [TEST-MOD-APPROVED #4420] wave 6 deleted the `glass` alias, so a bare
+      // `glass.tint.chrome` can no longer compile; the chrome fill is the
+      // `materials.chrome` recipe, whose glassFill is a string.
+      expect(designSystem).not.toMatch(/export const glass\b/);
+      expect(designSystem).toMatch(/chrome:\s*\{\s*glassFill:\s*palette\.chrome90,/);
     });
 
     it("PaymentPlanEditor.tsx must NOT use glass.tint.chrome as a backgroundColor (must use .idle or .pressed)", () => {

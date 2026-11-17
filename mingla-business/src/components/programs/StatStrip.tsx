@@ -17,11 +17,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { GlassCard } from "../ui/GlassCard";
-import {
-  glass,
-  typography,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, type } from "../../constants/designSystem";
 import { stripItems } from "./programLayout";
 
 export type StatStripItem = {
@@ -32,6 +28,17 @@ export type StatStripItem = {
   /** "muted" = quiet tertiary value colour (zeros). */
   tone?: "muted";
 };
+
+/**
+ * #4420 round 3 item 17 (no bleed-outs): web ignores `adjustsFontSizeToFit`,
+ * so a long value ("$1,966.50") ellipsized to "$1,…". Step the value size
+ * down by length so every figure shows whole in a third of a phone card.
+ */
+export function stripValueFontSize(value: string, wide: boolean): number | undefined {
+  const length = value.length;
+  if (wide) return length > 9 ? 20 : length > 6 ? 24 : undefined;
+  return length > 9 ? 15 : length > 6 ? 17 : undefined;
+}
 
 export function StatStrip({
   items,
@@ -58,6 +65,9 @@ export function StatStrip({
               styles.stripValue,
               wide && styles.stripValueWide,
               item.tone === "muted" && styles.stripValueMuted,
+              stripValueFontSize(item.value, wide) !== undefined
+                ? { fontSize: stripValueFontSize(item.value, wide), lineHeight: wide ? type.stat.lineHeight : 26 }
+                : null,
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
@@ -122,10 +132,10 @@ const styles = StyleSheet.create({
   stripCellWide: { paddingHorizontal: 24, alignItems: "flex-start", gap: 6 },
   stripDivider: {
     borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: glass.border.profileElevated,
+    borderLeftColor: color.lineStrong,
   },
   stripValue: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 20,
     lineHeight: 26,
     fontWeight: "800",
@@ -133,13 +143,13 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
   },
   stripValueWide: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
+    fontSize: type.stat.fontSize,
+    lineHeight: type.stat.lineHeight,
   },
-  stripValueMuted: { color: textTokens.tertiary },
+  stripValueMuted: { color: color.text3 },
   stripLabel: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     textAlign: "center",
     // Two lines tall so a one-line label ("Spent") and a two-line label
     // ("Sold via promotion") leave every value on the same baseline.

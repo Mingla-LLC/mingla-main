@@ -148,6 +148,7 @@ export const useDoorModeTapSale = (input: {
         onPaidAfterClose: ({ amount, saved }) => {
           void queryClient.invalidateQueries({ queryKey: doorSaleKeys.byEvent(eventId) });
           const copy = tapPaidAfterCloseCopy(formatTapAmount(amount), saved);
+          // I-4420-NO-RAW-ALERT native-only: Tap to Pay runs on a phone only.
           Alert.alert(copy.title, copy.body);
         },
       });

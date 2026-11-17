@@ -52,16 +52,13 @@ import {
 import type { PressableStateCallbackType, ViewStyle } from "react-native";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
   venueRailWidth,
   durations,
   easings,
+  space,
+  color,
+  type,
 } from "../../constants/designSystem";
 
 /** One rail entry. `key` is the caller's module id; `label` is what renders. */
@@ -484,23 +481,23 @@ const styles = StyleSheet.create({
     // `spacing.md` in hub/_layout.tsx), so the rail still sits flush under the
     // nav, now with no right-side dead space.
     alignSelf: "flex-start",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   desktopRail: {
     width: venueRailWidth,
-    paddingTop: spacing.xs,
+    paddingTop: space[1],
     // Hairline divider separating the rail from the workspace, top-aligned with
     // the content. Subtle (matches the app's restrained desktop chrome), opaque
     // safe on Android.
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: glass.border.profileBase,
-    paddingRight: spacing.sm,
+    borderRightColor: color.line,
+    paddingRight: space[2],
   },
   desktopRailGrouped: {
     paddingTop: 0,
   },
   railInner: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   railGroup: {},
   railGroupAfterFirst: {
@@ -509,32 +506,32 @@ const styles = StyleSheet.create({
   railGroupHeadingBox: {
     height: 20,
     justifyContent: "center",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   railGroupHeading: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   railGroupTabs: {
-    gap: spacing.xxs,
+    gap: 2,
   },
   railRow: {
     flexDirection: "row",
     alignItems: "center",
     // Tighter, consistent vertical rhythm (was sm/16h) and a snug left grid.
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[2],
+    paddingHorizontal: space[2],
     borderRadius: radius.md,
     ...Platform.select({ web: { cursor: "pointer" }, default: {} }),
   },
   railRowActive: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   railSelectionLayer: {
     ...StyleSheet.absoluteFillObject,
     pointerEvents: "none",
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     opacity: 0,
   },
   railSelectionLayerActive: {
@@ -548,10 +545,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   railRowHover: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   railRowFocus: {
-    outlineColor: accent.warm,
+    outlineColor: color.accent,
     outlineWidth: 2,
     outlineStyle: "solid",
     outlineOffset: 2,
@@ -559,11 +556,11 @@ const styles = StyleSheet.create({
   railActiveBar: {
     position: "absolute",
     left: 0,
-    top: spacing.xs,
-    bottom: spacing.xs,
+    top: space[1],
+    bottom: space[1],
     width: 3,
     borderRadius: radius.full,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   railLabelRow: {
     flexDirection: "row",
@@ -575,24 +572,24 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   railDirtyDotOnActive: {
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   railLabel: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
   },
   railLabelActive: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   desktopWorkspace: {
     flex: 1,
     // Balanced gutter between the rail and the workspace (paired with the rail's
     // `paddingRight: spacing.sm` + hairline → a coherent, symmetric seam).
-    paddingLeft: spacing.lg,
+    paddingLeft: space[6],
   },
   desktopScroll: {
     // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.

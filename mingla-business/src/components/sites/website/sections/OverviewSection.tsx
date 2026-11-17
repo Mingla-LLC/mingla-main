@@ -20,6 +20,7 @@ import { PLANNED_PAGE_LABELS } from "../../../../../../packages/site-contracts/s
 import type { WebsiteSection } from "../../../../sites/websiteNav";
 import { partLabel, planBuildDone } from "../../../../sites/sitePlanState";
 
+import { color } from "../../../../constants/designSystem";
 /**
  * #2829 W9r (DESIGN_SPEC §1.6 Overview) — status first, the one decision
  * (publish what changed, or ask an admin), what is worth a look, and the
@@ -345,6 +346,6 @@ const styles = StyleSheet.create({
   inline: { flexDirection: "row", alignItems: "center" },
   link: { fontSize: 12, fontWeight: "600", color: ui.accent },
   help: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 6 },
-  progress: { height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.09)", overflow: "hidden", marginVertical: 12 },
+  progress: { height: 6, borderRadius: 3, backgroundColor: color.fill.railOn, overflow: "hidden", marginVertical: 12 },
   progressFill: { height: "100%", backgroundColor: ui.accent },
 });

@@ -45,11 +45,11 @@ type ParallaxScrollHandler = (
 type ParallaxLayoutHandler = (event: LayoutChangeEvent) => void;
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import {
   boldFontFamily,
@@ -258,7 +258,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   trip,
   brand,
   showCta = false,
-  contentPadding = spacing.lg,
+  contentPadding = space[6],
   onReserveTap,
   testID,
   useDirectionCIdentity = false,
@@ -515,8 +515,23 @@ const FoundationTripPreview: React.FC<{
     </View>
   ) : null;
 
+  // issue #4420 — the cover identity: dates · length · departure eyebrow, the
+  // title in the host font, and "Presented by <brand>".
+  const coverIdentity = {
+    eyebrow: [
+      data.dateRangeLabel,
+      duration,
+      data.departureCityCountry !== null ? `From ${data.departureCityCountry}` : null,
+    ],
+    title: trip.title,
+    presenter: brand.name.trim().length > 0 ? { name: brand.name, photo: null } : null,
+  };
+
   return (
     <ParallaxCoverShell
+      // issue #4420 — the Seth-approved premium public-page frame.
+      frame="premium"
+      coverIdentity={coverIdentity}
       palette={palette}
       theme={theme}
       coverMediaUrl={trip.coverMediaUrl}
@@ -562,6 +577,7 @@ const FoundationTripPreview: React.FC<{
         planChoiceByTier={planChoiceByTier}
         onChangePlanChoice={onChangePlanChoice}
         dockedReserve={!isDesktop ? dockedReserve : undefined}
+        identityOnCover
         // ORCH-1339 — cross-entity social proof (route-fetched, props-only).
         socialProof={socialProof}
         // ORCH-1342 — web-only "See who's going" → install gate (route-wired).
@@ -597,7 +613,7 @@ const LegacyTripPreview: React.FC<{
   // #1022 A/F-12 (Trip leg) — the themed accent, or the platform default when
   // no theme is supplied (every pre-existing caller).
   const legacyAccent =
-    theme !== undefined ? createThemePalette(theme).accent : accent.warm;
+    theme !== undefined ? createThemePalette(theme).accent : color.accent;
   const includedItems = trip.inclusions.filter((i) => i.kind === "included");
   const excludedItems = trip.inclusions.filter((i) => i.kind === "excluded");
   // Issue #3801 — every package the host authored, in authored order. This
@@ -760,7 +776,7 @@ const LegacyTripPreview: React.FC<{
                                   style={styles.legacyDayMediaPlayBadge}
                                   pointerEvents="none"
                                 >
-                                  <Icon name="play" size={12} color="#FFFFFF" />
+                                  <Icon name="play" size={12} color={color.text1} />
                                 </View>
                               ) : null}
                             </Pressable>
@@ -814,7 +830,7 @@ const LegacyTripPreview: React.FC<{
                       <Icon
                         name="close"
                         size={14}
-                        color={textTokens.tertiary}
+                        color={color.text3}
                       />
                       <Text style={styles.legacyItemText}>{i.item}</Text>
                     </View>
@@ -911,7 +927,7 @@ const styles = StyleSheet.create({
     // ORCH-1138 FIX-3 — clip the media-aware EventCoverMedia (image/gif/video) to
     // the circular avatar (Android opaque-clip per ANDROID_GLASS_USES_OPAQUE_FALLBACK).
     overflow: "hidden",
-    backgroundColor: "#1a1c20",
+    backgroundColor: color.canvas,
   },
   brandTextCol: {
     flexShrink: 1,
@@ -1121,82 +1137,82 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   legacyBody: {
-    padding: spacing.lg,
-    gap: spacing.sm,
+    padding: space[6],
+    gap: space[2],
   },
   legacyTitle: {
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.title.fontSize,
+    lineHeight: type.title.lineHeight,
+    fontWeight: type.title.fontWeight,
+    color: color.text1,
   },
   legacyBrandByline: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   legacyMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   legacyMetaText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     flex: 1,
   },
   legacyDescriptionWrap: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   legacySection: {
-    marginTop: spacing.lg,
-    gap: spacing.sm,
+    marginTop: space[6],
+    gap: space[2],
   },
   legacySectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: textTokens.secondary,
+    color: color.text2,
     textTransform: "uppercase",
   },
   legacyExcludedLabel: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   legacyDaysList: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   legacyDayCard: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: color.fill.tableHead,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    gap: spacing.xs,
+    borderColor: color.line,
+    gap: space[1],
   },
   legacyDayOrdinal: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: accent.warm,
+    color: color.accent,
   },
   legacyDayTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   legacyDayNarrative: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   legacyDayMediaRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
     paddingVertical: 2,
   },
   legacyDayMediaTile: {
@@ -1205,8 +1221,8 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     backgroundColor: Platform.select({
-      android: "#1A1A1C",
-      default: "rgba(255,255,255,0.06)",
+      android: color.canvas,
+      default: color.fill.tile,
     }),
   },
   legacyDayMediaPlayBadge: {
@@ -1218,62 +1234,62 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: scrim.modal,
   },
   legacyItemsList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   legacyItemRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   legacyItemText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     flex: 1,
   },
   legacyPricingCard: {
-    marginTop: spacing.lg,
-    padding: spacing.lg,
+    marginTop: space[6],
+    padding: space[6],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: color.lineStrong,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   legacyPricingList: {
     flex: 1,
-    gap: spacing.md,
+    gap: space[4],
   },
   legacyPricingRow: {
     minWidth: 0,
   },
   legacyPricingTierName: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   legacyPricingPrice: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     marginTop: 2,
   },
   legacyReserveCta: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   legacyReserveCtaText: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: color.text1,
   },
 });
 

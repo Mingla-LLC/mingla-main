@@ -52,13 +52,13 @@ describe("#4238 W2-4 isAdPixelRoute", () => {
     expect(isAdPixelRoute(undefined)).toBe(false);
   });
 
-  test("the pixel list is the public buyer list minus the four account-service pages", () => {
+  test("the pixel list is the public buyer list minus the five account-service pages", () => {
     const pixel = PUBLIC_BUYER_ROUTE_PREFIXES.filter((prefix) =>
       isAdPixelRoute(`${prefix}x`),
     );
     const excluded = PUBLIC_BUYER_ROUTE_PREFIXES.filter(
       (prefix) => !pixel.includes(prefix),
     );
-    expect([...excluded].sort()).toEqual(["/booking/", "/m/", "/pay/", "/refund/"]);
+    expect([...excluded].sort()).toEqual(["/booking/", "/m/", "/pay/", "/refund/", "/stay/pay/"]);
   });
 });

@@ -155,11 +155,13 @@ const BOUNDARY: Record<string, () => unknown> = {
       canGoBack: () => true,
     }),
   }),
+  // [TEST-MOD-APPROVED #4420] the route reads the Graphite tokens
+  // (color / space / type) instead of the retired transitional names.
   designSystem: () => ({
-    spacing: { xl: 24, md: 12 },
-    text: { primary: "#fff", secondary: "#ccc" },
-    typography: {
-      h3: { fontSize: 20, lineHeight: 24, fontWeight: "600" },
+    color: { canvas: "#000", text1: "#fff", text2: "#ccc" },
+    space: { 4: 16, 7: 32 },
+    type: {
+      h1: { fontSize: 20, lineHeight: 24, fontWeight: "600" },
       body: { fontSize: 14, lineHeight: 20 },
     },
   }),

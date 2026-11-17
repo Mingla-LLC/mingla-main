@@ -70,10 +70,11 @@ describe("the legacy preview repaints its accent-bearing elements", () => {
     expect(legacyBody()).toMatch(/theme\?: ResolvedTheme;/);
   });
 
+  // [TEST-MOD-APPROVED #4420] the platform accent is color.accent (was accent.warm, same #eb7825).
   test("it derives the accent from the theme, falling back to the platform accent", () => {
     // The fallback is what keeps every pre-existing caller byte-stable.
     expect(legacyBody()).toMatch(
-      /const legacyAccent =\s*theme !== undefined \? createThemePalette\(theme\)\.accent : accent\.warm;/,
+      /const legacyAccent =\s*theme !== undefined \? createThemePalette\(theme\)\.accent : color\.accent;/,
     );
   });
 
@@ -81,6 +82,7 @@ describe("the legacy preview repaints its accent-bearing elements", () => {
     // Icons, the day ordinal and the Reserve CTA all previously used the fixed
     // platform accent, which is exactly what made the preview lie.
     expect(legacyBody()).not.toContain("color={accent.warm}");
+    expect(legacyBody()).not.toContain("color={color.accent}");
   });
 
   test("the day ordinal and the Reserve CTA repaint from the themed accent", () => {
@@ -99,7 +101,8 @@ describe("the legacy preview repaints its accent-bearing elements", () => {
 describe("ADDITIVE — no existing consumer changes behaviour", () => {
   test("`theme` is optional, so callers that omit it render exactly as before", () => {
     expect(legacyBody()).toMatch(/theme\?: ResolvedTheme;/);
-    expect(legacyBody()).toContain(": accent.warm;");
+    // [TEST-MOD-APPROVED #4420] accent.warm retired; color.accent is the same #eb7825.
+    expect(legacyBody()).toContain(": color.accent;");
   });
 
   test("the wizard still passes NO palette — it stays in LEGACY mode", () => {

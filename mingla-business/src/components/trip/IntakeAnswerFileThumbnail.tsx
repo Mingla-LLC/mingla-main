@@ -28,12 +28,10 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -140,7 +138,7 @@ export const IntakeAnswerFileThumbnail: React.FC<
                 <Icon
                   name="bell"
                   size={24}
-                  color={textTokens.quaternary}
+                  color={color.text4}
                   strokeWidth={2}
                 />
                 <Text style={styles.fallbackText}>Unavailable</Text>
@@ -170,12 +168,12 @@ export const IntakeAnswerFileThumbnail: React.FC<
       ]}
       testID={testID ?? `intake-thumb-${filename}`}
     >
-      <GlassCard variant="base" padding={spacing.xs} radius="md">
+      <GlassCard variant="base" padding={space[1]} radius="md">
         <View style={styles.docCardInner}>
           <Icon
             name="list"
             size={28}
-            color={textTokens.secondary}
+            color={color.text2}
             strokeWidth={2}
           />
           <Text
@@ -189,7 +187,7 @@ export const IntakeAnswerFileThumbnail: React.FC<
             <Icon
               name="download"
               size={14}
-              color={accent.warm}
+              color={color.accent}
               strokeWidth={2}
             />
           </View>
@@ -219,19 +217,19 @@ const styles = StyleSheet.create({
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     gap: 4,
   },
   fallbackText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.quaternary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text4,
   },
   skeleton: {
     width: "60%",
     height: 6,
     borderRadius: 3,
-    backgroundColor: glass.border.profileBase,
+    backgroundColor: color.line,
   },
   cardPressed: {
     opacity: 0.85,
@@ -244,15 +242,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     height: "100%",
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.xs,
+    paddingTop: space[1],
+    paddingBottom: space[1],
   },
   docFilename: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text1,
     textAlign: "center",
-    paddingHorizontal: spacing.xxs,
+    paddingHorizontal: 2,
   },
   docDownloadOverlay: {
     position: "absolute",
@@ -261,7 +259,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: radius.full,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     alignItems: "center",
     justifyContent: "center",
   },

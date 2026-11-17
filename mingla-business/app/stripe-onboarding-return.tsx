@@ -17,6 +17,7 @@ import React, { useEffect } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
+import { color } from "../src/constants/designSystem";
 const FALLBACK_ROUTE = "/" as const;
 
 function firstParam(value: string | string[] | undefined): string | null {
@@ -70,17 +71,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   title: {
-    color: "#ffffff",
+    color: color.text1,
     fontSize: 20,
     fontWeight: "700",
     textAlign: "center",
   },
   body: {
     marginTop: 12,
-    color: "rgba(255,255,255,0.72)",
+    color: color.text2,
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center",

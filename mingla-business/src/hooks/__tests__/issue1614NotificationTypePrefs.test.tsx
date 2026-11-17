@@ -105,7 +105,11 @@ test("route exposes exact loading/error controls and inbox excludes suppressed r
   const inbox = fs.readFileSync(path.resolve(process.cwd(), "src/hooks/useBusinessNotifications.ts"), "utf8");
   expect(route).toContain("typePrefs.query.isPending || typePrefs.query.isError");
   expect(route).toContain("Couldn't load notification settings. Reopen this screen to try again.");
-  expect(route).toContain("accessibilityState={{ checked: value, disabled }}");
+  // [TEST-MOD-APPROVED #4420] — the route's toggles are the ui Switch, which
+  // owns the checked/disabled accessibility state.
+  const uiSwitch = fs.readFileSync(path.resolve(process.cwd(), "src/components/ui/Switch.tsx"), "utf8");
+  expect(route).toContain('import { Switch } from "../../src/components/ui/Switch";');
+  expect(uiSwitch).toContain("accessibilityState={{ checked: value, disabled }}");
   expect(inbox).toContain('.is("in_app_suppressed_at", null)');
   expect(inbox).toContain("updated.in_app_suppressed_at !== null");
 });

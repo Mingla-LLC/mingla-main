@@ -9,14 +9,13 @@ import {
 } from "react-native";
 import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
-
 import {
-  accent,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+  neutralControl,
+  themeTextAccent,
+  type ThemePalette,
+} from "@mingla/offering-rendering/themePalette";
+
+import { radius, color, space } from "../../constants/designSystem";
 import { useCart, type TicketQuoteStatus } from "./CartContext";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 
@@ -55,6 +54,12 @@ export interface DiscountCodeFieldProps {
    * into the field. Wide desktop keeps the field open in the order summary.
    */
   collapsible?: boolean;
+  /**
+   * issue #4420 wave 2 (D-C3) — the host's palette, COLOURS ONLY: the field
+   * sits on the page's card, borders take the neutral control line and
+   * Apply becomes a tonal button. Absent ⇒ byte-identical to before.
+   */
+  palette?: ThemePalette;
 }
 
 /** W-CODE from the binding #3872 design contract. */
@@ -69,7 +74,24 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
   onApply,
   onRemove,
   collapsible = false,
+  palette,
 }) => {
+  const themed =
+    palette === undefined
+      ? null
+      : {
+          input: {
+            backgroundColor: palette.card,
+            borderColor: neutralControl(palette),
+            color: palette.primaryText,
+          },
+          inputFocused: { borderColor: themeTextAccent(palette) },
+          apply: { backgroundColor: palette.accentWash },
+          applyText: { color: palette.primaryText },
+          label: { color: palette.secondaryText },
+          status: { color: palette.tertiaryText },
+          placeholder: palette.tertiaryText,
+        };
   const [draft, setDraft] = useState(value ?? "");
   const [expanded, setExpanded] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -215,14 +237,14 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
         </View>
       ) : (
         <>
-          <Text style={styles.label}>Discount code</Text>
+          <Text style={[styles.label, themed?.label]}>Discount code</Text>
           <View style={styles.inputRow}>
             <TextInput
               ref={inputRef}
               value={draft}
               onChangeText={(next) => setDraft(next.toUpperCase())}
               placeholder="Enter code"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={themed?.placeholder ?? color.text4}
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={32}
@@ -230,7 +252,12 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
               accessibilityLabel="Discount code"
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              style={[styles.input, focused && styles.inputFocused]}
+              style={[
+                styles.input,
+                themed?.input,
+                focused && styles.inputFocused,
+                focused && themed?.inputFocused,
+              ]}
               onSubmitEditing={() => {
                 if (canApply) onApply(normalizedDraft);
               }}
@@ -242,14 +269,18 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
               onPress={() => onApply(normalizedDraft)}
               style={({ pressed }) => [
                 styles.applyButton,
+                themed?.apply,
                 !canApply && styles.buttonDisabled,
                 pressed && canApply && styles.buttonPressed,
               ]}
             >
               {applying ? (
-                <ActivityIndicator color={textTokens.inverse} size="small" />
+                <ActivityIndicator
+                  color={themed?.applyText.color ?? color.textStrong}
+                  size="small"
+                />
               ) : (
-                <Text style={styles.applyText}>Apply</Text>
+                <Text style={[styles.applyText, themed?.applyText]}>Apply</Text>
               )}
             </Pressable>
           </View>
@@ -307,6 +338,8 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
 
 export interface CheckoutDiscountCodeFieldProps {
   disabled?: boolean;
+  /** issue #4420 wave 2 (D-C3) — see DiscountCodeFieldProps.palette. */
+  palette?: ThemePalette;
   collapsible?: boolean;
   surface?: BuyerDiscountSurface;
   saleNameByLineRef?: Readonly<Record<string, string | null | undefined>>;
@@ -333,74 +366,74 @@ export const CheckoutDiscountCodeField: React.FC<
 // #4304 — dark field for the dark checkout bar / summary (no hard-coded
 // white): raised surface, 10% white hairline, orange focus ring, green
 // applied chip.
-const SURFACE = "#1a1e24";
-const HAIRLINE = "rgba(255, 255, 255, 0.10)";
+const SURFACE = color.card;
+const HAIRLINE = color.lineStrong;
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing.sm,
-    paddingBottom: spacing.sm + spacing.xs,
+    gap: space[2],
+    paddingBottom: space[2] + space[1],
   },
   collapsedRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     minHeight: 44,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
-  collapsedLabel: { fontSize: 13, color: textTokens.tertiary },
+  collapsedLabel: { fontSize: 13, color: color.text3 },
   addCodeButton: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
   },
-  addCodeText: { fontSize: 14, fontWeight: "700", color: accent.warm },
-  label: { fontSize: 12, fontWeight: "600", color: textTokens.secondary },
-  inputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  addCodeText: { fontSize: 14, fontWeight: "700", color: color.accent },
+  label: { fontSize: 12, fontWeight: "600", color: color.text2 },
+  inputRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
   input: {
     flex: 1,
     minHeight: 44,
     borderWidth: 1,
     borderColor: HAIRLINE,
     borderRadius: radius.sm + 2,
-    paddingHorizontal: spacing.sm + spacing.xs,
-    color: textTokens.primary,
+    paddingHorizontal: space[2] + space[1],
+    color: color.text1,
     backgroundColor: SURFACE,
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: 1,
   },
-  inputFocused: { borderColor: accent.warm },
+  inputFocused: { borderColor: color.accent },
   applyButton: {
     minWidth: 76,
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm + 2,
-    backgroundColor: accent.warm,
-    paddingHorizontal: spacing.sm + spacing.xs + 2,
+    backgroundColor: color.accent,
+    paddingHorizontal: space[2] + space[1] + 2,
   },
   buttonDisabled: { opacity: 0.4 },
   buttonPressed: { opacity: 0.82 },
-  applyText: { color: textTokens.inverse, fontWeight: "700" },
-  status: { color: textTokens.tertiary, fontSize: 13 },
+  applyText: { color: color.textStrong, fontWeight: "700" },
+  status: { color: color.text3, fontSize: 13 },
   appliedChip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm + spacing.xs,
+    gap: space[2] + space[1],
     borderRadius: radius.sm + 2,
     borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.35)",
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm + spacing.xs,
-    backgroundColor: semantic.successTint,
+    borderColor: color.success,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[2] + space[1],
+    backgroundColor: color.successTint,
   },
   appliedCopy: { flex: 1, gap: 2 },
-  appliedTitle: { color: "#86efac", fontWeight: "700" },
-  appliedSaving: { color: "#bbf7d0", fontSize: 13 },
-  replacedText: { color: "#bbf7d0", fontSize: 13 },
-  removeText: { color: textTokens.secondary, fontWeight: "700" },
-  errorText: { color: semantic.errorText, fontSize: 13 },
-  noticeText: { color: semantic.warning, fontSize: 13 },
+  appliedTitle: { color: color.successText, fontWeight: "700" },
+  appliedSaving: { color: color.successText, fontSize: 13 },
+  replacedText: { color: color.successText, fontSize: 13 },
+  removeText: { color: color.text2, fontWeight: "700" },
+  errorText: { color: color.errorText, fontSize: 13 },
+  noticeText: { color: color.warning, fontSize: 13 },
 });

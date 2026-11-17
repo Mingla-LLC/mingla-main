@@ -10,15 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius as radiusTokens, space, color } from "../../constants/designSystem";
 import { AccountInviteSummaryCard } from "./AccountInviteSummaryCard";
 import { useGuestRoster } from "../../hooks/useGuestRoster";
 import { useOfferingAccountInvites } from "../../hooks/useOfferingAccountInvites";
@@ -118,7 +110,7 @@ const SummaryCard: React.FC<{
     style={({ pressed }) => [styles.summaryPressable, pressed && styles.pressed]}
   >
     <GlassCard
-      padding={spacing.md}
+      padding={space[4]}
       style={[styles.summaryCard, selected && styles.summaryCardSelected]}
       contentStyle={styles.summaryContent}
     >
@@ -421,7 +413,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   }, [eventId, query, selected]);
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+    <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
       <View style={styles.chromeRow}>
         <IconChrome icon="close" size={36} onPress={onBack} accessibilityLabel="Back" />
         <View style={styles.chromeTitleWrap}>
@@ -466,7 +458,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, isWideDesktop && styles.contentDesktop, { paddingBottom: insets.bottom + 80 }]}
-        refreshControl={<RefreshControl refreshing={query.isRefetching} onRefresh={refresh} tintColor={accent.warm} />}
+        refreshControl={<RefreshControl refreshing={query.isRefetching} onRefresh={refresh} tintColor={color.accent} />}
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.summaryGrid, isWideDesktop && styles.summaryGridDesktop]}>
@@ -544,7 +536,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
         actionsDisabled={query.isStaleTruth || query.isOffline} actionPending={actionPending}
         onPreviewAction={(action) => { void previewAction(action); }} onApproval={(decision) => { void setApproval(decision); }} />
       {selectionMode && selectedKeys.size > 0 && bulkAction !== null ? (
-        <View style={[styles.bulkBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]} accessibilityRole="toolbar">
+        <View style={[styles.bulkBar, { paddingBottom: Math.max(insets.bottom, space[2]) }]} accessibilityRole="toolbar">
           <Text style={styles.bulkCount}>{selectedKeys.size} selected</Text>
           <Button variant="primary" label={bulkAction === "reminder" ? "Preview reminders" : "Preview retries"}
             disabled={query.isStaleTruth || query.isOffline || actionPending}
@@ -567,74 +559,74 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
-  chromeRow: { minHeight: 64, paddingHorizontal: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  chromeRow: { minHeight: 64, paddingHorizontal: space[4], flexDirection: "row", alignItems: "center", gap: space[2] },
   chromeTitleWrap: { flex: 1 },
-  chromeTitle: { color: textTokens.primary, fontSize: 24, lineHeight: 29, fontWeight: "800" },
-  liveLabel: { color: textTokens.tertiary, fontSize: 12, marginTop: 1 },
-  chromeRight: { flexDirection: "row", gap: spacing.xs },
-  selectControl: { minHeight: 44, minWidth: 54, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xs },
-  selectControlText: { color: accent.warm, fontSize: 13, fontWeight: "800" },
-  searchWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
-  freshnessBanner: { marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.md, borderRadius: radiusTokens.md, borderWidth: StyleSheet.hairlineWidth, borderColor: semantic.warning, backgroundColor: semantic.warningTint, gap: spacing.xs },
-  freshnessTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "800" },
-  freshnessBody: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
+  chromeTitle: { color: color.text1, fontSize: 24, lineHeight: 29, fontWeight: "800" },
+  liveLabel: { color: color.text3, fontSize: 12, marginTop: 1 },
+  chromeRight: { flexDirection: "row", gap: space[1] },
+  selectControl: { minHeight: 44, minWidth: 54, alignItems: "center", justifyContent: "center", paddingHorizontal: space[1] },
+  selectControlText: { color: color.accent, fontSize: 13, fontWeight: "800" },
+  searchWrap: { paddingHorizontal: space[4], paddingBottom: space[2] },
+  freshnessBanner: { marginHorizontal: space[4], marginBottom: space[2], padding: space[4], borderRadius: radiusTokens.md, borderWidth: StyleSheet.hairlineWidth, borderColor: color.warning, backgroundColor: color.warningTint, gap: space[1] },
+  freshnessTitle: { color: color.text1, fontSize: 14, fontWeight: "800" },
+  freshnessBody: { color: color.text2, fontSize: 13, lineHeight: 18 },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: spacing.md, gap: spacing.md },
-  contentDesktop: { width: "100%", maxWidth: 1180, alignSelf: "center", paddingHorizontal: spacing.xl },
-  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  content: { paddingHorizontal: space[4], gap: space[4] },
+  contentDesktop: { width: "100%", maxWidth: 1180, alignSelf: "center", paddingHorizontal: space[7] },
+  summaryGrid: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   summaryGridDesktop: { flexWrap: "nowrap" },
   summaryPressable: { minWidth: 150, flexGrow: 1, flexBasis: "46%" },
   summaryCard: { height: 92 },
-  summaryCardSelected: { borderColor: accent.warm, borderWidth: 1 },
-  summaryContent: { gap: spacing.xs },
-  summaryCount: { color: textTokens.primary, fontSize: 27, lineHeight: 31, fontWeight: "800" },
-  summaryLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "700" },
-  list: { gap: spacing.sm },
-  listDesktop: { gap: spacing.sm },
-  loadMoreState: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md },
+  summaryCardSelected: { borderColor: color.accent, borderWidth: 1 },
+  summaryContent: { gap: space[1] },
+  summaryCount: { color: color.text1, fontSize: 27, lineHeight: 31, fontWeight: "800" },
+  summaryLabel: { color: color.text2, fontSize: 13, fontWeight: "700" },
+  list: { gap: space[2] },
+  listDesktop: { gap: space[2] },
+  loadMoreState: { alignItems: "center", gap: space[2], paddingVertical: space[4] },
   rowPressable: { width: "100%" },
   rowCard: { minHeight: 104 },
-  rowContent: { padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: glass.tint.profileBase },
-  avatarFallback: { width: 48, height: 48, borderRadius: 24, backgroundColor: accent.tint, borderWidth: StyleSheet.hairlineWidth, borderColor: accent.border, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: textTokens.primary, fontSize: 15, fontWeight: "800" },
-  selectionMark: { color: accent.warm, fontSize: 22, width: 24, textAlign: "center" },
+  rowContent: { padding: space[4], flexDirection: "row", alignItems: "center", gap: space[4] },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.fill.inset },
+  avatarFallback: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.accentLine, borderWidth: StyleSheet.hairlineWidth, borderColor: color.accentLine, alignItems: "center", justifyContent: "center" },
+  avatarText: { color: color.text1, fontSize: 15, fontWeight: "800" },
+  selectionMark: { color: color.accent, fontSize: 22, width: 24, textAlign: "center" },
   rowMain: { flex: 1, minWidth: 0, gap: 5 },
-  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  rowName: { color: textTokens.primary, fontSize: 16, lineHeight: 21, fontWeight: "800", flex: 1 },
-  rowTime: { color: textTokens.tertiary, fontSize: 11 },
-  rowContact: { color: textTokens.secondary, fontSize: 13 },
-  pillLine: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  rowMeta: { color: textTokens.tertiary, fontSize: 12 },
-  chevron: { color: textTokens.tertiary, fontSize: 28, marginLeft: spacing.xs },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  rowName: { color: color.text1, fontSize: 16, lineHeight: 21, fontWeight: "800", flex: 1 },
+  rowTime: { color: color.text3, fontSize: 11 },
+  rowContact: { color: color.text2, fontSize: 13 },
+  pillLine: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
+  rowMeta: { color: color.text3, fontSize: 12 },
+  chevron: { color: color.text3, fontSize: 28, marginLeft: space[1] },
   pressed: { opacity: 0.72 },
-  stateCard: { minHeight: 250, alignItems: "center", justifyContent: "center", padding: spacing.xl },
-  stateTitle: { color: textTokens.primary, fontSize: 17, fontWeight: "800", textAlign: "center" },
-  stateBody: { color: textTokens.secondary, fontSize: 14, textAlign: "center", marginTop: spacing.xs },
-  filterSheet: { padding: spacing.lg, gap: spacing.md },
-  sheetTitle: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  optionWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  option: { borderRadius: radiusTokens.full, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: glass.tint.profileBase },
-  optionSelected: { borderColor: accent.warm, backgroundColor: accent.tint },
-  optionText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
-  detailContent: { padding: spacing.lg, paddingBottom: 80, gap: spacing.md },
-  detailHero: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  stateCard: { minHeight: 250, alignItems: "center", justifyContent: "center", padding: space[7] },
+  stateTitle: { color: color.text1, fontSize: 17, fontWeight: "800", textAlign: "center" },
+  stateBody: { color: color.text2, fontSize: 14, textAlign: "center", marginTop: space[1] },
+  filterSheet: { padding: space[6], gap: space[4] },
+  sheetTitle: { color: color.text1, fontSize: 18, fontWeight: "800" },
+  optionWrap: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  option: { borderRadius: radiusTokens.full, borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: color.fill.inset },
+  optionSelected: { borderColor: color.accent, backgroundColor: color.accentLine },
+  optionText: { color: color.text1, fontSize: 13, fontWeight: "700" },
+  detailContent: { padding: space[6], paddingBottom: 80, gap: space[4] },
+  detailHero: { flexDirection: "row", alignItems: "center", gap: space[4] },
   detailIdentity: { flex: 1, gap: 3 },
-  detailName: { color: textTokens.primary, fontSize: 24, lineHeight: 29, fontWeight: "800" },
-  detailContact: { color: textTokens.secondary, fontSize: 14 },
-  detailPills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  truthNote: { color: textTokens.secondary, fontSize: 13, lineHeight: 19, padding: spacing.md, borderRadius: radiusTokens.md, backgroundColor: semantic.infoTint },
-  sectionTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "800", marginTop: spacing.sm },
-  detailMuted: { color: textTokens.tertiary, fontSize: 14 },
-  detailBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
-  attemptRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: glass.border.profileBase, paddingVertical: spacing.sm, gap: 3 },
-  attemptChannel: { color: textTokens.tertiary, fontSize: 11, fontWeight: "800", letterSpacing: 0.8 },
-  attemptStatus: { color: textTokens.secondary, fontSize: 14, textTransform: "capitalize" },
-  orderLinks: { gap: spacing.sm },
-  actionButtons: { gap: spacing.sm, marginTop: spacing.sm },
-  actionNotice: { position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.xl, padding: spacing.md, borderRadius: radiusTokens.md, backgroundColor: glass.tint.profileElevated, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase },
-  bulkBar: { position: "absolute", left: 0, right: 0, bottom: 0, minHeight: 72, paddingHorizontal: spacing.md, paddingTop: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: canvas.profile, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
-  bulkCount: { flex: 1, color: textTokens.primary, fontSize: 14, fontWeight: "800" },
+  detailName: { color: color.text1, fontSize: 24, lineHeight: 29, fontWeight: "800" },
+  detailContact: { color: color.text2, fontSize: 14 },
+  detailPills: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  truthNote: { color: color.text2, fontSize: 13, lineHeight: 19, padding: space[4], borderRadius: radiusTokens.md, backgroundColor: color.infoTint },
+  sectionTitle: { color: color.text1, fontSize: 15, fontWeight: "800", marginTop: space[2] },
+  detailMuted: { color: color.text3, fontSize: 14 },
+  detailBody: { color: color.text2, fontSize: 14, lineHeight: 20 },
+  attemptRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line, paddingVertical: space[2], gap: 3 },
+  attemptChannel: { color: color.text3, fontSize: 11, fontWeight: "800", letterSpacing: 0.8 },
+  attemptStatus: { color: color.text2, fontSize: 14, textTransform: "capitalize" },
+  orderLinks: { gap: space[2] },
+  actionButtons: { gap: space[2], marginTop: space[2] },
+  actionNotice: { position: "absolute", left: space[4], right: space[4], bottom: space[7], padding: space[4], borderRadius: radiusTokens.md, backgroundColor: color.fill.tile, borderWidth: StyleSheet.hairlineWidth, borderColor: color.line },
+  bulkBar: { position: "absolute", left: 0, right: 0, bottom: 0, minHeight: 72, paddingHorizontal: space[4], paddingTop: space[2], flexDirection: "row", alignItems: "center", gap: space[4], backgroundColor: color.canvas, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  bulkCount: { flex: 1, color: color.text1, fontSize: 14, fontWeight: "800" },
 });
 
 export default GuestRosterExperience;

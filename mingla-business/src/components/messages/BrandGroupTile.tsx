@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { brandGroupTileColours } from "../../utils/brandGroupThreadModel";
+import { color } from "../../constants/designSystem";
 
 export function BrandGroupTile({
   name,
@@ -67,10 +68,10 @@ export function BrandGroupPersonAvatar({
 }
 
 const styles = StyleSheet.create({
-  image: { backgroundColor: "#1A1E24" },
+  image: { backgroundColor: color.card },
   tile: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
   shade: { position: "absolute", left: 0, right: 0, bottom: 0, opacity: 0.55 },
-  initial: { color: "#FFFFFF", fontWeight: "800" },
+  initial: { color: color.textStrong, fontWeight: "800" },
   person: { alignItems: "center", justifyContent: "center" },
-  personInitial: { color: "#FFFFFF", fontWeight: "800" },
+  personInitial: { color: color.textStrong, fontWeight: "800" },
 });

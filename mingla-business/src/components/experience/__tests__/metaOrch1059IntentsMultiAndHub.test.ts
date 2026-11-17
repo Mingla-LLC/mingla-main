@@ -100,7 +100,7 @@ describe("wizard — multi-select intents + ≥1 gate", () => {
   });
 
   test("Step-1 gate + publish gate require ≥1 intent", () => {
-    expect(wiz).toMatch(/if \(step === 1\)[\s\S]*?intents\.length > 0/);
+    expect(wiz).toMatch(/if \((?:step|target) === 1\)[\s\S]*?intents\.length > 0/);
     expect(wiz).toMatch(/publish &&\s*\(\s*intents\.length === 0/);
   });
 

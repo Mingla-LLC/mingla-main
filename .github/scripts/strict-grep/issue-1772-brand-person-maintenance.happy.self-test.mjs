@@ -98,7 +98,7 @@ const mutations = [
   ["mingla-business/src/components/people/PersonMaintenanceFlow.tsx", 'announce("Merging people…")', "", "A6 merge announcement"],
   ["mingla-business/src/components/people/PersonDetailSections.tsx", "No merge history yet.", "", "A6 first-page history empty state"],
   ["mingla-business/src/components/people/PersonComparisonCard.tsx", "fontScale >= 2", "false", "A6 200-percent comparison"],
-  ["mingla-business/src/components/people/IdentityOperationReceipt.tsx", 'backgroundColor: Platform.OS === "android" ? androidOpaque.successFill', 'backgroundColor: glass.tint.profileBase', "A6 Android opaque receipt"],
+  ["mingla-business/src/components/people/IdentityOperationReceipt.tsx", 'backgroundColor: Platform.OS === "android" ? color.solidTint.success', 'backgroundColor: color.fill.inset', "A6 Android opaque receipt"],
   ["mingla-business/app/(tabs)/people/[personId].tsx", 'AccessibilityInfo.announceForAccessibility("Making primary…")', "", "A6 promote announcement"],
   ["mingla-business/src/components/people/PeoplePage.tsx", 'routeParams.review !== "conflicts"', "false", "A6 exact conflict signal"],
   ["supabase/migrations/20270612001772_issue_1772_brand_person_maintenance.sql", "CREATE OR REPLACE FUNCTION public.issue_1772_lock_brand_person_address(\n  p_brand_id uuid", "CREATE OR REPLACE FUNCTION public.issue_1772_lock_brand_person_address_removed(\n  p_brand_id uuid", "A6 shared address lock"],

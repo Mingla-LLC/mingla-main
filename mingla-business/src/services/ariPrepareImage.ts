@@ -18,6 +18,7 @@ import {
   planAriImagePreparation,
 } from "./ariImagePreparation";
 
+import { color } from "../constants/designSystem";
 interface DecodedImage {
   source: CanvasImageSource;
   width: number;
@@ -110,7 +111,7 @@ export async function prepareAriImage(
       else format = "jpeg";
     }
     if (blob === null) {
-      context.fillStyle = "#ffffff";
+      context.fillStyle = color.paper;
       context.fillRect(0, 0, target.width, target.height);
       context.drawImage(decoded.source, 0, 0, target.width, target.height);
       const jpeg = await canvasToBlob(canvas, "image/jpeg", plan.compress);

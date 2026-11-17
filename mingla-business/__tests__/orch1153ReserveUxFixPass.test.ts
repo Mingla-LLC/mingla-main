@@ -115,6 +115,14 @@ describe("ORCH-1153 reserve-UX fix pass", () => {
     const src = read(BIZ_PICKER);
     // FAILS-ON-REVERT: deleting the reset effect removes the visible-gated reset.
     expect(src).toMatch(/useEffect\(\(\)\s*=>\s*\{\s*if\s*\(visible\)/);
-    expect(src).toMatch(/setSelectedDateId\(null\)/);
+    // [TEST-MOD-APPROVED #4420] the picker's selection lives in the shared
+    // useExperienceReserveState; the open effect calls its reset(), which
+    // clears the chosen date.
+    expect(src).toMatch(/if\s*\(visible\)\s*\{\s*resetReserve\(\);/);
+    const hook = readFileSync(
+      join(__dirname, "../../packages/offering-rendering/useExperienceReserveState.ts"),
+      "utf8",
+    );
+    expect(hook).toMatch(/const reset = useCallback\(\(\): void => \{[\s\S]{0,80}setSelectedDateId\(null\)/);
   });
 });

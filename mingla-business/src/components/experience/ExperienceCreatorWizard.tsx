@@ -25,17 +25,14 @@ import {
 } from "react-native";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useExperienceVenueDefault } from "../../hooks/useExperienceVenueDefault";
 import {
   useExperienceDraftAdapter,
@@ -70,6 +67,12 @@ import type { TurnoutForecastController } from "../../hooks/useTurnoutForecast";
 import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import { shouldTrackGatePublishedAnyway } from "../../utils/turnoutGateAnalytics";
 import { Stepper } from "../ui/Stepper";
+import { GlassCard } from "../ui/GlassCard";
+import {
+  DESKTOP_BEZEL_MARGIN,
+  DESKTOP_WIZARD_FORM_MAX_WIDTH,
+  DESKTOP_WIZARD_RAIL_WIDTH,
+} from "../../constants/desktopLayout";
 import { Toast } from "../ui/Toast";
 // #1780 [bundle budget] — the invite surfaces come from their lazy owner, not
 // from InvitePeopleStep directly. All four wizards are separate lazy route
@@ -85,9 +88,25 @@ import {
   PENDING_WIZARD_INVITE_SUMMARY,
   type WizardInvitePlanSummary,
 } from "../invites/LazyInvitePeopleStep";
+import {
+  wizardInviteEstimateFailed,
+  wizardInviteListFailed,
+  wizardInviteSummaryReady,
+} from "../invites/wizardInvitePublishGate";
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
+import {
+  shouldConfirmLeave,
+  UNSAVED_CHANGES_DIALOG,
+} from "../../utils/unsavedChangesGuard";
+// #4420 — loaded when the discard dialog first opens: ConfirmDialog pulls
+// reanimated, which the node render suites that mount this wizard cannot parse.
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
 import { CreatorStep2When } from "../event/LazyCreatorStep2When";
 import { ExperienceCoverStep } from "./ExperienceCoverStep";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -234,6 +253,12 @@ export interface ExperienceCreatorWizardProps {
    * step 1.
    */
   initialStep?: number;
+  /**
+   * #4420 — a route-owned card shown at the top of the first step's scroll
+   * (the edit route's owner-only "Eligible buyers" card). It used to sit
+   * above the wizard header, pushing the stepper down the screen.
+   */
+  identityTopSlot?: React.ReactNode;
 }
 
 
@@ -390,12 +415,14 @@ export const ExperienceCreatorWizard: React.FC<
   liveExperience,
   liveSoldCount,
   initialStep,
+  identityTopSlot = null,
   liveBuyerNoticeLine,
   savedToastFor,
 }) => {
   const isLiveEdit = liveExperience !== undefined;
   const { user, signOut } = useAuth();
   const brand = useCurrentBrand();
+  const { isWideDesktop } = useResponsiveLayout();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // #3645 PR11c — Organiser Terms before first paid listing publish.
@@ -637,12 +664,13 @@ export const ExperienceCreatorWizard: React.FC<
       setStep(7);
     }
   }, [inviteEnabled]);
-  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
-    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
-    inviteQuote.selectionHash === invitePlan.selectionHash &&
-    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
-    !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
-    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError);
+  // #4420 — nobody invited: Publish never waits on the delivery estimate.
+  const inviteGateInput = {
+    inviteEnabled, plan: invitePlan, quote: inviteQuote, summary: persistedInvite,
+  };
+  const inviteSummaryReady = wizardInviteSummaryReady(inviteGateInput);
+  const inviteEstimateFailed = wizardInviteEstimateFailed(inviteGateInput);
+  const inviteListFailed = wizardInviteListFailed(inviteGateInput);
   const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     plan: WizardInvitePlan | null,
@@ -826,10 +854,9 @@ export const ExperienceCreatorWizard: React.FC<
       const v = parseFloat(wholePriceMajor);
       return Number.isFinite(v) && v >= 0 ? v : 0;
     }
-    return stops.reduce((sum, s) => {
-      const v = parseFloat(s.priceMajor);
-      return sum + (Number.isFinite(v) && v >= 0 ? v : 0);
-    }, 0);
+    // #3645 bundle 2A — the server's per-stop sum (each stop rounded to minor
+    // units first), so "is it paid" and the Terms gate agree with publish.
+    return perStopTotalMinor(stops) / 100;
   }, [isFree, pricingMode, stops, wholePriceMajor]);
 
   const turnoutSource = useMemo<TurnoutInputSource>(
@@ -921,20 +948,21 @@ export const ExperienceCreatorWizard: React.FC<
     priceOptions,
   ]);
 
-  const canContinue = useMemo(() => {
-    if (step === 1)
+  // #4420 B7 — the existing per-step Continue rule, as a function of the step
+  // so the clickable stepper can ask it for every step. No new rule.
+  const stepIsValid = useCallback((target: StepIndex): boolean => {
+    if (target === 1)
       return (
         title.trim().length > 0 &&
         description.trim().length >= 10 &&
         intents.length > 0
       );
-    if (step === 2) return stopsValid;
-    if (step === 3) return whenAdapter.isValid;
+    if (target === 2) return stopsValid;
+    if (target === 3) return whenAdapter.isValid;
     // issue #3284 — an invalid refund tier blocks Continue like a bad price.
-    if (step === 4) return pricingValid && refundValid;
+    if (target === 4) return pricingValid && refundValid;
     return true;
   }, [
-    step,
     title,
     description,
     intents,
@@ -943,18 +971,36 @@ export const ExperienceCreatorWizard: React.FC<
     pricingValid,
     refundValid,
   ]);
+  const canContinue = useMemo(() => stepIsValid(step), [stepIsValid, step]);
+  // A step is reachable up to the first step the Continue rule rejects.
+  const furthestValidIndex = useMemo((): number => {
+    for (let index = 0; index < steps.length; index += 1) {
+      if (!stepIsValid((index + 1) as StepIndex)) return index;
+    }
+    return steps.length - 1;
+  }, [stepIsValid, steps.length]);
 
+  // #4420 — this wizard keeps every field on screen until Save draft /
+  // Publish / Save changes (no field autosave), so closing step 1 with edits
+  // asks first. `hasUnsavedEditsRef` is filled below, once the payload exists.
+  const hasUnsavedEditsRef = useRef(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const goBack = useCallback((): void => {
-    if (step === 6 && inviteNavigation?.phase !== "ready") return;
-    if (step === 1) onCancel?.();
-    else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
+    if (step === 6 && inviteNavigation?.phase === "saving") return;
+    if (step === 1) {
+      if (hasUnsavedEditsRef.current) {
+        setDiscardOpen(true);
+        return;
+      }
+      onCancel?.();
+    } else setStep((prev) => Math.max(1, prev - 1) as StepIndex);
   }, [inviteNavigation?.phase, onCancel, step]);
 
   // #3446 — Android back = this wizard's own Back (step > 1) or close (step 1). See I-3446-WIZARD-ANDROID-BACK-IS-STEP-BACK.
   useWizardHardwareBack({
     isFirstStep: step === 1,
     busy: submitting || checkingInvitePublish || creatingDraft,
-    exitSurfaced: false,
+    exitSurfaced: discardOpen,
     onStepBack: goBack,
     onExit: goBack,
   });
@@ -1069,6 +1115,33 @@ export const ExperienceCreatorWizard: React.FC<
     ],
   );
 
+  // #4420 — dirty = the payload differs from the one the wizard opened with.
+  // Until the host first touches the form, the baseline follows the payload,
+  // so seeds and late reads (brand currency, venue default) never count.
+  const payloadKey = useMemo(
+    () => JSON.stringify(buildPayload(false)),
+    [buildPayload],
+  );
+  const payloadBaselineRef = useRef<string | null>(null);
+  const formTouchedRef = useRef(false);
+  useEffect(() => {
+    if (payloadBaselineRef.current === null || !formTouchedRef.current) {
+      payloadBaselineRef.current = payloadKey;
+    }
+  }, [payloadKey]);
+  const hasUnsavedEdits = shouldConfirmLeave({
+    dirty:
+      payloadBaselineRef.current !== null &&
+      payloadKey !== payloadBaselineRef.current,
+    busy: submitting,
+  });
+  hasUnsavedEditsRef.current = hasUnsavedEdits;
+  useUnsavedChangesGuard({
+    dirty: hasUnsavedEdits,
+    onRequestLeave: goBack,
+    hardwareBack: false,
+  });
+
   // META-ORCH-1059 Sub-B — create the server draft row up front (returns its
   // events-row id) so the Cover step's video-capable picker has a real id.
   // Idempotent: only creates once; edit-mode short-circuits to the existing id.
@@ -1130,6 +1203,23 @@ export const ExperienceCreatorWizard: React.FC<
     }
     setStep((prev) => Math.min(finalStep, prev + 1) as StepIndex);
   }, [canContinue, ensureDraft, experienceId, finalStep, inviteNavigation, step, whenAdapter]);
+
+  // #4420 B7 — jump to a reachable step from the stepper. Same guards as
+  // Back/Continue: never off Invite people while it is still loading (#1780),
+  // never while Publish re-reads the plan, and leaving Identity makes sure
+  // the server draft exists exactly as Continue does.
+  const goToStep = useCallback((ordinal: number): void => {
+    const target = (ordinal + 1) as StepIndex;
+    if (target === step || target > finalStep) return;
+    if (step === 6 && inviteNavigation?.phase === "saving") return;
+    if (checkingInvitePublish) return;
+    if (target > step && ordinal > furthestValidIndex) return;
+    setShowStepErrors(false);
+    if (step === 1 && target > 1 && experienceId === null) {
+      void ensureDraft();
+    }
+    setStep(target);
+  }, [checkingInvitePublish, ensureDraft, experienceId, finalStep, furthestValidIndex, inviteNavigation?.phase, step]);
 
   // #3645 — "Connect bank" carries where the host is, so bank setup brings
   // them straight back to this experience on this step (web and native).
@@ -1539,7 +1629,7 @@ export const ExperienceCreatorWizard: React.FC<
       setInvitePlan(latest.plan);
       setInviteQuote(latest.quote);
       if (latest.quote === null) {
-        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+        if (latest.plan.selectedCount === 0) {
           maybeOpenIntelGate();
         } else {
           setToast("Refresh the invite estimate before publishing.");
@@ -1818,12 +1908,19 @@ export const ExperienceCreatorWizard: React.FC<
         );
       }}
     >
-    <View style={styles.host}>
+    <View
+      style={styles.host}
+      onStartShouldSetResponderCapture={() => {
+        formTouchedRef.current = true;
+        return false;
+      }}
+    >
+      {isWideDesktop ? (
       <View style={styles.header}>
         <Pressable
           onPress={goBack}
           // #1780 — no stepping back to Invite while Publish re-reads the plan.
-          disabled={(step === 6 && inviteNavigation?.phase !== "ready") || checkingInvitePublish}
+          disabled={(step === 6 && inviteNavigation?.phase === "saving") || checkingInvitePublish}
           accessibilityRole="button"
             accessibilityLabel={
               step === 1 ? "Cancel experience creation" : "Back"
@@ -1833,11 +1930,98 @@ export const ExperienceCreatorWizard: React.FC<
             <Icon
               name={step === 1 ? "close" : "chevL"}
               size={18}
-              color={textTokens.secondary}
+              color={color.text2}
             />
         </Pressable>
-        <Stepper steps={steps} currentIndex={step - 1} />
+        {/* #4420 — desktop: the step list lives in the 280 rail beside the
+            form (T4 wizard template), as on the trip and RSVP wizards. */}
+        <View style={styles.headerTitleCol}>
+          <Text style={styles.chromeTitle} numberOfLines={1}>
+            {title.trim().length > 0
+              ? title
+              : existingExperienceId !== undefined
+                ? "Untitled experience"
+                : "New experience"}
+          </Text>
+          {brand?.displayName ? (
+            <Text style={styles.chromeSub} numberOfLines={1}>
+              {brand.displayName}
+            </Text>
+          ) : null}
+        </View>
       </View>
+      ) : (
+        // #4420 — the phone chrome every wizard shares (mockup
+        // experience-create__identity): close, the experience's name over the
+        // brand, then the stepper's progress, chips and n / N Steps button.
+        // The inline numbered stepper ran off the right edge on a phone.
+        <View style={styles.mobileChrome}>
+          <View style={styles.chromeRow}>
+            <Pressable
+          onPress={goBack}
+          // #1780 — no stepping back to Invite while Publish re-reads the plan.
+          disabled={(step === 6 && inviteNavigation?.phase === "saving") || checkingInvitePublish}
+          accessibilityRole="button"
+            accessibilityLabel={
+              step === 1 ? "Cancel experience creation" : "Back"
+            }
+          style={styles.backTouch}
+        >
+            <Icon
+              name={step === 1 ? "close" : "chevL"}
+              size={18}
+              color={color.text2}
+            />
+        </Pressable>
+            <View style={styles.chromeTitleCol}>
+              <Text style={styles.chromeTitle} numberOfLines={1}>
+                {title.trim().length > 0
+                  ? title
+                  : existingExperienceId !== undefined
+                    ? "Untitled experience"
+                    : "New experience"}
+              </Text>
+              {brand?.displayName ? (
+                <Text style={styles.chromeSub} numberOfLines={1}>
+                  {brand.displayName}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          <Stepper
+            layout="chips"
+            steps={steps}
+            currentIndex={step - 1}
+            furthestValidIndex={furthestValidIndex}
+            onStepPress={goToStep}
+            sheetTitle="Steps"
+            testID="experience-wizard-stepper"
+          />
+        </View>
+      )}
+      <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
+        {isWideDesktop ? (
+          <GlassCard
+            variant="base"
+            padding={space[4]}
+            radius="lg"
+            style={styles.desktopStepRail}
+          >
+            <Text style={styles.desktopStepEyebrow}>
+              {isLiveEdit ? "Edit experience" : "Create experience"}
+            </Text>
+            {/* #4420 B7 — the 280 clickable step list (done / current / error / todo). */}
+            <Stepper
+              layout="list"
+              steps={steps}
+              currentIndex={step - 1}
+              furthestValidIndex={furthestValidIndex}
+              onStepPress={goToStep}
+              testID="experience-wizard-steps"
+            />
+          </GlassCard>
+        ) : null}
+        <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileShell}>
       {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
           from the file head to the occurrence it was always meant to cover.
           The old marker sat in the first three lines for a REASON — the gate's
@@ -1851,10 +2035,11 @@ export const ExperienceCreatorWizard: React.FC<
         contentContainerStyle={[
           styles.scrollContent,
           // ORCH-1165: +42pt clearance for the Done bar while the keyboard is up.
-          keyboardVisible ? { paddingBottom: spacing.lg + 42 } : null,
+          keyboardVisible ? { paddingBottom: space[6] + 42 } : null,
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        {step === 1 && identityTopSlot !== null ? identityTopSlot : null}
         {isLiveEdit ? (
           <EditAfterPublishExperienceBanner
             reason={liveEditReason}
@@ -1876,7 +2061,7 @@ export const ExperienceCreatorWizard: React.FC<
               value={description}
               onChangeText={(value) => setDescription(value.slice(0, 500))}
               placeholder="10–500 characters."
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               accessibilityLabel="Experience description"
               multiline
               style={styles.textArea}
@@ -1906,7 +2091,7 @@ export const ExperienceCreatorWizard: React.FC<
                     <Icon
                       name={selected ? "check" : opt.icon}
                       size={18}
-                      color={selected ? accent.warm : textTokens.secondary}
+                      color={selected ? color.accent : color.text2}
                     />
                     <View style={styles.intentTextCol}>
                       <Text
@@ -2133,7 +2318,10 @@ export const ExperienceCreatorWizard: React.FC<
                 return `${currencySymbol}${resolvedTotalMajor.toFixed(priceFallbackDecimals(resolvedTotalMajor))}`;
               })()}</Text>
             </View>
-            <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
+            <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
+            estimateFailed={inviteEstimateFailed}
+            listFailed={inviteListFailed}
+            onRetry={() => void persistedInvite.refreshAuthoritative().then((latest) => { setInvitePlan(latest.plan); setInviteQuote(latest.quote); }).catch(() => undefined)} />
           </View>
         ) : null}
 
@@ -2189,7 +2377,7 @@ export const ExperienceCreatorWizard: React.FC<
         ) : null}
       </ScrollView>
         <View
-          style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}
+          style={[styles.footer, { paddingBottom: insets.bottom + space[6] }]}
         >
         {step < finalStep ? (
             <Button
@@ -2239,6 +2427,8 @@ export const ExperienceCreatorWizard: React.FC<
           </View>
         )}
       </View>
+        </View>
+      </View>
         <Toast
           visible={toast !== null}
           kind="error"
@@ -2257,7 +2447,7 @@ export const ExperienceCreatorWizard: React.FC<
         <InvitePlanSummaryBridge
           eventId={experienceId}
           enabled={!isLiveEdit}
-          quoteWhenEmpty={inviteFlag.data === true}
+          quoteWhenEmpty={false}
           onChange={setPersistedInvite}
         />
         <InvitePeoplePublishConfirmation visible={inviteConfirmVisible} eventType="experience"
@@ -2267,20 +2457,62 @@ export const ExperienceCreatorWizard: React.FC<
             maybeOpenIntelGate();
           }} />
       {organiserTermsGateElement}
+      {discardOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => setDiscardOpen(false)}
+            onConfirm={() => {
+              setDiscardOpen(false);
+              onCancel?.();
+            }}
+            title={UNSAVED_CHANGES_DIALOG.title}
+            description={UNSAVED_CHANGES_DIALOG.description}
+            confirmLabel={UNSAVED_CHANGES_DIALOG.confirmLabel}
+            cancelLabel={UNSAVED_CHANGES_DIALOG.cancelLabel}
+            variant="simple"
+            destructive
+            testID="experience-wizard-discard-dialog"
+          />
+        </React.Suspense>
+      ) : null}
     </View>
     </LazyTurnoutIntelProvider>
   );
 };
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover },
+  host: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[2],
+  },
+  mobileChrome: {
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[3],
+    gap: space[3],
+  },
+  chromeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+  },
+  chromeTitleCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  chromeTitle: {
+    ...type.h2,
+    color: color.text1,
+  },
+  chromeSub: {
+    ...type.caption,
+    color: color.text3,
   },
   backTouch: {
     width: 44,
@@ -2289,57 +2521,96 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.full,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  // #4420 — the 16pt phone gutter, and one gap between the route card, the
+  // live-edit banner and the step body.
+  scrollContent: {
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[6],
+    gap: space[4],
+  },
   // ORCH-1076 Stream B — proactive Stripe banner spacing (inherits the
   // scrollContent horizontal padding; only needs top separation).
-  stripeBannerWrap: { marginTop: spacing.md },
-  stepBody: { gap: spacing.md },
+  stripeBannerWrap: { marginTop: space[4] },
+  stepBody: { gap: space[4] },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
   label: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   textArea: {
     minHeight: 120,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    borderColor: color.line,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlignVertical: "top",
   },
-  footer: { padding: spacing.lg },
-  footerRow: { flexDirection: "row", gap: spacing.sm },
+  footer: { padding: space[6] },
+  // #4420 — T4 wizard template on desktop: the 280 step rail, then a 720 form
+  // pane holding the step scroll and its footer.
+  mobileShell: { flex: 1 },
+  desktopShell: {
+    flex: 1,
+    flexDirection: "row",
+    gap: space[4],
+    paddingHorizontal: DESKTOP_BEZEL_MARGIN,
+    paddingBottom: DESKTOP_BEZEL_MARGIN,
+  },
+  desktopStepRail: {
+    width: DESKTOP_WIZARD_RAIL_WIDTH,
+    flexShrink: 0,
+    alignSelf: "flex-start",
+  },
+  desktopStepEyebrow: {
+    ...type.label,
+    textTransform: "uppercase",
+    color: color.accent,
+    marginBottom: space[3],
+  },
+  desktopFormPane: {
+    flex: 1,
+    maxWidth: DESKTOP_WIZARD_FORM_MAX_WIDTH,
+    minWidth: 0,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.tableHead,
+    overflow: "hidden",
+  },
+  headerTitleCol: { flex: 1, minWidth: 0 },
+  footerRow: { flexDirection: "row", gap: space[2] },
   footerButton: { flex: 1 },
   helperBody: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   intentGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   intentChip: {
     flexBasis: "47%",
@@ -2347,39 +2618,39 @@ const styles = StyleSheet.create({
     minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   intentChipActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   intentTextCol: { flex: 1 },
   intentLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
-  intentLabelActive: { color: textTokens.primary },
+  intentLabelActive: { color: color.text1 },
   intentDesc: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 1,
   },
   inlineError: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xxs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: 2,
   },
-  reviewCard: { borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase, padding: spacing.md, gap: spacing.xs },
-  reviewValue: { ...typography.body, color: textTokens.primary, fontWeight: "600" },
-  intelHighlight: { borderColor: accent.warm, borderWidth: 2 },
+  reviewCard: { borderRadius: radius.md, borderWidth: 1, borderColor: color.line, padding: space[4], gap: space[1] },
+  reviewValue: { ...type.body, color: color.text1, fontWeight: "600" },
+  intelHighlight: { borderColor: color.accent, borderWidth: 2 },
 });
 
 export default ExperienceCreatorWizard;

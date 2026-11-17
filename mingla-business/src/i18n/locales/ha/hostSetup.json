@@ -171,6 +171,10 @@
       "readyBank": "Asusun banki a {{country}}",
       "readyBankAny": "Asusun banki a ƙasarka",
       "readyTax": "Lambar haraji (kamfanoni masu rajista kawai)"
+    },
+    "stepper": {
+      "saved": "An adana",
+      "steps": "Matakai"
     }
   },
   "doorMode": {

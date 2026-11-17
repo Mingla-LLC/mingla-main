@@ -158,7 +158,8 @@ describe("DesktopCanvas — render contract", () => {
     expect(DESKTOP_HUB_GRID_COLUMNS).toBe(4);
     expect(DESKTOP_RAIL_WIDTH).toBe(80);
     expect(DESKTOP_TOP_INSET).toBe(16);
-    expect(DESKTOP_WIZARD_FORM_MAX_WIDTH).toBe(1120);
-    expect(DESKTOP_WIZARD_RAIL_WIDTH).toBe(260);
+    // [TEST-MOD-APPROVED #4420] Graphite Glass: 280 step list + 720 form column (spec §2).
+    expect(DESKTOP_WIZARD_FORM_MAX_WIDTH).toBe(720);
+    expect(DESKTOP_WIZARD_RAIL_WIDTH).toBe(280);
   });
 });

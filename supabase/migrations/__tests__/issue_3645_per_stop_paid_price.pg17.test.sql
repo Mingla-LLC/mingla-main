@@ -2,7 +2,7 @@
 
 -- Issue #3645 bundle 2A — a paid per-stop experience whose stops total 0 is
 -- refused instead of silently publishing free.
--- Migration 20280726003645_issue_3645_per_stop_paid_price.sql.
+-- Migration 20280801003645_issue_3645_per_stop_paid_price.sql.
 -- Run after the full migration chain on PostgreSQL 17. Everything rolls back.
 --
 -- MINGLA-INVARIANT: I-3645-PAID-EXPERIENCE-HAS-A-PRICE | issue #3645 | biz_create_experience (publishing), biz_publish_experience and biz_update_live_experience refuse a paid experience whose one ticket resolves to 0, in whole-price and per-stop mode alike (experience_price_invalid); marking it free is the way to make it free.

@@ -3,8 +3,8 @@
  *
  * Source: `Mingla_Artifacts/design-package/.../chrome.jsx:89–111`.
  *
- * Composed from `GlassChrome` + `Icon`. Active variant pulls accent tint
- * + warm border + warm-glow shadow from `designSystem.shadows.glassChromeActive`.
+ * Composed from `GlassChrome` + `Icon`. #4420: control material (onPhoto over
+ * photos); active = the selected material. Orange is not used here.
  * Optional badge dot in the top-right.
  *
  * Press: scale 0.96 over 120ms (`easings.press`). Reduce-motion fallback
@@ -35,13 +35,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
+  color,
   durations,
-  glass,
-  semantic,
-  shadows,
-  text as textTokens,
-  typography,
+  motion,
+  shadow as shadowTokens,
+  size as sizeTokens,
+  type,
 } from "../../constants/designSystem";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 
@@ -76,11 +75,18 @@ export interface IconChromeProps {
    * Consumer overrides honored verbatim — combined effective extent must remain ≥ 44.
    */
   hitSlop?: PressableProps["hitSlop"];
+  /**
+   * #4420: the control floats over a photo (event covers, media). Uses the
+   * onPhoto material (Android .84, the one near-opaque exception).
+   */
+  onPhoto?: boolean;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
 
-const DEFAULT_SIZE = 36;
+/** #4420 kit IconButton sizes: 36 / 44 / 48. */
+export const ICON_BUTTON_SIZE = sizeTokens.iconBtn;
+const DEFAULT_SIZE = sizeTokens.iconBtn.sm;
 const ICON_SIZE_RATIO = 0.5; // 18 of 36
 const PRESS_TIMING = { duration: durations.fast } as const;
 const BADGE_SIZE = 18;
@@ -110,6 +116,7 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
   disabled = false,
   accessibilityLabel,
   hitSlop = DEFAULT_HIT_SLOP,
+  onPhoto = false,
   testID,
   style,
 }, forwardedRef) {
@@ -128,7 +135,7 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
     if (reduceMotion) {
       opacity.value = withTiming(0.7, PRESS_TIMING);
     } else {
-      scale.value = withTiming(0.96, PRESS_TIMING);
+      scale.value = withTiming(motion.pressScale, PRESS_TIMING);
     }
   }, [interactive, opacity, reduceMotion, scale]);
 
@@ -177,12 +184,8 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
   ): React.ReactNode => (
     <Animated.View style={animatedStyle}>
       <GlassChrome
-        intensity="chrome"
-        tint={active ? "idle" : "idle"}
-        tintColor={active ? accent.tint : glass.tint.chrome.idle}
-        borderColor={active ? accent.border : glass.border.chrome}
-        highlightColor={glass.highlight.profileBase}
-        shadow={active ? shadows.glassChromeActive : shadows.glassChrome}
+        material={active ? "selected" : onPhoto ? "onPhoto" : "control"}
+        shadow={onPhoto ? shadowTokens.none : shadowTokens.paper}
         radius="full"
         style={[styles.glass, { width: size, height: size }]}
       >
@@ -190,7 +193,7 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
           <Icon
             name={icon}
             size={iconSize}
-            color={active ? accent.warm : textTokens.primary}
+            color={onPhoto ? color.textOnPhoto : color.text1}
           />
         </View>
       </GlassChrome>
@@ -246,17 +249,18 @@ const styles = StyleSheet.create({
     minWidth: BADGE_SIZE,
     height: BADGE_SIZE,
     borderRadius: BADGE_SIZE / 2,
-    backgroundColor: semantic.error,
+    backgroundColor: color.badge,
+    borderWidth: 2,
+    borderColor: color.badgeRing,
     paddingHorizontal: 4,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeLabel: {
-    color: textTokens.inverse,
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
+    color: color.textStrong,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: type.label.fontWeight,
   },
 });
 

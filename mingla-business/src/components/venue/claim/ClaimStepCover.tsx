@@ -19,12 +19,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type as typeToken,
 } from "../../../constants/designSystem";
 import { flushDraftVenuePersistence, useDraftVenueStore } from "../../../store/draftVenueStore";
 import { ThemeControlRow } from "../../theme/ThemeControlRow";
@@ -50,7 +48,7 @@ import { CLAIM_GALLERY_MAX } from "./ClaimStepPhotos";
 
 /** Wrap math (DESIGN §6.5): 2-up minimum, more columns once ~172pt tiles fit. */
 export function coverGridColumns(columnWidth: number): number {
-  const gap = spacing.sm;
+  const gap = space[2];
   return Math.max(2, Math.floor((columnWidth + gap) / (172 + gap)));
 }
 
@@ -87,7 +85,7 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
   }, []);
 
   const cols = coverGridColumns(colWidth > 0 ? colWidth : 327);
-  const gap = spacing.sm;
+  const gap = space[2];
   const tileW = colWidth > 0
     ? Math.floor((colWidth - gap * (cols - 1)) / cols)
     : 159;
@@ -158,7 +156,7 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
       ]}
       testID="claim-cover-upload"
     >
-      <Icon name="upload" size={28} color={textTokens.secondary} />
+      <Icon name="upload" size={28} color={color.text2} />
       <Text style={styles.uploadLabel}>Upload new</Text>
     </Pressable>
   );
@@ -225,7 +223,7 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
               ) : null}
               {selected ? (
                 <View style={styles.checkBadge}>
-                  <Icon name="check" size={14} color={textTokens.inverse} />
+                  <Icon name="check" size={14} color={color.textStrong} />
                 </View>
               ) : null}
             </Pressable>
@@ -255,7 +253,7 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
               <ProvenanceChip state="new" scrim />
             </View>
             <View style={styles.checkBadge}>
-              <Icon name="check" size={14} color={textTokens.inverse} />
+              <Icon name="check" size={14} color={color.textStrong} />
             </View>
           </View>
         ) : null}
@@ -308,26 +306,26 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: typeToken.h1.fontSize,
+    lineHeight: typeToken.h1.lineHeight,
+    fontWeight: typeToken.h1.fontWeight,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: typeToken.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   helperChosen: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: typeToken.small.fontSize,
     lineHeight: 20,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
   previewBand: {
     borderRadius: 12,
@@ -336,7 +334,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   tile: {
     borderRadius: radiusTokens.lg,
@@ -344,11 +342,11 @@ const styles = StyleSheet.create({
   },
   tileSelected: {
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.accent,
   },
   tileUnselected: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   tilePressed: {
     transform: [{ scale: 0.97 }],
@@ -365,7 +363,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -373,24 +371,24 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   uploadTileFull: {
     width: "100%",
     height: 170,
   },
   uploadLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: typeToken.small.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   toast: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: typeToken.caption.fontSize,
+    color: color.text3,
   },
 });
 

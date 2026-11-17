@@ -51,12 +51,18 @@ Deno.test("ORCH-1163 §A.2 — RsvpOfferingBody hosts NO ParallaxCoverShell (she
 });
 
 // ── §0 — canonical 9-section order anchors ──
-Deno.test("ORCH-1163 §0 — canonical order: full-width date row + solid-fill pills + inline box", () => {
-  // Section 3 — the FULL-WIDTH date row (orch-1167-date-row parity).
-  assertStringIncludes(body, 'testID="orch-1167-date-row"');
-  assertStringIncludes(body, "accentWash"); // solid-fill pills + date band
-  // Section 4 — the canonical pills row (NO tickets-left for RSVP).
-  assertStringIncludes(body, 'testID="orch-1167-pills-row"');
+Deno.test("ORCH-1163 §0 — canonical order: fact rows + tag line + inline box", () => {
+  // issue #4420 — sections 3 + 4 are the shared fact rows (when / where, with
+  // the doors line and the address-privacy caption) and the quiet tag line,
+  // with the SAME testID prefix as the event page (parity).
+  assertStringIncludes(body, "<OfferingFactRows");
+  assertStringIncludes(body, 'testID="orch-1167-facts"');
+  assertStringIncludes(body, 'key: "when"');
+  assertStringIncludes(body, 'key: "where"');
+  assertStringIncludes(body, "caption: doorsLine");
+  assertStringIncludes(body, "caption: addressUnlockCaption");
+  // The tag line keeps format → vibes → party types → music, NO tickets-left.
+  assertStringIncludes(body, "tags={[");
   assert(
     !body.includes("tickets left") && !body.includes("ticketsLeftLabel"),
     "RSVP pills row must carry NO tickets-left pill",

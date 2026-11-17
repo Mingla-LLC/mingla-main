@@ -18,12 +18,10 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 
@@ -36,9 +34,9 @@ export const PublicBrandNotFound: React.FC = () => {
   };
 
   return (
-    <View style={[styles.host, { paddingTop: insets.top + spacing.xl }]}>
+    <View style={[styles.host, { paddingTop: insets.top + space[7] }]}>
       <View style={styles.iconWrap}>
-        <Icon name="search" size={32} color={textTokens.tertiary} />
+        <Icon name="search" size={32} color={color.text3} />
       </View>
       <Text style={styles.title}>We couldn't find that brand</Text>
       <Text style={styles.body}>
@@ -60,50 +58,50 @@ export const PublicBrandNotFound: React.FC = () => {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
-    paddingHorizontal: spacing.lg,
+    backgroundColor: color.canvas,
+    paddingHorizontal: space[6],
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconWrap: {
     width: 64,
     height: 64,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
     maxWidth: 320,
   },
   cta: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radiusTokens.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[6],
+    borderRadius: radius.sm,
     overflow: "hidden",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   ctaLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 });

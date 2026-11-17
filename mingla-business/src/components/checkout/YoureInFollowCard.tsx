@@ -20,6 +20,7 @@ import { supabase } from "../../services/supabase";
 import { Icon } from "../ui/Icon";
 import { formatCompactCount } from "@mingla/offering-rendering/followerCount";
 
+import { checkoutStyles, color } from "./checkoutTheme";
 export function youreInFollowingDetail(count: number | null): string {
   if (count === null) return "New dates and offers first.";
   const others = count - 1;
@@ -169,7 +170,7 @@ export function YoureInFollowCard({
         testID={testID}
       >
         <View style={styles.row}>
-          <Icon name="check" size={18} color="#4ade80" />
+          <Icon name="check" size={18} color={color.successText} />
           <View style={styles.copy}>
             <Text style={styles.title}>You follow {name}</Text>
             <Text style={styles.detail}>{followingDetail}</Text>
@@ -187,7 +188,7 @@ export function YoureInFollowCard({
         testID={testID}
       >
         <View style={styles.row}>
-          <Icon name="check" size={18} color="#4ade80" />
+          <Icon name="check" size={18} color={color.successText} />
           <View style={styles.copy}>
             <Text style={styles.title}>{"You're now following "}{name}</Text>
             <Text style={styles.detail}>{followingDetail}</Text>
@@ -203,7 +204,7 @@ export function YoureInFollowCard({
             testID={`${testID}-undo`}
           >
             {busy ? (
-              <ActivityIndicator size="small" color="#f59a55" />
+              <ActivityIndicator size="small" color={color.accentText} />
             ) : (
               <Text style={styles.undo}>Undo</Text>
             )}
@@ -241,7 +242,7 @@ export function YoureInFollowCard({
           testID={`${testID}-follow`}
         >
           {busy ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <ActivityIndicator size="small" color={color.textStrong} />
           ) : (
             <Text style={styles.followLabel}>Follow</Text>
           )}
@@ -256,11 +257,11 @@ export function YoureInFollowCard({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   card: {
-    backgroundColor: "#1b1d22",
+    backgroundColor: color.card,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: color.lineStrong,
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
@@ -278,13 +279,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: color.textStrong,
   },
   detail: {
     marginTop: 2,
     fontSize: 13,
     lineHeight: 18,
-    color: "#bfc0c1",
+    color: color.text2,
   },
   undoHit: {
     minHeight: 44,
@@ -297,25 +298,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "700",
-    color: "#f59a55",
+    color: color.accentText,
   },
   followHit: {
     minHeight: 44,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: "#c2560f",
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
   },
   followLabel: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: color.ink,
   },
   error: {
     marginTop: 8,
     fontSize: 12,
     lineHeight: 16,
-    color: "#fca5a5",
+    color: color.errorText,
   },
-});
+}));

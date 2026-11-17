@@ -39,11 +39,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../src/constants/designSystem";
+import { space, type, color } from "../../../src/constants/designSystem";
 import {
   boldFontFamily,
   createThemePalette,
@@ -94,7 +90,7 @@ import {
   resolveBuyerWebPublicLifecycle,
 } from "../../../src/analytics/publicParityWebAdapter";
 import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
-import { TripPreview } from "../../../src/components/trip/TripPreview";
+import { TripPreview } from "../../../src/components/offering/LazyPublicParts";
 import { SHOW_PRE_PURCHASE_APP_BOX } from "../../../src/components/event/prePurchaseAppBox";
 import { useBrandFollowerCount } from "../../../src/hooks/useBrandFollowerCount";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
@@ -131,8 +127,9 @@ import {
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
 
-export default function PublicTripRoute(): React.ReactElement {
+function PublicTripRouteBody(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -390,7 +387,7 @@ export default function PublicTripRoute(): React.ReactElement {
       // NO LONGER reserves a full bar-sized clearance (that oversized pad was the
       // BLACK VOID Seth flagged). A small tail keeps the last pre-dock content from
       // hiding behind the floating pill at the transition moment.
-      contentBottomInset={spacing.md}
+      contentBottomInset={space[4]}
       router={router}
     />
   );
@@ -698,8 +695,8 @@ const ResolvedTripPage: React.FC<{
 
   // ORCH-1138 — state banner (sold out / closed / deadline) rendered above body.
   const stateBanner = isClosed ? (
-    <View style={[styles.banner, { backgroundColor: "rgba(239,68,68,0.14)" }]}>
-      <Text style={[styles.bannerText, { color: "#ef4444" }]}>
+    <View style={[styles.banner, { backgroundColor: color.errorTint }]}>
+      <Text style={[styles.bannerText, { color: color.errorText }]}>
         Bookings are closed for this trip
       </Text>
     </View>
@@ -975,21 +972,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: "#0c0e12",
+    padding: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   stateTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
   stateText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   banner: {
@@ -1022,3 +1019,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 });
+
+// issue #4420 — the Host app's real glass for the shared public page.
+export default function PublicTripRoute(): React.ReactElement {
+  return (
+    <PublicGlassProvider>
+      <PublicTripRouteBody />
+    </PublicGlassProvider>
+  );
+}

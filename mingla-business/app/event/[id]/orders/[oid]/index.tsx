@@ -23,15 +23,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  accent,
-  canvas,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../../src/constants/designSystem";
 import type {
-  OrderRecord,
   OrderStatus,
   RefundRecord,
 } from "../../../../../src/store/orderStore";
@@ -65,31 +61,15 @@ import {
 import { usePublicEventById } from "../../../../../src/hooks/usePublicEvents";
 import { resolveOrderRefundStartAt } from "../../../../../src/utils/refundPolicyPrefill";
 import { CancelOrderDialog } from "../../../../../src/components/orders/CancelOrderDialog";
+// A cash or manual door sale refunds only through the door refund RPC; the
+// provider refund-order path is refused for it (door_sale_refund_path_required).
+import { deriveActionFlags } from "../../../../../src/utils/orderRefundActions";
+import { LazyDoorRefundSheet } from "../../../../../src/components/door/LazyDoorRefundSheet";
+import { useEventDoorSales } from "../../../../../src/hooks/useEventDoorSales";
+import type { DoorSaleRecord } from "../../../../../src/types/doorSales";
 
 const loadDiscountService = () =>
   import("../../../../../src/services/discountService");
-
-// ORCH-0787: derive primary-action visibility per Cycle 9c §3.4.2.
-// Replaces the hardcoded `const showRefundFull = false; ...` stub.
-const deriveActionFlags = (
-  order: OrderRecord,
-  canRefund: boolean,
-): {
-  showRefundFull: boolean;
-  showRefundPartialAgain: boolean;
-  showCancelOrder: boolean;
-  showSecondaryPartialFromFull: boolean;
-} => {
-  const paid = order.status === "paid";
-  const partial = order.status === "refunded_partial";
-  const isFree = order.paymentMethod === "free";
-  return {
-    showRefundFull: canRefund && !isFree && paid,
-    showRefundPartialAgain: canRefund && !isFree && partial,
-    showCancelOrder: canRefund && isFree && paid,
-    showSecondaryPartialFromFull: canRefund && !isFree && paid,
-  };
-};
 
 const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   card: "Card",
@@ -103,14 +83,6 @@ const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   card_reader: "Card reader",
   pay_code: "Buyer's phone (door)",
   tap_to_pay: `${TAP_TO_PAY_SHORT} (door)`,
-};
-
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
 };
 
 const getInitials = (name: string): string => {
@@ -139,10 +111,10 @@ const statusBannerSpec = (
   switch (status) {
     case "paid":
       return {
-        bgColor: "rgba(34, 197, 94, 0.12)",
-        borderColor: "rgba(34, 197, 94, 0.32)",
+        bgColor: color.successTint,
+        borderColor: color.successText,
         iconName: "check",
-        iconColor: "#34c759",
+        iconColor: color.successText,
         copy:
           currency === null
             ? "Free order · confirmed"
@@ -150,26 +122,26 @@ const statusBannerSpec = (
       };
     case "refunded_full":
       return {
-        bgColor: "rgba(239, 68, 68, 0.12)",
-        borderColor: "rgba(239, 68, 68, 0.32)",
+        bgColor: color.errorTint,
+        borderColor: color.errorLine,
         iconName: "refund",
-        iconColor: semantic.error,
+        iconColor: color.danger,
         copy: `Refunded ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)} · buyer will see in 3–5 days`,
       };
     case "refunded_partial":
       return {
-        bgColor: accent.tint,
-        borderColor: accent.border,
+        bgColor: color.fill.tabOn,
+        borderColor: color.lineStrong,
         iconName: "refund",
-        iconColor: accent.warm,
+        iconColor: color.text1,
         copy: `Partially refunded ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)}`,
       };
     case "cancelled":
       return {
-        bgColor: "rgba(120, 120, 120, 0.12)",
-        borderColor: "rgba(120, 120, 120, 0.32)",
+        bgColor: color.fill.tile,
+        borderColor: color.lineStrong,
         iconName: "close",
-        iconColor: textTokens.tertiary,
+        iconColor: color.text3,
         copy: "Cancelled · buyer's ticket is no longer valid",
       };
     default: {
@@ -228,6 +200,17 @@ export default function OrderDetailRoute(): React.ReactElement {
     typeof orderId === "string" ? orderId : null,
   );
   const order = orderQuery.data ?? null;
+  // A cash or manual door sale is read from the door sales list (the same
+  // record the door sale screen refunds), and only when the order is one.
+  const isDoorSaleOrder = order?.source === "door_sale";
+  const doorSalesQuery = useEventDoorSales(
+    isDoorSaleOrder && typeof eventId === "string" ? eventId : null,
+  );
+  const doorSale: DoorSaleRecord | null =
+    isDoorSaleOrder && order !== null
+      ? (doorSalesQuery.data?.find((sale) => sale.id === order.id) ?? null)
+      : null;
+  const [doorRefundOpen, setDoorRefundOpen] = useState<boolean>(false);
   const paymentRole = useCurrentBrandRole(order?.brandId ?? null);
   const payoutScreen = useBrandPayoutScreen(
     canViewBrandPayments({
@@ -382,7 +365,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.emptyHost} accessibilityRole="progressbar">
@@ -399,7 +382,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -424,7 +407,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -449,7 +432,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -489,7 +472,7 @@ export default function OrderDetailRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -530,7 +513,6 @@ export default function OrderDetailRoute(): React.ReactElement {
     payoutBannerCopy === null
       ? baseBanner
       : { ...baseBanner, copy: payoutBannerCopy };
-  const hue = hashStringToHue(order.id);
   const initials = getInitials(order.buyer.name);
 
   // ---- Primary action button derivation (ORCH-0787) ----
@@ -538,11 +520,29 @@ export default function OrderDetailRoute(): React.ReactElement {
   // computed at the top of the component before any early returns. Free orders use
   // the cancel path; paid orders use the refund path (Q-1 collapse).
   const {
+    refundRail,
     showRefundFull,
     showRefundPartialAgain,
     showCancelOrder,
     showSecondaryPartialFromFull,
   } = deriveActionFlags(order, canRefund);
+  // A door sale opens the door refund sheet (it picks the seats itself);
+  // every other paid order opens the provider refund sheet.
+  const doorRefundLoading =
+    refundRail === "door_sale" && doorSale === null && doorSalesQuery.isPending;
+  const openRefund = (mode: "full" | "partial"): void => {
+    if (refundRail === "door_sale") {
+      if (doorSale !== null) {
+        setDoorRefundOpen(true);
+      } else {
+        // The door list could not be read here: the door sale screen reads it
+        // again and offers the same refund.
+        router.push(`/event/${order.eventId}/door/${order.id}` as never);
+      }
+      return;
+    }
+    setRefundSheetMode(mode);
+  };
 
   const feesAndTaxCents = (order.buyerFeesCents ?? 0) + (order.taxCents ?? 0);
   const buyerTotalCents =
@@ -554,7 +554,7 @@ export default function OrderDetailRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -577,13 +577,10 @@ export default function OrderDetailRoute(): React.ReactElement {
         showsVerticalScrollIndicator={false}
       >
         {/* Hero card — buyer + status banner */}
-        <GlassCard variant="elevated" padding={spacing.lg} style={styles.hero}>
+        <GlassCard variant="elevated" padding={space[6]} style={styles.hero}>
           <View style={styles.heroRow}>
             <View
-              style={[
-                styles.avatar,
-                { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-              ]}
+              style={styles.avatar}
             >
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
@@ -634,7 +631,7 @@ export default function OrderDetailRoute(): React.ReactElement {
         </GlassCard>
 
         {/* Lines table */}
-        <GlassCard variant="base" padding={spacing.md} style={styles.lines}>
+        <GlassCard variant="base" padding={space[4]} style={styles.lines}>
           <DetailRow label="Order" value={order.id} mono />
           {bookedTime !== null ? (
             <DetailRow label="Booked time" value={bookedTime} />
@@ -730,7 +727,7 @@ export default function OrderDetailRoute(): React.ReactElement {
             accessibilityRole="button"
             accessibilityLabel="Open payout money breakdown"
           >
-            <GlassCard variant="base" padding={spacing.md} style={styles.lines}>
+            <GlassCard variant="base" padding={space[4]} style={styles.lines}>
               <Text style={styles.sectionLabel}>Money</Text>
               <DetailRow
                 label="Buyers paid"
@@ -764,7 +761,7 @@ export default function OrderDetailRoute(): React.ReactElement {
         {order.refunds.length > 0 ? (
           <GlassCard
             variant="base"
-            padding={spacing.md}
+            padding={space[4]}
             style={styles.refundLedger}
           >
             <Text style={styles.sectionLabel}>Refund history</Text>
@@ -782,7 +779,7 @@ export default function OrderDetailRoute(): React.ReactElement {
         {order.status === "cancelled" && order.cancelledAt !== null ? (
           <GlassCard
             variant="base"
-            padding={spacing.md}
+            padding={space[4]}
             style={styles.cancelLedger}
           >
             <Text style={styles.sectionLabel}>Cancelled</Text>
@@ -798,10 +795,12 @@ export default function OrderDetailRoute(): React.ReactElement {
             <>
               <Button
                 label="Refund order"
-                onPress={() => setRefundSheetMode("full")}
+                onPress={() => openRefund("full")}
                 variant="destructive"
                 size="lg"
                 fullWidth
+                loading={doorRefundLoading}
+                disabled={doorRefundLoading}
                 accessibilityLabel="Refund order"
               />
               {showSecondaryPartialFromFull ? (
@@ -820,10 +819,12 @@ export default function OrderDetailRoute(): React.ReactElement {
           {showRefundPartialAgain ? (
             <Button
               label="Refund again"
-              onPress={() => setRefundSheetMode("partial")}
+              onPress={() => openRefund("partial")}
               variant="destructive"
               size="lg"
               fullWidth
+              loading={doorRefundLoading}
+              disabled={doorRefundLoading}
               accessibilityLabel="Refund again"
             />
           ) : null}
@@ -882,6 +883,24 @@ export default function OrderDetailRoute(): React.ReactElement {
             deferAfterDismiss(() =>
               showToast(
                 `Refunded ${order.currency === null ? "—" : formatCurrency(amountGbp, order.currency)}`,
+              ),
+            );
+          }}
+        />
+      ) : null}
+
+      {doorSale !== null ? (
+        <LazyDoorRefundSheet
+          visible={doorRefundOpen}
+          sale={doorSale}
+          onClose={() => setDoorRefundOpen(false)}
+          onSuccess={(updated) => {
+            setDoorRefundOpen(false);
+            const refunded =
+              updated.refunds[updated.refunds.length - 1]?.amountGbp ?? 0;
+            deferAfterDismiss(() =>
+              showToast(
+                `Refunded ${formatCurrency(refunded, updated.currency)}. Buyer stays checked in.`,
               ),
             );
           }}
@@ -990,16 +1009,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -1010,9 +1029,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md + 4,
-    paddingTop: spacing.sm,
-    gap: spacing.sm + 4,
+    paddingHorizontal: space[4] + 4,
+    paddingTop: space[2],
+    gap: space[2] + 4,
   },
   hero: {
     marginBottom: 0,
@@ -1020,10 +1039,11 @@ const styles = StyleSheet.create({
   heroRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 4,
-    marginBottom: spacing.md,
+    gap: space[2] + 4,
+    marginBottom: space[4],
   },
   avatar: {
+    backgroundColor: color.fill.step,
     width: 56,
     height: 56,
     borderRadius: 999,
@@ -1033,7 +1053,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   heroCol: {
     flex: 1,
@@ -1042,25 +1062,25 @@ const styles = StyleSheet.create({
   heroName: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   heroEmail: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 2,
   },
   statusBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.sm + 4,
+    gap: space[2] + 2,
+    padding: space[2] + 4,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
   },
   statusCopy: {
     flex: 1,
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
     lineHeight: 18,
   },
   lines: {
@@ -1071,21 +1091,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.04)",
+    borderBottomColor: color.line,
   },
   detailRowLast: {
     borderBottomWidth: 0,
   },
   detailLabel: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: space[2],
   },
   detailValue: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "right",
   },
   detailValueGroup: {
@@ -1093,20 +1113,20 @@ const styles = StyleSheet.create({
   },
   detailPreviousValue: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     textDecorationLine: "line-through",
   },
   discountError: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   discountErrorText: {
-    color: semantic.error,
+    color: color.danger,
     fontSize: 12,
   },
   discountRetry: {
-    color: accent.warm,
+    color: color.text1,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1124,7 +1144,7 @@ const styles = StyleSheet.create({
   },
   cancelLedgerCopy: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 4,
   },
   sectionLabel: {
@@ -1132,13 +1152,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   refundLedgerRow: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.04)",
+    borderBottomColor: color.line,
   },
   refundLedgerHeader: {
     flexDirection: "row",
@@ -1148,41 +1168,41 @@ const styles = StyleSheet.create({
   refundLedgerAmount: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   refundLedgerDate: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   refundLedgerReason: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     marginTop: 4,
     lineHeight: 18,
     fontStyle: "italic",
   },
   actionsCol: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   partialLink: {
     alignSelf: "center",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
   },
   partialLinkText: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
     textDecorationLine: "underline",
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
 });

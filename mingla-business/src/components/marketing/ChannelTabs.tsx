@@ -15,14 +15,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 
 export type MarketingChannelKind = "email" | "sms" | "push";
 
@@ -118,23 +111,23 @@ export const ChannelTabs: React.FC<ChannelTabsProps> = ({
 };
 
 const styles = StyleSheet.create({
-  host: { gap: spacing.xs },
-  heading: { ...typography.labelCap, color: textTokens.tertiary },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  host: { gap: space[1] },
+  heading: { ...type.label, color: color.text3 },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   chip: {
     minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: 14,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
-  chipOn: { borderColor: accent.warm, backgroundColor: accent.tint },
+  chipOn: { borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
   chipDisabled: { opacity: 0.45 },
   chipPressed: { opacity: 0.8 },
-  chipText: { color: textTokens.secondary, fontSize: 13, fontWeight: "700" },
-  chipTextOn: { color: textTokens.primary },
-  note: { color: textTokens.tertiary, fontSize: 12 },
-  fallback: { color: textTokens.primary, fontSize: 13, fontWeight: "600" },
+  chipText: { color: color.text2, fontSize: 13, fontWeight: "700" },
+  chipTextOn: { color: color.text1 },
+  note: { color: color.text3, fontSize: 12 },
+  fallback: { color: color.text1, fontSize: 13, fontWeight: "600" },
 });

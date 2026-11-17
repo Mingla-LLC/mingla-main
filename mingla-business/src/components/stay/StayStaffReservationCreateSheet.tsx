@@ -7,18 +7,16 @@ import type {
 import {
   createThemePalette,
   offeringSurfaceStyles,
-  resolveTheme,
 } from "@mingla/offering-rendering";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useStaffStayDetail } from "../../hooks/useStaffStayDetail";
+import { stayHostChromeTheme } from "./stayHostChromeTheme";
 import {
   StayReservationError,
   stayReservationService,
@@ -95,7 +93,8 @@ export function StayStaffReservationCreateSheet({
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const theme = useMemo(() => resolveTheme(null, null), []);
+  // #4420 — Host chrome draws in the app's face (see stayHostChromeTheme).
+  const theme = useMemo(() => stayHostChromeTheme(), []);
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
 
@@ -384,53 +383,53 @@ export function StayStaffReservationCreateSheet({
 
 const styles = StyleSheet.create({
   content: {
-    padding: spacing.md,
-    paddingBottom: spacing.xxl * 2,
-    gap: spacing.md,
+    padding: space[4],
+    paddingBottom: space[9] * 2,
+    gap: space[4],
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: space[4],
   },
   flexOne: { flex: 1, minWidth: 0 },
-  title: { ...typography.h2, color: textTokens.primary },
-  helper: { ...typography.bodySm, color: textTokens.secondary },
+  title: { ...type.h1, color: color.text1 },
+  helper: { ...type.small, color: color.text2 },
   fieldLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
   },
   sourceBlock: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    gap: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    gap: space[2],
   },
-  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  sourceRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   sourceChip: {
     minHeight: 44,
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    paddingHorizontal: spacing.md,
+    borderColor: color.line,
+    paddingHorizontal: space[4],
   },
-  sourceChipSelected: { borderColor: accent.warm, backgroundColor: accent.warm },
+  sourceChipSelected: { borderColor: color.accent, backgroundColor: color.accent },
   sourceLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
-  sourceLabelSelected: { color: "#0c0e12", fontWeight: "700" },
-  paymentOption: { borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase, borderRadius: radius.md, padding: spacing.md, gap: 3 },
-  paymentOptionSelected: { borderColor: accent.warm, backgroundColor: "rgba(235, 120, 37, 0.08)" },
-  paymentTitle: { ...typography.body, color: textTokens.primary, fontWeight: "700" },
-  channelRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  successPage: { flex: 1, padding: spacing.xl, gap: spacing.lg },
-  linkText: { ...typography.bodySm, color: accent.warm },
+  sourceLabelSelected: { color: color.ink, fontWeight: "700" },
+  paymentOption: { borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, borderRadius: radius.md, padding: space[4], gap: 3 },
+  paymentOptionSelected: { borderColor: color.accent, backgroundColor: color.accentTint },
+  paymentTitle: { ...type.body, color: color.text1, fontWeight: "700" },
+  channelRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
+  successPage: { flex: 1, padding: space[7], gap: space[6] },
+  linkText: { ...type.small, color: color.accent },
 });
 
 export default StayStaffReservationCreateSheet;

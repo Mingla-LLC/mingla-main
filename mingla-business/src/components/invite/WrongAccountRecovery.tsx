@@ -32,13 +32,9 @@ import { Button } from "../ui/Button";
 // routes. This screen has TWO full-width CTAs, so it overflowed a centred,
 // non-scrolling root sooner than the screens it recovers from.
 import { InviteScreenShell } from "./InviteScreenShell";
-import {
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
 
+
+import { color, space, radius } from "../../constants/designSystem";
 export interface WrongAccountRecoveryProps {
   /** The email of the account currently signed in, or null when unknown. */
   signedInEmail: string | null;
@@ -127,54 +123,54 @@ const styles = StyleSheet.create({
   card: {
     maxWidth: 480,
     width: "100%",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.lg,
-    padding: spacing.xl,
-    gap: spacing.md,
+    borderColor: color.line,
+    borderRadius: radius.md,
+    padding: space[7],
+    gap: space[4],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
   },
   copy: {
     fontSize: 15,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 22,
   },
   rows: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.md,
+    borderColor: color.line,
+    borderRadius: radius.sm,
   },
   row: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     gap: 2,
   },
   rowDivided: {
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   rowLabel: {
     fontSize: 12,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: 0.3,
     textTransform: "uppercase",
   },
   rowValue: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     lineHeight: 21,
   },
   context: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
 });

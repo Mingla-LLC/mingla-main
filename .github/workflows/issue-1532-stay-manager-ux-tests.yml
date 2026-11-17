@@ -103,6 +103,9 @@ jobs:
     needs: [route]
     name: Stay manager UX (render proofs + gates)
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     timeout-minutes: 30
     defaults:
       run:

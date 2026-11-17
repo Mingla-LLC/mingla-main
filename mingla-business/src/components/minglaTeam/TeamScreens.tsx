@@ -14,7 +14,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { accent, radius, semantic, spacing } from "../../constants/designSystem";
+import { color, radius, size, space, type } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { teamChatKey } from "../../hooks/useBusinessNotifications";
 import { supabase } from "../../services/supabase";
 import {
@@ -107,12 +108,12 @@ export function mentionKindLabel(mention: Pick<TeamMention, "kind" | "action"> &
 }
 
 const DUE_STYLE: Record<DueTone, { box: object; text: object }> = {
-  over: { box: { backgroundColor: semantic.errorTint }, text: { color: semantic.errorText } },
-  today: { box: { backgroundColor: semantic.warningTint }, text: { color: semantic.warning } },
+  over: { box: { backgroundColor: color.errorTint }, text: { color: color.errorText } },
+  today: { box: { backgroundColor: color.warningTint }, text: { color: color.warning } },
   soon: { box: { backgroundColor: brandGroupChat.accentSoft }, text: { color: brandGroupChat.mentionText } },
   week: { box: { backgroundColor: brandGroupChat.strip }, text: { color: brandGroupChat.textPrimary } },
   later: { box: { backgroundColor: brandGroupChat.strip }, text: { color: brandGroupChat.textSecondary } },
-  done: { box: { backgroundColor: semantic.successTint }, text: { color: semantic.success } },
+  done: { box: { backgroundColor: color.successTint }, text: { color: color.success } },
   none: { box: {}, text: {} },
 };
 
@@ -207,6 +208,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   const back = useBack();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ tab?: string; mention?: string }>();
+  const { isWideDesktop } = useResponsiveLayout();
   const [tab, setTab] = useState<"chats" | "mentions">(params.tab === "mentions" ? "mentions" : "chats");
   const [find, setFind] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -268,38 +270,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
   const counts = workUpdateCounts(updates);
   const shownUpdates = filterWorkUpdates(updates, filter);
 
-  return (
-    <SafeScreen edges={["top", "bottom"]} style={styles.screen} testID="team-home">
-      <TeamHeader
-        title={t("team.title")}
-        onBack={back}
-        right={(
-          <Pressable accessibilityRole="button" accessibilityLabel={t("team.settings")} onPress={() => router.push("/account/notifications" as never)} hitSlop={6} style={styles.iconButton} testID="team-settings">
-            <Icon name="settings" size={19} color={brandGroupChat.textPrimary} />
-          </Pressable>
-        )}
-      />
-      <View style={styles.segment} accessibilityRole="tablist">
-        {(["chats", "mentions"] as const).map((key) => {
-          const n = key === "chats" ? unreadChats : unreadMentions;
-          const label = key === "chats" ? t("team.tab_chats") : t("team.tab_updates");
-          return (
-            <Pressable
-              key={key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === key }}
-              accessibilityLabel={n ? `${label}, ${n}` : label}
-              onPress={() => setTab(key)}
-              style={[styles.segmentButton, tab === key && styles.segmentButtonOn]}
-              testID={`team-tab-${key}`}
-            >
-              <Text style={[styles.segmentText, tab === key && styles.segmentTextOn]}>{n ? `${label} · ${n}` : label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {tab === "chats" ? (
+  const chatsPane = (
         <ScrollView style={styles.flex} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
           <View style={styles.findRow}>
             <TextInput
@@ -317,7 +288,7 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
             </Pressable>
           </View>
           {threads.isPending ? (
-            <View style={styles.state}><ActivityIndicator color={accent.warm} accessibilityLabel={t("team.loading")} /></View>
+            <View style={styles.state}><ActivityIndicator color={color.text2} accessibilityLabel={t("team.loading")} /></View>
           ) : threads.isError ? (
             <View style={styles.state}>
               <Text style={styles.stateText}>{threads.error instanceof Error ? threads.error.message : t("team.load_failed")}</Text>
@@ -344,10 +315,10 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
                     <Text style={styles.threadName} numberOfLines={1}>{person.name}</Text>
                     <Text style={styles.threadPreview} numberOfLines={1}>{t("team.direct_message")}</Text>
                   </View>
-                  {dm.isPending && dm.variables?.user_id === person.user_id ? <ActivityIndicator color={accent.warm} /> : null}
+                  {dm.isPending && dm.variables?.user_id === person.user_id ? <ActivityIndicator color={color.text2} /> : null}
                 </Pressable>
               ))}
-              {query && people.isPending ? <View style={styles.state}><ActivityIndicator color={accent.warm} /></View> : null}
+              {query && people.isPending ? <View style={styles.state}><ActivityIndicator color={color.text2} /></View> : null}
               {shownThreads.length === 0 && shownPeople.length === 0 && !(query && people.isPending) ? (
                 <View style={styles.state}><Text style={styles.stateText}>{query ? t("team.find_none", { query: find.trim() }) : t("team.empty_chats")}</Text></View>
               ) : null}
@@ -355,10 +326,11 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
             </>
           )}
         </ScrollView>
-      ) : (
+  );
+  const updatesPane = (
         <ScrollView style={styles.flex} contentContainerStyle={styles.listContent}>
           {mentions.isPending ? (
-            <View style={styles.state}><ActivityIndicator color={accent.warm} accessibilityLabel={t("team.loading")} /></View>
+            <View style={styles.state}><ActivityIndicator color={color.text2} accessibilityLabel={t("team.loading")} /></View>
           ) : mentions.isError ? (
             <View style={styles.state}>
               <Text style={styles.stateText}>{mentions.error instanceof Error ? mentions.error.message : t("team.load_failed")}</Text>
@@ -396,6 +368,57 @@ function TeamHome({ userId }: { userId: string }): React.ReactElement {
 
           <Text style={styles.footnote}>{t("team.mentions_note")}</Text>
         </ScrollView>
+  );
+
+  return (
+    <SafeScreen edges={["top", "bottom"]} style={styles.screen} testID="team-home">
+      <TeamHeader
+        title={t("team.title")}
+        onBack={back}
+        right={(
+          <Pressable accessibilityRole="button" accessibilityLabel={t("team.settings")} onPress={() => router.push("/account/notifications" as never)} hitSlop={6} style={styles.iconButton} testID="team-settings">
+            <Icon name="settings" size={19} color={brandGroupChat.textPrimary} />
+          </Pressable>
+        )}
+      />
+      {/* #4420 kit (team-home, web): desktop shows Chats and Work updates
+          side by side as two panels; the phone keeps the segmented switch. */}
+      {isWideDesktop ? (
+        <View style={styles.deskPanes}>
+          <View style={styles.deskPane}>
+            <Text style={styles.deskPaneTitle} accessibilityRole="header">{t("team.tab_chats")}</Text>
+            {chatsPane}
+          </View>
+          <View style={styles.deskPane}>
+            <Text style={styles.deskPaneTitle} accessibilityRole="header">
+              {unreadMentions ? `${t("team.tab_updates")} · ${unreadMentions}` : t("team.tab_updates")}
+            </Text>
+            {updatesPane}
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={styles.segment} accessibilityRole="tablist">
+          {(["chats", "mentions"] as const).map((key) => {
+            const n = key === "chats" ? unreadChats : unreadMentions;
+            const label = key === "chats" ? t("team.tab_chats") : t("team.tab_updates");
+            return (
+              <Pressable
+                key={key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === key }}
+                accessibilityLabel={n ? `${label}, ${n}` : label}
+                onPress={() => setTab(key)}
+                style={[styles.segmentButton, tab === key && styles.segmentButtonOn]}
+                testID={`team-tab-${key}`}
+              >
+                <Text style={[styles.segmentText, tab === key && styles.segmentTextOn]}>{n ? `${label} · ${n}` : label}</Text>
+              </Pressable>
+            );
+          })}
+          </View>
+          {tab === "chats" ? chatsPane : updatesPane}
+        </>
       )}
       <WorkCardSheet update={sheet} onClose={() => setSheet(null)} onOpenAdmin={(u) => void openAdmin(u)} />
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -473,7 +496,7 @@ function TeamNewChat({ userId }: { userId: string }): React.ReactElement {
           autoCorrect={false}
         />
         {people.isPending ? (
-          <View style={styles.state}><ActivityIndicator color={accent.warm} accessibilityLabel={t("team.loading")} /></View>
+          <View style={styles.state}><ActivityIndicator color={color.text2} accessibilityLabel={t("team.loading")} /></View>
         ) : people.isError ? (
           <View style={styles.state}>
             <Text style={styles.stateText}>{people.error instanceof Error ? people.error.message : t("team.load_failed")}</Text>
@@ -640,8 +663,8 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
                   value={on}
                   disabled={busy || prefs.isError}
                   onValueChange={(next) => save.mutate({ key: row.key, channel, on: next })}
-                  trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-                  thumbColor="#ffffff"
+                  trackColor={{ false: color.fill.step, true: color.paper }}
+                  thumbColor={color.textStrong}
                   accessibilityLabel={`${t(row.label)}: ${channel === "push" ? t("team.col_push") : t("team.col_inapp")}`}
                   accessibilityState={{ checked: on, disabled: busy }}
                   testID={`team-pref-${row.key}-${channel}`}
@@ -667,30 +690,44 @@ export function TeamNotificationPrefs({ userId }: { userId: string }): React.Rea
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: brandGroupChat.screenBg },
   flex: { flex: 1 },
-  header: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  deskPanes: { flex: 1, minHeight: 0, flexDirection: "row", gap: size.gutter, padding: space[6], paddingTop: space[4] },
+  deskPane: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    paddingTop: space[5],
+    gap: space[3],
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    overflow: "hidden",
+  },
+  deskPaneTitle: { ...type.h2, color: color.text1, paddingHorizontal: space[4] },
+  header: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
   headerTitle: { flex: 1, color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: space[1] },
   iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   pressed: { opacity: 0.7 },
   bold: { fontWeight: "700", color: brandGroupChat.textPrimary },
   disabled: { opacity: 0.45 },
-  state: { padding: spacing.lg, alignItems: "center", justifyContent: "center", gap: spacing.md },
+  state: { padding: space[6], alignItems: "center", justifyContent: "center", gap: space[4] },
   stateText: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
-  locked: { margin: spacing.lg, marginTop: spacing.xl, gap: spacing.sm, alignItems: "center" },
+  locked: { margin: space[6], marginTop: space[7], gap: space[2], alignItems: "center" },
   lockedTitle: { color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700", textAlign: "center" },
-  lockedBody: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center", marginBottom: spacing.sm },
-  chipButton: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised, alignItems: "center", justifyContent: "center" },
+  lockedBody: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center", marginBottom: space[2] },
+  chipButton: { minHeight: 36, paddingHorizontal: space[4], borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surfaceRaised, alignItems: "center", justifyContent: "center" },
   chipButtonText: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "600" },
-  segment: { flexDirection: "row", margin: spacing.md, marginBottom: spacing.sm, padding: 3, gap: 3, borderRadius: radius.md, backgroundColor: brandGroupChat.surface },
+  segment: { flexDirection: "row", margin: space[4], marginBottom: space[2], padding: 3, gap: 3, borderRadius: radius.md, backgroundColor: brandGroupChat.surface },
   segmentButton: { flex: 1, minHeight: 34, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
   segmentButtonOn: { backgroundColor: brandGroupChat.surfaceRaised },
   segmentText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "500" },
   segmentTextOn: { color: brandGroupChat.textPrimary, fontWeight: "700" },
-  listContent: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl, gap: spacing.xs },
-  findRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
-  findInput: { flex: 1, minHeight: 40, borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, color: brandGroupChat.textPrimary, paddingHorizontal: spacing.md, fontSize: 14 },
-  findGap: { marginTop: spacing.sm, marginBottom: spacing.sm, flex: 0 },
-  threadRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
+  listContent: { paddingHorizontal: space[4], paddingBottom: space[7], gap: space[1] },
+  findRow: { flexDirection: "row", alignItems: "center", gap: space[2], marginBottom: space[2] },
+  findInput: { flex: 1, minHeight: 40, borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, color: brandGroupChat.textPrimary, paddingHorizontal: space[4], fontSize: 14 },
+  findGap: { marginTop: space[2], marginBottom: space[2], flex: 0 },
+  threadRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[4], paddingVertical: space[2] },
   threadCopy: { flex: 1, minWidth: 0, gap: 2 },
   threadTop: { flexDirection: "row", alignItems: "center", gap: 6 },
   threadName: { flexShrink: 1, color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "600" },
@@ -699,56 +736,56 @@ const styles = StyleSheet.create({
   threadPreviewUnread: { color: brandGroupChat.textSecondary },
   threadMeta: { alignItems: "flex-end", gap: 4 },
   threadTime: { color: brandGroupChat.textMuted, fontSize: 12 },
-  unreadPill: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: accent.warm, alignItems: "center", justifyContent: "center" },
+  unreadPill: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: color.paper, alignItems: "center", justifyContent: "center" },
   unreadPillText: { color: brandGroupChat.mineText, fontSize: 11, fontWeight: "700" },
   avatar: { alignItems: "center", justifyContent: "center" },
-  avatarText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+  avatarText: { color: color.textStrong, fontSize: 15, fontWeight: "700" },
   avatarTextTeam: { color: brandGroupChat.screenBg, fontWeight: "800" },
-  footnote: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, paddingVertical: spacing.md },
-  mentionCard: { borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, padding: spacing.md, gap: spacing.sm, marginBottom: spacing.sm },
-  mentionCardHighlighted: { borderColor: accent.warm },
+  footnote: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, paddingVertical: space[4] },
+  mentionCard: { borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, padding: space[4], gap: space[2], marginBottom: space[2] },
+  mentionCardHighlighted: { borderColor: color.paper },
   // #4398: Work updates
   mentionCardNeeds: { borderColor: brandGroupChat.accentSoft, backgroundColor: brandGroupChat.surfaceRaised },
   duePill: { alignSelf: "flex-start", borderRadius: radius.full, paddingHorizontal: 8, paddingVertical: 4 },
   duePillText: { fontSize: 12, fontWeight: "700" },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.xs, marginBottom: spacing.sm },
-  filterChip: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, alignItems: "center", justifyContent: "center" },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[1], marginBottom: space[2] },
+  filterChip: { minHeight: 36, paddingHorizontal: space[4], borderRadius: radius.full, borderWidth: 1, borderColor: brandGroupChat.hairline, alignItems: "center", justifyContent: "center" },
   filterChipOn: { backgroundColor: brandGroupChat.textPrimary, borderColor: brandGroupChat.textPrimary },
   filterChipText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600" },
   filterChipTextOn: { color: brandGroupChat.mineText },
-  markAll: { marginLeft: "auto", minHeight: 36, paddingHorizontal: spacing.sm, alignItems: "center", justifyContent: "center" },
-  markAllText: { color: accent.warm, fontSize: 13, fontWeight: "700" },
-  sheetBody: { padding: spacing.md, gap: spacing.md },
-  sheetTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  markAll: { marginLeft: "auto", minHeight: 36, paddingHorizontal: space[2], alignItems: "center", justifyContent: "center" },
+  markAllText: { color: color.text1, fontSize: 13, fontWeight: "700" },
+  sheetBody: { padding: space[4], gap: space[4] },
+  sheetTop: { flexDirection: "row", alignItems: "center", gap: space[2] },
   sheetCrumb: { flex: 1, color: brandGroupChat.textSoft, fontSize: 12 },
   sheetTitle: { color: brandGroupChat.textPrimary, fontSize: 18, fontWeight: "700", lineHeight: 24 },
-  sheetMeta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
+  sheetMeta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
   sheetPeople: { color: brandGroupChat.textSecondary, fontSize: 13 },
-  sheetChanged: { borderRadius: radius.md, backgroundColor: brandGroupChat.strip, padding: spacing.md, gap: 4 },
+  sheetChanged: { borderRadius: radius.md, backgroundColor: brandGroupChat.strip, padding: space[4], gap: 4 },
   sheetChangedLabel: { color: brandGroupChat.textPrimary, fontSize: 12, fontWeight: "700" },
   mentionTop: { flexDirection: "row", alignItems: "center", gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "transparent" },
-  dotUnread: { backgroundColor: accent.warm },
+  dotUnread: { backgroundColor: color.paper },
   kindLabel: { color: brandGroupChat.mentionText, backgroundColor: brandGroupChat.mentionBg, fontSize: 11, fontWeight: "700", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: "hidden" },
   mentionWho: { flex: 1, color: brandGroupChat.textSoft, fontSize: 12 },
   mentionQuote: { color: brandGroupChat.textSecondary, fontSize: 14, lineHeight: 20 },
   openAdmin: { minHeight: 38, borderRadius: radius.sm, backgroundColor: brandGroupChat.textPrimary, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center" },
   openAdminText: { color: brandGroupChat.mineText, fontSize: 14, fontWeight: "700" },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: brandGroupChat.textMuted, alignItems: "center", justifyContent: "center" },
-  checkOn: { backgroundColor: accent.warm, borderColor: accent.warm },
-  footerBar: { padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brandGroupChat.hairline },
-  primaryButton: { minHeight: 48, borderRadius: radius.full, backgroundColor: accent.warm, alignItems: "center", justifyContent: "center" },
+  checkOn: { backgroundColor: color.paper, borderColor: color.paper },
+  footerBar: { padding: space[4], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brandGroupChat.hairline },
+  primaryButton: { minHeight: 48, borderRadius: radius.full, backgroundColor: color.paper, alignItems: "center", justifyContent: "center" },
   primaryButtonText: { color: brandGroupChat.mineText, fontSize: 15, fontWeight: "700" },
   toastWrap: { position: "absolute", top: 80, left: 0, right: 0, zIndex: 100, elevation: 12 },
-  prefsCard: { borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, padding: spacing.md, gap: spacing.xs },
+  prefsCard: { borderRadius: radius.md, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface, padding: space[4], gap: space[1] },
   prefsTitle: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "700" },
-  prefsHint: { color: brandGroupChat.textSoft, fontSize: 12, lineHeight: 16, marginBottom: spacing.xs },
-  prefsHead: { flexDirection: "row", alignItems: "center", paddingTop: spacing.xs },
+  prefsHint: { color: brandGroupChat.textSoft, fontSize: 12, lineHeight: 16, marginBottom: space[1] },
+  prefsHead: { flexDirection: "row", alignItems: "center", paddingTop: space[1] },
   prefsHeadLabel: { flex: 1 },
   prefsCol: { width: 64, textAlign: "center", color: brandGroupChat.textMuted, fontSize: 11, fontWeight: "700", letterSpacing: 0.6 },
-  prefsRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brandGroupChat.hairline },
+  prefsRow: { flexDirection: "row", alignItems: "center", paddingVertical: space[2], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: brandGroupChat.hairline },
   prefsLabel: { color: brandGroupChat.textPrimary, fontSize: 14, fontWeight: "600" },
   prefsRowHint: { color: brandGroupChat.textSoft, fontSize: 12, lineHeight: 16 },
   prefsSwitch: { width: 64, alignItems: "center" },
-  prefsError: { color: accent.warm, fontSize: 13, paddingTop: spacing.xs },
+  prefsError: { color: color.errorText, fontSize: 13, paddingTop: space[1] },
 });

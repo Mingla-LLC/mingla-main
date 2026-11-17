@@ -3,15 +3,11 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
   trafficAnalytics,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useHostAdCampaigns } from "../../hooks/marketing/useHostAdCampaigns";
 import { useBrandTrafficRollup } from "../../hooks/useTrafficAnalytics";
@@ -461,7 +457,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                         style={[styles.pauseButton, styles.desktopActionOverlay]}
                         testID={`home-ad-pause-${campaign.id}`}
                       >
-                        <Icon name="pause" size={15} color={textTokens.primary} />
+                        <Icon name="pause" size={15} color={color.text1} />
                         <Text style={styles.actionText}>{isBusy ? "…" : "Pause"}</Text>
                       </Pressable>
                     ) : attention ? (
@@ -508,7 +504,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                       {pauseVisible || attention ? (
                         <View style={styles.phoneActionSpacer} />
                       ) : (
-                        <Icon name="chevR" size={18} color={textTokens.tertiary} />
+                        <Icon name="chevR" size={18} color={color.text3} />
                       )}
                     </Pressable>
                     {pauseVisible ? (
@@ -520,7 +516,7 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
                         style={[styles.iconButton, styles.phoneActionOverlay]}
                         testID={`home-ad-pause-${campaign.id}`}
                       >
-                        <Icon name="pause" size={18} color={textTokens.primary} />
+                        <Icon name="pause" size={18} color={color.text1} />
                       </Pressable>
                     ) : attention ? (
                       <Pressable
@@ -559,119 +555,120 @@ export const HomeAdsSection: React.FC<HomeAdsSectionProps> = ({ brandId }) => {
 };
 
 const styles = StyleSheet.create({
-  section: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
-  sectionNarrow: { paddingHorizontal: spacing.sm + spacing.xs },
+  section: { paddingHorizontal: space[4], marginBottom: space[4] },
+  // #4420 (device round 2): one gutter with the rest of Home (section's space[4]).
+  sectionNarrow: {},
   summary: {
     minHeight: 72,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[6],
+    paddingVertical: space[4],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   summaryCopy: { flex: 1, minWidth: 0 },
   summaryWithDataWide: { minHeight: 120 },
   summaryWithDataNarrow: { minHeight: 138 },
   summaryCompact: { minHeight: 51, paddingVertical: 0 },
-  eyebrow: { ...typography.labelCap, color: textTokens.tertiary },
+  eyebrow: { ...type.label, color: color.text3 },
   salesSummaryRow: {
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   salesSummary: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 24,
     lineHeight: 30,
     fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
-  summarySuffix: { ...typography.bodySm, color: textTokens.secondary },
-  spendSummary: { ...typography.caption, color: textTokens.secondary },
+  summarySuffix: { ...type.small, color: color.text2 },
+  spendSummary: { ...type.caption, color: color.text2 },
   viewAll: { minHeight: 44, justifyContent: "center" },
-  link: { ...typography.bodySm, color: accent.warm, fontWeight: "600" },
-  tiles: { borderTopWidth: 1, borderTopColor: glass.border.profileBase },
+  link: { ...type.small, color: color.text1, fontWeight: "600" },
+  tiles: { borderTopWidth: 1, borderTopColor: color.line },
   tilesWide: { flexDirection: "row", alignItems: "stretch" },
   tile: {
     minWidth: 0,
     position: "relative",
     borderRightWidth: 1,
     borderBottomWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   quietTile: { height: 118 },
-  attentionTile: { backgroundColor: semantic.warningTint },
+  attentionTile: { backgroundColor: color.warningTint },
   pressed: { opacity: 0.72 },
-  desktopTile: { flex: 1, minHeight: 255, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  singleTile: { minHeight: 124, flexDirection: "row", alignItems: "stretch", gap: spacing.lg },
+  desktopTile: { flex: 1, minHeight: 255, paddingHorizontal: space[6], paddingVertical: space[4] },
+  singleTile: { minHeight: 124, flexDirection: "row", alignItems: "stretch", gap: space[6] },
   quietDesktopTile: { minHeight: 118, height: 118, flex: 0 },
   tileSection: { flex: 1, minWidth: 0 },
-  tileFoot: { marginTop: "auto", paddingTop: spacing.md },
-  identity: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  tileFoot: { marginTop: "auto", paddingTop: space[4] },
+  identity: { flexDirection: "row", alignItems: "center", gap: space[2] },
   thumbnail: { width: 40, height: 40, borderRadius: radius.md, flexShrink: 0 },
   identityCopy: { flex: 1, minWidth: 0 },
-  name: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700", flexShrink: 1 },
-  networks: { ...typography.caption, color: textTokens.tertiary },
+  name: { ...type.small, color: color.text1, fontWeight: "700", flexShrink: 1 },
+  networks: { ...type.caption, color: color.text3 },
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    gap: space[1],
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
-  attentionPill: { backgroundColor: semantic.warningTint },
-  livePill: { backgroundColor: semantic.successTint },
-  statusDot: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: textTokens.tertiary },
-  attentionDot: { backgroundColor: semantic.warning },
-  liveDot: { backgroundColor: semantic.success },
-  statusLabel: { ...typography.micro, color: textTokens.primary },
-  results: { marginTop: spacing.md, gap: spacing.xs },
-  resultLine: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: spacing.xs },
-  resultCount: { color: textTokens.primary, fontSize: 20, lineHeight: 26, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  resultSuffix: { ...typography.bodySm, color: textTokens.secondary },
-  salesLine: { ...typography.bodySm, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
-  attentionText: { ...typography.bodySm, color: semantic.warning, marginTop: spacing.xs },
-  budgetBlock: { gap: spacing.sm },
-  budgetCurrency: { gap: spacing.xs },
-  budgetLabelRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  budgetLine: { ...typography.caption, color: textTokens.secondary, flexShrink: 1 },
-  percent: { ...typography.caption, color: textTokens.secondary, fontVariant: ["tabular-nums"] },
-  track: { height: 5, borderRadius: radius.full, overflow: "hidden", backgroundColor: glass.border.profileElevated },
-  fill: { height: "100%", borderRadius: radius.full, backgroundColor: accent.warm },
-  actions: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  attentionPill: { backgroundColor: color.warningTint },
+  livePill: { backgroundColor: color.successTint },
+  statusDot: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: color.text3 },
+  attentionDot: { backgroundColor: color.warning },
+  liveDot: { backgroundColor: color.success },
+  statusLabel: { ...type.label, color: color.text1 },
+  results: { marginTop: space[4], gap: space[1] },
+  resultLine: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: space[1] },
+  resultCount: { color: color.text1, fontSize: 20, lineHeight: 26, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  resultSuffix: { ...type.small, color: color.text2 },
+  salesLine: { ...type.small, color: trafficAnalytics.positiveDelta, fontWeight: "700" },
+  attentionText: { ...type.small, color: color.warning, marginTop: space[1] },
+  budgetBlock: { gap: space[2] },
+  budgetCurrency: { gap: space[1] },
+  budgetLabelRow: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
+  budgetLine: { ...type.caption, color: color.text2, flexShrink: 1 },
+  percent: { ...type.caption, color: color.text2, fontVariant: ["tabular-nums"] },
+  track: { height: 5, borderRadius: radius.full, overflow: "hidden", backgroundColor: color.lineStrong },
+  fill: { height: "100%", borderRadius: radius.full, backgroundColor: color.accent },
+  actions: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] },
   desktopActionSpacer: { width: 72, height: 44 },
-  desktopActionOverlay: { position: "absolute", right: spacing.lg, bottom: spacing.md },
-  footnote: { ...typography.caption, color: textTokens.tertiary, flex: 1 },
-  pauseButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderRadius: radius.md, backgroundColor: glass.tint.profileElevated },
-  actionText: { ...typography.caption, color: textTokens.primary, fontWeight: "700" },
-  fixButton: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: radius.md, backgroundColor: semantic.warning },
-  fixText: { ...typography.caption, color: canvas.discover, fontWeight: "700" },
+  desktopActionOverlay: { position: "absolute", right: space[6], bottom: space[4] },
+  footnote: { ...type.caption, color: color.text3, flex: 1 },
+  pauseButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[1], paddingHorizontal: space[2], borderRadius: radius.md, backgroundColor: color.fill.tile },
+  actionText: { ...type.caption, color: color.text1, fontWeight: "700" },
+  fixButton: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: space[2], borderRadius: radius.md, backgroundColor: color.warning },
+  fixText: { ...type.caption, color: color.canvas, fontWeight: "700" },
   phoneRow: {
     minHeight: 80,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + spacing.xs,
-    padding: spacing.md,
+    gap: space[2] + space[1],
+    padding: space[4],
   },
   attentionPhoneRow: { minHeight: 135 },
   resultsPhoneRow: { minHeight: 115 },
   phoneMiddle: { flex: 1, minWidth: 0 },
   phoneActionSpacer: { width: 44, height: 44 },
-  phoneActionOverlay: { position: "absolute", right: spacing.md, top: "50%", marginTop: -22 },
-  phoneTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  compactLine: { ...typography.caption, color: textTokens.secondary, marginTop: spacing.xs },
-  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: glass.tint.profileElevated },
+  phoneActionOverlay: { position: "absolute", right: space[4], top: "50%", marginTop: -22 },
+  phoneTitleRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  compactLine: { ...type.caption, color: color.text2, marginTop: space[1] },
+  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: color.fill.tile },
   phoneViewAll: { minHeight: 52, alignItems: "center", justifyContent: "center" },
-  actionError: { ...typography.bodySm, color: semantic.errorText, padding: spacing.md },
-  errorText: { ...typography.bodySm, color: textTokens.primary },
+  actionError: { ...type.small, color: color.errorText, padding: space[4] },
+  errorText: { ...type.small, color: color.text1 },
   retry: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center" },
-  skeletonRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  skeletonCopy: { flex: 1, gap: spacing.sm },
+  skeletonRow: { flexDirection: "row", alignItems: "center", gap: space[4] },
+  skeletonCopy: { flex: 1, gap: space[2] },
 });
 
 export default HomeAdsSection;

@@ -29,13 +29,7 @@ import {
 } from "../../components/marketing/AdCreditQuoteSheet";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { GlassCard } from "../../components/ui/GlassCard";
-import {
-  canvas,
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { useAdCreditWallet } from "../../hooks/marketing/useAdCreditWallet";
 import { useHostAdCampaigns } from "../../hooks/marketing/useHostAdCampaigns";
 import { AdListSummaryCard } from "../../components/marketing/ads/results/AdListSummaryCard";
@@ -242,7 +236,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   if (permissions.isLoading) {
     return (
       <View style={styles.host} testID="ads-skeleton">
-        <ActivityIndicator color={textTokens.secondary} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   }
@@ -330,11 +324,11 @@ export default function MarketingAdsRoute(): React.ReactElement {
             ]}
           >
         {walletQuery.viewLoading ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <ActivityIndicator color={textTokens.secondary} />
+          <GlassCard variant="elevated" padding={space[6]}>
+            <ActivityIndicator color={color.text2} />
           </GlassCard>
         ) : walletQuery.viewError ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.kicker}>Ads credit unavailable</Text>
             <Text style={styles.sub}>Check your connection and try again.</Text>
             <Pressable
@@ -347,7 +341,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
             </Pressable>
           </GlassCard>
         ) : !walletQuery.canView ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.kicker}>Ads credit</Text>
             <Text style={styles.sub}>
               You can review plans and campaign results. A brand owner or
@@ -355,11 +349,11 @@ export default function MarketingAdsRoute(): React.ReactElement {
             </Text>
           </GlassCard>
         ) : !walletQuery.hasResolved && !walletQuery.isError ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <ActivityIndicator color={textTokens.secondary} />
+          <GlassCard variant="elevated" padding={space[6]}>
+            <ActivityIndicator color={color.text2} />
           </GlassCard>
         ) : walletQuery.viewError || walletQuery.isError ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.kicker}>Ads credit unavailable</Text>
             <Text style={styles.sub}>Check your connection and try again.</Text>
             <Pressable
@@ -372,7 +366,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
             </Pressable>
           </GlassCard>
         ) : currency === null || !walletAligned ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.kicker}>Finish payout setup</Text>
             <Text style={styles.sub}>
               Ads credit unlocks after this brand has one verified settlement
@@ -380,7 +374,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
             </Text>
           </GlassCard>
         ) : (
-          <GlassCard variant="elevated" padding={spacing.lg}>
+          <GlassCard variant="elevated" padding={space[6]}>
             <Text style={styles.kicker}>Available credit</Text>
             <Text style={styles.balance} testID="ads-credit-balance">
               {formatHostAdMoneyCents(balanceCents, currency) ??
@@ -458,7 +452,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
         <GlassCard variant="base" padding={0}>
           {campaignsQuery.isLoading || plansQuery.isLoading ? (
             <View style={styles.emptyHistory} testID="ads-list-loading">
-              <ActivityIndicator color={textTokens.secondary} />
+              <ActivityIndicator color={color.text2} />
             </View>
           ) : campaignsQuery.isError || plansQuery.isError ? (
             <View style={styles.emptyHistory} testID="ads-list-error">
@@ -618,126 +612,126 @@ export default function MarketingAdsRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[9],
+    gap: space[4],
   },
-  workspace: { gap: spacing.lg, flexDirection: "column-reverse" },
+  workspace: { gap: space[6], flexDirection: "column-reverse" },
   workspaceWide: { flexDirection: "row-reverse", alignItems: "flex-start" },
-  primaryColumn: { minWidth: 0, gap: spacing.sm },
+  primaryColumn: { minWidth: 0, gap: space[2] },
   primaryColumnWide: { flexBasis: 0, flexGrow: 5 },
-  supportColumn: { minWidth: 0, gap: spacing.sm },
+  supportColumn: { minWidth: 0, gap: space[2] },
   supportColumnWide: { flexBasis: 0, flexGrow: 3 },
   notice: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   kicker: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   balance: {
-    ...typography.statValue,
-    color: textTokens.primary,
-    marginTop: spacing.xs,
+    ...type.stat,
+    color: color.text1,
+    marginTop: space[1],
   },
   sub: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[2],
   },
   actions: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
   },
   actionBtn: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: glass.tint.chrome.idle,
+    paddingVertical: space[2],
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   actionLabel: {
-    ...typography.buttonMd,
-    color: textTokens.primary,
+    ...type.btnSm,
+    color: color.text1,
   },
   sectionTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginTop: spacing.sm,
+    ...type.h1,
+    color: color.text1,
+    marginTop: space[2],
   },
   subsectionTitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "700",
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   createBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: "#F5F5F6",
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    borderRadius: radius.full,
+    backgroundColor: color.paper,
   },
   createBtnDisabled: {
     opacity: 0.45,
   },
   createBtnLabel: {
-    ...typography.buttonMd,
-    color: "#0c0e12",
+    ...type.btnSm,
+    color: color.ink,
   },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   filterChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 999,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
+    borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
   filterChipOn: {
-    borderColor: textTokens.primary,
-    backgroundColor: glass.tint.chrome.pressed,
+    borderColor: color.text1,
+    backgroundColor: color.fill.pressed,
   },
   filterChipLabel: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   filterChipLabelOn: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   emptyHistory: {
-    padding: spacing.lg,
+    padding: space[6],
   },
   emptyHistoryText: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   campaignRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: space[6],
+    paddingVertical: space[4],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.chrome,
-    gap: spacing.sm,
+    borderBottomColor: color.lineStrong,
+    gap: space[2],
   },
   campaignText: {
     flex: 1,
@@ -747,27 +741,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   campaignName: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     flex: 1,
   },
   campaignMeta: {
-    ...typography.caption,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
   },
   planReason: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    ...type.caption,
+    color: color.text2,
+    marginTop: space[1],
   },
   creativeThumb: {
     width: 56,
     height: 70,
     borderRadius: 10,
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: color.fill.tile,
   },
   creativePlaceholder: {
     width: 56,
@@ -775,35 +769,35 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.chrome.idle,
+    backgroundColor: color.fill.tile,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   creativePlaceholderLabel: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     fontWeight: "700",
   },
   statusPill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: glass.tint.chrome.idle,
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tile,
   },
   statusPillLive: {
-    backgroundColor: "rgba(46, 160, 90, 0.18)",
+    backgroundColor: color.successTint,
   },
   statusPillAttention: {
-    backgroundColor: "rgba(180, 60, 60, 0.18)",
+    backgroundColor: color.errorTint,
   },
   statusPillLabel: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
   },
   nextAction: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     fontWeight: "700",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });

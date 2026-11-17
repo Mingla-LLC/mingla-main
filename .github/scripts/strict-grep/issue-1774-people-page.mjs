@@ -28,9 +28,12 @@ export function audit(base) {
     if (!fs.existsSync(target)) { failures.push(`${files[key]} is missing`); return ""; }
     return fs.readFileSync(target, "utf8");
   };
-  const route=read("route"),legacy=read("legacy"),page=read("page"),detail=read("detail"),service=read("service"),importRoute=read("importRoute"),importHook=read("importHook"),analytics=read("analytics"),marketingKeys=read("marketingKeys"),flagHook=read("flagHook"),migration=read("migration"),digestFix=read("digestFix"),marketingAudit=read("marketingAudit");
+  // #4420 wave 6 — the legacy Audiences redirect is deleted; it must stay
+  // deleted (People is the one owner) and nothing may route to it.
+  const legacyPath=path.join(base,files.legacy);
+  const route=read("route"),page=read("page"),detail=read("detail"),service=read("service"),importRoute=read("importRoute"),importHook=read("importHook"),analytics=read("analytics"),marketingKeys=read("marketingKeys"),flagHook=read("flagHook"),migration=read("migration"),digestFix=read("digestFix"),marketingAudit=read("marketingAudit");
   if (!route.includes("<PeoplePage")) failures.push("canonical People route does not mount PeoplePage");
-  if (!legacy.includes('<Redirect href="/(tabs)/marketing/people"') || /AudienceListScreen|useAudienceList/.test(legacy)) failures.push("legacy Audiences route is not a renderless People redirect");
+  if (fs.existsSync(legacyPath)) failures.push("legacy Audiences route is back (retired by #4420; People owns marketing/people)");
   if (/\.from\s*\(/.test([page,detail,service].join("\n"))) failures.push("People book/detail bypasses the RPC service boundary");
   for (const rpc of ["biz_get_brand_people_book","biz_get_brand_person","biz_add_brand_person"]) if (!service.includes(`rpc(\"${rpc}\"`)) failures.push(`service is missing ${rpc}`);
   if (/People you can reach|Reach unavailable|Export unavailable|Book export is coming soon/.test(page) || /followersCount|extendedCircleCount|estimatedReach/.test(page)) failures.push("reach/export dependency is fabricated");
@@ -59,18 +62,18 @@ export function audit(base) {
   if (!migration.includes("brand_person_manual_add_requests") || !migration.includes("pg_advisory_xact_lock") || !migration.includes("people_idempotency_conflict")) failures.push("manual add lacks durable idempotency authority");
   const digestFunction=digestFix.split("REVOKE ALL ON FUNCTION")[0];
   if (!/v_hash\s*:=\s*encode\s*\(\s*extensions\.digest\s*\(/.test(digestFunction) || /v_hash\s*:=\s*encode\s*\(\s*digest\s*\(/.test(digestFunction)) failures.push("manual add digest is not extension-qualified in the forward correction");
-  if (!marketingAudit.includes('label: "legacy-audiences-redirect"') || !marketingAudit.includes('label: "people"') || !marketingAudit.includes('book.kind==="offlineEmpty"')) failures.push("marketing Grade A audit does not split the legacy redirect from truthful People ownership");
+  if (!marketingAudit.includes('label: "retired-audiences-route"') || !marketingAudit.includes('label: "people"') || !marketingAudit.includes('book.kind==="offlineEmpty"')) failures.push("marketing Grade A audit does not split the legacy redirect from truthful People ownership");
   return failures;
 }
 
 function selfTest() {
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"issue-1774-gate-"));
   try {
-    for (const relative of Object.values(files)) { const target=path.join(tmp,relative); fs.mkdirSync(path.dirname(target),{recursive:true}); fs.copyFileSync(path.join(root,relative),target); }
+    for (const relative of Object.values(files)) { if (relative===files.legacy) continue; const target=path.join(tmp,relative); fs.mkdirSync(path.dirname(target),{recursive:true}); fs.copyFileSync(path.join(root,relative),target); }
     if (audit(tmp).length) throw new Error(`clean fixture failed: ${audit(tmp).join("; ")}`);
-    const legacy=path.join(tmp,files.legacy); fs.writeFileSync(legacy,"export default function Audiences(){ return null }\n");
-    if (!audit(tmp).some((x)=>x.includes("renderless People redirect"))) throw new Error("true mutation: deleting the redirect was not detected");
-    fs.copyFileSync(path.join(root,files.legacy),legacy);
+    const legacy=path.join(tmp,files.legacy); fs.mkdirSync(path.dirname(legacy),{recursive:true}); fs.writeFileSync(legacy,'export default function Audiences(){ return <Redirect href="/(tabs)/marketing/people" /> }\n');
+    if (!audit(tmp).some((x)=>x.includes("legacy Audiences route is back"))) throw new Error("true mutation: restoring the retired route was not detected");
+    fs.rmSync(legacy);
     const page=path.join(tmp,files.page); fs.appendFileSync(page,"\nconst estimatedReach = 999;\n");
     if (!audit(tmp).some((x)=>x.includes("fabricated"))) throw new Error("true mutation: fabricated reach was not detected");
     fs.copyFileSync(path.join(root,files.page),page);

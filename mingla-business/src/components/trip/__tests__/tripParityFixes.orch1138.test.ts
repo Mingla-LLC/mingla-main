@@ -55,7 +55,9 @@ describe("ORCH-1138 FIX-2 — destination normalized everywhere (business/web)",
     expect(
       /const routeLabel[\s\S]*?data\.destinationCityCountry !== null/.test(bodySrc),
     ).toBe(true);
-    expect(bodySrc).toContain("{routeLabel}");
+    // issue #4420 — the route reads as pills under the fact rows; the
+    // destination pill renders the normalized destinationCityCountry.
+    expect(bodySrc).toContain("label={data.destinationCityCountry}");
   });
 
   test("the adapter still normalizes both legs (shared normalizer, not forked)", () => {

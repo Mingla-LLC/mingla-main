@@ -116,7 +116,37 @@ const OPEN_FILL_PERCENT = 18;
  * ONLY. Handles event / trip / experience; any other entity type returns the
  * invisible model (the RSVP unit has its own single owner — COMMS-0057).
  */
+/**
+ * issue #4420 audit — the copy once the offering has happened. "6 going · are
+ * pulling up" on an ended event read as if it were still on; a finished
+ * offering states who came, with no meter or spots-left claim.
+ */
+const ENDED_COPY: Record<"event" | "trip" | "experience", Pick<EntityMomentumCopy, "countLabel" | "clusterNote">> = {
+  event: { countLabel: "went", clusterNote: "were there" },
+  trip: { countLabel: "went", clusterNote: "were on this trip" },
+  experience: { countLabel: "booked", clusterNote: "were there" },
+};
+
 export const deriveSocialProofMomentum = (
+  summary: Parameters<typeof deriveLiveSocialProofMomentum>[0],
+  opts: { ended?: boolean } = {},
+): SocialProofMomentumModel => {
+  const live = deriveLiveSocialProofMomentum(summary);
+  if (opts.ended !== true || !live.visible) return live;
+  const ended = (
+    ENDED_COPY as Partial<Record<SocialProofEntityType, Pick<EntityMomentumCopy, "countLabel" | "clusterNote">>>
+  )[summary.entityType];
+  if (ended === undefined) return live;
+  return {
+    ...live,
+    countLabel: ended.countLabel,
+    clusterNote: ended.clusterNote,
+    subLabel: null,
+    showMeter: false,
+  };
+};
+
+const deriveLiveSocialProofMomentum = (
   summary: Pick<
     SocialProofSummary,
     "entityType" | "goingCount" | "capacity" | "hideRemainingCount"

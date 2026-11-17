@@ -29,7 +29,7 @@ jest.mock("../../ui/Input", () => ({ Input: probe("InputProbe") }));
 jest.mock("../../ui/GlassCard", () => ({ GlassCard: probe("GlassCardProbe") }));
 jest.mock("../../ui/ExtraGuestsField", () => ({ ExtraGuestsField: (): null => null }));
 jest.mock("../../trip/LazyRefundPolicyEditor", () => ({ LazyRefundPolicyEditor: (): null => null }));
-jest.mock("../../pricing/LazyWhoCoversCostsSection", () => ({ WhoCoversCostsSection: (): null => null }));
+jest.mock("../../pricing/LazyWhoCoversCostsSection", () => ({ WhoCoversCostsSection: probe("CostsProbe") }));
 
 import { ExperiencePricingStep } from "../ExperiencePricingStep";
 import type { ExperienceStopDraft } from "../experienceWizardTypes";
@@ -108,6 +108,14 @@ describe("issue #3645 2A — per-stop Pricing step", () => {
   test("sub-unit stops count as 0, as the server sums them", () => {
     const { tree } = render({ isFree: false, prices: ["0.004", "0.004"], showErrors: true });
     expect(tree.root.findAll((n) => n.props.testID === "experience-pricing-per-stop-unpriced" && typeof n.type === "string")).toHaveLength(1);
+    tree.unmount();
+  });
+
+  test("the costs preview, the Total and the published ticket use one total (each stop rounded first)", () => {
+    // 3 × 0.006: unrounded that is 1.8 minor units (2); the server sends 1 per stop = 3.
+    const { tree } = render({ isFree: false, prices: ["0.006", "0.006", "0.006"], showErrors: true });
+    const [costs] = tree.root.findAll((n) => n.type === "CostsProbe");
+    expect(costs.props.previewBaseCents).toBe(3);
     tree.unmount();
   });
 

@@ -56,14 +56,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space, materials, edge } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { formatCurrency } from "../../../src/utils/currency";
 import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
@@ -90,7 +84,7 @@ import {
   PURCHASE_TERMS_LABEL_SUFFIX,
   PURCHASE_TERMS_LABEL_TERMS,
   PURCHASE_TERMS_URL,
-} from "../../../src/constants/consentDisclosure";
+} from "../../../src/constants/purchaseTermsDisclosure";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { supabase } from "../../../src/services/supabase";
 
@@ -98,11 +92,17 @@ import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { Input } from "../../../src/components/ui/Input";
+import { FieldErrorLine } from "../../../src/components/checkout/FieldErrorLine";
+import { useSteadyQuote } from "../../../src/components/checkout/useSteadyQuote";
+import { useRevealedFieldErrors } from "../../../src/hooks/useRevealedFieldErrors";
 
 import {
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import {
   isContinueDisabled,
@@ -123,21 +123,23 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
-const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
-  backgroundPrimary: "#0c0e12",
-  textPrimary: "rgba(255, 255, 255, 0.96)",
-  textTertiary: "rgba(255, 255, 255, 0.52)",
-  borderDefault: "rgba(255, 255, 255, 0.14)",
-  borderFocused: "#eb7825",
-  borderError: "#ef4444",
-  searchBackground: "rgba(255, 255, 255, 0.06)",
-  rowPressedBackground: "rgba(255, 255, 255, 0.04)",
-  divider: "rgba(255, 255, 255, 0.08)",
-  accessoryBackground: "rgba(12, 14, 18, 0.95)",
-  accessoryBorder: "rgba(255, 255, 255, 0.08)",
-  accent: "#eb7825",
-  errorText: "#ef4444",
-};
+// #4420 — read per render: the tokens follow the host palette.
+const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
+  backgroundPrimary: color.canvas,
+  fieldBackground: color.fill.input,
+  textPrimary: color.text1,
+  textTertiary: color.text3,
+  borderDefault: color.lineStrong,
+  borderFocused: edge.ringInputFocus.borderColor,
+  borderError: edge.ringError.borderColor,
+  searchBackground: color.fill.tile,
+  rowPressedBackground: color.fill.inset,
+  divider: color.line,
+  accessoryBackground: materials.chrome.glassFill,
+  accessoryBorder: color.line,
+  accent: color.text1,
+  errorText: color.errorText,
+});
 
 const resolveInitialCountry = (
   existingFullE164: string,
@@ -215,6 +217,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
+  const stripWide = useCheckoutWideLayout();
   const {
     lines,
     buyer,
@@ -230,6 +233,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     partySize,
   } = useCart();
   const totals = useCartQuoteTotals();
+  const summaryQuote = useSteadyQuote(quote, quoteStatus);
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   // issue #2689 — synchronous re-entry guard (ref, not batched state). Consent
@@ -275,9 +279,6 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     if (next) setConsentHintVisible(false);
   }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer]);
 
-  const [nameTouched, setNameTouched] = useState<boolean>(false);
-  const [emailTouched, setEmailTouched] = useState<boolean>(false);
-  const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
 
   // prettier-ignore -- #3380 source contract keeps the locale fallback auditable.
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
@@ -320,25 +321,26 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     () => validate(buyer.name, buyer.email, buyer.phone, false),
     [buyer.name, buyer.email, buyer.phone],
   );
-  const visibleErrors = useMemo<{
-    name: string | null;
-    email: string | null;
-    phone: string | null;
-  }>(() => {
-    const v = validate(buyer.name, buyer.email, buyer.phone, true);
-    return {
-      name: nameTouched ? v.nameError : null,
-      email: emailTouched ? v.emailError : null,
-      phone: phoneTouched ? v.phoneError : null,
-    };
-  }, [
-    buyer.name,
-    buyer.email,
-    buyer.phone,
-    nameTouched,
-    emailTouched,
-    phoneTouched,
-  ]);
+  // #4420 — Constitution 12: an error appears on blur or Continue, never
+  // mid-typing, and clears live once the value is valid.
+  const fieldErrors = useMemo(
+    () => validate(buyer.name, buyer.email, buyer.phone, true),
+    [buyer.name, buyer.email, buyer.phone],
+  );
+  const {
+    shows: showsFieldError,
+    blur: blurField,
+    revealAll: revealAllFieldErrors,
+  } = useRevealedFieldErrors({
+    name: fieldErrors.nameError !== null,
+    email: fieldErrors.emailError !== null,
+    phone: fieldErrors.phoneError !== null,
+  });
+  const visibleErrors = {
+    name: showsFieldError("name") ? fieldErrors.nameError : null,
+    email: showsFieldError("email") ? fieldErrors.emailError : null,
+    phone: showsFieldError("phone") ? fieldErrors.phoneError : null,
+  };
 
   // ----- Defensive guard: cart empty -----
   const hasNoLines = lines.length === 0;
@@ -357,9 +359,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   }, [router, experienceEventId]);
 
   const showConsentHint = useCallback((): void => {
-    setNameTouched(true);
-    setEmailTouched(true);
-    setPhoneTouched(true);
+    revealAllFieldErrors();
     if (
       shouldShowConsentHintOnDisabledTap({
         fieldsValid: validation.isValid,
@@ -368,12 +368,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     ) {
       setConsentHintVisible(true);
     }
-  }, [termsAccepted, validation.isValid]);
+  }, [termsAccepted, validation.isValid, revealAllFieldErrors]);
 
   const handleContinue = useCallback(async (): Promise<void> => {
-    setNameTouched(true);
-    setEmailTouched(true);
-    setPhoneTouched(true);
+    revealAllFieldErrors();
     if (!validation.isValid) return;
     if (!termsAccepted) {
       setConsentHintVisible(true);
@@ -489,6 +487,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     submitInFlight.current = false;
     setSubmitting(false);
   }, [
+    revealAllFieldErrors,
     validation.isValid,
     termsAccepted,
     experienceEventId,
@@ -552,6 +551,23 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        {experience !== null ? (
+          <CheckoutOfferingStrip
+            wide={stripWide}
+            title={experience.title.trim().length > 0 ? experience.title : "Untitled experience"}
+            eyebrow={
+              formatExperienceDateSubline({
+                venueText: null,
+                dateStartIsos: experience.dates.map((d) => d.startAt),
+                whenMode: experience.whenMode,
+                recurrenceRule: experience.recurrenceRule,
+              }) ?? null
+            }
+            byline={query.data?.brand?.name ?? null}
+            coverUrl={experience.coverMediaUrl ?? null}
+          />
+        ) : null}
         {/* Order summary recap */}
         <Pressable
           onPress={handleBack}
@@ -562,21 +578,26 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             pressed && styles.summaryPressed,
           ]}
         >
-          <GlassCard variant="base" radius="lg" padding={spacing.md}>
+          <GlassCard variant="base" radius="lg" padding={space[4]}>
             <View style={styles.summaryHeader}>
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {quote !== null ? (
+            {/* #4420 — the last priced quote stays on screen while typing
+                re-quotes, so the summary never collapses under the form. */}
+            {summaryQuote.quote !== null ? (
               <React.Suspense fallback={null}>
                 <TicketQuoteSummary
-                  quote={quote}
+                  quote={summaryQuote.quote}
                   compact
                   totalLabel={BUYER_CLAIM_COPY.confirmTotalLabel}
                   totalValue={
-                    totals.isFree
+                    summaryQuote.quote.buyerTotalCents === 0
                       ? BUYER_CLAIM_COPY.receipt.free
-                      : formatCurrency(totals.allInTotal, totals.currency)
+                      : formatCurrency(
+                          summaryQuote.quote.buyerTotalCents / 100,
+                          summaryQuote.quote.currency,
+                        )
                   }
                 />
               </React.Suspense>
@@ -604,11 +625,13 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             variant="text"
             placeholder="Full name"
             accessibilityLabel="Full name, required"
-            onBlur={() => setNameTouched(true)}
+            onBlur={() => blurField("name")}
           />
-          {visibleErrors.name !== null ? (
-            <Text style={styles.errorText}>{visibleErrors.name}</Text>
-          ) : null}
+          <FieldErrorLine
+            message={visibleErrors.name}
+            style={styles.errorText}
+            testID="checkout-buyer-name-error"
+          />
         </View>
 
         <View style={styles.fieldWrap}>
@@ -622,11 +645,13 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             variant="email"
             placeholder="Email"
             accessibilityLabel="Email address, required"
-            onBlur={() => setEmailTouched(true)}
+            onBlur={() => blurField("email")}
           />
-          {visibleErrors.email !== null ? (
-            <Text style={styles.errorText}>{visibleErrors.email}</Text>
-          ) : null}
+          <FieldErrorLine
+            message={visibleErrors.email}
+            style={styles.errorText}
+            testID="checkout-buyer-email-error"
+          />
         </View>
 
         <View style={styles.fieldWrap}>
@@ -637,14 +662,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           <PhoneInput
             value={phoneLocal}
             countryCode={phoneCountry}
-            onChangePhone={(next: string) => {
-              handlePhoneLocalChange(next);
-              setPhoneTouched(true);
-            }}
-            onChangeCountry={(nextIso: string) => {
-              handlePhoneCountryChange(nextIso);
-              setPhoneTouched(true);
-            }}
+            onChangePhone={handlePhoneLocalChange}
+            onChangeCountry={handlePhoneCountryChange}
+            onBlur={() => blurField("phone")}
+            reserveErrorSpace
             error={visibleErrors.phone}
             disabled={false}
             iconRenderer={(
@@ -677,7 +698,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               pickerSearchPlaceholder: "Search country or dial code",
               pickerCloseAccessibilityLabel: "Close country picker",
             }}
-            theme={PUBLIC_BUYER_PHONE_THEME}
+            theme={publicBuyerPhoneTheme()}
           />
         </View>
 
@@ -705,7 +726,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             ]}
           >
             {termsAccepted ? (
-              <Icon name="check" size={14} color={textTokens.primary} />
+              <Icon name="check" size={14} color={color.text1} />
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
@@ -754,7 +775,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
       <View
         style={[
           styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
+          { paddingBottom: insets.bottom + space[4] },
           keyboardVisible ? styles.bottomBarHidden : null,
         ]}
       >
@@ -792,52 +813,52 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: "#0c0e12" },
+const styles = checkoutStyles(() => StyleSheet.create({
+  host: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  summaryWrap: { marginBottom: spacing.lg },
+  scrollContent: { paddingHorizontal: space[6], paddingTop: space[4] },
+  summaryWrap: { marginBottom: space[6] },
   summaryPressed: { opacity: 0.7 },
   summaryHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   summaryHeaderText: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
   },
-  summaryEditText: { fontSize: 12, fontWeight: "600", color: accent.warm },
+  summaryEditText: { fontSize: 12, fontWeight: "600", color: color.accent },
   summaryLine: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 4,
-    gap: spacing.sm,
+    gap: space[2],
   },
   summaryLineQty: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
     minWidth: 28,
   },
   summaryLineName: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   summaryLineTotal: {
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   summaryDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   summaryTotalRow: {
     flexDirection: "row",
@@ -846,35 +867,35 @@ const styles = StyleSheet.create({
   },
   summaryTotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   summaryTotalValue: {
     fontSize: 17,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 1.4,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
-  fieldWrap: { marginBottom: spacing.md },
+  fieldWrap: { marginBottom: space[4] },
   buyerContext: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   promise: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
+    marginTop: space[1],
+    marginBottom: space[2],
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   fieldLabelRow: {
     flexDirection: "row",
@@ -882,20 +903,20 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     gap: 4,
   },
-  fieldLabel: { fontSize: 13, fontWeight: "500", color: textTokens.secondary },
-  required: { fontSize: 13, fontWeight: "600", color: semantic.error },
+  fieldLabel: { fontSize: 13, fontWeight: "500", color: color.text2 },
+  required: { fontSize: 13, fontWeight: "600", color: color.danger },
   errorText: {
     marginTop: 6,
     fontSize: 12,
-    color: semantic.error,
+    color: color.danger,
     fontWeight: "500",
   },
   checkboxRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    paddingVertical: space[2],
+    gap: space[2],
+    marginTop: space[1],
   },
   checkboxRowPressed: { opacity: 0.7 },
   checkboxBox: {
@@ -903,23 +924,23 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: radiusTokens.sm,
     borderWidth: 1.5,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxBoxChecked: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
   checkboxLabel: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
   checkboxLinkUnderlined: {
-    color: accent.warm,
+    color: color.accent,
     fontWeight: "600",
     textDecorationLine: "underline",
   },
@@ -927,15 +948,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     lineHeight: 18,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   checkboxBoxFlash: {
-    borderColor: semantic.error,
+    borderColor: color.danger,
   },
   consentRequiredHint: {
     marginTop: 6,
     fontSize: 12,
-    color: semantic.error,
+    color: color.danger,
     fontWeight: "500",
   },
   bottomBar: {
@@ -943,24 +964,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.chrome.glassFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   bottomBarHidden: { transform: [{ translateY: 200 }] },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
-  totalLabel: { fontSize: 13, color: textTokens.tertiary, fontWeight: "500" },
+  totalLabel: { fontSize: 13, color: color.text3, fontWeight: "500" },
   totalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },
-});
+}));

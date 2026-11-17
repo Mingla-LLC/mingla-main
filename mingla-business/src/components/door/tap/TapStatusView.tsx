@@ -22,7 +22,12 @@ import {
   View,
 } from "react-native";
 
-import { durations, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import {
+  durations,
+  color,
+  space,
+  type,
+} from "../../../constants/designSystem";
 import { TAP_GET_HELP } from "../../../constants/tapToPayCopy";
 import { DOOR_MODE_COPY } from "../doorModeCopy";
 import { useReduceMotion } from "../../../hooks/useMotionPreferences";
@@ -187,8 +192,8 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: space[6],
+    gap: space[2],
   },
   ring: {
     width: 64,
@@ -197,26 +202,26 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   titleBig: {
-    ...typography.display,
-    color: textTokens.primary,
+    ...type.display,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     textAlign: "center",
   },
   actions: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
+    marginTop: space[4],
+    gap: space[2],
   },
   link: {
     minHeight: 44,
@@ -224,9 +229,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   linkText: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textDecorationLine: "underline",
   },
 });

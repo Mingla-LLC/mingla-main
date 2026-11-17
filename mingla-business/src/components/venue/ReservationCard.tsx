@@ -2,15 +2,12 @@ import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  androidOpaque,
-  glass,
   radius,
   reservationCalendarLayout,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import { AlertTriangle, ChevronRight } from "lucide-react-native";
 import { GlassCard } from "../ui/GlassCard";
@@ -28,22 +25,22 @@ export interface FocusableReservationEntry {
 export type ReservationCardDensity = "agenda" | "calendar" | "month";
 
 const TONE_COLOR: Record<string, string> = {
-  neutral: textTokens.secondary,
-  success: semantic.success,
-  warm: accent.warm,
-  muted: textTokens.tertiary,
-  error: semantic.error,
-  faded: textTokens.tertiary,
+  neutral: color.text2,
+  success: color.success,
+  warm: color.accent,
+  muted: color.text3,
+  error: color.danger,
+  faded: color.text3,
 };
 
 const TONE_BACKGROUND: Record<string, string> = {
-  neutral: glass.tint.profileElevated,
+  neutral: color.fill.tile,
   success:
-    Platform.OS === "android" ? androidOpaque.successFill : semantic.successTint,
-  warm: Platform.OS === "android" ? androidOpaque.accentFill : accent.tint,
-  muted: glass.tint.profileBase,
-  error: Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
-  faded: glass.tint.profileBase,
+    Platform.OS === "android" ? color.solidTint.success : color.successTint,
+  warm: Platform.OS === "android" ? materials.selected.solidFill : color.accentLine,
+  muted: color.fill.inset,
+  error: Platform.OS === "android" ? color.solidTint.error : color.errorTint,
+  faded: color.fill.inset,
 };
 
 export interface ReservationCardProps {
@@ -67,9 +64,9 @@ export function ReservationCard({
 }: ReservationCardProps): React.ReactElement {
   const [focused, setFocused] = useState(false);
   const presentation = STATUS_PRESENTATION[reservation.status];
-  const toneColor = TONE_COLOR[presentation.tone] ?? textTokens.secondary;
+  const toneColor = TONE_COLOR[presentation.tone] ?? color.text2;
   const toneBackground =
-    TONE_BACKGROUND[presentation.tone] ?? glass.tint.profileElevated;
+    TONE_BACKGROUND[presentation.tone] ?? color.fill.tile;
   const guest = reservation.guestName?.trim() || "Guest";
   const metadata = [`Party of ${reservation.partySize}`];
   if (tableDisplay !== null) metadata.push(tableDisplay);
@@ -152,14 +149,14 @@ export function ReservationCard({
               {refundNeedsAttention ? (
                 <AlertTriangle
                   size={14}
-                  color={semantic.warning}
+                  color={color.warning}
                   accessibilityElementsHidden
                   importantForAccessibility="no-hide-descendants"
                 />
               ) : null}
               <ChevronRight
                 size={18}
-                color={textTokens.tertiary}
+                color={color.text3}
                 accessibilityElementsHidden
                 importantForAccessibility="no-hide-descendants"
               />
@@ -172,7 +169,7 @@ export function ReservationCard({
 }
 
 const webFocusOutline = {
-  outlineColor: accent.warm,
+  outlineColor: color.accent,
   outlineOffset: 2,
   outlineStyle: "solid",
   outlineWidth: 2,
@@ -198,15 +195,15 @@ const styles = StyleSheet.create({
   agendaPressable: {
     minHeight: reservationCalendarLayout.agendaRowMinHeight,
     paddingHorizontal: 12,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingVertical: space[2],
+    gap: space[2],
   },
   calendarPressable: {
     minHeight: reservationCalendarLayout.entryMinTarget,
-    padding: spacing.sm,
+    padding: space[2],
   },
   monthPressable: {
-    padding: spacing.xs,
+    padding: space[1],
   },
   pressed: {
     opacity: 0.72,
@@ -216,24 +213,24 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   time: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   mainColumn: {
     flex: 1,
     minWidth: 0,
-    gap: spacing.xxs,
+    gap: 2,
   },
   guest: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
   },
   metadata: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     flexShrink: 1,
   },
   trailingColumn: {
@@ -241,18 +238,18 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: spacing.xs,
+    gap: space[1],
     maxWidth: "42%",
   },
   pill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    gap: 2,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   pillDot: {
     width: 7,
@@ -260,34 +257,34 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
   },
   pillLabel: {
-    ...typography.caption,
+    ...type.caption,
     fontWeight: "700",
   },
   compactContent: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   compactLeadRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.xs,
+    gap: space[1],
   },
   compactTime: {
-    ...typography.caption,
-    color: textTokens.primary,
+    ...type.caption,
+    color: color.text1,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
   compactGuest: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
   },
   compactMetadata: {
-    ...typography.micro,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
 });
 

@@ -28,7 +28,7 @@ const DEBT_RETURN_TARGET = "20280508003645_issue_3645_payout_debt_returns.sql";
 const LEDGER_FOLLOWUP_TARGET = "20280602003645_issue_3645_payout_ledger_followups.sql";
 // Bundle 2A's migration likewise carries its own guard
 // (issue_3645_per_stop_price_reemit_hunks.ts).
-const PER_STOP_PRICE_TARGET = "20280726003645_issue_3645_per_stop_paid_price.sql";
+const PER_STOP_PRICE_TARGET = "20280801003645_issue_3645_per_stop_paid_price.sql";
 
 function migrationFiles(): string[] {
   return [...Deno.readDirSync(DIR)]

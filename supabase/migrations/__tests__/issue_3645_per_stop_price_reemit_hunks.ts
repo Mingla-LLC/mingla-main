@@ -1,13 +1,13 @@
 /**
  * issue #3645 bundle 2A — the ONLY authorised hunks for every function
- * 20280726003645 re-emits. issue_3645_per_stop_price_reemit_hunks.structural.test.ts
+ * 20280801003645 re-emits. issue_3645_per_stop_price_reemit_hunks.structural.test.ts
  * proves each body equals its latest earlier definition with exactly these
  * replacements applied, so nothing else in these large functions can move.
  */
 import type { Reemit } from "./issue_3645_reemit_hunks.ts";
 
 export const TARGET =
-  "supabase/migrations/20280726003645_issue_3645_per_stop_paid_price.sql";
+  "supabase/migrations/20280801003645_issue_3645_per_stop_paid_price.sql";
 
 export const PER_STOP_PRICE_REEMITS: Reemit[] = [
   {

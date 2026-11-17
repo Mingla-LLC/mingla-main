@@ -24,14 +24,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  accent,
-  canvas,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, materials, radius, scrim, size, space, type } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { brandEnquiryKeys } from "../../hooks/useBrandEnquiries";
 import {
@@ -47,7 +40,11 @@ import {
   brandEnquiryContextOpen,
   brandEnquiryContextSummary,
   brandEnquiryThreadSubtitle,
+  brandEnquiryChannel,
+  brandEnquiryStatusPill,
 } from "../../utils/brandEnquiryDisplay";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { KeyValue } from "../ui/KeyValue";
 import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
 import { liftedBottomSpacer } from "../../wrappers/keyboardClearance";
@@ -57,6 +54,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { SafeScreen } from "../ui/SafeScreen";
 import { Toast } from "../ui/Toast";
+import { webPrivacyMaxHeight } from "./webViewportPin";
 import { BrandEnquiryStatusPill } from "./BrandEnquiryListSection";
 
 export const BRAND_ENQUIRY_REPORT_REASONS: ReadonlyArray<{ key: string; label: string }> = [
@@ -71,6 +69,7 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
+  const { isWideDesktop } = useResponsiveLayout();
   const keyboardHeight = useKeyboardHeight();
   const queryClient = useQueryClient();
   const { user, isAuthReady } = useAuth();
@@ -196,12 +195,14 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
         Platform.OS === "web" && windowHeight > 0
           ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
           : null,
+        // #4420: capped clear of the Privacy & ad choices strip.
+        webPrivacyMaxHeight(),
       ]}
       testID="brand-enquiry-thread"
     >
       <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton}>
-          <Icon name="arrowL" size={18} color={textTokens.primary} />
+          <Icon name="arrowL" size={18} color={color.text1} />
         </Pressable>
         <View style={styles.headerCopy}>
           <View style={styles.titleLine}>
@@ -223,7 +224,7 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
       </View>
 
       {thread.isPending && userId !== null ? (
-        <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
+        <View style={styles.state}><ActivityIndicator color={color.text2} /></View>
       ) : thread.isError || !thread.data || !enquiry ? (
         <View style={styles.state}>
           <Text style={styles.stateText}>
@@ -232,7 +233,10 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
           <Button label="Retry" variant="secondary" onPress={() => void thread.refetch()} />
         </View>
       ) : (
-        <>
+        // #4420 kit (messages-enquiry__open, web): desktop is the conversation
+        // beside an "Enquiry" summary card; the phone keeps one column.
+        <View style={isWideDesktop ? styles.deskBody : styles.fill}>
+        <View style={isWideDesktop ? styles.deskMain : styles.fill}>
           <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={styles.contextCard} testID="brand-enquiry-context">
               <View style={styles.contextCopy}>
@@ -314,15 +318,16 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
               <View
                 style={[
                   styles.composer,
-                  { paddingBottom: liftedBottomSpacer(keyboardHeight > 0, Math.max(insets.bottom, spacing.sm)) },
+                  { paddingBottom: liftedBottomSpacer(keyboardHeight > 0, Math.max(insets.bottom, space[2])) },
                 ]}
               >
+                {/* #4420 round 3 (6, 24): floating composer, icon-only send. */}
                 <View style={styles.composerLine}>
                   <TextInput
                     value={composer}
                     onChangeText={setComposer}
                     placeholder={`Reply as ${enquiry.brand_name}`}
-                    placeholderTextColor={textTokens.tertiary}
+                    placeholderTextColor={color.text3}
                     style={styles.input}
                     multiline
                     maxLength={2000}
@@ -330,19 +335,41 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
                     accessibilityLabel={`Reply as ${enquiry.brand_name}`}
                     testID="brand-enquiry-composer"
                   />
-                  <Button
-                    label="Send"
-                    leadingIcon="send"
-                    loading={busy === "reply"}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Send"
+                    accessibilityState={{ disabled: !composer.trim() || busy !== null, busy: busy === "reply" }}
                     disabled={!composer.trim() || busy !== null}
                     onPress={() => void send()}
+                    style={[styles.send, (!composer.trim() || busy !== null) && styles.sendIdle]}
                     testID="brand-enquiry-send"
-                  />
+                  >
+                    {busy === "reply" ? (
+                      <ActivityIndicator size="small" color={color.ink} />
+                    ) : (
+                      <Icon name="send" size={20} color={composer.trim() && busy === null ? color.ink : color.text4} />
+                    )}
+                  </Pressable>
                 </View>
               </View>
             </KeyboardAvoidingView>
           )}
-        </>
+        </View>
+        {isWideDesktop ? (
+          <View style={styles.deskAside} testID="brand-enquiry-summary">
+            <Text style={styles.asideTitle}>Enquiry</Text>
+            <KeyValue
+              items={[
+                { key: "from", label: "From", value: enquiry.guest.name },
+                { key: "brand", label: "Brand", value: enquiry.brand_name },
+                { key: "source", label: "Source", value: brandEnquiryChannel(enquiry.source, enquiry.channel_label) },
+                { key: "email", label: "Email", value: enquiry.guest.email_confirmed === true ? "Confirmed" : "Not confirmed yet" },
+                { key: "status", label: "Status", value: brandEnquiryStatusPill(enquiry.status).label },
+              ]}
+            />
+          </View>
+        ) : null}
+        </View>
       )}
 
       <ConfirmDialog
@@ -390,44 +417,61 @@ export function BrandEnquiryThreadScreen({ enquiryId }: { enquiryId: string }): 
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: canvas.profile },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
+  screen: { backgroundColor: color.canvas },
+  header: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingVertical: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
   headerCopy: { flex: 1, minWidth: 0 },
-  titleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  title: { flexShrink: 1, color: textTokens.primary, fontSize: 18, fontWeight: "800" },
-  tag: { borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: "#4a3410", flexShrink: 0 },
-  tagText: { color: "#ffc66b", fontSize: 10, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
-  subtitle: { color: textTokens.tertiary, fontSize: 12, marginTop: 2 },
-  state: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
-  stateText: { color: textTokens.secondary, textAlign: "center", lineHeight: 20 },
+  titleLine: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  title: { flexShrink: 1, color: color.text1, fontSize: 18, fontWeight: "800" },
+  tag: { borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: color.warningTint, flexShrink: 0 },
+  tagText: { color: color.warningText, fontSize: 10, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
+  subtitle: { color: color.text3, fontSize: 12, marginTop: 2 },
+  state: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
+  stateText: { color: color.text2, textAlign: "center", lineHeight: 20 },
   messages: { flex: 1 },
-  messagesContent: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
-  contextCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
-  spamCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: "rgba(255,198,107,0.45)", backgroundColor: "rgba(74,52,16,0.35)" },
+  fill: { flex: 1, minHeight: 0 },
+  deskBody: { flex: 1, minHeight: 0, flexDirection: "row", gap: size.gutter, paddingRight: space[4], paddingBottom: space[4] },
+  deskMain: { flex: 1, minWidth: 0, minHeight: 0 },
+  deskAside: {
+    width: 340,
+    alignSelf: "flex-start",
+    marginTop: space[4],
+    padding: space[5],
+    gap: space[4],
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+  },
+  asideTitle: { ...type.h2, color: color.text1 },
+  messagesContent: { padding: space[4], gap: space[4], paddingBottom: space[7] },
+  contextCard: { flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
+  spamCard: { flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: color.warning, backgroundColor: color.warningTint },
   contextCopy: { flex: 1, minWidth: 0, gap: 2 },
-  kicker: { color: textTokens.tertiary, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.6 },
-  contextTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "700" },
-  contextSummary: { color: textTokens.secondary, fontSize: 12, lineHeight: 17 },
-  contactLine: { color: textTokens.secondary, fontSize: 13 },
-  note: { padding: spacing.sm, borderRadius: radius.md, backgroundColor: "rgba(235,120,37,0.08)" },
-  noteText: { color: textTokens.secondary, fontSize: 12 },
+  kicker: { color: color.text3, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.6 },
+  contextTitle: { color: color.text1, fontSize: 15, fontWeight: "700" },
+  contextSummary: { color: color.text2, fontSize: 12, lineHeight: 17 },
+  contactLine: { color: color.text2, fontSize: 13 },
+  note: { padding: space[2], borderRadius: radius.md, backgroundColor: color.fill.tile },
+  noteText: { color: color.text2, fontSize: 12 },
   messageWrap: { maxWidth: "84%", gap: 5 },
   messageWrapMine: { alignSelf: "flex-end", alignItems: "flex-end" },
   messageWrapOther: { alignSelf: "flex-start", alignItems: "flex-start" },
-  sender: { color: textTokens.tertiary, fontSize: 11, fontWeight: "700", marginHorizontal: spacing.sm },
-  bubble: { borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1 },
-  bubbleMine: { backgroundColor: accent.warm, borderColor: accent.warm },
-  bubbleOther: { backgroundColor: glass.tint.profileElevated, borderColor: glass.border.profileElevated },
-  messageText: { color: textTokens.primary, fontSize: 15, lineHeight: 21 },
-  messageTextMine: { color: "#101216" },
-  time: { color: textTokens.tertiary, fontSize: 10 },
-  timeMine: { color: "rgba(16,18,22,0.65)" },
-  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  composer: { borderTopWidth: 1, borderTopColor: glass.border.profileBase, paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm, backgroundColor: "rgba(12,14,18,0.96)" },
-  composerLine: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
-  input: { flex: 1, minHeight: 44, maxHeight: 120, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated, color: textTokens.primary },
-  modalScrim: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg, backgroundColor: "rgba(0,0,0,0.6)" },
-  modalCard: { width: "100%", maxWidth: 420, gap: spacing.sm, padding: spacing.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: "#171a20" },
-  modalTitle: { color: textTokens.primary, fontSize: 17, fontWeight: "800" },
+  sender: { color: color.text3, fontSize: 11, fontWeight: "700", marginHorizontal: space[2] },
+  bubble: { borderRadius: radius.lg, padding: space[4], gap: space[2], borderWidth: 1 },
+  bubbleMine: { backgroundColor: color.card3, borderColor: color.lineStrong },
+  bubbleOther: { backgroundColor: color.fill.tile, borderColor: color.lineStrong },
+  messageText: { color: color.text1, fontSize: 15, lineHeight: 21 },
+  messageTextMine: { color: color.text1 },
+  time: { color: color.text3, fontSize: 10 },
+  timeMine: { color: color.text3 },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  composer: { paddingHorizontal: space[4], paddingTop: space[2], gap: space[2] },
+  composerLine: { flexDirection: "row", alignItems: "flex-end", gap: space[2] },
+  input: { flex: 1, minHeight: size.btn.phone, maxHeight: 120, paddingHorizontal: space[4], paddingTop: 14, paddingBottom: 14, borderRadius: radius.xl, borderWidth: StyleSheet.hairlineWidth, borderColor: color.lineStrong, backgroundColor: materials.sheet.solidFill, color: color.text1 },
+  send: { width: size.btn.phone, height: size.btn.phone, borderRadius: radius.full, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
+  sendIdle: { backgroundColor: color.card2 },
+  modalScrim: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[6], backgroundColor: scrim.modal },
+  modalCard: { width: "100%", maxWidth: 420, gap: space[2], padding: space[6], borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.card },
+  modalTitle: { color: color.text1, fontSize: 17, fontWeight: "800" },
 });

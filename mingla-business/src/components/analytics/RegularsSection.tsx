@@ -1,11 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import {
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { space, color, type } from "../../constants/designSystem";
 import { phMaskProps } from "../../analytics/phMask";
 import type { BrandRegularsRollup } from "../../services/brandAnalyticsService";
 import { GlassCard } from "../ui/GlassCard";
@@ -65,58 +60,58 @@ export const RegularsSection: React.FC<{
 );
 
 const styles = StyleSheet.create({
-  section: { flex: 1, gap: spacing.sm },
+  section: { flex: 1, gap: space[2] },
   card: { flex: 1 },
   cardContent: { flex: 1 },
   titleLine: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   heading: {
-    color: textTokens.primary,
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
   window: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
   },
   summary: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
   helper: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   subheading: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
-  rows: { marginTop: spacing.md },
+  rows: { marginTop: space[4] },
   row: {
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
   },
   contact: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
   },
   detail: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
 });

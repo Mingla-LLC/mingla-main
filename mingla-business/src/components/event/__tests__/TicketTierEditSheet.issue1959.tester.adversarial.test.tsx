@@ -25,6 +25,11 @@ jest.mock("../../ui/GlassCard", () => ({
   GlassCard: ({ children }: { children?: React.ReactNode }) => children ?? null,
 }));
 jest.mock("../../ui/Icon", () => ({ Icon: (): null => null }));
+// #4420 — the sheet's unsaved-changes dialog (reanimated is not loadable here).
+jest.mock("../../ui/ConfirmDialog", () => ({
+  ConfirmDialog: (props: Record<string, unknown>) =>
+    props.visible === true ? React.createElement("MockConfirmDialog", props) : null,
+}));
 jest.mock("../../ui/Button", () => ({
   Button: (props: Record<string, unknown>) => React.createElement("MockButton", props),
 }));

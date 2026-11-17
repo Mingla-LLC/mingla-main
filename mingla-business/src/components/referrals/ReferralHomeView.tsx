@@ -17,13 +17,7 @@ import {
 import * as Clipboard from "expo-clipboard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { color, edge, radius, space } from "../../constants/designSystem";
 import {
   fetchReferralListingOptions,
   fetchReferralMembers,
@@ -296,6 +290,7 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
   return (
     <ProgramScreen
       title="Referrals"
+      desktopWidth="detail"
       fallback={fallback}
       embedded={embedded}
       right={
@@ -309,7 +304,7 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
           hitSlop={8}
           style={styles.plus}
         >
-          <Icon name="plus" size={22} color={textTokens.primary} />
+          <Icon name="plus" size={22} color={color.text1} />
         </Pressable>
       }
       refreshing={false}
@@ -533,7 +528,7 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
                   }
                   style={styles.slugInput}
                   placeholder="summer-launch"
-                  placeholderTextColor={textTokens.tertiary}
+                  placeholderTextColor={color.text3}
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="off"
@@ -924,7 +919,7 @@ const TrackingLinkRow: React.FC<{
       </View>
       {qrOpen ? (
         <View style={styles.qr}>
-          <React.Suspense fallback={<ActivityIndicator color={accent.warm} />}>
+          <React.Suspense fallback={<ActivityIndicator color={color.text2} />}>
             <QRCode value={url} size={176} />
           </React.Suspense>
           <Text style={styles.qrCaption}>Scan to open this link</Text>
@@ -946,11 +941,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  notice: { color: textTokens.primary, fontWeight: "600" },
-  feeNote: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
-  label: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  inviteRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  notice: { color: color.text1, fontWeight: "600" },
+  feeNote: { color: color.text3, fontSize: 12, lineHeight: 16 },
+  label: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  inviteRow: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
   rowBetween: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -958,34 +953,34 @@ const styles = StyleSheet.create({
   },
   rank: {
     width: 28,
-    color: accent.warm,
+    color: color.text1,
     fontWeight: "800",
     fontSize: 16,
     textAlign: "center",
   },
-  link: { color: accent.warm, fontWeight: "600" },
+  link: { color: color.text1, fontWeight: "600" },
   slugRow: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     minHeight: 48,
   },
-  slugPrefix: { color: textTokens.tertiary, fontSize: 15 },
+  slugPrefix: { color: color.text3, fontSize: 15 },
   slugInput: {
     flex: 1,
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   qr: {
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: color.paper,
   },
-  qrCaption: { color: "#333333", fontSize: 12 },
+  qrCaption: { color: color.ink, fontSize: 12 },
 });

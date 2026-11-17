@@ -6,7 +6,7 @@
  *   D-13-2: Always-visible permission-gated; copy adapts per status
  *   D-13-3: VIEW_RECONCILIATION = finance_manager (rank 30)
  *   D-13-4: D1+D2+D3 ADVISORY-only; D4 informational ("no-shows")
- *   D-13-5: Warm-orange (accent.warm) for D1/D2/D3 visual severity
+ *   D-13-5: Warm-orange (color.accent) for D1/D2/D3 visual severity
  *   D-13-6: "No-shows" (past/cancelled) / "Waiting" (live/upcoming)
  *   D-13-7: PDF DEFERRED to B-cycle (CTA renders disabled with "B-cycle" caption)
  *   D-13-8: CSV with Gross/Refunded/Net columns + summary stanza prefix
@@ -41,12 +41,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
@@ -272,7 +269,7 @@ export default function ReconciliationRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <ChromeRow onBack={handleBack} />
@@ -289,7 +286,7 @@ export default function ReconciliationRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <ChromeRow onBack={handleBack} />
@@ -310,7 +307,7 @@ export default function ReconciliationRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <ChromeRow onBack={handleBack} />
@@ -330,7 +327,7 @@ export default function ReconciliationRoute(): React.ReactElement {
     allOrderEntriesRead.status === "disabled"
   ) {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <ChromeRow onBack={handleBack} />
         <View style={styles.emptyHost} accessibilityRole="progressbar">
           <Text style={styles.emptyLoadingText}>Loading reconciliation…</Text>
@@ -341,7 +338,7 @@ export default function ReconciliationRoute(): React.ReactElement {
 
   if (allOrderEntriesRead.status === "error") {
     return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: color.canvas }]}>
         <ChromeRow onBack={handleBack} />
         <View style={styles.emptyHost}>
           <EmptyState
@@ -362,7 +359,7 @@ export default function ReconciliationRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -773,7 +770,7 @@ const DiscrepanciesSection: React.FC<DiscrepanciesSectionProps> = ({
     {entries.map((entry, idx) => (
       <View key={`${entry.kind}-${idx}`} style={styles.discrepancyRow}>
         <View style={styles.discrepancyIconBadge}>
-          <Icon name="flag" size={16} color={accent.warm} />
+          <Icon name="flag" size={16} color={color.text1} />
         </View>
         <View style={styles.discrepancyCol}>
           <Text style={styles.discrepancyCopy} numberOfLines={2}>
@@ -818,7 +815,7 @@ const ExportSection: React.FC<ExportSectionProps> = ({
         pressed && hasAnyData && exportReady && !exporting && styles.exportCtaPressed,
       ]}
     >
-      <Icon name="download" size={18} color={accent.warm} />
+      <Icon name="download" size={18} color={color.text1} />
       <Text style={styles.exportPrimaryLabel}>
         {exporting ? "Exporting..." : "Export reconciliation CSV"}
       </Text>
@@ -902,22 +899,22 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
   chromeRight: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chromeRightSlot: {
     width: 36,
@@ -928,59 +925,59 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
 
   // Headline ---------------------------------------------------------
   headlineBanner: {
-    padding: spacing.md - 2,
+    padding: space[4] - 2,
     borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   headlineText: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
     marginBottom: 4,
   },
   headlineSubline: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
   // Section card -----------------------------------------------------
   section: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   sectionHeading: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
     textTransform: "uppercase",
   },
   sectionDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
 
   // Section row ------------------------------------------------------
@@ -1002,70 +999,70 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   rowLabelStrong: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowLabelHint: {
     fontSize: 11,
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   rowValue: {
     fontSize: 14,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   rowValueWarn: {
     fontSize: 14,
     fontWeight: "500",
-    color: accent.warm,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   rowValueMid: {
     fontSize: 16,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   rowValueStrong: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   rowValueMuted: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   rowSubValue: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
     marginTop: 2,
   },
 
   // By-scanner expand ------------------------------------------------
   byScannerToggle: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     paddingVertical: 6,
   },
   byScannerToggleText: {
     fontSize: 13,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   scannerCard: {
-    marginTop: spacing.sm,
-    padding: spacing.sm + 2,
+    marginTop: space[2],
+    padding: space[2] + 2,
     borderRadius: radiusTokens.sm,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
@@ -1073,11 +1070,11 @@ const styles = StyleSheet.create({
   scannerName: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   scannerCount: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
 
@@ -1085,14 +1082,14 @@ const styles = StyleSheet.create({
   discrepancyRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 6,
   },
   discrepancyIconBadge: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    backgroundColor: color.fill.tabOn,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -1104,12 +1101,12 @@ const styles = StyleSheet.create({
   discrepancyCopy: {
     fontSize: 13,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   discrepancyHint: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     lineHeight: 15,
   },
 
@@ -1118,12 +1115,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    padding: spacing.md - 2,
+    gap: space[2],
+    padding: space[4] - 2,
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.30)",
+    borderColor: color.lineStrong,
   },
   exportCtaDisabled: {
     opacity: 0.5,
@@ -1134,12 +1131,12 @@ const styles = StyleSheet.create({
   exportPrimaryLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   exportCaption: {
     marginTop: 6,
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
   },
 

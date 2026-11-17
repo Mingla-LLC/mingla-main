@@ -32,8 +32,9 @@ jest.mock("react-native", () => {
         props.children,
       ),
     ),
-    StyleSheet: { create: (styles: unknown) => styles },
-    Platform: { OS: "ios" },
+    StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 0.5 },
+    // [TEST-MOD-APPROVED #4420] wave 6: the boundary reads designSystem tokens, which use Platform.select.
+    Platform: { OS: "ios", select: (o: Record<string, unknown>) => o.ios ?? o.default },
   };
 });
 jest.mock("expo-splash-screen", () => ({ hideAsync: () => mockHideSplash() }));

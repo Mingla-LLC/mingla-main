@@ -1,7 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
-import { androidOpaque, competition, competitorSheet, glass, semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import {
+  competitorSheet,
+  color,
+  space,
+  materials,
+  type,
+} from "../../../constants/designSystem";
 import { BUTTON_MAX_FONT_SCALE, isLargeText } from "../../../constants/dynamicType";
 import { useCompetitorBrief } from "../../../hooks/useCompetitorIntelligence";
 import { useVenueListing } from "../../../hooks/useVenueListings";
@@ -44,7 +50,7 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
     const timer = setTimeout(() => closeRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, [visible]);
-  return <Sheet visible={visible} onClose={onClose} snapPoint="full" presentation="competition" panelBackground={competition.surface} style={styles.sheet} testID="competitor-brief-sheet">
+  return <Sheet visible={visible} onClose={onClose} snapPoint="full" presentation="competition" panelBackground={materials.pane.solidFill} style={styles.sheet} testID="competitor-brief-sheet">
     <ScrollView ref={scrollRef} contentContainerStyle={[styles.body, insetStyle]}>
       <View style={styles.header}>
         <View style={[styles.headerTop, accessibilityHeader ? styles.headerTopAccessible : null]}><Text maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE} style={styles.eyebrow}>WEEKLY COMPETITOR BRIEF</Text><Button ref={closeRef} label="Close" accessibilityLabel="Close weekly competitor brief" variant="ghost" size="md" onPress={onClose} style={accessibilityHeader ? styles.closeAccessible : undefined} testID="competitor-brief-close" /></View>
@@ -53,7 +59,7 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
         <View style={styles.statusRail}><Text style={styles.status} testID="competitor-brief-sheet-header-status">{state.label}</Text>{data?.checkedAt ? <Text style={styles.meta}>{`Checked ${formatDateTime(data.checkedAt)}`}</Text> : null}{(data?.nextRefreshAt ?? row?.nextRefreshAt) ? <Text style={styles.meta}>{`Next check ${formatScheduleTime(data?.nextRefreshAt ?? row?.nextRefreshAt ?? "")}`}</Text> : null}</View>
       </View>
       {state.message ? <View style={styles.stateBanner} testID={`competitor-brief-state-${state.id}`}><Text style={styles.copy}>{state.message}</Text></View> : null}
-      {query.isLoading && !data ? <View style={styles.preparing}><ActivityIndicator color={textTokens.secondary} /><Text style={styles.copy}>Preparing your first sourced brief</Text></View> : null}
+      {query.isLoading && !data ? <View style={styles.preparing}><ActivityIndicator color={color.text2} /><Text style={styles.copy}>Preparing your first sourced brief</Text></View> : null}
       {query.isError && !data ? <View style={styles.card}><Text style={styles.cardTitle}>Couldn&apos;t load competitor insights</Text><Text style={styles.copy}>Your saved competitor is still safe.</Text><Button label="Try again" variant="secondary" size="md" onPress={() => void query.refetch()} /></View> : null}
       {decision ? <>
         <View style={styles.readCard} testID="competitor-brief-the-read"><ReadLine label="WHAT HAPPENED" text={decision.happened} /><ReadLine label="WHY CARE" text={decision.whyCare} /><ReadLine label="DO THIS NEXT" text={decision.doNext} /></View>
@@ -80,7 +86,7 @@ function focusSignal(node: View | undefined, scroll: ScrollView | null): void {
   const scrollHandle = findNodeHandle(scroll);
   if (scrollHandle === null) return;
   node.measureLayout(scrollHandle, (_x, y) => {
-    scroll.scrollTo({ y: Math.max(0, y - spacing.md), animated: true });
+    scroll.scrollTo({ y: Math.max(0, y - space[4]), animated: true });
     const handle = findNodeHandle(node);
     if (handle) AccessibilityInfo.setAccessibilityFocus(handle);
   }, () => undefined);
@@ -101,16 +107,16 @@ function reportState(freshness: string | undefined, noChange: boolean, hasBrief:
 }
 function formatDateTime(iso: string): string { const date = new Date(iso); return Number.isFinite(date.getTime()) ? date.toLocaleString() : "—"; }
 function formatScheduleTime(iso: string): string { const date = new Date(iso); if (!Number.isFinite(date.getTime())) return "—"; return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`; }
-const competitionCardSurface = Platform.OS === "android" ? androidOpaque.rowFill : competition.surfaceRaised;
-const competitionBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileElevated;
-const competitionSubtleBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase;
+const competitionCardSurface = Platform.OS === "android" ? materials.pane.solidFill : color.card;
+const competitionBorder = Platform.OS === "android" ? color.card2 : color.lineStrong;
+const competitionSubtleBorder = Platform.OS === "android" ? color.card2 : color.line;
 const opaque = { backgroundColor: competitionCardSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: competitionBorder, overflow: "hidden" as const, ...Platform.select({ android: { elevation: 0, shadowOpacity: 0 }, default: {} }) };
 const styles = StyleSheet.create({
-  sheet: { width: "100%", maxWidth: competitorSheet.briefMaxWidth, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileElevated }, body: { gap: competitorSheet.sectionGap, paddingTop: spacing.md, paddingBottom: spacing.xl },
+  sheet: { width: "100%", maxWidth: competitorSheet.briefMaxWidth, borderWidth: StyleSheet.hairlineWidth, borderColor: color.lineStrong }, body: { gap: competitorSheet.sectionGap, paddingTop: space[4], paddingBottom: space[7] },
   insetCompact: { paddingHorizontal: competitorSheet.contentInsetCompact }, insetRegular: { paddingHorizontal: competitorSheet.contentInsetRegular }, insetWide: { paddingHorizontal: competitorSheet.contentInsetWide },
-  header: { gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionBorder }, headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }, headerTopAccessible: { flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", gap: spacing.sm }, closeAccessible: { alignSelf: "flex-end", minWidth: 44, minHeight: 44, flexShrink: 0 }, eyebrow: { ...typography.labelCap, color: textTokens.tertiary }, title: { ...typography.h3, color: textTokens.primary }, meta: { ...typography.caption, color: textTokens.tertiary }, statusRail: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, status: { ...typography.caption, color: textTokens.primary },
-  stateBanner: { ...opaque, borderRadius: 16, padding: spacing.md }, preparing: { gap: spacing.md, alignItems: "center", paddingVertical: spacing.xl }, readCard: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.lg }, readLine: { gap: spacing.xs, maxWidth: competitorSheet.readableCopyMaxWidth }, health: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.sm, paddingVertical: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: competitionBorder },
-  section: { gap: competitorSheet.cardGap }, sectionTitle: { ...typography.labelCap, color: textTokens.secondary }, help: { ...typography.bodySm, color: textTokens.secondary }, card: { ...opaque, borderRadius: 16, padding: spacing.md, gap: spacing.sm }, primaryAction: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.sm }, secondaryAction: { padding: spacing.md, gap: spacing.xs, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionSubtleBorder }, disclosure: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, smallControl: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }, evidence: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: competitionSubtleBorder },
-  cardTitle: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" }, provenance: { ...typography.labelCap, color: textTokens.tertiary }, copy: { ...typography.body, color: textTokens.primary, maxWidth: competitorSheet.readableCopyMaxWidth }, link: { ...typography.bodySm, color: semantic.info, fontWeight: "600" },
+  header: { gap: space[2], paddingBottom: space[4], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionBorder }, headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[4] }, headerTopAccessible: { flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", gap: space[2] }, closeAccessible: { alignSelf: "flex-end", minWidth: 44, minHeight: 44, flexShrink: 0 }, eyebrow: { ...type.label, color: color.text3 }, title: { ...type.h1, color: color.text1 }, meta: { ...type.caption, color: color.text3 }, statusRail: { flexDirection: "row", flexWrap: "wrap", gap: space[2] }, status: { ...type.caption, color: color.text1 },
+  stateBanner: { ...opaque, borderRadius: 16, padding: space[4] }, preparing: { gap: space[4], alignItems: "center", paddingVertical: space[7] }, readCard: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: space[6] }, readLine: { gap: space[1], maxWidth: competitorSheet.readableCopyMaxWidth }, health: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: space[2], paddingVertical: space[4], borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: competitionBorder },
+  section: { gap: competitorSheet.cardGap }, sectionTitle: { ...type.label, color: color.text2 }, help: { ...type.small, color: color.text2 }, card: { ...opaque, borderRadius: 16, padding: space[4], gap: space[2] }, primaryAction: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: space[2] }, secondaryAction: { padding: space[4], gap: space[1], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionSubtleBorder }, disclosure: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, smallControl: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }, evidence: { gap: space[1], paddingTop: space[2], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: competitionSubtleBorder },
+  cardTitle: { ...type.small, color: color.text1, fontWeight: "600" }, provenance: { ...type.label, color: color.text3 }, copy: { ...type.body, color: color.text1, maxWidth: competitorSheet.readableCopyMaxWidth }, link: { ...type.small, color: color.info, fontWeight: "600" },
 });
 export default CompetitorBriefSheet;

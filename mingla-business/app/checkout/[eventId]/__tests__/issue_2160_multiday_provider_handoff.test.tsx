@@ -170,6 +170,13 @@ jest.mock("../../../../src/components/ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../../src/components/ui/Toast", () => ({ Toast: () => null }));
 jest.mock("../../../../src/components/checkout/CheckoutHeader", () => ({
   CheckoutHeader: () => null,
+  // The status banner carries the step's own message: render it as text so the
+  // guest-facing sentence stays assertable.
+  CheckoutStatusBanner: ({ body }: { body: string }) => {
+    const { Text } = jest.requireActual("react-native");
+    const { createElement } = jest.requireActual("react");
+    return createElement(Text, null, body);
+  },
 }));
 import {
   CartProvider,

@@ -6,9 +6,8 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import type { HelpSupportTabId } from "../../utils/helpSupportLastTab";
 
@@ -83,14 +82,14 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[1],
+    paddingBottom: space[2],
   },
   bar: {
     flexDirection: "row",
-    gap: spacing.xs,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    gap: space[1],
+    backgroundColor: color.fill.inset,
     borderRadius: 12,
     padding: 4,
   },
@@ -102,12 +101,12 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 36,
     borderRadius: 10,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   pillActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   pillInactive: {
     backgroundColor: "transparent",
@@ -121,23 +120,23 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
   labelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   labelInactive: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   badge: {
     minWidth: 18,
     height: 18,
     borderRadius: 9,
     paddingHorizontal: 5,
-    backgroundColor: accent.warm,
+    backgroundColor: color.badge,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#ffffff",
+    color: color.textStrong,
   },
 });

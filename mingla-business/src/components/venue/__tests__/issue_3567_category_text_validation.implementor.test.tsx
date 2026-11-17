@@ -18,10 +18,7 @@ import {
 } from "@jest/globals";
 import { Platform, StyleSheet, Text, View, type TextStyle } from "react-native";
 
-import {
-  semantic,
-  text as textTokens,
-} from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import type { Menu } from "../../../services/menusService";
 import type { MenuTextSaveFailure } from "../menuTextValidation";
 
@@ -275,7 +272,7 @@ describe("#3567 category text validation", () => {
       StyleSheet.flatten(
         byTestID("menu-category-name-counter").props.style,
       ) as TextStyle,
-    ).toMatchObject({ color: textTokens.tertiary });
+    ).toMatchObject({ color: color.text3 });
   });
 
   test("exact code-point limits save; limit + 1 stays editable and handler-blocked", () => {
@@ -315,7 +312,7 @@ describe("#3567 category text validation", () => {
       StyleSheet.flatten(
         byTestID("menu-category-name-counter").props.style,
       ) as TextStyle,
-    ).toMatchObject({ color: semantic.errorText, fontWeight: "600" });
+    ).toMatchObject({ color: color.errorText, fontWeight: "600" });
 
     call(button(), "onPress");
     expect(mockSave).toHaveBeenCalledTimes(1);

@@ -14,6 +14,8 @@ import React from "react";
 export interface EventTicketCheckoutAccessCardProps {
   eventId: string;
   testID?: string;
+  /** #4420 — parity with the web half's prop (ignored: renders nothing). */
+  embedded?: boolean;
 }
 
 export const EventTicketCheckoutAccessCard: React.FC<

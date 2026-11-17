@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 // ORCH-1384 — implementor regression: PartnerLinkDetailSheet contract
 // (T-11 detail-sheet states + T-9 component leg + the BINDING copy blocks).
 //
@@ -208,10 +209,10 @@ describe("BINDING copy blocks (DESIGN §9.2 — verbatim)", () => {
     );
   });
 
-  test("danger-card titles ride text.primary (semantic.error text BANNED at 3.86:1 — DESIGN §4.3)", () => {
+  test("danger-card titles ride text.primary (color.danger text BANNED at 3.86:1 — DESIGN §4.3)", () => {
     const style = slice("  dangerTitle:");
-    expect(style).toContain("color: textTokens.primary");
-    expect(style).not.toContain("semantic.error");
+    expect(style).toContain("color: color.text1");
+    expect(style).not.toContain("color.danger");
   });
 
   test("§5.6 typed error copy table (executed)", () => {

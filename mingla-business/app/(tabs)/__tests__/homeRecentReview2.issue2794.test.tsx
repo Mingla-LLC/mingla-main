@@ -17,7 +17,8 @@ test("See all Recent has the approved 44pt target, keyboard focus treatment, and
   expect(home).toContain("onBlur={() => setFocused(false)}");
   expect(home).toMatch(/sectionLinkButton:\s*\{[\s\S]{0,180}minHeight: 44/);
   expect(home).toMatch(
-    /sectionLinkButtonFocused:\s*\{[\s\S]{0,120}borderColor: accent\.warm/,
+    // [TEST-MOD-APPROVED #4420] — the focus ring is the paper focus token.
+    /sectionLinkButtonFocused:\s*\{[\s\S]{0,120}borderColor: color\.focus/,
   );
 });
 

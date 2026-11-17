@@ -36,12 +36,10 @@ import {
 } from "@mingla/offering-rendering/tripGuide";
 
 import {
-  accent,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   tripGuideSaveErrorMessage,
@@ -58,8 +56,8 @@ export interface TripGuideEditorProps {
   testID?: string;
 }
 
-const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
-const INPUT_BG = "rgba(255, 255, 255, 0.04)";
+const INPUT_BORDER = color.lineStrong;
+const INPUT_BG = color.fill.inset;
 
 const sameDraft = (a: TripGuideDraft, b: TripGuideDraft): boolean =>
   JSON.stringify(tripGuidePayload(a)) === JSON.stringify(tripGuidePayload(b));
@@ -142,7 +140,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
       <View style={styles.host} testID={testID}>
         <Text style={styles.title}>Before you go</Text>
         <View style={styles.loadingRow} testID={`${testID}-loading`}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.accent} />
           <Text style={styles.helper}>Loading the trip guide…</Text>
         </View>
       </View>
@@ -188,7 +186,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
         ) : (
           draft.highlights.map((highlight, index) => (
             <View key={`highlight-${index}`} style={styles.itemRow}>
-              <Icon name="sparkle" size={14} color={accent.warm} />
+              <Icon name="sparkle" size={14} color={color.accent} />
               <Text style={styles.itemText}>{highlight}</Text>
               <Pressable
                 onPress={() => update({ highlights: draft.highlights.filter((_, i) => i !== index) })}
@@ -198,7 +196,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
                 hitSlop={8}
                 style={styles.iconBtn}
               >
-                <Icon name="trash" size={14} color={textTokens.tertiary} />
+                <Icon name="trash" size={14} color={color.text3} />
               </Pressable>
             </View>
           ))
@@ -209,7 +207,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
             onChangeText={setHighlightDraft}
             onSubmitEditing={addHighlight}
             placeholder="e.g. Sunrise hike to the crater rim"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             maxLength={TRIP_GUIDE_LIMITS.highlightLength}
             editable={!locked && draft.highlights.length < TRIP_GUIDE_LIMITS.highlights}
             accessibilityLabel="Add a highlight"
@@ -225,7 +223,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
             style={[styles.addBtn, highlightDraft.trim().length === 0 ? styles.disabled : null]}
             testID={`${testID}-highlight-add`}
           >
-            <Icon name="plus" size={16} color={accent.warm} />
+            <Icon name="plus" size={16} color={color.accent} />
           </Pressable>
         </View>
       </View>
@@ -243,7 +241,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
             value={draft[key]}
             onChangeText={(value) => update({ [key]: value } as Partial<TripGuideDraft>)}
             placeholder={placeholder}
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             maxLength={TRIP_GUIDE_LIMITS.textLength}
             editable={!locked}
             multiline
@@ -267,7 +265,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
               onChangeText={(question) =>
                 update({ faqs: draft.faqs.map((row, i) => (i === index ? { ...row, question } : row)) })}
               placeholder="Question"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               maxLength={TRIP_GUIDE_LIMITS.questionLength}
               editable={!locked}
               accessibilityLabel={`Question ${index + 1}`}
@@ -278,7 +276,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
               onChangeText={(answer) =>
                 update({ faqs: draft.faqs.map((row, i) => (i === index ? { ...row, answer } : row)) })}
               placeholder="Answer"
-              placeholderTextColor={textTokens.tertiary}
+              placeholderTextColor={color.text3}
               maxLength={TRIP_GUIDE_LIMITS.answerLength}
               editable={!locked}
               multiline
@@ -293,7 +291,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
                 accessibilityLabel={`Move question ${index + 1} up`}
                 style={[styles.iconBtn, index === 0 ? styles.disabled : null]}
               >
-                <Icon name="chevU" size={16} color={textTokens.secondary} />
+                <Icon name="chevU" size={16} color={color.text2} />
               </Pressable>
               <Pressable
                 onPress={() => moveFaq(index, 1)}
@@ -302,7 +300,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
                 accessibilityLabel={`Move question ${index + 1} down`}
                 style={[styles.iconBtn, index === draft.faqs.length - 1 ? styles.disabled : null]}
               >
-                <Icon name="chevD" size={16} color={textTokens.secondary} />
+                <Icon name="chevD" size={16} color={color.text2} />
               </Pressable>
               <Pressable
                 onPress={() => update({ faqs: draft.faqs.filter((_, i) => i !== index) })}
@@ -311,7 +309,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
                 accessibilityLabel={`Remove question ${index + 1}`}
                 style={styles.iconBtn}
               >
-                <Icon name="trash" size={16} color={textTokens.tertiary} />
+                <Icon name="trash" size={16} color={color.text3} />
               </Pressable>
             </View>
           </View>
@@ -335,7 +333,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
           value={draft.groupMinimum}
           onChangeText={(groupMinimum) => update({ groupMinimum: groupMinimum.replace(/[^0-9]/g, "") })}
           placeholder="e.g. 6"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           keyboardType="number-pad"
           maxLength={4}
           editable={!locked}
@@ -394,7 +392,7 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
         style={[styles.saveBtn, !canSave ? styles.disabled : null]}
         testID={`${testID}-save`}
       >
-        {saving ? <ActivityIndicator color={textTokens.primary} /> : null}
+        {saving ? <ActivityIndicator color={color.text1} /> : null}
         <Text style={styles.saveBtnText}>{saving ? "Saving…" : dirty ? "Save trip guide" : "Saved"}</Text>
       </Pressable>
     </View>
@@ -402,36 +400,36 @@ export const TripGuideEditor: React.FC<TripGuideEditorProps> = ({
 };
 
 const styles = StyleSheet.create({
-  host: { paddingTop: spacing.lg, paddingBottom: spacing.lg, gap: spacing.lg },
+  host: { paddingTop: space[6], paddingBottom: space[6], gap: space[6] },
   title: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "800",
-    color: textTokens.primary,
+    color: color.text1,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  section: { gap: spacing.sm },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  section: { gap: space[2] },
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: textTokens.secondary,
+    color: color.text2,
     textTransform: "uppercase",
   },
   emptyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
     fontStyle: "italic",
   },
-  itemRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs },
-  itemText: { flex: 1, fontSize: typography.body.fontSize, color: textTokens.primary },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: space[1], paddingVertical: space[1] },
+  itemText: { flex: 1, fontSize: type.body.fontSize, color: color.text1 },
   iconBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  addRow: { flexDirection: "row", gap: spacing.xs },
+  addRow: { flexDirection: "row", gap: space[1] },
   input: {
     flex: 1,
     minHeight: 44,
@@ -441,8 +439,8 @@ const styles = StyleSheet.create({
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   multiline: { minHeight: 88, textAlignVertical: "top" },
   shortInput: { flex: 0, width: 120 },
@@ -452,19 +450,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    backgroundColor: color.accentTint,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.4)",
+    borderColor: color.accentLine,
   },
   faqCard: {
-    gap: spacing.xs,
-    padding: spacing.sm,
+    gap: space[1],
+    padding: space[2],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
   },
-  faqActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.xs },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  faqActions: { flexDirection: "row", justifyContent: "flex-end", gap: space[1] },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   chip: {
     minHeight: 40,
     paddingHorizontal: 14,
@@ -473,9 +471,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: INPUT_BORDER,
   },
-  chipSelected: { borderColor: accent.warm, backgroundColor: "rgba(235, 120, 37, 0.12)" },
-  chipText: { fontSize: typography.bodySm.fontSize, color: textTokens.secondary, fontWeight: "600" },
-  chipTextSelected: { color: textTokens.primary },
+  chipSelected: { borderColor: color.accent, backgroundColor: color.accentTint },
+  chipText: { fontSize: type.small.fontSize, color: color.text2, fontWeight: "600" },
+  chipTextSelected: { color: color.text1 },
   secondaryBtn: {
     alignSelf: "flex-start",
     minHeight: 44,
@@ -483,22 +481,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.4)",
+    borderColor: color.accentLine,
   },
-  secondaryBtnText: { fontSize: typography.bodySm.fontSize, fontWeight: "700", color: accent.warm },
+  secondaryBtnText: { fontSize: type.small.fontSize, fontWeight: "700", color: color.accent },
   saveBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     minHeight: 48,
     borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
-  saveBtnText: { fontSize: typography.body.fontSize, fontWeight: "800", color: textTokens.primary },
+  saveBtnText: { fontSize: type.body.fontSize, fontWeight: "800", color: color.text1 },
   disabled: { opacity: 0.4 },
-  errorText: { fontSize: typography.bodySm.fontSize, color: semantic.errorText },
-  savedText: { fontSize: typography.bodySm.fontSize, color: textTokens.secondary },
+  errorText: { fontSize: type.small.fontSize, color: color.errorText },
+  savedText: { fontSize: type.small.fontSize, color: color.text2 },
 });
 
 export default TripGuideEditor;

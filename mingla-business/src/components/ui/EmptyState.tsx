@@ -12,11 +12,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 
 import { MarketingEmptyIllustration } from "../marketing/MarketingEmptyIllustration";
 import type { MarketingIllustrationKey } from "../marketing/MarketingEmptyIllustration";
@@ -78,7 +74,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             <Icon
               name={illustration}
               size={ILLUSTRATION_SIZE}
-              color={textTokens.quaternary}
+              color={color.text4}
             />
           ) : (
             illustration
@@ -107,30 +103,30 @@ const styles = StyleSheet.create({
   container: {
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    gap: spacing.xs,
+    paddingHorizontal: space[6],
+    paddingVertical: space[6],
+    gap: space[1],
   },
   illustration: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
     textAlign: "center",
   },
   description: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
+    color: color.text2,
     textAlign: "center",
   },
   ctaWrap: {
-    marginTop: spacing.lg - spacing.xs,
+    marginTop: space[6] - space[1],
   },
 });
 

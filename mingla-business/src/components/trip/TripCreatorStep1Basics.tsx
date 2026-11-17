@@ -30,10 +30,10 @@ import DateTimePicker, {
 
 import {
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
+  scrim,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { useBrand } from "../../hooks/useBrands";
@@ -150,8 +150,8 @@ export interface TripCreatorStep1BasicsProps {
   // uses the keyboard-controller library's KAV wrap instead.
 }
 
-const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
-const INPUT_BG = "rgba(255, 255, 255, 0.04)";
+const INPUT_BORDER = color.lineStrong;
+const INPUT_BG = color.fill.inset;
 
 // Issue #3801 — trip start/end are CALENDAR DATES stored at UTC. Every read
 // and write below goes through utils/calendarDate so the day is the same in
@@ -515,7 +515,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           value={draft.title}
           onChangeText={(v) => onChange({ title: v })}
           placeholder="e.g. Tulum Yoga Retreat — March 2026"
-          placeholderTextColor={textTokens.tertiary}
+          placeholderTextColor={color.text3}
           editable={!disabled}
           accessibilityLabel="Trip title"
           style={styles.textInput}
@@ -836,8 +836,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         />
       </View>
 
-      {/* #1022 M4 — direct child of styles.host (gap: spacing.md = 16pt),
-          NOT inside the cover fieldGroup (gap: spacing.xs = 4pt, wrong).
+      {/* #1022 M4 — direct child of styles.host (gap: space[4] = 16pt),
+          NOT inside the cover fieldGroup (gap: space[1] = 4pt, wrong).
           The cover field is the LAST laid-out field group in this step, so
           the row lands at the end exactly like Event/RSVP. Step 1 already
           overflows its viewport, so the step scrolls and the row is reached
@@ -910,7 +910,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
                   onChange={handlePickerChange}
                   minimumDate={pickerMinDate}
                   themeVariant="dark"
-                  textColor="#FFFFFF"
+                  textColor={color.text1}
                   style={styles.iosPicker}
                 />
               </View>
@@ -953,7 +953,7 @@ const webDateInputStyle = {
   borderWidth: 1,
   borderColor: INPUT_BORDER,
   borderStyle: "solid" as const,
-  color: "#FFFFFF",
+  color: color.text1,
   fontSize: 16,
   width: "100%",
   boxSizing: "border-box" as const,
@@ -961,32 +961,32 @@ const webDateInputStyle = {
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.md,
-    paddingTop: spacing.sm,
+    gap: space[4],
+    paddingTop: space[2],
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   fieldGroup: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   coverPreview: {
     borderRadius: 12,
     overflow: "hidden",
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
   locationHint: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.warning,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.warning,
   },
   textInput: {
     height: 48,
@@ -996,12 +996,12 @@ const styles = StyleSheet.create({
     backgroundColor: INPUT_BG,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    fontSize: type.body.fontSize,
   },
   dateRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   dateField: {
     flex: 1,
@@ -1017,29 +1017,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dateButtonPlaceholder: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.body.fontSize,
+    color: color.text3,
   },
   dateButtonValue: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
     fontWeight: "500",
   },
   iosModalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: scrim.modal,
     justifyContent: "flex-end",
   },
   iosPickerSheet: {
-    backgroundColor: "#16181d",
+    backgroundColor: color.canvas,
     borderTopLeftRadius: radiusTokens.lg,
     borderTopRightRadius: radiusTokens.lg,
-    paddingBottom: spacing.xl,
-    paddingTop: spacing.md,
+    paddingBottom: space[7],
+    paddingTop: space[4],
   },
   iosPickerDoneRow: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingHorizontal: space[6],
+    paddingBottom: space[4],
     alignItems: "flex-end",
   },
   iosPickerWrap: {

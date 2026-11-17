@@ -1,54 +1,51 @@
 /**
- * GlassChrome — 5-layer floating glass wrapper for chrome surfaces
- * (top bars, bottom navs, pill switchers, anything that floats above
- * content with chrome material).
+ * GlassChrome — floating chrome wrapper (top bars, pill switchers, anything
+ * that floats above content). #4420 Graphite Glass: the surface is drawn by
+ * `<Material>` (the only BlurView owner), so this file holds no blur and no
+ * colour literal of its own.
  *
- * Layer stack:
- *   L1 — BlurView base (`expo-blur`). Native: real backdrop blur.
- *        Web: `backdrop-filter: blur(N) saturate(140%)` via expo-blur's
- *        web shim. Web fallback (no `backdrop-filter` support): solid
- *        `rgba(20,22,26,0.92)` View, no blur — visible degradation,
- *        never `return null` (Invariant I-7).
- *   L2 — Tint floor: translucent fill on top of L1 to neutralise
- *        content seeping through.
- *   L3 — Top edge highlight: 1px line on the top edge — the polished
- *        "glass" sparkle.
- *   L4 — Hairline border: `StyleSheet.hairlineWidth` perimeter.
- *   L5 — Drop shadow (token-driven, applied to the outer container).
+ * Layers:
+ *   Material — fill + blur per platform (Android solid, Reduce Transparency
+ *              solid, web via `shouldUseRealBlur(windowWidth)` inside
+ *              Material, iOS BlurView) + the material's rim and hairline.
+ *   Tint     — optional caller override (`tintColor`, or `tint="pressed"`).
+ *   Border   — optional caller override (`borderColor` / `highlightColor`).
+ *   Shadow   — token shadow on the outer node (Android elevation stays 0).
+ *
+ * Every prop from before #4420 is kept. `material` is new (additive): it picks
+ * the material directly; otherwise the legacy `intensity` maps onto one.
  */
 
 import React from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
-import { BlurView } from "expo-blur";
 
-import {
-  blurIntensity as blurIntensityTokens,
-  glass,
-  radius as radiusTokens,
-  shadows,
-} from "../../constants/designSystem";
-import { shouldUseRealBlur } from "../../utils/glassBlur";
+import { color, radius as radiusTokens, shadow as shadowTokens } from "../../constants/designSystem";
+import { Material } from "./Material";
+import type { MaterialKind } from "./Material";
 
-export type GlassChromeIntensity = keyof typeof blurIntensityTokens;
+/** #4420: each intensity names the Material it draws (see MATERIAL_FOR_INTENSITY). */
+export type GlassChromeIntensity = "badge" | "chrome" | "backdrop" | "cardBase" | "cardElevated" | "modal";
 export type GlassChromeRadius = keyof typeof radiusTokens;
 export type GlassChromeTint = "idle" | "pressed" | "backdrop";
 
 export interface GlassChromeProps {
   children?: React.ReactNode;
-  /** Blur intensity token (`badge | chrome | backdrop | cardBase | cardElevated | modal`). Default `chrome`. */
+  /** Legacy blur token; mapped onto a material when `material` is not set. Default `chrome`. */
   intensity?: GlassChromeIntensity;
-  /** Tint state. `idle` and `pressed` map to chrome tints; `backdrop` uses `glass.tint.backdrop`. */
+  /** #4420: the material to draw. Wins over `intensity`. */
+  material?: MaterialKind;
+  /** Tint state. `pressed` lays the pressed wash over the material. */
   tint?: GlassChromeTint;
   /** Radius token. Default `full`. */
   radius?: GlassChromeRadius;
-  /** Override tint colour. */
+  /** Override tint colour (drawn over the material). */
   tintColor?: string;
-  /** Override border colour. */
+  /** Override hairline border colour. */
   borderColor?: string;
   /** Override top-edge highlight colour. */
   highlightColor?: string;
-  /** Drop shadow style — defaults to `shadows.glassChrome`. */
+  /** Drop shadow style — defaults to `shadow.liquid`. */
   shadow?: StyleProp<ViewStyle>;
   testID?: string;
   style?: StyleProp<ViewStyle>;
@@ -56,88 +53,55 @@ export interface GlassChromeProps {
   fillHeight?: boolean;
 }
 
-const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
-
-const TINT_COLOUR: Record<GlassChromeTint, string> = {
-  idle: glass.tint.chrome.idle,
-  pressed: glass.tint.chrome.pressed,
-  backdrop: glass.tint.backdrop,
+const MATERIAL_FOR_INTENSITY: Record<GlassChromeIntensity, MaterialKind> = {
+  badge: "onPhoto",
+  chrome: "chrome",
+  backdrop: "chrome",
+  cardBase: "pane",
+  cardElevated: "pane",
+  modal: "sheet",
 };
+
+export const resolveGlassChromeMaterial = (
+  material: MaterialKind | undefined,
+  intensity: GlassChromeIntensity,
+): MaterialKind => material ?? MATERIAL_FOR_INTENSITY[intensity];
 
 export const GlassChrome: React.FC<GlassChromeProps> = ({
   children,
   intensity = "chrome",
+  material,
   tint = "idle",
   radius = "full",
   tintColor,
-  borderColor = glass.border.chrome,
-  highlightColor = glass.highlight.profileBase,
-  shadow = shadows.glassChrome,
+  borderColor,
+  highlightColor,
+  shadow = shadowTokens.liquid,
   testID,
   style,
   fillHeight = false,
 }) => {
-  const { width: windowWidth } = useWindowDimensions();
-  const intensityValue = blurIntensityTokens[intensity];
   const borderRadius = radiusTokens[radius];
-  const resolvedTint = tintColor ?? TINT_COLOUR[tint];
-  // ORCH-1100: width-aware so the mobile-web (< 768px) blur-kill paints the
-  // opaque fallback instead of a see-through chrome surface.
-  const blurOk = shouldUseRealBlur(windowWidth);
+  const kind = resolveGlassChromeMaterial(material, intensity);
+  const overlayTint = tintColor ?? (tint === "pressed" ? color.fill.pressed : null);
 
   return (
-    <View
-      testID={testID}
-      style={[
-        { borderRadius },
-        shadow,
-        fillHeight && styles.fillHeight,
-        style,
-      ]}
-    >
-      <View
-        style={[styles.clip, fillHeight && styles.fillHeight, { borderRadius }]}
-      >
-        {/* L1 — Blur base */}
-        {blurOk ? (
-          <BlurView
-            intensity={intensityValue}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-        ) : (
+    <View testID={testID} style={[{ borderRadius }, shadow, fillHeight && styles.fillHeight, style]}>
+      <Material kind={kind} radius={borderRadius} style={[styles.clip, fillHeight && styles.fillHeight]}>
+        {overlayTint !== null ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: overlayTint }]} />
+        ) : null}
+        {highlightColor !== undefined ? (
+          <View pointerEvents="none" style={[styles.topHighlight, { backgroundColor: highlightColor }]} />
+        ) : null}
+        {borderColor !== undefined ? (
           <View
-            style={[StyleSheet.absoluteFill, { backgroundColor: FALLBACK_BACKGROUND }]}
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { borderRadius, borderColor, borderWidth: StyleSheet.hairlineWidth }]}
           />
-        )}
-        {/* L2 — Tint floor */}
-        <View
-          style={[StyleSheet.absoluteFill, { backgroundColor: resolvedTint }]}
-        />
-        {/* L3 — Top edge highlight */}
-        <View
-          style={[
-            styles.topHighlight,
-            { backgroundColor: highlightColor },
-          ]}
-        />
-        {/* L4 — Hairline border */}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              borderRadius,
-              borderColor,
-              borderWidth: StyleSheet.hairlineWidth,
-            },
-          ]}
-          pointerEvents="none"
-        />
-        {/* Content */}
-        <View style={[styles.content, fillHeight && styles.fillHeight]}>
-          {children}
-        </View>
-      </View>
+        ) : null}
+        <View style={[styles.content, fillHeight && styles.fillHeight]}>{children}</View>
+      </Material>
     </View>
   );
 };
@@ -145,16 +109,8 @@ export const GlassChrome: React.FC<GlassChromeProps> = ({
 const styles = StyleSheet.create({
   fillHeight: { flex: 1 },
   clip: {
-    overflow: "hidden",
-    // ORCH-1190 — the clip layer (and the content inside it) MUST fill the
-    // outer View's cross size. On react-native-web a child View with no width
-    // shrinks to its content's min-content width; if the outer View sets
-    // `alignItems: "center"` (as the venue empty-state cards do), that collapse
-    // ALSO centers the visible glass surface, rendering a full-width card as a
-    // narrow centered pill. `alignSelf: "stretch"` pins the clip to the outer
-    // View's resolved width regardless of the outer's alignItems — for chrome
-    // pills (content-sized outer View) it still matches the small outer width,
-    // so this is universally correct, not just for the venue cards.
+    // ORCH-1190 — the surface MUST fill the outer View's cross size; on web a
+    // child with no width collapses to min-content inside a centred parent.
     alignSelf: "stretch",
   },
   topHighlight: {
@@ -166,9 +122,7 @@ const styles = StyleSheet.create({
   },
   content: {
     position: "relative",
-    // ORCH-1190 — fill the (now-stretched) clip layer so the inner padding
-    // View + children measure against the full card width instead of
-    // collapsing to the longest text line.
+    // ORCH-1190 — fill the stretched surface so children measure full width.
     alignSelf: "stretch",
   },
 });

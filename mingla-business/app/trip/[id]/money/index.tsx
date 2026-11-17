@@ -17,12 +17,10 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  accent,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../../src/constants/designSystem";
 import { Icon } from "../../../../src/components/ui/Icon";
 import { SafeScreen } from "../../../../src/components/ui/SafeScreen";
@@ -141,6 +139,27 @@ function statusLabel(status: LastChargeStatus): string {
     default:
       return status;
   }
+}
+
+/**
+ * #4420 B1 — the Charge now confirm (mockup `trip-money__charge-confirm`):
+ * the amount, whose card, and that it is charged straight away.
+ */
+export function chargeConfirmCopy(row: {
+  buyerName: string | null;
+  buyerEmail: string | null;
+  nextInstallment: Pick<OrderInstallmentForBrand, "amountChargedCents" | "currency" | "paymentCardLast4"> | null;
+}): { title: string; description: string; confirmLabel: string } {
+  const next = row.nextInstallment;
+  const amount = next === null ? "" : formatCurrency(next.amountChargedCents, next.currency);
+  const card = next?.paymentCardLast4
+    ? `${buyerLabel(row)}'s card ending ${next.paymentCardLast4}`
+    : `${buyerLabel(row)}'s card`;
+  return {
+    title: `Charge ${amount} now?`,
+    description: `${card} is charged straight away.`,
+    confirmLabel: `Charge ${amount}`,
+  };
 }
 
 function friendlyFailureCopy(raw: string | null): string {
@@ -409,10 +428,13 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
   const [cancelSheetOrderId, setCancelSheetOrderId] = useState<string | null>(null);
   const [pendingAtRiskCharge, setPendingAtRiskCharge] =
     useState<TravelerMoneyRow | null>(null);
+  // #4420 B1 — Charge now moves the buyer's money, so it asks once first
+  // (decision on #4420, 11-14). The at-risk path keeps its own confirm above.
+  const [pendingCharge, setPendingCharge] = useState<TravelerMoneyRow | null>(null);
 
   if (installmentsQuery.isLoading || ordersQuery.isLoading || moneyData === null) {
     return (
-      <View style={{ paddingVertical: spacing.xl, alignItems: "center" }}>
+      <View style={{ paddingVertical: space[7], alignItems: "center" }}>
         <ActivityIndicator />
       </View>
     );
@@ -420,7 +442,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
   if (installmentsQuery.isError || ordersQuery.isError) {
     return (
       <View style={styles.emptyState}>
-        <Icon name="bell" size={32} color={semantic.error} />
+        <Icon name="bell" size={32} color={color.danger} />
         <Text style={styles.emptyText}>Couldn&apos;t load bookings.</Text>
         <Pressable
           onPress={() => {
@@ -449,7 +471,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
           </View>
         ) : null}
         <View style={styles.emptyState}>
-          <Icon name="pound" size={32} color={textTokens.tertiary} />
+          <Icon name="pound" size={32} color={color.text3} />
           <Text style={styles.emptyText}>No bookings to show yet.</Text>
           <Text style={styles.emptyText}>
             Payment-plan and paid-in-full travellers will appear here.
@@ -478,6 +500,17 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
     });
     setPendingAtRiskCharge(null);
   };
+
+  const confirmCharge = (): void => {
+    const installment = pendingCharge?.nextInstallment ?? null;
+    setPendingCharge(null);
+    if (installment === null) return;
+    chargeNowMutation.mutate({
+      installmentId: installment.id,
+      atRiskOverride: false,
+    });
+  };
+  const pendingChargeCopy = pendingCharge === null ? null : chargeConfirmCopy(pendingCharge);
 
   return (
     <>
@@ -547,6 +580,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
               chargeNowMutation={chargeNowMutation}
               sendReminderMutation={sendReminderMutation}
               onAtRiskCharge={() => setPendingAtRiskCharge(row)}
+              onCharge={() => setPendingCharge(row)}
               onCancel={() => setCancelSheetOrderId(row.orderId)}
             />
           ))}
@@ -568,6 +602,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
               chargeNowMutation={chargeNowMutation}
               sendReminderMutation={sendReminderMutation}
               onAtRiskCharge={() => setPendingAtRiskCharge(row)}
+              onCharge={() => setPendingCharge(row)}
               onCancel={() => setCancelSheetOrderId(row.orderId)}
             />
           ))}
@@ -584,6 +619,20 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
         cancelLabel="Cancel"
         destructive={true}
         confirmLoading={chargeNowMutation.isPending}
+      />
+
+      <ConfirmDialog
+        visible={pendingCharge !== null}
+        onClose={() => setPendingCharge(null)}
+        onConfirm={confirmCharge}
+        title={pendingChargeCopy?.title ?? ""}
+        description={pendingChargeCopy?.description ?? ""}
+        confirmLabel={pendingChargeCopy?.confirmLabel ?? "Charge"}
+        cancelLabel="Cancel"
+        confirmLoading={chargeNowMutation.isPending}
+        confirmTestID="trip-money-charge-confirm"
+        cancelTestID="trip-money-charge-cancel"
+        testID="trip-money-charge-dialog"
       />
 
       <RefundPreviewSheet
@@ -607,6 +656,8 @@ interface TravelerRowProps {
   chargeNowMutation: ReturnType<typeof useChargeInstallmentNow>;
   sendReminderMutation: ReturnType<typeof useSendInstallmentReminder>;
   onAtRiskCharge: () => void;
+  /** #4420 B1 — opens the Charge now confirm; the mutation runs only on confirm. */
+  onCharge: () => void;
   onCancel: () => void;
 }
 
@@ -623,7 +674,7 @@ const TravelerMoneyRowCard: React.FC<TravelerRowProps> = (props) => {
       >
         <View style={styles.moneyBookingHeader}>
           <Text style={styles.moneyBookingName}>{buyerLabel(row)}</Text>
-          <Icon name={expanded ? "chevU" : "chevD"} size={18} color={textTokens.secondary} />
+          <Icon name={expanded ? "chevU" : "chevD"} size={18} color={color.text2} />
         </View>
         <View style={styles.phoneMetricGrid}>
           <MoneyMetric label="Plan" value={<PlanCell row={row} />} />
@@ -750,6 +801,7 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
   chargeNowMutation,
   sendReminderMutation,
   onAtRiskCharge,
+  onCharge,
   compact = false,
 }) => {
   const recentReminder = useRecentReminderForOrder(row.orderId);
@@ -776,10 +828,7 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
             onAtRiskCharge();
             return;
           }
-          chargeNowMutation.mutate({
-            installmentId: row.nextInstallment.id,
-            atRiskOverride: false,
-          });
+          onCharge();
         }}
         disabled={!canCharge || chargeNowMutation.isPending}
         accessibilityRole="button"
@@ -790,7 +839,7 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
           (!canCharge || chargeNowMutation.isPending) && styles.moneyRetryBtnDisabled,
         ]}
       >
-        <Text style={styles.moneyRetryBtnText}>Charge now</Text>
+        <Text style={styles.moneyActionBtnText}>Charge now</Text>
       </Pressable> : null}
       <Pressable
         onPress={() => sendReminderMutation.mutate({ orderId: row.orderId })}
@@ -824,7 +873,7 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
         return (
           <View
             key={inst.id}
-            style={{ marginBottom: spacing.xs }}
+            style={{ marginBottom: space[1] }}
             accessibilityRole="text"
             accessibilityLabel={`Installment ${inst.ordinal}, ${formatCurrency(inst.amountChargedCents, inst.currency)}, ${installmentMethodLine(inst)}, ${statusLabel(inst.status)}, due ${formatMoneyDate(inst.dueAt)}`}
           >
@@ -891,164 +940,165 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   stateHost: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.md,
-    backgroundColor: "#0c0e12",
+    padding: space[7],
+    gap: space[4],
+    backgroundColor: color.canvas,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    color: color.text1,
   },
   body: {
     flex: 1,
   },
   bodyContent: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: space[6],
+    gap: space[4],
   },
   emptyState: {
-    padding: spacing.xl,
+    padding: space[7],
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   emptyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
   plannerScheduleHeaderWrap: {
     width: "100%",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   moneyFilterRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    gap: space[2],
+    marginBottom: space[4],
   },
   moneyFilterChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tableHead,
     minHeight: 36,
     alignItems: "center",
     justifyContent: "center",
   },
+  // #4420 — a selected segment, not an orange fill (orange is not a button colour).
   moneyFilterChipActive: {
-    borderColor: accent.warm,
-    backgroundColor: accent.warm,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   moneyFilterChipAtRisk: {
-    borderColor: semantic.error,
+    borderColor: color.errorLine,
   },
   moneyFilterChipText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   moneyFilterChipTextActive: {
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
   moneyFilterChipTextAtRisk: {
-    color: semantic.error,
+    color: color.errorText,
   },
   phoneList: {
-    gap: spacing.md,
+    gap: space[4],
   },
   moneyBookingRow: {
-    padding: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    padding: space[4],
+    borderRadius: radiusTokens.xxl,
+    backgroundColor: color.card,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    gap: spacing.sm,
+    borderColor: color.line,
+    gap: space[2],
   },
   moneyBookingHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   moneyBookingName: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   moneyBookingMeta: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 2,
   },
   phoneMetricGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   phoneMetric: {
     width: "48%",
     minHeight: 64,
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radiusTokens.sm,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     gap: 2,
   },
   phoneMetricLabel: {
-    color: textTokens.tertiary,
-    fontSize: typography.caption.fontSize,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
   },
   phoneMetricValue: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   moneyTable: {
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: radiusTokens.md,
+    borderColor: color.line,
+    borderRadius: radiusTokens.xl,
     overflow: "hidden",
   },
   moneyTableRowWrap: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
+    borderTopColor: color.line,
   },
   moneyTableRow: {
     flexDirection: "row",
     alignItems: "stretch",
     minHeight: 76,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: color.fill.tableHead,
   },
   moneyTableHeader: {
     minHeight: 40,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backgroundColor: color.fill.tile,
   },
   moneyTableHeaderText: {
     flex: 1,
-    padding: spacing.sm,
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
+    padding: space[2],
+    color: color.text2,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
   },
   tableCell: {
     flex: 1,
-    padding: spacing.sm,
+    padding: space[2],
     justifyContent: "center",
     minWidth: 0,
   },
   tableCellText: {
     flex: 1,
-    padding: spacing.sm,
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    padding: space[2],
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
     alignSelf: "center",
   },
@@ -1056,108 +1106,115 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   moneyInstallmentLabel: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
   },
   moneyInstallmentAmount: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
-    marginRight: spacing.sm,
+    fontSize: type.small.fontSize,
+    color: color.text1,
+    marginRight: space[2],
   },
   moneyStatusPill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 2,
     borderRadius: radiusTokens.sm,
     minWidth: 80,
     alignItems: "center",
     alignSelf: "flex-start",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   moneyStatusPillScheduled: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   moneyStatusPillCollected: {
-    backgroundColor: "rgba(34, 197, 94, 0.18)",
+    backgroundColor: color.successTint,
   },
   moneyStatusPillFailed: {
-    backgroundColor: "rgba(239, 68, 68, 0.18)",
+    backgroundColor: color.errorTint,
   },
   moneyStatusPillText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   moneyStatusPillTextCollected: {
-    color: semantic.success,
+    color: color.success,
   },
   moneyStatusPillTextFailed: {
-    color: semantic.error,
+    color: color.danger,
   },
   actionRow: {
     flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: space[2],
+    marginTop: space[1],
   },
   actionRowCompact: {
     flexDirection: "column",
     marginTop: 0,
   },
+  // #4420 — Charge now is a secondary control; the confirm carries the primary.
   moneyActionBtn: {
     minHeight: 40,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.fill.inset,
+    borderWidth: 1,
+    borderColor: color.lineStrong,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     flex: 1,
   },
   moneyActionBtnSecondary: {
     minHeight: 40,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)",
+    borderRadius: radiusTokens.full,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     flex: 1,
   },
   moneyActionBtnSecondaryText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   moneyRetryBtn: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     minHeight: 44,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.paper,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   moneyRetryBtnDisabled: {
     opacity: 0.5,
   },
   moneyRetryBtnText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: color.ink,
+    textAlign: "center",
+  },
+  moneyActionBtnText: {
+    fontSize: type.small.fontSize,
+    fontWeight: "600",
+    color: color.text1,
     textAlign: "center",
   },
   moneyFailureReason: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
+    fontSize: type.caption.fontSize,
+    color: color.danger,
     marginTop: 2,
   },
   moneyDivider: {
     height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    marginVertical: spacing.sm,
+    backgroundColor: color.fill.pressed,
+    marginVertical: space[2],
   },
   moneyRefundBtn: {
     minHeight: 44,
@@ -1166,7 +1223,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   moneyRefundBtnText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
 });

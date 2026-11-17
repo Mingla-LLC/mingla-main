@@ -9,11 +9,7 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../constants/designSystem";
+import { color, space, type } from "../../../../constants/designSystem";
 import type {
   HostAdDailyPoint,
   HostAdPlatformSpend,
@@ -152,17 +148,17 @@ export function AdResultsSection(props: {
 }
 
 const styles = StyleSheet.create({
-  sentence: { ...typography.body, color: textTokens.primary, marginTop: spacing.sm },
-  muted: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.sm },
-  body: { ...typography.bodySm, color: textTokens.primary, flexShrink: 1 },
-  charts: { gap: spacing.md, marginTop: spacing.md },
+  sentence: { ...type.body, color: color.text1, marginTop: space[2] },
+  muted: { ...type.small, color: color.text2, marginTop: space[2] },
+  body: { ...type.small, color: color.text1, flexShrink: 1 },
+  charts: { gap: space[4], marginTop: space[4] },
   chartsWide: { flexDirection: "row" },
   chart: { minHeight: 132 },
   chartWide: { flex: 1, minHeight: 160 },
-  errorBox: { marginTop: spacing.md, gap: spacing.sm },
+  errorBox: { marginTop: space[4], gap: space[2] },
   retry: { minHeight: 44, minWidth: 88, justifyContent: "center", alignItems: "center", alignSelf: "flex-start" },
-  retryLabel: { ...typography.buttonMd, color: textTokens.primary },
-  expand: { minHeight: 44, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: spacing.sm },
-  expandLabel: { ...typography.bodySm, color: textTokens.primary },
-  row: { flexDirection: "row", justifyContent: "space-between", gap: spacing.sm, marginTop: spacing.xs },
+  retryLabel: { ...type.btnSm, color: color.text1 },
+  expand: { minHeight: 44, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: space[2] },
+  expandLabel: { ...type.small, color: color.text1 },
+  row: { flexDirection: "row", justifyContent: "space-between", gap: space[2], marginTop: space[1] },
 });

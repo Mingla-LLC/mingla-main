@@ -9,13 +9,7 @@ import {
   View,
 } from "react-native";
 import type { UseQueryResult } from "@tanstack/react-query";
-import {
-  accent,
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useEntityTrafficRollup } from "../../hooks/useTrafficAnalytics";
 import { TrafficAnalyticsDashboard } from "./LazyTrafficAnalyticsDashboard";
@@ -217,7 +211,7 @@ const TrafficListingInsightsScreen: React.FC<
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={() => void refresh()}
-              tintColor={accent.warm}
+              tintColor={color.accent}
             />
           )
         }
@@ -277,7 +271,7 @@ const TrafficListingInsightsScreen: React.FC<
                 testID="traffic-dashboard-loading"
                 accessibilityLabel="Loading insights"
               >
-                <ActivityIndicator color={accent.warm} />
+                <ActivityIndicator color={color.accent} />
               </View>
             }
             renderLoadError={(retry) => (
@@ -328,75 +322,75 @@ export const ListingInsightsScreen: React.FC<ListingInsightsScreenProps> = ({
 
 const styles = StyleSheet.create({
   host: { flex: 1, minWidth: 0 },
-  topBar: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  topBar: { paddingHorizontal: space[4], paddingTop: space[2] },
   scroll: { flex: 1, minWidth: 0 },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl * 4,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
+    paddingBottom: space[7] * 4,
   },
   content: {
     width: "100%",
     maxWidth: 1320,
     alignSelf: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
   headingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: space[4],
   },
   headingCopy: { flex: 1, minWidth: 0 },
   eyebrow: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
   },
   listingTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    marginTop: spacing.xs,
+    color: color.text1,
+    fontSize: type.title.fontSize,
+    lineHeight: type.title.lineHeight,
+    fontWeight: type.title.fontWeight,
+    marginTop: space[1],
   },
   intro: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text2,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    marginTop: space[1],
   },
   status: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[1],
   },
   action: {
     minHeight: 44,
     minWidth: 44,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   actionText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.accent,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
   refreshFailure: {
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    padding: spacing.md,
+    borderColor: color.lineStrong,
+    padding: space[4],
   },
   centerState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
+    padding: space[7],
   },
   dashboardLoading: {
     minHeight: 260,
@@ -404,19 +398,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   stateTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   stateBody: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text2,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlign: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
 });
 

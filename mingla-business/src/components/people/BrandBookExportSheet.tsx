@@ -19,13 +19,11 @@ import {
   type BrandBookExportJob,
 } from "../../services/brandBookExportService";
 import {
-  accent,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color as dsColor,
+  space,
+  type as dsType,
+  materials,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -385,7 +383,7 @@ export function BrandBookExportSheet({
       snapPoint={0.8}
       testID="brand-book-export-sheet"
       style={styles.sheet}
-      panelBackground={Platform.OS === "android" ? "#16181b" : undefined}
+      panelBackground={Platform.OS === "android" ? materials.sheet.solidFill : undefined}
     >
       <View
         ref={dialogRef}
@@ -412,7 +410,7 @@ export function BrandBookExportSheet({
             onPress={onClose}
             style={({ pressed }) => [styles.close, pressed ? styles.pressed : undefined]}
           >
-            <Icon name="close" size={20} color={text.primary} />
+            <Icon name="close" size={20} color={dsColor.text1} />
           </Pressable>
         </View>
 
@@ -422,7 +420,7 @@ export function BrandBookExportSheet({
           ) : view === "idle" ? (
             <>
               <View style={styles.boundary}>
-                <Icon name="shield" size={22} color={accent.warm} />
+                <Icon name="shield" size={22} color={dsColor.accent} />
                 <Text maxFontSizeMultiplier={2} style={styles.boundaryText}>
                   This CSV includes only contact details people gave this brand. Mingla profile data and circle-only contacts stay private.
                 </Text>
@@ -454,7 +452,7 @@ export function BrandBookExportSheet({
           ) : view === "preparing" ? (
             <View accessibilityLiveRegion="polite" style={styles.progress}>
               {reduceMotion ? (
-                <Icon name="clock" size={28} color={accent.warm} />
+                <Icon name="clock" size={28} color={dsColor.accent} />
               ) : (
                 <Spinner size={36} />
               )}
@@ -468,7 +466,7 @@ export function BrandBookExportSheet({
             <StateMessage body="This is taking longer than usual. Check again in a moment." />
           ) : view === "ready" ? (
             <View accessibilityLiveRegion="polite" style={styles.readyIcon}>
-              <Icon name="check" size={28} color={semantic.success} />
+              <Icon name="check" size={28} color={dsColor.success} />
             </View>
           ) : null}
         </ScrollView>
@@ -501,7 +499,7 @@ function StateMessage({
   icon?: "shield";
   tone?: "error" | "warning";
 }): React.ReactElement {
-  const color = tone === "error" ? semantic.error : tone === "warning" ? semantic.warning : text.secondary;
+  const color = tone === "error" ? dsColor.danger : tone === "warning" ? dsColor.warning : dsColor.text2;
   const toneStyle = tone === "error"
     ? styles.stateMessageError
     : tone === "warning"
@@ -524,56 +522,56 @@ const styles = StyleSheet.create({
   host: { flex: 1, minHeight: 0 },
   header: {
     minHeight: 64,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   headingCopy: { flex: 1, minWidth: 0 },
-  title: { ...typography.h3, color: text.primary },
-  subtitle: { ...typography.bodySm, color: text.secondary, marginTop: spacing.xs },
+  title: { ...dsType.h1, color: dsColor.text1 },
+  subtitle: { ...dsType.small, color: dsColor.text2, marginTop: space[1] },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
   pressed: { opacity: 0.72 },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.md },
+  content: { paddingHorizontal: space[4], paddingBottom: space[4], gap: space[4] },
   boundary: {
-    padding: spacing.md,
+    padding: space[4],
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: dsColor.lineStrong,
+    backgroundColor: dsColor.fill.tile,
   },
-  boundaryText: { ...typography.body, color: text.primary, flex: 1 },
-  offlineCopy: { ...typography.bodySm, color: semantic.warning },
-  count: { ...typography.h3, color: text.primary },
-  listBlock: { gap: spacing.sm },
-  listTitle: { ...typography.body, fontWeight: "700", color: text.primary },
-  listRow: { minHeight: 24, flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  bullet: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: accent.warm, marginTop: 7 },
-  body: { ...typography.bodySm, color: text.secondary, flexShrink: 1 },
-  note: { ...typography.bodySm, color: text.tertiary },
+  boundaryText: { ...dsType.body, color: dsColor.text1, flex: 1 },
+  offlineCopy: { ...dsType.small, color: dsColor.warning },
+  count: { ...dsType.h1, color: dsColor.text1 },
+  listBlock: { gap: space[2] },
+  listTitle: { ...dsType.body, fontWeight: "700", color: dsColor.text1 },
+  listRow: { minHeight: 24, flexDirection: "row", alignItems: "flex-start", gap: space[2] },
+  bullet: { width: 6, height: 6, borderRadius: radius.full, backgroundColor: dsColor.accent, marginTop: 7 },
+  body: { ...dsType.small, color: dsColor.text2, flexShrink: 1 },
+  note: { ...dsType.small, color: dsColor.text3 },
   footer: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[4],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: dsColor.line,
   },
-  progress: { flex: 1, minHeight: 220, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  stateMessage: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
-  stateMessageNeutral: { color: text.secondary },
-  stateMessageWarning: { color: semantic.warning },
-  stateMessageError: { color: semantic.error },
+  progress: { flex: 1, minHeight: 220, alignItems: "center", justifyContent: "center", gap: space[2] },
+  stateMessage: { minHeight: 220, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
+  stateMessageNeutral: { color: dsColor.text2 },
+  stateMessageWarning: { color: dsColor.warning },
+  stateMessageError: { color: dsColor.danger },
   readyIcon: {
     alignSelf: "center",
     width: 64,
     height: 64,
     borderRadius: radius.full,
-    backgroundColor: semantic.successTint,
+    backgroundColor: dsColor.successTint,
     alignItems: "center",
     justifyContent: "center",
-    marginVertical: spacing.xl,
+    marginVertical: space[7],
   },
 });

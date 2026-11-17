@@ -8,11 +8,10 @@ import { Pressable, StyleSheet, Text } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
-  accent,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { brandReadinessKeys } from "../../hooks/brandReadinessKeys";
 
@@ -46,17 +45,17 @@ export const TodoReadinessRetry: React.FC<TodoReadinessRetryProps> = ({
 
 const styles = StyleSheet.create({
   control: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   controlText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });
 

@@ -33,6 +33,10 @@
  */
 export type VenueModule =
   | "overview"
+  // #4420 (round-3 item 19) — Mingla Local reviews get their own module
+  // instead of a panel at the top of Overview. A UI-only id: no service,
+  // query key or server contract reads it.
+  | "reviews"
   | "settings"
   | "menu"
   | "insights"
@@ -45,7 +49,7 @@ export type VenueModule =
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
 export type VenueBookingModule = Exclude<
   VenueModule,
-  "overview" | "settings" | "menu" | "insights" | "orders"
+  "overview" | "reviews" | "settings" | "menu" | "insights" | "orders"
 >;
 
 /** No-show fee policy (enforcement is 2.2; 2.0 stores the policy only). */

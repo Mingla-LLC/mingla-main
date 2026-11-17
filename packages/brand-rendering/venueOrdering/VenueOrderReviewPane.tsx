@@ -123,6 +123,14 @@ export interface VenueOrderReviewPaneProps {
    * Pay button exactly like a missing name or email does.
    */
   phoneFailure?: string | null;
+  /**
+   * issue #4420 — how the host frames the pane. Without it the Pay button
+   * follows the body in one column (the pane as it always was). With it the
+   * host places the body and the Pay button itself: buyer web puts the body in
+   * a bottom sheet (a 560 dialog on desktop) and pins "Pay {total}" in its
+   * footer. The contents, the rules and the button are the same either way.
+   */
+  layout?: (body: React.ReactNode, payButton: React.ReactNode) => React.ReactNode;
 }
 
 /**
@@ -168,6 +176,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   TextInputComponent,
   renderPhoneField,
   phoneFailure = null,
+  layout,
 }) => {
   const Input = TextInputComponent ?? TextInput;
   const priced = previewStatus === "ready" && preview !== null;
@@ -215,8 +224,38 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
       (discount) => discount.id === preview.codeOutcome?.discountId,
     ) ?? null;
 
-  return (
-    <View style={styles.wrap}>
+  const payButton = (
+    <Pressable
+      onPress={onSubmit}
+      disabled={!canPay}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !canPay }}
+      accessibilityLabel={
+        priced && preview !== null
+          ? `Pay ${money(preview.totalCents)}`
+          : "Pay — waiting for the total"
+      }
+      style={[
+        styles.payBtn,
+        (canPay ? accentFill(palette) : { backgroundColor: palette.panelBorder }),
+      ]}
+    >
+      <Text
+        style={[
+          styles.payLabel,
+          { color: canPay ? palette.accentText : palette.tertiaryText },
+        ]}
+      >
+        {submitting
+          ? "One moment…"
+          : priced && preview !== null
+            ? `Pay ${money(preview.totalCents)}`
+            : "Pay"}
+      </Text>
+    </Pressable>
+  );
+  const body = (
+    <>
       <View style={styles.headRow}>
         <Pressable
           onPress={onBack}
@@ -619,34 +658,13 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         </Text>
       )}
 
-      <Pressable
-        onPress={onSubmit}
-        disabled={!canPay}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !canPay }}
-        accessibilityLabel={
-          priced && preview !== null
-            ? `Pay ${money(preview.totalCents)}`
-            : "Pay — waiting for the total"
-        }
-        style={[
-          styles.payBtn,
-          (canPay ? accentFill(palette) : { backgroundColor: palette.panelBorder }),
-        ]}
-      >
-        <Text
-          style={[
-            styles.payLabel,
-            { color: canPay ? palette.accentText : palette.tertiaryText },
-          ]}
-        >
-          {submitting
-            ? "One moment…"
-            : priced && preview !== null
-              ? `Pay ${money(preview.totalCents)}`
-              : "Pay"}
-        </Text>
-      </Pressable>
+    </>
+  );
+  if (layout !== undefined) return <>{layout(body, payButton)}</>;
+  return (
+    <View style={styles.wrap}>
+      {body}
+      {payButton}
     </View>
   );
 };

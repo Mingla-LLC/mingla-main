@@ -30,11 +30,10 @@ import { Toast } from "../../../src/components/ui/Toast";
 import { supabase } from "../../../src/services/supabase";
 import { formatCurrency } from "../../../src/utils/currency";
 import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  scrim,
+  type,
 } from "../../../src/constants/designSystem";
 
 // ConfirmDialog pulls reanimated — keep it off the Dates boot path.
@@ -274,7 +273,7 @@ export default function EventDatesScreen(): React.ReactElement {
         rightSlot={null}
       />
       {loading ? (
-        <ActivityIndicator color={accent.warm} style={{ marginTop: 24 }} />
+        <ActivityIndicator color={color.text2} style={{ marginTop: 24 }} />
       ) : (
         <ScrollView
           contentContainerStyle={styles.list}
@@ -282,7 +281,7 @@ export default function EventDatesScreen(): React.ReactElement {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => void load({ soft: true })}
-              tintColor={accent.warm}
+              tintColor={color.text2}
             />
           }
         >
@@ -315,7 +314,7 @@ export default function EventDatesScreen(): React.ReactElement {
                       }));
                     }}
                     placeholder="Inherits event title"
-                    placeholderTextColor={textTokens.quaternary}
+                    placeholderTextColor={color.text4}
                     maxLength={120}
                     style={[
                       styles.input,
@@ -334,7 +333,7 @@ export default function EventDatesScreen(): React.ReactElement {
                       }));
                     }}
                     placeholder="Inherits venue"
-                    placeholderTextColor={textTokens.quaternary}
+                    placeholderTextColor={color.text4}
                     maxLength={120}
                     style={[
                       styles.input,
@@ -412,39 +411,39 @@ export default function EventDatesScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: canvas.discover },
-  list: { padding: spacing.md, gap: spacing.md, paddingBottom: 48 },
+  root: { flex: 1, backgroundColor: color.canvas },
+  list: { padding: space[4], gap: space[4], paddingBottom: 48 },
   note: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     marginBottom: 4,
   },
   card: {
     gap: 8,
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   when: {
-    ...typography.body,
+    ...type.body,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
-  label: { ...typography.caption, color: textTokens.tertiary },
+  label: { ...type.caption, color: color.text3 },
   input: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: color.lineStrong,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     minHeight: 44,
-    color: textTokens.primary,
-    backgroundColor: "rgba(0,0,0,0.25)",
+    color: color.text1,
+    backgroundColor: scrim.modal,
   },
   inputDisabled: { opacity: 0.55 },
-  muted: { color: textTokens.tertiary, marginTop: 16 },
-  mutedInline: { color: textTokens.tertiary, marginTop: 4 },
+  muted: { color: color.text3, marginTop: 16 },
+  mutedInline: { color: color.text3, marginTop: 4 },
   rowActions: { gap: 8, marginTop: 4 },
 });

@@ -6,7 +6,7 @@
 import { StyleSheet, type TextStyle } from "react-native";
 import { describe, expect, test } from "@jest/globals";
 
-import { semantic, text as textTokens } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import { MenuTextCounter } from "../MenuTextCounter";
 import {
   MENU_TEXT_LIMITS,
@@ -276,7 +276,7 @@ describe("menu text counter presentation", () => {
     expect(props.accessibilityLiveRegion).toBeUndefined();
     expect(props["aria-live"]).toBeUndefined();
     expect(style).toMatchObject({
-      color: textTokens.tertiary,
+      color: color.text3,
       fontWeight: "500",
     });
   });
@@ -292,7 +292,7 @@ describe("menu text counter presentation", () => {
     const style = StyleSheet.flatten(props.style) as TextStyle;
 
     expect(style).toMatchObject({
-      color: semantic.errorText,
+      color: color.errorText,
       fontWeight: "600",
     });
   });

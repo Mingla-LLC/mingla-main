@@ -21,21 +21,20 @@
  * configured VAT. "You keep" is the exact connected-account payout before the
  * host's own tax filing; Mingla does not withhold VAT.
  *
- * Tokens: business is a DARK system — `text.*` (white-alpha), `accent.warm`,
- * `semantic.*`, `glass.*` from `constants/designSystem`. No light-mode palette.
+ * Tokens (#4420 Graphite): `color`, `materials`, `type`, `space`, `radius`.
+ * The selected segment is the neutral selected material, never orange
+ * (shared by the event, trip and experience wizards and brand defaults).
  */
 
 import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
+  color,
+  materials,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { computePreview } from "../../utils/pricingPreview";
@@ -301,7 +300,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
                   style={styles.nudgeBtn}
                 >
                   <Text style={styles.nudgeLabel}>Set up VAT</Text>
-                  <Icon name="chevR" size={14} color={semantic.info} />
+                  <Icon name="chevR" size={14} color={color.infoText} />
                 </Pressable>
               ) : (
                 <SegmentedToggle
@@ -372,7 +371,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
           style={styles.lockFooter}
           accessibilityLiveRegion={disabled ? "polite" : undefined}
         >
-          <Icon name="shield" size={14} color={textTokens.tertiary} />
+          <Icon name="shield" size={14} color={color.text3} />
           <Text style={styles.lockReason}>
             {disabled
               ? (disabledReason ??
@@ -482,26 +481,24 @@ const SegmentedToggle: React.FC<SegmentedToggleProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    marginTop: spacing.md,
-    padding: spacing.md,
+    marginTop: space[4],
+    padding: space[4],
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     overflow: "hidden",
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
+    ...type.h1,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   frame: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     marginTop: 2,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   rows: {
     borderRadius: radiusTokens.md,
@@ -510,20 +507,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     minHeight: 56,
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   rowStacked: {
     flexDirection: "column",
     alignItems: "stretch",
-    gap: spacing.sm,
+    gap: space[2],
   },
   rowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   rowText: {
     flex: 1,
-    paddingRight: spacing.sm,
+    paddingRight: space[2],
   },
   rowTextStacked: {
     flexGrow: 0,
@@ -532,153 +529,156 @@ const styles = StyleSheet.create({
     paddingRight: 0,
   },
   rowLabel: {
-    fontSize: typography.body.fontSize,
+    ...type.body,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   lockedText: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   rowSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     marginTop: 1,
   },
   lockedValue: {
-    fontSize: typography.bodySm.fontSize,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   // Segmented control
   segTrack: {
     flexDirection: "row",
-    backgroundColor: glass.tint.backdrop,
+    gap: 2,
+    backgroundColor: color.fill.inset,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
     borderRadius: radiusTokens.full,
-    padding: 2,
+    padding: 3,
   },
   segTrackInherited: {
     borderWidth: 1,
-    borderColor: glass.border.pending,
+    borderColor: color.fill.pager,
   },
   segTrackFull: {
     alignSelf: "stretch",
   },
   seg: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingHorizontal: space[3],
+    paddingVertical: space[1],
     borderRadius: radiusTokens.full,
     minHeight: 32,
     justifyContent: "center",
+    borderTopWidth: 1,
+    borderTopColor: color.transparent,
   },
   segSelected: {
-    backgroundColor: accent.warm,
+    backgroundColor: materials.selected.solidFill,
+    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
   },
   segFull: {
     flex: 1,
     alignItems: "center",
   },
   segLabel: {
-    fontSize: typography.micro.fontSize,
+    ...type.caption,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   segLabelSelected: {
-    color: "#ffffff",
+    color: color.textStrong,
   },
   // Surface 4 nudge
   nudgeBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     minHeight: 32,
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: semantic.info,
-    backgroundColor: semantic.infoTint,
+    borderColor: color.info,
+    backgroundColor: color.infoTint,
   },
   nudgeLabel: {
-    fontSize: typography.micro.fontSize,
+    ...type.caption,
     fontWeight: "600",
-    color: semantic.info,
+    color: color.infoText,
   },
   // Preview chip
   previewChip: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    padding: spacing.md,
+    gap: space[2],
+    marginTop: space[4],
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.backdrop,
+    backgroundColor: color.fill.tile,
   },
   previewMoneyRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   previewHead: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    ...type.caption,
+    color: color.text2,
     flexShrink: 0,
   },
   previewBuyer: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
+    ...type.stat,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     marginTop: 2,
     fontVariant: ["tabular-nums"],
     flexShrink: 1,
     textAlign: "right",
   },
   previewKeep: {
-    fontSize: typography.statValue.fontSize,
-    lineHeight: typography.statValue.lineHeight,
+    ...type.stat,
     fontWeight: "700",
-    color: semantic.success,
+    color: color.successText,
     marginTop: 2,
     fontVariant: ["tabular-nums"],
     flexShrink: 1,
     textAlign: "right",
   },
   emptyHint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
+    ...type.caption,
+    color: color.text3,
+    marginTop: space[4],
   },
   // Footers
   lockFooter: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.xs,
-    marginTop: spacing.md,
+    gap: space[1],
+    marginTop: space[4],
   },
   lockReason: {
     flex: 1,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   overrideFooter: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   inheritFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   inheritText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   editDefaults: {
-    fontSize: typography.caption.fontSize,
+    ...type.caption,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
+    textDecorationLine: "underline",
   },
 });
 

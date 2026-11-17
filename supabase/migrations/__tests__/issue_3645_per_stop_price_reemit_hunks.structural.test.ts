@@ -1,6 +1,6 @@
 /**
  * issue #3645 bundle 2A — biz_publish_experience and
- * biz_update_live_experience are re-emitted by 20280726003645 with exactly the
+ * biz_update_live_experience are re-emitted by 20280801003645 with exactly the
  * hunks in issue_3645_per_stop_price_reemit_hunks.ts, from their latest
  * earlier definitions, and nothing else moves.
  */

@@ -171,6 +171,10 @@
       "readyBank": "{{country}} 은행 계좌",
       "readyBankAny": "거주 국가의 은행 계좌",
       "readyTax": "납세자 번호 (등록된 회사만)"
+    },
+    "stepper": {
+      "saved": "저장됨",
+      "steps": "단계"
     }
   },
   "doorMode": {

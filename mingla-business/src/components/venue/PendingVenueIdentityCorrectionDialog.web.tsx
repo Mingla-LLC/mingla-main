@@ -44,11 +44,9 @@ import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Modal } from "../ui/Modal";
 import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   correctPendingVenueIdentity,
@@ -378,8 +376,8 @@ export function PendingVenueIdentityCorrectionDialog({
           styles.scroll,
           // Bounded by the VIEWPORT, not by the content: this is what makes the
           // container actually scroll instead of simply growing. `Modal` adds
-          // its own `spacing.lg` padding on each side, so leave room for it.
-          { maxHeight: Math.max(240, viewportHeight - spacing.lg * 6) },
+          // its own `space[6]` padding on each side, so leave room for it.
+          { maxHeight: Math.max(240, viewportHeight - space[6] * 6) },
         ]}
         contentContainerStyle={styles.form}
         keyboardShouldPersistTaps="handled"
@@ -580,56 +578,56 @@ const styles = StyleSheet.create({
   // content read straight through the form.
   scroll: {
     alignSelf: "stretch",
-    backgroundColor: canvas.depth,
+    backgroundColor: color.canvas,
     borderRadius: 12,
   },
   // P2-3 — NO `minWidth` here, and that is the fix rather than a tidy-up.
   //
   // At 390x844 the host's content box is 294 px (390 viewport - the Modal's own
-  // `spacing.lg` padding on each side - the GlassCard's `spacing.lg` on each
+  // `space[6]` padding on each side - the GlassCard's `space[6]` on each
   // side). A `minWidth: 320` on the CONTENT therefore overflowed it by 26 px on
   // an axis a vertical `ScrollView` renders `overflow-x: hidden`, so the excess
   // was not scrollable — it was CLIPPED, and the primary action rendered as
   // "Review correctio". The card is already bounded by the Modal's `maxWidth`;
   // the content must simply fit the box it is given.
-  form: { gap: spacing.sm, padding: spacing.sm },
+  form: { gap: space[2], padding: space[2] },
   title: {
-    fontSize: typography.h3.fontSize,
+    fontSize: type.h1.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
-  body: { fontSize: typography.bodySm.fontSize, color: textTokens.secondary },
+  body: { fontSize: type.small.fontSize, color: color.text2 },
   comparison: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-    padding: spacing.sm,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    fontSize: type.caption.fontSize,
+    color: color.text2,
+    padding: space[2],
+    backgroundColor: color.fill.tile,
     borderRadius: 10,
   },
   fieldLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
-  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
   categoryChoice: {
     minHeight: 44,
     minWidth: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
   },
   categoryChoiceOn: {
-    borderColor: accent.warm,
-    backgroundColor: "rgba(235,120,37,0.14)",
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
   },
-  dependencyBlock: { gap: 2, marginTop: spacing.xs },
+  dependencyBlock: { gap: 2, marginTop: space[1] },
   status: {
     minHeight: 20,
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text2,
+    fontSize: type.small.fontSize,
   },
   actions: {
     flexDirection: "row",
@@ -637,8 +635,8 @@ const styles = StyleSheet.create({
     // exceed it on their own, and the overflowing axis is the clipped one.
     flexWrap: "wrap",
     justifyContent: "flex-end",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
 });
 

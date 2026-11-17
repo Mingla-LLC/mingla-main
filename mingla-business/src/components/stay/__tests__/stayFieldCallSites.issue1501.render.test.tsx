@@ -232,11 +232,7 @@ jest.mock("../../../hooks/useBrandDiscoveryCurrency", () => ({
   }),
 }));
 
-import {
-  spacing,
-  stayFieldNumMaxWidth,
-  stayFieldNumMinWidth,
-} from "../../../constants/designSystem";
+import { stayFieldNumMaxWidth, stayFieldNumMinWidth, space } from "../../../constants/designSystem";
 import { StayInventoryManager } from "../StayInventoryManager";
 
 type Flat = Record<string, unknown>;
@@ -654,11 +650,11 @@ describe("#1501 — the CALL SITE's axis matches its real parent", () => {
     // basis clamped by min/max-width — BEFORE any shrinking. With a zero basis
     // that is `minWidth`, so the floor is what decides whether a phone wraps.
     const contentBox = (device: number): number =>
-      device - spacing.md * 2 - spacing.md * 2;
+      device - space[4] * 2 - space[4] * 2;
     expect(contentBox(390)).toBe(326);
     expect(contentBox(320)).toBe(256);
 
-    const pairFootprint = stayFieldNumMinWidth * 2 + spacing.md;
+    const pairFootprint = stayFieldNumMinWidth * 2 + space[4];
     for (const device of [390, 320]) {
       expect({
         device,
@@ -668,7 +664,7 @@ describe("#1501 — the CALL SITE's axis matches its real parent", () => {
 
     // ...and the OLD basis-driven sizing genuinely could not: the arithmetic of
     // the reported regression, kept so the fix stays falsifiable.
-    expect(stayFieldNumMaxWidth * 2 + spacing.md).toBeGreaterThan(
+    expect(stayFieldNumMaxWidth * 2 + space[4]).toBeGreaterThan(
       contentBox(390),
     );
 
@@ -678,7 +674,7 @@ describe("#1501 — the CALL SITE's axis matches its real parent", () => {
     ] as const) {
       expect({
         device,
-        each: (contentBox(device) - spacing.md) / 2,
+        each: (contentBox(device) - space[4]) / 2,
       }).toEqual({ device, each: expected });
       expect(expected).toBeGreaterThanOrEqual(stayFieldNumMinWidth);
       expect(expected).toBeLessThanOrEqual(stayFieldNumMaxWidth);
@@ -686,8 +682,8 @@ describe("#1501 — the CALL SITE's axis matches its real parent", () => {
   });
 
   it("C-6 — a desktop column still stops the numeric box at its measure", () => {
-    const formColumnContent = 760 - spacing.md * 2;
-    const uncapped = (formColumnContent - spacing.md) / 2;
+    const formColumnContent = 760 - space[4] * 2;
+    const uncapped = (formColumnContent - space[4]) / 2;
     expect(uncapped).toBeGreaterThan(stayFieldNumMaxWidth);
     expect(Math.min(uncapped, stayFieldNumMaxWidth)).toBe(stayFieldNumMaxWidth);
   });
