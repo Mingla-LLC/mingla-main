@@ -103,6 +103,14 @@
         "supabase/functions/attendance-claim-identity/index.ts",
         "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql",
         "supabase/migrations/20280804004473_issue_4473_claim_clears_operator_closure.sql",
+        "app-mobile/app/purchases/missing.tsx",
+        "app-mobile/src/components/purchases/AddIdentitySheet.tsx",
+        "app-mobile/src/components/purchases/MissingTicketHelpSteps.tsx",
+        "app-mobile/src/components/purchases/SendTicketSheet.tsx",
+        "app-mobile/src/components/purchases/TicketFoundBanner.tsx",
+        "app-mobile/src/components/purchases/missingTicketModel.ts",
+        "app-mobile/src/components/purchases/purchaseSheetTheme.ts",
+        "app-mobile/src/components/onboarding/OTPInput.tsx",
         "mingla-business/src/constants/buyerClaimCopy.ts"
       ]
     },
