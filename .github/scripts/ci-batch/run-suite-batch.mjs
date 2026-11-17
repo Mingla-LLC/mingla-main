@@ -1076,6 +1076,10 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
             if (leafRemaining <= 0) { deadlineHit = true; break; }
             leafResult = await execute(leafInvocation, { cwd: leafCwd, env: child.env || step.env, timeoutMs: leafRemaining, graceMs, home: suiteHome,
               allowNodePath: suite.id === "issue-1902-public-event-lifecycle-tests" && step.commandId.endsWith(":03"),
+              // [#4420] The leaf path runs the same jest steps as the outer path,
+              // so it gets the same reviewed heap raise (only for the implicit
+              // single leaf of a plain jest step; declared children never do).
+              heapRaised: !step.children && isHeapRaisedStep(step),
               // Only a migrated suite whose registry record DECLARES the env may
               // receive it; the validator pins which suites and which literals.
               allowReviewedEnv: isMigratedSuite(suite) && Boolean(step.env) });
