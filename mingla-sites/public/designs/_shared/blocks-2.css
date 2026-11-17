@@ -668,3 +668,61 @@
   [data-design] .mg-gal-cap__sub { display: block; margin-top: 2px; font: 500 12px/1.3 var(--mg-f-label); letter-spacing: .06em; text-transform: uppercase; color: var(--mg-muted); }
   [data-design] .mg-gal-caps { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px 24px; margin: 18px 0 0; padding-left: 20px; color: var(--mg-muted); }
 }
+
+/* #4453 milestone 7b (retest P2-1) — on a phone every header control stays
+ * fully on screen and at least 44 x 44 px, in every design: the wordmark
+ * shrinks (ellipsis) before the controls do, the menu button never shrinks,
+ * and under 400 px the bar's own button folds away (it stays in the phone menu
+ * and the sticky booking bar). Unlayered on purpose, so it wins over a
+ * design's layered defaults; a design's own header rules may only grow these. */
+@media (max-width: 720px) {
+  [data-design] .mg-hd__bar { min-width: 0; max-width: 100%; }
+  [data-design] .mg-hd__bar > .mg-mark { min-width: 44px; flex: 0 1 auto; overflow: hidden; }
+  [data-design] .mg-hd__bar > .mg-mark > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  [data-design] .mg-hd__bar > .mg-mark img { max-width: 100%; }
+  [data-design] .mg-hd__end { flex: none; }
+  [data-design] .mg-hd__end > .mg-hd__cta { flex: none; min-height: 44px; }
+  [data-design] .mg-menu-btn { flex: none; min-width: 44px; min-height: 44px; }
+}
+@media (max-width: 400px) {
+  [data-design] .mg-hd__end > .mg-hd__cta { display: none; }
+}
+
+/* #4453 milestone 7b — the page-set blocks: "Keep exploring" (cards, list) and
+ * the owner's facts (split). Every colour is a shared role; every link row is
+ * at least 44 px tall. */
+@layer mg-blocks {
+  [data-design] .mg-plinks, [data-design] .mg-facts { display: block; min-width: 0; max-width: 100%; }
+  [data-design] .mg-plinks__list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: clamp(14px, 2vw, 24px); margin: 0; padding: 0; list-style: none; }
+  [data-design] .mg-plinks--list .mg-plinks__list { grid-template-columns: 1fr; gap: 0; border-top: 1px solid var(--mg-line); }
+  [data-design] .mg-plink { min-width: 0; }
+  [data-design] .mg-plink__a { position: relative; display: grid; gap: 8px; min-height: 44px; height: 100%; padding: 18px 48px 18px 18px; border: 1px solid var(--mg-line); border-radius: var(--mg-r-card); background: var(--mg-surface); color: var(--mg-ink); text-decoration: none; transition: border-color .2s ease, transform .2s ease; }
+  [data-design] .mg-plink__a:hover { border-color: var(--mg-accent); }
+  [data-design] .mg-plink__a:focus-visible { outline: 2px solid var(--mg-accent); outline-offset: 3px; }
+  [data-design] .mg-plink--row .mg-plink__a, [data-design] .mg-plinks--list .mg-plink__a { padding: 16px 48px 16px 0; border: 0; border-bottom: 1px solid var(--mg-line); border-radius: 0; background: transparent; }
+  [data-design] .mg-plinks--cards .mg-plink--row .mg-plink__a { padding-left: 18px; border: 1px solid var(--mg-line); border-radius: var(--mg-r-card); }
+  [data-design] .mg-plink__m { display: block; aspect-ratio: 4 / 3; overflow: hidden; margin: -18px -48px 6px -18px; border-radius: var(--mg-r-card) var(--mg-r-card) 0 0; background: var(--mg-surface-sunken, var(--mg-surface)); }
+  [data-design] .mg-plink__m img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  [data-design] .mg-plink__t { font: 600 clamp(18px, 1.6vw, 22px)/1.2 var(--mg-f-display); overflow-wrap: anywhere; }
+  [data-design] .mg-plink__d { font: 400 15px/1.5 var(--mg-f-body); color: var(--mg-muted); overflow-wrap: anywhere; }
+  [data-design] .mg-plink__go { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: inline-grid; place-items: center; width: 24px; height: 24px; color: var(--mg-accent); }
+  [data-design] .mg-facts__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: clamp(20px, 4vw, 64px); align-items: start; }
+  [data-design] .mg-facts__list { display: grid; margin: 0; border-top: 1px solid var(--mg-line); }
+  [data-design] .mg-fact { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--mg-line); }
+  [data-design] .mg-fact dt { margin: 0; font: var(--mg-l-weight, 700) 12px/1.4 var(--mg-f-label); letter-spacing: var(--mg-l-track, .1em); text-transform: uppercase; color: var(--mg-muted); overflow-wrap: anywhere; }
+  [data-design] .mg-fact dd { margin: 0; font: 500 16px/1.5 var(--mg-f-body); color: var(--mg-ink); overflow-wrap: anywhere; }
+  @media (max-width: 720px) {
+    [data-design] .mg-facts__grid { grid-template-columns: 1fr; }
+    [data-design] .mg-fact { grid-template-columns: 1fr; gap: 4px; }
+  }
+}
+@layer mg-blocks {
+  [data-design] .mg-hfacts { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
+  [data-design] .mg-hfact { display: grid; gap: 2px; min-width: 0; max-width: 100%; padding: 10px 16px; border-radius: var(--mg-r-card); background: rgb(var(--mg-shadow) / .38); color: var(--mg-hero-ink); }
+  [data-design] .mg-hfact strong { font: 700 22px/1 var(--mg-f-display); }
+  [data-design] .mg-hfact span { font: 500 12px/1.3 var(--mg-f-body); overflow-wrap: anywhere; }
+}
+
+/* #4453 milestone 7b (retest P2-1) — Voyage's own header (sites without a
+ * shared header layout): its wordmark link is a 44 px tap target too. */
+[data-design="voyage"] .site-header .logo-lockup { display: inline-flex; align-items: center; min-height: 44px; }

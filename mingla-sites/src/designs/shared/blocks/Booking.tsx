@@ -189,6 +189,20 @@ export function HeroRating({ block, ctx }: { block: SharedBlock; ctx: SharedCont
   return <p className="mg-rating" data-mg-in=""><span className="mg-rating__star" aria-hidden="true">★</span> {ratingLine(rating)}</p>;
 }
 
+/**
+ * #4453 milestone 7b (spec v2 §5.6) — the hero's fact badges: the owner's own
+ * setup Quick facts (Q8), verbatim, at most 3. Never a number Mingla made up.
+ */
+export function HeroFacts({ block }: { block: SharedBlock }) {
+  const facts = rows(block.fact_badges).map((row) => ({ big: text(row.big), small: text(row.small) })).filter((row) => row.big && row.small).slice(0, 3);
+  if (!facts.length) return null;
+  return (
+    <ul className="mg-hfacts" data-mg-in="">
+      {facts.map((fact, index) => <li key={index} className="mg-hfact"><strong>{fact.big}</strong><span>{fact.small}</span></li>)}
+    </ul>
+  );
+}
+
 /** The testimonials rating line (§5.6). */
 export function TestimonialsRating({ block, ctx, wrap }: { block: SharedBlock; ctx: SharedContext; wrap?: boolean }) {
   const rating = block.show_rating === true ? ctx.live?.booking?.rating : null;

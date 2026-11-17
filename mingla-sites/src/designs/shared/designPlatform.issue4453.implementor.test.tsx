@@ -254,6 +254,8 @@ describe("#4453 §3.3 every shared layout draws every field its block defines", 
         const take = type === "gallery" ? { mosaic: 5, stagger: 3, pinned: 10 }[variant] ?? 12 : Infinity;
         const media = expected.filter((v) => v.startsWith("/media/") && Array.isArray(block.images));
         const allowed = new Set(media.slice(take));
+        // #4453 milestone 7b — "Keep exploring" as a list draws no pictures (spec v2.1 §1.3: the cards layout does).
+        if (type === "page_links" && variant === "list") for (const v of expected) if (v.startsWith("/media/")) allowed.add(v);
         const missing = expected.filter((v) => !allowed.has(v) && !html.includes(v.replaceAll("&", "&amp;")));
         expect(missing, `${type}:${variant} drops ${missing.join(", ")}`).toEqual([]);
         expect(html).not.toMatch(/mingla:\/\//);

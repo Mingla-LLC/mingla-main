@@ -17,15 +17,16 @@
  *                             the fit table marks "avoid" is refused from Ari
  *                             (STYLE_DOES_NOT_FIT); a look within distance 1 of
  *                             a live site only warns (SIMILAR_TO_LIVE_SITE).
- *   propose_site_chrome       the header layout (one the design offers), the
- *                             phone booking bar, and the header button (the
- *                             format's own short label to its booking page).
+ *   propose_site_chrome       the header and footer layouts (ones the design
+ *                             offers), the phone booking bar, and the header
+ *                             button (the format's own short label to its
+ *                             booking page).
  */
 import {
   FORMAT_PAGE_SETS, FORMAT_PRIMARY_ACTION, FORMAT_RECIPES, SIMILAR_TO_LIVE_SITE, SIMILAR_TO_LIVE_SITE_MESSAGE, STYLE_KEYS,
   UNIQUE_MIN_DISTANCE, isStyleKey, similarLiveSites, skippedLine, styleFit, styleFitLevel, type FormatKey,
 } from "../contracts/generated/formats.ts";
-import { ARI_DESIGN_KEYS, DESIGNS, HEADER_VARIANTS, type DesignKey } from "../contracts/generated/designs.ts";
+import { ARI_DESIGN_KEYS, DESIGNS, FOOTER_VARIANTS, HEADER_VARIANTS, type DesignKey } from "../contracts/generated/designs.ts";
 import { BLOCK_TYPES } from "../contracts/generated/blocks.ts";
 import { sectionEligibility } from "../contracts/generated/sectionSources.ts";
 import { composeFormatSite, type ComposeV2Input, type ComposeV2Result } from "./composeFormat";
@@ -35,6 +36,7 @@ import { findAllTenantPages } from "./tenantPages";
 import { AriRefusal, type AriActionContext } from "./ariSiteActions";
 import type { WorkLogCite } from "../contracts/generated/ariToolSchemas.ts";
 import type { PayloadRequest } from "payload";
+import { createHash } from "node:crypto";
 
 type AnyDoc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -56,17 +58,53 @@ function refuse(code: string, extra: Record<string, unknown> = {}): never {
   throw new AriRefusal(code, extra);
 }
 
-/** When the current draft began: the site's last successful publish (null = never published, so the whole history is one draft). */
+/**
+ * When the current draft began: the site's last successful publish (null =
+ * never published, so the whole history is one draft). The publish snapshots
+ * the draft when its job is CREATED, so that is the boundary (retest P3-3):
+ * a pass made while a publish is in flight is not in it, and a replay that
+ * touches the job (`updatedAt`) never moves the boundary.
+ */
 async function currentDraftSince(ctx: AriActionContext): Promise<string | null> {
   const last = await ctx.req.payload.find({
-    collection: "publication-jobs", overrideAccess: true, depth: 0, limit: 1, sort: "-updatedAt",
+    collection: "publication-jobs", overrideAccess: true, depth: 0, limit: 1, sort: "-createdAt",
     where: { and: [{ tenant: { equals: ctx.tenantId } }, { status: { equals: "published" } }] },
   });
-  const at = (last.docs[0] as AnyDoc | undefined)?.updatedAt;
+  const at = (last.docs[0] as AnyDoc | undefined)?.createdAt;
   return typeof at === "string" && at.length > 0 ? at : null;
 }
 
-async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc): Promise<ComposeV2Input> {
+/**
+ * Retest P3-2 — the atomic half of "one pass per draft". Two passes racing on
+ * one draft both pass the work-log read; only one can create this claim,
+ * because `gateway-nonces.nonce` is UNIQUE in the database (the same ledger
+ * that refuses replayed Core calls). The key is the tenant plus the draft's
+ * start, so a publish (a new draft) opens exactly one new claim.
+ */
+export function designPassClaimKey(tenantId: string, draftSince: string | null): string {
+  return `design-pass:${createHash("sha256").update(`${tenantId}|${draftSince ?? "never"}`).digest("hex").slice(0, 48)}`;
+}
+
+async function claimDesignPass(ctx: AriActionContext, draftSince: string | null): Promise<void> {
+  try {
+    await ctx.req.payload.create({
+      collection: "gateway-nonces",
+      overrideAccess: true,
+      data: {
+        nonce: designPassClaimKey(ctx.tenantId, draftSince),
+        direction: "core_to_cms",
+        site_id: ctx.siteId,
+        operation_id: "propose_site_design_pass",
+        expires_at: new Date(Date.now() + 400 * 24 * 3600 * 1000).toISOString(),
+      } as never,
+    });
+  } catch {
+    // The claim already exists: another pass on this draft won the race.
+    refuse("DESIGN_PASS_ALREADY_RUN");
+  }
+}
+
+async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc, canMoveBases = false): Promise<ComposeV2Input> {
   if (!signed.plan) refuse("VALIDATION_FAILED", { problems: ["the website plan is not set up yet"] });
   const brand = ctx.evidence?.brand;
   const description = (brand?.description ?? "").trim();
@@ -101,6 +139,15 @@ async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, des
     currentWordmark: null,
     replaceDrafts: true,
     colors: { primary: settings?.tokens?.colors?.primary ?? null, accent: settings?.tokens?.colors?.accent ?? null },
+    // #4453 milestone 7b — the detail bases as stored (empty = the default); moved only on a never-published site.
+    routes: {
+      stored: {
+        trips: typeof settings?.routes?.trips === "string" ? settings.routes.trips : null,
+        events: typeof settings?.routes?.events === "string" ? settings.routes.events : null,
+        experiences: typeof settings?.routes?.experiences === "string" ? settings.routes.experiences : null,
+      },
+      canMove: canMoveBases,
+    },
   };
 }
 
@@ -145,6 +192,7 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
       })),
       variants_by_type: Object.fromEntries(BLOCK_TYPES.map((type) => [type, [...DESIGNS[base.design].variants[type]]])),
       header_variants: [...DESIGNS[base.design].chrome.header],
+      footer_variants: [...DESIGNS[base.design].chrome.footer],
       booking: {
         venue: Object.keys(signed.facts.venue_id),
         upcoming: signed.facts.upcoming,
@@ -160,14 +208,15 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
     const cites = await deps.assertCites(ctx, args.cites);
     const design = args.design_key;
     if (!isStyleKey(design) || !styles.includes(design)) refuse("VALIDATION_FAILED", { problems: ["design_key is not one of the styles Ari may use"] });
-    const base = await composeInput(ctx, signed, design, settings);
+    // The current draft starts at the site's last publish (null: never published, so detail bases may move).
+    const draftSince = await currentDraftSince(ctx);
+    const base = await composeInput(ctx, signed, design, settings, draftSince === null);
     const composed: ComposeV2Result | null = composeFormatSite(base);
     if (!composed) refuse("VALIDATION_FAILED", { problems: ["tick what the brand offers in the website plan first"] });
     // I-SITES-ARI-NEVER-PICKS-AVOID — Ari never proposes an avoid style; owners may (Your look, with a warning).
     if (styleFitLevel(composed.format, design) === "avoid") refuse("STYLE_DOES_NOT_FIT", { problems: [skippedLine(composed.format)] });
     // At most one automatic pass per DRAFT (Seth's decision): a second needs the owner, section by section.
     // The current draft starts at the site's last publish, so a new draft after a publish gets one fresh pass.
-    const draftSince = await currentDraftSince(ctx);
     const earlier = await ctx.req.payload.find({
       collection: "work-log", overrideAccess: true, depth: 0, limit: 1,
       where: { and: [
@@ -177,9 +226,15 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
       ] },
     });
     if (earlier.docs.length > 0) refuse("DESIGN_PASS_ALREADY_RUN");
+    await claimDesignPass(ctx, draftSince);
     const similar = similarLiveSites(composed.fingerprint, signed.live_fingerprints);
-    if (design !== currentDesign) {
-      await ctx.req.payload.update({ collection: "site-settings", id: settings.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: { design } as never });
+    // The design and (v2.1 §1.2) the detail bases the listing pages need, written before the pages.
+    const settingsChange: AnyDoc = {
+      ...(design !== currentDesign ? { design } : {}),
+      ...(Object.keys(composed.routes).length ? { routes: { ...(settings?.routes ?? {}), ...composed.routes } } : {}),
+    };
+    if (Object.keys(settingsChange).length) {
+      await ctx.req.payload.update({ collection: "site-settings", id: settings.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: settingsChange as never });
     }
     const written = await writeComposition(ctx.req, ctx.scoped, ctx.tenantId, composed);
     const id = await deps.writeWorkLog(ctx, { part: "composition", decision, cites, tool: "propose_site_design_pass", target: `design:${design}`, revision: null });
@@ -191,6 +246,7 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
       replaced: written.replaced,
       kept: composed.pages.filter((page) => !composed.create.includes(page) && !composed.replace.some((entry) => entry.page === page) && composed.fillHome !== page).map((page) => page.slug),
       left_out: composed.left_out_pages,
+      ...(Object.keys(composed.routes).length ? { detail_bases: composed.routes } : {}),
       skipped: composed.skipped,
       ...(similar > 0 ? { warnings: [{ code: SIMILAR_TO_LIVE_SITE, message: SIMILAR_TO_LIVE_SITE_MESSAGE, min_distance: UNIQUE_MIN_DISTANCE }] } : {}),
       fingerprint: composed.fingerprint,
@@ -211,6 +267,15 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
     }
     changes.header_variant = args.header_variant;
   }
+  // #4453 milestone 7b — the footer layout (one the design offers), on the footer.
+  let footerVariant: string | null = null;
+  if (args.footer_variant !== undefined) {
+    const footers = DESIGNS[currentDesign].chrome.footer;
+    if (!(FOOTER_VARIANTS as readonly string[]).includes(String(args.footer_variant)) || !footers.includes(args.footer_variant)) {
+      refuse("VARIANT_NOT_IN_DESIGN", { variants: [...footers] });
+    }
+    footerVariant = String(args.footer_variant);
+  }
   if (args.sticky_booking !== undefined) {
     if (typeof args.sticky_booking !== "boolean") refuse("VALIDATION_FAILED", { problems: ["sticky_booking"] });
     changes.sticky_booking = args.sticky_booking;
@@ -223,12 +288,25 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
     if (!composed?.header_cta || !target) refuse("PAGE_NOT_FOUND", { problems: ["the booking page is not on this website yet"] });
     changes.header_cta = { label: composed.header_cta.label, target_type: "page", page: String(target.id) };
   }
-  if (!Object.keys(changes).length) refuse("VALIDATION_FAILED", { problems: ["nothing to change"] });
-  const navigation = (await ctx.req.payload.find({
-    collection: "navigation", overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: ctx.tenantId } },
-  })).docs[0] as AnyDoc | undefined;
-  if (!navigation) refuse("NOT_FOUND");
-  await ctx.req.payload.update({ collection: "navigation", id: navigation.id, overrideAccess: true, req: ctx.scoped, draft: true, data: changes as never });
+  if (!Object.keys(changes).length && footerVariant === null) refuse("VALIDATION_FAILED", { problems: ["nothing to change"] });
+  if (Object.keys(changes).length) {
+    const navigation = (await ctx.req.payload.find({
+      collection: "navigation", overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: ctx.tenantId } },
+    })).docs[0] as AnyDoc | undefined;
+    if (!navigation) refuse("NOT_FOUND");
+    await ctx.req.payload.update({ collection: "navigation", id: navigation.id, overrideAccess: true, req: ctx.scoped, draft: true, data: changes as never });
+  }
+  if (footerVariant !== null) {
+    const footer = (await ctx.req.payload.find({
+      collection: "footer", overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: ctx.tenantId } },
+    })).docs[0] as AnyDoc | undefined;
+    if (footer) {
+      await ctx.req.payload.update({ collection: "footer", id: footer.id, overrideAccess: true, req: ctx.scoped, draft: true, data: { footer_variant: footerVariant } as never });
+    } else {
+      await ctx.req.payload.create({ collection: "footer", overrideAccess: true, req: ctx.scoped, draft: true, data: { tenant: ctx.tenantId, footer_variant: footerVariant } as never });
+    }
+    changes.footer_variant = footerVariant;
+  }
   const id = await deps.writeWorkLog(ctx, { part: "variant", decision, cites, tool: "propose_site_chrome", target: "chrome", revision: null });
   return { changed: Object.keys(changes), work_log_id: id, draft_only: true };
 }

@@ -80,7 +80,9 @@ export type SectionReason =
   | "NO_ROOMS"
   | "NO_TICKET_TIERS"
   | "NO_MENU"
-  | "NO_BOOKING_TARGET";
+  | "NO_BOOKING_TARGET"
+  /** #4453 milestone 7b — "Keep exploring" needs at least 2 other pages to link to. */
+  | "NO_OTHER_PAGES";
 
 export type SectionEligibility = { readonly eligible: true; readonly reason: null } | { readonly eligible: false; readonly reason: SectionReason };
 
@@ -96,6 +98,10 @@ export type SectionOptions = {
   readonly layout?: string | null;
   readonly show_rating?: boolean;
   readonly fact_badge?: boolean;
+  /** #4453 milestone 7b — page_links: how many OTHER placed pages it could link to. */
+  readonly other_pages?: number;
+  /** #4453 milestone 7b — page_links: up to 4 menu pages (teaser) or the next 3 (next). */
+  readonly links?: "teaser" | "next";
   readonly booking_bar?: boolean;
   readonly source?: "venue_slots" | "stay_nights" | "experience" | "event" | "trip";
 };
@@ -165,6 +171,11 @@ export function sectionEligibility(type: string, inventory: ContentInventory, op
       return inventory.has_contact_email || inventory.has_city ? yes : no("NO_CONTACT");
     case "process_steps":
       return n(inventory.process_steps) >= PROCESS_STEPS_MIN ? yes : no("NO_PROCESS_STEPS");
+    // #4453 milestone 7b — the owner's own facts (Q8), and links to at least 2 other pages.
+    case "facts_table":
+      return n(inventory.quick_facts) >= 1 ? yes : no("NO_FACTS");
+    case "page_links":
+      return n(options.other_pages) >= 2 ? yes : no("NO_OTHER_PAGES");
     case "marquee":
       return n(inventory.ticker_phrases) >= TICKER_PHRASES_MIN ? yes : no("NO_PHRASES");
     case "venue_reservation":
@@ -206,6 +217,8 @@ export const ARI_SECTION_SOURCES: Readonly<Record<string, string>> = {
   marquee: "the phrases you gave for the ticker",
   newsletter_signup: "Mingla's sign-up form",
   contact_form: "Mingla's question form",
+  facts_table: "the quick facts you gave in setup",
+  page_links: "the other pages on your website",
 };
 
 /** The empty inventory (a brand with nothing yet): a starting point for callers. */

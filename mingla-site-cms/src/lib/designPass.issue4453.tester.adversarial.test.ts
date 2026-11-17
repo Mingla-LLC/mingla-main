@@ -48,7 +48,7 @@ function signed(overrides: Record<string, unknown> = {}) {
 type Write = { op: string; collection: string; data?: unknown };
 let writes: Write[];
 let workLog: Array<Record<string, unknown>>;
-let jobs: Array<{ tenant: string; status: string; updatedAt: string }>;
+let jobs: Array<{ tenant: string; status: string; createdAt: string }>;
 let clock: number;
 const tick = (): string => new Date(Date.UTC(2026, 10, 16, 12, 0, clock++)).toISOString();
 
@@ -67,7 +67,7 @@ function ctx(designPass: ReturnType<typeof signed> | null, tenantId = "t1"): Ari
     find: vi.fn(async ({ collection, where, sort }: { collection: string; where?: { and?: Clause[] }; sort?: string }) => {
       if (collection === "publication-jobs") {
         const hits = jobs.filter((job) => matches(job, where));
-        if (sort === "-updatedAt") hits.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+        if (sort === "-createdAt") hits.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
         return { docs: hits.slice(0, 1) };
       }
       if (collection === "work-log") return { docs: workLog.filter((entry) => matches(entry, where)) };
@@ -185,23 +185,23 @@ describe("#4453 retest (P3-1) — one automatic pass per DRAFT, attacked", () =>
   it("a failed, ambiguous or still-running publish after the pass never opens a new draft", async () => {
     await pass("terra");
     for (const status of ["queued", "validating", "materializing", "probing", "failed", "ambiguous"]) {
-      jobs.push({ tenant: "t1", status, updatedAt: tick() });
+      jobs.push({ tenant: "t1", status, createdAt: tick() });
       await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
     }
   });
 
   it("another tenant's publish never opens a pass here, and another tenant's pass never blocks one here", async () => {
     await pass("terra");
-    jobs.push({ tenant: "t2", status: "published", updatedAt: tick() });
+    jobs.push({ tenant: "t2", status: "published", createdAt: tick() });
     await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
     await expect(pass("journal", signed(), "t2")).resolves.toMatchObject({ draft_only: true });
   });
 
   it("a real publish opens exactly one more pass, then the new draft is closed again", async () => {
     await pass("terra");
-    jobs.push({ tenant: "t1", status: "failed", updatedAt: tick() });
-    jobs.push({ tenant: "t1", status: "published", updatedAt: tick() });
-    jobs.push({ tenant: "t1", status: "failed", updatedAt: tick() });
+    jobs.push({ tenant: "t1", status: "failed", createdAt: tick() });
+    jobs.push({ tenant: "t1", status: "published", createdAt: tick() });
+    jobs.push({ tenant: "t1", status: "failed", createdAt: tick() });
     await expect(pass("journal")).resolves.toMatchObject({ design: "journal" });
     await expect(pass("voyage")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
   });

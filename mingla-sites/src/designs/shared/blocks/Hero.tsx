@@ -5,7 +5,7 @@ import { RichText } from "../../../components/v2/RichText";
 import { SiteSearchForm } from "../../../components/PreviewLinks";
 import { playableVideoUrl } from "../../../lib/siteVideo";
 import { hrefForPage, sitePages } from "../../../lib/pageRouting";
-import { HeroBookingBar, HeroRating, heroTarget } from "./Booking";
+import { HeroBookingBar, HeroFacts, HeroRating, heroTarget } from "./Booking";
 import { ActionButton, Arrow, Blk, HeadlineLines, Label, Photo, rows, sectionId, text, type SharedBlockProps, type SharedContext } from "../parts";
 
 /*
@@ -83,6 +83,7 @@ export function HeroFullbleed({ block, index, ctx }: SharedBlockProps) {
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}
             <HeroButtons ctas={p.ctas} />
             <HeroRating block={block} ctx={ctx} />
+            <HeroFacts block={block} />
             {p.search ? <TripSearch action={p.search} id={id} /> : p.target ? <HeroBookingBar target={p.target} id={id} language={ctx.artifact.language} /> : null}
           </div>
         </div>
@@ -107,6 +108,7 @@ export function HeroEditorial({ block, index, ctx }: SharedBlockProps) {
           {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : <span />}
           <HeroButtons ctas={p.ctas} />
             <HeroRating block={block} ctx={ctx} />
+            <HeroFacts block={block} />
         </div>
         {p.search || p.target ? <div className="mg-hero-ed__bk">{p.search ? <TripSearch action={p.search} id={id} /> : p.target ? <HeroBookingBar target={p.target} id={id} language={ctx.artifact.language} /> : null}</div> : null}
       </div>
@@ -129,6 +131,7 @@ export function HeroArch({ block, index, ctx }: SharedBlockProps) {
             {p.subheading ? <p className="mg-lede" data-mg-in="">{p.subheading}</p> : null}
             <HeroButtons ctas={p.ctas} />
             <HeroRating block={block} ctx={ctx} />
+            <HeroFacts block={block} />
           </div>
         </div>
         <div className="mg-hero-arch__arch" data-mg-arch="">

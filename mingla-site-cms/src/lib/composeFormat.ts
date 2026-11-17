@@ -39,7 +39,8 @@ import {
   type FormatSection,
 } from "../contracts/generated/formats.ts";
 import { sectionEligibility, type ContentInventory, type SectionReason } from "../contracts/generated/sectionSources.ts";
-import { compositionHeader, compositionVariant, DESIGNS, type DesignKey } from "../contracts/generated/designs.ts";
+import { DEFAULT_SITE_ROUTES } from "../contracts/generated/routes.ts";
+import { compositionHeader, compositionVariant, DESIGNS, HERO_LAYOUTS_WITH_FACTS, type DesignKey } from "../contracts/generated/designs.ts";
 import { isBlockType } from "../contracts/generated/blocks.ts";
 import { mainActionPage, tickerPhrases, type FaqItem, type ProcessStep, type QuickFacts, type ValuePoint } from "../contracts/generated/sitePlan.ts";
 import { lexicalParagraphs, type ComposeBrand, type ComposedBlock, type ComposeExistingPage } from "./composeFromPlan";
@@ -88,6 +89,9 @@ export type ComposeV2Page = {
   blocks: ComposedBlock[];
 };
 
+/** #4453 milestone 7b — the detail-page kinds a listing page can be the base of. */
+export type DetailKind = "trips" | "events" | "experiences";
+
 export type ComposeV2Skip = { page: string; type: string; reason: SectionReason | "NO_SOURCE" };
 
 export type ComposeV2Result = {
@@ -110,6 +114,8 @@ export type ComposeV2Result = {
   skipped: ComposeV2Skip[];
   left_out_pages: Array<{ key: string; reason: "NO_ELIGIBLE_SECTIONS" }>;
   fingerprint: DesignFingerprint & { format: FormatKey };
+  /** #4453 milestone 7b — detail-page bases this composition sets (only kinds the site may move). */
+  routes: Partial<Record<DetailKind, string>>;
 };
 
 export type ComposeV2Input = {
@@ -125,6 +131,13 @@ export type ComposeV2Input = {
   replaceDrafts?: boolean;
   fonts?: { display?: string | null; body?: string | null } | null;
   colors?: { primary?: string | null; accent?: string | null } | null;
+  /**
+   * #4453 milestone 7b (v2.1 §1.2) — the site's stored detail bases and
+   * whether composer v2 may move them (Ari's pass on a site that never
+   * published). Absent: no base is moved; a listing page is a listing
+   * (collection_index) only where its slug already is its kind's base.
+   */
+  routes?: { stored: Readonly<Partial<Record<DetailKind, string | null>>>; canMove: boolean } | null;
 };
 
 /** Mingla's own section headings (never a fact). */
@@ -142,6 +155,8 @@ const HEADING: Readonly<Record<string, string>> = {
   ticket_tiers: "Tickets",
   newsletter_signup: "Hear about new dates first",
   contact_details: "Get in touch",
+  facts_table: "Good to know",
+  page_links: "Keep exploring",
 };
 const GRID_HEADING: Readonly<Record<string, string>> = {
   trip: "Upcoming trips",
@@ -224,6 +239,11 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
       for (const extra of section.extras ?? []) {
         if (extra === "show_rating" && eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
         if (extra === "show_search" && eligible(ctx, section, { show_search: true }) === null) block.show_search = true;
+        // #4453 milestone 7b — the owner's own Quick facts (Q8), verbatim, on hero layouts that draw them.
+        if (extra === "fact_badge" && eligible(ctx, section, { fact_badge: true }) === null && variant && HERO_LAYOUTS_WITH_FACTS.includes(variant)) {
+          const badges = (answers.quick_facts?.facts ?? []).filter((fact) => fact.big.trim() && fact.small.trim()).slice(0, 3).map((fact) => ({ big: fact.big.trim(), small: fact.small.trim() }));
+          if (badges.length) block.fact_badges = badges;
+        }
         if (extra === "booking_bar" && eligible(ctx, section, { booking_bar: true }) === null) {
           const bar = heroBookingBar(ctx);
           if (bar) Object.assign(block, bar);
@@ -335,6 +355,14 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
       return { blockType: "newsletter_signup", heading: HEADING.newsletter_signup, button_label: "Sign up" };
     case "cta":
       return ctaFor(ctx, section, pageKey);
+    // #4453 milestone 7b — the owner's facts (Q8: the small line names it, the big line is the detail), verbatim.
+    case "facts_table": {
+      const items = (answers.quick_facts?.facts ?? []).filter((fact) => fact.big.trim() && fact.small.trim()).slice(0, 8).map((fact) => ({ label: fact.small.trim(), value: fact.big.trim() }));
+      return items.length ? withVariant({ blockType: "facts_table", heading: HEADING.facts_table, items }) : null;
+    }
+    // "Keep exploring": the builder fills the pages from the menu at publish.
+    case "page_links":
+      return withVariant({ blockType: "page_links", heading: HEADING.page_links, mode: section.options?.links === "teaser" ? "teaser" : "next" });
     default:
       return null;
   }
@@ -378,7 +406,10 @@ function ctaFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBloc
 function placeSections(ctx: Ctx, sections: readonly FormatSection[], pageKey: string): ComposedBlock[] {
   const blocks: ComposedBlock[] = [];
   for (const section of sections) {
-    const reason = eligible(ctx, section);
+    // "Keep exploring" needs at least 2 OTHER placed pages to link to.
+    const reason = section.type === "page_links"
+      ? eligible(ctx, section, { other_pages: ctx.placedSlugs.size - (ctx.placedSlugs.has(pageSlugOf(pageKey)) ? 1 : 0) })
+      : eligible(ctx, section);
     if (reason) {
       ctx.skipped.push({ page: pageKey, type: section.type, reason });
       continue;
@@ -395,17 +426,23 @@ function placeSections(ctx: Ctx, sections: readonly FormatSection[], pageKey: st
 
 /** Whether a page has at least one placeable section (cta and forms alone do not make a page). */
 function pageHasContent(ctx: Ctx, entry: FormatPage): boolean {
-  const filler = new Set(["cta", "contact_form", "newsletter_signup", "page_header"]);
+  const filler = new Set(["cta", "contact_form", "newsletter_signup", "page_header", "page_links"]);
   return entry.sections.some((section) => !filler.has(section.type) && eligible(ctx, section) === null && blockFor(ctx, section, entry.key) !== null);
 }
 
-function toPage(entry: FormatPage, blocks: ComposedBlock[]): ComposeV2Page {
+/** The page's address segment from its key ("home" is the site root). */
+function pageSlugOf(key: string): string {
+  return key === "home" ? "" : key;
+}
+
+function toPage(entry: FormatPage, blocks: ComposedBlock[], listing: boolean): ComposeV2Page {
   return {
     key: entry.key,
     slug: entry.slug,
     title: entry.label,
-    kind: entry.kind,
-    ...(entry.collection ? { collection_kind: entry.collection, planned_offering: entry.collection } : {}),
+    // #4453 milestone 7b — a listing page lists its kind (and is its detail base) only where that base is its slug.
+    kind: listing ? "collection_index" : "standard",
+    ...(listing && entry.collection ? { collection_kind: entry.collection, planned_offering: entry.collection } : {}),
     ...(entry.planned ? { planned: entry.planned } : {}),
     blocks: [{ blockType: "page_header", heading: entry.label }, ...blocks],
   };
@@ -443,6 +480,23 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
     }
   }
 
+  // ── Detail bases (v2.1 §1.2): a listing page is its kind's base only where it may be ──
+  const routes: Partial<Record<DetailKind, string>> = {};
+  const listingOf = (entry: FormatPage): boolean => {
+    const kind = entry.collection;
+    if (!kind) return false;
+    const stored = clean(input.routes?.stored[kind] ?? null, 60);
+    if (routes[kind] !== undefined) return routes[kind] === entry.slug;
+    if ((stored ?? DEFAULT_SITE_ROUTES[kind]) === entry.slug) return true;
+    // Moved only on a site that never published, where the owner left the base empty.
+    if (input.routes?.canMove === true && stored === null) {
+      routes[kind] = entry.slug;
+      return true;
+    }
+    return false;
+  };
+  const listingSlugs = new Set(placedEntries.filter(listingOf).map((entry) => entry.slug));
+
   // ── Home ────────────────────────────────────────────────────────────────
   const recipe = FORMAT_RECIPES[format];
   const homeBlocks = placeSections(ctx, recipe, "home");
@@ -463,7 +517,7 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
   // ── The page set ────────────────────────────────────────────────────────
   const inner = placedEntries.map((entry) => {
     const owner = secondaryEntries.includes(entry) ? secondary.find((other) => FORMAT_PAGE_SETS[other].includes(entry)) ?? format : format;
-    return toPage(entry, placeSections({ ...ctx, format: owner }, entry.sections, entry.key));
+    return toPage(entry, placeSections({ ...ctx, format: owner }, entry.sections, entry.key), listingSlugs.has(entry.slug));
   });
   const pages = [home, ...inner];
 
@@ -520,6 +574,7 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
     skipped: ctx.skipped,
     left_out_pages: leftOut,
     fingerprint,
+    routes,
   };
 }
 

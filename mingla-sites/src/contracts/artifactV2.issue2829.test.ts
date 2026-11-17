@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { assertRestaurantArtifact } from "./artifact";
 import { assertArtifactV2, MAX_ARTIFACT_BYTES, type ArtifactV2 } from "./generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "./generated/upgradeV1ToV2.ts";
-import { BLOCK_TYPES, BOOKING_BLOCK_NEW_TYPES } from "./generated/blocks.ts";
+import { BLOCK_TYPES, BOOKING_BLOCK_NEW_TYPES, PAGE_SET_BLOCK_TYPES } from "./generated/blocks.ts";
 import { NEUTRAL_BLOCK_TYPES } from "./generated/designs.ts";
 import { blockSchema, blocksSchema, tokenOverridesSchema } from "./generated/ariToolSchemas.ts";
 import { FX, FX_SITE, fixtureMedia, gogiV1Fixture } from "./gogiV1.fixture";
@@ -187,7 +187,8 @@ describe("#2829 Ari tool schemas come from the catalogue", () => {
     // #2829 W9b — provider-safe keywords: `anyOf` and one-value `enum`, never `oneOf`/`const`.
     const schemas = (blocksSchema("atelier").anyOf as Array<Record<string, any>>);
     // #4453 milestone 5 — every type Ari is offered (the live booking blocks wait for milestone 7, #3355).
-    expect(schemas.map((schema) => schema.properties.type.enum[0])).toEqual(BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type)));
+    // #4453 milestone 7b — nor the page-set blocks (composer v2 places them on the design pass only).
+    expect(schemas.map((schema) => schema.properties.type.enum[0])).toEqual(BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type) && !PAGE_SET_BLOCK_TYPES.includes(type)));
     expect(blockSchema("hero", "atelier").properties).toMatchObject({ variant: { enum: ["atelier"] } });
     const text = JSON.stringify(blocksSchema("atelier")) + JSON.stringify(tokenOverridesSchema());
     expect(text).not.toMatch(/"(html|css|style|script|className)"/i);

@@ -124,6 +124,15 @@ SELECT pg_temp.p_assert(
   AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips","home":[],"fonts":[]}'::jsonb)
   AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips","home":[],"colors":true}'::jsonb),
   'T-4h wrongly typed home items, header, hero, fonts or colors are refused');
+-- T-4h2 (retest P3-1) a fingerprint MISSING design, format or home is refused, and '{}' never wipes the stored look.
+SELECT pg_temp.p_assert(
+  NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","home":[]}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"format":"trips","home":[]}'::jsonb)
+  AND NOT public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001', '{"design":"voyage","format":"trips"}'::jsonb)
+  AND (SELECT design_fingerprint = '{"design":"voyage","format":"trips","home":["hero:fullbleed"]}'::jsonb
+       FROM public.brand_sites WHERE id = '00000000-0000-4000-8000-0000000c0001'),
+  'T-4h2 a fingerprint missing design, format or home (or empty) is refused and the stored one is unchanged');
 SELECT pg_temp.p_assert(
   public.brand_site_record_fingerprint('00000000-0000-4000-8000-0000000c0001',
     '{"design":"voyage","format":"trips","header":null,"hero":"split","home":["hero:split"],"fonts":"A|B","colors":"h1l1/none"}'::jsonb),

@@ -182,6 +182,14 @@ describe("#4453 the Studio field and its migration", () => {
         }
         continue;
       }
+      // #4453 milestone 7b — the page-set blocks' tables are created WITH the column.
+      if (["page_links", "facts_table"].includes(config.slug)) {
+        const pageSet = readFileSync(path.resolve(__dirname, "../migrations/20261117_100000_issue_4453_page_set_blocks.ts"), "utf8");
+        for (const table of [`pages_blocks_${config.slug}`, `_pages_v_blocks_${config.slug}`]) {
+          expect(pageSet, table).toMatch(new RegExp(`CREATE TABLE "sites_cms"\\."${table}" \\([^;]*"review" jsonb`));
+        }
+        continue;
+      }
       expect(sql, config.slug).toContain(`"pages_blocks_${config.slug}" ADD COLUMN IF NOT EXISTS "review" jsonb`);
       expect(sql, config.slug).toContain(`"_pages_v_blocks_${config.slug}" ADD COLUMN IF NOT EXISTS "review" jsonb`);
     }

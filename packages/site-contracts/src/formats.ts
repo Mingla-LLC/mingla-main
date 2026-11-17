@@ -145,8 +145,8 @@ const s = (type: BlockType, options?: SectionOptions, extras?: readonly SectionE
 
 /**
  * v2 §4.2 — each format's Home, in order. A section is placed only when
- * eligible (§6.4); v2.1 §1.1's `page_links` teaser joins before
- * `newsletter_signup` once that block type exists.
+ * eligible (§6.4); v2.1 §1.1's `page_links` teaser sits before
+ * `newsletter_signup` (milestone 7b).
  */
 export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]>> = {
   restaurants: [
@@ -160,6 +160,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
     s("testimonials", { from_collection: true }),
     s("hours_location"),
     s("faq"),
+    s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
   hotels: [
@@ -173,6 +174,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
     s("testimonials", { from_collection: true }),
     s("hours_location", undefined, undefined, "arrival"),
     s("faq"),
+    s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
   play: [
@@ -186,6 +188,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
     s("testimonials", { from_collection: true }),
     s("hours_location"),
     s("faq"),
+    s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
   art: [
@@ -199,6 +202,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
     s("testimonials", { from_collection: true }),
     s("hours_location"),
     s("faq"),
+    s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
   trips: [
@@ -212,6 +216,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
     s("testimonials", { from_collection: true }),
     s("story_grid"),
     s("faq"),
+    s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
   events: [
@@ -223,6 +228,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
     s("offering_history", undefined, undefined, "past nights"),
     s("testimonials", { from_collection: true }),
     s("faq"),
+    s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
   experiences: [
@@ -236,6 +242,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
     s("gallery"),
     s("testimonials", { from_collection: true }),
     s("faq"),
+    s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
 };
@@ -262,20 +269,23 @@ export type FormatPage = {
   readonly listing?: boolean;
 };
 
+/** v2.1 §1.1 — every inner (menu) page ends with "Keep exploring": the next pages in menu order. */
+const NEXT_PAGES = s("page_links", { links: "next" });
+
 const page = (
   key: string,
   label: string,
   sections: readonly FormatSection[],
   more: Partial<Pick<FormatPage, "kind" | "collection" | "planned" | "listing" | "slug">> = {},
-): FormatPage => ({ key, slug: more.slug ?? key, label, kind: more.kind ?? "standard", sections, ...more });
+): FormatPage => ({ key, slug: more.slug ?? key, label, kind: more.kind ?? "standard", sections: [...sections, NEXT_PAGES], ...more });
 
 const REQUEST = s("cta", undefined, undefined, "a question to the brand, never a booking");
 
 /**
  * v2.1 §1.1 — each format's menu pages, in order. Every inner page starts with
- * `page_header`. [TRANSITIONAL] `page_links` and `facts_table` are not in the
- * block catalogue yet (v2.1 PR 4 rows not built) — exit: those block types
- * land; they then join here (page_links last on every inner page).
+ * `page_header` and ends with `page_links` (milestone 7b). A listing page with
+ * a `collection` lists that kind; composer v2 makes it the kind's detail base
+ * (`/{slug}/{offering}`) when it may set that base (FORMAT_DETAIL_BASES).
  */
 export const FORMAT_PAGE_SETS: Readonly<Record<FormatKey, readonly FormatPage[]>> = {
   restaurants: [
@@ -287,21 +297,21 @@ export const FORMAT_PAGE_SETS: Readonly<Record<FormatKey, readonly FormatPage[]>
   ],
   hotels: [
     page("rooms", "Rooms", [s("offering_grid", { kind: "stay", mode: "upcoming" }), s("feature_cards"), s("testimonials", { from_collection: true })], { planned: "rooms", listing: true }),
-    page("rates", "Rates", [s("availability", { source: "stay_nights" }), s("faq")]),
+    page("rates", "Rates", [s("availability", { source: "stay_nights" }), s("facts_table"), s("faq")]),
     page("experiences", "Experiences", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("gallery")], { kind: "collection_index", collection: "experiences" }),
     page("the-area", "The area", [s("feature_cards"), s("hours_location")]),
     page("about", "About", [s("rich_text", { page: "about" }), s("testimonials", { from_collection: true }), s("newsletter_signup")]),
     page("contact", "Contact", [s("contact_details"), s("contact_form"), s("faq")]),
   ],
   play: [
-    page("play", "Play", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("feature_cards"), s("offering_history")], { planned: "visit", listing: true }),
+    page("play", "Play", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("feature_cards"), s("offering_history")], { planned: "visit", listing: true, collection: "experiences" }),
     page("times", "Times & prices", [s("availability", { source: "experience" }), s("menu_board"), s("faq")]),
     page("parties", "Parties", [s("feature_cards"), s("offering_grid", { kind: "experience", mode: "upcoming" }), s("testimonials", { from_collection: true }), REQUEST]),
     page("visit", "Visit", [s("hours_location"), s("contact_details"), s("faq"), s("newsletter_signup")]),
   ],
   art: [
-    page("exhibitions", "Exhibitions", [s("offering_grid", { kind: "event", mode: "upcoming" }), s("gallery"), s("offering_history")], { planned: "visit", listing: true }),
-    page("workshops", "Workshops", [s("process_steps"), s("offering_grid", { kind: "experience", mode: "upcoming" }), s("testimonials", { from_collection: true })]),
+    page("exhibitions", "Exhibitions", [s("offering_grid", { kind: "event", mode: "upcoming" }), s("gallery"), s("offering_history")], { planned: "visit", listing: true, collection: "events" }),
+    page("workshops", "Workshops", [s("process_steps"), s("offering_grid", { kind: "experience", mode: "upcoming" }), s("testimonials", { from_collection: true })], { collection: "experiences" }),
     page("visit", "Visit", [s("availability", { source: "event" }), s("hours_location"), s("faq")]),
     page("about", "About", [s("rich_text", { page: "about" }), s("feature_cards"), s("newsletter_signup")]),
   ],
@@ -310,7 +320,7 @@ export const FORMAT_PAGE_SETS: Readonly<Record<FormatKey, readonly FormatPage[]>
     page("destinations", "Destinations", [s("destination_grid"), s("offering_history")]),
     page("stories", "Stories", [s("story_grid"), s("testimonials", { from_collection: true }), s("newsletter_signup")]),
     page("about", "About", [s("feature_cards"), s("rich_text", { page: "about" }), s("offering_history")]),
-    page("faq", "FAQ", [s("faq")]),
+    page("faq", "FAQ", [s("faq"), s("facts_table")]),
   ],
   events: [
     page("events", "Events", [s("offering_grid", { kind: "event", mode: "upcoming" }), s("offering_history")], { kind: "collection_index", collection: "events", planned: "events", listing: true }),
@@ -319,11 +329,28 @@ export const FORMAT_PAGE_SETS: Readonly<Record<FormatKey, readonly FormatPage[]>
     page("about", "About", [s("rich_text", { page: "about" }), s("feature_cards"), s("newsletter_signup")]),
   ],
   experiences: [
-    page("sessions", "Sessions", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("process_steps")], { planned: "experiences", listing: true }),
+    page("sessions", "Sessions", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("process_steps")], { planned: "experiences", listing: true, collection: "experiences" }),
     page("book-a-session", "Book", [s("availability", { source: "experience" }), s("faq")]),
-    page("visit", "Visit", [s("destination_grid"), s("hours_location")]),
+    page("visit", "Visit", [s("destination_grid"), s("hours_location"), s("facts_table")]),
     page("about", "About", [s("rich_text", { page: "about" }), s("gallery"), s("testimonials", { from_collection: true })]),
   ],
+};
+
+/**
+ * v2.1 §1.2 — the detail-page base each format's listing pages want, per
+ * offering kind (restaurants keep `events`; hotels keep `rooms` and
+ * `experiences`; trips and events keep theirs). Composer v2 sets a base only
+ * where the site may move it (never published, and the owner left it empty);
+ * otherwise the listing page stays a standard page and the base is untouched.
+ */
+export const FORMAT_DETAIL_BASES: Readonly<Record<FormatKey, Readonly<Partial<Record<"trips" | "events" | "experiences", string>>>>> = {
+  restaurants: { events: "events" },
+  hotels: { experiences: "experiences" },
+  play: { experiences: "play" },
+  art: { events: "exhibitions", experiences: "workshops" },
+  trips: { trips: "trips" },
+  events: { events: "events" },
+  experiences: { experiences: "sessions" },
 };
 
 /* ───────────────────────── style fit (v2 §6.3 + v2.1 §2.4, N4) ───────────────────────── */
