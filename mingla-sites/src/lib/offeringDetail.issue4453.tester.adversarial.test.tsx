@@ -198,3 +198,96 @@ describe("#4453 M9 tester: ended pages, JSON-LD and the Book action", () => {
     if (resolved?.kind === "detail") expect(detailAction(artifactFor(), resolved.detail)).toBeNull();
   });
 });
+
+/*
+ * #4453 M9 retest (tester, after rework c97f3a5ff1): the Book action is scoped
+ * to THIS brand. Every case runs on an artifact that names its brand, so it
+ * fails if detailAction stops passing artifactActionScope(artifact).
+ */
+describe("#4453 M9 retest: Book only to this brand's own Mingla route", () => {
+  function scoped(slug = "fixture-brand"): ArtifactV2 {
+    const artifact = artifactFor();
+    artifact.action_scope = { brand_slug: slug };
+    return artifact;
+  }
+  async function actionFor(url: string, artifact = scoped()) {
+    feed.offerings = [{ ...trip, public_url: url }];
+    const view = await detailView("trips/island-week", artifact);
+    return detailAction(artifact, view);
+  }
+
+  it("this brand's own trip and room routes still get Book", async () => {
+    expect(await actionFor(trip.public_url)).toEqual({ href: trip.public_url, label: "Book this trip" });
+    // The same brand spelled in capitals is still this brand (slugs compare case-insensitively).
+    expect((await actionFor("https://host.usemingla.com/t/FIXTURE-BRAND/island-week"))?.label).toBe("Book this trip");
+  });
+
+  it.each([
+    ["another brand", "https://host.usemingla.com/t/rival-brand/island-week"],
+    ["another brand in capitals", "https://host.usemingla.com/t/RIVAL-BRAND/island-week"],
+    ["a longer slug that starts with this one", "https://host.usemingla.com/t/fixture-brand-evil/island-week"],
+    ["a shorter slug this one starts with", "https://host.usemingla.com/t/fixture/island-week"],
+    ["an encoded slash in the brand", "https://host.usemingla.com/t/fixture-brand%2Frival-brand/island-week"],
+    ["an encoded slash before this brand", "https://host.usemingla.com/t/rival-brand%2F..%2Ffixture-brand/island-week"],
+    ["a dot segment out of this brand", "https://host.usemingla.com/t/fixture-brand/../../t/rival-brand/island-week"],
+    ["an encoded dot segment", "https://host.usemingla.com/t/fixture-brand/%2e%2e/%2e%2e/e/rival-brand/x"],
+    ["another brand's room", `https://host.usemingla.com/b/rival-brand/v/lagoon?tab=stay&room=${ROOM_ID}`],
+    ["another brand's page", "https://host.usemingla.com/b/rival-brand"],
+    ["the marketing host", "https://usemingla.com/t/fixture-brand/island-week"],
+    ["the admin host", "https://admin.usemingla.com/t/fixture-brand/island-week"],
+    ["a business host", "https://business.usemingla.com/t/fixture-brand/island-week"],
+    ["a trailing-dot host", "https://host.usemingla.com./t/fixture-brand/island-week"],
+    ["a non-default port", "https://host.usemingla.com:8443/t/fixture-brand/island-week"],
+    ["userinfo hiding another host", "https://host.usemingla.com@evil.example/t/fixture-brand/island-week"],
+    ["plain http", "http://host.usemingla.com/t/fixture-brand/island-week"],
+    ["a checkout for an event this site does not sell", "https://host.usemingla.com/checkout/cccccccc-cccc-4ccc-8ccc-000000000001"],
+  ])("%s gets no Book action", async (_label, url) => {
+    expect(await actionFor(url)).toBeNull();
+  });
+
+  it("the rendered page carries no link to another brand's route", async () => {
+    const artifact = scoped();
+    feed.offerings = [{ ...trip, public_url: "https://host.usemingla.com/t/rival-brand/island-week" }];
+    const html = renderToStaticMarkup(
+      <SiteDocument artifact={artifact} detail={await detailView("trips/island-week", artifact)} page={await framePage("trips/island-week", artifact)} />,
+    );
+    expect(html).not.toContain("rival-brand");
+    expect(html).not.toContain("Book this trip");
+  });
+
+  it("a site for the rival brand refuses this brand's route the same way", async () => {
+    expect(await actionFor(trip.public_url, scoped("rival-brand"))).toBeNull();
+  });
+});
+
+describe("#4453 M9 retest: an Event's JSON-LD location is real data or nothing", () => {
+  function withAddress(address: string | undefined): ArtifactV2 {
+    const artifact = artifactFor();
+    artifact.footer = { ...artifact.footer, address };
+    return artifact;
+  }
+
+  it("a blank destination falls back to the site address; blank both leaves location out", async () => {
+    feed.offerings = [{ ...event, destination_text: "   " }];
+    const view = await detailView("events/harbourside");
+    const site = withAddress("  12 Marina Road, Lagos  ");
+    expect(detailItem(site, view, "https://example.test")?.location).toEqual({ "@type": "Place", name: site.brand.display_name, address: "12 Marina Road, Lagos" });
+    const item = detailItem(withAddress("   "), view, "https://example.test");
+    expect(item?.["@type"]).toBe("Event");
+    expect(item).not.toHaveProperty("location");
+  });
+
+  it("no detail or listing JSON-LD ever emits VirtualLocation or a location the data does not hold", async () => {
+    feed.offerings = [{ ...event, destination_text: null }, { ...undatedSession, start_at: event.start_at, destination_text: null }];
+    for (const address of [undefined, "12 Marina Road, Lagos"]) {
+      const artifact = withAddress(address);
+      for (const path of ["events/harbourside", "experiences/pottery"]) {
+        const view = await detailView(path, artifact);
+        const json = JSON.stringify(pageStructuredData({ artifact, page: await framePage(path, artifact), origin: "https://example.test", detail: view }));
+        expect(json).not.toContain("VirtualLocation");
+        expect(json).not.toContain("Lofoten");
+        if (!address) expect(json).not.toMatch(/"location"/);
+      }
+    }
+  });
+});
