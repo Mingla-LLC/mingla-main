@@ -11,6 +11,7 @@ import {
   type PreviewDevicePreference,
 } from "../../../../sites/previewDevice";
 import { previewFrameSource } from "../../../../sites/previewFrame";
+import { useSitePages } from "../../../../sites/contentApi";
 import { Chip, Hint, MiniButton, Segmented, Skeleton, WButton, ui } from "../ui";
 import { ScaledPreviewFrame } from "./ScaledPreviewFrame";
 
@@ -50,7 +51,39 @@ export type PreviewGrantState =
   | { kind: "nodraft" }
   | { kind: "loading" }
   | { kind: "error"; onRetry: () => void }
-  | { kind: "ready"; previewUrl: string; siteId: string; pages: readonly { path: string; title: string }[] };
+  | { kind: "ready"; previewUrl: string; siteId: string; pages: readonly { path: string; title: string; draft_by_ari?: true }[] };
+
+/**
+ * #4453 m11 rework (spec v2.1 §3.2, SC-AP2) — Ari's questions on a Draft page,
+ * drawn by the EDITOR over its preview frame. They come from the owner's own
+ * Pages data (Core's content route), never from the preview artifact, so no
+ * preview, share link or published site can carry them.
+ */
+export function AriDraftPreviewOverlay({ siteId, path }: { siteId: string; path: string }): React.ReactElement | null {
+  const pages = useSitePages(siteId);
+  const row = (pages.data?.pages ?? []).find((page) => page.path === path && page.origin === "ari" && page.ari_draft === true);
+  if (!row) return null;
+  const questions = row.owner_questions ?? [];
+  return (
+    <View style={styles.overlay} pointerEvents="box-none" testID="preview-ari-overlay">
+      <View style={styles.overlayCard}>
+        <View style={styles.labelRow}>
+          <Chip label="Draft · by Ari" />
+          <Text style={styles.overlayLine}>hidden from visitors</Text>
+        </View>
+        {questions.length ? (
+          <>
+            <Text style={styles.overlayTitle} role="heading" aria-level={3}>Ari needs this</Text>
+            <Text style={styles.overlayLine}>Only you see these questions. Anything you leave blank stays hidden from visitors.</Text>
+            {questions.map((question) => (
+              <Text key={question.key} style={styles.overlayQuestion} testID={`preview-ari-question-${question.key}`}>{`• ${question.question}`}</Text>
+            ))}
+          </>
+        ) : null}
+      </View>
+    </View>
+  );
+}
 
 export function SitePreviewPanel({ grant, preference, onPreference, purpose, unsaved, tokenDeclarations, onOpenFullScreen, variant = "side" }: {
   grant: PreviewGrantState;
@@ -94,7 +127,7 @@ export function SitePreviewPanel({ grant, preference, onPreference, purpose, uns
           <Segmented
             label="Preview page"
             compact
-            options={pages.map((page) => ({ value: page.path || "/", label: page.path ? page.title : "Home" }))}
+            options={pages.map((page) => ({ value: page.path || "/", label: page.path ? page.title : "Home", ...(page.draft_by_ari ? { tag: "Draft" } : {}) }))}
             value={path || "/"}
             onChange={(next) => setPath(next === "/" ? "" : next)}
             testIDPrefix="preview-page"
@@ -111,13 +144,19 @@ export function SitePreviewPanel({ grant, preference, onPreference, purpose, uns
           <WButton label="Try again" size="sm" onPress={grant.onRetry} testID="preview-retry" />
         </View>
       ) : (
-        <ScaledPreviewFrame
-          url={previewFrameSource(grant.previewUrl, grant.siteId, path, frameOrigin)}
-          preference={preference}
-          maxHeight={variant === "sheet" ? 560 : 520}
-          fill={variant === "full"}
-          tokenDeclarations={tokenDeclarations}
-        />
+        <View style={[styles.frameStage, variant === "full" ? styles.fullBody : null]}>
+          <ScaledPreviewFrame
+            url={previewFrameSource(grant.previewUrl, grant.siteId, path, frameOrigin)}
+            preference={preference}
+            maxHeight={variant === "sheet" ? 560 : 520}
+            fill={variant === "full"}
+            tokenDeclarations={tokenDeclarations}
+          />
+          {/* #4453 m11 rework — a Draft page from Ari: the owner-only questions, over the frame. */}
+          {grant.pages.some((page) => page.draft_by_ari === true && page.path === path) ? (
+            <AriDraftPreviewOverlay siteId={grant.siteId} path={path} />
+          ) : null}
+        </View>
       )}
       {variant !== "full" ? (
         <Text style={styles.caption}>Scaled to fit. Your choice of size is remembered. Only your team sees the draft.</Text>
@@ -140,4 +179,10 @@ const styles = StyleSheet.create({
   errorStage: { minHeight: 200, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.02)" },
   errorTitle: { fontSize: 14, fontWeight: "600", color: ui.t1 },
   fullBody: { flex: 1 },
+  frameStage: { position: "relative" },
+  overlay: { position: "absolute", left: 12, right: 12, top: 12, alignItems: "flex-start" },
+  overlayCard: { maxWidth: 420, gap: 6, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: ui.border2, backgroundColor: "rgba(22,24,28,0.94)" },
+  overlayTitle: { fontSize: 14, fontWeight: "700", color: ui.t1, marginTop: 4 },
+  overlayLine: { fontSize: 12, lineHeight: 16, color: ui.t3 },
+  overlayQuestion: { fontSize: 13, lineHeight: 18, color: ui.t1 },
 });

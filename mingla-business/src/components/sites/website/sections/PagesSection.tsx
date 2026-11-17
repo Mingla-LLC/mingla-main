@@ -18,6 +18,7 @@ import { useComposeBrandSiteFromPlan, useSaveBrandSitePlan } from "../../../../s
 import { PLAN_OFFERING_OPTIONS } from "../../../../../../packages/site-contracts/src/sitePlan.ts";
 import { ARI_PAGE_CHIPS, ARI_PAGE_LIMITS, ariPagePrompt } from "../../../../../../packages/site-contracts/src/ariPage.ts";
 import { useAriSeedStore } from "../../../../store/ariSeedStore";
+import { useWebEscapeClose } from "../../../ui/useWebEscapeClose";
 
 const OFFERING_KIND_WORDS: Record<string, { plural: string; kind: string }> = {
   trips: { plural: "trips", kind: "trip" },
@@ -176,7 +177,7 @@ export function PagesSection(): React.ReactElement {
           </ListBox>
           {/* #4453 milestone 11 — Draft pages from Ari: the owner-only questions, Publish this page and Remove. */}
           {rows.filter((row) => row.origin === "ari" && row.ari_draft).map((row) => (
-            <AriDraftPageCard key={`ari-${row.id}`} row={row} readOnly={readOnly} />
+            <AriDraftPageCard key={`ari-${row.id}`} row={row} readOnly={readOnly} ariAddPage={ariAddPage} />
           ))}
           {pages.data && pages.data.footer_links.length > 0 ? (
             <>
@@ -212,6 +213,8 @@ function AddPageDialog({ visible, onClose }: { visible: boolean; onClose: () => 
   const options = PLAN_OFFERING_OPTIONS.filter((option) => !option.venue && !ticked.has(option.key));
   const canAdd = plan?.canManage === true;
   const busy = save.isPending || compose.isPending;
+  // #4453 m11 rework (tester P3-4) — Escape closes it on web.
+  useWebEscapeClose(visible, onClose);
   const add = (key: string, label: string) => {
     if (!plan) return;
     save.mutate({ revision: plan.plan?.revision ?? 0, patch: { offerings_selected: [...ticked, key] } }, {
@@ -263,6 +266,7 @@ function AskAriForPageSheet({ visible, onClose }: { visible: boolean; onClose: (
   const ctx = useWebsite();
   const router = useRouter();
   const [topic, setTopic] = useState("");
+  useWebEscapeClose(visible, onClose);
   const open = (text: string) => {
     useAriSeedStore.getState().setSeed(ariPagePrompt(text));
     setTopic("");
@@ -295,11 +299,12 @@ function AskAriForPageSheet({ visible, onClose }: { visible: boolean; onClose: (
 }
 
 /** #4453 milestone 11 (spec v2.1 §3.2-§3.3) — one Draft page from Ari: its questions, Publish this page, Remove. */
-function AriDraftPageCard({ row, readOnly }: { row: SitePageRow; readOnly: boolean }): React.ReactElement {
+function AriDraftPageCard({ row, readOnly, ariAddPage }: { row: SitePageRow; readOnly: boolean; ariAddPage: boolean }): React.ReactElement {
   const ctx = useWebsite();
   const action = useAriPageAction(ctx.controller.siteId);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<"publish" | "remove" | null>(null);
+  useWebEscapeClose(confirming !== null, () => setConfirming(null));
   const questions = row.owner_questions ?? [];
   const fail = (error: unknown, fallback: string) => ctx.toast(error instanceof BrandSitesError ? error.message : fallback, "error");
   const save = (key: string) => {
@@ -344,7 +349,10 @@ function AriDraftPageCard({ row, readOnly }: { row: SitePageRow; readOnly: boole
         <View style={styles.questions} testID={`ari-needs-${row.path}`}>
           <Text style={styles.group} role="heading" aria-level={3}>Ari needs this</Text>
           <Text style={styles.help}>Only you see these questions. Anything you leave blank stays hidden from visitors.</Text>
-          {questions.map((question) => (
+          {/* #4453 m11 rework (tester P3-3) — with "Add a page with Ari" off, Core refuses an answer: the questions are read-only, no Save. */}
+          {!ariAddPage ? questions.map((question) => (
+            <Text key={question.key} style={styles.questionText} testID={`ari-question-${question.key}`}>{question.question}</Text>
+          )) : questions.map((question) => (
             <View key={question.key} style={styles.question}>
               <Field
                 label={question.question}
@@ -393,6 +401,7 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12, marginBottom: 12 },
   questions: { marginTop: 12, gap: 10 },
   question: { gap: 6 },
+  questionText: { fontSize: 13, lineHeight: 18, color: ui.t2 },
   cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", marginTop: 14 },
   grow: { flex: 1, minWidth: 150 },
   handle: { width: 16 },

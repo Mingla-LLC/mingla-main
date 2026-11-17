@@ -58,9 +58,9 @@ const PROPOSAL = {
   request: REQUEST,
   page: { title: "Private hire", menu_label: "Private hire", slug: "private-hire" },
   blocks: [
-    { type: "hero", heading: "Private hire" },
-    { type: "text_image", heading: "Your group, your night" },
-    { type: "contact_form", heading: "Ask about a date" },
+    { type: "page_header", variant: "plain", heading: "Private hire" },
+    { type: "media_feature", variant: "split", heading: "Your group, your night" },
+    { type: "contact_form", variant: "simple", heading: "Ask about a date" },
   ],
   have: [
     { text: "Your trips and their prices on Mingla", source: "mingla_record", ref: "trips" },

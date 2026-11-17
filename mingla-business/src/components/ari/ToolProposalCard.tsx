@@ -69,9 +69,11 @@ import { websiteSetupProposalCopy } from "./websiteSetupProposalCopy";
 import {
   ownerSafeProposalFields,
   readServerPresentation,
+  SITE_PAGE_PLAN_COPY,
   toolProposalOwnerCopy,
 } from "./toolProposalCopy";
 import { BRAND_DELETE_SHARED_COPY } from "../brand/brandDeleteSharedCopy";
+import { SitePagePlanSheet } from "./LazySitePagePlanSheet";
 
 // Premium proposal-card metrics — tighter than the default kit values.
 const CARD_PADDING = ariThread.cardPad; // 12
@@ -969,7 +971,95 @@ const CoverBand: React.FC<CoverBandProps> = ({
   );
 };
 
-export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
+/**
+ * #4453 m11 rework (spec v2.1 §3.1, tester P2-1) — Ari's page plan. The card
+ * names the page; "Add as a Draft" opens the whole plan (every block with its
+ * words or Ari's question, the content Ari has and where it came from, what
+ * Ari still needs), and only the plan's own "Add as a Draft" writes. So the
+ * owner always sees what will be written first. "Ask for something else"
+ * dismisses the proposal.
+ */
+
+function SitePagePlanCard({ args, isExecuting, onConfirm, onCancel }: Pick<ToolProposalCardProps, "args" | "isExecuting" | "onConfirm" | "onCancel">): React.ReactElement {
+  const [planOpen, setPlanOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const page = args.page !== null && typeof args.page === "object" ? (args.page as Record<string, unknown>) : {};
+  const title = typeof page.title === "string" && page.title.trim() ? page.title.trim() : "New page";
+  const add = async (): Promise<void> => {
+    setError(null);
+    try {
+      const outcome = await onConfirm(undefined);
+      if (outcome.ok) setPlanOpen(false);
+      else if (outcome.error && outcome.terminal !== "expired") setError(outcome.error);
+    } catch {
+      setError("Couldn't complete that action — try again.");
+    }
+  };
+  return (
+    <GlassChrome intensity="cardElevated" tintColor={glass.tint.profileElevated} borderColor={ariPalette.proposalBorder} radius="lg" style={styles.card}>
+      <View style={styles.inner} accessibilityRole="summary" testID="site-page-plan-card">
+        <Text style={styles.reviewBoundary}>Review before Ari acts</Text>
+        <View style={styles.headerRow}>
+          <AriOrb size="xs" decorative />
+          <Text style={styles.verb} numberOfLines={1}>{SITE_PAGE_PLAN_COPY.heading.toUpperCase()}</Text>
+        </View>
+        <Text style={styles.identity} numberOfLines={2}>{title}</Text>
+        <View style={styles.assuranceRow}>
+          <Text style={styles.assuranceText}>{`${SITE_PAGE_PLAN_COPY.addedToMenu}.`}</Text>
+        </View>
+        <View style={styles.assuranceRow}>
+          <Text style={styles.assuranceText}>{SITE_PAGE_PLAN_COPY.noGuess}</Text>
+        </View>
+        {error ? <Text style={styles.proposalError} accessibilityRole="alert">{error}</Text> : null}
+        <View style={styles.actions}>
+          <Pressable
+            onPress={onCancel}
+            disabled={isExecuting}
+            hitSlop={{ top: 5, bottom: 5 }}
+            style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, styles.planDismissBtn, pressed && styles.btnPressed, isExecuting && styles.btnDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel={SITE_PAGE_PLAN_COPY.dismiss}
+            testID="site-page-plan-card-dismiss"
+          >
+            <Text style={styles.cancelText}>{SITE_PAGE_PLAN_COPY.dismiss}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setPlanOpen(true)}
+            disabled={isExecuting}
+            hitSlop={{ top: 5, bottom: 5 }}
+            style={({ pressed }) => [styles.actionBtn, styles.confirmBtn, pressed && styles.btnPressed, isExecuting && styles.btnDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel={SITE_PAGE_PLAN_COPY.confirm}
+            testID="site-page-plan-card-open"
+          >
+            <Text style={styles.confirmText}>{isExecuting ? "Working…" : SITE_PAGE_PLAN_COPY.confirm}</Text>
+          </Pressable>
+        </View>
+      </View>
+      <SitePagePlanSheet
+        visible={planOpen}
+        onClose={() => setPlanOpen(false)}
+        args={args}
+        isExecuting={isExecuting}
+        error={error}
+        onAdd={() => void add()}
+        onAskForSomethingElse={() => {
+          setPlanOpen(false);
+          onCancel();
+        }}
+      />
+    </GlassChrome>
+  );
+}
+
+export const ToolProposalCard: React.FC<ToolProposalCardProps> = (props) =>
+  props.toolName === "propose_site_page" ? (
+    <SitePagePlanCard args={props.args} isExecuting={props.isExecuting} onConfirm={props.onConfirm} onCancel={props.onCancel} />
+  ) : (
+    <StandardToolProposalCard {...props} />
+  );
+
+const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
   toolName,
   args,
   isExecuting,
@@ -2271,6 +2361,9 @@ const styles = StyleSheet.create({
   },
   btnPressed: {
     opacity: 0.85,
+  },
+  planDismissBtn: {
+    flex: 1.4,
   },
   btnDisabled: {
     opacity: 0.4,

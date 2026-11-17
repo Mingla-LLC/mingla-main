@@ -183,7 +183,8 @@ export function Toggle({ value, onChange, label, disabled, testID }: {
 
 export function Segmented<T extends string>({ label, options, value, onChange, disabled, compact, testIDPrefix }: {
   label: string;
-  options: readonly { value: T; label: string; icon?: WebsiteIconName }[];
+  /** `tag` (#4453 m11 rework): a small word after the label, such as "Draft". */
+  options: readonly { value: T; label: string; icon?: WebsiteIconName; tag?: string }[];
   value: T | null;
   onChange: (next: T) => void;
   disabled?: boolean;
@@ -203,12 +204,13 @@ export function Segmented<T extends string>({ label, options, value, onChange, d
             accessibilityRole="radio"
             aria-checked={checked}
             accessibilityState={{ checked, disabled: disabled === true }}
-            accessibilityLabel={option.label}
+            accessibilityLabel={option.tag ? `${option.label}, ${option.tag}` : option.label}
             testID={testIDPrefix ? `${testIDPrefix}-${option.value}` : undefined}
             style={[styles.segment, compact ? styles.segmentCompact : null, checked ? styles.segmentOn : null, disabled ? styles.disabled : null]}
           >
             {option.icon ? <WebsiteIcon name={option.icon} size={16} color={checked ? ui.t1 : ui.t2} /> : null}
             <Text style={[styles.segmentText, checked ? styles.segmentTextOn : null]}>{option.label}</Text>
+            {option.tag ? <Text style={styles.segmentTag} testID={testIDPrefix ? `${testIDPrefix}-${option.value}-tag` : undefined}>{option.tag}</Text> : null}
           </Pressable>
         );
       })}
@@ -436,6 +438,7 @@ export const styles = StyleSheet.create({
   segmentOn: { borderColor: ui.accent, backgroundColor: android ? androidOpaque.accentFill : "rgba(235, 120, 37, 0.16)" },
   segmentText: { fontSize: 13, fontWeight: "600", color: ui.t2 },
   segmentTextOn: { color: ui.t1 },
+  segmentTag: { fontSize: 10.5, fontWeight: "700", letterSpacing: 0.4, color: ui.t1, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, borderWidth: 1, borderColor: ui.border2, overflow: "hidden" },
   card: { backgroundColor: ui.card, borderWidth: 1, borderColor: ui.cardBorder, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, overflow: "hidden" },
   cardWarn: { borderColor: "rgba(245, 158, 11, 0.45)" },
   cardTitle: { fontSize: 16, lineHeight: 24, fontWeight: "600", color: ui.t1, marginBottom: 4 },

@@ -734,3 +734,17 @@ export function ownerSafeProposalFields(
   for (const [key, value] of Object.entries(args)) visit(key, value, 0);
   return out;
 }
+
+// #4453 m11 rework (spec v2.1 §3.1) — Ari's page plan card and sheet share these words.
+/** The fixed Mingla words of the plan card (spec v2.1 §3.1, word for word). */
+export const SITE_PAGE_PLAN_COPY = {
+  heading: "The plan · Draft",
+  addedToMenu: "Added to your menu as a Draft",
+  blocks: "Blocks",
+  have: "Content I have",
+  need: "I still need from you",
+  confirm: "Add as a Draft",
+  dismiss: "Ask for something else",
+  noGuess: "I won't guess prices, people or policies. Gaps stay hidden from visitors until you fill them.",
+  ariNeeds: "Ari needs this",
+} as const;
