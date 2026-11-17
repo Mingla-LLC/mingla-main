@@ -12,7 +12,6 @@ import { useFontSearch, useSetSiteCover, useSiteCover } from "../../../../sites/
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBrandSitePlan } from "../../../../sites/planApi";
 import { lookPickerKeys, planFormatOf, styleFitLabel } from "../../../../sites/styleLibrary";
 import {
   DESIGN_KEYS,
@@ -239,10 +238,9 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
   // Each tile's headline is drawn in that design's own heading font (web).
   const drawable = useFontSpecimens(ctx.controller.siteId, DESIGN_KEYS.map((key) => DESIGNS[key].fonts.display.family));
   // #4453 — SITES_STYLE_LIBRARY (Core's value): the ten styles with their fit, else Atelier and Voyage.
-  const plan = useBrandSitePlan(ctx.brandId);
-  const styleLibrary = plan.data?.styleLibrary === true;
+  const styleLibrary = ctx.plan?.styleLibrary === true;
   const keys = lookPickerKeys(styleLibrary, design.key);
-  const format = styleLibrary ? planFormatOf(plan.data?.plan) : null;
+  const format = styleLibrary ? planFormatOf(ctx.plan?.plan) : null;
   const currentFit = styleFitLabel(format, design.key);
   return (
     <Card testID="design-designs">

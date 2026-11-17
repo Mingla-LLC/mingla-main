@@ -56,6 +56,7 @@ describe("#4453 SITES_STYLE_LIBRARY look picker", () => {
     expect(plan).not.toMatch(/DESIGN_KEYS\.map/);
     expect(plan).toContain('testID="plan-design-avoid-warning"');
     expect(look).toContain("lookPickerKeys(styleLibrary, design.key)");
+    expect(look).toContain("ctx.plan?.styleLibrary === true");
     expect(look).not.toMatch(/\{DESIGN_KEYS\.map/);
     expect(look).toContain('testID="design-avoid-warning"');
   });

@@ -179,6 +179,10 @@ const ARI_TOOL_ROLES = {
   propose_site_copy: "marketing_manager",
   propose_site_imagery: "marketing_manager",
   propose_site_collection_entry: "marketing_manager",
+  // #4453 milestone 7 — Ari's design pass (on-path only; Core checks SITES_ARI_DESIGN_PASS).
+  get_site_design_brief: "marketing_manager",
+  propose_site_design_pass: "marketing_manager",
+  propose_site_chrome: "marketing_manager",
   confirm_site_review: "brand_admin",
   propose_trip_guide_update: "event_manager",
   create_site_preview: "marketing_manager",
