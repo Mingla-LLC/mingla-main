@@ -722,3 +722,7 @@
   [data-design] .mg-hfact strong { font: 700 22px/1 var(--mg-f-display); }
   [data-design] .mg-hfact span { font: 500 12px/1.3 var(--mg-f-body); overflow-wrap: anywhere; }
 }
+
+/* #4453 milestone 7b (retest P2-1) — Voyage's own header (sites without a
+ * shared header layout): its wordmark link is a 44 px tap target too. */
+[data-design="voyage"] .site-header .logo-lockup { display: inline-flex; align-items: center; min-height: 44px; }

@@ -249,7 +249,8 @@ async function headerControlsCheck(page, label, out) {
     if (!header) return ["no header"];
     const found = [];
     for (const el of header.querySelectorAll("a[href], button")) {
-      if (el.closest("dialog:not([open]), [hidden], [aria-hidden='true']")) continue;
+      // A closed menu (dialog, or a drawer marked data-open="false") is not on screen.
+      if (el.closest("dialog:not([open]), [hidden], [aria-hidden='true'], [inert], [data-open='false']")) continue;
       const style = getComputedStyle(el);
       if (style.visibility === "hidden" || style.display === "none") continue;
       const r = el.getBoundingClientRect();
