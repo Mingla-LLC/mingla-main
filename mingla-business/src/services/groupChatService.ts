@@ -66,6 +66,7 @@ export async function getEventGroupChat(eventId: string): Promise<{
 }> {
   // #4459: the listing's brand, then that brand's Guest chat (the team is a
   // member through the team mirror, so RLS lets it read the row).
+  // orch-strict-grep-allow events-type-filter — #4459 every listing type (event, trip, experience, RSVP) opens its brand's Guest chat
   const { data: event, error: eventError } = await supabase
     .from("events")
     .select("brand_id")

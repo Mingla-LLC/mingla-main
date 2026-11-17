@@ -519,7 +519,7 @@ export function phase3dContractDigest(manifest) {
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4459: listed migration 20280730004459 (brand Guest chat) and its pg17 suite and sidecar; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f8004b0d17bcee197e02112bc77e2d41f37340ee4232494d215494faebeb63de";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "213530bca0853e6ce41c89ab76f17899b5b757d8a5aecbafa4c569fa3db5b00b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
