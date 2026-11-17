@@ -2972,9 +2972,7 @@
         "mingla-business/src/services/publicExperienceService.ts",
         "packages/offering-rendering/ExperienceOfferingBody.tsx",
         "app-mobile/app/exp/[brandSlug]/[experienceSlug].tsx",
-        "app-mobile/src/screens/Experience/onTheNight.ts",
-        "mingla-business/src/components/experience/ExperiencePricingStep.tsx",
-        "supabase/migrations/20280726003645_issue_3645_per_stop_paid_price.sql"
+        "app-mobile/src/screens/Experience/onTheNight.ts"
       ]
     },
     {
