@@ -20,6 +20,12 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ id: "camp-1" }),
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
 }));
+jest.mock("../../../hooks/useBrandListShim", () => ({
+  useBrandListState: () => ({ brands: [{ id: "brand-1" }], status: "ready", isLoading: false }),
+}));
+jest.mock("../../../store/currentBrandStore", () => ({
+  useCurrentBrandStore: (select: (state: { setCurrentBrandId: () => void }) => unknown) => select({ setCurrentBrandId: () => undefined }),
+}));
 jest.mock("../../../hooks/useCurrentBrand", () => ({ useCurrentBrand: () => ({ id: "brand-1" }) }));
 jest.mock("../../../hooks/useHostAdPermissions", () => ({
   useHostAdPermissions: () => ({
@@ -34,14 +40,43 @@ jest.mock("../../../hooks/useHostAdPermissions", () => ({
   }),
 }));
 jest.mock("../../../hooks/useStickyFooterOffset", () => ({ useStickyFooterOffset: () => 0 }));
+// #4238 W6b: the redesigned detail screen also reads the wallet, the layout and the network.
+jest.mock("../../../hooks/marketing/useAdCreditWallet", () => ({
+  useAdCreditWallet: () => ({ canView: false, data: null, refetch: jest.fn() }),
+}));
+jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: false }) }));
+jest.mock("../../../lib/netinfoSafe", () => ({ useNetInfoSafe: () => ({ isConnected: true, isInternetReachable: true }) }));
+jest.mock("../../../components/marketing/ads/HostAdManageSheets", () => ({
+  HostAdEditBudgetSheet: () => null,
+  HostAdShareSheet: () => null,
+  HostAdSuggestionCard: () => null,
+  HostAdSuggestionConfirmSheet: () => null,
+  hostAdShareMessage: () => "",
+}));
+jest.mock("../../../components/marketing/ads/HostAdTopUpSheet", () => ({ HostAdTopUpSheet: () => null }));
+jest.mock("../../../components/marketing/ads/HostAdBuilderBits", () => {
+  const pass = ({ children }: { children?: React.ReactNode }) => children ?? null;
+  return {
+    builderStyles: new Proxy({}, { get: () => ({}) }),
+    BuilderCard: pass,
+    BuilderLabel: pass,
+    BuilderList: pass,
+    Blocker: () => null,
+    Note: () => null,
+    Segmented: () => null,
+    ValueRow: () => null,
+  };
+});
 jest.mock("../../../services/hostAdCampaignService", () => ({
   getHostAdCampaign: (...args: unknown[]) => mockGet(...(args as [])),
   pauseHostAdCampaign: (...args: unknown[]) => mockPause(...(args as [])),
   cancelHostAdCampaign: jest.fn(),
   endHostAdCampaign: jest.fn(),
   resumeHostAdCampaignPlan: jest.fn(),
+  resolveHostAdCampaignForPlan: jest.fn(),
 }));
 jest.mock("../../../services/hostAdPlanService", () => ({
+  acceptHostAdLastTickets: jest.fn(),
   changeHostAdLive: jest.fn(),
   duplicateHostAdPlan: jest.fn(),
 }));
@@ -58,6 +93,7 @@ jest.mock("../../../components/marketing/ads/results/adResultsSeries", () => ({
 jest.mock("../../../components/marketing/ads/hostAdAlerts", () => ({
   hostAdLearningAlert: () => null,
   hostAdPacingAlert: () => null,
+  hostAdRunDay: () => 1,
 }));
 jest.mock("../../../components/marketing/ads/HostAdLiveEditCard", () => ({
   HostAdLiveEditCard: () => null,
@@ -145,8 +181,9 @@ describe("#4420 B2 — Pause on a live ad asks once", () => {
     const dialog = pauseDialog();
     expect(dialog.props.visible).toBe(true);
     expect(dialog.props.title).toBe("Pause this ad?");
-    expect(dialog.props.description).toBe("It stops showing straight away.");
-    expect(dialog.props.confirmLabel).toBe("Pause ad");
+    // #4238 W6b: the consequence names what stays held, in what the Host pays.
+    expect(dialog.props.description).toBe("It stops spending now. USD 176.48 stays held until you resume or end it.");
+    expect(dialog.props.confirmLabel).toBe("Pause");
     expect(dialog.props.cancelLabel).toBe("Keep running");
   });
 
@@ -185,6 +222,6 @@ describe("#4420 B2 — Pause on a live ad asks once", () => {
       await (pauseDialog().props.onConfirm as () => Promise<void>)();
     });
     expect(pauseDialog().props.visible).toBe(true);
-    expect(pauseDialog().props.errorMessage).toBe("Could not pause this ad.");
+    expect(pauseDialog().props.errorMessage).toBe("That didn't go through. Nothing was changed; try again in a minute.");
   });
 });

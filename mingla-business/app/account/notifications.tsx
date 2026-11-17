@@ -119,6 +119,8 @@ const ORDER_CHILDREN: readonly ChildType[] = [
 ];
 
 const PAYMENTS_CHILDREN: readonly ChildType[] = [
+  // #4238 W6b — the stop date and the top-up that reaches the end date.
+  { type: "business.ad_credit_low", label: "Ad credit low", description: "When an ad will stop before its end date" },
   { type: "business.dispute_opened", label: "Disputes opened" },
   { type: "business.dispute_action_needed", label: "Evidence due" },
   { type: "business.payout_paid", label: "Payouts" },
@@ -127,6 +129,15 @@ const PAYMENTS_CHILDREN: readonly ChildType[] = [
 
 const AUDIENCE_CHILDREN: readonly ChildType[] = [
   { type: "business.new_review", label: "New reviews" },
+  // #4238 W6b — Host ad notices (push + in-app; the server sends them in each person's language).
+  { type: "business.ad_live", label: "Ad is live", description: "When an app approves your ad" },
+  { type: "business.ad_rejected", label: "Ad not approved", description: "When an app turns down your ad" },
+  { type: "business.ad_part_rejected", label: "Some videos not approved", description: "When an app turns down part of your ad" },
+  { type: "business.ad_paused", label: "Ad paused", description: "When your ad stops, and why" },
+  { type: "business.ad_ended", label: "Ad ended", description: "How your ad did, and credit that came back" },
+  { type: "business.ad_slow_sales", label: "Slow sales", description: "When an ad sells fewer tickets than expected" },
+  { type: "business.ad_creative_tired", label: "Tired video", description: "When people have seen your video a lot" },
+  { type: "business.ad_last_tickets", label: "Last tickets", description: "When few tickets are left" },
 ];
 
 const TEAM_CHILDREN: readonly ChildType[] = [

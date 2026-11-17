@@ -143,7 +143,8 @@ Deno.test("#3697 both edge paths use the shared RPC and no pause state write is 
     new URL("../../admin-ad-campaign-action/index.ts", import.meta.url),
   );
   assertStringIncludes(spendSync, "import { markPlanPaused }");
-  assertStringIncludes(spendSync, "plan_version:ad_plan_versions(plan_id)");
+  // #4238 W2: the sweep also reads the frozen canonical plan (ladder, date).
+  assertStringIncludes(spendSync, "plan_version:ad_plan_versions(plan_id, canonical_plan)");
   assertStringIncludes(spendSync, "auto_pause_reason: reason");
   assertStringIncludes(
     spendSync,

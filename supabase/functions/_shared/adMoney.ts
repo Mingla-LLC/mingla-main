@@ -4,8 +4,8 @@
  * One owner for Admin create, Ari plan (later), and builder validation.
  * Host minimums add Mingla's 15% fee on top of ad-budget floors; Admin has no fee.
  *
- * Table (USD minor / day) from Ads Design Contract v1.3:
- *   tiktok $50 · snapchat $20 · reddit $5 · google $0 · meta from connection (live)
+ * Table (USD minor / day; #4238 D-1 per ad group / ad squad):
+ *   tiktok $20 (ad group) · snapchat $5 (ad squad) · reddit $5 · google $0 · meta from connection (live)
  */
 
 import type { Platform } from "./adChannelCore.ts";
@@ -13,12 +13,17 @@ import type { Platform } from "./adChannelCore.ts";
 export type BudgetMode = "daily" | "lifetime";
 export type OwnerKind = "mingla" | "host";
 
-/** USD cents per day used in the D1 sum (Seth's safer floor, contract v1.3). */
+/**
+ * USD cents per day for ONE ad set at the level Mingla builds (#4238 D-1,
+ * approved by Seth): budgets sit on the TikTok ad group ($20/day) and the
+ * Snapchat ad squad ($5/day), the limits the create path already enforces.
+ * Meta's floors come from the connection (minimum_budgets), never this table.
+ */
 export const AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY: Readonly<
   Record<Exclude<Platform, "meta">, number>
 > = {
-  tiktok: 5000,
-  snapchat: 2000,
+  tiktok: 2000,
+  snapchat: 500,
   reddit: 500,
   google: 0,
 };
@@ -62,6 +67,19 @@ export const AD_CREDIT_TOP_UP_LIMITS_CENTS = {
 export type AdCreditCurrency = keyof typeof AD_CREDIT_TOP_UP_LIMITS_CENTS;
 
 export type AdCreditEntryKind = "top_up" | "withdraw" | "unspend_return";
+
+/**
+ * #4238 F-1 / R-1: an ad-spend (credit) amount in what the Host pays, the fee
+ * included: ceil(credit / (1 - HOST_FEE_RATIO)). The ONE place the Host-facing
+ * minimum, recommended and expected-results amounts are grossed up; no other
+ * copy of the rate exists. A 100-cent provider floor is 118 pay cents.
+ */
+export function hostMinimumPayCents(creditCents: number): number {
+  if (!Number.isSafeInteger(creditCents) || creditCents <= 0) return 0;
+  // Integer maths so 100 / 0.85 never lands a float epsilon above 117.647.
+  const keep = Math.round((1 - HOST_FEE_RATIO) * 10_000);
+  return Math.ceil((creditCents * 10_000) / keep);
+}
 
 /** Credit that lands in the wallet after the 15% fee is taken at top-up. */
 export function creditCentsFromPay(payCents: number): number {
@@ -349,7 +367,7 @@ export function perDayFloorCents(
   if (platform === "meta") {
     return typeof metaFloorCents === "number" && metaFloorCents > 0
       ? Math.floor(metaFloorCents)
-      : 500; // LINK_CLICKS high-freq fallback until connection floors load
+      : 500; // Fallback until the connection's minimum_budgets load (#4238: the high_freq figure, safer than imp)
   }
   return AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY[platform];
 }

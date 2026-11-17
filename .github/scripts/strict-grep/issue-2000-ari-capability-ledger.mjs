@@ -162,6 +162,8 @@ ari.ads.pause_ad_campaign
 ari.ads.end_ad_campaign
 ari.ads.get_ad_campaign_report
 ari.ads.list_ad_audiences
+ari.ads.get_ad_budget_guidance
+ari.ads.apply_ad_suggestion
 ari.brand.audit_log
 ari.brand.discovery_currency
 ari.event.door_sale

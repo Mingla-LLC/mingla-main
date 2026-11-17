@@ -7,21 +7,22 @@ const route = fs.readFileSync(
   "utf8",
 );
 
-describe("issue #3697 Host Ads five-stage builder", () => {
-  it("uses the binding five-stage product spine and renders only the active stage", () => {
-    for (const label of [
-      "What are you promoting?",
-      "Who should see it?",
-      "Budget and dates",
-      // #4238 plain-language pass.
-      "Video and words",
-      "Review and launch",
-    ]) {
-      expect(route).toContain(label);
-    }
-    for (const step of ["promote", "audience", "budget", "creative", "review"]) {
-      expect(route).toContain(`activeStepId === "${step}"`);
-    }
+// #4238 W6a: design v9 grew the spine to six steps (where it runs is its own
+// step) and moved the words into hostAds.json; the shape pinned is the same.
+const english = JSON.parse(
+  fs.readFileSync(path.join(ROOT, "src/i18n/locales/en/hostAds.json"), "utf8"),
+) as { hostAds: { builder: Record<string, Record<string, string>> } };
+
+describe("issue #3697 Host Ads six-stage builder (#4238 W6a)", () => {
+  it("uses the binding six-stage product spine and renders only the active stage", () => {
+    const copy = english.hostAds.builder;
+    expect(copy.pick.h1).toBe("What are you promoting?");
+    expect(copy.audience.h1).toBe("Who should see it?");
+    expect(copy.platforms.h1).toBe("Where should it run?");
+    expect(copy.budget.h1).toBe("How much?");
+    expect(copy.creative.h1).toBe("Your ad");
+    expect(copy.review.h1).toBe("Review and pay");
+    expect(route).toContain("{bodies[activeStepId]}");
     expect(route).toContain("testID={`host-ad-step-${step.id}`}");
   });
 
@@ -35,8 +36,8 @@ describe("issue #3697 Host Ads five-stage builder", () => {
   });
 
   it("uses the shared calendar control and freezes optional schedule boundaries", () => {
-    expect(route).toContain('label="Start date (optional)"');
-    expect(route).toContain('label="End date (optional)"');
+    expect(route).toContain('label={hb("budget.starts")}');
+    expect(route).toContain('label={hb("budget.ends")}');
     expect(route).toContain("start_date: startDate");
     expect(route).toContain("end_date: endDate");
     // #4238 r6: start and end are frozen from the chosen days in the page's
@@ -51,6 +52,6 @@ describe("issue #3697 Host Ads five-stage builder", () => {
     expect(route).toContain("stepErrors[activeStepId]");
     expect(route).toContain("host-ad-step-next");
     expect(route).toContain("host-ad-step-back");
-    expect(route).toContain("index > maxVisitedStep");
+    expect(route).toContain("index <= maxVisitedStep");
   });
 });

@@ -29,6 +29,7 @@ Deno.test("Wave 7c: Paystack reference prefix mingla_adc_", () => {
   const ref = buildAdCreditPaystackReference({
     brandId: "11111111-1111-4111-8111-111111111111",
     clientIdem: "abc-def-123",
+    payCents: 500_000,
   });
   assert(ref.startsWith(AD_CREDIT_PAYSTACK_REF_PREFIX));
   assertEquals(isAdCreditPaystackReference(ref), true);
@@ -168,7 +169,13 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
     new URL("../../admin-ad-spend-sync/index.ts", import.meta.url),
   );
   assert(spendSync.includes("resolveAdDestination"));
-  assert(spendSync.includes("destination_unavailable"));
+  // #4238 W2 5b: the reason now comes from pauseReasonFor (adDestination.ts),
+  // which still answers destination_unavailable for a private/unlisted page.
+  assert(spendSync.includes("pauseReasonFor(err.availability, stock)"));
+  const destination = await Deno.readTextFile(
+    new URL("../adDestination.ts", import.meta.url),
+  );
+  assert(destination.includes('return "destination_unavailable";'));
   assert(spendSync.includes("destination_check_failed"));
   const stripeRouter = await Deno.readTextFile(
     new URL("../stripeWebhookRouter.ts", import.meta.url),

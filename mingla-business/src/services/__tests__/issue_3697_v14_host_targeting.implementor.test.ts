@@ -28,10 +28,8 @@ describe("issue #3697 Host provider targeting parity", () => {
     expect(service).toContain("input.radiusKm");
     expect(service).toContain("input.interests.map");
     expect(service).toContain("refs_by_platform: refsByPlatform");
-    expect(create).toContain("Add towns or cities to focus your ad.");
-    // #4238 media-buyer: each app is looked up on its own and its answer is
-    // shown before paying (places editor + interests editor).
-    expect(create).toContain("you&apos;ll see its answer before you pay");
+    // #4238 W6a: the words moved to hostAds.json (audience.placesHelp).
+    expect(create).toContain('hb("audience.placesHelp")');
     expect(create).toContain("searchPlaces");
     expect(create).toContain("searchInterests");
     expect(create).toContain("lookupPlaceOnApp");

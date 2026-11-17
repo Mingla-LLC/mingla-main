@@ -75,7 +75,49 @@ export type HostAdListSummary = {
   daily_spend: { day: string; cents: number | null }[];
 };
 
+/** #4238 W5/W6b: Ari's one suggestion for a running ad (server-computed). */
+export type HostAdSuggestionMoney = {
+  currency: string;
+  fee_ratio: number;
+  current_total_cents: number;
+  current_total_pay_cents: number;
+  new_total_cents: number;
+  new_total_pay_cents: number;
+  change_cents: number;
+  change_pay_cents: number;
+  change_fee_cents: number;
+};
+export type HostAdSuggestion = {
+  suggestion_id: string;
+  kind: "raise_budget" | "extend_end" | "lower_budget" | "accept_last_tickets" | "new_video";
+  apply_action: "change_live" | "accept_last_tickets" | null;
+  host_budget_cents?: number;
+  ends_at?: string;
+  money?: HostAdSuggestionMoney;
+  days_live: number;
+  basis: {
+    results: number;
+    cost_per_result_cents: number | null;
+    guidance_mid_cents: number | null;
+    guidance_high_cents: number | null;
+    stock_left: number | null;
+    /** #4238 rework 3: the goal the results were counted for (older servers omit it). */
+    goal?: "sales" | "signups" | "visits";
+  };
+};
+export type HostAdCapabilityAnswer = {
+  allowed: boolean;
+  ask_role?: string;
+  ask_name?: string;
+};
+
 export type HostAdCampaignDetail = {
+  /** #4238 W4b/W5: what this teammate can do here, and who to ask. */
+  capabilities?: Partial<Record<string, HostAdCapabilityAnswer>>;
+  days_live?: number | null;
+  learning?: { state: "learning" | "done"; until: string } | null;
+  next_live_edit_at?: string | null;
+  suggestion?: HostAdSuggestion | null;
   /** #4238 wave D: the plan behind this ad (live edits, duplicate). */
   plan_id?: string | null;
   /** #4238 wave D: when the budget or end date last changed. */
@@ -91,6 +133,14 @@ export type HostAdCampaignDetail = {
   plan_state: string | null;
   plan_currency: string | null;
   plan_cap_cents: number | null;
+  /**
+   * #4238 rework 1: what the apps spend a day, in the brand's money (Ads
+   * credit), from the plan allocation (amendment-aware). Null = unknown;
+   * never read ad_campaigns.daily_budget_cents for this.
+   */
+  plan_daily_credit_cents?: number | null;
+  /** #4238 rework 1: the promoted public page (Share results), or null. */
+  public_page_url?: string | null;
   provider_spend_by_currency: {
     currency: string;
     spend_cents: number;
@@ -107,6 +157,13 @@ export type HostAdCampaignDetail = {
     currency: string;
   }[];
   results: {
+    /** #4238 W5: Mingla's own counts (7-day tap window). */
+    tickets?: number;
+    sign_ups?: number;
+    clicks?: number;
+    clicks_7d?: number;
+    cost_per_ticket_cents?: number | null;
+    cost_per_sign_up_cents?: number | null;
     conversions?: number;
     value_cents?: Record<string, number>;
     spend_by_currency?: {
@@ -348,4 +405,27 @@ export async function cancelHostAdCampaign(input: {
     campaign_id: input.campaignId,
     idempotency_key: input.idempotencyKey,
   });
+}
+
+/**
+ * #4238 W6b: a notice links to the PLAN (mingla-business://brand/<id>/ads/
+ * <plan>); the detail screen reads a campaign. The plan's current version
+ * names its campaigns, so the newest campaign on that version is the one.
+ * Null when the plan has no campaign yet (the caller opens the Ads list).
+ */
+export async function resolveHostAdCampaignForPlan(
+  brandId: string,
+  planId: string,
+): Promise<string | null> {
+  const plans = await invokeHostAd<{ plans?: { id: string; current_version_id: string | null }[] }>(
+    { action: "list", brand_id: brandId },
+    "ad-plan",
+  );
+  const versionId = (plans.plans ?? []).find((row) => row.id === planId)?.current_version_id ?? null;
+  if (versionId === null) return null;
+  const { campaigns } = await listHostAdCampaignPage(brandId);
+  const match = campaigns
+    .filter((row) => row.plan_version_id === versionId)
+    .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))[0];
+  return match?.id ?? null;
 }

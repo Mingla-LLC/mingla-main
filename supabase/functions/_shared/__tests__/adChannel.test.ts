@@ -34,7 +34,7 @@ import {
   isMetaGoalValidForObjective,
   META_CTA_MAP,
   META_OBJECTIVE_GOAL_MATRIX,
-  metaBudgetCategoryForGoal,
+  metaBudgetCategoryForBillingEvent,
   PLATFORM_CTA_MAPS,
   REDDIT_CTA_MAP,
   SNAPCHAT_CTA_MAP,
@@ -125,16 +125,18 @@ Deno.test("matrix: all six ODAX objectives are present", () => {
 
 // ── Budget-floor categories (A4.g / PROOF M-P8) ───────────────────────────────
 
-Deno.test("floors: LINK_CLICKS is high-frequency (the $5 floor, not $1)", () => {
-  assertEquals(metaBudgetCategoryForGoal("LINK_CLICKS"), "high_freq");
+// [TEST-MOD #4238 Fix 1] the category follows the BILLING EVENT
+// (I-4238-META-FLOOR-FOLLOWS-BILLING), not the optimisation goal.
+Deno.test("floors: billed on link clicks is high-frequency (the $5 floor)", () => {
+  assertEquals(metaBudgetCategoryForBillingEvent("LINK_CLICKS"), "high_freq");
 });
 
-Deno.test("floors: category mapping per goal class", () => {
-  assertEquals(metaBudgetCategoryForGoal("IMPRESSIONS"), "imp");
-  assertEquals(metaBudgetCategoryForGoal("REACH"), "imp");
-  assertEquals(metaBudgetCategoryForGoal("THRUPLAY"), "video_views");
-  assertEquals(metaBudgetCategoryForGoal("OFFSITE_CONVERSIONS"), "low_freq");
-  assertEquals(metaBudgetCategoryForGoal("VALUE"), "low_freq");
+Deno.test("floors: category mapping per billing event", () => {
+  assertEquals(metaBudgetCategoryForBillingEvent("IMPRESSIONS"), "imp");
+  assertEquals(metaBudgetCategoryForBillingEvent("THRUPLAY"), "video_views");
+  assertEquals(metaBudgetCategoryForBillingEvent("POST_ENGAGEMENT"), "high_freq");
+  assertEquals(metaBudgetCategoryForBillingEvent("APP_INSTALLS"), "low_freq");
+  assertEquals(metaBudgetCategoryForBillingEvent("PURCHASE"), "low_freq");
 });
 
 // ── Fail-close stubs ──────────────────────────────────────────────────────────
