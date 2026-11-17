@@ -857,8 +857,21 @@ function Metric({ label, value }: { label: string; value: number }) {
   return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.muted}>{label}</Text></View>;
 }
 
-export function InvitePlanReviewSummary(props: { plan: WizardInvitePlan | null; quote: WizardInviteQuote | null }) {
+export function InvitePlanReviewSummary(props: {
+  plan: WizardInvitePlan | null;
+  quote: WizardInviteQuote | null;
+  /** #4420 — people are invited and their delivery estimate failed. */
+  estimateFailed?: boolean;
+  onRetry?: () => void;
+}) {
   if (!props.plan || props.plan.selectedCount === 0) return <View style={styles.reviewSummary}><Text style={styles.sectionTitle}>Invites</Text><Text style={styles.muted}>No invitations planned.</Text></View>;
+  // #4420 — say why Publish waits, and offer the fix, instead of a silently
+  // disabled Publish.
+  if (props.estimateFailed === true) return <View style={styles.reviewSummary} testID="invite-review-estimate-failed"><Text style={styles.sectionTitle}>Invites</Text>
+    <Text accessibilityRole="alert" style={styles.error}>
+      {`We couldn't check invite delivery for ${props.plan.selectedCount} ${props.plan.selectedCount === 1 ? "person" : "people"}. Publish waits for it. Try again, or remove the invites to publish without them.`}
+    </Text>
+    {props.onRetry ? <Button label="Try again" size="sm" variant="secondary" onPress={props.onRetry} /> : null}</View>;
   return <View style={styles.reviewSummary}><Text style={styles.sectionTitle}>Invites</Text>
     <Text style={styles.personName}>{props.quote ? `${props.quote.canReceiveCount} can receive` : "Checking delivery…"}</Text>
     <Text style={styles.muted}>{props.quote ? `${props.quote.skippedCount} skipped · ${props.plan.selectedCount} selected` : "Publish is unavailable until the latest estimate loads."}</Text>

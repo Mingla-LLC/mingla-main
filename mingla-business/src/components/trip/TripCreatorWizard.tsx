@@ -193,6 +193,10 @@ import {
   PENDING_WIZARD_INVITE_SUMMARY,
   type WizardInvitePlanSummary,
 } from "../invites/LazyInvitePeopleStep";
+import {
+  wizardInviteEstimateFailed,
+  wizardInviteSummaryReady,
+} from "../invites/wizardInvitePublishGate";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 import type {
@@ -1041,12 +1045,12 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     invitePlan?.selectedCount === 0 &&
     !inviteSummary.plan.isPending && !inviteSummary.plan.isFetching &&
     !inviteSummary.plan.isError;
-  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
-    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
-    inviteQuote.selectionHash === invitePlan.selectionHash &&
-    !inviteSummary.plan.isPending && !inviteSummary.plan.isFetching &&
-    !inviteSummary.plan.isError && !inviteSummary.quote.isPending &&
-    !inviteSummary.quote.isFetching && !inviteSummary.quote.isError);
+  // #4420 — nobody invited: Publish never waits on the delivery estimate.
+  const inviteGateInput = {
+    inviteEnabled, plan: invitePlan, quote: inviteQuote, summary: inviteSummary,
+  };
+  const inviteSummaryReady = wizardInviteSummaryReady(inviteGateInput);
+  const inviteEstimateFailed = wizardInviteEstimateFailed(inviteGateInput);
   const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     _plan: WizardInvitePlan | null,
@@ -2049,7 +2053,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     try {
       const latest = await inviteSummary.refreshAuthoritative();
       if (latest.quote === null) {
-        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+        if (latest.plan.selectedCount === 0) {
           setPublishConfirmVisible(true);
         } else {
           showToast("Refresh the invite estimate before publishing.");
@@ -2692,7 +2696,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             />
           ) : null}
           {step === 8 ? (
-            <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
+            <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
+            estimateFailed={inviteEstimateFailed}
+            onRetry={() => void inviteSummary.refreshAuthoritative().catch(() => undefined)} />
           ) : null}
         </View>
       </ScrollView>
@@ -2847,7 +2853,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       <InvitePlanSummaryBridge
         eventId={trip.id}
         enabled={true}
-        quoteWhenEmpty={inviteFlag.data === true}
+        quoteWhenEmpty={false}
         onChange={setInviteSummary}
       />
 

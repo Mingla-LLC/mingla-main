@@ -113,6 +113,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
     // #4420 — the unsaved-changes rules and guard hook are pure / web-inert: real modules.
     if (exportName === "unsavedChangesGuard") return jest.requireActual("../../../utils/unsavedChangesGuard");
+    // #4420 — the wizards' invite publish gate (pure; real module).
+    if (exportName === "wizardInvitePublishGate") return jest.requireActual("../../invites/wizardInvitePublishGate");
     if (exportName === "useUnsavedChangesGuard") return jest.requireActual("../../../hooks/useUnsavedChangesGuard");
     throw new Error(`Unclassified wizard boundary: ${name}`);
   };

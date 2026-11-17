@@ -244,6 +244,8 @@ const BOUNDARY: Record<string, () => unknown> = {
     setEventGuestPrivacy: (_id: string, input: unknown) => record("privacy")(input ?? {}),
   }),
   guestListPrivacy: () => jest.requireActual("../../../constants/guestListPrivacy"),
+  // #4420 — the wizards' invite publish gate (pure; real module).
+  wizardInvitePublishGate: () => jest.requireActual("../../invites/wizardInvitePublishGate"),
   offeringTheme: () => ({
     normalizeThemeOverrides: (value: unknown) => value ?? null,
     patchOfferingTheme: (input: unknown) => record("theme")(input ?? {}),

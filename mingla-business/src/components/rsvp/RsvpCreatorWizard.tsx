@@ -107,6 +107,10 @@ import {
   PENDING_WIZARD_INVITE_SUMMARY,
   type WizardInvitePlanSummary,
 } from "../invites/LazyInvitePeopleStep";
+import {
+  wizardInviteEstimateFailed,
+  wizardInviteSummaryReady,
+} from "../invites/wizardInvitePublishGate";
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
@@ -399,12 +403,12 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       setCurrentStep((value) => value === 5 ? 6 : value);
     }
   }, [inviteFlag.data, persistedInvite.plan.data?.selectedCount]);
-  const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
-    inviteQuote.selectionRevision === invitePlan.selectionRevision &&
-    inviteQuote.selectionHash === invitePlan.selectionHash &&
-    !persistedInvite.plan.isPending && !persistedInvite.plan.isFetching &&
-    !persistedInvite.plan.isError && !persistedInvite.quote.isPending &&
-    !persistedInvite.quote.isFetching && !persistedInvite.quote.isError);
+  // #4420 — nobody invited: Publish never waits on the delivery estimate.
+  const inviteGateInput = {
+    inviteEnabled, plan: invitePlan, quote: inviteQuote, summary: persistedInvite,
+  };
+  const inviteSummaryReady = wizardInviteSummaryReady(inviteGateInput);
+  const inviteEstimateFailed = wizardInviteEstimateFailed(inviteGateInput);
   const invitePublishReady = inviteEnabled ? inviteSummaryReady : inviteRollbackReady;
   const handleInvitePlanChange = useCallback((
     plan: WizardInvitePlan | null,
@@ -967,7 +971,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       setInvitePlan(latest.plan);
       setInviteQuote(latest.quote);
       if (latest.quote === null) {
-        if (inviteFlag.data === false && latest.plan.selectedCount === 0) {
+        if (latest.plan.selectedCount === 0) {
           setPublishError(null);
           setPublishConfirmVisible(true);
         } else {
@@ -1257,7 +1261,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       case 6:
         return (
           <><RsvpStep7Preview {...baseProps} brand={brand} onTapMiniCard={onOpenPreview} />
-          <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} /></>
+          <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
+            estimateFailed={inviteEstimateFailed}
+            onRetry={() => void persistedInvite.refreshAuthoritative().then((latest) => { setInvitePlan(latest.plan); setInviteQuote(latest.quote); }).catch(() => undefined)} /></>
         );
       default:
         return <CreatorStep1Basics {...baseProps} />;
@@ -1609,7 +1615,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       <InvitePlanSummaryBridge
         eventId={/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(liveDraft.id) ? liveDraft.id : null}
         enabled={true}
-        quoteWhenEmpty={inviteFlag.data === true}
+        quoteWhenEmpty={false}
         onChange={setPersistedInvite}
       />
 

@@ -73,6 +73,7 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
 
 import {
   InvitePeopleStep,
+  InvitePlanReviewSummary,
 } from "../InvitePeopleStep";
 import { WizardInvitePlanError } from "../../../services/offeringInvitePlanService";
 
@@ -250,5 +251,21 @@ describe("#4420 Invite people never dead-ends on a failed read", () => {
     const nav = lastNavigation(onPlanChange);
     expect(nav.phase).toBe("error");
     expect(nav.primaryLabel).toBe("Try again");
+  });
+
+  test("IV-5 Preview: invited people with a failed estimate say why, with Try again", async () => {
+    const onRetry = jest.fn();
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InvitePlanReviewSummary plan={{ ...basePlan, selectedCount: 2 } as never} quote={null}
+          estimateFailed onRetry={onRetry} />,
+      );
+    });
+    expect(treeText(renderer.toJSON())).toContain("We couldn't check invite delivery for 2 people");
+    const retry = renderer.root.findAllByType("button");
+    expect(retry.map((b: any) => b.props.label)).toEqual(["Try again"]);
+    act(() => retry[0].props.onPress());
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
