@@ -134,6 +134,8 @@ function safeFailure(error: unknown, returnUrl?: string) {
       // #4453 — Draft sections must be reviewed first (the publish is blocked).
       "UNREVIEWED_SECTIONS",
       "PATH_COLLISION",
+      // #4453 milestone 9 — a page sits at a live offering's detail address.
+      "ROUTE_COLLISION",
       // #2829 W9b — a first publish waits until the design checks have run.
       "DESIGN_CHECKS_REQUIRED",
       // #2829 W6 — stream video is off (Bunny not configured): use file video.
@@ -720,6 +722,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
         "OUTBOUND_ACTION_LINK",
         "BOOKING_LINK_UNVERIFIED",
         "UNREVIEWED_SECTIONS",
+        "ROUTE_COLLISION",
       ].includes(error.message);
     let failureRecorded = false;
     if (definitiveFailure && callbackContext) {
@@ -735,6 +738,10 @@ async function publish(req: PayloadRequest): Promise<Response> {
             ...(error instanceof Error &&
               ["PATH_COLLISION", "PAGE_LIMIT_EXCEEDED", "DESIGN_CHECKS_REQUIRED"].includes(error.message)
               ? { failure_code: error.message }
+              // #4453 M9 — Core and the Business app know this refusal as the
+              // two-things-at-one-address one (it extends it); same owner copy.
+              : error instanceof Error && error.message === "ROUTE_COLLISION"
+              ? { failure_code: "PATH_COLLISION" }
               : {}),
           },
         );

@@ -2,7 +2,7 @@ import { HeroBackgroundVideo } from "../../../components/v2/HeroBackgroundVideo"
 import { galleryImages } from "../../shared/data";
 import { HeadlineLines, Photo, SecHead, sectionId, text, type SharedBlockProps } from "../../shared/parts";
 import { HeroButtons, TripSearch, heroParts } from "../../shared/blocks/Hero";
-import { Book, Cover, GridShell, Price, State } from "../../shared/blocks/Offerings";
+import { Book, Cover, GridShell, Price, State, CardTitle } from "../../shared/blocks/Offerings";
 
 /*
  * #4453 6a — Maison's three signature layouts (spec §3.2), drawn from the
@@ -57,7 +57,7 @@ export function OfferingGridMaisonRows(props: SharedBlockProps) {
               <div className="mg-ph ms-row__img" data-mg-rise=""><Cover item={item} sizes="(min-width: 900px) 58vw, 100vw" /></div>
               <div className="ms-row__txt" data-mg-rise="">
                 <p className="mg-label">{[two(itemIndex), item.card.destination].filter(Boolean).join(" · ")}</p>
-                <h3>{item.card.title}</h3>
+                <h3><CardTitle card={item.card} /></h3>
                 {item.card.summary ? <p className="ms-row__blurb">{item.card.summary}</p> : null}
                 <p className="ms-row__meta">{item.card.dates ? <span>{item.card.dates}</span> : null}<State item={item} /></p>
                 <div className="ms-row__buy">

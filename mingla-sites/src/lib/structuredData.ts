@@ -3,6 +3,7 @@ import { isLiveOfferingGrid } from "../contracts/generated/blocks.ts";
 import { selectGridOfferings, type OfferingGridConfig, type SiteOffering } from "../contracts/generated/offerings.ts";
 import { richTextPlain } from "../contracts/generated/richText.ts";
 import { isSafeHref } from "../contracts/generated/safety.ts";
+import type { OfferingDetailView } from "./offeringDetail";
 import type { LiveOfferings } from "./offeringCards";
 import { navigablePages, type ArtifactPage } from "./pageRouting";
 import { canonicalUrl, pageDescription, socialImage } from "./seo";
@@ -188,6 +189,63 @@ function events(artifact: ArtifactV2, page: ArtifactPage, live: LiveOfferings | 
   return out;
 }
 
+/**
+ * #4453 milestone 9 (spec v2.1 §1.3) — the one schema.org item an offering
+ * detail page describes, from the feed row only: `TouristTrip` for a trip,
+ * `Event` for an event or a dated experience, `Product` for an undated
+ * experience, `LodgingBusiness` (the venue) offering the room for a stay.
+ * `offers` from live data only; never a rating (no AggregateRating until v2
+ * §5.6 qualifies). An ended offering gets none (the page is noindex).
+ */
+export function detailItem(artifact: ArtifactV2, detail: OfferingDetailView, origin: string): JsonLd | null {
+  const { offering, card } = detail;
+  if (detail.ended || card.state.cancelled) return null;
+  const url = new URL(`/${detail.path}`, `${origin}/`).toString();
+  const image = abs(card.coverUrl, origin);
+  const common = {
+    name: offering.title,
+    url,
+    ...(image ? { image: [image] } : {}),
+    ...(offering.summary ? { description: offering.summary } : {}),
+  };
+  const offers = offer(offering, card.state.soldOut);
+  const organizer = { "@type": "Organization", name: artifact.brand.display_name, url: `${origin}/` };
+  const place = offering.destination_text ? { "@type": "Place", name: offering.destination_text, address: offering.destination_text } : null;
+  if (offering.kind === "trip") {
+    return {
+      "@type": "TouristTrip",
+      ...common,
+      ...(detail.extras?.days.length
+        ? { itinerary: { "@type": "ItemList", itemListElement: detail.extras.days.map((day) => ({ "@type": "ListItem", position: day.day, name: day.title })) } }
+        : {}),
+      provider: organizer,
+      offers,
+    };
+  }
+  if ((offering.kind === "event" || offering.kind === "experience") && offering.start_at) {
+    return {
+      "@type": "Event",
+      ...common,
+      startDate: offering.start_at,
+      ...(offering.end_at ? { endDate: offering.end_at } : {}),
+      eventStatus: "https://schema.org/EventScheduled",
+      eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+      ...(place ? { location: place } : {}),
+      organizer,
+      offers,
+    };
+  }
+  if (offering.kind === "stay") {
+    return {
+      "@type": "LodgingBusiness",
+      name: offering.destination_text ?? artifact.brand.display_name,
+      url: `${origin}/`,
+      makesOffer: { ...offers, itemOffered: { "@type": "HotelRoom", ...common } },
+    };
+  }
+  return { "@type": "Product", ...common, brand: organizer, offers };
+}
+
 export function pageStructuredData(input: {
   artifact: ArtifactV2;
   page: ArtifactPage;
@@ -195,12 +253,17 @@ export function pageStructuredData(input: {
   live?: LiveOfferings;
   /** `https://<current main address>` */
   origin: string;
+  /** #4453 milestone 9 — an offering detail page. */
+  detail?: OfferingDetailView;
 }): JsonLd {
   const { artifact, page, entry, live, origin } = input;
   const graph: JsonLd[] = [organization(artifact, origin), website(artifact, origin)];
   const trail = breadcrumbs(artifact, page, origin, entry);
   if (trail) graph.push(trail);
-  if (!entry) {
+  if (input.detail) {
+    const item = detailItem(artifact, input.detail, origin);
+    if (item) graph.push(item);
+  } else if (!entry) {
     const questions = faq(page);
     if (questions) graph.push(questions);
     graph.push(...events(artifact, page, live, origin));

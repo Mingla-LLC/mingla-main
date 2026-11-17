@@ -15,6 +15,8 @@ import { SharedFooter, SharedHeader } from "./chrome/SharedChrome";
 import { SHARED_BLOCK_LAYOUTS, motionAttributes } from "./library";
 import { MotionRoot } from "./MotionRoot";
 import { PageBookingChrome } from "./blocks/Booking";
+import { OfferingDetailTemplate } from "./blocks/Detail";
+import type { OfferingDetailView } from "../../lib/offeringDetail";
 import type { SharedBlock, SharedBlockProps, SharedContext } from "./parts";
 import {
   CalloutBasic, ContactDetailsBasic, ContactFormBasic, DividerBasic, MapEmbedBasic, MediaFeatureBasic, MenuPreviewBasic,
@@ -80,12 +82,14 @@ export type GalleryPageProps = {
   live?: LiveOfferings;
   forms?: FormsContext;
   entry?: CollectionEntry;
+  /** #4453 milestone 9 — an offering detail page. */
+  detail?: OfferingDetailView;
   saveData?: boolean;
   nonce?: string;
   notFound?: boolean;
 };
 
-export function GalleryPage({ design, blocks, artifact, page, live, forms, entry, saveData }: GalleryPageProps & { design: DesignDefinition; blocks: BlockVariantMap<SharedBlockProps> }) {
+export function GalleryPage({ design, blocks, artifact, page, live, forms, entry, detail, saveData }: GalleryPageProps & { design: DesignDefinition; blocks: BlockVariantMap<SharedBlockProps> }) {
   const current = page ?? homePage(artifact);
   const analytics = { siteId: artifact.site_id, brandId: artifact.brand_id, publicationId: artifact.publication_id };
   const items = siteNavigation(artifact).map((item) => ({
@@ -102,7 +106,10 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
   const motion = motionAttributes(design, artifact.tokens.motion, saveData === true);
   let content: React.ReactNode = null;
   let booking: React.ReactNode = null;
-  if (current && entry) {
+  if (current && detail) {
+    // #4453 milestone 9 — the shared detail template (its own hand-off sheet and sticky bar).
+    content = <OfferingDetailTemplate artifact={artifact} detail={detail} analytics={analytics} designKey={design.key} />;
+  } else if (current && entry) {
     content = <div className="mg-blk mg-basic mg-basic--entry"><div className="mg-wrap"><CollectionEntryView entry={entry} artifact={artifact} live={live} /></div></div>;
   } else if (current) {
     const ctx: SharedContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };

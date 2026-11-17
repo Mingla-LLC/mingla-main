@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { runtimeConfig } from "../../../../lib/config";
 import { siteOfferings } from "../../../../lib/offeringsFeed";
+import { detailPhotoPaths } from "../../../../lib/offeringDetail";
 import { isOmRendition, OM_VARIANTS, pathForToken, variantPath } from "../../../../lib/offeringMedia";
 import { sha256 } from "../../../../lib/crypto";
 import { readPrivateObject } from "../../../../lib/storageReader";
@@ -56,7 +57,14 @@ export async function GET(
       })();
     if (!isV2Artifact(artifact)) return notFound();
     const view = await siteOfferings(siteBinding, artifact);
-    const path = await pathForToken(siteBinding.site_id, token, view.offerings);
+    // #4453 milestone 9 — a detail page's own photos (a room's pictures) are
+    // not feed covers; their URL names the offering (`?d=kind:slug`) so the
+    // candidate paths come from that offering's cached detail read.
+    const extraPaths = await detailPhotoPaths(siteBinding, view.offerings, view.detailPages, new URL(request.url).searchParams.get("d"));
+    const path = await pathForToken(siteBinding.site_id, token, [
+      ...view.offerings,
+      ...extraPaths.map((extra) => ({ cover: { path: extra, type: "image" as const } })),
+    ]);
     const privateHeaders = previewKey !== null ? PREVIEW_ASSET_HEADERS : {};
     if (!path) return notFound();
     if (isOmRendition(variant)) {

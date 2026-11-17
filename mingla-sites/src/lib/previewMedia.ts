@@ -1,3 +1,4 @@
+import type { OfferingDetailView } from "./offeringDetail";
 import type { LiveOfferings } from "./offeringCards";
 import { loadPreviewArtifact, parsePreviewArtifactKey } from "./previewArtifact";
 import { resolveHostSite } from "./publication";
@@ -89,4 +90,23 @@ export function withPreviewOfferingKey(live: LiveOfferings | undefined, key: str
     coverSrcSet: card.coverSrcSet ? stamp(card.coverSrcSet) : card.coverSrcSet,
   }]));
   return { ...live, cards };
+}
+
+/**
+ * #4453 milestone 9 — a detail page in a preview: its cover, its "other"
+ * cards and its own photos (which already carry `?d=`) all carry the key.
+ */
+export function withPreviewDetailKey(detail: OfferingDetailView, key: string): OfferingDetailView {
+  const stamp = (value: string) => value.replace(OM_URL, (url) => keyed(url, key));
+  const card = <C extends OfferingDetailView["card"]>(row: C): C => ({
+    ...row,
+    coverUrl: row.coverUrl ? stamp(row.coverUrl) : row.coverUrl,
+    coverSrcSet: row.coverSrcSet ? stamp(row.coverSrcSet) : row.coverSrcSet,
+  });
+  return {
+    ...detail,
+    card: card(detail.card),
+    others: detail.others.map(card),
+    photos: detail.photos.map((photo) => ({ ...photo, src: `${photo.src}&k=${encodeURIComponent(key)}` })),
+  };
 }

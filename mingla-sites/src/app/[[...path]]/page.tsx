@@ -11,6 +11,7 @@ import { buildPageMetadata } from "../../lib/seo";
 import { pageStructuredData, serializeJsonLd } from "../../lib/structuredData";
 import { hiddenWhileEmpty } from "../../lib/plannedPageIndexing";
 import { normalizeRequestSegments } from "../../contracts/generated/routes.ts";
+import { resolveOfferingDetail } from "../../lib/offeringDetail";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,18 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
     if (path === null) return notFoundMeta;
     const { artifact, resolution } = await currentPublication();
     const resolved = resolveSitePath(artifact, path);
+    if (resolved.kind === "not_found" && isV2Artifact(artifact)) {
+      // #4453 milestone 9 — step 3b, an offering detail page (flagged).
+      const detail = await resolveOfferingDetail({ site: resolution, artifact, path, search: await props.searchParams });
+      if (detail?.kind !== "detail") return notFoundMeta;
+      return buildPageMetadata({
+        artifact,
+        page: detail.page,
+        origin: canonicalOrigin(resolution),
+        noindex: detail.detail.ended,
+        detailCover: { url: detail.detail.card.coverUrl, alt: detail.detail.offering.title },
+      });
+    }
     if (resolved.kind !== "page" && resolved.kind !== "entry") return notFoundMeta;
     const page = resolved.page;
     // #2829 W9a (SC-29) — an empty planned offering page stays out of search
@@ -87,6 +100,28 @@ export default async function SitePage(props: Params) {
     // or 308 the owner chose) before any render; this is the same table, so
     // a request that still reaches here goes where the owner said, as a 308.
     permanentRedirect(resolved.location);
+  }
+  if (resolved.kind === "not_found" && isV2Artifact(artifact)) {
+    // #4453 milestone 9 (spec v2.1 §1.2) — step 3b: an offering detail page,
+    // from Mingla's live data for the site Core resolved for THIS host. Flag
+    // off, unknown, cancelled, hidden or another brand's → not found.
+    const detailed = await resolveOfferingDetail({ site: resolution, artifact, path, search: await props.searchParams });
+    if (!detailed) notFound();
+    if (detailed.kind === "redirect") permanentRedirect(detailed.location);
+    const nonce = (await headers()).get("x-nonce") ?? undefined;
+    const structured = serializeJsonLd(pageStructuredData({
+      artifact, page: detailed.page, live: detailed.live, origin: canonicalOrigin(resolution), detail: detailed.detail,
+    }));
+    return (
+      <div
+        data-publication-id={resolution.publication_id}
+        data-artifact-digest={resolution.artifact_digest}
+        data-page={detailed.page.key}
+      >
+        <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: structured }} />
+        <SitePageView artifact={artifact} page={detailed.page} live={detailed.live} detail={detailed.detail} saveData={wantsLessData(await headers())} nonce={nonce} />
+      </div>
+    );
   }
   if (resolved.kind !== "page" && resolved.kind !== "entry") notFound();
   const page = resolved.page;

@@ -1,0 +1,126 @@
+/*
+ * #4453 milestone 9 (spec v2.1 §1.2) — the offering detail template's
+ * stylesheet, version 1. Linked on detail pages only, after the shared block
+ * library and before nothing a design relies on: every rule is in the
+ * `mg-blocks` layer, so a design's unlayered signature rules still win.
+ *
+ * Immutable like a design stylesheet (a change is detail-2.css). Every colour
+ * is a shared role variable (--mg-*) the design's stylesheet maps onto its
+ * tokens; type families are the design's font slots. Atelier predates the
+ * shared library, so its role variables are mapped here from its own tokens.
+ * Motion: transform and opacity only, and none under reduced motion.
+ */
+@layer base, components, mg-base, mg-blocks;
+
+@layer mg-base {
+  /* Atelier (no shared library of its own): its tokens as the shared roles. */
+  [data-design="atelier"] .mg-page--atelier {
+    --mg-bg: var(--c-canvas); --mg-bg-alt: var(--c-surface-sunken); --mg-surface: var(--c-surface);
+    --mg-ink: var(--c-ink-body); --mg-heading: var(--c-ink-body); --mg-body: var(--c-ink-body); --mg-muted: var(--c-ink-quiet);
+    --mg-accent: var(--c-accent-400); --mg-accent-ink: var(--c-accent-ink); --mg-label: var(--c-accent-400);
+    --mg-btn: var(--c-accent-400); --mg-btn-ink: var(--c-accent-ink); --mg-btn-hover: var(--c-accent-300);
+    --mg-focus: var(--c-accent-400); --mg-scrim: var(--c-scrim-rgb); --mg-shadow: var(--c-shadow-rgb);
+    --mg-line: color-mix(in srgb, var(--c-ink-body) 15%, transparent);
+    --mg-f-display: var(--font-display); --mg-f-body: var(--font-body); --mg-f-label: var(--font-label, var(--font-body));
+    background: transparent;
+  }
+  /* A detail page opens on the page, not a photo: the header reads as on a scrolled page from the start. */
+  [data-design] .mg-page:has(.mg-dtl) .mg-hd { color: var(--mg-ink); }
+  [data-design] .mg-page:has(.mg-dtl) .mg-hd--glass .mg-hd__bar { background: color-mix(in srgb, var(--mg-surface) 90%, transparent); box-shadow: inset 0 0 0 1px var(--mg-line); }
+  [data-design] .mg-page:has(.mg-dtl) .mg-hd--center { background: color-mix(in srgb, var(--mg-bg) 92%, transparent); }
+}
+
+@layer mg-blocks {
+  [data-design] .mg-dtl { padding: calc(clamp(104px, 11vw, 136px) + env(safe-area-inset-top, 0px)) 0 clamp(48px, 7vw, 96px); background: var(--mg-bg); color: var(--mg-body); font-family: var(--mg-f-body); }
+  [data-design] .mg-page--atelier .mg-dtl { padding-top: clamp(32px, 5vw, 64px); }
+  [data-design] .mg-dtl .mg-wrap, [data-design] .mg-dtl-more .mg-wrap, [data-design] .mg-dtl-reviews .mg-wrap { max-width: var(--mg-max, 1320px); margin: 0 auto; padding-inline: var(--mg-gutter, 16px); }
+  [data-design] .mg-dtl-crumbs ol { display: flex; flex-wrap: wrap; gap: 6px 10px; list-style: none; margin: 0 0 clamp(20px, 3vw, 32px); padding: 0; font: 500 13px/1.4 var(--mg-f-label); color: var(--mg-muted); }
+  [data-design] .mg-dtl-crumbs li + li::before { content: "/"; margin-right: 10px; opacity: .6; }
+  [data-design] .mg-dtl-crumbs a { color: inherit; text-decoration: none; }
+  [data-design] .mg-dtl-crumbs a:hover, [data-design] .mg-dtl-crumbs a:focus-visible { color: var(--mg-ink); text-decoration: underline; }
+  [data-design] .mg-dtl-crumbs [aria-current] { color: var(--mg-ink); }
+
+  /* Media: the cover, and up to three of the offering's own photos beside it. */
+  [data-design] .mg-dtl-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: clamp(32px, 5vw, 64px); }
+  [data-design] .mg-dtl-hero--thumbs { grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); }
+  [data-design] .mg-dtl-media { position: relative; aspect-ratio: 16 / 8; border-radius: var(--mg-r-card, 24px); overflow: hidden; background: var(--mg-bg-alt); }
+  [data-design] .mg-dtl-media img, [data-design] .mg-dtl-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  [data-design] .mg-dtl-thumbs { display: grid; gap: 14px; grid-auto-rows: minmax(0, 1fr); }
+  [data-design] .mg-dtl-thumb { position: relative; min-height: 96px; border-radius: var(--mg-r-card, 24px); overflow: hidden; background: var(--mg-bg-alt); }
+  [data-design] .mg-dtl-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 36px; }
+  [data-design] .mg-dtl-gallery .mg-dtl-thumb { aspect-ratio: 4 / 3; }
+
+  /* The body and the booking card. */
+  [data-design] .mg-dtl-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: clamp(36px, 6vw, 96px); align-items: start; }
+  [data-design] .mg-dtl-main { min-width: 0; }
+  [data-design] .mg-dtl .mg-label { margin: 0 0 16px; font: var(--mg-l-weight, 700) var(--mg-l-size, 12px)/1.3 var(--mg-f-label); letter-spacing: var(--mg-l-track, .14em); text-transform: uppercase; color: var(--mg-label); overflow-wrap: anywhere; }
+  [data-design] .mg-dtl-title { margin: 0; font-family: var(--mg-f-display); font-weight: var(--mg-d-weight, 700); letter-spacing: var(--mg-d-track, -.02em); line-height: var(--mg-d-lh, 1.02); font-size: clamp(38px, 6vw, 84px); color: var(--mg-heading); overflow-wrap: anywhere; }
+  [data-design] .mg-dtl-lede { margin: 22px 0 0; max-width: 62ch; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.55; color: var(--mg-body); }
+  [data-design] .mg-dtl-h { margin: clamp(40px, 6vw, 64px) 0 20px; font-family: var(--mg-f-display); font-weight: var(--mg-d-weight, 700); letter-spacing: var(--mg-d-track, -.01em); font-size: clamp(26px, 3vw, 38px); line-height: 1.1; color: var(--mg-heading); }
+  [data-design] .mg-dtl-plan { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--mg-line); }
+  [data-design] .mg-dtl-plan li { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--mg-line); }
+  [data-design] .mg-dtl-plan__t { font: 700 12px/1.6 var(--mg-f-label); letter-spacing: .12em; text-transform: uppercase; color: var(--mg-label); }
+  [data-design] .mg-dtl-plan__h { margin: 0 0 4px; font-weight: 700; color: var(--mg-ink); }
+  [data-design] .mg-dtl-plan p { margin: 0; color: var(--mg-muted); overflow-wrap: anywhere; }
+  [data-design] .mg-dtl-incl { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; }
+  [data-design] .mg-dtl-incl li { position: relative; padding-left: 26px; color: var(--mg-body); overflow-wrap: anywhere; }
+  [data-design] .mg-dtl-incl li::before { content: ""; position: absolute; left: 0; top: .5em; width: 12px; height: 7px; border-left: 2px solid var(--mg-accent); border-bottom: 2px solid var(--mg-accent); transform: rotate(-45deg); }
+
+  [data-design] .mg-dtl-book { position: sticky; top: calc(108px + env(safe-area-inset-top, 0px)); display: grid; gap: 18px; }
+  [data-design] .mg-dtl-card { background: var(--mg-surface); color: var(--mg-ink); border: 1px solid var(--mg-line); border-radius: var(--mg-r-card, 24px); padding: 26px; box-shadow: 0 30px 70px -44px rgb(var(--mg-shadow, 0 0 0) / .55); }
+  [data-design] .mg-dtl-price { margin: 0; display: flex; flex-direction: column; gap: 2px; font-family: var(--mg-f-display); font-weight: var(--mg-d-weight, 700); font-size: clamp(26px, 2.4vw, 34px); line-height: 1.1; color: var(--mg-heading); }
+  [data-design] .mg-dtl-price small { font: 500 12px/1.4 var(--mg-f-label); letter-spacing: .06em; text-transform: uppercase; color: var(--mg-muted); }
+  [data-design] .mg-dtl-status { display: inline-flex; align-items: center; gap: 8px; margin: 12px 0 0; font: 600 14px/1.3 var(--mg-f-body); color: var(--mg-ink); }
+  [data-design] .mg-dtl-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--mg-accent); }
+  [data-design] .mg-dtl-status--out::before { background: var(--mg-muted); }
+  [data-design] .mg-dtl-facts { margin: 18px 0 20px; padding: 0; border-top: 1px solid var(--mg-line); }
+  [data-design] .mg-dtl-facts div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--mg-line); font-size: 14px; }
+  [data-design] .mg-dtl-facts dt { margin: 0; color: var(--mg-muted); }
+  [data-design] .mg-dtl-facts dd { margin: 0; text-align: right; font-weight: 600; color: var(--mg-ink); overflow-wrap: anywhere; }
+  [data-design] .mg-dtl-cta { width: 100%; justify-content: center; min-height: 48px; }
+  [data-design] .mg-dtl-card .mg-note { margin: 14px 0 0; }
+  [data-design] .mg-dtl-back { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; color: var(--mg-ink); text-decoration: none; }
+  [data-design] .mg-dtl-back svg { transform: scaleX(-1); }
+  [data-design] .mg-dtl-back:hover span, [data-design] .mg-dtl-back:focus-visible span { text-decoration: underline; }
+  [data-design] .mg-dtl--ended .mg-dtl-back { margin-top: 28px; }
+
+  /* Other offerings and reviews. */
+  [data-design] .mg-dtl-more, [data-design] .mg-dtl-reviews { padding-block: clamp(48px, 7vw, 96px); background: var(--mg-bg-alt); color: var(--mg-body); }
+  [data-design] .mg-dtl-reviews { background: var(--mg-bg); }
+  [data-design] .mg-dtl-more .mg-dtl-h, [data-design] .mg-dtl-reviews .mg-dtl-h { margin-top: 0; }
+  [data-design] .mg-dtl-others { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  [data-design] .mg-dtl-other { display: flex; flex-direction: column; background: var(--mg-surface); color: var(--mg-ink); border: 1px solid var(--mg-line); border-radius: var(--mg-r-card, 24px); overflow: hidden; }
+  [data-design] .mg-dtl-other__ph { position: relative; display: block; aspect-ratio: 4 / 3; background: var(--mg-bg-alt); overflow: hidden; }
+  [data-design] .mg-dtl-other__ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .8s cubic-bezier(.2, .8, .2, 1); }
+  [data-design] .mg-dtl-other:hover .mg-dtl-other__ph img { transform: scale(1.04); }
+  [data-design] .mg-dtl-other__b { display: flex; flex-direction: column; gap: 8px; padding: 20px; flex: 1; }
+  [data-design] .mg-dtl-other__when { margin: 0; font-size: 13px; color: var(--mg-muted); }
+  [data-design] .mg-dtl-other h3 { margin: 0; font-family: var(--mg-f-display); font-size: 22px; line-height: 1.15; color: var(--mg-heading); }
+  [data-design] .mg-dtl-other__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 10px; }
+  [data-design] .mg-dtl-other .mg-price { margin: 0; font-weight: 700; }
+  [data-design] .mg-dtl-quotes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+  [data-design] .mg-dtl-quotes blockquote { margin: 0 0 12px; font-family: var(--mg-f-display); font-size: clamp(18px, 1.8vw, 22px); line-height: 1.4; color: var(--mg-heading); }
+  [data-design] .mg-dtl-quotes__who { margin: 0; font-size: 14px; color: var(--mg-muted); }
+
+  /* Card titles link to their detail page (a quiet underline grows on hover). */
+  [data-design] a.mg-to-detail { color: inherit; text-decoration: none; background-image: linear-gradient(currentColor, currentColor); background-size: 0 1px; background-repeat: no-repeat; background-position: 0 100%; transition: background-size .4s cubic-bezier(.2, .8, .2, 1); }
+  [data-design] a.mg-to-detail:hover, [data-design] a.mg-to-detail:focus-visible { background-size: 100% 1px; }
+
+  @media (max-width: 960px) {
+    [data-design] .mg-dtl-grid { grid-template-columns: minmax(0, 1fr); }
+    [data-design] .mg-dtl-book { position: static; }
+    [data-design] .mg-dtl-others { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    [data-design] .mg-dtl-hero--thumbs { grid-template-columns: minmax(0, 1fr); }
+    [data-design] .mg-dtl-thumbs { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 84px; }
+    [data-design] .mg-dtl-media { aspect-ratio: 4 / 3; }
+    [data-design] .mg-dtl-incl { grid-template-columns: minmax(0, 1fr); }
+    [data-design] .mg-dtl-plan li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    [data-design] .mg-dtl-others { grid-template-columns: minmax(0, 1fr); }
+    [data-design] .mg-dtl-card { padding: 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-design] .mg-dtl-other__ph img, [data-design] a.mg-to-detail { transition: none; }
+  }
+}

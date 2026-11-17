@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { SitePageView } from "../../../../components/SitePageView";
 import { PreviewLinkScope } from "../../../../components/PreviewLinks";
-import { withPreviewMediaKey, withPreviewOfferingKey } from "../../../../lib/previewMedia";
+import { withPreviewDetailKey, withPreviewMediaKey, withPreviewOfferingKey } from "../../../../lib/previewMedia";
+import { resolveOfferingDetail } from "../../../../lib/offeringDetail";
 import { wantsLessData } from "../../../../lib/siteVideo";
 import { resolveSitePath } from "../../../../lib/pageRouting";
 import { normalizeRequestSegments } from "../../../../contracts/generated/routes.ts";
@@ -12,7 +13,7 @@ import { loadPageExtras } from "../../../../lib/pageExtras";
 import { SHARE_TOKEN, sharedPreviewForRequest } from "../../../../lib/shareLinks";
 import { withSharedView } from "../../../../lib/sharedView";
 import { sharedBannerText, SHARED_BANNER_STYLE, SHARED_STRIP_CSS } from "../../../../lib/sharedBanner";
-import { siteDisplayName } from "../../../../lib/siteArtifact";
+import { isV2Artifact, siteDisplayName } from "../../../../lib/siteArtifact";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,24 @@ export default async function SharedPreviewPage({
   // #4453 M8 — a client never sees the team's Draft-only hints or unreviewed pages.
   const artifact = withSharedView(withPreviewMediaKey(shared.artifact, key));
   const resolved = resolveSitePath(artifact, previewPath);
+  // #4453 milestone 9 — an offering detail page in the shared view, like the live site.
+  const detailed = resolved.kind === "not_found" && isV2Artifact(artifact)
+    ? await resolveOfferingDetail({ site: { site_id: artifact.site_id }, artifact, path: previewPath, search })
+    : null;
+  if (detailed?.kind === "detail") {
+    const incomingDetail = await headers();
+    return (
+      <div data-preview="1" data-shared-preview="1" data-page={detailed.page.key}>
+        <style nonce={incomingDetail.get("x-nonce") ?? undefined}>{SHARED_STRIP_CSS}</style>
+        <p className="preview-banner" role="status" style={SHARED_BANNER_STYLE}>
+          {sharedBannerText(siteDisplayName(artifact), shared.expiresAt)}
+        </p>
+        <PreviewLinkScope scope={{ target: { token }, path: previewPath, assetKey: key }}>
+          <SitePageView artifact={artifact} page={detailed.page} previewKey={key} live={withPreviewOfferingKey(detailed.live, key)} detail={withPreviewDetailKey(detailed.detail, key)} saveData={wantsLessData(incomingDetail)} nonce={incomingDetail.get("x-nonce") ?? undefined} />
+        </PreviewLinkScope>
+      </div>
+    );
+  }
   if (resolved.kind !== "page" && resolved.kind !== "entry") notFound();
   const entry = resolved.kind === "entry" ? resolved.entry : undefined;
   const { live, forms } = await loadPageExtras({

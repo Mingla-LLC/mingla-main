@@ -1,6 +1,7 @@
 // #4453 production-build smoke, step 2 (step 1 is fixtures.test.ts, which
 // writes PROD_SMOKE_DIR). Builds the runtime with `next build` (skip with
-// --no-build), then for each feed state (empty, three upcoming trips) starts a
+// --no-build), then for each feed state (empty, three upcoming trips plus an
+// event, a session and a room; #4453 milestone 9 adds one detail page per kind) starts a
 // fresh `next start` in local mode against a loopback mock of Core and
 // storage, and requests Home and Trips for every design key. Every page must
 // answer 200, and with an empty feed no empty-grid markup may reach the
@@ -66,7 +67,22 @@ const mock = http.createServer((req, res) => {
     let m;
     if (url.startsWith("/auth/v1/token")) return send(200, { access_token: "prod-smoke-local-token-4453-xxxxxxxx", token_type: "bearer", expires_in: 3600 });
     if (url.endsWith("/offerings")) {
-      return send(200, { ok: true, data: feedOn ? upcomingFeed : { ...upcomingFeed, offerings: [] } });
+      // #4453 milestone 9 — SITES_DETAIL_PAGES on in both states (with an empty feed every detail path must 404).
+      return send(200, { ok: true, data: { ...(feedOn ? upcomingFeed : { ...upcomingFeed, offerings: [] }), detail_pages: true } });
+    }
+    // #4453 milestone 9 — Core's detail extras: a trip's days and inclusions, a room's facts.
+    if (url.endsWith("/offering-detail")) {
+      let ask = {};
+      try { ask = JSON.parse(body); } catch { /* answered below */ }
+      const row = feedOn ? upcomingFeed.offerings.find((offering) => offering.kind === ask.kind && offering.slug === ask.slug) : null;
+      if (!row) return send(404, { ok: false, error: { code: "NOT_FOUND" } });
+      return send(200, { ok: true, data: {
+        offering_id: row.id, kind: row.kind,
+        days: row.kind === "trip" ? [{ day: 1, title: "Arrive on the coast", summary: "Meet the group and walk the harbour at dusk." }, { day: 2, title: "Out to the islands", summary: null }] : [],
+        included: row.kind === "trip" ? ["Two guides", "Every breakfast", "Boat transfers"] : [],
+        stay: row.kind === "stay" ? { kind: "room", max_guests: 3, max_adults: 2, max_children: 1, amenities: ["Wi-Fi", "Sea view"], accessibility: [] } : null,
+        photos: [],
+      } });
     }
     if (url.includes("/enquiry-status")) return send(200, { ok: true, data: { status: "available" } });
     // #4453 milestone 5 — Core's live booking answer for the blocks every Home carries.
@@ -153,7 +169,7 @@ async function phoneWidthCheck(out) {
   try {
     const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
     for (const [host, site] of Object.entries(sites)) {
-      for (const path of site.smoke_paths) {
+      for (const path of [...site.smoke_paths, ...(site.detail_paths ?? []).map((detail) => detail.path)]) {
         await page.goto(`http://${host}:${APP_PORT}${path}`, { waitUntil: "networkidle" });
         const width = await page.evaluate(() => document.documentElement.scrollWidth);
         if (width > 375) out.push(`375 ${site.design_key} ${path}: the page is ${width}px wide (scrolls sideways)`);
@@ -191,6 +207,23 @@ for (const state of ["empty", "upcoming"]) {
         console.log(`ok ${label}`);
       }
       if (state === "upcoming" && site.expects_live_trips && !sawTrip) failures.push(`upcoming ${site.design_key}: no upcoming trip drawn on Home or Trips`);
+      // #4453 milestone 9 — one detail page per kind on every design: 200 with the
+      // detail template and its Mingla action while the offering is in the feed,
+      // 404 once it is not (the empty feed).
+      for (const detail of site.detail_paths ?? []) {
+        const { status, html } = await request(host, detail.path);
+        const label = `${state} ${site.design_key} ${detail.path}`;
+        if (state === "empty") {
+          if (status !== 404) failures.push(`${label}: HTTP ${status}, expected 404 (not in the feed)`);
+          else console.log(`ok ${label} (404)`);
+          continue;
+        }
+        if (status !== 200) { failures.push(`${label}: HTTP ${status}`); continue; }
+        if (!html.includes("mg-dtl") || !html.includes(detail.title) || !html.includes("https://host.usemingla.com/")) {
+          failures.push(`${label}: no detail template, title or Mingla action (saved ${site.design_key}-detail.html)`);
+          writeFileSync(join(dir, `${site.design_key}-detail.html`), html);
+        } else console.log(`ok ${label}`);
+      }
     }
     // #4453 milestone 5 (tester P1-3) — at 375 px no page scrolls sideways, on every design, Home and Trips.
     if (state === "upcoming") await phoneWidthCheck(failures);
@@ -212,4 +245,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`  ${failure}`);
   process.exit(1);
 }
-console.log(`prod-smoke: PASS (${Object.keys(sites).length} designs x 2 feed states)`);
+console.log(`prod-smoke: PASS (${Object.keys(sites).length} designs x 2 feed states, ${Object.values(sites).reduce((sum, site) => sum + (site.detail_paths?.length ?? 0), 0)} detail pages)`);
