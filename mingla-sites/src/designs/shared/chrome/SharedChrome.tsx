@@ -30,6 +30,30 @@ import { MoreMenu, PhoneMenu, ScrollState } from "./HeaderClient";
 
 export type ChromeNavItem = { label: string; href: string; children?: Array<{ label: string; href: string }> };
 
+/**
+ * #4453 final rework (Lighthouse link-text, SEO) — an owner's menu group
+ * titled "More" (or another generic word) linking to a page reads, to search
+ * engines and screen readers, as a link with no meaning. The visible label
+ * stays the owner's; the link also carries the name of the page it opens,
+ * taken from the owner's own sub-menu (the child with the same address, else
+ * the first child), as visually hidden text. Never invented.
+ */
+const GENERIC_LINK_TEXT = new Set(["more", "read more", "learn more", "see more", "view more", "click here", "here", "details", "info", "more info"]);
+
+export function descriptiveSuffix(item: ChromeNavItem): string | null {
+  if (!GENERIC_LINK_TEXT.has(item.label.trim().toLowerCase())) return null;
+  const children = item.children ?? [];
+  const named = children.find((child) => child.href === item.href) ?? children[0];
+  const name = named?.label.trim();
+  return name && !GENERIC_LINK_TEXT.has(name.toLowerCase()) ? name : null;
+}
+
+/** The owner's label, plus the page name for a generic one (visually hidden). */
+function NavLabel({ item }: { item: ChromeNavItem }) {
+  const suffix = descriptiveSuffix(item);
+  return <>{item.label}{suffix ? <span className="mg-vh">{`: ${suffix}`}</span> : null}</>;
+}
+
 function prefixScore(href: string, path: string): number {
   if (!href.startsWith("/")) return -1;
   if (href === "/") return path === "/" ? 0 : -1;
@@ -69,7 +93,7 @@ export function SharedHeader({ variant, items, path, logo, siteName, cta, place 
       <li key={`${item.href}-${index}`} className="mg-nav__li" data-i={index} data-current={current ? "true" : undefined}>
         <Go href={item.href} className="mg-nav__a" aria-current={current ? "page" : undefined}>
           {variant === "grid-bar" && !inMore ? <small className="gr-n" aria-hidden="true">{String(index + 1).padStart(2, "0")}</small> : null}
-          {item.label}
+          <NavLabel item={item} />
         </Go>
         {item.children?.length ? (
           <ul className={inMore ? "mg-nav__sub mg-nav__sub--inline" : "mg-nav__sub"}>
@@ -112,7 +136,7 @@ export function SharedHeader({ variant, items, path, logo, siteName, cta, place 
                 <li data-current={active < 0 && path === "/" ? "true" : undefined}><Go href="/" aria-current={path === "/" ? "page" : undefined}><span className="mg-pmenu__n">01</span>Home</Go></li>
                 {items.map((item, index) => (
                   <li key={`${item.href}-${index}`} data-current={index === active ? "true" : undefined}>
-                    <Go href={item.href} aria-current={index === active ? "page" : undefined}><span className="mg-pmenu__n">{String(index + 2).padStart(2, "0")}</span>{item.label}</Go>
+                    <Go href={item.href} aria-current={index === active ? "page" : undefined}><span className="mg-pmenu__n">{String(index + 2).padStart(2, "0")}</span><NavLabel item={item} /></Go>
                     {item.children?.length ? (
                       <ul>{item.children.map((child, childIndex) => <li key={childIndex}><Go href={child.href}>{child.label}</Go></li>)}</ul>
                     ) : null}
@@ -142,7 +166,12 @@ const MINGLA_CREDIT_HREF = "https://usemingla.com/host";
 export function SharedFooter({ variant, artifact, items }: { variant: FooterVariant; artifact: ArtifactV2; items: readonly ChromeNavItem[] }) {
   const footer = artifact.footer;
   const owner = (footer.columns ?? []).filter((column) => column.links.length > 0);
-  const pages = [{ label: "Home", href: "/" }, ...items.flatMap((item) => [{ label: item.label, href: item.href }, ...(item.children ?? [])])].slice(0, 8);
+  // #4453 final rework — a generic group label ("More") whose page is already
+  // one of its children is not repeated as its own "More" link.
+  const pages = [{ label: "Home", href: "/" }, ...items.flatMap((item) => [
+    ...(descriptiveSuffix(item) && (item.children ?? []).some((child) => child.href === item.href) ? [] : [{ label: item.label, href: item.href }]),
+    ...(item.children ?? []),
+  ])].slice(0, 8);
   const socials = (footer.socials ?? []).filter((social) => isSafeHref(social.url));
   const copyright = footer.copyright ? copyrightLine(footer.copyright, artifact) : footer.legal_text ?? `© ${artifact.brand.display_name}`;
   const visit = [footer.location, footer.address, footer.hours_summary].filter((line): line is string => Boolean(line));

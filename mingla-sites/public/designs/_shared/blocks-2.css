@@ -610,6 +610,8 @@
   [data-design] a.mg-slot:hover { border-color: var(--mg-accent); }
   [data-design] a.mg-slot:focus-visible, [data-design] .mg-handoff a:focus-visible, [data-design] .mg-handoff button:focus-visible, [data-design] .mg-sticky a:focus-visible { outline: 2px solid var(--mg-accent); outline-offset: 2px; }
   [data-design] .mg-slot--full { color: var(--mg-muted); text-decoration: line-through; border-style: dashed; }
+  /* #4453 final rework — visually hidden text (a generic menu label's page name; see SharedChrome descriptiveSuffix). */
+  [data-design] .mg-vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
   /* #4453 final rework (Lighthouse contrast): the "N left" count is 12 px text,
      so it needs 4.5:1. The accent itself is a fill colour on the light styles
      (Voyage 1.61:1, Pop 2.63:1 on the canvas), so it reads in the 700 shade
