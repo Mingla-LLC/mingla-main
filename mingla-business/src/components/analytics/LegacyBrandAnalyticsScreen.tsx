@@ -158,9 +158,6 @@ export const LegacyBrandAnalyticsScreen: React.FC<
     <View style={styles.content} testID="brand-analytics-content">
       <View style={styles.introRow}>
         <View style={styles.introCopy}>
-          <Text style={styles.intro} accessibilityRole="header">
-            See how people reach your pages and take action.
-          </Text>
           <View
             accessibilityLiveRegion="polite"
             testID="analytics-refresh-announcement"
@@ -279,12 +276,6 @@ const styles = StyleSheet.create({
     gap: space[4],
   },
   introCopy: { flex: 1, minWidth: 0 },
-  intro: {
-    color: color.text1,
-    fontSize: type.h1.fontSize,
-    lineHeight: type.h1.lineHeight,
-    fontWeight: type.h1.fontWeight,
-  },
   updating: {
     color: color.text2,
     fontSize: type.small.fontSize,
