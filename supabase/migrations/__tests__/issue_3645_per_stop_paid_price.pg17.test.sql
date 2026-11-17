@@ -356,4 +356,34 @@ BEGIN
   RAISE NOTICE 'ISSUE-3645-2A A1 PASS: Ari cannot turn a free per-stop experience into a paid one at 0; other updates save';
 END $a1$;
 
+-- K1: the live bodies were patched in place, so the in-place #4420 change to
+-- the same three functions (the stored area line) is kept, and each carries
+-- the 2A rule exactly once.
+DO $k1$
+DECLARE
+  v_fn text;
+  v_src text;
+BEGIN
+  FOREACH v_fn IN ARRAY ARRAY[
+    'public.biz_create_experience(uuid,jsonb,boolean)',
+    'public.biz_publish_experience(uuid,jsonb,boolean)',
+    'public.biz_update_live_experience(uuid,jsonb,text)'
+  ] LOOP
+    SELECT p.prosrc INTO v_src FROM pg_proc p WHERE p.oid = v_fn::regprocedure;
+    IF v_src NOT LIKE '%public.issue_4420_stored_venue_text(%' THEN
+      RAISE EXCEPTION 'K1 FAIL: % lost the #4420 stored area line', v_fn;
+    END IF;
+    IF v_src LIKE '%COALESCE(NULLIF(v_stops->0->>''address'', ''''), '''')%' THEN
+      RAISE EXCEPTION 'K1 FAIL: % stores the street again', v_fn;
+    END IF;
+    IF (length(v_src) - length(replace(v_src, 'issue #3645 bundle 2A', ''))) / length('issue #3645 bundle 2A') <> 1 THEN
+      RAISE EXCEPTION 'K1 FAIL: % does not carry the 2A rule exactly once', v_fn;
+    END IF;
+    IF v_src ~ 'v_pricing_mode = ''whole'' AND[^\n]*v_resolved_total <= 0' THEN
+      RAISE EXCEPTION 'K1 FAIL: % still limits the zero-price refusal to whole price', v_fn;
+    END IF;
+  END LOOP;
+  RAISE NOTICE 'ISSUE-3645-2A K1 PASS: the price rule is patched in place and #4420''s area line is kept';
+END $k1$;
+
 ROLLBACK;

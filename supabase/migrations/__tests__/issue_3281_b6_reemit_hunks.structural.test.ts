@@ -18,7 +18,6 @@ import {
   B6_REEMITS,
   TARGET,
 } from "./issue_3281_b6_reemit_hunks.ts";
-import { PER_STOP_PRICE_REEMITS } from "./issue_3645_per_stop_price_reemit_hunks.ts";
 import {
   ariDomainRefusalMessage,
   detectAriRefusalCode,
@@ -84,18 +83,9 @@ Deno.test("#3281 bundle 6 the target defines only its declared re-emits and new 
 
 Deno.test("#3281 bundle 6 the target is still the latest definition of what it defines", () => {
   const mine = [...definitions(Deno.readTextFileSync(TARGET)).keys()];
-  // [TEST-MOD-APPROVED #3645] A later migration may re-emit one of these only
-  // when it declares its hunks against this target, so its own guard proves
-  // the body is this one plus those hunks (bundle 2A: biz_publish_experience).
-  const declaredLater = new Set(
-    PER_STOP_PRICE_REEMITS
-      .filter((r) => r.source === TARGET)
-      .map((r) => `${r.target.slice(DIR.length + 1)}|${r.fn}`),
-  );
   for (const file of files().filter((f) => f > TARGET_FILE)) {
     const later = definitions(Deno.readTextFileSync(`${DIR}/${file}`));
     for (const name of mine) {
-      if (declaredLater.has(`${file}|${name}`)) continue;
       assert(
         !later.has(name),
         `${file} redefines ${name}; declare its hunks against ${TARGET_FILE}`,
