@@ -518,7 +518,8 @@ export function phase3dContractDigest(manifest) {
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "67dff97fef16830d0501957a3f2f375de38aed920693156b9e75619b43b75db8";
+// #4459: listed migration 20280730004459 (brand Guest chat) and its pg17 suite and sidecar; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f8004b0d17bcee197e02112bc77e2d41f37340ee4232494d215494faebeb63de";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

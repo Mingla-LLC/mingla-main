@@ -1,7 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  BRAND_GUESTS_PUSH_CHUNK,
+  brandGuestsIdempotencyKey,
+  brandGuestsPushCopy,
+  brandGuestsRecipients,
+  chunked,
   messagePushData,
+  pushMessageId,
+  storedMentionUserIds,
   unifiedMessageIdempotencyKey,
   unifiedMessageTitle,
   unsentBeforePush,
@@ -116,6 +123,111 @@ async function callNotifyDispatch(
 }
 
 /**
+ * #4459: a message in a brand Guest chat. Everything is read from the database
+ * with the service key: the message (it must be this sender's, in this chat,
+ * and not unsent), the roster, the brand team, the replied-to author and the
+ * stored mentions. Any recipient list or preview the app sent is ignored. A
+ * brand post pushes every unmuted guest (in batches); a guest post pushes only
+ * the tagged and replied-to members.
+ */
+async function handleBrandGuestsMessage(
+  adminClient: AdminSupabaseClient,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  senderId: string,
+  conv: { id: string; name?: string | null; brand_id?: string | null },
+  messageId: string | undefined,
+): Promise<{ notified: number }> {
+  const id = pushMessageId(messageId);
+  if (!id || !conv.brand_id) return { notified: 0 };
+
+  const { data: message, error: messageErr } = await adminClient
+    .from("messages")
+    .select("id, conversation_id, sender_id, sender_kind, sender_display_name_snapshot, reply_to_id, mentions, content, deleted_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (messageErr || !message) {
+    console.warn("[notify-message] brand_guests message lookup failed:", messageErr?.code ?? "not_found");
+    return { notified: 0 };
+  }
+  if (message.conversation_id !== conv.id || message.sender_id !== senderId || message.deleted_at !== null) {
+    return { notified: 0 };
+  }
+
+  const [membersResult, teamResult, blocksResult, replyResult] = await Promise.all([
+    adminClient.from("conversation_participants").select("user_id, notifications_muted").eq("conversation_id", conv.id),
+    adminClient
+      .from("brand_team_members")
+      .select("user_id")
+      .eq("brand_id", conv.brand_id)
+      .not("accepted_at", "is", null)
+      .is("removed_at", null),
+    adminClient
+      .from("blocked_users")
+      .select("blocker_id, blocked_id")
+      .or(`blocker_id.eq.${senderId},blocked_id.eq.${senderId}`),
+    message.reply_to_id
+      ? adminClient
+        .from("messages")
+        .select("sender_id")
+        .eq("id", message.reply_to_id)
+        .eq("conversation_id", conv.id)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (membersResult.error || teamResult.error || blocksResult.error) {
+    console.warn("[notify-message] brand_guests roster lookup failed");
+    return { notified: 0 };
+  }
+
+  const team = new Set(((teamResult.data ?? []) as { user_id: string }[]).map((row) => row.user_id));
+  const blocked = new Set<string>();
+  for (const row of (blocksResult.data ?? []) as { blocker_id: string; blocked_id: string }[]) {
+    blocked.add(row.blocker_id === senderId ? row.blocked_id : row.blocker_id);
+  }
+  const recipients = brandGuestsRecipients({
+    senderId,
+    senderKind: message.sender_kind,
+    replyToAuthorId: (replyResult.data as { sender_id?: string | null } | null)?.sender_id ?? null,
+    mentionedUserIds: storedMentionUserIds(message.mentions),
+    members: ((membersResult.data ?? []) as { user_id: string; notifications_muted: boolean }[]).map((row) => ({
+      userId: row.user_id,
+      muted: row.notifications_muted === true,
+      isTeam: team.has(row.user_id),
+    })),
+    blockedWithSender: blocked,
+  });
+  if (recipients.length === 0) return { notified: 0 };
+
+  const copy = brandGuestsPushCopy({
+    brandName: conv.name,
+    senderKind: message.sender_kind,
+    senderDisplayName: message.sender_display_name_snapshot,
+    preview: truncate(String(message.content ?? ""), 100),
+  });
+  const deepLink = `mingla://chat/${conv.id}?type=group`;
+
+  for (const batch of chunked(recipients, BRAND_GUESTS_PUSH_CHUNK)) {
+    await Promise.allSettled(batch.map((recipientId) =>
+      callNotifyDispatch(supabaseUrl, serviceRoleKey, {
+        userId: recipientId,
+        type: "board_message_received",
+        title: copy.title,
+        body: copy.body,
+        deepLink,
+        data: messagePushData(deepLink, id),
+        actorId: senderId,
+        relatedId: conv.id,
+        relatedType: "conversation",
+        idempotencyKey: brandGuestsIdempotencyKey(id, recipientId),
+        pushOverrides: { androidChannelId: "messages", collapseId: `brand_guests:${conv.id}` },
+      })
+    ));
+  }
+  return { notified: recipients.length };
+}
+
+/**
  * ORCH-0898: unified "message" handler — fans out to conversation_participants for both
  * direct DMs and group chats. Replaces the legacy direct_message + board_message paths.
  *
@@ -146,13 +258,18 @@ async function handleUnifiedMessage(
   // Fetch conversation metadata (single query — includes type, name, linked_entity_type, session_id, event_id).
   const { data: conv, error: convErr } = await adminClient
     .from("conversations")
-    .select("id, type, name, linked_entity_type, session_id, event_id, program_kind, program_target_user_id")
+    .select("id, type, name, linked_entity_type, session_id, event_id, brand_id, program_kind, program_target_user_id")
     .eq("id", conversationId)
     .maybeSingle();
 
   if (convErr || !conv) {
     console.warn("[notify-message] conversation not found or error:", conversationId, convErr);
     return { notified: 0 };
+  }
+
+  // #4459: a brand Guest chat never fans out to its whole roster.
+  if (conv.linked_entity_type === "brand_guests") {
+    return await handleBrandGuestsMessage(adminClient, supabaseUrl, serviceRoleKey, senderId, conv, messageId);
   }
 
   // Fetch recipients (active, non-muted, non-sender).
@@ -259,6 +376,12 @@ async function handleUnifiedMention(
     .select("id, type, name, linked_entity_type, session_id, event_id")
     .eq("id", conversationId)
     .maybeSingle();
+
+  // #4459: tags and replies in a brand Guest chat are pushed by the "message"
+  // handler from the stored message; a client-supplied mention list is ignored.
+  if (conv?.linked_entity_type === "brand_guests") {
+    return { notified: 0 };
+  }
 
   const titleConvName = conv?.name && conv.name.trim() !== ""
     ? conv.name

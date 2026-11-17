@@ -307,7 +307,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "5e182c8b7c82b9a9a282891a7df573b074e9989433d1ac73a6358c1cba6c25b0";
+// #4459: listed migration 20280730004459 (brand Guest chat) after 20280725004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "01d305845ae8dda0cbbe2e55180f636b2ac90db48d9aa2bfd6c48a86bfcd8e87";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
