@@ -190,7 +190,6 @@
   "unsendBody": "It will be removed for everyone in this chat.",
   "unsendFailed": "Couldn't unsend. Please try again.",
   "unsendTitle": "Unsend this message?",
-  "unsentToast": "Message unsent",
   "yesterday": "Yesterday",
   "you": "you",
   "a11yReaction_one": "{{emoji}}, {{count}} reaction",

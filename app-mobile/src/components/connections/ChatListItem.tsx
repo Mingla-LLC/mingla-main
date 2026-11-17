@@ -46,6 +46,8 @@ import {
   chatKind,
   chatPreviewLine,
   chatPreviewText,
+  chatTombstonePreview,
+  type ChatTombstonePreviewMessage,
   type ChatPreviewLineMessage,
   formatChatListTime,
   formatUpcomingEventTag,
@@ -160,7 +162,19 @@ function ChatListItemImpl({
     t('connections:time_yesterday'),
   );
 
+  // Issue #4456: an unsent last message reads its unsent line (italic, never bold).
+  const tombstonePreview = useMemo(() => chatTombstonePreview({
+    message: lastMessage as ChatTombstonePreviewMessage | null | undefined,
+    currentUserId,
+    nameOf: (userId) => {
+      const participant = conversation.participants.find((p) => p.id === userId);
+      return participant ? getDisplayName(participant) : null;
+    },
+    t,
+  }), [conversation.participants, currentUserId, lastMessage, t]);
+
   const preview = useMemo(() => {
+    if (tombstonePreview) return tombstonePreview;
     const text = chatPreviewText(lastMessage, t);
     if (text && lastMessage) {
       // Issue #4261 amendment 1 (B-3): one display rule; system rows get no sender prefix.
@@ -186,7 +200,7 @@ function ChatListItemImpl({
         : t('connections:preview_collab_ready');
     }
     return t('connections:preview_start');
-  }, [conversation, currentUserId, isBrandChannel, isEvent, isGroup, lastMessage, t]);
+  }, [conversation, currentUserId, isBrandChannel, isEvent, isGroup, lastMessage, t, tombstonePreview]);
 
   const tagLabel = isBrandChannel
     ? formatUpcomingEventTag(nextUpEvent(brandChannel.events, Date.now())?.startAt, new Date(), i18n.language)
@@ -360,7 +374,10 @@ function ChatListItemImpl({
             </Text>
           </View>
           <View style={styles.line}>
-            <Text style={[styles.preview, unread ? styles.previewUnread : null]} numberOfLines={1}>
+            <Text
+              style={[styles.preview, tombstonePreview ? styles.previewUnsent : unread ? styles.previewUnread : null]}
+              numberOfLines={1}
+            >
               {preview}
             </Text>
             {isMuted ? <Icon name="volume-mute" size={13} color={tk.faint} style={styles.lineIcon} /> : null}
@@ -475,6 +492,12 @@ const styles = StyleSheet.create({
   },
   previewUnread: {
     color: tk.ink,
+  },
+  // Issue #4456: the unsent line, italic, regular weight, dim.
+  previewUnsent: {
+    fontStyle: 'italic',
+    fontWeight: '400',
+    color: tk.dim,
   },
   badge: {
     flexShrink: 0,

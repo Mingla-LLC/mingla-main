@@ -190,7 +190,6 @@
   "unsendBody": "Zostanie usunięta dla wszystkich w tym czacie.",
   "unsendFailed": "Nie udało się cofnąć wysłania. Spróbuj ponownie.",
   "unsendTitle": "Cofnąć wysłanie tej wiadomości?",
-  "unsentToast": "Wysłanie cofnięte",
   "yesterday": "Wczoraj",
   "you": "ty",
   "a11yReaction_few": "{{emoji}}, {{count}} reakcje",

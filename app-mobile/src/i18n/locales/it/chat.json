@@ -190,7 +190,6 @@
   "unsendBody": "Verrà rimosso per tutti in questa chat.",
   "unsendFailed": "Impossibile annullare l'invio. Riprova.",
   "unsendTitle": "Annullare l'invio di questo messaggio?",
-  "unsentToast": "Invio annullato",
   "yesterday": "Ieri",
   "you": "tu",
   "a11yReaction_many": "{{emoji}}, {{count}} reazioni",

@@ -12,10 +12,11 @@ let nextSocialRealtimeOwner = 0;
  * Subscribes to realtime changes on social tables and invalidates
  * the appropriate React Query caches.
  *
- * Tables subscribed (all server-side filtered, all in the production
- * supabase_realtime publication):
+ * Tables subscribed (all in the production supabase_realtime publication):
  *   - conversation_participant_lifecycle (user_id = userId, UPDATE: a removed
  *     chat coming back), on its own channel (see below)
+ *   - conversations (UPDATE, no filter: RLS delivers only my chats), on its
+ *     own chat-list channel (Issue #4456, see below)
  *   - conversation_participants (user_id = userId)
  *   - friends (user_id = userId)
  *   - calendar_entries (user_id = userId)
@@ -38,6 +39,10 @@ export const SOCIAL_REALTIME_TABLES: readonly string[] = [
   "pairings",
 ];
 export const CHAT_LIFECYCLE_REALTIME_TABLES: readonly string[] = ["conversation_participant_lifecycle"];
+/** Issue #4456: the open Chats list's live channel. */
+export const CHAT_LIST_LIVE_TABLES: readonly string[] = ["conversations"];
+/** Issue #4456: a burst of chat updates refetches the Chats list once. */
+export const CHAT_LIST_LIVE_DEBOUNCE_MS = 750;
 export function useSocialRealtime(
   userId: string | undefined,
   callbacks?: {
@@ -55,6 +60,17 @@ export function useSocialRealtime(
   useEffect(() => {
     if (!userId) return;
     const channelEpoch = ++epochRef.current;
+    // Issue #4456: one debounced Chats-list refetch shared by every listener
+    // below (membership rows change on every read receipt; a burst of sends
+    // or reads refetches once).
+    let chatListTimer: ReturnType<typeof setTimeout> | null = null;
+    const refreshChatListSoon = () => {
+      if (chatListTimer) clearTimeout(chatListTimer);
+      chatListTimer = setTimeout(() => {
+        chatListTimer = null;
+        void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
+      }, CHAT_LIST_LIVE_DEBOUNCE_MS);
+    };
 
     const channel = supabase
       .channel(`social-realtime-${userId}:${ownerRef.current}:${channelEpoch}`)
@@ -68,7 +84,9 @@ export function useSocialRealtime(
           filter: `user_id=eq.${userId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["messages"] });
+          // Issue #4456: the Chats list (the old ["messages"] key had no
+          // query), debounced: last_read_at changes on every read receipt.
+          refreshChatListSoon();
         }
       )
       // friends
@@ -232,9 +250,32 @@ export function useSocialRealtime(
       )
       .subscribe();
 
+    // Issue #4456: the Chats list updates live. Every new message bumps its
+    // conversation (last_message_at), and an unsend bumps updated_at, so one
+    // UPDATE binding on conversations covers a new chat's first message, a new
+    // message in an existing chat, the preview, the order and the unread dot.
+    // No filter: RLS delivers only conversations I am in. Debounced so a burst
+    // refetches once. On its own channel (the #4435 trap above).
+    const chatListChannel = supabase
+      .channel(`chat-list-live-${userId}:${ownerRef.current}:${channelEpoch}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversations",
+        },
+        () => {
+          refreshChatListSoon();
+        }
+      )
+      .subscribe();
+
     return () => {
+      if (chatListTimer) clearTimeout(chatListTimer);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(lifecycleChannel);
+      void supabase.removeChannel(chatListChannel);
     };
   }, [userId, queryClient]);
 }

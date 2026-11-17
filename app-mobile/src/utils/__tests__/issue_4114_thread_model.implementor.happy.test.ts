@@ -97,10 +97,12 @@ Deno.test("composer grows to 5 lines, then stops", () => {
   assertEquals(COMPOSER_MIN_HEIGHT, 56, "a single line is the 56pt capsule");
 });
 
+// Issue #4456 changed the menu (Delete for me on everything, no menu while a
+// send is pending); the full matrix is in issue_4456_unsend_menu_model.
 Deno.test("long-press actions: Copy only on text, Unsend your own, Report others'", () => {
-  assertEquals(messageActions({ isOwnMessage: true, type: "text", isSent: true, canUnsend: true, canReport: true }), ["reply", "copy", "unsend"], "own text");
-  assertEquals(messageActions({ isOwnMessage: false, type: "card", isSent: true, canUnsend: true, canReport: true }), ["reply", "report"], "someone's card: no Copy");
-  assertEquals(messageActions({ isOwnMessage: true, type: "text", isSent: false, canUnsend: true, canReport: true }), ["reply", "copy"], "a pending send cannot be unsent");
+  assertEquals(messageActions({ isOwnMessage: true, type: "text", isSent: true, canUnsend: true, canReport: true }), ["reply", "copy", "deleteForMe", "unsend"], "own text");
+  assertEquals(messageActions({ isOwnMessage: false, type: "card", isSent: true, canUnsend: true, canReport: true }), ["reply", "report", "deleteForMe"], "someone's card: no Copy");
+  assertEquals(messageActions({ isOwnMessage: true, type: "text", isSent: false, canUnsend: true, canReport: true }), [], "a pending send has no menu");
 });
 
 Deno.test("Android back closes the top-most open layer before the thread", () => {
