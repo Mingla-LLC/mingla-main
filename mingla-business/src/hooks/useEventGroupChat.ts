@@ -7,7 +7,6 @@ import {
   postPlannerMessage,
   type EventGroupConversation,
   type EventGroupMessage,
-  type PlannerImageAttachment,
 } from "../services/groupChatService";
 
 export function useEventGroupChat(eventId: string): {
@@ -16,10 +15,8 @@ export function useEventGroupChat(eventId: string): {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  postMessage: (
-    content: string,
-    attachment?: PlannerImageAttachment | null,
-  ) => Promise<{ messageId: string | null; error: string | null }>;
+  /** #4459: text only; the server stamps the post as the brand. */
+  postMessage: (content: string) => Promise<{ messageId: string | null; error: string | null }>;
 } {
   const [conversation, setConversation] = useState<EventGroupConversation | null>(null);
   const [messages, setMessages] = useState<EventGroupMessage[]>([]);
@@ -76,9 +73,9 @@ export function useEventGroupChat(eventId: string): {
   }, [conversation?.id, refresh]);
 
   const postMessage = useCallback(
-    async (content: string, attachment?: PlannerImageAttachment | null) => {
+    async (content: string) => {
       if (conversation === null) return { messageId: null, error: "Conversation not loaded" };
-      const result = await postPlannerMessage(conversation.id, content, attachment);
+      const result = await postPlannerMessage(conversation.id, content);
       if (result.error === null) await refresh();
       return result;
     },
