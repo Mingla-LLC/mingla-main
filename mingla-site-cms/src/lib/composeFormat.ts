@@ -25,7 +25,6 @@
  * field (test: mingla-site-cms/src/lib/composeFormat.issue4453.test.ts).
  */
 import {
-  FORMAT_DETAIL_BASES,
   FORMAT_PAGE_SETS,
   FORMAT_PRIMARY_ACTION,
   FORMAT_RECIPES,

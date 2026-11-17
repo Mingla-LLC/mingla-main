@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element -- site media is first-party and immutable (/media). */
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
 import { Arrow, Blk, Go, Photo, rows, SecHead, sectionId, text, type SharedBlockProps } from "../parts";
 

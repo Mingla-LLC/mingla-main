@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { composeFormatSite, plannedKeysOf, type ComposeV2Input } from "./composeFormat";
-import { FORMAT_KEYS, FORMAT_PAGE_SETS, FORMAT_RECIPES, type FormatKey } from "../contracts/generated/formats.ts";
+import { FORMAT_DETAIL_BASES, FORMAT_KEYS, FORMAT_PAGE_SETS, FORMAT_RECIPES, type FormatKey } from "../contracts/generated/formats.ts";
 import { EMPTY_INVENTORY, type ContentInventory } from "../contracts/generated/sectionSources.ts";
 import { STYLE_KEYS } from "../contracts/generated/formats.ts";
 import { tickerPhrases } from "../contracts/generated/sitePlan.ts";
@@ -320,6 +320,11 @@ describe("#4453 milestone 7b — page-set blocks, fact badges and detail bases",
     expect(fresh.pages.find((page) => page.slug === "sessions")).toMatchObject({ kind: "collection_index", collection_kind: "experiences" });
     const art = composeFormatSite({ ...full("art"), routes: { stored, canMove: true } })!;
     expect(art.routes).toEqual({ events: "exhibitions", experiences: "workshops" });
+    // The bases the composer sets are exactly the contract's per-format defaults (where they differ from today's).
+    for (const format of FORMAT_KEYS) {
+      const moved = composeFormatSite({ ...full(format), routes: { stored, canMove: true } })!.routes;
+      for (const [kind, base] of Object.entries(moved)) expect(FORMAT_DETAIL_BASES[format][kind as "events"], `${format} ${kind}`).toBe(base);
+    }
     // Published (cannot move): no base changes, the listing is a standard page.
     const published = composeFormatSite({ ...full("experiences"), routes: { stored, canMove: false } })!;
     expect(published.routes).toEqual({});

@@ -212,6 +212,8 @@ function sentinelBlock(type: BlockType, artifact: ArtifactV2): { block: Record<s
     const v = value(spec, key);
     if (v === undefined) continue;
     if (type === "offering_grid" && ["offerings", "offering_ids"].includes(key)) { expected.splice(before); continue; }
+    // #4453 milestone 7b — fact badges are drawn by the shared hero layouts only (HERO_LAYOUTS_WITH_FACTS; the builder drops them elsewhere).
+    if (type === "hero" && key === "fact_badges") { expected.splice(before); continue; }
     block[key] = v;
   }
   if (type === "offering_grid") block.mode = "upcoming";

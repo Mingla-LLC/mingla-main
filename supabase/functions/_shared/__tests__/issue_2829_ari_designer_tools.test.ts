@@ -34,7 +34,7 @@ import {
 import { AGENT_TOOL_AUTHORIZATION, authorizeAgentTool } from "../agentToolAuthorization.ts";
 import { compileGeminiToolDeclarations } from "../agentGemini.ts";
 import { ToolError } from "../agentToolHelpers.ts";
-import { ARI_BLOCK_TYPES, BLOCK_TYPES, BOOKING_BLOCK_NEW_TYPES } from "../siteContracts/blocks.ts";
+import { ARI_BLOCK_TYPES, BLOCK_TYPES, BOOKING_BLOCK_NEW_TYPES, PAGE_SET_BLOCK_TYPES } from "../siteContracts/blocks.ts";
 import { ARI_DESIGN_KEYS, ariDesignVariants, DESIGNS, SHARED_LAYOUTS } from "../siteContracts/designs.ts";
 import { ARI_EXCLUDED_FIELDS } from "../siteContracts/ariToolSchemas.ts";
 import { MAX_NAV_ITEMS } from "../siteContracts/limits.ts";
@@ -68,12 +68,17 @@ Deno.test("#2829 W9b composition blocks are generated from the catalogue: every 
   // held from Ari until milestone 7 (the approved rule; #3355 declarations stay byte-identical).
   assertEquals(branches.map((branch) => branch.properties.type.enum[0]), [...ARI_BLOCK_TYPES]);
   assertEquals([...BOOKING_BLOCK_NEW_TYPES], ["availability", "ticket_tiers", "process_steps"]);
-  assertEquals([...ARI_BLOCK_TYPES], BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type)));
+  // #4453 milestone 7b — nor the page-set blocks (composer v2 places them; Ari's declarations never carry them).
+  assertEquals([...PAGE_SET_BLOCK_TYPES], ["page_links", "facts_table"]);
+  assertEquals([...ARI_BLOCK_TYPES], BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type) && !PAGE_SET_BLOCK_TYPES.includes(type)));
+  for (const held of PAGE_SET_BLOCK_TYPES) {
+    assert(!branches.some((branch) => branch.properties.type.enum[0] === held), `${held} is declared to Ari`);
+  }
   for (const held of BOOKING_BLOCK_NEW_TYPES) {
     assert(!branches.some((branch) => branch.properties.type.enum[0] === held), `${held} is offered to Ari before milestone 7`);
   }
   const declared = JSON.stringify(branches);
-  for (const field of ["booking_bar", "booking_target_id", "show_rating", "captions"]) {
+  for (const field of ["booking_bar", "booking_target_id", "show_rating", "captions", "fact_badges"]) {
     assert(!declared.includes(`"${field}"`), `${field} is offered to Ari before milestone 7`);
   }
   for (const branch of branches) {
