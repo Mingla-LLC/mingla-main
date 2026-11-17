@@ -86,7 +86,15 @@ delete env.VERCEL_ENV;
 
 if (!process.argv.includes("--no-build")) {
   console.log("prod-smoke: next build");
-  const build = spawnSync("npx", ["next", "build"], { cwd: app, env, stdio: "inherit" });
+  // Next 16 may stop a build once to show an upgrade notice ("Retry the same
+  // command to continue"); the smoke retries exactly once in that case.
+  let build = spawnSync("npx", ["next", "build"], { cwd: app, env, encoding: "utf8" });
+  if (build.status !== 0 && /SecurityFatalError/.test(`${build.stdout}${build.stderr}`)) {
+    console.log("prod-smoke: next build stopped for its upgrade notice; retrying once");
+    build = spawnSync("npx", ["next", "build"], { cwd: app, env, encoding: "utf8" });
+  }
+  process.stdout.write(build.stdout ?? "");
+  process.stderr.write(build.stderr ?? "");
   if (build.status !== 0) { mock.close(); process.exit(build.status ?? 1); }
 }
 
@@ -143,6 +151,8 @@ for (const state of ["empty", "upcoming"]) {
   for (const line of crashes.slice(0, 10)) failures.push(`${state} server log: ${line.trim().slice(0, 240)}`);
 }
 mock.close();
+// `next build` rewrites the tracked next-env.d.ts; put the reviewed copy back.
+spawnSync("git", ["checkout", "--", "next-env.d.ts"], { cwd: app, stdio: "ignore" });
 
 if (failures.length) {
   console.error(`prod-smoke: FAIL (${failures.length})`);
