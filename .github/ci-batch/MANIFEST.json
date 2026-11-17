@@ -21411,6 +21411,8 @@
         "supabase/migrations/__tests__/issue_4452_tool_followups.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4453_ari_design_pass.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4453_ari_design_pass.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_booking_reads.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_booking_reads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_booking_reads.tester.adversarial.pg17.test.sql",
@@ -26903,6 +26905,8 @@
         "supabase/migrations/__tests__/issue_4452_tool_followups.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_ari_design_pass.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4453_ari_design_pass.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4453_ari_design_pass.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_booking_reads.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4453_booking_reads.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4453_booking_reads.tester.adversarial.pg17.test.sql",
@@ -54221,5 +54225,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "8612f6a806d7e2d75e57354a2d4f22b3c3d9658c7923bab38154108835b9ad57"
+  "phase3eContractSha256": "cc2b25aafea585dfd7259129502a992e4127477e0a6ea0a904f4e66426f5aaa2"
 }
