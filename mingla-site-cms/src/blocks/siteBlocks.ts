@@ -1423,7 +1423,7 @@ function variantField(type: BlockType): Field {
     type: "select",
     required: false,
     // #4453 milestone 5 — Atelier draws no booking block (its list is empty).
-    defaultValue: ATELIER.variants[type][0] ?? options[0],
+    defaultValue: ATELIER.variants[type][0],
     options: options.map((value) => ({ value, label: value === "atelier" || value === "neutral" || value === "voyage" ? "Standard" : value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ") })),
     admin: { description: "How this section is laid out. Your design supplies the layouts." },
   };

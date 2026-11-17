@@ -38,7 +38,7 @@ export type DesignRenderer = {
 };
 
 /** #4453 — immutable like a design stylesheet (a change is blocks-2.css). */
-export const SHARED_STYLESHEET = "/designs/_shared/blocks-1.css";
+export const SHARED_STYLESHEET = "/designs/_shared/blocks-2.css";
 
 export const DESIGN_RENDERERS: Readonly<Record<DesignKey, DesignRenderer>> = {
   atelier: { stylesheet: (version) => `/designs/atelier/${version}.css`, Page: AtelierPage },

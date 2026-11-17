@@ -65,6 +65,7 @@ import type {
   MapsOpenTarget,
 } from "@mingla/offering-rendering/mapsDeepLink";
 import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
+import { venuePrefill } from "../../../../src/sites/bookingPrefill";
 import { recordShareDestination } from "../../../../src/analytics/shareDestination";
 import {
   captureOfferingCta,
@@ -209,7 +210,16 @@ export default function PublicVenueRoute(): React.ReactElement {
     tab?: string | string[];
     spot?: string | string[];
     src?: string | string[];
+    // #4453 milestone 5 — a Mingla website's pre-fill (re-validated; bad values ignored).
+    date?: string | string[];
+    time?: string | string[];
+    party?: string | string[];
+    checkin?: string | string[];
+    checkout?: string | string[];
+    guests?: string | string[];
+    room?: string | string[];
   }>();
+  const prefill = useMemo(() => venuePrefill(params), [params]);
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
     : params.brandSlug;
@@ -561,13 +571,16 @@ export default function PublicVenueRoute(): React.ReactElement {
           brandId={context.brandId}
           currency={context.currency}
           analyticsSurface={analyticsSurface}
+          initialDate={prefill.date}
+          initialTime={prefill.time}
+          initialPartySize={prefill.party}
           // issue #1564 — the slot has always carried the resolved palette (the
           // Stay branch two lines up already used it); the table branch simply
           // never read it, and painted Mingla orange on every brand's page.
           palette={context.palette}
         />
       ),
-    [],
+    [prefill.date, prefill.time, prefill.party],
   );
 
   const renderReservationSheet = useCallback(
@@ -670,7 +683,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       initialTab={
         requestedTab === "menu"
           ? "menu"
-          : requestedTab === "reservations"
+          : requestedTab === "reservations" || prefill.tab === "reservations"
             ? "reservations"
             : "overview"
       }

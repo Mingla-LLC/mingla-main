@@ -7,6 +7,7 @@ import { SiteForm } from "../../../components/v2/neutral/SiteForm";
 import { formAnchor } from "../../../lib/siteForms";
 import { history, quotes } from "../data";
 import { RailControls, ReviewSwitcher } from "../interactive";
+import { TestimonialsRating } from "./Booking";
 import { ActionButton, Blk, Label, MinglaNote, rows, SecHead, sectionId, text, type SharedBlockProps } from "../parts";
 
 /*
@@ -106,6 +107,7 @@ export function TestimonialsRail({ block, index, ctx }: SharedBlockProps) {
       <div className="mg-wrap">
         <SecHead id={id} eyebrow={text(block.eyebrow)} heading={text(block.heading)} intro={text(block.intro)}
           extra={<div className="mg-rv-side"><RailControls railId={railId} /><ActionButton label={text(block.cta_label)} href={block.cta_href} className="mg-btn mg-btn--ghost" /></div>} />
+        <TestimonialsRating block={block} ctx={ctx} />
       </div>
       <ul className="mg-rail" id={railId}>
         {shown.map((quote) => (
@@ -129,6 +131,7 @@ export function TestimonialsWall({ block, index, ctx }: SharedBlockProps) {
     <Blk className="mg-rv-wall" labelledBy={text(block.heading) ? id : undefined}>
       <Label className="mg-center">{text(block.eyebrow)}</Label>
       {text(block.heading) ? <h2 id={id} className="mg-sr">{text(block.heading)}</h2> : null}
+      <TestimonialsRating block={block} ctx={ctx} wrap />
       {text(block.intro) ? <p className="mg-sec-intro mg-center">{text(block.intro)}</p> : null}
       <figure className="mg-bigq-fig" data-mg-rise="">
         <blockquote className="mg-bigq">{"“"}{first!.quote}{"”"}</blockquote>
@@ -152,6 +155,7 @@ export function TestimonialsSwitcher({ block, index, ctx }: SharedBlockProps) {
     <Blk className="mg-rv-switch" labelledBy={text(block.heading) ? id : undefined}>
       <Label>{text(block.eyebrow)}</Label>
       {text(block.heading) ? <h2 id={id}>{text(block.heading)}</h2> : null}
+      <TestimonialsRating block={block} ctx={ctx} />
       {text(block.intro) ? <p className="mg-sec-intro">{text(block.intro)}</p> : null}
       <ReviewSwitcher count={shown.length} labels={shown.map((quote, quoteIndex) => `Review ${quoteIndex + 1}, ${quote.reviewer}`)}>
         {shown.map((quote, quoteIndex) => (

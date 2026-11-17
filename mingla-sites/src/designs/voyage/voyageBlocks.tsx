@@ -66,4 +66,8 @@ export const VOYAGE_BLOCK_VARIANTS: BlockVariantMap<VoyageBlockProps> = {
   contact_handoff: { neutral: LinkBlock },
   hours_location: { neutral: Hours, split: shared.hours_location!.split! },
   marquee: { neutral: Ticker, ticker: shared.marquee!.ticker! },
+  // #4453 milestone 5 — the shared library's live booking layouts.
+  availability: { strip: shared.availability!.strip! },
+  ticket_tiers: { split: shared.ticket_tiers!.split! },
+  process_steps: { band: shared.process_steps!.band! },
 };

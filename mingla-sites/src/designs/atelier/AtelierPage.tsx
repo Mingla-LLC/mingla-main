@@ -468,6 +468,8 @@ export const ATELIER_BLOCK_VARIANTS: BlockVariantMap<AtelierBlockProps> = {
   destination_grid: { neutral: NeutralBlock }, story_grid: { neutral: NeutralBlock }, offering_history: { neutral: NeutralBlock },
   contact_form: { neutral: NeutralBlock }, newsletter_signup: { neutral: NeutralBlock },
   page_header: { neutral: NeutralBlock }, feature_cards: { neutral: NeutralBlock }, contact_details: { neutral: NeutralBlock },
+  // #4453 milestone 5 — atelier (frozen) draws no live booking block: its layout list is empty, so none can be published on it.
+  availability: {}, ticket_tiers: {}, process_steps: {},
 };
 
 function renderBlock(block: RestaurantBlock, props: Omit<AtelierBlockProps, "block">): React.ReactNode {

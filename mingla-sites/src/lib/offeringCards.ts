@@ -1,3 +1,4 @@
+import type { BookingView } from "./bookingFeed";
 import {
   formatOfferingDates,
   formatOfferingPrice,
@@ -44,9 +45,11 @@ export type LiveOfferings = {
   cards: ReadonlyMap<string, OfferingCard>;
   now: Date;
   filters: OfferingFilters;
+  /** #4453 milestone 5 — the page's live booking facts (slots, tiers, the hero bar's target, the Mingla rating). */
+  booking?: BookingView;
 };
 
-const KIND_NOUN: Readonly<Record<SiteOffering["kind"], string>> = { trip: "trip", event: "event", experience: "experience" };
+const KIND_NOUN: Readonly<Record<SiteOffering["kind"], string>> = { trip: "trip", event: "event", experience: "experience", stay: "room" };
 
 function ctaFor(offering: SiteOffering, state: OfferingState): string {
   if (state.bookable) return "Book";

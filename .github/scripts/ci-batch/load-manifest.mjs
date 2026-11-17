@@ -306,7 +306,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4453 6a: added the 6a design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
 // #4453 milestone 3 + 6a merge: both milestones' migrations and pg17 suites (proof part implementor + tester) registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "90f17169a5edec826a85d214700f9e534e40ea51dd4a4062731886454c233046";
+// #4453 milestone 5: registered the booking-reads and stay-feed-kind migrations in the post-replay lanes and their pg17 suites (with sidecars) in both inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "72d7da9e8e7ed30958fcc1b20dffe599b0ed95bd2481c30c8b8f32613848b168";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

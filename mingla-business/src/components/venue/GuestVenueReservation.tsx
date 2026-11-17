@@ -96,6 +96,14 @@ interface GuestVenueReservationProps {
    * ignored.
    */
   palette: ThemePalette;
+  /**
+   * #4453 milestone 5 — a Mingla website's pre-fill (already re-validated by
+   * the route): the date, the time and the party size the guest picked on the
+   * site. A time is selected only once Mingla's own slots show it open.
+   */
+  initialDate?: string | null;
+  initialTime?: string | null;
+  initialPartySize?: number | null;
 }
 const INVALID_PHONE_COPY = "Enter a valid phone number.";
 const INVALID_NAME_COPY = "Enter your name.";
@@ -176,6 +184,9 @@ function GuestVenueReservationBody({
   countryCode = null,
   analyticsSurface,
   palette,
+  initialDate = null,
+  initialTime = null,
+  initialPartySize = null,
 }: GuestVenueReservationProps): React.ReactElement {
   const dates = useMemo(dateOptions, []);
   // issue #1564 — derived from the page's palette, byte-for-byte the mapping
@@ -214,8 +225,10 @@ function GuestVenueReservationBody({
     }),
     [palette],
   );
-  const [partySize, setPartySize] = useState(2);
-  const [date, setDate] = useState<string | null>(dates[0]?.value ?? null);
+  const [partySize, setPartySize] = useState(initialPartySize ?? 2);
+  const [date, setDate] = useState<string | null>(
+    (initialDate && dates.some((option) => option.value === initialDate) ? initialDate : null) ?? dates[0]?.value ?? null,
+  );
   const [selectedUtc, setSelectedUtc] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
@@ -249,6 +262,17 @@ function GuestVenueReservationBody({
 
   const availability = usePublicVenueAvailability(venueId, date, partySize);
   const slots = availability.data ?? [];
+  // #4453 milestone 5 — the site's chosen time, selected ONCE, and only while
+  // Mingla's own slots show it open (a full or missing time is simply not picked).
+  const prefillTimeUsed = useRef(false);
+  useEffect(() => {
+    if (prefillTimeUsed.current || !initialTime || date !== initialDate) return;
+    const match = slots.find((slot) => !slot.isFull && slot.slotLocalLabel.startsWith(initialTime));
+    if (match) {
+      prefillTimeUsed.current = true;
+      setSelectedUtc(match.slotStartUtc);
+    }
+  }, [slots, initialTime, initialDate, date]);
   const availabilitySettled =
     !availability.isLoading &&
     !availability.isFetching &&
