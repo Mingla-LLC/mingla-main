@@ -45,6 +45,9 @@ export interface EventGroupMessage {
   sender_role_snapshot: string | null;
   /** #4459: 'brand' for team posts (shown as the brand), 'guest' for guests. */
   sender_kind?: "guest" | "brand" | "system" | null;
+  /** #4459: who on the team wrote a brand post (team-only read). */
+  author_id?: string | null;
+  author_name?: string | null;
   reply_to_id: string | null;
   related_message_ids: string[];
 }
@@ -163,7 +166,30 @@ export async function listMessages(
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) return { messages: [], error: error.message };
-  return { messages: (data ?? []) as EventGroupMessage[], error: null };
+  const messages = (data ?? []) as EventGroupMessage[];
+  // #4459: a brand post stores no sender (guests never see which team member
+  // wrote it); the team reads the author from brand_guest_post_authors.
+  const brandIds = messages.filter((m) => m.sender_kind === "brand").map((m) => m.id);
+  if (brandIds.length === 0) return { messages, error: null };
+  const { data: authors, error: authorsError } = await supabase
+    .from("brand_guest_post_authors")
+    .select("message_id, author_id")
+    .in("message_id", brandIds);
+  if (authorsError) return { messages, error: null };
+  const authorIds = [...new Set(((authors ?? []) as Array<{ author_id: string | null }>).map((a) => a.author_id).filter((id): id is string => Boolean(id)))];
+  const { data: profiles } = authorIds.length > 0
+    ? await supabase.from("profiles").select("id, display_name, first_name, username").in("id", authorIds)
+    : { data: [] as Array<Record<string, unknown>> };
+  const names = new Map(((profiles ?? []) as Array<{ id: string; display_name?: string | null; first_name?: string | null; username?: string | null }>)
+    .map((p) => [p.id, p.display_name || p.first_name || p.username || "A teammate"]));
+  const byMessage = new Map(((authors ?? []) as Array<{ message_id: string; author_id: string | null }>).map((a) => [a.message_id, a.author_id]));
+  return {
+    messages: messages.map((m) => {
+      const author = byMessage.get(m.id) ?? null;
+      return author ? { ...m, author_id: author, author_name: names.get(author) ?? "A teammate" } : m;
+    }),
+    error: null,
+  };
 }
 
 export async function listParticipants(
@@ -231,4 +257,35 @@ export async function deleteMessage(
   // #4459: the #4456 unsend path; guests see "Message removed by <Brand>".
   const { error } = await supabase.rpc("unsend_messages", { p_message_ids: [messageId] });
   return { error: error ? brandGuestErrorCopy(error) : null };
+}
+
+/** #4459: one brand Guest chat the signed-in person runs (Messages → Guests). */
+export interface BrandGuestChatSummary {
+  conversation_id: string;
+  brand_id: string;
+  brand_name: string;
+  brand_logo_url: string | null;
+  is_broadcast_only: boolean;
+  member_count: number;
+  last_message_at: string | null;
+}
+
+/** #4459: the Guest chats of every brand I am on the team of. Throws on a failed read. */
+export async function listMyBrandGuestChats(): Promise<BrandGuestChatSummary[]> {
+  const { data, error } = await supabase.rpc("issue_4459_list_my_brand_guest_chats");
+  if (error) throw new Error(brandGuestErrorCopy(error));
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    conversation_id: String(row.conversation_id),
+    brand_id: String(row.brand_id),
+    brand_name: typeof row.brand_name === "string" ? row.brand_name : "",
+    brand_logo_url: typeof row.brand_logo_url === "string" ? row.brand_logo_url : null,
+    is_broadcast_only: row.is_broadcast_only === true,
+    member_count: typeof row.member_count === "number" ? row.member_count : 0,
+    last_message_at: typeof row.last_message_at === "string" ? row.last_message_at : null,
+  }));
+}
+
+/** #4459: where a Guest chat opens in the Host app. */
+export function brandGuestChatHref(brandId: string): string {
+  return `/brand/${brandId}/guest-chat`;
 }

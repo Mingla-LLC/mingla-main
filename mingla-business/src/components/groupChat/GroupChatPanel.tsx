@@ -54,13 +54,18 @@ import { GroupChatMessageMedia } from "./GroupChatMessageMedia";
 import { groupChatMediaKind } from "../../utils/groupChatMedia";
 
 interface GroupChatPanelProps {
-  eventId: string;
+  /** A listing: opens its brand's Guest chat (#4459). */
+  eventId?: string;
+  /** #4459: Messages → Guests opens by brand. */
+  brandId?: string;
+  /** #4459: the desktop Messages page shows the panel beside the inbox (no Back). */
+  embedded?: boolean;
 }
 
-export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
+export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId, embedded = false }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const chat = useEventGroupChat(eventId);
+  const chat = useEventGroupChat(eventId ?? null, brandId ?? null);
   const moderation = useEventGroupChatModeration(chat.conversation?.id ?? null);
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
@@ -161,14 +166,16 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   return (
     <SafeScreen style={styles.screen}>
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          style={styles.iconButton}
-        >
-          <Icon name="arrowL" size={18} color={textTokens.primary} />
-        </Pressable>
+        {embedded ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => router.back()}
+            style={styles.iconButton}
+          >
+            <Icon name="arrowL" size={18} color={textTokens.primary} />
+          </Pressable>
+        )}
         <View style={styles.headerCopy}>
           <Text style={styles.title} numberOfLines={1}>
             {chat.conversation?.event_name ?? "Group chat"}
@@ -216,14 +223,18 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             data={invertedMessages}
             keyExtractor={(message) => message.id}
             renderItem={({ item: message }) => {
-              const mine = message.sender_id === currentUserId;
+              // #4459: a brand post stores no sender; its author is team-only.
+              const mine = message.sender_id === currentUserId ||
+                (message.author_id != null && message.author_id === currentUserId);
               const blast = message.marketing_campaign_id !== null;
-              // #4459: team posts read as the brand; guests by their own name.
+              // Team posts read as the brand (the team also sees who sent them);
+              // guests by their own name.
               const fromBrand = message.sender_kind === "brand";
-              const senderLabel = mine
-                ? null
-                : fromBrand
-                  ? `${chat.conversation?.name ?? "Your brand"} · HOST`
+              const brandName = chat.conversation?.name ?? "Your brand";
+              const senderLabel = fromBrand
+                ? `Sent as ${brandName} by ${mine ? "you" : message.author_name ?? "a teammate"}`
+                : mine
+                  ? null
                   : message.sender_display_name_snapshot;
               // #4114 Wave 6: Explorer photos and videos are private-bucket
               // paths (signed in GroupChatMessageMedia); view once is never shown.

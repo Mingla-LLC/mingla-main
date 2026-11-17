@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { supabase } from "../services/supabase";
 import {
+  getBrandGuestChat,
   getEventGroupChat,
   listMessages,
   postPlannerMessage,
@@ -9,7 +10,8 @@ import {
   type EventGroupMessage,
 } from "../services/groupChatService";
 
-export function useEventGroupChat(eventId: string): {
+/** #4459: opened from a listing (its brand's Guest chat) or by brand id (Messages → Guests). */
+export function useEventGroupChat(eventId: string | null, brandId: string | null = null): {
   conversation: EventGroupConversation | null;
   messages: EventGroupMessage[];
   loading: boolean;
@@ -26,7 +28,11 @@ export function useEventGroupChat(eventId: string): {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const chatResult = await getEventGroupChat(eventId);
+      const chatResult = brandId !== null
+        ? await getBrandGuestChat(brandId)
+        : eventId !== null
+          ? await getEventGroupChat(eventId)
+          : { conversation: null, error: null };
       if (chatResult.error) throw new Error(chatResult.error);
       setConversation(chatResult.conversation);
       if (chatResult.conversation === null) {
@@ -43,7 +49,7 @@ export function useEventGroupChat(eventId: string): {
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [brandId, eventId]);
 
   useEffect(() => {
     void refresh();
