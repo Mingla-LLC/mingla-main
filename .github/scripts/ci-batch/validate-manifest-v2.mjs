@@ -525,7 +525,8 @@ export function phase3dContractDigest(manifest) {
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ea3a20ffcefbde1904ab411a2009b3dbb9157287e87b576036cb2c9c642b08a2";
+// #4420 Stay pay link brand theme: listed migration 20280731104420 after 20280725004452 in the #1857, #1931 and #2117 lanes (plpgsql body, no filtered-replay skip needed; both filtered replays verified) and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a937204ed9f604f1952a47f3a5a75177906c7eb4f77043ba259d1c5fd2f1ca7a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

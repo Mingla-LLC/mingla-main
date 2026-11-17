@@ -314,7 +314,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "cc7ceef0250cbce794fd3d66263f618f2c4101e4c3df565dd5ebc92b0c229fc7";
+// #4420 Stay pay link brand theme: listed migration 20280731104420 after 20280725004452 in the #1857, #1931 and #2117 lanes (plpgsql body, no filtered-replay skip needed; both filtered replays verified) and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "f62ed6ea10ce1b0e31cd77170293058cbdaeb8c2da3bdf3aeb33c5e074bde9a8";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

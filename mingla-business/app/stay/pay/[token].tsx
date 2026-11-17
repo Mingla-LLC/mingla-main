@@ -16,9 +16,9 @@
  * step (§2.4), never `Linking.openURL` from an awaited callback (popup
  * blockers stop it silently on web).
  *
- * The host's colours need the brand: the page reads `details.brandSlug` when
- * the link's details carry it, and stays on the Mingla default palette
- * otherwise (never a guessed colour).
+ * The host's colours come from the link's details: `details.brandTheme` (the
+ * brand's public theme fields, #4420 migration 20280731104420). Without it the
+ * page stays on the Mingla default palette (never a guessed colour).
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
@@ -46,7 +46,6 @@ import {
   stayStaffPaymentLinkService,
   type StayStaffPaymentLinkDetails,
 } from "../../../src/services/stayStaffPaymentLinkService";
-import { usePublicBrandIdentity } from "../../../src/hooks/usePublicBrandEnquiry";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { randomId } from "../../../src/utils/randomId";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
@@ -82,9 +81,9 @@ export default function StayStaffPaymentLinkRoute(): React.ReactElement {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The host's palette (Mingla default until the brand is known).
-  const brandQuery = usePublicBrandIdentity(details?.brandSlug ?? null);
-  const brandTheme = brandQuery.data?.theme ?? null;
+  // The host's palette, from the brand theme the link's details carry
+  // (Mingla default until the details load, or when the brand has none).
+  const brandTheme = details?.brandTheme ?? null;
   const theme = useMemo(() => resolveTheme(brandTheme, null), [brandTheme]);
   const palette: ThemePalette = useMemo(() => createThemePalette(theme), [theme]);
   useThemeFont(boldFontFamily(theme));
