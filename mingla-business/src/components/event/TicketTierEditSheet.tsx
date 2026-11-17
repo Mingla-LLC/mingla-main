@@ -52,6 +52,8 @@ import {
 } from "../../utils/androidDateTimeStep";
 
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { UNSAVED_CHANGES_DIALOG } from "../../utils/unsavedChangesGuard";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
@@ -507,6 +509,74 @@ export interface TicketTierEditSheetProps {
   allTickets?: TicketStub[];
 }
 
+/**
+ * #4420 — the values the ticket form opens with. The sheet seeds its fields
+ * from this when it opens, and a form whose fields still equal it has nothing
+ * to lose, so closing it never asks.
+ */
+export interface TicketSheetFormValues {
+  name: string;
+  isFree: boolean;
+  isUnlimited: boolean;
+  priceText: string;
+  capacityText: string;
+  visibility: TicketVisibility;
+  approvalRequired: boolean;
+  waitlistEnabled: boolean;
+  minQtyText: string;
+  maxQtyText: string;
+  allowTransfers: boolean;
+  description: string;
+  saleStartAt: string | null;
+  saleEndAt: string | null;
+  availableAt: TicketAvailableAt;
+  validDayIds: string[] | null;
+}
+
+export const ticketSheetSeed = (
+  initial: TicketStub | null,
+  newTicketPreset: NewTicketPreset | null,
+): TicketSheetFormValues =>
+  initial !== null
+    ? {
+        name: initial.name,
+        isFree: initial.isFree,
+        isUnlimited: initial.isUnlimited,
+        priceText:
+          initial.priceGbp !== null && !initial.isFree ? String(initial.priceGbp) : "",
+        capacityText:
+          initial.capacity !== null && !initial.isUnlimited ? String(initial.capacity) : "",
+        visibility: initial.visibility,
+        approvalRequired: initial.approvalRequired,
+        waitlistEnabled: initial.waitlistEnabled,
+        minQtyText: String(initial.minPurchaseQty),
+        maxQtyText: initial.maxPurchaseQty !== null ? String(initial.maxPurchaseQty) : "",
+        allowTransfers: initial.allowTransfers,
+        description: initial.description ?? "",
+        saleStartAt: initial.saleStartAt,
+        saleEndAt: initial.saleEndAt,
+        availableAt: initial.availableAt,
+        validDayIds: initial.validDayIds ?? null,
+      }
+    : {
+        name: "",
+        isFree: newTicketPreset === "free-guest-list",
+        isUnlimited: false,
+        priceText: "",
+        capacityText: "",
+        visibility: newTicketPreset === "hidden-paid" ? "hidden" : "public",
+        approvalRequired: false,
+        waitlistEnabled: false,
+        minQtyText: "1",
+        maxQtyText: "",
+        allowTransfers: true,
+        description: "",
+        saleStartAt: null,
+        saleEndAt: null,
+        availableAt: "both",
+        validDayIds: null,
+      };
+
 /** issue #3645 — is the text in the Price field a price above zero? */
 export const ticketPriceTextIsPriced = (
   isFree: boolean,
@@ -622,6 +692,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const [waitlistEntriesSheetVisible, setWaitlistEntriesSheetVisible] =
     useState<boolean>(false);
   const [privateLinksVisible, setPrivateLinksVisible] = useState(false);
+  // #4420 — closing the sheet with unsaved edits asks first.
+  const [discardOpen, setDiscardOpen] = useState<boolean>(false);
   const eventWaitlistQuery = useEventWaitlist(eventId);
 
   // Keyboard awareness — handled natively via the ScrollView's
@@ -640,57 +712,29 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   useEffect(() => {
     if (!visible) return;
     setTouched(UNTOUCHED);
-    if (initial !== null) {
-      setName(initial.name);
-      setIsFree(initial.isFree);
-      setIsUnlimited(initial.isUnlimited);
-      setPriceText(
-        initial.priceGbp !== null && !initial.isFree
-          ? String(initial.priceGbp)
-          : "",
-      );
-      setCapacityText(
-        initial.capacity !== null && !initial.isUnlimited
-          ? String(initial.capacity)
-          : "",
-      );
-      setVisibility(initial.visibility);
-      setApprovalRequired(initial.approvalRequired);
-      setWaitlistEnabled(initial.waitlistEnabled);
-      setMinQtyText(String(initial.minPurchaseQty));
-      setMaxQtyText(
-        initial.maxPurchaseQty !== null ? String(initial.maxPurchaseQty) : "",
-      );
-      setAllowTransfers(initial.allowTransfers);
-      setDescription(initial.description ?? "");
-      setSaleStartAt(initial.saleStartAt);
-      setSaleEndAt(initial.saleEndAt);
-      setAvailableAt(initial.availableAt);
-      setValidDayIds(initial.validDayIds ?? null);
-      setExtras(initial.extras ?? []);
-      loadedExtras.current = null;
-      setExtrasRead(extrasUnavailableFor(liveEdit, initial) ? "loading" : "none");
-    } else {
-      setName("");
-      setExtras([]);
-      loadedExtras.current = null;
-      setExtrasRead("none");
-      setIsFree(newTicketPreset === "free-guest-list");
-      setIsUnlimited(false);
-      setPriceText("");
-      setCapacityText("");
-      setVisibility(newTicketPreset === "hidden-paid" ? "hidden" : "public");
-      setApprovalRequired(false);
-      setWaitlistEnabled(false);
-      setMinQtyText("1");
-      setMaxQtyText("");
-      setAllowTransfers(true);
-      setDescription("");
-      setSaleStartAt(null);
-      setSaleEndAt(null);
-      setAvailableAt("both");
-      setValidDayIds(null);
-    }
+    const seed = ticketSheetSeed(initial, newTicketPreset);
+    setName(seed.name);
+    setIsFree(seed.isFree);
+    setIsUnlimited(seed.isUnlimited);
+    setPriceText(seed.priceText);
+    setCapacityText(seed.capacityText);
+    setVisibility(seed.visibility);
+    setApprovalRequired(seed.approvalRequired);
+    setWaitlistEnabled(seed.waitlistEnabled);
+    setMinQtyText(seed.minQtyText);
+    setMaxQtyText(seed.maxQtyText);
+    setAllowTransfers(seed.allowTransfers);
+    setDescription(seed.description);
+    setSaleStartAt(seed.saleStartAt);
+    setSaleEndAt(seed.saleEndAt);
+    setAvailableAt(seed.availableAt);
+    setValidDayIds(seed.validDayIds);
+    setExtras(initial?.extras ?? []);
+    loadedExtras.current = null;
+    setExtrasRead(
+      initial !== null && extrasUnavailableFor(liveEdit, initial) ? "loading" : "none",
+    );
+    setDiscardOpen(false);
   }, [visible, initial, newTicketPreset]);
 
   const isEditMode = initial !== null;
@@ -1038,6 +1082,32 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
         ? extrasOut
         : null;
 
+  // #4420 — the form has something to lose when a field differs from what it
+  // opened with, or its extras changed (a published tier's extras are judged
+  // only once read; while reading or after a failed read they cannot change).
+  const seedValues = ticketSheetSeed(initial, newTicketPreset);
+  const currentValues: TicketSheetFormValues = {
+    name, isFree, isUnlimited, priceText, capacityText, visibility,
+    approvalRequired, waitlistEnabled, minQtyText, maxQtyText, allowTransfers,
+    description, saleStartAt, saleEndAt, availableAt, validDayIds,
+  };
+  const extrasChanged =
+    extrasRead === "loaded"
+      ? JSON.stringify(extras) !== loadedExtras.current
+      : extrasRead === "none" &&
+        JSON.stringify(extras) !== JSON.stringify(initial?.extras ?? []);
+  const hasUnsavedEdits =
+    visible &&
+    (JSON.stringify(currentValues) !== JSON.stringify(seedValues) || extrasChanged);
+  // Every way out (scrim tap, Escape, Android back, drag, Cancel) funnels here.
+  const handleRequestClose = useCallback((): void => {
+    if (hasUnsavedEdits) {
+      setDiscardOpen(true);
+      return;
+    }
+    onClose();
+  }, [hasUnsavedEdits, onClose]);
+
   const handleSave = useCallback((): void => {
     const parsedPrice = isFree ? null : parseFloat(priceText);
     const parsedCapacity = isUnlimited ? null : parseInt(capacityText, 10);
@@ -1160,7 +1230,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     "Online and at the door";
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="full">
+    <Sheet
+      visible={visible}
+      onClose={handleRequestClose}
+      dismissGuard={() => hasUnsavedEdits}
+      onRequestClose={handleRequestClose}
+      snapPoint="full"
+    >
       <View style={styles.bodyWrap}>
         <ScrollView
           style={styles.scroll}
@@ -1788,7 +1864,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   label="Cancel"
                   variant="ghost"
                   size="md"
-                  onPress={onClose}
+                  onPress={handleRequestClose}
                   fullWidth
                 />
               </View>
@@ -1968,6 +2044,23 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           />
         </React.Suspense>
       ) : null}
+
+      {/* #4420 — unsaved ticket edits on close */}
+      <ConfirmDialog
+        visible={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        onConfirm={() => {
+          setDiscardOpen(false);
+          onClose();
+        }}
+        title={UNSAVED_CHANGES_DIALOG.title}
+        description={UNSAVED_CHANGES_DIALOG.description}
+        confirmLabel={UNSAVED_CHANGES_DIALOG.confirmLabel}
+        cancelLabel={UNSAVED_CHANGES_DIALOG.cancelLabel}
+        variant="simple"
+        destructive
+        testID="ticket-sheet-discard-dialog"
+      />
     </Sheet>
   );
 };
