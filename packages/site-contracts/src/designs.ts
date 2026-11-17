@@ -958,8 +958,9 @@ export const JOURNAL: DesignDefinition = {
     heading_case: "none",
   },
   fonts: {
-    display: { family: "Fraunces", source: "google", weights: [400, 600, 700, 800], italic: true },
-    body: { family: "Libre Franklin", source: "google", weights: [400, 500, 600, 700], italic: false },
+    // Italics come from the accent slot (the same family): every weight is one more @font-face per subset (MAX_FONT_ASSETS).
+    display: { family: "Fraunces", source: "google", weights: [400, 700, 800], italic: false },
+    body: { family: "Libre Franklin", source: "google", weights: [400, 600, 700], italic: false },
     accent: { family: "Fraunces", source: "google", weights: [300, 400], italic: true },
     label: null,
   },

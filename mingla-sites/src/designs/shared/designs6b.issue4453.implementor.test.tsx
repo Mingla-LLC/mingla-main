@@ -30,7 +30,7 @@ import {
   ARI_DESIGN_KEYS, DESIGN_KEYS, DESIGNS, GRID, HEADER_INLINE_CAPACITY, HEADER_VARIANTS, JOURNAL, NOCTURNE, SHARED_LAYOUTS, TERRA,
   compositionVariant, type DesignDefinition, type HeaderVariant,
 } from "../../contracts/generated/designs.ts";
-import { FONT_WIDTH_AXES, assertFontAssets, assertFontSlots } from "../../contracts/generated/fontSlots.ts";
+import { FONT_WIDTH_AXES, MAX_FONT_ASSETS, assertFontAssets, assertFontSlots } from "../../contracts/generated/fontSlots.ts";
 import { resolveTokens } from "../../contracts/generated/tokens.ts";
 import { ariVariants } from "../../contracts/generated/ariToolSchemas.ts";
 import { w5EndedTrips } from "../../contracts/w5Content.fixture";
@@ -428,13 +428,14 @@ describe("#4453 6b SC-D4 reduced motion, motion: none and Save-Data animate noth
 
 describe("#4453 6b SC-D5 font budget, the width axis and no off-origin requests", () => {
   /*
-   * Measured 2026-11-16 from Google's css2 API (the publish pipeline's own
-   * source), latin subset, woff2, per file. Variable families are one file
-   * per style; IBM Plex Mono is static (one file per weight).
+   * Measured 2026-11-16 by running the publish pipeline itself
+   * (resolveSiteFonts against Google's css2 API), latin subset, woff2, per
+   * file. Variable families are one file per style; IBM Plex Mono is static
+   * (one file per weight).
    */
   const LATIN: Readonly<Record<string, Readonly<Record<string, number>>>> = {
-    Fraunces: { normal: 37_252, italic: 22_856 },
-    "Libre Franklin": { normal: 29_336 },
+    Fraunces: { normal: 36_560, italic: 45_624 },
+    "Libre Franklin": { normal: 30_884 },
     "Hanken Grotesk": { normal: 34_664 },
     "IBM Plex Mono": { "500": 10_128, "700": 10_056 },
     Figtree: { normal: 20_184 },
@@ -480,6 +481,19 @@ describe("#4453 6b SC-D5 font budget, the width axis and no off-origin requests"
       expect(sheet).not.toMatch(/@import|@font-face/);
     });
   }
+
+  it("every gallery design's faces fit the artifact's MAX_FONT_ASSETS (each weight and style is one @font-face per kept subset)", () => {
+    // Found on the production build: Journal's first cut declared 8 Fraunces faces + 4 Libre Franklin weights = 26 > 24 and the publish refused it.
+    for (const design of Object.values(DESIGNS)) {
+      const faces = new Set<string>();
+      for (const slot of [design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null]) {
+        if (!slot || slot.source !== "google") continue;
+        for (const weight of slot.weights) for (const style of slot.italic ? ["normal", "italic"] : ["normal"]) faces.add(`${slot.family}|${weight}|${style}`);
+      }
+      // latin and latin-ext (DEFAULT_FONT_SUBSETS); a family without latin-ext only makes it smaller.
+      expect(faces.size * 2, design.key).toBeLessThanOrEqual(MAX_FONT_ASSETS);
+    }
+  });
 
   it("I-SITES-FONT-WIDTH-AXIS: Nocturne's Archivo carries Archivo's wdth range; its faces and @font-face carry font-stretch", () => {
     expect(FONT_WIDTH_AXES.Archivo).toEqual([62, 125]);
