@@ -163,10 +163,17 @@ const HEAP_RAISED_ALLOWED_STEP_ENV = JSON.stringify({ NODE_PATH: "./node_modules
 // [#4420] The raise reaches every plain mingla-business jest step, not only the
 // ids above (the ones first seen running out of memory): those lanes sit near
 // the 2 GB default on main too, and one-by-one listing kept missing the next.
-// Any other step (non-jest, other cwd, children, or any other env) never gets it.
+// A step qualifies when it runs mingla-business jest: from that cwd, a script
+// that calls `npx jest` / `npm test`, or a script that `cd mingla-business` and
+// then calls one of those. Any other step (no business jest, children, or any
+// other env) never gets it.
+const BUSINESS_JEST_RUN = /\b(?:npx jest|npm (?:run )?test)\b/;
+const BUSINESS_JEST_AFTER_CD = /(?:^|\n|&&\s*|;\s*)cd mingla-business\b[\s\S]*\b(?:npx jest|npm (?:run )?test)\b/;
 export function isHeapRaisedStep(step) {
-  if (!step || step.cwd !== "mingla-business" || step.children) return false;
-  if (typeof step.run !== "string" || !/^npx jest\b/.test(step.run)) return false;
+  if (!step || step.children || typeof step.run !== "string") return false;
+  const runsBusinessJest = (step.cwd === "mingla-business" && BUSINESS_JEST_RUN.test(step.run))
+    || BUSINESS_JEST_AFTER_CD.test(step.run);
+  if (!runsBusinessJest) return false;
   return !step.env || JSON.stringify(step.env) === HEAP_RAISED_ALLOWED_STEP_ENV;
 }
 // [#3643] The exact inert literal environment the folded origins set on a step,
