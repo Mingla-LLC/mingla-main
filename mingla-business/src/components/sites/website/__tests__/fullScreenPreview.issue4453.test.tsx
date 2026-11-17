@@ -31,8 +31,8 @@ jest.mock("../../../ui/ConfirmDialog", () => ({
 jest.mock("../../../../utils/copyAddressText", () => ({ copyAddressText: (value: string) => mockCopy(value) }));
 jest.mock("../../../../utils/shareLinkAddress", () => ({ shareLinkAddress: (url: string, brand: string) => mockShare({ url, brand }) }));
 jest.mock("../preview/ScaledPreviewFrame", () => ({
-  ScaledPreviewFrame: (props: { url: string; preference: { device: string } }) =>
-    require("react").createElement("mock-frame", { testID: "scaled-frame", url: props.url, device: props.preference.device }),
+  ScaledPreviewFrame: (props: { url: string; preference: { device: string }; tokenDeclarations?: readonly string[] | null }) =>
+    require("react").createElement("mock-frame", { testID: "scaled-frame", url: props.url, device: props.preference.device, tokenDeclarations: props.tokenDeclarations }),
 }));
 jest.mock("../../../../hooks/useBrandSite", () => ({
   useBrandSiteShareLinks: () => ({ ...mockLinksState, data: mockLinksState.isError || mockLinksState.isLoading ? undefined : mockLinks, refetch: mockRefetch }),
@@ -228,6 +228,21 @@ describe("#4453 M8 preview frames and states", () => {
     press(phone, "preview-rotate");
     expect(onPreference).toHaveBeenLastCalledWith({ ...desktop, device: "phone", phone: "landscape" });
     expect(textOf(phone)).toContain("390 × 844 · portrait");
+  });
+
+  it("the full-screen panel keeps unsaved Design colours: the Unsaved chip and the token declarations reach the frame", () => {
+    const tokens = ["--c-accent:#123456"];
+    const root = render(<SitePreviewPanel grant={ready} preference={desktop} onPreference={jest.fn()} purpose="Your draft" unsaved tokenDeclarations={tokens} onOpenFullScreen={jest.fn()} variant="full" />);
+    expect(has(root, "preview-unsaved")).toBe(true);
+    expect(root.findAll((n) => n.props.testID === "scaled-frame")[0]!.props.tokenDeclarations).toEqual(tokens);
+    expect(has(render(panel(ready, desktop)), "preview-unsaved")).toBe(false);
+  });
+
+  it("the native full-screen modal passes unsaved and tokenDeclarations (as the old sheet did)", () => {
+    const source = require("fs").readFileSync(require("path").join(__dirname, "../WebsiteApp.tsx"), "utf8") as string;
+    const modal = source.slice(source.indexOf("<Modal visible={previewSheet}"), source.indexOf("</Modal>"));
+    expect(modal).toContain('unsaved={section === "design" && designDirty}');
+    expect(modal).toContain('tokenDeclarations={section === "design" ? tokenDeclarations : null}');
   });
 
   it("no draft yet, loading and error each say what is happening; error can retry", () => {

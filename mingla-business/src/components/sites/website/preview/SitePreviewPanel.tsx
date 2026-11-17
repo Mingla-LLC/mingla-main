@@ -87,6 +87,7 @@ export function SitePreviewPanel({ grant, preference, onPreference, purpose, uns
           <WButton label="Open full screen" icon="ext" size="sm" onPress={onOpenFullScreen} testID="preview-open-full" />
         </View>
       ) : null}
+      {variant === "full" && unsaved ? <View style={styles.unsavedRow}><Chip label="Unsaved" tone="warn" testID="preview-unsaved" /></View> : null}
       <PreviewDeviceSwitcher preference={preference} onChange={onPreference} />
       {pages.length > 1 ? (
         <View style={styles.pages}>
@@ -134,6 +135,7 @@ const styles = StyleSheet.create({
   bar: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 10 },
   readout: { fontSize: 12, lineHeight: 16, color: ui.t3, fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "ui-monospace, Menlo, monospace" }), fontVariant: ["tabular-nums"] },
   pages: { marginBottom: 10 },
+  unsavedRow: { flexDirection: "row", marginBottom: 8 },
   caption: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 6 },
   errorStage: { minHeight: 200, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.02)" },
   errorTitle: { fontSize: 14, fontWeight: "600", color: ui.t1 },

@@ -4,35 +4,63 @@ import { isV2Artifact, type SiteArtifact } from "./siteArtifact";
 /*
  * #4453 M8 (spec v2 §7, v2.1 N10) — what a private share link shows.
  *
- * The link opens the SAME renderer as the team's preview, with three
+ * The link opens the SAME renderer as the team's preview, with these
  * differences decided here, on the server, before anything renders:
- *   1. The artifact is re-labelled `preview-shared-…` so the Draft-only hints
- *      (an empty offering grid's "new trips will appear here", drawn only for
- *      the team) are never drawn for a client.
- *   2. A page that is not enabled (a Draft nobody has published or reviewed)
- *      is removed, and every menu entry or footer link that points at it.
- *   3. Nothing about the owner's editor (Draft chips) exists in an artifact,
- *      so none can leak.
+ *   1. The artifact is re-labelled `preview-shared-…` so the owner-only hints
+ *      (an empty offering grid's "new trips will appear here") are never drawn
+ *      for a client (`showsDraftHints`). A private link is a preview the owner
+ *      chose to send, so unreviewed sections on enabled pages may show, with no
+ *      Draft UI; nothing that must never be public (unconfirmed reviews,
+ *      unanswered setup fields, owner prompts) is added to it.
+ *   2. A page that is not enabled is removed, and so is EVERY link to it, from
+ *      any source: menu, header button, footer, a block's button or in-page
+ *      link. One walk over the whole artifact (`withoutLinksTo`), not a list of
+ *      known places.
  * A new object; the stored preview artifact is never changed.
  */
+
+/** The page path a same-site href names ("/a/b?x#y" -> "a/b"), or null for anything else. */
+function sitePathOf(href: string): string | null {
+  if (!href.startsWith("/") || href.startsWith("//")) return null;
+  return href.replace(/^\/+/, "").split(/[?#]/)[0]!.replace(/\/+$/, "");
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isHrefKey = (key: string): boolean => key === "href" || key.endsWith("_href");
+
+/**
+ * The value with every link to a hidden path taken out:
+ * an object with an `href` (a nav entry, a button, a footer link) to a hidden path
+ * disappears from its array or property; a bare `*_href` field is dropped.
+ */
+export function withoutLinksTo<T>(value: T, hidden: ReadonlySet<string>): T {
+  const hides = (node: unknown): boolean => {
+    if (!isRecord(node) || typeof node.href !== "string") return false;
+    const path = sitePathOf(node.href);
+    return path !== null && hidden.has(path);
+  };
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.filter((item) => !hides(item)).map(walk);
+    if (!isRecord(node)) return node;
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(node)) {
+      if (hides(child)) continue;
+      if (isHrefKey(key) && typeof child === "string") {
+        const path = sitePathOf(child);
+        if (path !== null && hidden.has(path)) continue;
+      }
+      out[key] = walk(child);
+    }
+    return out;
+  };
+  return walk(value) as T;
+}
+
 export function withSharedView<T extends SiteArtifact>(artifact: T): T {
   const relabelled = { ...artifact, publication_id: sharedViewPublicationId(artifact.publication_id) } as T;
   if (!isV2Artifact(relabelled)) return relabelled;
-  const hidden = new Set(relabelled.pages.filter((page) => !page.enabled).map((page) => page.path));
+  const hidden = new Set(relabelled.pages.filter((page) => !page.enabled).map((page) => page.path.replace(/^\/+|\/+$/g, "")));
   if (hidden.size === 0) return relabelled;
-  const reachable = (href: string): boolean => !hidden.has(href.replace(/^\/+|\/+$/g, "").split(/[?#]/)[0] ?? "");
-  const pages = relabelled.pages.filter((page) => page.enabled);
-  const items = relabelled.navigation.items
-    .filter((item) => reachable(item.href))
-    .map((item) => (item.children ? { ...item, children: item.children.filter((child) => reachable(child.href)) } : item));
-  const columns = relabelled.footer.columns?.map((column) => ({
-    ...column,
-    links: column.links.filter((link) => reachable(link.href)),
-  }));
-  return {
-    ...relabelled,
-    pages,
-    navigation: { ...relabelled.navigation, items },
-    footer: columns ? { ...relabelled.footer, columns } : relabelled.footer,
-  } as T;
+  const { pages, ...rest } = relabelled;
+  return { ...withoutLinksTo(rest, hidden), pages: pages.filter((page) => page.enabled).map((page) => withoutLinksTo(page, hidden)) } as T;
 }

@@ -519,6 +519,8 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
                 preference={preference}
                 onPreference={setPreference}
                 purpose={PREVIEW_PURPOSE[section] ?? "Your draft"}
+                unsaved={section === "design" && designDirty}
+                tokenDeclarations={section === "design" ? tokenDeclarations : null}
                 onOpenFullScreen={openFullScreenPreview}
                 variant="full"
               />
