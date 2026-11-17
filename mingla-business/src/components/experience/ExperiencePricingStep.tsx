@@ -373,9 +373,9 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
                   <Text style={styles.addPriceText}>Add another price</Text>
                 </Pressable>
               ) : null}
-              {showErrors &&
-              num(defaultOption?.priceMajor ?? wholePriceMajor) <= 0 &&
-              !isFree ? (
+              {/* #3645 bundle 2A — the same minor-unit rule the server and the
+                  summary use: a price that rounds to 0 is no price. */}
+              {showErrors && unpriced ? (
                 <Text style={styles.inlineError}>
                   Set a price, or mark the experience free.
                 </Text>

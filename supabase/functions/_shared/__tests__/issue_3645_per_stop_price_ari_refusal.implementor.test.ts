@@ -16,7 +16,7 @@ import {
 } from "../ariRefusalCopy.ts";
 
 const EXPECTED =
-  "This experience isn't marked free, so it needs a price above zero. Set a price, or mark it free in the Host app, then ask me again. Nothing was saved.";
+  "This experience isn't marked free, so it needs a price above zero. Set a price, or mark it free when you edit the experience, then ask me again. Nothing was saved.";
 
 Deno.test("#3645 2A experience_price_invalid is a known Ari refusal with an owner sentence", () => {
   assert(ARI_REFUSAL_CODES.includes("experience_price_invalid"));

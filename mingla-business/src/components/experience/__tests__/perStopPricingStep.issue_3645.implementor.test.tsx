@@ -38,7 +38,7 @@ import { emptyPriceOption } from "../experienceWizardTypes";
 const stop = (i: number, priceMajor: string): ExperienceStopDraft =>
   ({ clientId: `s${i}`, placeName: `Stop ${i}`, priceMajor } as unknown as ExperienceStopDraft);
 
-const render = (opts: { isFree: boolean; prices: string[]; showErrors: boolean }) => {
+const render = (opts: { isFree: boolean; prices: string[]; showErrors: boolean; whole?: string }) => {
   const setIsFree = jest.fn();
   const noop = (): void => undefined;
   let tree!: { root: TestInstance; unmount: () => void };
@@ -48,13 +48,13 @@ const render = (opts: { isFree: boolean; prices: string[]; showErrors: boolean }
         {...({
           currencySymbol: "₦",
           currency: "NGN",
-          pricingMode: "per_stop",
+          pricingMode: opts.whole === undefined ? "per_stop" : "whole",
           setPricingMode: noop,
           stops: opts.prices.map((p, i) => stop(i + 1, p)),
           setStops: noop,
-          wholePriceMajor: "",
+          wholePriceMajor: opts.whole ?? "",
           setWholePriceMajor: noop,
-          priceOptions: [emptyPriceOption()],
+          priceOptions: [{ ...emptyPriceOption(), priceMajor: opts.whole ?? "" }],
           setPriceOptions: noop,
           isFree: opts.isFree,
           setIsFree,
@@ -139,5 +139,21 @@ describe("issue #3645 2A — per-stop Pricing step", () => {
     expect(text).not.toContain("PER-STOP PRICES");
     expect(tree.root.findAll((n) => n.props.testID === "experience-pricing-per-stop-unpriced")).toHaveLength(0);
     tree.unmount();
+  });
+  test("whole price: a price that rounds to 0 shows the same inline error as no price", () => {
+    const WHOLE_ERROR = "Set a price, or mark the experience free.";
+    const errors = (t: { root: TestInstance }): number =>
+      t.root.findAll((n) => typeof n.type === "string" && allText(n) === WHOLE_ERROR).length;
+    for (const whole of ["", "0", "0.004"]) {
+      const { tree } = render({ isFree: false, prices: [""], showErrors: true, whole });
+      expect(errors(tree)).toBeGreaterThan(0);
+      expect(allText(tree.root)).toContain("No price yet. Set a price, or mark the experience free.");
+      tree.unmount();
+    }
+    for (const whole of ["0.005", "25"]) {
+      const { tree } = render({ isFree: false, prices: [""], showErrors: true, whole });
+      expect(errors(tree)).toBe(0);
+      tree.unmount();
+    }
   });
 });

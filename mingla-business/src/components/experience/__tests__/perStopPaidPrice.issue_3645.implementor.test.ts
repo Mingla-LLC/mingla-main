@@ -32,6 +32,12 @@ describe("issue #3645 2A — per-stop total in minor units", () => {
     expect(perStopTotalMinor(stops("abc", "-5", "."))).toBe(0);
   });
 
+  test("an entry the stop field rejects is never counted (strict, not parseFloat-lenient)", () => {
+    // parseFloat would read these as 1, 1, 100 and 3.
+    expect(perStopTotalMinor(stops("1abc", "1..2", "1e2", " 3 x"))).toBe(0);
+    expect(perStopTotalMinor(stops("1abc", " 2.50 "))).toBe(250);
+  });
+
   test("the wizard's pricing rule uses it for per-stop, and keeps the free and whole paths", () => {
     const src = fs.readFileSync(path.join(__dirname, "../ExperienceCreatorWizard.tsx"), "utf8");
     const rule = src.slice(src.indexOf("const pricingValid = useMemo"), src.indexOf("}, [", src.indexOf("const pricingValid = useMemo")));
@@ -39,7 +45,7 @@ describe("issue #3645 2A — per-stop total in minor units", () => {
     expect(rule).toMatch(/if \(pricingMode === "whole"\) return paidPriceHasMinorUnits\(resolvedTotalMajor\);/);
     expect(rule).toMatch(/stops\.every\(\(s\) => stopPriceEntryIsValid\(s\.priceMajor\)\) &&\s*perStopTotalMinor\(stops\) > 0/);
     // The payload sends each stop exactly the way perStopTotalMinor counts it,
-    // and a free experience sends no stop prices (create/publish and live save).
+    // and a free experience sends every stop price as 0 (create/publish and live save).
     const sends = src.match(/pricingMode === "per_stop" && !isFree\s*\?\s*Math\.round\(\(parseFloat\(s\.priceMajor\) \|\| 0\) \* 100\)\s*:\s*0/g) ?? [];
     expect(sends).toHaveLength(2);
     expect(src).not.toMatch(/pricingMode === "per_stop"\s*\?\s*Math\.round\(\(parseFloat/);
