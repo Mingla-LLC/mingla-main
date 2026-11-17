@@ -153,7 +153,17 @@ export function shapeSiteCollections(content: TenantContent, renderMedia: MediaR
       ...opt("timezone", doc.facts?.timezone),
     };
     const body = richTextToAst(doc.body);
-    const featured = picture(doc.featured_image, title);
+    /*
+     * #4453 milestone 7b — a destination without a featured picture is shown
+     * with ITS OWN first gallery picture, else its first season picture (real
+     * media of this record, never another record's and never made up). With
+     * none, the card takes its design's no-photo treatment.
+     */
+    const ownGallery = rows(doc.gallery).find((row) => relationId(row.media));
+    const ownSeason = rows(doc.seasons).find((season) => relationId(season.image));
+    const featured = picture(doc.featured_image, title)
+      ?? (ownGallery ? picture(ownGallery.media, trimmed(ownGallery.alt) || title) : undefined)
+      ?? (ownSeason ? picture(ownSeason.image, title) : undefined);
     const seasons = rows(doc.seasons).map((season) => {
       const activities = rows(season.activities).map((row) => trimmed(row.text)).filter(Boolean);
       const image = picture(season.image, trimmed(season.heading));
@@ -191,7 +201,8 @@ export function shapeSiteCollections(content: TenantContent, renderMedia: MediaR
     const day = calendarDayOf(doc.published_at);
     if (!content || !day) return []; // a story with no words or no date is not published
     const category = categorySlug.get(relationId(doc.category));
-    const featured = picture(doc.featured_image, trimmed(doc.title));
+    // #4453 milestone 7b — else the first picture inside the story itself (its own media, never made up).
+    const featured = picture(doc.featured_image, trimmed(doc.title)) ?? picture(firstUploadedPicture(doc.content), trimmed(doc.title));
     return [{
       id: String(doc.id),
       slug: trimmed(doc.slug),
@@ -275,4 +286,17 @@ export function siteDisplayOf(settings: unknown, content: TenantContent): SiteDi
     ...(settings ? { settings_digest: settingsDigest(settings) } : {}),
   };
   return Object.keys(display).length ? display : undefined;
+}
+
+/** #4453 milestone 7b — the first media upload inside a story's rich text (Lexical `upload` node), or null. */
+export function firstUploadedPicture(value: unknown): unknown {
+  const stack: unknown[] = [value && typeof value === "object" ? (value as AnyDoc).root ?? value : null];
+  while (stack.length) {
+    const node = stack.shift();
+    if (!node || typeof node !== "object") continue;
+    const record = node as AnyDoc;
+    if (record.type === "upload" && (record.relationTo === undefined || record.relationTo === "media") && relationId(record.value)) return record.value;
+    if (Array.isArray(record.children)) stack.push(...record.children);
+  }
+  return null;
 }
