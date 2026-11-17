@@ -1,4 +1,5 @@
-import { sharedViewPublicationId } from "./previewPublication";
+import { createHash } from "node:crypto";
+import { isSharedPreviewPublication, SHARED_PUBLICATION_PREFIX } from "./previewPublication";
 import { isV2Artifact, type SiteArtifact } from "./siteArtifact";
 
 /*
@@ -19,6 +20,17 @@ import { isV2Artifact, type SiteArtifact } from "./siteArtifact";
  *      known places.
  * A new object; the stored preview artifact is never changed.
  */
+
+/**
+ * #4453 final pass (tester P4-1, comment 6945336387) — the share view's publication id, derived from the
+ * preview id with a one-way hash, so the share view carries no character of the preview id. Server only
+ * (node:crypto); an id that is already a share id is kept.
+ */
+export function sharedViewPublicationId(publicationId: string): string {
+  if (isSharedPreviewPublication(publicationId)) return publicationId;
+  const digest = createHash("sha256").update(`mingla-share-view|${publicationId}`).digest("hex").slice(0, 32);
+  return `${SHARED_PUBLICATION_PREFIX}${digest}`;
+}
 
 /** The page path a same-site href names ("/a/b?x#y" -> "a/b"), or null for anything else. */
 function sitePathOf(href: string): string | null {

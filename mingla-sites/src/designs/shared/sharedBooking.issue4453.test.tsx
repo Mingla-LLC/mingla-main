@@ -16,7 +16,7 @@ vi.mock("../shared/chrome/Handoff", async (original) => ({
 
 import { PageBookingChrome } from "./blocks/Booking";
 import type { SharedContext } from "./parts";
-import { sharedViewPublicationId } from "../../lib/previewPublication";
+import { sharedViewPublicationId } from "../../lib/sharedView";
 import { SHARED_BANNER_STYLE, SHARED_STRIP_CSS } from "../../lib/sharedBanner";
 
 const TEAM_ID = `preview-${"c".repeat(32)}`;

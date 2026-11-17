@@ -23,10 +23,6 @@ export function isSharedPreviewPublication(publicationId: string): boolean {
   return typeof publicationId === "string" && publicationId.startsWith(SHARED_PUBLICATION_PREFIX);
 }
 
-export function sharedViewPublicationId(publicationId: string): string {
-  if (isSharedPreviewPublication(publicationId)) return publicationId;
-  return `${SHARED_PUBLICATION_PREFIX}${publicationId.replace(/^preview-/, "")}`;
-}
 
 /** Whether a render draws the Draft-only hints: the team's preview does, a shared link never does. */
 export function showsDraftHints(publicationId: string): boolean {
