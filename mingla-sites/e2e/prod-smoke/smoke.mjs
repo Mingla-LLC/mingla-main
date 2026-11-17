@@ -93,6 +93,15 @@ if (FIXTURE === "ys") {
   sites = JSON.parse(readFileSync(join(dir, "sites.json"), "utf8"));
   upcomingFeed = JSON.parse(readFileSync(join(dir, "feed.json"), "utf8"));
 }
+// PROD_SMOKE_DESIGN=<design_key>[,<design_key>] runs only those designs (a quick re-run of one design).
+if (process.env.PROD_SMOKE_DESIGN) {
+  const keep = new Set(process.env.PROD_SMOKE_DESIGN.split(",").map((key) => key.trim()));
+  sites = Object.fromEntries(Object.entries(sites).filter(([, site]) => keep.has(site.design_key)));
+  if (!Object.keys(sites).length) {
+    console.error(`prod-smoke: PROD_SMOKE_DESIGN=${process.env.PROD_SMOKE_DESIGN} matches no design`);
+    process.exit(2);
+  }
+}
 let feedOn = false;
 
 const VENUE = "22222222-2222-4222-8222-000000000001";
@@ -247,14 +256,15 @@ async function waitForApp() {
 const BREAK_HEADER = process.env.PROD_SMOKE_BREAK_HEADER === "1";
 
 async function headerControlsCheck(page, label, out) {
-  if (BREAK_HEADER) await page.addStyleTag({ content: ".mg-menu-btn, .v-drawer__toggle, [aria-controls][aria-haspopup], header button, header summary { transform: translateX(100vw) !important; }" });
+  // Voyage's .btn animates transform, so the break also turns transitions off; otherwise the check measures the toggle mid-slide.
+  if (BREAK_HEADER) await page.addStyleTag({ content: ".mg-menu-btn, .v-drawer__toggle, [aria-controls][aria-haspopup], header button, header summary { transform: translateX(100vw) !important; transition: none !important; }" });
   const problems = await page.evaluate(() => {
     const header = document.querySelector("[data-mg-header]") ?? document.querySelector("body header");
     if (!header) return ["no header"];
     const found = [];
     // The menu toggle wherever it sits (Voyage's own drawer toggle is outside <header>).
     const controls = new Set([...header.querySelectorAll("a[href], button"), ...document.querySelectorAll(".v-drawer__toggle, .mg-menu-btn, [aria-controls][aria-haspopup]")]);
-    if (![...controls].some((el) => el.tagName === "BUTTON")) found.push("no menu button found");
+    let toggleMeasured = false;
     for (const el of controls) {
       // A closed menu (dialog, or a drawer marked data-open="false") is not on screen.
       if (el.closest("dialog:not([open]), [hidden], [aria-hidden='true'], [inert], [data-open='false']")) continue;
@@ -262,10 +272,20 @@ async function headerControlsCheck(page, label, out) {
       if (style.visibility === "hidden" || style.display === "none") continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
+      // Measure what the user sees: when the control's centre is on screen, it must be the topmost element there
+      // (a duplicate hidden under another layer is skipped). A centre off screen is still measured, and fails below.
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      if (cx >= 0 && cx <= window.innerWidth && cy >= 0 && cy <= window.innerHeight) {
+        const top = document.elementFromPoint(cx, cy);
+        if (top && top !== el && !el.contains(top)) continue;
+      }
+      if (el.tagName === "BUTTON" || el.tagName === "SUMMARY") toggleMeasured = true;
       const name = (el.getAttribute("aria-label") || el.textContent || el.className || el.tagName).replace(/\s+/g, " ").trim().slice(0, 40);
       if (r.left < -0.5 || r.right > window.innerWidth + 0.5) found.push(`"${name}" leaves the screen (x ${Math.round(r.left)}-${Math.round(r.right)})`);
       if (r.width < 43.5 || r.height < 43.5) found.push(`"${name}" is ${Math.round(r.width)}x${Math.round(r.height)} px (under 44)`);
     }
+    if (!toggleMeasured) found.push("no visible menu button found");
     return found;
   });
   if (problems.length) for (const problem of problems) out.push(`${label} header: ${problem}`);
