@@ -11,6 +11,7 @@
  * unsafe link, a block variant its design does not draw, and anything over the
  * limits below. A refused artifact never goes live; the last good one stays.
  */
+import { assertNoSampleContent } from "./planPreview.ts";
 import { assertSiteBlock, BLOCK_CATALOG, type SiteBlock } from "./blocks.ts";
 import { designFor, FOOTER_VARIANTS, HEADER_VARIANTS, type DesignKey, type FooterVariant, type HeaderVariant } from "./designs.ts";
 import {
@@ -549,6 +550,9 @@ function assertNavigation(navigation: unknown, pages: PageNode[], action: Mingla
  */
 export function assertArtifactV2(value: unknown, serializedBytes?: number): asserts value is ArtifactV2 {
   if (serializedBytes !== undefined && serializedBytes > MAX_ARTIFACT_BYTES) fail("ARTIFACT_TOO_LARGE");
+  // #4453 milestone 10 (I-SITES-SAMPLE-NEVER-PUBLISHED) — a published, previewed
+  // or shared artifact never carries sample content or the plan marker.
+  assertNoSampleContent(value);
   if (!plainObject(value) || !hasOnlyKeys(value, TOP_KEYS) || REQUIRED_TOP.some((key) => !(key in value))) {
     fail("ARTIFACT_SCHEMA_MISMATCH");
   }
