@@ -876,6 +876,18 @@ export async function buildPublicationArtifact(
             images: (raw.images || []).map((row: AnyDoc) =>
               renderMedia(row.media, String(row.alt || ""))
             ),
+            // #4453 milestone 5 (§5.2) — captions, each naming its own photograph (absent when none).
+            ...(() => {
+              const captions = (raw.images || [])
+                .map((row: AnyDoc) => ({ row, media: renderMedia(row.media, String(row.alt || "")) }))
+                .filter(({ row }: { row: AnyDoc }) => typeof row.caption === "string" && row.caption.trim())
+                .map(({ row, media }: { row: AnyDoc; media: { id: string } }) => ({
+                  media_id: media.id,
+                  caption: String(row.caption).trim(),
+                  ...optionalText(row.sub, "sub"),
+                }));
+              return captions.length ? { captions } : {};
+            })(),
           };
         case "hours_location":
           return {

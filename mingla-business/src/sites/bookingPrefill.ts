@@ -63,3 +63,38 @@ export function venuePrefill(params: Record<string, Param>): VenuePrefill {
     room: room && UUID.test(room) ? room.toLowerCase() : null,
   };
 }
+
+export type ExperiencePrefill = { date: string | null; slot: string | null; guests: number | null };
+
+/** A Mingla website's experience pre-fill (`?date=&slot=&guests=`), re-validated. */
+export function experiencePrefill(params: Record<string, Param>): ExperiencePrefill {
+  return { date: prefillDate(params.date), slot: prefillTime(params.slot), guests: prefillCount(params.guests) };
+}
+
+/** The local `YYYY-MM-DD` and `HH:MM` of an instant in a zone (an invalid zone reads as UTC). */
+export function localParts(iso: string, timeZone: string): { date: string; time: string } | null {
+  const at = new Date(iso);
+  if (!Number.isFinite(at.getTime())) return null;
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(at);
+  } catch {
+    return localParts(iso, "UTC");
+  }
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
+}
+
+/**
+ * The experience date the site's link names: the occurrence on that local day
+ * at that local time (in the date's own zone), else the first on that day when
+ * no time was sent. Null when none matches (the guest picks, as before).
+ */
+export function matchExperienceDate<D extends { id: string; startAt: string; timezone?: string | null }>(
+  dates: ReadonlyArray<D>, prefill: ExperiencePrefill, fallbackZone: string,
+): D | null {
+  if (!prefill.date) return null;
+  const sameDay = dates.filter((date) => localParts(date.startAt, date.timezone || fallbackZone)?.date === prefill.date);
+  if (!prefill.slot) return sameDay[0] ?? null;
+  return sameDay.find((date) => localParts(date.startAt, date.timezone || fallbackZone)?.time === prefill.slot) ?? null;
+}

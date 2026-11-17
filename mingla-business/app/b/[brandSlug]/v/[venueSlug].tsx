@@ -564,6 +564,9 @@ export default function PublicVenueRoute(): React.ReactElement {
           surface={context.surface}
           theme={context.theme}
           onQuoteChange={setStayQuote}
+          initialRange={prefill.checkin && prefill.checkout ? { checkIn: prefill.checkin, checkOut: prefill.checkout } : null}
+          initialAdults={prefill.guests}
+          initialRoomId={prefill.room}
         />
       ) : (
         <GuestVenueReservation
@@ -580,7 +583,7 @@ export default function PublicVenueRoute(): React.ReactElement {
           palette={context.palette}
         />
       ),
-    [prefill.date, prefill.time, prefill.party],
+    [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room],
   );
 
   const renderReservationSheet = useCallback(

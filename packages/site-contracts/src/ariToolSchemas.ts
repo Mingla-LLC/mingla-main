@@ -70,6 +70,7 @@ export const ARI_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   "hero.booking_target_id": "the booking bar is offered to Ari with the Ari composition PR",
   "hero.show_rating": "the Mingla rating is offered to Ari with the Ari composition PR",
   "testimonials.show_rating": "the Mingla rating is offered to Ari with the Ari composition PR",
+  "gallery.captions": "gallery captions are offered to Ari (with the claim check) in the Ari composition PR",
 };
 
 /** #4453 milestone 5 — enum values held from Ari until milestone 7 (the stay grid). */

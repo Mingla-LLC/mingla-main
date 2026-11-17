@@ -666,6 +666,11 @@ export interface Page {
                * Describe meaningful images. Leave empty only when the image is decorative.
                */
               alt?: string | null;
+              /**
+               * Optional. Shown under the photograph in layouts that caption.
+               */
+              caption?: string | null;
+              sub?: string | null;
               id?: string | null;
             }[];
             /**
@@ -1233,6 +1238,9 @@ export interface Page {
             blockType: 'feature_cards';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
             eyebrow?: string | null;
             heading?: string | null;
             intro?: string | null;
@@ -1259,6 +1267,9 @@ export interface Page {
             blockType: 'availability';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
             eyebrow?: string | null;
             heading?: string | null;
             intro?: string | null;
@@ -1282,6 +1293,9 @@ export interface Page {
             blockType: 'ticket_tiers';
           }
         | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
             eyebrow?: string | null;
             heading?: string | null;
             intro?: string | null;
@@ -2350,6 +2364,8 @@ export interface PagesSelect<T extends boolean = true> {
                 | {
                     media?: T;
                     alt?: T;
+                    caption?: T;
+                    sub?: T;
                     id?: T;
                   };
               variant?: T;

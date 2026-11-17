@@ -309,7 +309,7 @@ export function GalleryPinned(props: SharedBlockProps) {
             {text(block.heading) ? <h2 id={id}>{text(block.heading)}</h2> : null}
           </div>
           {images.slice(0, 10).map((image, imageIndex) => (
-            <figure key={imageIndex}><Photo artifact={ctx.artifact} url={image.url} alt={image.alt} sizes="(min-width: 721px) 40vw, 90vw" /></figure>
+            <figure key={imageIndex}><Photo artifact={ctx.artifact} url={image.url} alt={image.alt} sizes="(min-width: 721px) 40vw, 90vw" /><GalleryCaption image={image} /></figure>
           ))}
         </div>
       </div>
@@ -324,9 +324,21 @@ export function GalleryMosaic({ block, index }: SharedBlockProps) {
   return (
     <Blk className="mg-gal-mosaic" labelledBy={text(block.heading) ? id : undefined}>
       <GalleryHead block={block} id={id} />
-      <GalleryLightbox images={images.slice(0, 5)} className={`mg-mosaic mg-mosaic--n${Math.min(images.length, 5)}`} />
+      <GalleryLightbox images={images.slice(0, 5).map(({ url, alt }) => ({ url, alt }))} className={`mg-mosaic mg-mosaic--n${Math.min(images.length, 5)}`} />
+      {images.slice(0, 5).some((image) => image.caption) ? (
+        <ol className="mg-gal-caps">
+          {images.slice(0, 5).map((image, imageIndex) => image.caption ? <li key={imageIndex} value={imageIndex + 1}><GalleryCaption image={image} as="p" /></li> : null)}
+        </ol>
+      ) : null}
     </Blk>
   );
+}
+
+/** #4453 milestone 5 (§5.2) — the owner's caption and its small line; nothing when there is none. */
+function GalleryCaption({ image, as = "figcaption" }: { image: { caption?: string; sub?: string }; as?: "figcaption" | "p" }) {
+  if (!image.caption) return null;
+  const Tag = as;
+  return <Tag className="mg-gal-cap">{image.caption}{image.sub ? <span className="mg-gal-cap__sub">{image.sub}</span> : null}</Tag>;
 }
 
 export function GalleryStagger(props: SharedBlockProps) {
@@ -341,6 +353,7 @@ export function GalleryStagger(props: SharedBlockProps) {
         {images.slice(0, 3).map((image, imageIndex) => (
           <figure key={imageIndex} className={`mg-stg__s${imageIndex}`} data-mg-rise="">
             <div className="mg-ph"><Photo artifact={ctx.artifact} url={image.url} alt={image.alt} sizes="(min-width: 721px) 33vw, 100vw" /></div>
+            <GalleryCaption image={image} />
           </figure>
         ))}
       </div>

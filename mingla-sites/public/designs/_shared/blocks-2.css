@@ -642,4 +642,8 @@
     /* The footer's legal line is never covered: it gets the bar's height below it. */
     [data-design] .mg-page:has(.mg-sticky) footer, [data-design] .v-page:has(.mg-sticky) footer { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   }
+  /* §5.2 gallery captions. */
+  [data-design] .mg-gal-cap { margin: 10px 0 0; font: 500 14px/1.4 var(--mg-f-body); color: var(--mg-ink); }
+  [data-design] .mg-gal-cap__sub { display: block; margin-top: 2px; font: 500 12px/1.3 var(--mg-f-label); letter-spacing: .06em; text-transform: uppercase; color: var(--mg-muted); }
+  [data-design] .mg-gal-caps { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px 24px; margin: 18px 0 0; padding-left: 20px; color: var(--mg-muted); }
 }

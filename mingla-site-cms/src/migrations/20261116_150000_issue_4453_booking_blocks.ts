@@ -9,10 +9,11 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
  *   `items` array table); each with its layout enum and the Draft `review`;
  * - the hero's booking bar (`booking_bar` enum, `booking_target_id`) and
  *   `show_rating`; the testimonials' `show_rating`;
+ * - the gallery photographs' `caption` and `sub` (§5.2), live and versioned;
  * - the navigation's sticky phone booking bar (`sticky_booking`,
  *   `sticky_title`, `sticky_note`), live and versioned.
- * Hand-written to Payload 3.92's own naming (a test pins every block field
- * and layout to these tables and enums).
+ * Checked by running `payload migrate` (all Studio migrations, up and down)
+ * and `payload generate:types` against a local Postgres 17.
  */
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
@@ -141,6 +142,10 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   ALTER TABLE "sites_cms"."_pages_v_blocks_hero" ADD COLUMN IF NOT EXISTS "booking_target_id" varchar;
   ALTER TABLE "sites_cms"."_pages_v_blocks_hero" ADD COLUMN IF NOT EXISTS "show_rating" boolean DEFAULT false;
   ALTER TABLE "sites_cms"."_pages_v_blocks_testimonials" ADD COLUMN IF NOT EXISTS "show_rating" boolean DEFAULT false;
+  ALTER TABLE "sites_cms"."pages_blocks_gallery_images" ADD COLUMN IF NOT EXISTS "caption" varchar;
+  ALTER TABLE "sites_cms"."pages_blocks_gallery_images" ADD COLUMN IF NOT EXISTS "sub" varchar;
+  ALTER TABLE "sites_cms"."_pages_v_blocks_gallery_images" ADD COLUMN IF NOT EXISTS "caption" varchar;
+  ALTER TABLE "sites_cms"."_pages_v_blocks_gallery_images" ADD COLUMN IF NOT EXISTS "sub" varchar;
   ALTER TABLE "sites_cms"."navigation" ADD COLUMN IF NOT EXISTS "sticky_booking" boolean DEFAULT false;
   ALTER TABLE "sites_cms"."navigation" ADD COLUMN IF NOT EXISTS "sticky_title" varchar;
   ALTER TABLE "sites_cms"."navigation" ADD COLUMN IF NOT EXISTS "sticky_note" varchar;
@@ -203,6 +208,10 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   ALTER TABLE "sites_cms"."_pages_v_blocks_hero" DROP COLUMN IF EXISTS "booking_target_id";
   ALTER TABLE "sites_cms"."_pages_v_blocks_hero" DROP COLUMN IF EXISTS "show_rating";
   ALTER TABLE "sites_cms"."_pages_v_blocks_testimonials" DROP COLUMN IF EXISTS "show_rating";
+  ALTER TABLE "sites_cms"."pages_blocks_gallery_images" DROP COLUMN IF EXISTS "caption";
+  ALTER TABLE "sites_cms"."pages_blocks_gallery_images" DROP COLUMN IF EXISTS "sub";
+  ALTER TABLE "sites_cms"."_pages_v_blocks_gallery_images" DROP COLUMN IF EXISTS "caption";
+  ALTER TABLE "sites_cms"."_pages_v_blocks_gallery_images" DROP COLUMN IF EXISTS "sub";
   ALTER TABLE "sites_cms"."navigation" DROP COLUMN IF EXISTS "sticky_booking";
   ALTER TABLE "sites_cms"."_navigation_v" DROP COLUMN IF EXISTS "version_sticky_booking";
   ALTER TABLE "sites_cms"."navigation" DROP COLUMN IF EXISTS "sticky_title";

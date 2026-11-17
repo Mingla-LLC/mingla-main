@@ -127,6 +127,13 @@ export interface ExperienceReservePickerProps {
   capacityScope?: "total" | "per_day" | "per_start" | null;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
+  /**
+   * #4453 milestone 5 — a Mingla website's pre-fill: the occurrence the guest
+   * chose on the site (matched by the route) and their party size. Applied on
+   * open; the guest can change both. Never selects a date not in `dates`.
+   */
+  initialDateId?: string | null;
+  initialParty?: number | null;
 }
 
 const SHEET_SNAP = "full" as const;
@@ -220,6 +227,8 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   capacityScope = null,
   onCancel,
   onConfirm,
+  initialDateId = null,
+  initialParty = null,
 }) => {
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
   const optionList = useMemo(
@@ -245,13 +254,15 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   useEffect(() => {
     if (visible) {
       setSelectedOptionId(optionList[0]?.ticketTypeId ?? null);
-      setSelectedDateId(null);
+      // #4453 milestone 5 — a website's pre-fill picks its date (only one in `dates`) and party.
+      const seeded = initialDateId && dates.some((date) => date.id === initialDateId) ? initialDateId : null;
+      setSelectedDateId(seeded);
       setSelectedMinute(null);
       setSelectedBlocks(null);
-      setParty(2);
-      setStep("day");
+      setParty(initialParty ?? 2);
+      setStep(seeded && mode === "open-daily" ? "time" : "day");
     }
-  }, [visible, optionList]);
+  }, [visible, optionList, initialDateId, initialParty, dates, mode]);
 
   const selectedOption = useMemo(() => {
     if (optionList.length === 0) return null;

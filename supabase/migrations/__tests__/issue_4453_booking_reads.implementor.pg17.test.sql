@@ -42,15 +42,17 @@ FROM unnest(ARRAY[
   'public.brand_site_zone_or_utc(text)', 'public.brand_site_booking_brand(uuid)',
   'public.brand_site_venue_slots(uuid,uuid,integer,integer)', 'public.brand_site_stay_nights(uuid,uuid,integer)',
   'public.brand_site_offering_dates(uuid,uuid,text,integer)', 'public.brand_site_ticket_tiers(uuid,uuid)',
-  'public.brand_site_booking_target(uuid,text,uuid)', 'public.brand_site_mingla_rating(uuid)']) AS f;
-SELECT pg_temp.p_assert(count(*) = 10 AND bool_and(p.prosecdef)
+  'public.brand_site_booking_target(uuid,text,uuid)', 'public.brand_site_mingla_rating(uuid)',
+  'public.brand_site_date_places_left(uuid,uuid)']) AS f;
+SELECT pg_temp.p_assert(count(*) = 11 AND bool_and(p.prosecdef)
     AND bool_and(EXISTS (SELECT 1 FROM unnest(p.proconfig) c WHERE c LIKE 'search_path=%'))
     AND bool_and(p.prosrc !~* '\mEXECUTE\M'),
   'T-1b SECURITY DEFINER, explicit search_path, static SQL')
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public' AND p.proname IN ('brand_site_booking_blocks_enabled', 'brand_site_stay_flags_on',
   'brand_site_zone_or_utc', 'brand_site_booking_brand', 'brand_site_venue_slots', 'brand_site_stay_nights',
-  'brand_site_offering_dates', 'brand_site_ticket_tiers', 'brand_site_booking_target', 'brand_site_mingla_rating');
+  'brand_site_offering_dates', 'brand_site_ticket_tiers', 'brand_site_booking_target', 'brand_site_mingla_rating',
+  'brand_site_date_places_left');
 
 -- T-2 flag
 SELECT pg_temp.p_assert((SELECT NOT is_enabled FROM public.feature_flags WHERE flag_key = 'SITES_BOOKING_BLOCKS')
@@ -275,6 +277,31 @@ BEGIN
     'T-7c the wrong source, another brand''s event and an ended event are NULL');
 END
 $t6$;
+
+-- T-7d places left: Mingla's real count, else nothing; a cancelled date never shows
+DO $t7d$
+DECLARE
+  v_site uuid := (SELECT v FROM m5_ids WHERE k = 'site_a');
+  v_exp uuid := (SELECT v FROM m5_ids WHERE k = 'exp_a');
+  v_feed jsonb;
+  v_tt uuid := gen_random_uuid();
+BEGIN
+  INSERT INTO public.ticket_types(id, event_id, name, price_cents, currency, is_free, quantity_total, display_order)
+  VALUES (v_tt, v_exp, 'Workshop place', 1500000, 'NGN', false, 2, 0);
+  v_feed := public.brand_site_offering_dates(v_site, v_exp, 'experience_slots', 7);
+  PERFORM pg_temp.p_assert((v_feed->'days'->0->'slots'->0->>'left')::int = 2 AND v_feed->'days'->0->'slots'->0->>'state' = 'few',
+    'T-7d a counted tier: 2 places left, shown as few');
+  INSERT INTO public.ticket_types(event_id, name, price_cents, currency, is_free, is_unlimited, display_order)
+  VALUES (v_exp, 'Walk-in', 1000000, 'NGN', false, true, 1);
+  v_feed := public.brand_site_offering_dates(v_site, v_exp, 'experience_slots', 7);
+  PERFORM pg_temp.p_assert(v_feed->'days'->0->'slots'->0->'left' = 'null'::jsonb AND v_feed->'days'->0->'slots'->0->>'state' = 'open',
+    'T-7e an unlimited tier: no count is shown (never invented)');
+  UPDATE public.event_dates SET cancelled_at = now() WHERE event_id = v_exp
+    AND start_at = (SELECT min(start_at) FROM public.event_dates WHERE event_id = v_exp);
+  v_feed := public.brand_site_offering_dates(v_site, v_exp, 'experience_slots', 7);
+  PERFORM pg_temp.p_assert(jsonb_array_length(v_feed->'days'->0->'slots') = 1, 'T-7f a cancelled date is left out');
+END
+$t7d$;
 
 -- T-8 stays with the stay flags off
 UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'STAY_PUBLIC_PAGES';

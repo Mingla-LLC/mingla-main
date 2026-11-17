@@ -173,3 +173,20 @@ describe("#4453 M5 stay feed rows (SC-B6)", () => {
     expect(isSiteOffering({ ...room, public_url: `https://host.usemingla.com/t/lagoon/trip` })).toBe(false);
   });
 });
+
+describe("#4453 M5 gallery captions (§5.2)", () => {
+  const MEDIA = "aaaaaaaa-bbbb-4ccc-8ddd-000000000901";
+  const image = { id: MEDIA, url: "/media/x.jpg", alt: "Pool" };
+  const ctx = { mediaUrls: new Set<string>(), assertMedia: () => undefined };
+  it("a caption names one of the block's own photographs, once", () => {
+    expect(() => assertSiteBlock({ type: "gallery", variant: "mosaic", images: [image], captions: [{ media_id: MEDIA, caption: "The pool at dusk", sub: "Level 2" }] }, ctx)).not.toThrow();
+    expect(() => assertSiteBlock({ type: "gallery", variant: "mosaic", images: [image], captions: [{ media_id: VENUE, caption: "Not here" }] }, ctx)).toThrow(/gallery.captions/);
+    expect(() => assertSiteBlock({ type: "gallery", variant: "mosaic", images: [image], captions: [{ media_id: MEDIA, caption: "a" }, { media_id: MEDIA, caption: "b" }] }, ctx)).toThrow(/gallery.captions/);
+    expect(() => assertSiteBlock({ type: "gallery", variant: "mosaic", images: [image], captions: [{ media_id: MEDIA, caption: "x".repeat(121) }] }, ctx)).toThrow();
+  });
+  it("captions are held from Ari and count as a new booking-blocks offer", () => {
+    expect(JSON.stringify(blocksSchema())).not.toContain("captions");
+    expect(usesBookingBlocksFeature({ blockType: "gallery", images: [{ caption: "Pool" }] })).toBe(true);
+    expect(usesBookingBlocksFeature({ blockType: "gallery", images: [{ alt: "Pool" }] })).toBe(false);
+  });
+});

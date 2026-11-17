@@ -17,6 +17,7 @@ import type { BookingView } from "../../lib/bookingFeed";
 import { bookingViewFrom } from "../../lib/bookingFeed";
 import { AvailabilityStrip, HeroRating, PageBookingChrome, TicketTiersSplit, stickyAction } from "./blocks/Booking";
 import { HandoffLink, MinglaHandoff, StickyBookingBar } from "./chrome/Handoff";
+import { GalleryMosaic, GalleryPinned, GalleryStagger } from "./blocks/Offerings";
 import type { SharedContext } from "./parts";
 
 vi.mock("../../lib/clientAnalytics", () => ({
@@ -206,5 +207,19 @@ describe("#4453 M5 sticky phone bar (SC-B4)", () => {
     expect(css).toMatch(/:has\(\.mg-sticky\) footer \{ padding-bottom: calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\) \{ \[data-design\] \[data-motion="on"\] \.mg-handoff__sheet \{ animation: mg-sheet-in/);
     expect(css).toMatch(/\.mg-slot \{[^}]*min-height: 44px/);
+  });
+});
+
+describe("#4453 M5 gallery captions render (§5.2)", () => {
+  const images = [1, 2, 3, 4, 5].map((n) => ({ id: `aaaaaaaa-bbbb-4ccc-8ddd-00000000090${n}`, url: `/media/aaaaaaaa-bbbb-4ccc-8ddd-00000000090${n}/p.jpg`, alt: `Photo ${n}` }));
+  const block = { type: "gallery", images, captions: [{ media_id: images[0]!.id, caption: "The pool at dusk", sub: "Level 2" }] };
+  it("each shared layout draws the owner's caption under its own photograph; no caption, no line", () => {
+    const ctx = ctxWith(undefined);
+    for (const Layout of [GalleryPinned, GalleryMosaic, GalleryStagger]) {
+      const html = renderToStaticMarkup(<Layout block={block} index={3} ctx={ctx} />);
+      expect(html).toContain("The pool at dusk");
+      expect(html).toContain("Level 2");
+      expect(renderToStaticMarkup(<Layout block={{ ...block, captions: undefined }} index={3} ctx={ctx} />)).not.toContain("mg-gal-cap");
+    }
   });
 });

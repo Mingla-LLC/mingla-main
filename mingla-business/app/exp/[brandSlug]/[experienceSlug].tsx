@@ -39,6 +39,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { experiencePrefill, matchExperienceDate, type ExperiencePrefill } from "../../../src/sites/bookingPrefill";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -175,7 +176,12 @@ export default function PublicExperienceRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     experienceSlug: string | string[];
+    // #4453 milestone 5 — a Mingla website's pre-fill (re-validated; bad values ignored).
+    date?: string | string[];
+    slot?: string | string[];
+    guests?: string | string[];
   }>();
+  const sitePrefill = useMemo(() => experiencePrefill(params), [params]);
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
     : params.brandSlug;
@@ -361,6 +367,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
 
   return (
     <ResolvedExperiencePage
+      sitePrefill={sitePrefill}
       payload={payload}
       brandSlug={typeof brandSlug === "string" ? brandSlug : ""}
       experienceSlug={typeof experienceSlug === "string" ? experienceSlug : ""}
@@ -393,7 +400,10 @@ const ResolvedExperiencePage: React.FC<{
   safeAreaTop: number;
   contentBottomInset: number;
   router: ReturnType<typeof useRouter>;
+  /** #4453 milestone 5 — a Mingla website's pre-fill. */
+  sitePrefill: ExperiencePrefill;
 }> = ({
+  sitePrefill,
   payload,
   brandSlug,
   experienceSlug,
@@ -496,6 +506,18 @@ const ResolvedExperiencePage: React.FC<{
 
   // adaptive reservation state
   const [pickerVisible, setPickerVisible] = useState<boolean>(false);
+  // #4453 milestone 5 — a website link naming a date (and slot) opens the
+  // picker ONCE with that occurrence chosen, so the hand-off lands pre-filled.
+  const sitePrefillDate = useMemo(
+    () => matchExperienceDate(experience.dates, sitePrefill, experience.timezone),
+    [experience.dates, experience.timezone, sitePrefill],
+  );
+  const sitePrefillOpened = useRef(false);
+  useEffect(() => {
+    if (sitePrefillOpened.current || !sitePrefillDate) return;
+    sitePrefillOpened.current = true;
+    setPickerVisible(true);
+  }, [sitePrefillDate]);
 
   const dateIsos = experience.dates.map((d) => d.startAt);
   const isEnded = allDatesPast(dateIsos);
@@ -908,6 +930,8 @@ const ResolvedExperiencePage: React.FC<{
       <ExperienceReservePicker
         visible={pickerVisible}
         mode={reserveMode}
+        initialDateId={sitePrefillDate?.id ?? null}
+        initialParty={sitePrefill.guests}
         dates={experience.dates}
         timezone={experience.timezone}
         palette={palette}

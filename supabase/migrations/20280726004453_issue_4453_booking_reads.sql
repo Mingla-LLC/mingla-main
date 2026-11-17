@@ -237,6 +237,44 @@ BEGIN
 END;
 $function$;
 
+-- ── 3a. Places left on one date (events and experiences) ───────────────
+-- Mingla's own count, the way its checkout counts: the public online tiers
+-- that sell on that date (never link-only or trip places); per date when the
+-- event caps per day or a tier is limited to days, else the tier's shared
+-- pool. NULL when any such tier is unlimited or uncounted, or none sells on
+-- that date: the site then shows no number (never invented).
+CREATE OR REPLACE FUNCTION public.brand_site_date_places_left(p_event_id uuid, p_event_date_id uuid)
+RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  WITH d AS (
+    SELECT ed.id, ed.occurrence_key FROM public.event_dates ed
+    WHERE ed.id = p_event_date_id AND ed.event_id = p_event_id AND ed.cancelled_at IS NULL
+  ),
+  cap AS (
+    SELECT COALESCE((public.issue_3313_event_day_choice(p_event_id)->>'perOccurrenceCapacity')::boolean, false) AS per_occ
+  ),
+  tiers AS (
+    SELECT tt.id, tt.is_unlimited, tt.quantity_total, tt.valid_occurrence_keys, tt.sold_count
+    FROM public.ticket_types tt, d
+    WHERE tt.event_id = p_event_id AND tt.deleted_at IS NULL
+      AND tt.is_hidden IS NOT TRUE AND tt.is_disabled IS NOT TRUE AND tt.available_online IS TRUE
+      AND (tt.sale_end_at IS NULL OR tt.sale_end_at > now())
+      AND (tt.valid_occurrence_keys IS NULL OR d.occurrence_key = ANY (tt.valid_occurrence_keys))
+      AND NOT EXISTS (SELECT 1 FROM public.ticket_type_links l WHERE l.ticket_type_id = tt.id)
+      AND NOT EXISTS (SELECT 1 FROM public.trip_pricing_tiers tp WHERE tp.ticket_type_id = tt.id)
+  )
+  SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM tiers) THEN NULL
+    WHEN EXISTS (SELECT 1 FROM tiers WHERE is_unlimited IS TRUE OR quantity_total IS NULL) THEN NULL
+    ELSE (SELECT SUM(GREATEST(t.quantity_total - CASE
+            WHEN t.valid_occurrence_keys IS NOT NULL OR (SELECT per_occ FROM cap)
+            THEN public.issue_3313_ticket_type_occurrence_taken(t.id, (SELECT id FROM d))
+            ELSE COALESCE(t.sold_count, 0) END, 0))::integer FROM tiers t)
+  END;
+$function$;
+
 -- ── 3. Offering dates (§5.1 event_dates, experience_slots, trip_departures)
 -- A public, scheduled or live offering of this brand that passes Mingla's
 -- visibility gate, with its dates in the window (its own zone). Places left
@@ -286,6 +324,7 @@ BEGIN
       (ed.start_at AT TIME ZONE v_tz) AS local_start
     FROM public.event_dates ed
     WHERE ed.event_id = v_event.id
+      AND ed.cancelled_at IS NULL
       AND ed.start_at >= now()
       -- A multi-date offering lists its occurrences; a single-date one its master.
       AND (ed.is_master = false OR NOT EXISTS (
@@ -293,7 +332,10 @@ BEGIN
   ),
   windowed AS (
     SELECT d.*, d.local_start::date AS local_date,
-      row_number() OVER (PARTITION BY d.local_start::date ORDER BY d.start_at, d.id) AS n
+      row_number() OVER (PARTITION BY d.local_start::date ORDER BY d.start_at, d.id) AS n,
+      -- A trip's spots left; else Mingla's per-date count (NULL = not counted, nothing shown).
+      COALESCE(v_left, CASE WHEN p_source = 'trip_departures' THEN NULL
+        ELSE public.brand_site_date_places_left(v_event.id, d.id) END) AS left_n
     FROM dates d
     WHERE d.local_start::date BETWEEN v_today AND v_today + (p_days - 1)
   ),
@@ -302,13 +344,13 @@ BEGIN
         'label', CASE WHEN p_source = 'experience_slots' THEN to_char(w.local_start, 'HH24:MI')
                       ELSE to_char(w.local_start, 'Dy DD Mon · HH24:MI') END,
         'start_local', to_char(w.local_start, 'YYYY-MM-DD"T"HH24:MI'),
-        'state', CASE WHEN v_left IS NOT NULL AND v_left <= 0 THEN 'full'
-                      WHEN v_left IS NOT NULL AND v_left <= 3 THEN 'few' ELSE 'open' END,
-        'left', v_left,
+        'state', CASE WHEN w.left_n IS NOT NULL AND w.left_n <= 0 THEN 'full'
+                      WHEN w.left_n IS NOT NULL AND w.left_n <= 3 THEN 'few' ELSE 'open' END,
+        'left', w.left_n,
         'price_minor', NULL,
         'currency', NULL,
         'href', CASE
-          WHEN v_left IS NOT NULL AND v_left <= 0 THEN NULL
+          WHEN w.left_n IS NOT NULL AND w.left_n <= 0 THEN NULL
           WHEN p_source = 'experience_slots' THEN 'https://host.usemingla.com/exp/' || v_brand.brand_slug || '/' || v_event.slug
             || '?date=' || to_char(w.local_start, 'YYYY-MM-DD') || '&slot=' || to_char(w.local_start, 'HH24:MI')
           WHEN p_source = 'trip_departures' THEN 'https://host.usemingla.com/t/' || v_brand.brand_slug || '/' || v_event.slug
@@ -533,6 +575,8 @@ REVOKE ALL ON FUNCTION public.brand_site_venue_slots(uuid,uuid,integer,integer) 
 GRANT EXECUTE ON FUNCTION public.brand_site_venue_slots(uuid,uuid,integer,integer) TO service_role;
 REVOKE ALL ON FUNCTION public.brand_site_stay_nights(uuid,uuid,integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_stay_nights(uuid,uuid,integer) TO service_role;
+REVOKE ALL ON FUNCTION public.brand_site_date_places_left(uuid,uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.brand_site_date_places_left(uuid,uuid) TO service_role;
 REVOKE ALL ON FUNCTION public.brand_site_offering_dates(uuid,uuid,text,integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_offering_dates(uuid,uuid,text,integer) TO service_role;
 REVOKE ALL ON FUNCTION public.brand_site_ticket_tiers(uuid,uuid) FROM PUBLIC, anon, authenticated;

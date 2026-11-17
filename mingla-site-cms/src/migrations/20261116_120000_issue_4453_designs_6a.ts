@@ -69,7 +69,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   ALTER TYPE "sites_cms"."enum__pages_v_blocks_offering_history_variant" ADD VALUE IF NOT EXISTS 'split';
   ALTER TYPE "sites_cms"."enum__pages_v_blocks_feature_cards_variant" ADD VALUE IF NOT EXISTS 'numbered';
   ALTER TYPE "sites_cms"."enum__pages_v_blocks_feature_cards_variant" ADD VALUE IF NOT EXISTS 'tiles';
-[ 'atelier', 'voyage' ] [ 'atelier', 'voyage' ]
   `)
 }
 

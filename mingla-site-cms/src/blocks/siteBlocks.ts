@@ -692,7 +692,13 @@ const BLOCK_CONFIGS: Block[] = [
         minRows: 1,
         maxRows: 12,
         required: true,
-        fields: [readyMedia(), accessibleAlt()],
+        fields: [
+          readyMedia(),
+          accessibleAlt(),
+          // #4453 milestone 5 (§5.2) — the owner's caption under this photograph (offered while SITES_BOOKING_BLOCKS is on).
+          short("caption", "Caption", false, 120, "Optional. Shown under the photograph in layouts that caption."),
+          short("sub", "Small line under the caption", false, 80),
+        ],
       },
     ],
   },

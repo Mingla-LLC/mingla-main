@@ -27,3 +27,22 @@ describe("#4453 M5 venue page pre-fill", () => {
     expect(venuePrefill({ date: ["2026-11-20", "2026-11-21"] }).date).toBe("2026-11-20");
   });
 });
+
+import { experiencePrefill, matchExperienceDate } from "../bookingPrefill";
+
+describe("#4453 M5 experience pre-fill", () => {
+  const dates = [
+    { id: "d1", startAt: "2026-11-20T11:00:00Z", timezone: "Africa/Lagos" },
+    { id: "d2", startAt: "2026-11-20T15:00:00Z", timezone: "Africa/Lagos" },
+    { id: "d3", startAt: "2026-11-21T11:00:00Z", timezone: "Africa/Lagos" },
+  ];
+  it("matches the date and slot in the date's own zone", () => {
+    expect(matchExperienceDate(dates, experiencePrefill({ date: "2026-11-20", slot: "16:00" }), "UTC")?.id).toBe("d2");
+    expect(matchExperienceDate(dates, experiencePrefill({ date: "2026-11-21" }), "UTC")?.id).toBe("d3");
+  });
+  it("adversarial: a time that is not a slot, or a bad value, picks nothing", () => {
+    expect(matchExperienceDate(dates, experiencePrefill({ date: "2026-11-20", slot: "11:00" }), "UTC")).toBeNull();
+    expect(matchExperienceDate(dates, experiencePrefill({ date: "2026-13-01", slot: "16:00" }), "UTC")).toBeNull();
+    expect(experiencePrefill({ guests: "0", slot: "9pm" })).toEqual({ date: null, slot: null, guests: null });
+  });
+});

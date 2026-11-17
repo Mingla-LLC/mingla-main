@@ -308,6 +308,23 @@ export const BLOCK_CATALOG = {
       eyebrow,
       heading: heading(),
       images: { kind: "media_list", min: 1, max: 12, required: true, label: "Photographs" },
+      /*
+       * #4453 milestone 5 (§5.2) — a caption under a photograph, the owner's
+       * words (Ari may caption only what the picture's own description or
+       * the owner's words support; held from Ari until milestone 7). Each
+       * names one of this block's own photographs.
+       */
+      captions: {
+        kind: "list",
+        min: 1,
+        max: 12,
+        label: "Captions",
+        item: {
+          media_id: { kind: "uuid", required: true, label: "Photograph" },
+          caption: { kind: "text", max: 120, required: true, label: "Caption" },
+          sub: { kind: "text", max: 80, label: "Small line" },
+        },
+      },
     },
   },
   video_feature: {
@@ -773,7 +790,7 @@ export const BOOKING_BLOCK_TYPES: readonly string[] = ["offering_grid", "offerin
  */
 export const BOOKING_BLOCK_NEW_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
 /** #4453 milestone 5 — new fields on existing blocks, offered with the flag and held from Ari the same way. */
-export const BOOKING_BLOCK_NEW_FIELDS: readonly string[] = ["hero.booking_bar", "hero.booking_target_id", "hero.show_rating", "testimonials.show_rating"];
+export const BOOKING_BLOCK_NEW_FIELDS: readonly string[] = ["hero.booking_bar", "hero.booking_target_id", "hero.show_rating", "testimonials.show_rating", "gallery.captions"];
 /** The block types Ari's tools declare (every type minus the held booking blocks). */
 export const ARI_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type));
 
@@ -787,6 +804,8 @@ export function usesBookingBlocksFeature(block: { type?: unknown; blockType?: un
   const type = typeof block.type === "string" ? block.type : block.blockType;
   if ((BOOKING_BLOCK_NEW_TYPES as readonly unknown[]).includes(type)) return true;
   if (type === "hero" && typeof block.booking_bar === "string" && !["none", "trip_search"].includes(block.booking_bar)) return true;
+  if (type === "gallery" && Array.isArray(block.images) && block.images.some((row) => plainObject(row) && typeof row.caption === "string" && row.caption.trim() !== "")) return true;
+  if (type === "gallery" && Array.isArray(block.captions) && block.captions.length > 0) return true;
   return (type === "hero" || type === "testimonials") && block.show_rating === true;
 }
 
@@ -892,6 +911,19 @@ export function assertSiteBlock(value: unknown, ctx: BlockValidationContext): as
   if (value.type === "testimonials") assertTestimonialsSource(value);
   if (value.type === "availability") assertAvailabilityTarget(value);
   if (value.type === "hero") assertHeroBookingBar(value);
+  if (value.type === "gallery") assertGalleryCaptions(value);
+}
+
+/* #4453 milestone 5 — a caption names one of the block's own photographs, at most once. */
+function assertGalleryCaptions(block: Record<string, unknown>): void {
+  if (!Array.isArray(block.captions)) return;
+  const ids = new Set((Array.isArray(block.images) ? block.images : []).map((image) => (plainObject(image) ? String(image.id ?? "") : "")));
+  const seen = new Set<string>();
+  for (const row of block.captions) {
+    const mediaId = plainObject(row) ? String(row.media_id ?? "") : "";
+    if (!ids.has(mediaId) || seen.has(mediaId)) throw new Error("ARTIFACT_BLOCK_CONTENT_MISMATCH:gallery.captions");
+    seen.add(mediaId);
+  }
 }
 
 /*
