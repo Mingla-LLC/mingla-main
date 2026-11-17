@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { SitePageView } from "../../components/SitePageView";
 import { wantsLessData } from "../../lib/siteVideo";
-import { resolveSitePath } from "../../lib/pageRouting";
+import { ariDraftPreviewPage, resolveSitePath } from "../../lib/pageRouting";
 import { normalizeRequestSegments } from "../../contracts/generated/routes.ts";
 import {
   loadPreviewArtifact,
@@ -73,7 +73,10 @@ export default async function PreviewPage({
   }
   // #2830 — this page's pictures and videos come through the key, not the publication.
   artifact = withPreviewMediaKey(artifact, parsed.key);
-  const resolved = resolveSitePath(artifact, previewPath);
+  // #4453 m11 rework (spec v2.1 §3.3) — the owner's private preview also opens a Draft page from Ari
+  // (disabled, never in a publish, share link or sitemap), so the editor can show it before it goes live.
+  const ariDraft = ariDraftPreviewPage(artifact, previewPath);
+  const resolved = ariDraft ? { kind: "page" as const, page: ariDraft } : resolveSitePath(artifact, previewPath);
   // #4453 milestone 9 — an offering detail page previews like the live site
   // (step 3b: the same flag and the same live data, for this artifact's site).
   const detailed = resolved.kind === "not_found" && isV2Artifact(artifact)
