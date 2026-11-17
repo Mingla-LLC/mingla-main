@@ -31,7 +31,7 @@ function fixtureAssets(key: DesignKey): ArtifactV2["font_assets"] {
     if (seen.has(id)) return;
     seen.add(id);
     // #4453 6b — a width-axis slot's face carries its range, as the publish pipeline records it.
-    assets.push({ family: slot!.family, weight: slot!.weights[0]!, style, unicode_range: "U+0000-00FF", digest: String(index + 1).repeat(64).slice(0, 64), bytes: 1000, ...(slot!.width ? { stretch: fontStretch(slot!.width) } : {}) });
+    assets.push({ family: slot!.family, weight: slot!.weights[0]!, style, unicode_range: "U+0000-00FF", digest: String(index + 1).repeat(64).slice(0, 64), bytes: 1000, ...(fontStretch(slot!.axes) ? { stretch: fontStretch(slot!.axes)! } : {}) });
   });
   return assets;
 }
@@ -84,4 +84,41 @@ export function galleryArtifact(key: DesignKey): ArtifactV2 {
   const gallery = home.blocks.find((block) => block.type === "gallery") as unknown as { images: unknown };
   gallery.images = structuredClone(pictures);
   return artifact;
+}
+
+/**
+ * #4453 6b — two upcoming trips on sale for a gallery Home's offering grid:
+ * the first carries a cover photo (served through the site's own `/om`
+ * route), the second has none, so a layout's covered and coverless cards are
+ * both drawn. Invented content only.
+ */
+export function galleryUpcomingTrips(now: Date) {
+  const day = 86_400_000;
+  const trip = (n: number, title: string, place: string, priceMinor: number, cover: { path: string; type: "image" } | null) => ({
+    id: `bbbbbbbb-bbbb-4ccc-8ddd-00000000020${n}`,
+    kind: "trip" as const,
+    slug: `fixture-upcoming-${n}`,
+    title,
+    summary: "Five slow days, a small group, every meal at one long table.",
+    cover,
+    destination_text: place,
+    start_at: new Date(now.getTime() + (20 + n * 9) * day).toISOString(),
+    end_at: new Date(now.getTime() + (25 + n * 9) * day).toISOString(),
+    timezone: "Africa/Lagos",
+    status: "scheduled" as const,
+    bookings_closed: false,
+    capacity: 12,
+    spots_left: 5,
+    group_minimum: null,
+    min_price_minor: priceMinor,
+    currency: "USD",
+    has_free_tier: false,
+    public_url: `https://host.usemingla.com/t/fixture-brand/fixture-upcoming-${n}`,
+    waitlist_enabled: false,
+    installments_available: false,
+  });
+  return [
+    trip(1, "Island Week", "Fixture Coast", 42000, { path: "event_covers/fixture/island-week.jpg", type: "image" }),
+    trip(2, "Bay and Back", "Fixture Bay", 31000, null),
+  ];
 }

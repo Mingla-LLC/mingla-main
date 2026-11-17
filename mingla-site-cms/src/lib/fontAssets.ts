@@ -72,35 +72,52 @@ export type ResolvedSiteFonts = {
   warnings: FontWarning[];
 };
 
-type FontRequest = Pick<FontSlot, "family" | "weights" | "italic" | "width">;
+type FontRequest = Pick<FontSlot, "family" | "weights" | "italic" | "axes">;
+
+/** css2's axis order: lowercase tags alphabetically (ital, opsz, wdth, wght), then uppercase (SOFT, WONK). */
+function axisOrder(a: string, b: string): number {
+  const upper = (tag: string) => tag === tag.toUpperCase();
+  return upper(a) === upper(b) ? (a < b ? -1 : a > b ? 1 : 0) : upper(a) ? 1 : -1;
+}
+
+/** The slot's axes in css2 order, each "min..max" (or one pinned value). */
+function axisEntries(slot: FontRequest): Array<[string, string]> {
+  return Object.entries(slot.axes ?? {})
+    .filter((entry): entry is [string, readonly [number, number]] => Array.isArray(entry[1]))
+    .map(([tag, [min, max]]): [string, string] => [tag, min === max ? String(min) : `${min}..${max}`])
+    .sort(([a], [b]) => axisOrder(a, b));
+}
 
 /**
  * The cache key for one family request (family, weights, italic, subsets;
- * #4453 6b: plus the width range, so a width-axis file is never mistaken for
- * the normal-width one). A request without a width keeps its old key.
+ * #4453 6b: plus the axes, so a variable-axis file is never mistaken for the
+ * default instance). A request without axes keeps its old key.
  */
 export function fontRequestKey(slot: FontRequest, subsets: readonly string[]): string {
   const parts = [slot.family, [...slot.weights].sort((a, b) => a - b).join(","), slot.italic ? "i" : "", [...subsets].sort().join(","), CACHE_VERSION];
-  if (slot.width) parts.push(`wdth${slot.width[0]}-${slot.width[1]}`);
+  const axes = axisEntries(slot);
+  if (axes.length) parts.push(axes.map(([tag, value]) => `${tag}${value.replace("..", "-")}`).join(","));
   return parts.join("|");
 }
 
 /**
  * css2 URL for a family and its weights (italic adds the ital axis; #4453 6b:
- * a width range adds the wdth axis, e.g. `wdth,wght@62..125,400`, so Google
- * returns the file that carries every width in the range). Axis tags are in
- * css2's required alphabetical order: ital, wdth, wght.
+ * each design axis is added in css2's order with its range or pinned value,
+ * e.g. `ital,opsz,wght,SOFT,WONK@0,9..144,400,100,1`, so Google returns the
+ * file that carries those axes).
  */
 export function googleCssUrl(slot: FontRequest): string {
   if (!isFontFamilyName(slot.family)) throw new Error("FONT_FAMILY_INVALID");
   const weights = [...slot.weights].sort((a, b) => a - b);
   const family = slot.family.replace(/ /g, "+");
-  const width = slot.width ? `${slot.width[0]}..${slot.width[1]},` : "";
-  const tags = `${slot.italic ? "ital," : ""}${width ? "wdth," : ""}wght`;
+  const axes = axisEntries(slot);
+  const tags = [...(slot.italic ? ["ital"] : []), ...axes.map(([tag]) => tag), "wght"].sort(axisOrder);
+  const tuple = (ital: 0 | 1, weight: number) => tags.map((tag) =>
+    tag === "ital" ? String(ital) : tag === "wght" ? String(weight) : axes.find(([name]) => name === tag)![1]).join(",");
   const tuples = slot.italic
-    ? [...weights.map((w) => `0,${width}${w}`), ...weights.map((w) => `1,${width}${w}`)]
-    : weights.map((w) => `${width}${w}`);
-  return `${GOOGLE_FONTS_CSS_ORIGIN}/css2?family=${family}:${tags}@${tuples.join(";")}&display=swap`;
+    ? [...weights.map((w) => tuple(0, w)), ...weights.map((w) => tuple(1, w))]
+    : weights.map((w) => tuple(0, w));
+  return `${GOOGLE_FONTS_CSS_ORIGIN}/css2?family=${family}:${tags.join(",")}@${tuples.join(";")}&display=swap`;
 }
 
 export type ParsedFace = {
@@ -182,8 +199,8 @@ export async function facesForSlot(
 ): Promise<CachedFace[]> {
   const key = fontRequestKey(slot, subsets);
   // #4453 6b — a width-axis face draws every width in its range (the store keeps no stretch column).
-  const stretched = (faces: CachedFace[]): CachedFace[] =>
-    slot.width ? faces.map((face) => ({ ...face, stretch: fontStretch(slot.width!) })) : faces;
+  const stretch = fontStretch(slot.axes);
+  const stretched = (faces: CachedFace[]): CachedFace[] => (stretch ? faces.map((face) => ({ ...face, stretch })) : faces);
   const cached = await deps.cachedFaces(key);
   if (cached && cached.length) return stretched(cached);
   const cssUrl = exactUrl(googleCssUrl(slot), "fonts.googleapis.com");

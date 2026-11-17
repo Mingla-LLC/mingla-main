@@ -599,7 +599,7 @@ export const NOCTURNE: DesignDefinition = {
   fonts: {
     display: { family: "Bodoni Moda", source: "google", weights: [400, 500, 800], italic: true },
     // #4453 6b — Archivo's width axis: compressed capitals (62%) and wide labels (125%), as designed.
-    body: { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false, width: [62, 125] },
+    body: { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false, axes: { wdth: [62, 125] } },
     accent: { family: "Bodoni Moda", source: "google", weights: [400, 500], italic: true },
     label: null,
   },
@@ -959,9 +959,10 @@ export const JOURNAL: DesignDefinition = {
   },
   fonts: {
     // Italics come from the accent slot (the same family): every weight is one more @font-face per subset (MAX_FONT_ASSETS).
-    display: { family: "Fraunces", source: "google", weights: [400, 700, 800], italic: false },
+    // #4453 6b — Fraunces' optical-size axis: the high-contrast display cut at headline sizes, as in the gallery.
+    display: { family: "Fraunces", source: "google", weights: [400, 700, 800], italic: false, axes: { opsz: [9, 144] } },
     body: { family: "Libre Franklin", source: "google", weights: [400, 600, 700], italic: false },
-    accent: { family: "Fraunces", source: "google", weights: [300, 400], italic: true },
+    accent: { family: "Fraunces", source: "google", weights: [300, 400], italic: true, axes: { opsz: [9, 144] } },
     label: null,
   },
   variants: galleryVariants(JOURNAL_PICKS, JOURNAL_SIGNATURE_LAYOUTS),
@@ -1179,9 +1180,10 @@ export const TERRA: DesignDefinition = {
     heading_case: "none",
   },
   fonts: {
-    display: { family: "Fraunces", source: "google", weights: [400, 500], italic: true },
+    // #4453 6b — Fraunces' optical size, with its soft, "wonky" instance pinned (SOFT 100, WONK 1), as in the gallery.
+    display: { family: "Fraunces", source: "google", weights: [400, 500], italic: true, axes: { opsz: [9, 144], SOFT: [100, 100], WONK: [1, 1] } },
     body: { family: "Figtree", source: "google", weights: [400, 500, 600, 700], italic: false },
-    accent: { family: "Fraunces", source: "google", weights: [400], italic: true },
+    accent: { family: "Fraunces", source: "google", weights: [400], italic: true, axes: { opsz: [9, 144], SOFT: [100, 100], WONK: [1, 1] } },
     label: null,
   },
   variants: galleryVariants(TERRA_PICKS, TERRA_SIGNATURE_LAYOUTS),

@@ -4,7 +4,7 @@
  *
  * MINGLA-INVARIANT: I-SITES-DESIGN-KEYS-ONE-LIST | issue #4453 | DESIGN_KEYS == renderers == stylesheets == Studio design enum == Core brand_site_design_keys() (6b adds journal, grid, terra).
  * MINGLA-INVARIANT: I-SITES-DEFAULTS-AA | issue #4453 | every gallery design's default text pairs pass WCAG AA (4.5:1 small, 3:1 large) on every surface it draws (6b: Journal, Grid, Terra; their bands are covered by I-SITES-BAND-INK in rework6a).
- * MINGLA-INVARIANT: I-SITES-FONT-WIDTH-AXIS | issue #4453 | a design slot's width range sits inside its family's wdth axis (FONT_WIDTH_AXES), its faces carry that range as font-stretch, and the runtime emits it on @font-face; no other slot gets one.
+ * MINGLA-INVARIANT: I-SITES-FONT-AXES | issue #4453 | a design slot's variable-font axes (wdth, opsz, SOFT, WONK) sit inside its family's axes (FONT_AXES); a wdth range is carried on its faces as font-stretch and emitted on @font-face; every gallery design's first-view fonts and whole page font total stay ≤ 180 KB and ≤ 24 @font-face entries.
  *
  * - SC-D1 parity: the three keys have a renderer, a stylesheet, a Studio enum value (design, header and
  *   every layout, live and version tables) and a Core entry; Ari's declared designs stay atelier + voyage.
@@ -14,7 +14,7 @@
  * - SC-D3: contrast for every role each design draws (bands: rework6a I-SITES-BAND-INK).
  * - SC-D4: reduced motion, `motion: none` and Save-Data animate nothing; signature motion is gated; the
  *   hero's finite animations sit on elements the 12-at-once cap counts.
- * - SC-D5: font budget, catalogue faces, no request off the site's origin, and the width axis.
+ * - SC-D5: font budget (first view and page total), the 24-entry publish limit, catalogue faces, variable axes, no off-origin requests.
  * - Phone menu: portalled to <body> in every header each design offers, covering the viewport.
  * - Brand overrides: an owner's colours, fonts and heading case reach every new design's page.
  */
@@ -30,7 +30,7 @@ import {
   ARI_DESIGN_KEYS, DESIGN_KEYS, DESIGNS, GRID, HEADER_INLINE_CAPACITY, HEADER_VARIANTS, JOURNAL, NOCTURNE, SHARED_LAYOUTS, TERRA,
   compositionVariant, type DesignDefinition, type HeaderVariant,
 } from "../../contracts/generated/designs.ts";
-import { FONT_WIDTH_AXES, MAX_FONT_ASSETS, assertFontAssets, assertFontSlots } from "../../contracts/generated/fontSlots.ts";
+import { FONT_AXES, MAX_FONT_ASSETS, assertFontAssets, assertFontSlots, type FontAxes } from "../../contracts/generated/fontSlots.ts";
 import { resolveTokens } from "../../contracts/generated/tokens.ts";
 import { ariVariants } from "../../contracts/generated/ariToolSchemas.ts";
 import { w5EndedTrips } from "../../contracts/w5Content.fixture";
@@ -47,11 +47,13 @@ import { JOURNAL_SIGNATURE_BLOCKS } from "../journal/blocks/JournalBlocks";
 import { GRID_SIGNATURE_BLOCKS } from "../grid/blocks/GridBlocks";
 import { TERRA_SIGNATURE_BLOCKS } from "../terra/blocks/TerraBlocks";
 import { motionAttributes } from "./library";
-import { galleryArtifact } from "./galleryDesigns.fixture";
+import { galleryArtifact, galleryUpcomingTrips } from "./galleryDesigns.fixture";
 import type { SharedContext } from "./parts";
 import { MAX_ANIMATING_AT_ONCE } from "./motion";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => ({ push: () => {}, prefetch: () => {} }) }));
+// A cover's /om token is signed with the runtime key (test value only).
+vi.mock("../../lib/config", () => ({ runtimeConfig: () => ({ runtimeHmac: Buffer.alloc(32, 7).toString("base64"), videoCdnHosts: [] }) }));
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const ROOT = path.resolve(process.cwd(), "..");
@@ -436,47 +438,60 @@ describe("#4453 6b SC-D4 reduced motion, motion: none and Save-Data animate noth
 
 /* ---------------- SC-D5 fonts and origins ---------------- */
 
-describe("#4453 6b SC-D5 font budget, the width axis and no off-origin requests", () => {
+describe("#4453 6b SC-D5 font budget, variable axes and no off-origin requests", () => {
   /*
-   * Measured 2026-11-16 by running the publish pipeline itself
-   * (resolveSiteFonts against Google's css2 API), latin subset, woff2, per
-   * file. Variable families are one file per style; IBM Plex Mono is static
-   * (one file per weight).
+   * Every latin woff2 file a gallery design's page can load, measured
+   * 2026-11-16 by running the publish pipeline itself (resolveSiteFonts
+   * against Google's css2 API, with each design's axes). Variable families
+   * are one file per style (all weights); IBM Plex Mono is static (one file
+   * per weight). `firstView` are the display and body files (§3.6).
    */
-  const LATIN: Readonly<Record<string, Readonly<Record<string, number>>>> = {
-    Fraunces: { normal: 36_560, italic: 45_624 },
-    "Libre Franklin": { normal: 30_884 },
-    "Hanken Grotesk": { normal: 34_664 },
-    "IBM Plex Mono": { "500": 10_128, "700": 10_056 },
-    Figtree: { normal: 20_184 },
+  const BUDGET: Readonly<Record<string, { files: Readonly<Record<string, number>>; firstView: readonly string[] }>> = {
+    nocturne: { files: { "Bodoni Moda/normal": 25_804, "Bodoni Moda/italic": 30_220, "Archivo/normal": 90_096 }, firstView: ["Bodoni Moda/normal", "Archivo/normal"] },
+    haven: { files: { "Cormorant/normal": 35_280, "Cormorant/italic": 38_076, "Manrope/normal": 24_436 }, firstView: ["Cormorant/normal", "Manrope/normal"] },
+    maison: { files: { "Italiana/normal": 10_164, "Newsreader/normal": 58_152, "Newsreader/italic": 64_500, "Jost/normal": 26_588 }, firstView: ["Italiana/normal", "Newsreader/normal"] },
+    // Fraunces with opsz 9..144 (Journal) and with opsz plus SOFT 100 / WONK 1 pinned (Terra): different files.
+    journal: { files: { "Fraunces/normal": 67_388, "Fraunces/italic": 81_704, "Libre Franklin/normal": 30_884 }, firstView: ["Fraunces/normal", "Libre Franklin/normal"] },
+    grid: { files: { "Hanken Grotesk/normal": 34_664, "IBM Plex Mono/500": 10_056, "IBM Plex Mono/700": 10_128 }, firstView: ["Hanken Grotesk/normal"] },
+    terra: { files: { "Fraunces/normal": 62_120, "Fraunces/italic": 79_180, "Figtree/normal": 20_184 }, firstView: ["Fraunces/normal", "Figtree/normal"] },
   };
-  const files = (slot: NonNullable<DesignDefinition["fonts"]["label"]>): string[] =>
-    slot.family === "IBM Plex Mono" ? slot.weights.map((w) => `${slot.family}/${w}`) : [`${slot.family}/normal`, ...(slot.italic ? [`${slot.family}/italic`] : [])];
+  const filesOf = (design: DesignDefinition): Set<string> => new Set([design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null]
+    .filter((slot) => slot !== null && slot.source === "google")
+    .flatMap((slot) => (slot!.family === "IBM Plex Mono" ? slot!.weights.map((w) => `${slot!.family}/${w}`) : [`${slot!.family}/normal`, ...(slot!.italic ? [`${slot!.family}/italic`] : [])])));
   const catalogue = read("packages/site-contracts/src/googleFontsCatalog.ts");
-  for (const design of NEW) {
-    it(`${design.key}: ≤ 4 families, ≤ 8 latin files, display + body ≤ 180 KB, every face and weight in the catalogue, ≤ 2 preloads`, () => {
-      const slots = [design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null].filter((slot) => slot !== null);
-      expect(new Set(slots.map((slot) => slot!.family)).size).toBeLessThanOrEqual(4);
-      const all = new Set(slots.flatMap((slot) => files(slot!)));
-      expect(all.size).toBeLessThanOrEqual(8);
-      for (const file of all) {
-        const [family, style] = file.split("/") as [string, string];
-        expect(LATIN[family]?.[style], file).toBeTypeOf("number");
+  const KB180 = 180 * 1024;
+
+  for (const key of Object.keys(BUDGET)) {
+    const design = DESIGNS[key as keyof typeof DESIGNS];
+    it(`${key}: ≤ 4 families, ≤ 8 latin files, first view (display + body) AND the page's whole font total ≤ 180 KB, ≤ 24 @font-face entries, every face in the catalogue, ≤ 2 preloads`, () => {
+      const budget = BUDGET[key]!;
+      const files = filesOf(design);
+      expect([...files].sort(), key).toEqual(Object.keys(budget.files).sort());
+      expect(new Set([...files].map((file) => file.split("/")[0])).size).toBeLessThanOrEqual(4);
+      expect(files.size).toBeLessThanOrEqual(8);
+      const sum = (names: Iterable<string>) => [...names].reduce((total, name) => total + budget.files[name]!, 0);
+      expect(sum(budget.firstView), `${key} first view`).toBeLessThanOrEqual(KB180);
+      expect(sum(files), `${key} page total`).toBeLessThanOrEqual(KB180);
+      // The publish limit: one @font-face per weight × style × kept subset (latin, latin-ext).
+      const faces = new Set<string>();
+      for (const slot of [design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null]) {
+        if (!slot || slot.source !== "google") continue;
+        for (const weight of slot.weights) for (const style of slot.italic ? ["normal", "italic"] : ["normal"]) faces.add(`${slot.family}|${weight}|${style}`);
       }
-      const firstView = (slot: DesignDefinition["fonts"]["display"]) => LATIN[slot.family]!.normal ?? LATIN[slot.family]![String(slot.weights[0])]!;
-      expect(firstView(design.fonts.display) + (design.fonts.body.family === design.fonts.display.family ? 0 : firstView(design.fonts.body))).toBeLessThanOrEqual(180 * 1024);
-      for (const slot of slots) {
-        const row = new RegExp(`\\["${slot!.family}","[a-z-]+",\\[([\\d,]*)\\],\\[([\\d,]*)\\]`).exec(catalogue);
-        expect(row, slot!.family).not.toBeNull();
+      expect(faces.size * 2, `${key} @font-face entries`).toBeLessThanOrEqual(MAX_FONT_ASSETS);
+      for (const slot of [design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null]) {
+        if (!slot) continue;
+        const row = new RegExp(`\\["${slot.family}","[a-z-]+",\\[([\\d,]*)\\],\\[([\\d,]*)\\]`).exec(catalogue);
+        expect(row, slot.family).not.toBeNull();
         const weights = row![1]!.split(",").map(Number);
-        for (const weight of slot!.weights) expect(weights, `${slot!.family} ${weight}`).toContain(weight);
-        if (slot!.italic) expect(row![2], `${slot!.family} italic`).not.toBe("");
-        // None of the three draws a width axis (Grid's faces have none; see FONT_WIDTH_AXES).
-        expect(slot!.width, slot!.family).toBeUndefined();
+        for (const weight of slot.weights) expect(weights, `${slot.family} ${weight}`).toContain(weight);
+        if (slot.italic) expect(row![2], `${slot.family} italic`).not.toBe("");
       }
       expect(preloadDigests(galleryArtifact(design.key)).length).toBeLessThanOrEqual(2);
     });
+  }
 
+  for (const design of NEW) {
     it(`${design.key}: the page and its stylesheet request nothing from another origin`, async () => {
       const artifact = galleryArtifact(design.key);
       const html = render(artifact, undefined, await liveFor(artifact));
@@ -492,31 +507,37 @@ describe("#4453 6b SC-D5 font budget, the width axis and no off-origin requests"
     });
   }
 
-  it("every gallery design's faces fit the artifact's MAX_FONT_ASSETS (each weight and style is one @font-face per kept subset)", () => {
-    // Found on the production build: Journal's first cut declared 8 Fraunces faces + 4 Libre Franklin weights = 26 > 24 and the publish refused it.
+  it("I-SITES-FONT-AXES: every design axis sits inside its family's axes; the gallery's axes are the ones drawn", () => {
+    expect(FONT_AXES.Archivo).toEqual({ wdth: [62, 125] });
+    expect(FONT_AXES.Fraunces).toEqual({ opsz: [9, 144], SOFT: [0, 100], WONK: [0, 1] });
     for (const design of Object.values(DESIGNS)) {
-      const faces = new Set<string>();
       for (const slot of [design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null]) {
-        if (!slot || slot.source !== "google") continue;
-        for (const weight of slot.weights) for (const style of slot.italic ? ["normal", "italic"] : ["normal"]) faces.add(`${slot.family}|${weight}|${style}`);
+        if (!slot?.axes) continue;
+        for (const [tag, range] of Object.entries(slot.axes) as Array<[keyof FontAxes, readonly [number, number]]>) {
+          const family = FONT_AXES[slot.family]?.[tag];
+          expect(family, `${design.key} ${slot.family} ${tag}`).toBeDefined();
+          expect(range[0]).toBeGreaterThanOrEqual(family![0]);
+          expect(range[1]).toBeLessThanOrEqual(family![1]);
+        }
       }
-      // latin and latin-ext (DEFAULT_FONT_SUBSETS); a family without latin-ext only makes it smaller.
-      expect(faces.size * 2, design.key).toBeLessThanOrEqual(MAX_FONT_ASSETS);
+    }
+    expect(NOCTURNE.fonts.body.axes).toEqual({ wdth: [62, 125] });
+    // Journal: the high-contrast optical size; Terra: optical size with the soft, wonky instance pinned.
+    for (const slot of [JOURNAL.fonts.display, JOURNAL.fonts.accent!]) expect(slot.axes).toEqual({ opsz: [9, 144] });
+    for (const slot of [TERRA.fonts.display, TERRA.fonts.accent!]) expect(slot.axes).toEqual({ opsz: [9, 144], SOFT: [100, 100], WONK: [1, 1] });
+    // One family, one axis set per design (two slots of one family share their files).
+    for (const design of Object.values(DESIGNS)) {
+      const byFamily = new Map<string, string>();
+      for (const slot of [design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null]) {
+        if (!slot) continue;
+        const axes = JSON.stringify(slot.axes ?? {});
+        expect(byFamily.get(slot.family) ?? axes, `${design.key} ${slot.family}`).toBe(axes);
+        byFamily.set(slot.family, axes);
+      }
     }
   });
 
-  it("I-SITES-FONT-WIDTH-AXIS: Nocturne's Archivo carries Archivo's wdth range; its faces and @font-face carry font-stretch", () => {
-    expect(FONT_WIDTH_AXES.Archivo).toEqual([62, 125]);
-    for (const design of Object.values(DESIGNS)) {
-      for (const slot of [design.fonts.display, design.fonts.body, design.fonts.accent, design.fonts.label ?? null]) {
-        if (!slot?.width) continue;
-        const axis = FONT_WIDTH_AXES[slot.family];
-        expect(axis, `${design.key} ${slot.family}`).toBeDefined();
-        expect(slot.width[0]).toBeGreaterThanOrEqual(axis![0]);
-        expect(slot.width[1]).toBeLessThanOrEqual(axis![1]);
-      }
-    }
-    expect(NOCTURNE.fonts.body).toMatchObject({ family: "Archivo", width: [62, 125] });
+  it("I-SITES-FONT-AXES: Nocturne's Archivo faces and @font-face carry font-stretch; Fraunces' faces carry none (opsz is automatic, SOFT/WONK are in the file)", () => {
     const artifact = galleryArtifact("nocturne");
     assertArtifactV2(artifact);
     const archivo = artifact.font_assets.filter((asset) => asset.family === "Archivo");
@@ -524,29 +545,35 @@ describe("#4453 6b SC-D5 font budget, the width axis and no off-origin requests"
     for (const asset of archivo) expect(asset.stretch).toBe("62% 125%");
     expect(fontFacesCss(artifact)).toMatch(/font-family:"Archivo";font-style:normal;font-weight:400;font-stretch:62% 125%;font-display:swap/);
     expect(fontFacesCss(artifact)).not.toMatch(/"Bodoni Moda"[^}]*font-stretch/);
-    // The stylesheet's compressed headings and wide labels are what the axis is for.
+    for (const key of ["journal", "terra"] as const) {
+      const fraunces = galleryArtifact(key);
+      assertArtifactV2(fraunces);
+      expect(fontFacesCss(fraunces), key).not.toMatch(/font-stretch/);
+      expect(css(`/designs/${key}/1.css`), key).not.toMatch(/font-optical-sizing:\s*none/);
+    }
     const nocturne = css("/designs/nocturne/1.css");
     expect(nocturne).toContain("font-stretch: 62%");
     expect(nocturne).toContain("font-stretch: 125%");
   });
 
-  it("the artifact contract refuses a malformed width or stretch, and a width on a system face", () => {
-    const slots = structuredClone(galleryArtifact("nocturne").fonts);
+  it("the artifact contract refuses malformed axes or stretch, an unknown axis, and axes on a system face", () => {
+    const slots = structuredClone(galleryArtifact("terra").fonts);
     assertFontSlots(slots);
-    for (const bad of [[125, 62], [62], [10, 125], ["62", "125"]]) {
-      const copy = structuredClone(slots) as unknown as { body: { width: unknown } };
-      copy.body.width = bad;
-      expect(() => assertFontSlots(copy), JSON.stringify(bad)).toThrow(/ARTIFACT_FONTS_MISMATCH:body/);
+    for (const bad of [{ wdth: [125, 62] }, { wdth: [62] }, { wdth: [10, 125] }, { opsz: ["9", "144"] }, { GRAD: [0, 100] }, {}, [62, 125]]) {
+      const copy = structuredClone(slots) as unknown as { display: { axes: unknown } };
+      copy.display.axes = bad;
+      expect(() => assertFontSlots(copy), JSON.stringify(bad)).toThrow(/ARTIFACT_FONTS_MISMATCH:display/);
     }
     const system = structuredClone(slots) as unknown as { body: Record<string, unknown> };
-    system.body = { family: "Arial", source: "system", weights: [400], italic: false, width: [62, 125] };
+    system.body = { family: "Arial", source: "system", weights: [400], italic: false, axes: { wdth: [62, 125] } };
     expect(() => assertFontSlots(system)).toThrow(/ARTIFACT_FONTS_MISMATCH:body/);
-    const assets = structuredClone(galleryArtifact("nocturne").font_assets);
-    assertFontAssets(assets, slots);
+    const nocturne = galleryArtifact("nocturne");
+    const assets = structuredClone(nocturne.font_assets);
+    assertFontAssets(assets, nocturne.fonts);
     for (const bad of ["62%", "62% 125%;x", "calc(1px) 2%"]) {
       const copy = structuredClone(assets);
       (copy[0] as { stretch?: string }).stretch = bad;
-      expect(() => assertFontAssets(copy, slots), bad).toThrow(/ARTIFACT_FONT_ASSETS_MISMATCH:0/);
+      expect(() => assertFontAssets(copy, nocturne.fonts), bad).toThrow(/ARTIFACT_FONT_ASSETS_MISMATCH:0/);
     }
   });
 });
@@ -640,6 +667,30 @@ describe("#4453 6b an empty upcoming grid is left out of the public site on Jour
       expect(render(artifact, undefined, live)).not.toContain("Trips from the house");
     });
   }
+});
+
+/* ---------------- offering covers ---------------- */
+
+describe("#4453 6b Journal's columns draw a trip's cover, and leave no plate for a trip without one", async () => {
+  const artifact = galleryArtifact("journal");
+  const offerings = [...galleryUpcomingTrips(NOW), ...w5EndedTrips()];
+  const cards = new Map();
+  for (const offering of offerings) cards.set(offering.id, await offeringCard(artifact.site_id, offering as never, NOW, "en"));
+  const live: LiveOfferings = { source: "live", offerings: offerings as never, cards, now: NOW, filters: offeringFilters(undefined) };
+  it("the Home's journal-columns grid: the covered trip's picture from the site's own /om route, the coverless one an empty (hidden) plate, both bookable on Mingla", () => {
+    const html = render(artifact, undefined, live);
+    const grid = html.slice(html.indexOf('class="mg-blk jr-offers'), html.indexOf("</section>", html.indexOf('class="mg-blk jr-offers')));
+    expect(grid).toContain("Trips from the house");
+    const articles = grid.split('<article class="jr-art"').slice(1);
+    expect(articles).toHaveLength(2);
+    expect(articles[0]).toContain("Island Week");
+    expect(articles[0]).toMatch(/<div class="mg-ph"><img src="\/om\/[^"]+\/original" alt="" loading="lazy" decoding="async"\/><\/div>/);
+    expect(articles[1]).toContain("Bay and Back");
+    expect(articles[1]).toContain('<div class="mg-ph"></div>');
+    for (const article of articles) expect(article).toMatch(/href="https:\/\/host\.usemingla\.com\/t\/fixture-brand\/fixture-upcoming-\d"/);
+    expect(grid.match(/src="([^"]+)"/g)!.every((src) => src.startsWith('src="/'))).toBe(true);
+    expect(structure(html)).toMatchSnapshot();
+  });
 });
 
 /* ---------------- found on the production build ---------------- */

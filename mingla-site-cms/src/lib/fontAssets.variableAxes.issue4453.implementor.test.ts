@@ -1,16 +1,17 @@
-// MINGLA-INVARIANT: I-SITES-FONT-WIDTH-AXIS | issue #4453 | a design slot with a width range is fetched with Google's wdth axis (one file holding every width), cached under its own key, and every face it yields records the range as font-stretch; a slot without one is fetched and keyed exactly as before.
+// MINGLA-INVARIANT: I-SITES-FONT-AXES | issue #4453 | a design slot's variable-font axes (wdth, opsz, SOFT, WONK) are fetched from Google in css2 order (ranges or pinned values), cached under their own key, and a wdth range is recorded on every face as font-stretch; a slot without axes is fetched and keyed exactly as before.
 /*
- * #4453 6b — the publish pipeline self-hosts a family's width axis, so a
- * design's compressed (62%) and wide (125%) Archivo render as designed
- * (Nocturne). Visitors still never contact Google: only the publish-time
- * request changes.
+ * #4453 6b — the publish pipeline self-hosts a family's variable axes, so a
+ * design's compressed (62%) and wide (125%) Archivo (Nocturne), Fraunces'
+ * high-contrast optical size (Journal) and its soft, "wonky" instance (Terra)
+ * render as designed. Visitors still never contact Google: only the
+ * publish-time request changes.
  */
 import { describe, expect, it } from "vitest";
 import { facesForSlot, fontRequestKey, googleCssUrl, resolveSiteFonts, type CachedFace, type FontPipelineDeps } from "./fontAssets";
-import { NOCTURNE } from "../contracts/generated/designs.ts";
+import { JOURNAL, NOCTURNE, TERRA } from "../contracts/generated/designs.ts";
 import { assertFontAssets, assertFontSlots, resolveFontSlots, type FontSlot } from "../contracts/generated/fontSlots.ts";
 
-const archivo: FontSlot = { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false, width: [62, 125] };
+const archivo: FontSlot = { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false, axes: { wdth: [62, 125] } };
 const WOFF2 = () => {
   const bytes = new Uint8Array(4096);
   bytes.set([0x77, 0x4f, 0x46, 0x32]);
@@ -54,7 +55,14 @@ function harness() {
   return { deps, urls, cache, saved };
 }
 
-describe("#4453 6b the font pipeline self-hosts a family's width axis", () => {
+describe("#4453 6b the font pipeline self-hosts a family's variable axes", () => {
+  it("asks css2 for Fraunces' optical size (Journal) and its pinned soft, wonky instance (Terra) in css2 axis order", () => {
+    expect(googleCssUrl(JOURNAL.fonts.display)).toBe("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,800&display=swap");
+    expect(googleCssUrl(JOURNAL.fonts.accent!)).toBe("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300;1,9..144,400&display=swap");
+    expect(googleCssUrl(TERRA.fonts.display)).toBe("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,400,100,1;0,9..144,500,100,1;1,9..144,400,100,1;1,9..144,500,100,1&display=swap");
+    expect(fontRequestKey(TERRA.fonts.display, ["latin", "latin-ext"])).toBe("Fraunces|400,500|i|latin,latin-ext|v1|opsz9-144,SOFT100,WONK1");
+  });
+
   it("asks css2 for the wdth axis range on every weight (axis tags in css2 order), italic included", () => {
     expect(googleCssUrl(archivo)).toBe("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400;62..125,600;62..125,800&display=swap");
     expect(googleCssUrl({ ...archivo, weights: [400], italic: true }))
@@ -87,13 +95,13 @@ describe("#4453 6b the font pipeline self-hosts a family's width axis", () => {
     const { deps } = harness();
     const resolved = await resolveSiteFonts(deps, { slots: { ...NOCTURNE.fonts, display: { family: "Georgia", source: "system", weights: [400], italic: false }, accent: null }, designFonts: NOCTURNE.fonts });
     expect(resolved.warnings).toEqual([]);
-    expect(resolved.slots.body).toMatchObject({ family: "Archivo", width: [62, 125] });
+    expect(resolved.slots.body).toMatchObject({ family: "Archivo", axes: { wdth: [62, 125] } });
     assertFontSlots(resolved.slots);
     assertFontAssets(resolved.assets, resolved.slots);
     expect(resolved.assets.filter((asset) => asset.family === "Archivo").every((asset) => asset.stretch === "62% 125%")).toBe(true);
     // An owner who keeps Archivo keeps its width; one who picks another family never inherits it.
     const kept = resolveFontSlots(NOCTURNE.fonts, { body: { family: "Archivo", source: "google" } }, () => [400, 600, 800]);
-    expect(kept.body.width).toEqual([62, 125]);
+    expect(kept.body.axes).toEqual({ wdth: [62, 125] });
     const own = resolveFontSlots(NOCTURNE.fonts, { body: { family: "Inter", source: "google" } }, () => [400, 600, 800]);
     expect(own.body).toEqual({ family: "Inter", source: "google", weights: [400, 600, 800], italic: false });
   });

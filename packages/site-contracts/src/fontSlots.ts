@@ -33,27 +33,37 @@ export type FontSlot = {
   weights: number[];
   italic: boolean;
   /**
-   * #4453 6b — the width (`wdth`) axis range the design draws this slot in,
-   * as font-stretch percentages [min, max] (Archivo: [62, 125]). Set only by a
-   * design whose family has the axis (FONT_WIDTH_AXES); absent means the
-   * family's normal width. An owner's own family never inherits it.
+   * #4453 6b — the variable-font axes the design draws this slot with, each a
+   * [min, max] range (a pinned instance is [v, v]): `wdth` (Archivo's
+   * compressed and wide cuts, emitted as font-stretch), `opsz` (optical
+   * size, which the browser applies automatically), and Fraunces' `SOFT` and
+   * `WONK`. Set only by a design, inside its family's own axes (FONT_AXES);
+   * absent means the family's default instance. An owner's own family never
+   * inherits them.
    */
-  width?: readonly [number, number];
+  axes?: FontAxes;
 };
+
+/** #4453 6b — the variable-font axes the publish pipeline can self-host (css2 tags). */
+export const FONT_AXIS_TAGS = ["opsz", "wdth", "SOFT", "WONK"] as const;
+export type FontAxisTag = (typeof FONT_AXIS_TAGS)[number];
+export type FontAxes = Readonly<Partial<Record<FontAxisTag, readonly [number, number]>>>;
 
 /**
- * #4453 6b — the `wdth` axis of each catalogue family a design draws with
- * its width axis, exactly as Google's public font metadata declares it
+ * #4453 6b — the axes of each catalogue family a design draws with them,
+ * exactly as Google's public font metadata declares them
  * (fonts.google.com/metadata/fonts, checked 2026-11-16). A design slot's
- * `width` must sit inside its family's range (the design tests pin it).
+ * axes must sit inside its family's ranges (the design tests pin it).
  */
-export const FONT_WIDTH_AXES: Readonly<Record<string, readonly [number, number]>> = {
-  Archivo: [62, 125],
+export const FONT_AXES: Readonly<Record<string, FontAxes>> = {
+  Archivo: { wdth: [62, 125] },
+  Fraunces: { opsz: [9, 144], SOFT: [0, 100], WONK: [0, 1] },
 };
 
-/** `font-stretch` for a face fetched with a width range ("62% 125%"). */
-export function fontStretch(width: readonly [number, number]): string {
-  return `${width[0]}% ${width[1]}%`;
+/** `font-stretch` for a face fetched with a width range ("62% 125%"), else null. */
+export function fontStretch(axes: FontAxes | undefined): string | null {
+  const wdth = axes?.wdth;
+  return wdth && wdth[0] < wdth[1] ? `${wdth[0]}% ${wdth[1]}%` : null;
 }
 
 export type FontSlots = {
@@ -132,10 +142,13 @@ const UNICODE_RANGE = /^(?:U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)(?:, ?U\+[0-9A-F
 const PERCENT = /^\d{1,3}(?:\.\d{1,4})?%$/;
 const STRETCH = /^\d{2,3}% \d{2,3}%$/;
 
-/** A width range a slot may carry: two whole percentages, 25 to 200, min below max. */
-export function isFontWidthRange(value: unknown): value is readonly [number, number] {
-  return Array.isArray(value) && value.length === 2 && value.every((v) => Number.isInteger(v) && v >= 25 && v <= 200) &&
-    (value[0] as number) < (value[1] as number);
+/** Axes a slot may carry: known tags only, each two whole numbers 0 to 1000, min ≤ max (wdth 25 to 200). */
+export function isFontAxes(value: unknown): value is FontAxes {
+  if (!plain(value) || Object.keys(value).length === 0) return false;
+  return Object.entries(value).every(([tag, range]) =>
+    (FONT_AXIS_TAGS as readonly string[]).includes(tag) && Array.isArray(range) && range.length === 2 &&
+    range.every((v) => Number.isInteger(v) && v >= (tag === "wdth" ? 25 : 0) && v <= (tag === "wdth" ? 200 : 1000)) &&
+    (range[0] as number) <= (range[1] as number));
 }
 
 export function isFontFamilyName(value: unknown): value is string {
@@ -157,9 +170,9 @@ function assertSlot(value: unknown, path: string): asserts value is FontSlot {
   if (!plain(value)) fail();
   const slot = value as Record<string, unknown>;
   const keys = ["family", "source", "weights", "italic"];
-  // #4453 6b — `width` is optional (a design's width axis).
-  if (Object.keys(slot).some((key) => !keys.includes(key) && key !== "width") || !keys.every((key) => key in slot)) fail();
-  if (slot.width !== undefined && (!isFontWidthRange(slot.width) || slot.source !== "google")) fail();
+  // #4453 6b — `axes` is optional (a design's variable-font axes).
+  if (Object.keys(slot).some((key) => !keys.includes(key) && key !== "axes") || !keys.every((key) => key in slot)) fail();
+  if (slot.axes !== undefined && (!isFontAxes(slot.axes) || slot.source !== "google")) fail();
   if (!isFontFamilyName(slot.family)) fail();
   if (slot.source !== "google" && slot.source !== "system") fail();
   if (slot.source === "system" && !(SYSTEM_FONT_FAMILIES as readonly string[]).includes(String(slot.family))) fail();
