@@ -14,6 +14,8 @@ import {
   statusOn,
 } from "@mingla/offering-rendering/themePalette";
 
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
+
 import { Icon } from "../ui/Icon";
 
 export interface StayOtherContactNoticeProps {
@@ -80,7 +82,7 @@ export const StayOtherContactNotice: React.FC<StayOtherContactNoticeProps> = ({
         testID="issue-4420-stay-other-contact-sign-in"
         style={({ pressed }) => [
           styles.primary,
-          { backgroundColor: palette.accent },
+          accentFill(palette),
           pressed && styles.pressed,
         ]}
       >

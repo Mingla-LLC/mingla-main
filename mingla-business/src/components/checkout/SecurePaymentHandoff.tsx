@@ -21,6 +21,7 @@ import {
   neutralHair,
   themeTextAccent,
 } from "@mingla/offering-rendering/themePalette";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 import { Icon } from "../ui/Icon";
 
@@ -95,7 +96,7 @@ export const SecurePaymentHandoff: React.FC<SecurePaymentHandoffProps> = ({
             justifyContent: "center",
             minHeight: 52,
             borderRadius: 999,
-            backgroundColor: palette.accent,
+            ...accentFill(palette),
             color: palette.accentText,
             fontWeight: 800,
             fontSize: 15,
@@ -113,7 +114,7 @@ export const SecurePaymentHandoff: React.FC<SecurePaymentHandoffProps> = ({
         accessibilityRole="link"
         accessibilityLabel={continueLabel}
         testID={`${testID}-continue`}
-        style={[styles.primary, { backgroundColor: palette.accent }]}
+        style={[styles.primary, accentFill(palette)]}
       >
         <Text style={[styles.primaryLabel, { color: palette.accentText }]}>{continueLabel}</Text>
       </Pressable>

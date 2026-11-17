@@ -32,6 +32,7 @@ import { accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/
 import {
   offeringSurfaceStyles,
   opaqueAccentWashColor,
+  opaqueSurfaceColor,
 } from "@mingla/offering-rendering/themePalette";
 
 export interface MultiDateDayChooserProps {
@@ -209,7 +210,9 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
           ? [
               styles.framed,
               offeringSurfaceStyles(palette).card,
-              highlightUnchosen ? { borderColor: palette.accent } : null,
+              highlightUnchosen
+                ? accentOutline(palette, { opaqueBackground: opaqueSurfaceColor(palette) })
+                : null,
             ]
           : [
               styles.host,
