@@ -23,6 +23,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { materials, radius, scrim, space } from "../../constants/designSystem";
 import { activeCheckoutPalette, checkoutStyles, color } from "./checkoutTheme";
+import { CheckoutCoverFallback } from "./CheckoutCoverFallback";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCurrency } from "../../utils/currency";
 import { useCart } from "./CartContext";
@@ -192,7 +193,7 @@ export const CheckoutOrderSummary: React.FC<CheckoutOrderSummaryProps> = ({
                 accessibilityIgnoresInvertColors
               />
             ) : (
-              <View style={[StyleSheet.absoluteFill, styles.bandFallback]} />
+              <CheckoutCoverFallback style={StyleSheet.absoluteFill} />
             )}
             <LinearGradient
               colors={scrim.cardPhoto.colors}
@@ -278,7 +279,6 @@ const styles = checkoutStyles(() => StyleSheet.create({
     height: STUB_BAND_HEIGHT,
     justifyContent: "flex-end",
   },
-  bandFallback: { backgroundColor: color.accent },
   bandIdentity: { padding: space[5], gap: 6 },
   bandEyebrow: {
     fontSize: 11.5,
