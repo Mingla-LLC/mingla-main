@@ -169,6 +169,15 @@ export const SHARED_LAYOUTS: Readonly<Partial<Record<BlockType, readonly string[
  * validator refuse one on an Atelier site instead of publishing a block that
  * would render nothing.
  */
+/**
+ * #4453 milestone 5 (tester P2-1) — the hero layouts that draw the booking
+ * bar and the Mingla rating: the shared ones and Voyage's own cover. A
+ * design's signature hero that does not draw them is told so in Studio (the
+ * fields are hidden) and the fields are left out of its published hero, so a
+ * setting never silently does nothing.
+ */
+export const HERO_LAYOUTS_WITH_BOOKING: readonly string[] = ["fullbleed", "editorial", "arch", "cover-bottom-search"];
+
 export const SHARED_ONLY_BLOCK_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
 
 /**

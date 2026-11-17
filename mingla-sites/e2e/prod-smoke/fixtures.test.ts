@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DESIGN_KEYS, type DesignKey } from "../../src/contracts/generated/designs.ts";
+import { DESIGN_KEYS, HERO_LAYOUTS_WITH_BOOKING, type DesignKey } from "../../src/contracts/generated/designs.ts";
 import { assertArtifactV2, type ArtifactV2 } from "../../src/contracts/generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "../../src/contracts/generated/upgradeV1ToV2.ts";
 import { gogiV1Fixture } from "../../src/contracts/gogiV1.fixture";
@@ -24,11 +24,35 @@ import { siteCanonicalUrl } from "../../src/lib/siteArtifact";
 
 const OUT = process.env.PROD_SMOKE_DIR;
 
+/* #4453 milestone 5 — the live booking blocks on every Home that can draw them (the smoke's mock answers /booking). */
+export const SMOKE_VENUE = "22222222-2222-4222-8222-000000000001";
+export const SMOKE_EVENT = "22222222-2222-4222-8222-000000000002";
+
+function withBookingBlocks(artifact: ArtifactV2): ArtifactV2 {
+  const a = artifact as ArtifactV2 & { action_scope?: { brand_slug: string } };
+  a.action_scope = { brand_slug: "fixture" };
+  const home = a.pages.find((page) => page.path === "");
+  if (!home) return a;
+  const blocks = home.blocks as unknown as Array<Record<string, unknown>>;
+  const hero = blocks.find((block) => block.type === "hero");
+  if (hero) {
+    hero.show_rating = true;
+    if (hero.show_search !== true) Object.assign(hero, { booking_bar: "venue_table", booking_target_id: SMOKE_VENUE });
+  }
+  blocks.splice(hero ? blocks.indexOf(hero) + 1 : 0, 0,
+    { type: "availability", variant: "strip", heading: "Book a table", source: "venue_slots", offering_id: SMOKE_VENUE, party_size: 2, days: 7 },
+    { type: "ticket_tiers", variant: "split", heading: "Supper club", offering_id: SMOKE_EVENT },
+    { type: "process_steps", variant: "band", heading: "How it works", items: [{ title: "Book" }, { title: "Arrive" }, { title: "Eat slowly" }] });
+  a.navigation.sticky_booking = true;
+  return a;
+}
+
 function artifactFor(key: DesignKey): ArtifactV2 {
   // The stored Voyage site (Young and Stamped's shape); every other key is the gallery composition.
-  if (key === "voyage") return voyageSyntheticArtifact();
+  if (key === "voyage") return withBookingBlocks(voyageSyntheticArtifact());
+  // Atelier (frozen) draws no booking block.
   if (key === "atelier") return upgradeV1ToV2(gogiV1Fixture()) as ArtifactV2;
-  return galleryArtifact(key);
+  return withBookingBlocks(galleryArtifact(key));
 }
 
 describe.skipIf(!OUT)("#4453 prod smoke fixtures", () => {
@@ -54,6 +78,9 @@ describe.skipIf(!OUT)("#4453 prod smoke fixtures", () => {
         hostname, primary_hostname: hostname, is_primary: true, host_kind: "subdomain", design_key: key,
         site_hostnames: own ? [hostname, own] : [hostname],
         smoke_paths: ["/", ...(trips ? [`/${trips}`] : [])],
+        expects_booking: key !== "atelier",
+        // The rating is drawn by the hero layouts that draw it (HERO_LAYOUTS_WITH_BOOKING); a signature hero leaves it out by design.
+        expects_rating: HERO_LAYOUTS_WITH_BOOKING.includes(String((artifact.pages.find((page) => page.path === "")?.blocks.find((block) => block.type === "hero") as { variant?: unknown } | undefined)?.variant)),
         // A live upcoming grid exists (a v1 site's grid is frozen at publish, so it draws no feed).
         expects_live_trips: artifact.pages.some((page) => page.blocks.some((block) =>
           block.type === "offering_grid" && typeof (block as { mode?: unknown }).mode === "string" && (block as { mode?: unknown }).mode !== "past")),

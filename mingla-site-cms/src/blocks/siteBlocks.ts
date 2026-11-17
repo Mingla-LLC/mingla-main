@@ -14,7 +14,7 @@ import { statsIconOptions } from "../lib/statsIcons";
 import { reviewField } from "../lib/reviewStamp";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
-import { ATELIER, DESIGNS, DESIGN_KEYS } from "../contracts/generated/designs.ts";
+import { ATELIER, DESIGNS, DESIGN_KEYS, HERO_LAYOUTS_WITH_BOOKING } from "../contracts/generated/designs.ts";
 
 /*
  * #3149 — `description` is built HERE rather than spread onto the result.
@@ -171,7 +171,10 @@ const BLOCK_CONFIGS: Block[] = [
           { value: "experience", label: "Book an experience" },
           { value: "trip_search", label: "Trip search" },
         ],
-        admin: { description: "Blank date, time and guest fields that open your Mingla booking page pre-filled." },
+        admin: {
+          description: "Blank date, time and guest fields that open your Mingla booking page pre-filled. Shown only by layouts that draw it (Full bleed, Editorial, Arch, Voyage's cover).",
+          condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant)),
+        },
       },
       {
         name: "booking_target_id",
@@ -182,7 +185,7 @@ const BLOCK_CONFIGS: Block[] = [
         validate: uuidOrEmpty,
         admin: {
           description: "The Mingla id of your venue, room or experience.",
-          condition: (_, sibling) => ["venue_table", "stay", "experience"].includes(String(sibling?.booking_bar)),
+          condition: (_, sibling) => ["venue_table", "stay", "experience"].includes(String(sibling?.booking_bar)) && (!sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant))),
         },
       },
       {
@@ -190,7 +193,7 @@ const BLOCK_CONFIGS: Block[] = [
         label: "Show the Mingla rating",
         type: "checkbox",
         defaultValue: false,
-        admin: { description: "Your score from approved Mingla reviews. Shown only with 20 or more reviews." },
+        admin: { description: "Your score from approved Mingla reviews. Shown only with 20 or more reviews, by layouts that draw it.", condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant)) },
       },
       // The still image. REQUIRED even when a video is chosen: it is the
       // poster, and it is what a visitor sees on a slow connection, with data

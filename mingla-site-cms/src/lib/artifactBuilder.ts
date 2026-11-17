@@ -17,7 +17,7 @@ import {
 import type { ArtifactV2 } from "../contracts/generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "../contracts/generated/upgradeV1ToV2.ts";
 import { parseOfferingsFeed, type SiteOffering } from "../contracts/generated/offerings.ts";
-import { ATELIER, designFor, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
+import { ATELIER, designFor, HERO_LAYOUTS_WITH_BOOKING, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
 import { isBlockType } from "../contracts/generated/blocks.ts";
 import { resolveTokens } from "../contracts/generated/tokens.ts";
 import { resolveFontSlots } from "../contracts/generated/fontSlots.ts";
@@ -623,9 +623,15 @@ export async function buildPublicationArtifact(
   const blocks = (source: AnyDoc[]) =>
     source.map((raw) => {
       const shaped = shapeBlock(raw);
-      return shaped && isBlockType(raw.blockType)
-        ? { ...shaped, variant: variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null) }
-        : shaped;
+      if (!shaped || !isBlockType(raw.blockType)) return shaped;
+      const variant = variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null);
+      // #4453 milestone 5 (tester P2-1) — a hero layout that does not draw the
+      // booking bar or the rating never publishes them (Studio hides them too).
+      if (raw.blockType === "hero" && !HERO_LAYOUTS_WITH_BOOKING.includes(variant)) {
+        const { booking_bar: _bar, booking_target_id: _target, show_rating: _rating, ...rest } = shaped as Record<string, unknown>;
+        return { ...rest, variant };
+      }
+      return { ...shaped, variant };
     });
   const shapeBlock = (raw: AnyDoc) => {
       const eyebrow = optionalText(raw.eyebrow, "eyebrow");
