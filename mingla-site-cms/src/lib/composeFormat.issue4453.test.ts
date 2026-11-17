@@ -141,6 +141,8 @@ describe("#4453 composer v2 — never invents (Constitution 9)", () => {
       const result = composeFormatSite(full(format))!;
       const text = JSON.stringify(result.pages);
       expect(text).not.toMatch(/£|\$|€|₦|\bspots? left\b|\btables? left\b|\b\d+(\.\d)?\s*(stars?|★)/i);
+      // M8 share view: nothing owner-only rides in a composed page (no samples, owner questions or unconfirmed reviews).
+      expect(text).not.toMatch(/"sample"|owner_question|confirmed_real|"review":/);
       for (const page of result.pages) {
         for (const block of page.blocks) {
           for (const banned of ["price", "price_minor", "min_price_minor", "count", "rating", "score", "spots_left", "start_at", "date"]) {

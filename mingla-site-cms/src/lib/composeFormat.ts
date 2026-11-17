@@ -215,7 +215,8 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
       const media = sources.cover_media_id ?? sources.photos[0]?.id ?? null;
       if (!media) return null;
       const block: ComposedBlock = { blockType: "hero", heading: (tagline ?? name).slice(0, 120), media, ctas: [] };
-      if (why) block.subheading = why;
+      // The owner's "why" under the headline, unless it is the headline itself.
+      if (why && why.toLowerCase() !== String(block.heading).toLowerCase()) block.subheading = why;
       const listing = FORMAT_PAGE_SETS[format].find((entry) => entry.listing);
       if (listing && ctx.placedSlugs.has(listing.slug)) {
         block.ctas = [{ label: FORMAT_PRIMARY_ACTION[format].label, href: `/${listing.slug}` }];
