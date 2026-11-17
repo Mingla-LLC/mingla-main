@@ -15,44 +15,14 @@
  * No auth, no data: safe on anon buyer routes.
  */
 
-import { useSyncExternalStore } from "react";
 import { Alert, Platform } from "react-native";
 
-import type { ToastKind } from "./toastTimings";
+import type { ShowAlertButton, ShowAlertOptions } from "./alertHost";
 
-export interface ShowAlertButton {
-  text?: string;
-  style?: "default" | "cancel" | "destructive";
-  onPress?: (value?: string) => void | Promise<void>;
-}
-
-export interface ShowAlertOptions {
-  /** Web only: the toast kind for a button-less alert. Default "error". */
-  kind?: ToastKind;
-  /** Native only: passed through to `Alert.alert`. */
-  cancelable?: boolean;
-}
-
-// The root AlertDialogHost mounts the web dialog layer only once a web
-// alert with choices has been raised.
-let hostWanted = false;
-const listeners = new Set<() => void>();
-
-export const requestAlertHost = (): void => {
-  if (hostWanted) return;
-  hostWanted = true;
-  listeners.forEach((listener) => listener());
-};
-
-export const useAlertHostWanted = (): boolean =>
-  useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => hostWanted,
-    () => false,
-  );
+// The types and the host signal live in ./alertHost, which both this stub and
+// the lazy web half import, so the two never import each other (no cycle).
+export type { ShowAlertButton, ShowAlertOptions } from "./alertHost";
+export { requestAlertHost, useAlertHostWanted } from "./alertHost";
 
 export function showAlert(
   title: string,
