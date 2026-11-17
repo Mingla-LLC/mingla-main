@@ -33,6 +33,8 @@ import {
   isRateLimited,
 } from "../../chat/brandGuestRateLimit.ts";
 import { isSystemPreviewRow } from "../chatListModel.ts";
+import { announceBrandGuestRejoin, onBrandGuestRejoined, resetBrandGuestRejoinForTests } from "../../chat/brandGuestRejoin.ts";
+import { hasLeftConversation, markConversationLeft, markConversationRejoined } from "../../../utils/presenceMembership.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -247,4 +249,55 @@ Deno.test("#4459 rate limit: the first refused send keeps the words in the compo
   assert(page.includes("restoreDraft={restoreDraft && restoreDraft.conversationId === currentConversationId ? restoreDraft : null}"), "passed to the open thread");
   const chat = read("components/MessageInterface.tsx");
   assert(chat.includes("if (!chatController.readText().trim()) chatController.setDraftText(restoreDraft.text);"), "the composer takes them back");
+});
+
+// QA retest (P3 items). Each fails when its fix is reverted.
+Deno.test("#4459 retest: the info sheet subtitle counts the server total for a Guest chat", () => {
+  const sheet = read("components/chat/GroupInfoSheet.tsx");
+  assert(
+    sheet.includes("count: isBrandGuests ? brandGuestMembers.data?.total ?? members.length : members.length,"),
+    "peopleInChat uses brandGuestMembers.data.total",
+  );
+});
+
+Deno.test("#4459 retest: a rejoin reaches the Chats page, which drops the cached thread and reloads", () => {
+  resetBrandGuestRejoinForTests();
+  const seen: string[] = [];
+  announceBrandGuestRejoin("c-early");
+  const off = onBrandGuestRejoined((id) => seen.push(id));
+  eq(seen, ["c-early"], "a rejoin announced before the Chats page listens is handed over");
+  announceBrandGuestRejoin("c-live");
+  eq(seen, ["c-early", "c-live"], "a live rejoin goes straight through");
+  off();
+  resetBrandGuestRejoinForTests();
+  const page = read("components/ConnectionsPage.tsx");
+  const at = page.indexOf("return onBrandGuestRejoined((conversationId) => {");
+  assert(at > 0, "the Chats page listens for rejoins");
+  const body = page.slice(at, at + 900);
+  assert(body.includes("AsyncStorage.removeItem(getMessagesCacheKey(conversationId))"), "the saved copy goes");
+  assert(body.includes("mergeMessages(EMPTY_MESSAGES, EMPTY_MESSAGES)"), "the in-memory thread restarts empty");
+  assert(body.includes("messagingService.getMessages(conversationId, userId)"), "and reloads from the server");
+});
+
+Deno.test("#4459 retest: no presence write for a Guest chat just left; a rejoin turns it back on", () => {
+  markConversationLeft("c1");
+  assert(hasLeftConversation("c1"), "left");
+  markConversationRejoined("c1");
+  assert(!hasLeftConversation("c1"), "rejoined");
+  const presence = read("services/chatPresenceService.ts");
+  assert(/if \(hasLeftConversation\(conversationId\)\) return;\s*try \{\s*const \{ error \} = await supabase\s*\.from\('conversation_presence'\)\s*\.upsert/.test(presence),
+    "upsertPresence skips a left chat before writing");
+  const service = read("services/messagingService.ts");
+  const leave = service.slice(service.indexOf("async leaveBrandGuestChat("), service.indexOf("async rejoinBrandGuestChat("));
+  assert(/console\.error\('Error leaving brand guest chat:', error\);\s*return \{ error: error\.message \};\s*\}\s*\/\/[^\n]*\n\s*markConversationLeft\(conversationId\);/.test(leave),
+    "a successful leave marks the chat left");
+  const rejoin = service.slice(service.indexOf("async rejoinBrandGuestChat("), service.indexOf("async listBrandGuestMembers("));
+  assert(rejoin.includes("if (conversationId) markConversationRejoined(conversationId);"), "a rejoin clears it");
+});
+
+Deno.test("#4459 retest: every enquiries channel is unique per mount", () => {
+  const hooks = read("hooks/useBrandEnquiries.ts");
+  assert(hooks.includes(".channel(`explorer-enquiries:${userId}:${suffix}`)"), "the list channel");
+  assert(hooks.includes(".channel(`explorer-enquiry:${enquiryId}:${suffix}`)"), "the thread channel");
+  assert(!/\.channel\(`explorer-enquir(?:y|ies):\$\{(?:userId|enquiryId)\}`\)/.test(hooks), "no fixed topic left");
 });

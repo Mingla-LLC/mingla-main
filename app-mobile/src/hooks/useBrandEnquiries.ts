@@ -3,7 +3,7 @@
  * Keys come from `brandEnquiryKeys` (queryKeys.ts). Mutations surface errors
  * through their callers (toast / inline), never silently.
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { EnquiryPlan } from "@mingla/brand-rendering/enquiry/enquiryTopics";
 
@@ -57,9 +57,26 @@ export function useBrandIdentity(
   });
 }
 
+/**
+ * #4459 (QA D1-b): every mount gets its own realtime topic. supabase-js hands a
+ * second `.channel(topic)` the first, already-subscribed channel (and keeps it
+ * until the async removeChannel settles), so two live mounts on one fixed
+ * topic, or a fast remount, threw on `.on(...)` and crashed the app.
+ */
+let enquiryChannelSeq = 0;
+function useMountChannelSuffix(): string {
+  const ref = useRef<string | null>(null);
+  if (ref.current === null) {
+    enquiryChannelSeq += 1;
+    ref.current = `${enquiryChannelSeq}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+  return ref.current;
+}
+
 /** The Friends tab rows: one per enquiry, live while the list is mounted. */
 export function useMyEnquiryRows(userId: string | null) {
   const queryClient = useQueryClient();
+  const suffix = useMountChannelSuffix();
   const query = useQuery<MyEnquiryRow[]>({
     queryKey: brandEnquiryKeys.list(userId ?? ""),
     queryFn: () => listMyEnquiries(userId as string),
@@ -70,7 +87,7 @@ export function useMyEnquiryRows(userId: string | null) {
     if (userId === null) return undefined;
     // RLS scopes these events to the guest's own enquiries.
     const channel = supabase
-      .channel(`explorer-enquiries:${userId}`)
+      .channel(`explorer-enquiries:${userId}:${suffix}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "brand_enquiries", filter: `guest_user_id=eq.${userId}` },
@@ -82,7 +99,7 @@ export function useMyEnquiryRows(userId: string | null) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [queryClient, userId]);
+  }, [queryClient, suffix, userId]);
   return query;
 }
 
@@ -104,6 +121,7 @@ export function useMyEnquiryRowsSnapshot(userId: string | null) {
 /** One thread, kept live with the Wave C pattern (realtime filtered on conversation_id). */
 export function useEnquiryThread(userId: string | null, enquiryId: string | null) {
   const queryClient = useQueryClient();
+  const suffix = useMountChannelSuffix();
   const query = useQuery<EnquiryThread>({
     queryKey: brandEnquiryKeys.thread(userId ?? "", enquiryId ?? ""),
     queryFn: () => fetchEnquiryThread(enquiryId as string),
@@ -118,7 +136,7 @@ export function useEnquiryThread(userId: string | null, enquiryId: string | null
       void queryClient.invalidateQueries({ queryKey: brandEnquiryKeys.list(userId) });
     };
     const channel = supabase
-      .channel(`explorer-enquiry:${enquiryId}`)
+      .channel(`explorer-enquiry:${enquiryId}:${suffix}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
@@ -133,7 +151,7 @@ export function useEnquiryThread(userId: string | null, enquiryId: string | null
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [conversationId, enquiryId, queryClient, userId]);
+  }, [conversationId, enquiryId, queryClient, suffix, userId]);
   return query;
 }
 

@@ -7,6 +7,7 @@ import type { PlanQuoteSnapshot } from '../types/chatPlans';
 import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
 import type { ChatLiveChange } from '../utils/chatLiveModel';
 import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
+import { markConversationLeft, markConversationRejoined } from '../utils/presenceMembership';
 import { UNREAD_MESSAGES_SELECT, applyUnreadFilters, countUnreadRows } from '../components/connections/chatListLoad';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
@@ -1861,6 +1862,8 @@ export class MessagingService {
       console.error('Error leaving brand guest chat:', error);
       return { error: error.message };
     }
+    // #4459: stop presence writes for the chat just left (they would 42501).
+    markConversationLeft(conversationId);
     return { error: null };
   }
 
@@ -1868,7 +1871,9 @@ export class MessagingService {
   async rejoinBrandGuestChat(brandId: string): Promise<{ conversationId: string | null; error: string | null }> {
     const { data, error } = await supabase.rpc('issue_4459_rejoin_brand_guest_chat', { p_brand_id: brandId });
     if (error) return { conversationId: null, error: error.message };
-    return { conversationId: ((data ?? {}) as { conversationId?: string | null }).conversationId ?? null, error: null };
+    const conversationId = ((data ?? {}) as { conversationId?: string | null }).conversationId ?? null;
+    if (conversationId) markConversationRejoined(conversationId);
+    return { conversationId, error: null };
   }
 
   /** The member sheet: the team sees everyone; a guest sees the team, opted-in guests and a count. */

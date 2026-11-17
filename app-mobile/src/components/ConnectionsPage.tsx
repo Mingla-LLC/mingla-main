@@ -35,6 +35,7 @@ import {
 } from "../utils/mergeMessages";
 import { applyChatLiveChange, type ChatLiveChange } from "../utils/chatLiveModel";
 import { brandGuestRateLimitedUntil } from "./chat/brandGuestRateLimit";
+import { onBrandGuestRejoined } from "./chat/brandGuestRejoin";
 import { openAfterKeyboardHides } from "../utils/openAfterKeyboard";
 import {
   conversationChannelKey,
@@ -1657,6 +1658,25 @@ function ConnectionsPageRefactored({
     void queryClient.invalidateQueries({ queryKey: chatListKeys.all });
     return true;
   }, [queryClient, showToast, t, transformMessage, user?.id, writeConversationMessages]);
+
+  // #4459: after a Guest chat rejoin the server shows history only from the
+  // rejoin time; drop the in-memory and saved copy and reload from the server
+  // (the same reset as Clear chat), so no pre-rejoin message lingers.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const userId = user.id;
+    return onBrandGuestRejoined((conversationId) => {
+      void (async () => {
+        await AsyncStorage.removeItem(getMessagesCacheKey(conversationId))
+          .catch((e) => console.warn('[ConnectionsPage] rejoined chat cache removal failed:', e));
+        setMessagesCache((prev) => ({ ...prev, [conversationId]: mergeMessages(EMPTY_MESSAGES, EMPTY_MESSAGES) }));
+        const { messages: fresh, error } = await messagingService.getMessages(conversationId, userId);
+        if (!error && fresh) {
+          writeConversationMessages(conversationId, fresh.map((m) => transformMessage(m, userId)), { snapshot: { complete: true } });
+        }
+      })();
+    });
+  }, [transformMessage, user?.id, writeConversationMessages]);
 
   // Issue #4114: record whether older history exists after a server read of the newest page.
   const noteNewestPageLoaded = useCallback((conversationId: string, hasMore: boolean) => {

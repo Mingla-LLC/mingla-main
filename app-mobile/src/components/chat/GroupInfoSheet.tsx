@@ -556,7 +556,11 @@ export function GroupInfoSheet({
           ? t("chat:programTeamSubtitle")
           : isSession
             ? t("chat:group_info_count", { count: acceptedCount, cap: GROUP_CAP })
-            : t("chat:peopleInChat", { count: members.length })}
+            : t("chat:peopleInChat", {
+                // #4459: a Guest chat counts the server's member total (a guest
+                // reads only the team and their own roster row).
+                count: isBrandGuests ? brandGuestMembers.data?.total ?? members.length : members.length,
+              })}
       </Text>
     </View>
   );

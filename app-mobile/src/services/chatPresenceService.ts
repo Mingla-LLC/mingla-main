@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { hasLeftConversation } from '../utils/presenceMembership';
 
 // --- Types ---
 
@@ -20,6 +21,8 @@ export async function upsertPresence(
   userId: string,
   isOnline: boolean
 ): Promise<void> {
+  // #4459: no presence write for a chat this user has left (RLS refuses it).
+  if (hasLeftConversation(conversationId)) return;
   try {
     const { error } = await supabase
       .from('conversation_presence')

@@ -81,6 +81,9 @@ module.exports = {
     // issue #4459 rework — the Chats page and an open Guest chat mount together
     // (one enquiries channel); the Message <Brand> sheet closes on send.
     "**/__tests__/issue_4459_guest_chat_enquiry.implementor.render.test.tsx",
+    // issue #4459 QA retest — the booking card opens the Guest chat in the
+    // existing home shell; a rejoin drops the cached thread; row parity.
+    "**/__tests__/issue_4459_booking_guest_chat.implementor.render.test.tsx",
     // issue #4459 tester retest — two Chats pages alive at once (the booking
     // card's Open/Rejoin guest chat replaces to /) must not throw on the
     // enquiries channel.

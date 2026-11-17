@@ -198,7 +198,7 @@ test("D1: the Chats page and an open Guest chat mount together without a second 
       <GuestChatThread />
     </>,
   );
-  expect(mockChannelCalls.filter((topic) => topic === `explorer-enquiries:${USER}`)).toHaveLength(1);
+  expect(mockChannelCalls.filter((topic) => topic.startsWith(`explorer-enquiries:${USER}`))).toHaveLength(1);
   expect(guestChat).not.toBeNull();
 
   // Message <Brand> opens the existing #4111 thread from the shared rows.
