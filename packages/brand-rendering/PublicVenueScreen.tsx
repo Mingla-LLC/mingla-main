@@ -303,7 +303,7 @@ export interface PublicVenueThemedContext {
  * same glass bar (phone) or flyer dock (desktop) as Reserve elsewhere.
  */
 export interface PublicVenueReservationBar {
-  /** "Fri 20 Nov · 7:30 PM", "$63.90 today", or the day when nothing is open. */
+  /** The picked slot (day and time), the amount due today, or the day when nothing is open. */
   title: string;
   /** "4 guests · Date night", "Deposit · …", "No tables this day". */
   subtitle: string | null;

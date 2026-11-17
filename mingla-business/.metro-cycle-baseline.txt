@@ -73,3 +73,5 @@ src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandS
 # →useBrandListShim; none touched by this PR). Baselined per the gate's "not yours
 # to fix → baseline with rationale" instruction. Cycle-breaking refactor tracked separately.
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts
+# #4420: showAlert lazy-imports showAlertWeb (its own on-intent web chunk), which calls back requestAlertHost. Dynamic import only; no eager cycle.
+src/components/ui/showAlert.ts | src/components/ui/showAlertWeb.tsx
