@@ -4718,9 +4718,29 @@
     {
       "capability_key": "events-group-chat",
       "paths": [
+        "app-mobile/deno.lock",
+        "app-mobile/src/components/brandEnquiry/ExplorerBrandMessageHost.tsx",
+        "app-mobile/src/components/brandEnquiry/brandGuestEnquiry.ts",
+        "app-mobile/src/components/brandEnquiry/useMessageBrandFromGuestChat.tsx",
+        "app-mobile/src/components/chat/brandGuestBooking.ts",
+        "app-mobile/src/components/chat/brandGuestRateLimit.ts",
+        "app-mobile/src/components/chat/brandGuestRejoin.ts",
+        "app-mobile/src/components/purchases/BrandGuestChatBookingAction.tsx",
+        "app-mobile/src/hooks/useBrandEnquiries.ts",
+        "app-mobile/src/services/chatPresenceService.ts",
+        "app-mobile/src/utils/brandGuestLeave.ts",
+        "app-mobile/src/utils/presenceMembership.ts",
+        "mingla-business/app/brand/[id]/guest-chat.tsx",
         "mingla-business/src/components/groupChat/GroupChatMessageMedia.tsx",
         "mingla-business/src/components/groupChat/GroupChatModerationSheet.tsx",
-        "mingla-business/src/components/groupChat/GroupChatPanel.tsx"
+        "mingla-business/src/components/groupChat/GroupChatPanel.tsx",
+        "mingla-business/src/components/messages/BrandGuestChatSection.tsx",
+        "mingla-business/src/hooks/useBrandGuestChats.ts",
+        "mingla-business/src/hooks/useEventGroupChat.ts",
+        "mingla-business/src/hooks/useEventGroupChatModeration.ts",
+        "mingla-business/src/services/groupChatService.ts",
+        "supabase/functions/claim-pending-trip-chat-participation/index.ts",
+        "supabase/migrations/20280805004459_issue_4459_brand_guest_chat.sql"
       ]
     },
     {
