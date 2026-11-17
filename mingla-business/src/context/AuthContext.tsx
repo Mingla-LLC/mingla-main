@@ -998,7 +998,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (!webClientId) {
-        // I-4420-NO-RAW-ALERT native-only: native sign-in only (web returns before this, and BusinessWelcomeScreen shows web errors inline).
         Alert.alert(
           "Configuration error",
           "Google Sign-In is not configured. Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID."
@@ -1180,7 +1179,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: e };
       }
       if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        // I-4420-NO-RAW-ALERT native-only: native sign-in only (web returns before this, and BusinessWelcomeScreen shows web errors inline).
         Alert.alert(
           "Google Play Services",
           "Google Play Services is required. Install or update it from the Play Store."
@@ -1215,7 +1213,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             : failure === "transient-transport-offline"
               ? "auth:welcome.sign_in_offline_body"
               : "auth:welcome.sign_in_failed_body";
-      // I-4420-NO-RAW-ALERT native-only: native sign-in only (web returns before this, and BusinessWelcomeScreen shows web errors inline).
       Alert.alert(
         resolveAuthFailureCopy(titleKey),
         resolveAuthFailureCopy(bodyKey),
@@ -1250,14 +1247,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (Platform.OS !== "ios") {
-        // I-4420-NO-RAW-ALERT native-only: native sign-in only (web returns before this, and BusinessWelcomeScreen shows web errors inline).
         Alert.alert("Not available", "Apple Sign-In is only available on iOS.");
         return { error: new Error("Apple only on iOS") };
       }
 
       const available = await AppleAuthentication.isAvailableAsync();
       if (!available) {
-        // I-4420-NO-RAW-ALERT native-only: native sign-in only (web returns before this, and BusinessWelcomeScreen shows web errors inline).
         Alert.alert("Not available", "Apple Sign-In is not available on this device.");
         return { error: new Error("Apple not available") };
       }
@@ -1389,7 +1384,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             : failure === "transient-transport-offline"
               ? "auth:welcome.sign_in_offline_body"
               : "auth:welcome.sign_in_failed_body";
-      // I-4420-NO-RAW-ALERT native-only: native sign-in only (web returns before this, and BusinessWelcomeScreen shows web errors inline).
       Alert.alert(
         resolveAuthFailureCopy(titleKey),
         resolveAuthFailureCopy(bodyKey),
