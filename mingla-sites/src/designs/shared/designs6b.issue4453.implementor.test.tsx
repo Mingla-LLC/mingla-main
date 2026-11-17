@@ -584,7 +584,9 @@ describe("#4453 6b the phone menu covers the viewport in every header each desig
   it("the menu box is the shared fixed, inset-0 layer above every design's grain and grid", () => {
     expect(css(SHARED_STYLESHEET)).toMatch(/\.mg-pmenu \{ position: fixed; inset: 0; z-index: 90;/);
     for (const key of ["journal", "terra"]) expect(css(`/designs/${key}/1.css`)).toMatch(/\.mg-page::after \{[^}]*z-index: 70; pointer-events: none;/);
-    expect(css("/designs/grid/1.css")).toMatch(/\.mg-page::before \{[^}]*z-index: 1; pointer-events: none;/);
+    // Grid's column lines sit under the page's content (never over a field or a picture), above its paper.
+    expect(css("/designs/grid/1.css")).toMatch(/\.mg-page::before \{[^}]*z-index: 0; pointer-events: none;/);
+    expect(css("/designs/grid/1.css")).toContain('[data-design="grid"] .mg-page > :is(.mg-main, .mg-foot) { position: relative; z-index: 1; }');
   });
 });
 
@@ -638,4 +640,29 @@ describe("#4453 6b an empty upcoming grid is left out of the public site on Jour
       expect(render(artifact, undefined, live)).not.toContain("Trips from the house");
     });
   }
+});
+
+/* ---------------- found on the production build ---------------- */
+
+describe("#4453 6b production-build findings", () => {
+  it("the centred header keeps its menu button on a phone (Nocturne's sat at 438-486 px on a 375 px screen with real fonts)", () => {
+    const shared = css(SHARED_STYLESHEET);
+    const phone = shared.slice(shared.lastIndexOf("@media (max-width: 720px)"));
+    expect(phone).toContain("[data-design] .mg-hd--center .mg-hd__bar { display: flex; justify-content: space-between; gap: 10px; }");
+    expect(phone).toContain("[data-design] .mg-hd--center .mg-mark { min-width: 0; flex: 0 1 auto; overflow: hidden; justify-self: auto; }");
+    expect(phone).toContain("[data-design] .mg-hd--center .mg-hd__end { flex: none; }");
+    // It is added after (and so wins over) the base centred grid in the same layer.
+    expect(shared.lastIndexOf(".mg-hd--center .mg-hd__bar { display: flex;")).toBeGreaterThan(shared.indexOf(".mg-hd--center .mg-hd__bar { display: grid;"));
+  });
+
+  it("Journal's masthead gives the hidden menu row back below 1100 px, and a long name never covers the controls", () => {
+    const journal = css("/designs/journal/1.css");
+    const narrow = journal.slice(journal.indexOf("@media (max-width: 1099px)"));
+    expect(narrow).toContain('[data-design="journal"] .mg-hd--journal-mast .mg-nav { display: none; }');
+    expect(narrow).toMatch(/\.mg-hd--journal-mast \.mg-mark \{[^}]*min-width: 0; overflow: hidden;/);
+  });
+
+  it("an offering with no cover leaves no empty plate in Journal's columns", () => {
+    expect(css("/designs/journal/1.css")).toContain('[data-design="journal"] .jr-art .mg-ph:empty { display: none; }');
+  });
 });

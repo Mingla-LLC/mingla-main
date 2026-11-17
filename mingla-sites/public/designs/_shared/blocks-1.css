@@ -571,3 +571,21 @@
   [data-design] .mg-page:not(.v-page) .consent-link { min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: 500 14px/1 var(--mg-f-body); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   @media (max-width: 639px) { [data-design] .mg-page:not(.v-page) .consent { flex-direction: column; align-items: stretch; } }
 }
+
+/*
+ * #4453 6b (found on the production build with real fonts) — added (no rule
+ * above changed): on a phone the centred header's two equal flexible sides
+ * cannot hold the call to action and the menu button beside a display-face
+ * name, so the menu button left the screen (Nocturne: 438-486 px on a 375 px
+ * phone). Below 721 px the name leads and the controls sit at the end; a long
+ * name ellipsises instead of pushing them out.
+ */
+@layer mg-blocks {
+  @media (max-width: 720px) {
+    [data-design] .mg-hd--center .mg-hd__bar { display: flex; justify-content: space-between; gap: 10px; }
+    [data-design] .mg-hd--center .mg-mark { min-width: 0; flex: 0 1 auto; overflow: hidden; justify-self: auto; }
+    [data-design] .mg-hd--center .mg-mark > span { overflow: hidden; text-overflow: ellipsis; }
+    [data-design] .mg-hd--center .mg-hd__end { flex: none; }
+    [data-design] .mg-hd--center .mg-nav { display: none; }
+  }
+}

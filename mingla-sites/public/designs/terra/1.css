@@ -178,3 +178,10 @@
 [data-design="terra"] .mg-page .mg-hd--center .mg-hd__cta:hover { background: var(--c-ink-strong); color: var(--c-surface); }
 [data-design="terra"] .mg-page .mg-hd--center[data-scrolled] { background: color-mix(in srgb, var(--c-canvas) 90%, transparent); }
 [data-design="terra"] .mg-page .mg-hd--glass { color: var(--c-ink-strong); }
+/* phones: the centred bar's two flexible sides cannot hold the call to action and the menu button beside a serif name, so the name leads and the controls sit at the end */
+@media (max-width: 720px) {
+  [data-design="terra"] .mg-page .mg-hd--center .mg-hd__bar { display: flex; justify-content: space-between; }
+  [data-design="terra"] .mg-page .mg-hd--center .mg-mark { font-size: 21px; min-width: 0; overflow: hidden; }
+  [data-design="terra"] .mg-page .mg-hd--center .mg-mark span { overflow: hidden; text-overflow: ellipsis; }
+  [data-design="terra"] .mg-page .mg-hd--center .mg-hd__cta { padding: 0 14px; }
+}

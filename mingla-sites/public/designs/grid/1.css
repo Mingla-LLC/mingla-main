@@ -75,8 +75,9 @@
   [data-design="grid"] a { color: inherit; }
 }
 
-/* the visible 12-column grid (decorative, never intercepts a tap) */
-[data-design="grid"] .mg-page::before { content: ""; position: fixed; top: 0; bottom: 0; z-index: 1; pointer-events: none; left: max(16px, calc((100vw - 1320px) / 2 + 16px)); right: max(16px, calc((100vw - 1320px) / 2 + 16px)); border-right: 1px solid color-mix(in srgb, var(--c-ink-strong) 7%, transparent); background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c-ink-strong) 7%, transparent) 0 1px, transparent 1px calc(100% / 12)); }
+/* the visible 12-column grid (decorative, never intercepts a tap): it shows on the paper and never over a field, a band or a picture */
+[data-design="grid"] .mg-page > :is(.mg-main, .mg-foot) { position: relative; z-index: 1; }
+[data-design="grid"] .mg-page::before { content: ""; position: fixed; top: 0; bottom: 0; z-index: 0; pointer-events: none; left: max(16px, calc((100vw - 1320px) / 2 + 16px)); right: max(16px, calc((100vw - 1320px) / 2 + 16px)); border-right: 1px solid color-mix(in srgb, var(--c-ink-strong) 7%, transparent); background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c-ink-strong) 7%, transparent) 0 1px, transparent 1px calc(100% / 12)); }
 @media (max-width: 720px) { [data-design="grid"] .mg-page::before { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--c-ink-strong) 7%, transparent) 0 1px, transparent 1px 25%); } }
 
 /* monochrome photographs; colour returns on hover (the signature moment) */

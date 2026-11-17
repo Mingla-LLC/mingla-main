@@ -142,12 +142,16 @@
 @media (max-width: 1099px) {
   [data-design="journal"] .mg-page .mg-hd--journal-mast { top: -34px; }
   [data-design="journal"] .mg-hd--journal-mast .mg-hd__bar { grid-template-areas: "name end"; }
-  [data-design="journal"] .mg-hd--journal-mast .mg-mark { justify-content: flex-start; height: 72px; border-bottom: 0; font-size: 40px; }
+  /* the inline menu is hidden below 1100 px (the menu button opens the phone menu): give its row back */
+  [data-design="journal"] .mg-hd--journal-mast .mg-nav { display: none; }
+  [data-design="journal"] .mg-hd--journal-mast .mg-hd__end { min-height: 0; }
+  [data-design="journal"] .mg-hd--journal-mast .mg-mark { justify-content: flex-start; height: 72px; border-bottom: 0; font-size: 40px; min-width: 0; overflow: hidden; }
+  [data-design="journal"] .mg-hd--journal-mast .mg-mark span { overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 720px) {
   [data-design="journal"] .mg-page .mg-hd--journal-mast { top: 0; }
   [data-design="journal"] .jr-dateline { display: none; }
-  [data-design="journal"] .mg-hd--journal-mast .mg-mark { height: 62px; font-size: clamp(24px, 7.4vw, 32px); }
+  [data-design="journal"] .mg-hd--journal-mast .mg-mark { height: 62px; font-size: clamp(18px, 5.2vw, 32px); }
   [data-design="journal"] .mg-hd--journal-mast .mg-hd__cta { min-height: 44px; padding: 0 13px; font-size: 10.5px; letter-spacing: .1em; }
 }
 /* the other headers sit over a light page here: draw them in ink */
