@@ -11,6 +11,7 @@
 --     brand's inputs; anon and authenticated cannot call the feed by brand, the counter or the flag read.
 -- X-4 writes nothing: across inputs, feed by brand, flag read and the site feed, pg_stat_xact shows
 --     zero inserts/updates/deletes in every table; take() writes only the counter table.
+-- X-6 retest: brand twins of the fact reads are service-role only, brand-isolated, deleted brand NULL.
 -- X-5 rate-limit boundaries: 3 rows 59 s old refuse the 4th; 20 rows 23 h 59 m old refuse the 21st;
 --     a NULL brand is refused without a row.
 --
@@ -413,5 +414,32 @@ SELECT pg_temp.p_assert(public.brand_site_plan_preview_take(pg_temp.id('a')) = '
 SELECT pg_temp.p_assert(public.brand_site_plan_preview_take(NULL) = '{"allowed": false, "reason": "invalid"}'::jsonb
     AND NOT EXISTS (SELECT 1 FROM public.brand_site_plan_preview_requests WHERE brand_id IS NULL),
   'X-5d a NULL brand is refused and writes nothing');
+
+-- X-6 (retest) the brand twins of the fact reads and the brand lookup: closed to anon and to a signed-in
+--     owner alike (Core calls them with the service role only); a twin never answers for another brand.
+SELECT set_config('request.jwt.claims', jsonb_build_object('sub', pg_temp.id('owner'), 'role', 'authenticated')::text, true);
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.p_assert(
+  pg_temp.raises(format('SELECT public.brand_site_compose_facts_for_brand(%L)', pg_temp.id('a')), '42501')
+  AND pg_temp.raises(format('SELECT public.brand_site_brand_by_id(%L)', pg_temp.id('a')), '42501')
+  AND pg_temp.raises(format('SELECT public.brand_site_offering_dates_for_brand(%L, gen_random_uuid(), %L, 14)', pg_temp.id('a'), 'event_dates'), '42501')
+  AND pg_temp.raises(format('SELECT public.brand_site_ticket_tiers_for_brand(%L, gen_random_uuid())', pg_temp.id('a')), '42501')
+  AND pg_temp.raises(format('SELECT public.brand_site_venue_slots_for_brand(%L, gen_random_uuid(), 2, 7)', pg_temp.id('a')), '42501'),
+  'X-6a a signed-in owner cannot call any brand twin or the brand lookup directly');
+RESET ROLE;
+SET LOCAL ROLE anon;
+SELECT pg_temp.p_assert(pg_temp.raises(format('SELECT public.brand_site_compose_facts_for_brand(%L)', pg_temp.id('a')), '42501'),
+  'X-6b anon cannot call the brand twins');
+RESET ROLE;
+SELECT pg_temp.p_assert(
+  public.brand_site_ticket_tiers_for_brand(pg_temp.id('b'), (SELECT id FROM public.events WHERE slug = 'pub-a' AND brand_id = pg_temp.id('a'))) IS NULL
+  AND public.brand_site_offering_dates_for_brand(pg_temp.id('b'), (SELECT id FROM public.events WHERE slug = 'pub-a' AND brand_id = pg_temp.id('a')), 'event_dates', 14) IS NULL
+  AND public.brand_site_ticket_tiers_for_brand(pg_temp.id('a'), (SELECT id FROM public.events WHERE slug = 'pub-a' AND brand_id = pg_temp.id('a'))) IS NOT NULL,
+  'X-6c brand B''s twins answer NULL for brand A''s event; brand A''s own answer is real');
+SELECT pg_temp.p_assert(public.brand_site_compose_facts_for_brand(pg_temp.id('d')) IS NULL,
+  'X-6d a deleted brand reads NULL facts');
+SELECT pg_temp.p_assert(
+  (public.brand_site_compose_facts(pg_temp.id('site_a')) IS NOT DISTINCT FROM public.brand_site_compose_facts_for_brand(pg_temp.id('a'))),
+  'X-6e compose facts by site equals by brand');
 
 ROLLBACK;
