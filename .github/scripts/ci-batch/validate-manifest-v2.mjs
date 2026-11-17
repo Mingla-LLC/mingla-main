@@ -155,7 +155,11 @@ export const HEAP_RAISED_COMMAND_IDS = Object.freeze([
   "assert:issue-873-guest-status-roster-tests:03",
   "assert:issue-873-guest-status-roster-tests:04",
   "assert:issue-873-guest-status-roster-tests:05",
+  "assert:issue-1902-public-event-lifecycle-tests:03",
 ]);
+// A heap-raised step may carry no env except this one reviewed literal, which
+// the runner already admits for jest steps (allowNodePath).
+const HEAP_RAISED_ALLOWED_STEP_ENV = JSON.stringify({ NODE_PATH: "./node_modules" });
 // [#3643] The exact inert literal environment the folded origins set on a step,
 // byte for byte, keyed by the command that carries it. #2198's two Paystack maps
 // are test-mode strings that only satisfy env-presence guards at import time
@@ -1144,7 +1148,8 @@ export function validateHeapRaisedCommands(manifest) {
   for (const id of HEAP_RAISED_COMMAND_IDS) {
     const step = steps.get(id);
     if (!step) { errors.push(`${id}: heap-raised command is not in the registry`); continue; }
-    if (step.cwd !== "mingla-business" || !/^npx jest\b/.test(step.run) || step.env || step.children) {
+    const envOk = !step.env || JSON.stringify(step.env) === HEAP_RAISED_ALLOWED_STEP_ENV;
+    if (step.cwd !== "mingla-business" || !/^npx jest\b/.test(step.run) || !envOk || step.children) {
       errors.push(`${id}: heap-raised command must be a plain mingla-business jest step`);
     }
   }

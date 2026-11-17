@@ -326,4 +326,19 @@ test("#4420 heap raise: only the pinned jest commands get the one NODE_OPTIONS l
   const step = playwright.suites.flatMap((suite) => suite.steps).find((s) => s.commandId === HEAP_RAISED_COMMAND_IDS[0]);
   step.run = "npx playwright test";
   assert.ok(validateHeapRaisedCommands(playwright).some((message) => message.includes("plain mingla-business jest step")));
+  // The one reviewed NODE_PATH literal may ride along; any other step env is refused.
+  const withEnv = structuredClone(manifest);
+  const envStep = withEnv.suites.flatMap((suite) => suite.steps).find((s) => s.commandId === HEAP_RAISED_COMMAND_IDS[0]);
+  envStep.env = { NODE_PATH: "./node_modules" };
+  assert.deepEqual(validateHeapRaisedCommands(withEnv), []);
+  envStep.env = { NODE_OPTIONS: "--max-old-space-size=8192" };
+  assert.ok(validateHeapRaisedCommands(withEnv).some((message) => message.includes("plain mingla-business jest step")));
+  const home2 = fs.mkdtempSync(path.join(os.tmpdir(), "heap-raise-"));
+  try {
+    const env = minimalChildEnvironment({ NODE_PATH: "./node_modules" }, home2, { allowNodePath: true, heapRaised: true });
+    assert.equal(env.NODE_OPTIONS, "--max-old-space-size=4096");
+    assert.equal(env.NODE_PATH, "./node_modules");
+  } finally {
+    fs.rmSync(home2, { recursive: true, force: true });
+  }
 });
