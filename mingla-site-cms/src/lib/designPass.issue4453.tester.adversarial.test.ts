@@ -48,11 +48,29 @@ function signed(overrides: Record<string, unknown> = {}) {
 type Write = { op: string; collection: string; data?: unknown };
 let writes: Write[];
 let workLog: Array<Record<string, unknown>>;
+let jobs: Array<{ tenant: string; status: string; updatedAt: string }>;
+let clock: number;
+const tick = (): string => new Date(Date.UTC(2026, 10, 16, 12, 0, clock++)).toISOString();
 
-function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
+type Clause = Record<string, { equals?: unknown; greater_than?: string }>;
+/** Honours the `where` Studio actually sends (tenant, status, tool, createdAt > x), so a dropped filter fails a test. */
+function matches(doc: Record<string, unknown>, where: { and?: Clause[] } | undefined): boolean {
+  return (where?.and ?? []).every((clause) => Object.entries(clause).every(([field, cond]) => {
+    if (cond.equals !== undefined) return doc[field] === cond.equals;
+    if (cond.greater_than !== undefined) return String(doc[field]) > cond.greater_than;
+    return true;
+  }));
+}
+
+function ctx(designPass: ReturnType<typeof signed> | null, tenantId = "t1"): AriActionContext {
   const payload = {
-    find: vi.fn(async ({ collection }: { collection: string }) => {
-      if (collection === "work-log") return { docs: workLog };
+    find: vi.fn(async ({ collection, where, sort }: { collection: string; where?: { and?: Clause[] }; sort?: string }) => {
+      if (collection === "publication-jobs") {
+        const hits = jobs.filter((job) => matches(job, where));
+        if (sort === "-updatedAt") hits.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+        return { docs: hits.slice(0, 1) };
+      }
+      if (collection === "work-log") return { docs: workLog.filter((entry) => matches(entry, where)) };
       if (collection === "navigation") return { docs: [{ id: "nav", items: [] }] };
       return { docs: [] };
     }),
@@ -69,7 +87,7 @@ function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
   return {
     req,
     scoped: req,
-    tenantId: "t1",
+    tenantId,
     siteId: id(90),
     brandId: id(91),
     userId: id(92),
@@ -81,18 +99,20 @@ function ctx(designPass: ReturnType<typeof signed> | null): AriActionContext {
 
 const deps = {
   currentSettings: vi.fn(async () => ({ id: "settings", design: "voyage", tokens: {} })),
-  writeWorkLog: vi.fn(async (_ctx: AriActionContext, entry: Record<string, unknown>) => {
-    workLog.push(entry);
+  writeWorkLog: vi.fn(async (c: AriActionContext, entry: Record<string, unknown>) => {
+    workLog.push({ ...entry, tenant: c.tenantId, createdAt: tick() });
     return "log-1";
   }),
   assertCites: vi.fn(async () => [{ kind: "mingla_record", record_id: id(1) }]),
   decisionOf: vi.fn((value: unknown) => String(value)),
 } as unknown as Parameters<typeof runDesignPassAction>[3];
 
-const pass = (design: string, designPass = signed()) =>
-  runDesignPassAction("propose_site_design_pass", { design_key: design, why: "It fits group trips.", cites: [] }, ctx(designPass), deps);
+const pass = (design: string, designPass = signed(), tenantId = "t1") =>
+  runDesignPassAction("propose_site_design_pass", { design_key: design, why: "It fits group trips.", cites: [] }, ctx(designPass, tenantId), deps);
 
 beforeEach(() => {
+  jobs = [];
+  clock = 0;
   writes = [];
   workLog = [];
 });
@@ -153,5 +173,36 @@ describe("#4453 m7 tester — never an avoid pair from Ari", () => {
   it("propose_site_chrome cannot change the design (design args are ignored, nothing to change is refused)", async () => {
     await expect(runDesignPassAction("propose_site_chrome", { design: "pulse", design_key: "pulse", why: "x", cites: [] }, ctx(signedFor("trips")), deps)).rejects.toThrow("VALIDATION_FAILED");
     expect(writes).toEqual([]);
+  });
+});
+
+describe("#4453 retest (P3-1) — one automatic pass per DRAFT, attacked", () => {
+  it("a site that never published is one draft: the second pass is refused", async () => {
+    await expect(pass("terra")).resolves.toMatchObject({ draft_only: true });
+    await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
+  });
+
+  it("a failed, ambiguous or still-running publish after the pass never opens a new draft", async () => {
+    await pass("terra");
+    for (const status of ["queued", "validating", "materializing", "probing", "failed", "ambiguous"]) {
+      jobs.push({ tenant: "t1", status, updatedAt: tick() });
+      await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
+    }
+  });
+
+  it("another tenant's publish never opens a pass here, and another tenant's pass never blocks one here", async () => {
+    await pass("terra");
+    jobs.push({ tenant: "t2", status: "published", updatedAt: tick() });
+    await expect(pass("journal")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
+    await expect(pass("journal", signed(), "t2")).resolves.toMatchObject({ draft_only: true });
+  });
+
+  it("a real publish opens exactly one more pass, then the new draft is closed again", async () => {
+    await pass("terra");
+    jobs.push({ tenant: "t1", status: "failed", updatedAt: tick() });
+    jobs.push({ tenant: "t1", status: "published", updatedAt: tick() });
+    jobs.push({ tenant: "t1", status: "failed", updatedAt: tick() });
+    await expect(pass("journal")).resolves.toMatchObject({ design: "journal" });
+    await expect(pass("voyage")).rejects.toThrow("DESIGN_PASS_ALREADY_RUN");
   });
 });
