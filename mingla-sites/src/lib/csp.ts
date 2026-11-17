@@ -58,7 +58,8 @@ export function frameAncestorsFor(
    * The route is noindex and needs an unguessable artifact key, so framing
    * grants no reach that visiting the URL did not already grant.
    */
-  if (pathname !== PREVIEW_PATHNAME) return "'none'";
+  // #4453 milestone 10 — the plan preview is framed by the same Business and Studio origins.
+  if (pathname !== PREVIEW_PATHNAME && pathname !== "/plan-preview") return "'none'";
   const extra = businessPreviewFrameAncestor(frameAncestor);
   return [
     "'self'",

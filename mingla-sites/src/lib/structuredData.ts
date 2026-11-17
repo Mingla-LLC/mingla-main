@@ -179,6 +179,8 @@ function events(artifact: ArtifactV2, page: ArtifactPage, live: LiveOfferings | 
     const result = selectGridOfferings(live.offerings, raw as OfferingGridConfig, live.now, live.filters);
     if (result.kind !== "ok") continue;
     for (const { offering, state } of result.offerings) {
+      // #4453 milestone 10 — a plan preview's sample listing is never structured data.
+      if (live.cards.get(offering.id)?.sample) continue;
       if (seen.has(offering.id) || state.phase === "ended") continue;
       if ((offering.kind !== "trip" && offering.kind !== "event") || !offering.start_at) continue;
       seen.add(offering.id);

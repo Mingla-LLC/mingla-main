@@ -4,6 +4,8 @@ import { artifactFontDigests } from "../../../contracts/generated/artifactV2.ts"
 import { runtimeConfig } from "../../../lib/config";
 import { sha256 } from "../../../lib/crypto";
 import { loadPreviewArtifact, parsePreviewArtifactKey } from "../../../lib/previewArtifact";
+import { loadPlanPreviewArtifact } from "../../../lib/planPreviewArtifact";
+import { parsePlanPreviewKey } from "../../../contracts/generated/planPreview.ts";
 import { loadPublication, requestHost, resolveHostSite } from "../../../lib/publication";
 import { isV2Artifact, type SiteArtifact } from "../../../lib/siteArtifact";
 import { readPrivateObject } from "../../../lib/storageReader";
@@ -34,7 +36,10 @@ export async function GET(request: Request, context: { params: Promise<{ digest:
     const host = requestHost(incoming);
     const previewParam = new URL(request.url).searchParams.get("k");
     let artifact: SiteArtifact;
-    if (previewParam !== null) {
+    if (previewParam !== null && parsePlanPreviewKey(previewParam)) {
+      // #4453 milestone 10 — a plan preview's fonts, on the reserved host only.
+      artifact = (await loadPlanPreviewArtifact(previewParam, host)).artifact;
+    } else if (previewParam !== null) {
       const parsed = parsePreviewArtifactKey(previewParam);
       if (!parsed) return notFound();
       artifact = await loadPreviewArtifact(parsed, await resolveHostSite(host));

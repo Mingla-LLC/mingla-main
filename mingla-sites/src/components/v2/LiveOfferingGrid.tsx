@@ -40,17 +40,20 @@ function Card({ card, context }: { card: OfferingCard; context: SiteEventContext
       {card.coverUrl ? (card.detailHref
         ? <a href={card.detailHref} tabIndex={-1} aria-hidden="true"><img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" /></a>
         : <img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" />) : null}
-      {card.state.badge ? <p className="offering-badge">{card.state.badge}</p> : null}
+      {/* #4453 milestone 10 — a plan preview's labelled sample listing (never published). */}
+      {card.sample ? <p className="offering-badge offering-sample" data-sample="1">Sample</p> : card.state.badge ? <p className="offering-badge">{card.state.badge}</p> : null}
       {/* #4453 milestone 9 — with detail pages on, the title opens the site's own page; the CTA below still goes to Mingla. */}
       <h3>{card.detailHref ? <a className="mg-to-detail" href={card.detailHref}>{card.title}</a> : card.title}</h3>
       {card.dates ? <p className="offering-dates">{card.dates}</p> : null}
       {card.destination ? <p className="offering-place">{card.destination}</p> : null}
       {card.summary ? <p>{card.summary}</p> : null}
       {card.price ? <p className="offering-price">{card.price}</p> : null}
-      <TrackedLink href={card.href} context={context} ctaKind="offering" offeringId={card.id} className={card.state.bookable ? "button accent offering-cta" : "offering-cta"}>
-        {/* #2830 — no colon: the link reads "Book Fixture coast walk on Mingla". */}
-        {card.cta}<span className="sr-only"> {card.title} on Mingla</span>
-      </TrackedLink>
+      {card.sample ? <p className="offering-cta">Sample listing</p> : (
+        <TrackedLink href={card.href} context={context} ctaKind="offering" offeringId={card.id} className={card.state.bookable ? "button accent offering-cta" : "offering-cta"}>
+          {/* #2830 — no colon: the link reads "Book Fixture coast walk on Mingla". */}
+          {card.cta}<span className="sr-only"> {card.title} on Mingla</span>
+        </TrackedLink>
+      )}
     </article>
   );
 }
