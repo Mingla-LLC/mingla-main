@@ -101,6 +101,8 @@
         "app-mobile/src/components/onboarding/TicketsFoundStep.tsx",
         "supabase/functions/claim-link/index.ts",
         "supabase/functions/claim-link/function-policy.json",
+        "app-mobile/src/components/brandEnquiry/calendarPlanMessage.ts",
+        "app-mobile/src/utils/purchasePresentation.ts",
         "app-mobile/src/services/claimContactService.ts",
         "supabase/functions/attendance-claim-identity/index.ts",
         "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql",
