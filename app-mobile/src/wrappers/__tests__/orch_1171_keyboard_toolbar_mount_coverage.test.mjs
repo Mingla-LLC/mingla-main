@@ -40,7 +40,7 @@ describe("ORCH-1171 Done-bar mount coverage (consumer)", () => {
         .split("\n")
         .filter((l) => !/^\s*import\b/.test(l))
         .join("\n");
-      assert.match(withoutImports, /<KeyboardToolbarRoot\s*\/?>/);
+      assert.match(withoutImports, /<KeyboardToolbarRoot\b[^>]*\/?>/);
     });
   }
 
@@ -55,7 +55,7 @@ describe("ORCH-1171 Done-bar mount coverage (consumer)", () => {
       .filter((l) => !/^\s*import\b/.test(l))
       .join("\n");
     assert.match(withoutImports, /<KeyboardRoot\b[^>]*>/);
-    assert.match(withoutImports, /<KeyboardToolbarRoot\s*\/?>/);
+    assert.match(withoutImports, /<KeyboardToolbarRoot\b[^>]*\/?>/);
   });
 
   it("BaseBottomSheet wrapInRNModal nests toolbar inside per-window KeyboardRoot", () => {
@@ -66,7 +66,7 @@ describe("ORCH-1171 Done-bar mount coverage (consumer)", () => {
     );
     const modalBlock = src.slice(src.indexOf("if (wrapInRNModal)"));
     assert.match(modalBlock, /<KeyboardRoot\b[^>]*>/);
-    assert.match(modalBlock, /<KeyboardToolbarRoot\s*\/?>/);
+    assert.match(modalBlock, /<KeyboardToolbarRoot\b[^>]*\/?>/);
   });
 
   it("KeyboardAwareScrollView clearance includes toolbar height constants", () => {

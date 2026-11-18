@@ -1,14 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import type { PhoneInputTheme } from "@mingla/phone-input";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { parsePhoneEntry } from "@mingla/phone-input/phoneNumber";
 
 import {
@@ -27,6 +26,20 @@ import {
   type PurchaseTicket,
 } from "../../services/purchasesService";
 import { postHogService } from "../../services/postHogService";
+import {
+  PURCHASE_SHEET_BACKGROUND,
+  PURCHASE_SHEET_COLORS as C,
+  PURCHASE_SHEET_HANDLE,
+  PURCHASE_SHEET_PHONE_THEME,
+} from "./purchaseSheetTheme";
+import {
+  PURCHASE_SHEET_KEYBOARD_TOOLBAR,
+  SheetKeyboardDoneBar,
+  sheetDoneBarId,
+} from "./SheetKeyboardDoneBar";
+
+const NAME_DONE_BAR_ID = sheetDoneBarId("send-name");
+const EMAIL_DONE_BAR_ID = sheetDoneBarId("send-email");
 
 type Props = {
   ticket: PurchaseTicket | null;
@@ -37,21 +50,6 @@ type Props = {
 };
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SEND_PHONE_THEME: PhoneInputTheme = {
-  backgroundPrimary: "#fff",
-  textPrimary: "#17191e",
-  textTertiary: "#8b8f96",
-  borderDefault: "#d8dbe0",
-  borderFocused: "#eb7825",
-  borderError: "#b42318",
-  searchBackground: "#f4f5f7",
-  rowPressedBackground: "#f4f5f7",
-  divider: "#e6e8ec",
-  accessoryBackground: "#fff",
-  accessoryBorder: "#e6e8ec",
-  accent: "#eb7825",
-  errorText: "#b42318",
-};
 
 export function SendTicketSheet({
   ticket,
@@ -71,8 +69,8 @@ export function SendTicketSheet({
   const formScrollRef = useRef<
     React.ElementRef<typeof BottomSheetScrollView>
   >(null);
-  const focusedInputRef = useRef<"phone" | null>(null);
-  const keyboardVisibleRef = useRef(false);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const insets = useSafeAreaInsets();
   const normalizedEmail = email.trim().toLowerCase();
   const selectedCountry = useMemo(
     () => getCountryByCode(countryCode),
@@ -95,25 +93,29 @@ export function SendTicketSheet({
     });
   }, []);
 
-  useEffect(() => {
-    const keyboardShown = Keyboard.addListener("keyboardDidShow", () => {
-      keyboardVisibleRef.current = true;
-      if (focusedInputRef.current === "phone") scrollFormTo(110);
-    });
-    const keyboardHidden = Keyboard.addListener("keyboardDidHide", () => {
-      keyboardVisibleRef.current = false;
+  /**
+   * #4473 D7 — the sheet lifts with the keyboard (its Done bars are part of
+   * the keyboard), and focusing the mobile number scrolls the form to its end
+   * once the keyboard has settled, so the field and Send ticket sit above it
+   * on an iPhone SE. Runs on the field's own focus; no keyboard listener.
+   */
+  const revealOnFocus = useCallback((where: "top" | "end"): void => {
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+    if (where === "top") {
       scrollFormTo(0);
-    });
-    return () => {
-      keyboardShown.remove();
-      keyboardHidden.remove();
-    };
+      return;
+    }
+    revealTimer.current = setTimeout(() => {
+      formScrollRef.current?.scrollToEnd({ animated: true });
+    }, 280);
   }, [scrollFormTo]);
+
+  useEffect(() => () => {
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+  }, []);
 
   useEffect(() => {
     if (visible) return;
-    focusedInputRef.current = null;
-    keyboardVisibleRef.current = false;
     setName("");
     setEmail("");
     setPhoneInput("");
@@ -187,11 +189,15 @@ export function SendTicketSheet({
         keyboardDismissMode: "interactive",
         keyboardShouldPersistTaps: "handled",
       }}
-      keyboardBehavior="extend"
+      keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
+      keyboardToolbar={PURCHASE_SHEET_KEYBOARD_TOOLBAR}
       android_keyboardInputMode="adjustResize"
       snapPoints={["68%"]}
-      theme="light"
+      topInset={insets.top}
+      theme="dark"
+      backgroundStyle={PURCHASE_SHEET_BACKGROUND}
+      handleStyle={PURCHASE_SHEET_HANDLE}
       visible={visible}
       wrapInRNModal
     >
@@ -199,21 +205,22 @@ export function SendTicketSheet({
         <Text style={styles.title}>
           {t("send.sheetTitle", { index: ticket?.ticketIndex ?? 1 })}
         </Text>
+        <Text style={styles.label}>{t("send.nameLabel")}</Text>
         <BottomSheetTextInput
-          accessibilityLabel={t("send.namePlaceholder")}
+          accessibilityLabel={t("send.nameLabel")}
+          inputAccessoryViewID={NAME_DONE_BAR_ID}
           autoCapitalize="words"
           editable={!busy}
           maxLength={60}
           onChangeText={setName}
-          onFocus={() => {
-            focusedInputRef.current = null;
-            scrollFormTo(0);
-          }}
+          onFocus={() => revealOnFocus("top")}
           placeholder={t("send.namePlaceholder")}
-          placeholderTextColor="#8b8f96"
+          placeholderTextColor={C.placeholder}
           style={styles.input}
+          testID="send-ticket-name"
           value={name}
         />
+        <SheetKeyboardDoneBar nativeID={NAME_DONE_BAR_ID} />
         <Text style={styles.label}>{t("send.emailLabel")}</Text>
         <BottomSheetTextInput
           accessibilityLabel={t("send.emailLabel")}
@@ -221,18 +228,18 @@ export function SendTicketSheet({
           autoComplete="email"
           autoCorrect={false}
           editable={!busy}
+          inputAccessoryViewID={EMAIL_DONE_BAR_ID}
           keyboardType="email-address"
           onChangeText={setEmail}
-          onFocus={() => {
-            focusedInputRef.current = null;
-            scrollFormTo(0);
-          }}
+          onFocus={() => revealOnFocus("top")}
           placeholder={t("send.emailPlaceholder")}
-          placeholderTextColor="#8b8f96"
+          placeholderTextColor={C.placeholder}
           style={styles.input}
+          testID="send-ticket-email"
           textContentType="emailAddress"
           value={email}
         />
+        <SheetKeyboardDoneBar nativeID={EMAIL_DONE_BAR_ID} />
         <Text style={styles.label}>{t("send.phoneLabel")}</Text>
         <View style={styles.phoneField}>
           <PhoneInput
@@ -240,21 +247,15 @@ export function SendTicketSheet({
             disabled={busy}
             error={phoneProblem}
             inputComponent={BottomSheetTextInput}
-            onBlur={() => {
-              focusedInputRef.current = null;
-              setPhoneTouched(true);
-            }}
+            onBlur={() => setPhoneTouched(true)}
             onChangeCountry={setCountryCode}
             onChangePhone={setPhoneInput}
-            onFocus={() => {
-              focusedInputRef.current = "phone";
-              if (keyboardVisibleRef.current) scrollFormTo(110);
-            }}
+            onFocus={() => revealOnFocus("end")}
             phoneInputAccessibilityLabel={t("send.phoneLabel")}
             required
             smartEntry
             testID="send-ticket-phone"
-            theme={SEND_PHONE_THEME}
+            theme={PURCHASE_SHEET_PHONE_THEME}
             value={phoneInput}
           />
         </View>
@@ -298,45 +299,54 @@ export function SendTicketSheet({
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 36 },
+  body: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 36 },
   title: {
-    color: "#17191e",
+    color: C.text,
     fontSize: 24,
     fontWeight: "800",
     marginBottom: 20,
   },
   input: {
     minHeight: 54,
-    borderRadius: 15,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#d8dbe0",
-    backgroundColor: "#fff",
-    color: "#17191e",
+    borderColor: C.borderStrong,
+    backgroundColor: C.field,
+    color: C.text,
     fontSize: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     marginBottom: 12,
   },
   label: {
-    color: "#4e535b",
+    color: C.textLabel,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
     marginBottom: 7,
   },
   phoneField: { marginBottom: 10 },
-  deliveryNote: { color: "#4e535b", fontSize: 13, lineHeight: 19 },
-  explainer: { color: "#60656e", fontSize: 14, lineHeight: 21, marginTop: 2 },
-  error: { color: "#b42318", fontSize: 13, lineHeight: 18, marginTop: 13 },
+  deliveryNote: { color: C.textMeta, fontSize: 12, lineHeight: 18 },
+  explainer: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: C.field,
+    overflow: "hidden",
+  },
+  error: { color: C.error, fontSize: 13, lineHeight: 18, marginTop: 13 },
   submit: {
-    minHeight: 52,
-    borderRadius: 15,
-    backgroundColor: "#eb7825",
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 20,
+    marginTop: 16,
   },
-  submitText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  submitText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   position: {
-    color: "#8b8f96",
+    color: C.textMeta,
     fontSize: 12,
     textAlign: "center",
     marginTop: 12,

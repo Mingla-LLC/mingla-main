@@ -24,6 +24,8 @@ export function purchaseKindLabel(kind: PurchaseKind): string {
       return "Booking";
     case "venue_order":
       return "Receipt";
+    case "stay":
+      return "Stay";
   }
 }
 
@@ -41,6 +43,8 @@ export function purchaseCountLabel(item: PurchaseTimelineItem): string {
     ? "guest"
     : item.kind === "reservation"
     ? "person"
+    : item.kind === "stay"
+    ? "stay"
     : "order";
   return `${item.count} ${noun}${item.count === 1 ? "" : "s"}`;
 }
@@ -72,4 +76,18 @@ export function purchaseRefundLabel(
     locale,
   );
   return formatted ? `${formatted} refunded` : "Refunded";
+}
+
+/** #4473 — a label with no repeated parts ("Harbour House · Harbour House" → once). */
+export function joinDistinct(parts: readonly (string | null | undefined)[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    const value = part?.trim() ?? "";
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out.join(" · ");
 }

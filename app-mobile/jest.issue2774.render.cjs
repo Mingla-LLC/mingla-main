@@ -170,5 +170,15 @@ module.exports = {
     // issue #4347 × #4334 — tester final retest: the sheet's Directions and
     // Route all stops on #4334's Maps target (bytes, refused ids, pairing).
     "**/__tests__/issue_4347_maps_routing.tester.adversarial.test.ts",
+    // issue #4473 — "Missing a ticket?": Check again, the three ways in, the
+    // dark add sheet (tabs, code, found / shared / nothing), ask-to-send and
+    // the confirmation-link step; Send to a friend draws dark.
+    "**/__tests__/issue_4473_missing_ticket.implementor.render.test.tsx",
+    // issue #4473 — purchases shared with a second proven account (list,
+    // read-only detail, owner note, Calendar) and "Is this your ticket?".
+    "**/__tests__/issue_4473_shared_purchases.implementor.render.test.tsx",
+    // issue #4473 device pass — one dark Done bar, in-sheet country picker,
+    // per-kind shared notes, channel hint, keyboard closed before results.
+    "**/__tests__/issue_4473_device_fixes.implementor.render.test.tsx",
   ],
 };

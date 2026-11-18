@@ -110,6 +110,13 @@ export interface PhoneInputProps {
    * Native keeps the modal either way (a nested <Modal> works on native RN).
    */
   pickerPresentation?: PhoneInputPickerPresentation;
+  /**
+   * #4473 — the host shows its own country picker (e.g. a step inside its
+   * bottom sheet, limited to the countries it can text). When set, the
+   * country button dismisses the keyboard and calls this instead of opening
+   * the built-in full-screen picker. Omitted = unchanged.
+   */
+  onRequestCountryPicker?: () => void;
   testID?: string;
   countryButtonAccessibilityLabel?: string;
   phoneInputAccessibilityLabel?: string;
@@ -147,6 +154,7 @@ export const PhoneInput = ({
   theme,
   showDoneAccessory = true,
   pickerPresentation = "modal",
+  onRequestCountryPicker,
   testID,
   countryButtonAccessibilityLabel,
   phoneInputAccessibilityLabel,
@@ -175,7 +183,7 @@ export const PhoneInput = ({
     { start: number; end: number } | undefined
   >(undefined);
 
-  const t: Required<PhoneInputTheme> = useMemo(
+  const t: Required<Omit<PhoneInputTheme, "fieldBackground">> = useMemo(
     () => ({ ...DEFAULT_PHONE_INPUT_THEME, ...(theme ?? {}) }),
     [theme],
   );
@@ -309,6 +317,10 @@ export const PhoneInput = ({
   const handleOpenPicker = useCallback((): void => {
     if (disabled) return;
     Keyboard.dismiss();
+    if (onRequestCountryPicker) {
+      onRequestCountryPicker();
+      return;
+    }
     // ORCH-1299 — the ACTUAL dead-tap fix (runtime-proven). On web, DO NOT defer
     // opening the picker behind InteractionManager.runAfterInteractions: the RSVP
     // public page holds a long-running Animated interaction handle (a looping
@@ -324,12 +336,12 @@ export const PhoneInput = ({
     InteractionManager.runAfterInteractions(() => {
       setPickerVisible(true);
     });
-  }, [disabled]);
+  }, [disabled, onRequestCountryPicker]);
 
   // Render-time inline styles that respect the resolved theme.
   const containerStyle: ViewStyle = {
     ...styles.container,
-    backgroundColor: t.backgroundPrimary,
+    backgroundColor: theme?.fieldBackground ?? t.backgroundPrimary,
     borderColor: error
       ? t.borderError
       : focused

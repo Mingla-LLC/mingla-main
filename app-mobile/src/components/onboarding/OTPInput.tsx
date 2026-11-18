@@ -1,13 +1,14 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
+  AccessibilityInfo,
   View,
   Text,
   TextInput,
   TouchableWithoutFeedback,
   Animated,
+  Platform,
   StyleSheet,
-  NativeSyntheticEvent,
-  TextInputKeyPressEventData,
+  type TextInputProps,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
@@ -27,6 +28,19 @@ interface OTPInputProps {
   onComplete: (code: string) => void;
   error: boolean;
   disabled: boolean;
+  /**
+   * #4473 — optional, additive. 'dark' draws the boxes for a dark sheet
+   * (dark fill, white digits, orange next box, red error). Omitted = the
+   * onboarding look, unchanged.
+   */
+  tone?: 'light' | 'dark';
+  /**
+   * #4473 — optional input host, e.g. BottomSheetTextInput, so a sheet can keep
+   * the focused code field above the keyboard. Must forward its ref.
+   */
+  inputComponent?: React.ElementType;
+  /** #4473 — iOS: attach the host's own keyboard accessory (Done bar). */
+  inputAccessoryViewID?: string;
 }
 
 export const OTPInput: React.FC<OTPInputProps> = ({
@@ -36,7 +50,14 @@ export const OTPInput: React.FC<OTPInputProps> = ({
   onComplete,
   error,
   disabled,
+  tone = 'light',
+  inputComponent,
+  inputAccessoryViewID,
 }) => {
+  const InputHost = (inputComponent ?? TextInput) as React.ComponentType<
+    TextInputProps & React.RefAttributes<TextInput>
+  >;
+  const dark = tone === 'dark';
   const { t } = useTranslation('onboarding')
   const inputRef = useRef<TextInput>(null);
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -54,34 +75,42 @@ export const OTPInput: React.FC<OTPInputProps> = ({
     if (error && !prevError.current) {
       setShowError(true);
 
-      // Shake animation
-      Animated.sequence([
-        Animated.timing(shakeAnim, {
-          toValue: -10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 10,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: -5,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 5,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shakeAnim, {
-          toValue: 0,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Shake animation (skipped when the person asked for reduced motion;
+      // the red boxes and the haptic still say what happened).
+      void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+        if (reduceMotion) return;
+        Animated.sequence([
+          Animated.timing(shakeAnim, {
+            toValue: -10,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 10,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: -5,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 5,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shakeAnim, {
+            toValue: 0,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }).catch(() => undefined);
+
+      // #4473 — keep the field focused so the person can type the code again
+      // straight away (a host may have dismissed the keyboard to verify).
+      inputRef.current?.focus();
 
       // Haptic error feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -126,7 +155,7 @@ export const OTPInput: React.FC<OTPInputProps> = ({
         ]}
       >
         {/* Hidden TextInput receives all keyboard events */}
-        <TextInput
+        <InputHost
           ref={inputRef}
           style={styles.hiddenInput}
           value={value}
@@ -137,6 +166,8 @@ export const OTPInput: React.FC<OTPInputProps> = ({
           editable={!disabled}
           accessibilityLabel={t('otp.otp_accessibility')}
           textContentType="oneTimeCode"
+          inputAccessoryViewID={inputAccessoryViewID}
+          autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
         />
 
         {/* Visual boxes */}
@@ -146,21 +177,31 @@ export const OTPInput: React.FC<OTPInputProps> = ({
             const isFocused = i === focusedIndex && !disabled;
             const isErrorState = showError;
 
-            const boxStyle = [
-              styles.box,
-              isErrorState
-                ? styles.boxError
-                : isFilled
-                  ? styles.boxFilled
-                  : isFocused
-                    ? styles.boxFocused
-                    : styles.boxEmpty,
-              isFocused && !isErrorState && shadows.sm,
-            ];
+            const boxStyle = dark
+              ? [
+                styles.box,
+                styles.darkBox,
+                isErrorState
+                  ? styles.darkBoxError
+                  : isFocused && !isFilled
+                    ? styles.darkBoxNext
+                    : styles.darkBoxIdle,
+              ]
+              : [
+                styles.box,
+                isErrorState
+                  ? styles.boxError
+                  : isFilled
+                    ? styles.boxFilled
+                    : isFocused
+                      ? styles.boxFocused
+                      : styles.boxEmpty,
+                isFocused && !isErrorState && shadows.sm,
+              ];
 
             return (
               <View key={i} style={boxStyle}>
-                <Text style={styles.digit}>
+                <Text style={dark ? styles.darkDigit : styles.digit}>
                   {digits[i] || ''}
                 </Text>
               </View>
@@ -210,6 +251,21 @@ const styles = StyleSheet.create({
   boxError: {
     borderWidth: 2,
     borderColor: colors.error[500],
+  },
+  darkBox: {
+    backgroundColor: '#0b0d11',
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  darkBoxIdle: { borderColor: 'rgba(255,255,255,0.16)' },
+  darkBoxNext: { borderColor: '#eb7825' },
+  darkBoxError: { borderColor: '#f87171' },
+  darkDigit: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   },
   digit: {
     ...typography.xxl,
