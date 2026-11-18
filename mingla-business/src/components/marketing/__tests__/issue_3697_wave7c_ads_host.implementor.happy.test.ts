@@ -51,8 +51,9 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(plan).toContain("plan_version_id: aggregate.version.id");
     expect(plan).toContain("plan_hash: aggregate.version.plan_hash");
     const route = read("src/screens/hostAds/HostAdCreateScreen.tsx");
-    expect(route).toContain("host-ad-add-video");
-    expect(route).toContain('mediaMode="video-only"');
+    // #4238 B7: several videos per pick through the shared lane (one slot each).
+    expect(route).toContain("launchAdVideosPicker(");
+    expect(route).toContain("<HostAdVideoUploadSlot");
   });
 
   it("maps NGN currency copy and withdraw provider failures", () => {

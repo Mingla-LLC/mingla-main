@@ -17,7 +17,7 @@ export type AdVideoFit = {
   needs: string[];
 };
 
-const PLATFORM_NAMES: Record<AdVideoFitPlatform, string> = {
+export const PLATFORM_NAMES: Record<AdVideoFitPlatform, string> = {
   meta: "Facebook & Instagram",
   tiktok: "TikTok",
   snapchat: "Snapchat",
@@ -31,7 +31,7 @@ export const joinWithAnd = (items: readonly string[]): string => {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 };
 
-const isFitRow = (value: unknown): value is AdVideoFit => {
+export const isFitRow = (value: unknown): value is AdVideoFit => {
   if (value === null || typeof value !== "object") return false;
   const row = value as { platform?: unknown; fits?: unknown; needs?: unknown };
   return typeof row.platform === "string" && row.platform in PLATFORM_NAMES &&

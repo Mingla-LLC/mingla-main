@@ -628,7 +628,7 @@ const NON_SAVING_HOSTS: Array<[string, number]> = [
   // #4238 — the Host ad builder's video picker (no gallery). It moved from the
   // app/(tabs)/marketing/ads/create.tsx route (outside this src walk) into the
   // lazy Host Ads screens, so it is classified here now.
-  ["screens/hostAds/HostAdCreateScreen.tsx", 1],
+  // #4238: the Host ad builder no longer mounts CoverPickerSheet (multi-add media step).
 ];
 
 describe("issue #3319 — Additional photos only where they are saved", () => {

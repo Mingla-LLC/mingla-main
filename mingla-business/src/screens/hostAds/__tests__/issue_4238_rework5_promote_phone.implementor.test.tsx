@@ -29,11 +29,19 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
 }));
 jest.mock("../../../hooks/useCurrentBrand", () => ({ useCurrentBrand: () => ({ id: mockBrandId }) }));
+// #4238 ads roles: the Ads credit card reads top-up / withdraw authority from
+// useHostAdPermissions (or the wallet's capabilities), no longer from the
+// payouts hook useCanManageBrandPayments.
 jest.mock("../../../hooks/useHostAdPermissions", () => ({
-  useHostAdPermissions: () => ({ isLoading: false, isError: false, canRead: true, canPlan: true, refetch: jest.fn() }),
-}));
-jest.mock("../../../hooks/useCanManageBrandPayments", () => ({
-  useCanManageBrandPayments: () => ({ allowed: true, isLoading: false }),
+  useHostAdPermissions: () => ({
+    isLoading: false,
+    isError: false,
+    canRead: true,
+    canPlan: true,
+    canTopUp: true,
+    canWithdraw: true,
+    refetch: jest.fn(),
+  }),
 }));
 jest.mock("../../../hooks/useStickyFooterOffset", () => ({ useStickyFooterOffset: () => 0 }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: false }) }));

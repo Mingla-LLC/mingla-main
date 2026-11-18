@@ -90,6 +90,9 @@ export function HostAdMoneyExplainer(): React.ReactElement {
     ["money.runs", "money.runsV"],
     ["money.ends", "money.endsV"],
     ["money.withdraw", "money.withdrawV"],
+    // #4238 ads roles: who can do what with the money.
+    ["money.whoLaunches", "money.whoLaunchesV"],
+    ["money.whoWithdraws", "money.whoWithdrawsV"],
   ];
   return (
     <BuilderCard accessibilityLabel={hm("money.label")} testID="host-ad-money-explainer">
@@ -484,7 +487,7 @@ export function HostAdWithdrawSheet(props: {
     }
     setPhase("quoting");
     let live = true;
-    quoteAdCreditWithdraw(credit)
+    quoteAdCreditWithdraw(props.brandId, credit)
       .then((result) => {
         if (!live) return;
         setQuote(hostAdWithdrawLines(result));
@@ -498,7 +501,7 @@ export function HostAdWithdrawSheet(props: {
     return () => {
       live = false;
     };
-  }, [props.visible, credit]);
+  }, [props.visible, props.brandId, credit]);
   const send = async (): Promise<void> => {
     if (credit <= 0) return;
     setPhase("sending");

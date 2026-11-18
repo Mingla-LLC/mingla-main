@@ -40,14 +40,23 @@ export interface RolePickerSheetProps {
   current: BrandRole;
   /** When true, render as info-only "Roles explained" reference. */
   readOnly?: boolean;
+  /**
+   * #4238 — roles this viewer may not give (Finance and owner are the
+   * owner's to give). Shown, so the rule is visible, but not selectable.
+   */
+  lockedRoles?: readonly BrandRole[];
   onClose: () => void;
   onSelect: (role: BrandRole) => void;
 }
+
+/** #4238 — the line under a role only the brand owner can give. */
+export const OWNER_ONLY_ROLE_NOTE = "Only the brand owner can give this role.";
 
 export const RolePickerSheet: React.FC<RolePickerSheetProps> = ({
   visible,
   current,
   readOnly = false,
+  lockedRoles = [],
   onClose,
   onSelect,
 }) => {
@@ -62,19 +71,22 @@ export const RolePickerSheet: React.FC<RolePickerSheetProps> = ({
         </Text>
         {ROLE_ORDER.map((role) => {
           const active = current === role;
+          const locked = !readOnly && lockedRoles.includes(role);
           return (
             <Pressable
               key={role}
               onPress={() => {
-                if (readOnly) return;
+                if (readOnly || locked) return;
                 onSelect(role);
               }}
+              disabled={locked}
               accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={roleDisplayName(role)}
+              accessibilityState={{ selected: active, disabled: locked }}
+              accessibilityLabel={locked ? `${roleDisplayName(role)}. ${OWNER_ONLY_ROLE_NOTE}` : roleDisplayName(role)}
               style={[
                 styles.roleRow,
                 !readOnly && active && styles.roleRowActive,
+                locked && styles.roleRowLocked,
               ]}
             >
               <View style={styles.roleRowTextCol}>
@@ -86,7 +98,7 @@ export const RolePickerSheet: React.FC<RolePickerSheetProps> = ({
                 >
                   {roleDisplayName(role)}
                 </Text>
-                <Text style={styles.roleRowSub}>{roleDescription(role)}</Text>
+                <Text style={styles.roleRowSub}>{locked ? OWNER_ONLY_ROLE_NOTE : roleDescription(role)}</Text>
               </View>
               {!readOnly && active ? (
                 <Icon name="check" size={18} color={color.text1} />
@@ -137,6 +149,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: color.line,
   },
+  roleRowLocked: { opacity: 0.5 },
   roleRowActive: {
     borderColor: color.paper,
     backgroundColor: color.fill.tabOn,

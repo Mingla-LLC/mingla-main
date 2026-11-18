@@ -23,7 +23,6 @@ import { color, radius, space, type } from "../../constants/designSystem";
 import { useAdCreditWallet } from "../../hooks/marketing/useAdCreditWallet";
 import { useHostAdCampaigns } from "../../hooks/marketing/useHostAdCampaigns";
 import { useHostAdPlans } from "../../hooks/marketing/useHostAdPlans";
-import { useCanManageBrandPayments } from "../../hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -124,8 +123,21 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const walletQuery = useAdCreditWallet(brandId);
   const campaignsQuery = useHostAdCampaigns(brandId);
   const plansQuery = useHostAdPlans(brandId);
-  const creditManage = useCanManageBrandPayments(brandId);
   const permissions = useHostAdPermissions(brandId);
+  // #4238 ads roles: Ads credit top-up and withdraw follow the server's own
+  // answers (owner, admin and Finance top up; owner and Finance withdraw),
+  // not the owner-only payouts rule. An older server sends no capabilities:
+  // the role mirror (same rules) answers instead.
+  const walletCaps = walletQuery.data?.capabilities ?? null;
+  const canTopUp = walletCaps?.top_up
+    ? walletCaps.top_up.allowed
+    : permissions.canTopUp === true;
+  const canWithdraw = walletCaps?.withdraw
+    ? walletCaps.withdraw.allowed
+    : permissions.canWithdraw === true;
+  const creditAuthorityLoading = walletCaps === null && permissions.isLoading === true;
+  const withdrawAskName =
+    walletCaps?.withdraw?.ask_name ?? walletCaps?.top_up?.ask_name ?? hm("credit.theOwner");
   const network = useNetInfoSafe();
   const offline = network?.isConnected === false;
   const { isWideDesktop } = useResponsiveLayout();
@@ -169,7 +181,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
       router.replace("/(tabs)/marketing/ads" as never);
       return;
     }
-    if (brandId === null || !creditManage.allowed || creditManage.isLoading) return;
+    if (brandId === null || !canTopUp || creditAuthorityLoading) return;
     const apply = (key: string, input: Parameters<typeof applyAdCreditTopUp>[0]): void => {
       if (appliedSessionRef.current === key) return;
       appliedSessionRef.current = key;
@@ -193,8 +205,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
     if (flag === "1" && sessionId !== null) apply(sessionId, { brandId, checkoutSessionId: sessionId });
   }, [
     brandId,
-    creditManage.allowed,
-    creditManage.isLoading,
+    canTopUp,
+    creditAuthorityLoading,
     params.ad_credit_top_up,
     params.payment,
     params.reference,
@@ -324,16 +336,25 @@ export default function MarketingAdsRoute(): React.ReactElement {
           </>
         ) : null}
       </View>
-      {!creditManage.allowed ? (
-        <Note tone="info" text={hm("credit.teamNoName")} testID="ads-credit-team" />
-      ) : offline ? null : (
+      {!offline && (canTopUp || (canWithdraw && walletCredit > 0)) ? (
         <View style={bs.actions}>
-          <Button label={hm("credit.topUp")} variant="secondary" size="md" onPress={() => setOverlay("topUp")} testID="ads-add-credit" />
-          {walletCredit > 0 ? (
+          {canTopUp ? (
+            <Button label={hm("credit.topUp")} variant="secondary" size="md" onPress={() => setOverlay("topUp")} testID="ads-add-credit" />
+          ) : null}
+          {canWithdraw && walletCredit > 0 ? (
             <Button label={hm("credit.withdraw")} variant="ghost" size="md" onPress={() => setOverlay("withdraw")} testID="ads-withdraw" />
           ) : null}
         </View>
-      )}
+      ) : null}
+      {!canTopUp ? (
+        <Note tone="info" text={hm("credit.topUpNeedsRole")} testID="ads-credit-team" />
+      ) : !canWithdraw && walletCredit > 0 ? (
+        <Note
+          tone="info"
+          text={hm("credit.withdrawNeedsRole", { name: withdrawAskName })}
+          testID="ads-credit-withdraw-role"
+        />
+      ) : null}
     </BuilderCard>
   );
 
@@ -454,7 +475,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
     adItems.length > 0 && !loading ? (
       <BuilderList testID="ads-tools">
         <ValueRow label={hm("tools.compare")} value={hm("tools.compareSub")} onPress={() => setOverlay("compare")} testID="ads-compare" />
-        {creditManage.allowed && walletQuery.canView ? (
+        {canTopUp && walletQuery.canView ? (
           <ValueRow divider label={hm("tools.receipts")} value={hm("tools.receiptsSub")} onPress={() => setOverlay("receipts")} testID="ads-receipts" />
         ) : null}
       </BuilderList>

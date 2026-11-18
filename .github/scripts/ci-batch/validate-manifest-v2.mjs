@@ -608,7 +608,8 @@ export function phase3dContractDigest(manifest) {
 // #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (needs brand_readiness_catalog from the skipped 20280307003355); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4389 merge of main after #4453: kept main's #4453 rows and skip lines beside the #4389 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7d1280853b2e55e16dea4508d7d87768af9fd26c15be9041e1ea76459ee503a4";
+// #4238 merge of main after #4453 and #4389: kept main's rows, listed the two #4238 migrations after them; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "63511508a7e214251b0e7b7cbdc70efadfc3fdcf76370411076278ef5bde2894";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

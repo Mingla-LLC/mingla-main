@@ -235,19 +235,38 @@ export type HostAdLaunchBlocker =
   | { kind: "rights" }
   | { kind: "top_up"; amountCents: number };
 
+/** #4238 ads roles: one server answer (host_setup / get_wallet capabilities). */
+export type HostAdLaunchCapability = { allowed: boolean; ask_name?: string };
+
 export function hostAdLaunchBlocker(input: {
   offline: boolean;
+  /** Role mirror (useHostAdPermissions); used when the server sent no answer. */
   canLaunch: boolean;
+  /** Role mirror for ad_can_host_action('fund'); used when the server sent no answer. */
   canFund: boolean;
   askName: string | null;
   checks: readonly HostAdCheckRow[];
   checked: boolean;
   rightsConfirmed: boolean;
   topUpNeededCents: number;
+  /**
+   * #4238 ads roles: the server's own answers win over the role mirror.
+   * `launch` is ad_can_host_action('launch'); `change_live` is
+   * ad_can_host_action('fund'), which a launch also needs to hold the budget.
+   */
+  capabilities?: {
+    launch?: HostAdLaunchCapability;
+    change_live?: HostAdLaunchCapability;
+  } | null;
 }): HostAdLaunchBlocker | null {
+  const caps = input.capabilities ?? null;
+  const canLaunch = caps?.launch ? caps.launch.allowed : input.canLaunch;
+  const canFund = caps?.change_live ? caps.change_live.allowed : input.canFund;
+  const askName =
+    input.askName ?? caps?.launch?.ask_name ?? caps?.change_live?.ask_name ?? null;
   if (input.offline) return { kind: "offline" };
-  if (!input.canLaunch) return { kind: "no_launch_access", askName: input.askName };
-  if (!input.canFund) return { kind: "no_fund_access", askName: input.askName };
+  if (!canLaunch) return { kind: "no_launch_access", askName };
+  if (!canFund) return { kind: "no_fund_access", askName };
   if (input.checks.some((row) => row.state === "checking")) return { kind: "checking" };
   const question = input.checks.find((row) => row.state === "question");
   if (question) return { kind: "question", platform: question.platform };

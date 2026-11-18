@@ -353,7 +353,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (it re-emits brand_readiness_internal, which needs brand_readiness_catalog from the skipped 20280307003355); re-sealed.
 // #4389 merge of main after #4453: kept main's eleven #4453 rows and skip lines, listed 20280808004389 after them and kept its #1931 skip line; re-sealed.
-export const BOOTSTRAP_SHA256 = "aa194fe9f562f4f535ffc3123e702b454dfc97a0a04a265f636ea07b12791da5";
+// #4238 merge of main after #4453 and #4389: kept main's #4453 and #4389 rows, listed 20281118004238 and 20281118014238 after them; re-sealed.
+export const BOOTSTRAP_SHA256 = "fee54dfc83eca3ef13ae07c0ec46101bd541d230c24cea378d5f9321ab83b73a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
