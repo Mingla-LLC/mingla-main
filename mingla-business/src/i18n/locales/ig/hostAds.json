@@ -298,6 +298,7 @@
         "paid": "Agbakwunyela kredit. Ị nwere ike ịmalite ugbu a.",
         "cancelled": "E kagburu ịkwụ ụgwọ. A naghị ihe ọ bụla.",
         "failed": "Ịkwụ ụgwọ agaghị. Agbakwunyeghị ihe ọ bụla.",
+        "minimum": "Ego kacha nta ị nwere ike itinye bụ {{amount}}.",
         "noAccess": "Itinye ego chọrọ ikike ịkwụ ụgwọ akara. {{name}} nwere ike itinye kredit.",
         "returnFailed": "Ịkwụ ụgwọ laghachiri mana kredit erubeghị. Nwaa ọzọ ma ọ bụ nweta enyemaka.",
         "method": "Kaadị na ụzọ ịkwụ ụgwọ ndị ọzọ · na {{currency}}"

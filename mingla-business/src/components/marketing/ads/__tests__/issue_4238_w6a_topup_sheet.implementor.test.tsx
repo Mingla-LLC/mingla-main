@@ -128,4 +128,61 @@ describe("#4238 W6a top-up sheet", () => {
     expect(mockApply).toHaveBeenCalledWith({ brandId: "brand-1", paymentRef: "pi_1", idempotencyKey: "top_up:pi_1" });
     expect(onApplied).toHaveBeenCalledTimes(1);
   });
+
+  it("#4238: starts at the currency minimum and keeps Pay off below it", async () => {
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(
+        <HostAdTopUpSheet
+          visible
+          brandId="brand-1"
+          currency="NGN"
+          neededCents={50_000_00}
+          options={[20_000_00, 50_000_00, 100_000_00]}
+          limits={{ min_pay_cents: 25_000_00, max_pay_cents: 7_500_000_00 }}
+          returnPath="/marketing/ads"
+          money={money}
+          onClose={jest.fn()}
+          onApplied={jest.fn()}
+        />,
+      );
+    });
+    const labels = [0, 1, 2].map(
+      (i) => r.root.findByProps({ testID: `host-ad-topup-amount-${i}` }).props.accessibilityLabel,
+    );
+    expect(labels).toEqual(["₦25,000", "₦50,000", "₦100,000"]);
+    expect(allText(r)).toContain("The least you can top up is ₦25,000.");
+    // Pick the minimum: Pay is on and sends it.
+    await act(async () => {
+      (r.root.findByProps({ testID: "host-ad-topup-amount-0" }).props.onPress as () => void)();
+    });
+    await act(async () => {
+      (r.root.findByProps({ testID: "host-ad-topup-pay-button" }).props.onPress as () => void)();
+    });
+    expect(mockQuote).toHaveBeenCalledWith("brand-1", 25_000_00);
+  });
+
+  it("#4238: a shortfall under the minimum is offered as the minimum", async () => {
+    let r!: ReactTestRenderer;
+    await act(async () => {
+      r = create(
+        <HostAdTopUpSheet
+          visible
+          brandId="brand-1"
+          currency="NGN"
+          neededCents={5_000_00}
+          limits={{ min_pay_cents: 25_000_00, max_pay_cents: 7_500_000_00 }}
+          returnPath="/marketing/ads"
+          money={money}
+          onClose={jest.fn()}
+          onApplied={jest.fn()}
+        />,
+      );
+    });
+    expect(r.root.findByProps({ testID: "host-ad-topup-pay" }).props.children).toBe("₦25,000");
+    await act(async () => {
+      (r.root.findByProps({ testID: "host-ad-topup-pay-button" }).props.onPress as () => void)();
+    });
+    expect(mockQuote).toHaveBeenCalledWith("brand-1", 25_000_00);
+  });
 });

@@ -20,12 +20,13 @@ import {
   applyAdCreditTopUp,
   quoteAdCreditTopUp,
   startAdCreditTopUp,
+  type AdCreditTopUpLimits,
 } from "../../../services/adCreditService";
 import { minorFromMajor } from "../../../utils/currency";
 import { randomId } from "../../../utils/randomId";
 import { hb } from "./hostAdBuilderCopy";
 import { builderStyles as bs, Note } from "./HostAdBuilderBits";
-import { hostAdCeilMajor, hostAdCreditFromPay, hostAdFeeOfPay } from "./hostAdBuilderModel";
+import { hostAdCeilMajor, hostAdCreditFromPay, hostAdFeeOfPay, hostAdTopUpTiles } from "./hostAdBuilderModel";
 
 export function HostAdTopUpSheet(props: {
   visible: boolean;
@@ -45,12 +46,23 @@ export function HostAdTopUpSheet(props: {
   showNeed?: boolean;
   /** #4238 W6b: the amount tiles on Promote home (pay terms). */
   options?: readonly number[];
+  /**
+   * #4238: least and most one top-up can pay, from the wallet. No button
+   * offers less than the minimum, and Pay stays off outside the range.
+   */
+  limits?: AdCreditTopUpLimits | null;
 }): React.ReactElement {
   const presentPay = useAdCreditTopUpPay();
-  const larger = hostAdCeilMajor(Math.max(props.neededCents * 2, props.neededCents + 100_00));
-  const options = props.options && props.options.length > 0 ? [...props.options] : [props.neededCents, larger];
+  const limits = props.limits && props.limits.min_pay_cents > 0 ? props.limits : null;
+  const need = hostAdTopUpTiles([props.neededCents], limits)[0] ?? props.neededCents;
+  const larger = hostAdCeilMajor(Math.max(need * 2, need + 100_00));
+  const options =
+    props.options && props.options.length > 0
+      ? hostAdTopUpTiles(props.options, limits)
+      : hostAdTopUpTiles([need, larger], limits);
+  const firstPick = options.includes(need) ? need : (options[0] ?? need);
   const showNeed = props.showNeed !== false && !props.options;
-  const [picked, setPicked] = useState<number | "other">(props.neededCents);
+  const [picked, setPicked] = useState<number | "other">(firstPick);
   const [otherText, setOtherText] = useState("");
   const [phase, setPhase] = useState<"pick" | "paying">("pick");
   const [error, setError] = useState<string | null>(null);
@@ -61,12 +73,12 @@ export function HostAdTopUpSheet(props: {
   const idemRef = useRef<{ amount: number; key: string } | null>(null);
   useEffect(() => {
     if (!props.visible) return;
-    setPicked(props.neededCents);
+    setPicked(firstPick);
     setOtherText("");
     setPhase("pick");
     setError(null);
     idemRef.current = null;
-  }, [props.visible, props.neededCents]);
+  }, [props.visible, firstPick]);
   const amount =
     picked === "other"
       ? (() => {
@@ -74,8 +86,10 @@ export function HostAdTopUpSheet(props: {
           return Number.isFinite(major) && major > 0 ? minorFromMajor(major, props.currency) : 0;
         })()
       : picked;
+  const outOfRange =
+    limits !== null && amount > 0 && (amount < limits.min_pay_cents || amount > limits.max_pay_cents);
   const pay = async (): Promise<void> => {
-    if (amount <= 0) return;
+    if (amount <= 0 || outOfRange) return;
     setError(null);
     setPhase("paying");
     try {
@@ -136,7 +150,7 @@ export function HostAdTopUpSheet(props: {
                 label={phase === "paying" ? hb("creative.cancel") : hb("topUp.pay", { amount: props.money(amount) })}
                 variant={phase === "paying" ? "secondary" : "primary"}
                 fullWidth
-                disabled={phase === "pick" && amount <= 0}
+                disabled={phase === "pick" && (amount <= 0 || outOfRange)}
                 onPress={() => {
                   if (phase === "paying") {
                     setPhase("pick");
@@ -195,6 +209,15 @@ export function HostAdTopUpSheet(props: {
                   testID="host-ad-topup-other-input"
                 />
               ) : null}
+              {limits ? (
+                <Text
+                  style={[bs.caption, outOfRange && s.minimumOff]}
+                  accessibilityLiveRegion={outOfRange ? "polite" : "none"}
+                  testID="host-ad-topup-minimum"
+                >
+                  {hb("topUp.minimum", { amount: props.money(limits.min_pay_cents) })}
+                </Text>
+              ) : null}
               <View style={s.method}>
                 <Text style={bs.small}>{hb("topUp.method", { currency: props.currency })}</Text>
               </View>
@@ -226,6 +249,7 @@ export function HostAdTopUpSheet(props: {
 const s = StyleSheet.create({
   wrap: { flex: 1, minHeight: 0, paddingHorizontal: space[6], paddingTop: space[2] },
   title: { ...type.h1, color: color.text1, marginBottom: space[4] },
+  minimumOff: { color: color.errorText },
   amts: { flexDirection: "row", flexWrap: "wrap", gap: space[3] },
   amt: {
     flexBasis: "46%",

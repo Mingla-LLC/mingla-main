@@ -298,6 +298,7 @@
         "paid": "Kredit ditambahkan. Kamu bisa meluncurkan sekarang.",
         "cancelled": "Pembayaran dibatalkan. Tidak ada yang ditagih.",
         "failed": "Pembayaran tidak berhasil. Tidak ada yang ditambahkan.",
+        "minimum": "Jumlah isi ulang terkecil adalah {{amount}}.",
         "noAccess": "Isi ulang butuh akses ke pembayaran brand. {{name}} bisa menambahkan kredit.",
         "returnFailed": "Pembayaran kembali tapi kreditnya belum masuk. Coba lagi atau minta bantuan.",
         "method": "Kartu dan cara bayar lain · dalam {{currency}}"

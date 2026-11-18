@@ -298,6 +298,7 @@
         "paid": "An ƙara kiredit. Za ka iya farawa yanzu.",
         "cancelled": "An soke biya. Ba a caji komai ba.",
         "failed": "Biyan bai yi nasara ba. Ba a ƙara komai ba.",
+        "minimum": "Mafi ƙarancin abin da za ka iya ƙarawa shi ne {{amount}}.",
         "noAccess": "Ƙara kuɗi na bukatar izinin biyan kuɗin alama. {{name}} zai iya ƙara kiredit.",
         "returnFailed": "Biyan ya dawo amma kiredit bai iso ba tukuna. Sake gwadawa ko nemi taimako.",
         "method": "Kati da sauran hanyoyin biya · a {{currency}}"

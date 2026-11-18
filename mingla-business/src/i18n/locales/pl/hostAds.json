@@ -298,6 +298,7 @@
         "paid": "Środki dodane. Możesz już uruchomić.",
         "cancelled": "Płatność anulowana. Nic nie pobrano.",
         "failed": "Płatność nie przeszła. Nic nie dodano.",
+        "minimum": "Minimalna kwota doładowania to {{amount}}.",
         "noAccess": "Doładowanie wymaga dostępu do płatności marki. {{name}} może dodać środki.",
         "returnFailed": "Płatność wróciła, ale środki jeszcze nie dotarły. Spróbuj ponownie lub poproś o pomoc.",
         "method": "Karta i inne sposoby płatności · w {{currency}}"

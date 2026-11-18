@@ -298,6 +298,7 @@
         "paid": "Guthaben hinzugefügt. Du kannst jetzt starten.",
         "cancelled": "Zahlung abgebrochen. Es wurde nichts berechnet.",
         "failed": "Die Zahlung ist nicht durchgegangen. Es wurde nichts hinzugefügt.",
+        "minimum": "Du kannst mindestens {{amount}} aufladen.",
         "noAccess": "Zum Aufladen braucht man Zugriff auf die Markenzahlungen. {{name}} kann Guthaben hinzufügen.",
         "returnFailed": "Die Zahlung ist zurückgekommen, aber das Guthaben ist noch nicht angekommen. Versuche es erneut oder hol dir Hilfe.",
         "method": "Karte und andere Zahlungswege · in {{currency}}"

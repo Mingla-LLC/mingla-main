@@ -298,6 +298,7 @@
         "paid": "Tegoed toegevoegd. Je kunt nu starten.",
         "cancelled": "Betaling geannuleerd. Er is niets gerekend.",
         "failed": "De betaling is niet gelukt. Er is niets toegevoegd.",
+        "minimum": "Je kunt minimaal {{amount}} opwaarderen.",
         "noAccess": "Opwaarderen vraagt toegang tot merkbetalingen. {{name}} kan tegoed toevoegen.",
         "returnFailed": "De betaling kwam terug maar het tegoed is er nog niet. Probeer opnieuw of vraag hulp.",
         "method": "Kaart en andere betaalmanieren · in {{currency}}"

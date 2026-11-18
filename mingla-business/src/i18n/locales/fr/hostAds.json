@@ -298,6 +298,7 @@
         "paid": "Crédit ajouté. Vous pouvez lancer maintenant.",
         "cancelled": "Paiement annulé. Rien n’a été facturé.",
         "failed": "Le paiement n’est pas passé. Rien n’a été ajouté.",
+        "minimum": "Le montant minimum de recharge est de {{amount}}.",
         "noAccess": "Recharger demande l’accès aux paiements de la marque. {{name}} peut ajouter du crédit.",
         "returnFailed": "Le paiement est revenu mais le crédit n’est pas encore arrivé. Réessayez ou demandez de l’aide.",
         "method": "Carte et autres moyens de paiement · en {{currency}}"
