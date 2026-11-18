@@ -339,16 +339,16 @@ export async function buildPlanArtifact(body: PlanPreviewBody, style: DesignKey,
 }
 
 function collectOfferingIds(pages: AnyDoc[]): Set<string> {
+  // #4453 — exactly the ids the builder asks Core for: a block's own
+  // `offering_ids` list. The builder checks the projection's row count against
+  // that set, so a wider walk (an availability or ticket block's single
+  // `offering_id`) handed it extra rows and every such preview failed with
+  // VALIDATION_FAILED (found live on Gameland Lagos, 2026-11-18).
   const out = new Set<string>();
-  const walk = (value: unknown, depth: number) => {
-    if (depth > 12 || !value || typeof value !== "object") return;
-    if (Array.isArray(value)) { for (const entry of value) walk(entry, depth + 1); return; }
-    for (const [key, entry] of Object.entries(value as AnyDoc)) {
-      if ((key === "offering_id" || key === "offering") && typeof entry === "string" && UUID.test(entry)) out.add(entry.toLowerCase());
-      else walk(entry, depth + 1);
-    }
-  };
-  for (const page of pages) walk(page.blocks, 0);
+  for (const page of pages)
+    for (const block of (page.blocks ?? []) as AnyDoc[])
+      for (const row of (block.offering_ids ?? []) as AnyDoc[])
+        if (typeof row?.offering_id === "string" && UUID.test(row.offering_id)) out.add(row.offering_id.toLowerCase());
   return out;
 }
 

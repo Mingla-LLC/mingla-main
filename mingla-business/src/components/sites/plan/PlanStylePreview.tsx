@@ -2,7 +2,7 @@ import React, { Suspense, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { DESIGNS, type DesignKey } from "../../../../../packages/site-contracts/src/designs.ts";
 import { defaultPreviewPreference } from "../../../sites/previewDevice";
-import { usePlanPreviews } from "../../../sites/planPreviewApi";
+import { useStylePreview } from "../../../sites/planPreviewApi";
 import { stylePreviewBlocker } from "../../../sites/styleLibrary";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { BrandSitesError } from "../../../services/brandSitesService";
@@ -39,6 +39,7 @@ export function PlanStylePreview({
   style,
   wide,
   frameMaxHeight,
+  queue = [],
 }: {
   brandId: string;
   brandName: string;
@@ -47,10 +48,12 @@ export function PlanStylePreview({
   wide: boolean;
   /** The tallest the frame may draw (the phone sheet sizes it to the screen). */
   frameMaxHeight?: number;
+  /** The previewable styles in the picker's order: neighbours share a request. */
+  queue?: readonly DesignKey[];
 }): React.ReactElement {
   const blocker = stylePreviewBlocker(planState, style);
   const revision = planState.plan?.revision ?? null;
-  const previews = usePlanPreviews(brandId, revision, blocker === null, style ? [style] : undefined);
+  const previews = useStylePreview(brandId, revision, style, blocker === null, queue);
   const [reload, setReload] = useState(0);
   const card = previews.data?.cards.find((entry) => entry.style === style) ?? previews.data?.cards[0] ?? null;
   const label = style ? DESIGNS[style].label : "";
