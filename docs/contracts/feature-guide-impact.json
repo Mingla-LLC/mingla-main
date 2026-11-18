@@ -2937,6 +2937,7 @@
       "paths": [
         "mingla-business/app.config.js",
         "mingla-business/app.json",
+        "mingla-business/eas.json",
         "mingla-business/app/(tabs)/account.tsx",
         "mingla-business/app/_layout.tsx",
         "mingla-business/app/account/tap-to-pay.tsx",
