@@ -18,8 +18,8 @@
  * Web only in practice: both mounts sit behind `useResponsiveLayout`.
  */
 
-import React, { useState } from "react";
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallbackType } from "react-native";
+import React, { useRef, useState } from "react";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallbackType, type ViewStyle } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 
 import { color, materials, radius, space, type } from "../../constants/designSystem";
@@ -182,22 +182,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
         <View style={styles.railLogo}>
           <HostLogo width={LOGO_WIDTH_RAIL} />
         </View>
-        {groups.map((group) => (
-          <React.Fragment key={group.key}>
-            {group.title !== null ? (
-              <View style={styles.railDivider} testID={`sidebar-rail-divider-${group.key}`} />
-            ) : null}
-            {group.items.map((item) => {
-              const on = item.key === activeKey;
-              return (
-                <RailItem key={item.key} tipKey={item.key} label={item.label} role="tab" on={on} onPress={go(item.path)}>
-                  <Icon name={item.icon} size={20} color={on ? color.accent : color.text2} />
-                </RailItem>
-              );
-            })}
-          </React.Fragment>
-        ))}
-        <View style={styles.spacer} />
+        <RailPages groups={groups} activeKey={activeKey} go={go} />
         {!forcedRail ? (
           <RailItem tipKey="expand" label="Expand sidebar" role="button" on={false} onPress={toggleCollapsed}>
             <Icon name="chevR" size={18} color={color.text3} />
@@ -266,6 +251,90 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
   );
 };
 
+/**
+ * #4389 P3 rework — the rail's page list scrolls inside the rail (a full rail
+ * is ~780 tall; a 768 window must still reach Account), while the logo stays
+ * on top and Expand + Account stay pinned below it. A scroll container clips
+ * horizontally, so the pages' labels are drawn here, OUTSIDE the scroll view
+ * (absolute in the rail), at the hovered item's offset minus the scroll.
+ */
+const RAIL_SLOT = 48;
+const RAIL_TIP_LEFT = (DESKTOP_RAIL_WIDTH - RAIL_SLOT) / 2 + 56;
+const RailPages: React.FC<{
+  groups: SidebarGroup[];
+  activeKey: string;
+  go: (path: string) => () => void;
+}> = ({ groups, activeKey, go }) => {
+  const [tip, setTip] = useState<{ key: string; label: string } | null>(null);
+  const [scrollY, setScrollY] = useState(0);
+  const [areaY, setAreaY] = useState(0);
+  const slotY = useRef<Record<string, number>>({});
+  const tipTop = tip === null ? 0 : areaY + (slotY.current[tip.key] ?? 0) - scrollY;
+  return (
+    <>
+      <ScrollView
+        style={styles.railScroll}
+        contentContainerStyle={styles.railScrollContent}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+        onLayout={(e) => setAreaY(e.nativeEvent.layout.y)}
+        testID="sidebar-rail-scroll"
+      >
+        {groups.map((group) => (
+          <React.Fragment key={group.key}>
+            {group.title !== null ? (
+              <View style={styles.railDivider} testID={`sidebar-rail-divider-${group.key}`} />
+            ) : null}
+            {group.items.map((item) => {
+              const on = item.key === activeKey;
+              return (
+                <RailItem
+                  key={item.key}
+                  tipKey={item.key}
+                  label={item.label}
+                  role="tab"
+                  on={on}
+                  onPress={go(item.path)}
+                  onTip={(show) =>
+                    setTip((cur) => (show ? { key: item.key, label: item.label } : cur?.key === item.key ? null : cur))
+                  }
+                  onSlotLayout={(y) => {
+                    slotY.current[item.key] = y;
+                  }}
+                >
+                  <Icon name={item.icon} size={20} color={on ? color.accent : color.text2} />
+                </RailItem>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </ScrollView>
+      {tip !== null ? (
+        <RailTip tipKey={tip.key} label={tip.label} style={{ top: tipTop, left: RAIL_TIP_LEFT }} />
+      ) : null}
+    </>
+  );
+};
+
+/** The label bubble: ignores the pointer, hidden from assistive tech. */
+const RailTip: React.FC<{ tipKey: string; label: string; style?: ViewStyle }> = ({ tipKey, label, style }) => (
+  <View
+    style={[styles.railTipWrap, style]}
+    pointerEvents="none"
+    accessibilityElementsHidden
+    importantForAccessibility="no-hide-descendants"
+    aria-hidden
+    testID={`sidebar-rail-tip-${tipKey}`}
+  >
+    <View style={styles.railTip}>
+      <Text style={styles.railTipText} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  </View>
+);
+
 // MINGLA-INVARIANT: I-4389-RAIL-LABELS | issue #4389 | every collapsed-rail item (pages, Expand, Account) shows its page name in a label bubble on hover and on keyboard focus, hidden on leave, blur and press; the bubble is hidden from assistive tech (the Pressable carries the label). Enforced by src/components/ui/__tests__/issue_4389_sidebar_rail.implementor.test.tsx.
 /**
  * #4389 P3 — one rail item with its hover / keyboard-focus label (web). The
@@ -280,12 +349,20 @@ const RailItem: React.FC<{
   on: boolean;
   onPress: () => void;
   children: React.ReactNode;
-}> = ({ tipKey, label, role, on, onPress, children }) => {
-  const [tip, setTip] = useState(false);
+  /** Pages in the scroll list: the rail draws the label (see RailPages). */
+  onTip?: (show: boolean) => void;
+  onSlotLayout?: (y: number) => void;
+}> = ({ tipKey, label, role, on, onPress, children, onTip, onSlotLayout }) => {
+  const [localTip, setLocalTip] = useState(false);
+  const setTip = onTip ?? setLocalTip;
+  const tip = onTip === undefined && localTip;
   const show = (): void => setTip(true);
   const hide = (): void => setTip(false);
   return (
-    <View style={styles.railSlot}>
+    <View
+      style={styles.railSlot}
+      onLayout={onSlotLayout !== undefined ? (e) => onSlotLayout(e.nativeEvent.layout.y) : undefined}
+    >
       <Pressable
         onPress={() => {
           hide();
@@ -306,22 +383,7 @@ const RailItem: React.FC<{
       >
         {children}
       </Pressable>
-      {tip ? (
-        <View
-          style={styles.railTipWrap}
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          aria-hidden
-          testID={`sidebar-rail-tip-${tipKey}`}
-        >
-          <View style={styles.railTip}>
-            <Text style={styles.railTipText} numberOfLines={1}>
-              {label}
-            </Text>
-          </View>
-        </View>
-      ) : null}
+      {tip ? <RailTip tipKey={tipKey} label={label} /> : null}
     </View>
   );
 };
@@ -378,8 +440,11 @@ const styles = StyleSheet.create({
   // #4389 P3 — the rail item's slot (anchors its label) and the thin divider
   // that stands in for a group title.
   railSlot: { position: "relative", width: 48, height: 48 },
+  // #4389 P3 rework — the page list scrolls between the logo and Expand/Account.
+  railScroll: { flex: 1, minHeight: 0, alignSelf: "stretch" },
+  railScrollContent: { alignItems: "center", gap: space[2] },
   railDivider: { width: 32, height: StyleSheet.hairlineWidth, backgroundColor: color.line, marginVertical: space[1] },
-  railTipWrap: { position: "absolute", left: 56, top: 0, height: 48, justifyContent: "center", zIndex: 1 },
+  railTipWrap: { position: "absolute", left: 56, top: 0, height: RAIL_SLOT, justifyContent: "center", zIndex: 1 },
   railTip: {
     paddingHorizontal: space[3],
     paddingVertical: space[1],

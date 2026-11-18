@@ -9,6 +9,9 @@
  *   P4  no two identical person glyphs: People is `notebook`, Account `user`,
  *       Creators `users`.
  *
+ * P3 rework: the page list scrolls inside the rail (fits a 768 window);
+ * Account and Expand are pinned outside the scroll region (R4, R5).
+ *
  * FAILS-ON-REVERT: restore the "first item per group" rail (only Home, Hub,
  * Ari, Overview, People) or drop the RailItem tooltip and R1/R2 fail; set
  * MARKETING_ICONS.people back to "user" and R3 fails.
@@ -19,6 +22,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports, import/first */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,6 +56,10 @@ const item = (tree: Tree, key: string): Node => {
   );
   expect(found.length).toBeGreaterThan(0);
   return found[0]!;
+};
+const isInside = (node: Node, ancestor: Node): boolean => {
+  for (let p: Node | null = node.parent; p !== null; p = p.parent) if (p === ancestor) return true;
+  return false;
 };
 const fire = (node: Node, prop: string): void => {
   TestRenderer.act(() => {
@@ -120,6 +128,54 @@ describe("#4389 P3–P5 collapsed rail", () => {
     fire(item(tree, "people"), "onPress");
     expect(hosts(tree, "sidebar-rail-tip-people")).toHaveLength(0);
     expect(mockPush).toHaveBeenCalledWith("/(tabs)/marketing/people");
+    TestRenderer.act(() => tree.unmount());
+  });
+
+  // #4389 P3 rework — a full rail is ~780 tall; on a 768 window the page
+  // list scrolls inside the rail while the logo and Expand + Account stay put.
+  test("R4: pages scroll inside the rail; the logo, Expand and Account stay outside the scroll region", () => {
+    const tree = renderRail();
+    const scroll = hosts(tree, "sidebar-rail-scroll");
+    expect(scroll).toHaveLength(1);
+    const inScroll = (key: string): boolean => isInside(hosts(tree, `sidebar-rail-item-${key}`)[0]!, scroll[0]!);
+    for (const key of ALL_PAGES) expect(inScroll(key)).toBe(true);
+    expect(inScroll("account")).toBe(false);
+    expect(inScroll("expand")).toBe(false);
+    expect(isInside(hosts(tree, "desktop-sidebar-logo")[0]!, scroll[0]!)).toBe(false);
+    // Account and Expand come after the scroll region (pinned at the bottom).
+    const order = tree.root
+      .findAll((n) => typeof n.type === "string" && ["sidebar-rail-scroll", "sidebar-rail-item-expand", "sidebar-rail-item-account"].includes(n.props.testID as string))
+      .map((n) => n.props.testID);
+    expect(order).toEqual(["sidebar-rail-scroll", "sidebar-rail-item-expand", "sidebar-rail-item-account"]);
+    // Hit targets stay 48 (>= 40).
+    for (const key of ["home", "account"]) {
+      const styleFn = item(tree, key).props.style as (s: { pressed: boolean; hovered: boolean }) => unknown;
+      const box = StyleSheet.flatten(styleFn({ pressed: false, hovered: false }) as never) as { width: number; height: number };
+      expect(box.height).toBeGreaterThanOrEqual(40);
+      expect(box.width).toBeGreaterThanOrEqual(40);
+    }
+    TestRenderer.act(() => tree.unmount());
+  });
+
+  test("R5: a scrolled page's label follows the item, drawn outside the clipping scroll view", () => {
+    const tree = renderRail();
+    const scroll = tree.root.findAll((n) => n.props.testID === "sidebar-rail-scroll" && typeof n.props.onScroll === "function")[0]!;
+    TestRenderer.act(() => {
+      (scroll.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { y: 60, height: 500 } } });
+    });
+    let slot: Node | null = item(tree, "people");
+    while (slot !== null && typeof slot.props.onLayout !== "function") slot = slot.parent;
+    if (slot === null) throw new Error("no slot with onLayout");
+    TestRenderer.act(() => {
+      (slot.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { y: 520 } } });
+      (scroll.props.onScroll as (e: unknown) => void)({ nativeEvent: { contentOffset: { y: 100 } } });
+    });
+    fire(item(tree, "people"), "onHoverIn");
+    const tip = hosts(tree, "sidebar-rail-tip-people")[0]!;
+    expect(isInside(tip, hosts(tree, "sidebar-rail-scroll")[0]!)).toBe(false);
+    const style = StyleSheet.flatten(tip.props.style as never) as { top: number; left: number };
+    expect(style.top).toBe(60 + 520 - 100);
+    expect(style.left).toBe(16 + 56);
     TestRenderer.act(() => tree.unmount());
   });
 
