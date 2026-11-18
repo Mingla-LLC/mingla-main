@@ -12,8 +12,8 @@
  *     ways on, and every refusal code keeping its copy.
  *   - Ask them to send it: the shared message carries this account's
  *     confirmed email and mobile, and leaves them out when there are none.
- *   - Use your confirmation link: Open Mail, and a visible note when no mail
- *     app opens.
+ *   - Use your confirmation link: the three steps and the corrected copy;
+ *     no Open Mail button (Seth, #4473); Got it closes the sheet.
  *   - The Send to a friend sheet now draws dark.
  *   - parseClaimedEntries reads the optional sharedWithAnotherAccount flag.
  *
@@ -566,23 +566,32 @@ describe("#4473 ask them to send it", () => {
 });
 
 describe("#4473 use your confirmation link", () => {
-  test("says the link still ends in a code, and Open Mail opens the mail app", async () => {
-    const openURL = jest.spyOn(RN.Linking, "openURL").mockResolvedValue(true);
+  test("says the link still ends in a code, with the three steps and no Open Mail", () => {
+    const openURL = jest.spyOn(RN.Linking, "openURL");
     const renderer = sheet({ initialStep: "link" });
-    expect(text(renderer)).toContain("Get your tickets");
-    expect(text(renderer)).toContain("then we send a quick code to the email or number it was bought with");
-    await press(byId(renderer, "missing-link-open-mail"));
-    await flush();
-    expect(openURL).toHaveBeenCalled();
-    expect(maybeId(renderer, "missing-link-mail-failed")).toBeUndefined();
+    const copy = text(renderer);
+    expect(copy).toContain("Get your tickets");
+    expect(copy).toContain("then we send a quick code to the email or number it was bought with");
+    expect(copy).toContain("Open the Mingla email or text about your ticket");
+    expect(copy).toContain("Enter the code we send to that email or number");
+    expect(copy).not.toContain("Open Mail");
+    expect(maybeId(renderer, "missing-link-open-mail")).toBeUndefined();
+    expect(openURL).not.toHaveBeenCalled();
   });
 
-  test("when no mail app opens, it says so instead of failing silently", async () => {
-    jest.spyOn(RN.Linking, "openURL").mockRejectedValue(new Error("no handler"));
-    const renderer = sheet({ initialStep: "link" });
-    await press(byId(renderer, "missing-link-open-mail"));
-    await flush();
-    expect(byId(renderer, "missing-link-mail-failed").props.accessibilityRole).toBe("alert");
+  test("Got it is the one button, and it closes the sheet", async () => {
+    const onClose = jest.fn();
+    const renderer = sheet({ initialStep: "link", onClose });
+    // One pressable control (the wrapper and its host share one onPress).
+    const handlers = new Set(
+      byId(renderer, "missing-link-step")
+        .findAll((node) => node.props?.accessibilityRole === "button" && typeof node.props.onPress === "function")
+        .map((node) => node.props.onPress),
+    );
+    expect(handlers.size).toBe(1);
+    expect(text(renderer)).toContain("Got it");
+    await press(byId(renderer, "missing-link-done"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

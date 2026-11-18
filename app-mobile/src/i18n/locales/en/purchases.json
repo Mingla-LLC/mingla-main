@@ -190,8 +190,6 @@
       "step2": "Tap {{action}}. Mingla opens on the ticket",
       "step3": "Enter the code we send to that email or number",
       "note": "You need that inbox or phone for the code. Lost it? Ask the buyer or the host to send the ticket to your current email or number.",
-      "openMail": "Open Mail",
-      "openMailFailed": "We couldn't open your mail app. Open it yourself and look for the Mingla email.",
       "done": "Got it"
     },
     "ask": {

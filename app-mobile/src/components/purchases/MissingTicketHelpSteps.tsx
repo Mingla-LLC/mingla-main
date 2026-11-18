@@ -10,8 +10,6 @@
  */
 import React, { useMemo, useState } from "react";
 import {
-  Linking,
-  Platform,
   Pressable,
   Share,
   StyleSheet,
@@ -53,29 +51,12 @@ function WithBoldAction({
   );
 }
 
-/** Opens the mail app; falls back to a compose window; never throws. */
-export async function openMailApp(): Promise<boolean> {
-  const candidates = Platform.OS === "ios"
-    ? ["message://", "mailto:"]
-    : ["mailto:"];
-  for (const url of candidates) {
-    try {
-      await Linking.openURL(url);
-      return true;
-    } catch {
-      // Try the next way in.
-    }
-  }
-  return false;
-}
-
 export function ConfirmationLinkStep({
   onDone,
 }: {
   onDone: () => void;
 }): React.ReactElement {
   const { t } = useTranslation("purchases");
-  const [mailFailed, setMailFailed] = useState(false);
   const action = t("missing.link.action");
   const raw = (key: string): string => t(key, { action: ACTION_SLOT });
   const steps = [
@@ -104,31 +85,14 @@ export function ConfirmationLinkStep({
         ))}
       </View>
       <Text style={styles.note}>{t("missing.link.note")}</Text>
-      {mailFailed ? (
-        <Text accessibilityRole="alert" style={styles.error} testID="missing-link-mail-failed">
-          {t("missing.link.openMailFailed")}
-        </Text>
-      ) : null}
-      <View style={styles.row}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onDone}
-          style={({ pressed }) => [styles.outlineHalf, pressed && styles.pressed]}
-          testID="missing-link-done"
-        >
-          <Text style={styles.outlineText}>{t("missing.link.done")}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            void openMailApp().then((opened) => setMailFailed(!opened));
-          }}
-          style={({ pressed }) => [styles.primaryHalf, pressed && styles.pressed]}
-          testID="missing-link-open-mail"
-        >
-          <Text style={styles.primaryText}>{t("missing.link.openMail")}</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onDone}
+        style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
+        testID="missing-link-done"
+      >
+        <Text style={styles.primaryText}>{t("missing.link.done")}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -222,25 +186,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   error: { color: C.error, fontSize: 13, lineHeight: 18, marginTop: 10 },
-  row: { flexDirection: "row", gap: 8, marginTop: 16 },
-  outlineHalf: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: C.borderStrong,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  outlineText: { color: C.text, fontSize: 15, fontWeight: "700" },
-  primaryHalf: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: 16,
-    backgroundColor: C.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   primary: {
     minHeight: 54,
     borderRadius: 16,
