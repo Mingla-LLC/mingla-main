@@ -362,6 +362,35 @@ export function hostAdVerdictLabel(verdict: string): string {
 const HOST_AD_PLAIN_NOTE =
   /^(Facebook & Instagram|TikTok|Snapchat|Google|Reddit) (needs at least|allows at most|uses the wider area|can't leave out places|can't use a pin|can't pick languages|uses a circle|shows your ad to people in every language)|^We couldn't find the address for your pin\.$|^Couldn't check .+ on (Facebook & Instagram|TikTok|Snapchat|Google|Reddit)\. Try again\.$/;
 
+/**
+ * #4238 honest Review: the line an app adds when it can't leave out the
+ * brand's past buyers yet. Mirror of supabase/functions/_shared/hostAdWidening.ts
+ * (the server writes it; the parity test reads both files).
+ */
+export function hostAdPastBuyersLine(appName: string, count: number): string {
+  const n = Math.max(0, Math.trunc(count));
+  const people = n === 1 ? "past buyer" : "past buyers";
+  return `${appName} can't leave out your ${n.toLocaleString("en-US")} ${people} yet, so they may see this ad.`;
+}
+
+/** Matches exactly the sentence hostAdPastBuyersLine writes. */
+export const HOST_AD_PAST_BUYERS_LINE =
+  /^.+ can't leave out your \d{1,3}(,\d{3})* past buyers? yet, so they may see this ad\.$/;
+
+export type HostAdWideningKind = "past_buyers" | "area" | "mixed";
+
+/**
+ * #4238 honest Review: why an app reaches a wider group, from the check's
+ * own lines (the snapshot's widening_summary): only past buyers, only the
+ * area (every other line), or both. No lines reads as "area". The builder
+ * picks the question's button from this.
+ */
+export function hostAdWideningKind(lines: readonly string[]): HostAdWideningKind {
+  const buyers = lines.filter((line) => HOST_AD_PAST_BUYERS_LINE.test(line));
+  if (buyers.length === 0) return "area";
+  return buyers.length === lines.length ? "past_buyers" : "mixed";
+}
+
 /** "region:NG:lagos state" / "pin:NG:x" → "NG:lagos state" for the place list. */
 function stripPlaceKinds(raw: string): string {
   return raw.replace(/\b(region|pin):(?=[A-Za-z]{2}:)/g, "");
@@ -375,7 +404,7 @@ export function hostAdTargetingNote(
 ): string {
   const app = platformName(platform);
   // #4238 media-buyer: lines the compiler already writes in plain words.
-  if (HOST_AD_PLAIN_NOTE.test(line)) {
+  if (HOST_AD_PLAIN_NOTE.test(line) || HOST_AD_PAST_BUYERS_LINE.test(line)) {
     return /needs at least \d/.test(line)
       ? `${line} Move the distance up, or turn ${app} off.`
       : line;
