@@ -80,7 +80,7 @@ BEGIN
      OR p->>'code'<>'DEPENDENCY_NOT_EMPTY'
      OR NOT COALESCE(
        p->>'schema_fingerprint' IN (
-         'bc2859bb4f2b9da2fa58edff2ba9990315dcc9853d6b6d5c21f9cab005b037e7'
+         '605e626794ad2ae7b5635671921513600ee5edc8efd1cd1376482a4ed728c0d2'
        ),
        false
      )
@@ -120,7 +120,7 @@ BEGIN
   IF p->>'ok'<>'true' OR p->>'eligible'<>'true' OR p->>'code' IS NOT NULL
      OR NOT COALESCE(
        p->>'schema_fingerprint' IN (
-         'bc2859bb4f2b9da2fa58edff2ba9990315dcc9853d6b6d5c21f9cab005b037e7'
+         '605e626794ad2ae7b5635671921513600ee5edc8efd1cd1376482a4ed728c0d2'
        ),
        false
      )

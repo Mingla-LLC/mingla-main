@@ -2,12 +2,12 @@
 -- feature lanes, and teach the correction the nine venue types.
 --
 -- 20280809004490 adds venue_spaces, venue_space_combinations and venue_features,
--- and 20280809014490 adds venue_special_hours
+-- 20280809014490 adds venue_special_hours and 20280809024490 adds events.venue_id
 -- (venue_id lanes). They remain DISALLOWED dependencies for a pending-venue
--- identity correction: a pending venue with an authored space, combination or
--- stored feature row is corrected by hand (fail closed, the #2855 rule). Venues
--- in pending review are not backfilled with feature rows, so an untouched
--- pending venue stays correctable. This file only advances the reviewed schema
+-- identity correction: a pending venue with an authored space, combination,
+-- special day, linked event or stored feature row is corrected by hand (fail
+-- closed, the #2855 rule). Venues in pending review are not backfilled with
+-- feature rows, so an untouched pending venue stays correctable. This file only advances the reviewed schema
 -- pin, replacing #4261's, and widens the correction's category list and its
 -- Google place-type mapping (bar_lounge, club, cafe, event_space, coworking).
 --
@@ -22,7 +22,7 @@ DECLARE
   -- One reviewed value, measured 2026-11-18 on a clean replay through the
   -- #4490 P1 migrations: the Supabase CLI local stack and the bare
   -- supabase/postgres:17.4.1.075 batch image read the same value.
-  v_expected constant text := 'bc2859bb4f2b9da2fa58edff2ba9990315dcc9853d6b6d5c21f9cab005b037e7';
+  v_expected constant text := '605e626794ad2ae7b5635671921513600ee5edc8efd1cd1376482a4ed728c0d2';
   v_old_pins constant text[] := ARRAY[
     '(''52f4624c994529d2e63b8f70b79a3fcf'' || ''e28f3ff90dafe300bc45439e37cd2921'')',
     '(''91042e6f4a170c709d016d9a598d0fae'' || ''a36b280486bf634226a24cbbae34d415'')',

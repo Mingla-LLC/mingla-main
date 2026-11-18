@@ -58,7 +58,7 @@ const NEW_PIN =
 // disallowed, and reads one value on the Supabase CLI stack and the bare PG17
 // batch image.
 const CURRENT_HASHES = [
-  "bc2859bb4f2b9da2fa58edff2ba9990315dcc9853d6b6d5c21f9cab005b037e7",
+  "605e626794ad2ae7b5635671921513600ee5edc8efd1cd1376482a4ed728c0d2",
 ] as const;
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";

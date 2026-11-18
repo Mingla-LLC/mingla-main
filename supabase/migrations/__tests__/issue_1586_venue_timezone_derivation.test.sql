@@ -390,7 +390,9 @@ DECLARE v_n integer; v_ord integer; v_type text; v_poster_ord integer; v_poster_
 BEGIN
   SELECT count(*) INTO v_n FROM information_schema.columns
   WHERE table_schema = 'public' AND table_name = 'venue_public_view';
-  IF v_n <> 30 THEN
+  -- [TEST-MOD-APPROVED #4490] hours_windows and special_hours are appended
+  -- at 31 and 32; the timezone (29) and poster (30) ordinals are unchanged.
+  IF v_n <> 32 THEN
     RAISE EXCEPTION 'issue_1586_T9_view_column_count_changed: %', v_n;
   END IF;
   SELECT ordinal_position, data_type INTO v_ord, v_type FROM information_schema.columns
