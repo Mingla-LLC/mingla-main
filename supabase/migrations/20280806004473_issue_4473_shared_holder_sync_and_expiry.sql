@@ -352,4 +352,16 @@ BEGIN
 END;
 $cron$;
 
+
+-- #4473: a claim attempt that ends in internal_error records the database
+-- error code (SQLSTATE or "unknown") so a silent sweep failure can be found
+-- from the attempts table. Codes only: never a message, id or contact.
+ALTER TABLE public.attendance_claim_attempts
+  ADD COLUMN IF NOT EXISTS failure_code text;
+ALTER TABLE public.attendance_claim_attempts
+  DROP CONSTRAINT IF EXISTS attendance_claim_attempts_failure_code_shape;
+ALTER TABLE public.attendance_claim_attempts
+  ADD CONSTRAINT attendance_claim_attempts_failure_code_shape
+  CHECK (failure_code IS NULL OR failure_code ~ '^[A-Za-z0-9_]{1,40}$');
+
 COMMIT;

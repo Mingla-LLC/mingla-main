@@ -71,6 +71,7 @@ serve(async (req) => {
   let attemptId: string | null = null;
   let admitted = false;
   let outcome: Outcome = "internal_error";
+  let failureCode: string | null = null;
   try {
     // The identity sweep has its own 30-per-10-minutes budget. Token claims
     // keep their existing shared 10-per-10-minutes budget.
@@ -195,24 +196,19 @@ serve(async (req) => {
   } catch (error) {
     outcome = "internal_error";
     // #4473: a swallowed claim failure hid a sweep that aborted for 230
-    // buyers. Log the database code and message only; no user id or contact
-    // details.
-    const failure = error as { code?: unknown; message?: unknown } | null;
-    console.error(
-      "[attendance-claim-identity] claim_failed",
-      JSON.stringify({
-        code: typeof failure?.code === "string" ? failure.code : null,
-        message: typeof failure?.message === "string"
-          ? failure.message.slice(0, 300)
-          : null,
-      }),
-    );
+    // buyers. Record the database error code on the attempt row; nothing is
+    // logged (this function never writes to the console, see #2979 A13).
+    const code = (error as { code?: unknown } | null)?.code;
+    failureCode = typeof code === "string" && /^[A-Za-z0-9_]{1,40}$/.test(code)
+      ? code
+      : "unknown";
     return json(500, { ok: false, error: "claim_failed" });
   } finally {
     if (attemptId && admitted) {
       await admin.from("attendance_claim_attempts").update({
         completed_at: new Date().toISOString(),
         outcome,
+        failure_code: failureCode,
       }).eq("id", attemptId).is("completed_at", null);
     }
   }

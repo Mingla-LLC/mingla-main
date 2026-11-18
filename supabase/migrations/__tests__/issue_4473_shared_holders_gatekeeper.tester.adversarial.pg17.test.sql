@@ -253,15 +253,28 @@ BEGIN
   RAISE NOTICE 'G2 scanned % client-readable relations as the shared holder', v_n;
   PERFORM pg_temp.as_user(v_second);
   v_text := lower(public.pg_my_shared_purchases()::text);
-  PERFORM pg_temp.as_admin();
+  -- Identifying VALUES must never appear anywhere in the payload. Only
+  -- distinctive strings are matched here: short tokens such as a card last4
+  -- or "fee" also occur by chance inside random UUIDs, so money and card
+  -- fields are checked by KEY NAME below instead.
   FOREACH v_t IN ARRAY ARRAY[
-    v_email, v_phone, 'gatekeeper owner', '4242', 'visa', '"total', 'cents', 'amount',
-    'gk private note', 'fee'
+    v_email, v_phone, 'gatekeeper owner', 'gk private note'
   ] LOOP
     IF position(v_t IN v_text) > 0 THEN
       RAISE EXCEPTION 'G2 pg_my_shared_purchases carries %', v_t;
     END IF;
   END LOOP;
+  SELECT string_agg(DISTINCT k, ',') INTO v_t
+    FROM jsonb_path_query(
+           public.pg_my_shared_purchases()::jsonb,
+           'strict $.** ? (@.type() == "object")'
+         ) AS obj(o)
+    CROSS JOIN LATERAL jsonb_object_keys(obj.o) AS key(k)
+   WHERE lower(k) ~ '(fee|total|cents|amount|card|last4|brandcard|email|phone|buyername|guestname|note)';
+  IF v_t IS NOT NULL THEN
+    RAISE EXCEPTION 'G2 pg_my_shared_purchases has forbidden keys: %', v_t;
+  END IF;
+  PERFORM pg_temp.as_admin();
 
   -- ── G5. Share flags are the owner's alone. ──────────────────────────────
   PERFORM pg_temp.as_user(v_owner);
