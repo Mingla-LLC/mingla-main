@@ -4,6 +4,8 @@
 -- cannot write role / permissions_override / user_id / brand_id on
 -- brand_team_members; existing client updates, accept-invite, owner hand-over
 -- and member removal keep working.
+--
+-- MINGLA-INVARIANT: I-4238-TEAM-GRANTS | issue #4238 | Only the brand owner grants finance_manager or brand_owner, by invitation or role change; nobody changes their own role or permissions; client roles cannot write role, permissions_override, user_id or brand_id on brand_team_members.
 \set ON_ERROR_STOP on
 BEGIN;
 

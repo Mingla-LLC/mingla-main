@@ -13,7 +13,7 @@
 --   W5  only service_role may execute ad_can_withdraw_credit.
 --
 -- MINGLA-INVARIANT: I-4238-ADMIN-FUNDS | issue #4238 | A brand admin can fund Host ads (ad_can_host_action 'fund'), so an admin can hold a launch's budget and change a live ad's budget.
--- MINGLA-INVARIANT: I-4238-WITHDRAW-OWNER-FINANCE | issue #4238 | Withdrawing Host Ads credit is for the brand owner or an accepted, active finance_manager only (ad_can_withdraw_credit); ad-credit quote_withdraw and apply_withdraw use it.
+-- MINGLA-INVARIANT: I-4238-WITHDRAW-OWNER-FINANCE | issue #4238 | Withdrawing Host Ads credit is for the brand owner or an accepted, current finance_manager only (ad_can_withdraw_credit); ad-credit quote_withdraw and apply_withdraw use it.
 
 BEGIN;
 
