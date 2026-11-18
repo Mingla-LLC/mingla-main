@@ -75,6 +75,24 @@ const VENUE_CAPABILITIES = new Set([
   "restaurant.manage_menu",
   "restaurant.manage_qr",
   "restaurant.manage_reservations",
+  // #4490 — venue capabilities (server: 20280809064490).
+  "venue.manage_offers",
+  "venue.manage_bookings",
+  "venue.view_bookings",
+  "venue.check_in",
+  "venue.manage_money",
+]);
+
+/** #4490 — every venue type except Stay takes restaurant.* and venue.* grants. */
+const NON_STAY_VENUE_CATEGORIES = new Set([
+  "restaurant",
+  "play",
+  "creative_and_arts",
+  "bar_lounge",
+  "club",
+  "cafe",
+  "event_space",
+  "coworking",
 ]);
 
 function json(body: unknown, status = 200): Response {
@@ -130,13 +148,13 @@ export function venueGrantMatchesCategory(
       grant.access_profile === "custom") &&
       grant.capabilities.every((capability) => capability.startsWith("stay."));
   }
-  if (venueCategory === "restaurant") {
+  if (NON_STAY_VENUE_CATEGORIES.has(venueCategory)) {
     return (
       grant.access_profile === "restaurant_manager" ||
       grant.access_profile === "kitchen_bar" ||
       grant.access_profile === "custom"
     ) && grant.capabilities.every((capability) =>
-      capability.startsWith("restaurant.")
+      capability.startsWith("restaurant.") || capability.startsWith("venue.")
     );
   }
   return false;

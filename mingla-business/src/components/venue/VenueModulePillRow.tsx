@@ -33,7 +33,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
-import { VENUE_MODULES } from "./venueModules";
+import { venueModuleLabel } from "./venueModules";
 import type { VenueModule } from "../../types/venueReservation";
 
 export interface VenueModulePillRowProps {
@@ -137,6 +137,7 @@ export function VenueModulePillRow({
         {modules.map((id) => {
           const isActive = id === activeModule;
           const isDirty = dirtyModules?.has(id) === true;
+          const label = venueModuleLabel(id, modules);
           return (
             <Pressable
               ref={(instance) => {
@@ -146,8 +147,8 @@ export function VenueModulePillRow({
               accessibilityRole="tab"
               accessibilityLabel={
                 isDirty
-                  ? `${VENUE_MODULES[id].label}, ${isActive ? "selected, " : ""}unsaved changes`
-                  : `${VENUE_MODULES[id].label} module`
+                  ? `${label}, ${isActive ? "selected, " : ""}unsaved changes`
+                  : `${label} module`
               }
               accessibilityState={{ selected: isActive }}
               onPress={() =>
@@ -167,7 +168,7 @@ export function VenueModulePillRow({
                   isActive ? styles.pillLabelActive : styles.pillLabelInactive,
                 ]}
               >
-                {VENUE_MODULES[id].label}
+                {label}
               </Text>
               {isDirty ? (
                 <View

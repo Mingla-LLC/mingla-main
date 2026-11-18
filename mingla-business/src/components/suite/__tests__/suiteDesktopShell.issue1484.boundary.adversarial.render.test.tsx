@@ -936,7 +936,8 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
     for (const moduleId of VENUE_MODULE_IDS) {
       const tree = actual[moduleId];
       expect(tree).toContain('"accessibilityRole":"tablist"');
-      expect(tree).toContain('"accessibilityLabel":"Restaurant Hub sections"');
+      // #4490 — the venue rail names itself "Venue sections" (railLabel prop).
+      expect(tree).toContain('"accessibilityLabel":"Venue sections"');
       for (const groupLabel of ["Venue", "Bookings", "Operations"]) {
         expect(tree).toContain(`"children":["${groupLabel}"]`);
       }

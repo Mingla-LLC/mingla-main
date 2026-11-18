@@ -44,12 +44,22 @@ export type VenueModule =
   | "tables"
   | "availability"
   | "reservations"
-  | "waitlist";
+  | "waitlist"
+  // #4490 — feature-driven modules. Each appears only when its feature is on
+  // and its phase has shipped (venueModules.ts `deriveVenueNav`). P1 ships
+  // `spaces`; the rest are reserved ids so deep links and the rail are typed.
+  | "offers"
+  | "spaces"
+  | "today"
+  | "calendar"
+  | "requests"
+  | "members"
+  | "checkin";
 
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
-export type VenueBookingModule = Exclude<
+export type VenueBookingModule = Extract<
   VenueModule,
-  "overview" | "reviews" | "settings" | "menu" | "insights" | "orders"
+  "tables" | "availability" | "reservations" | "waitlist"
 >;
 
 /** No-show fee policy (enforcement is 2.2; 2.0 stores the policy only). */

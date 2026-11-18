@@ -198,6 +198,14 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    into enabled.
   "useVenueOrders.ts",
   "useVenueOrderingSettings.ts",
+  // ── #4490 — venue features, spaces/combinations and special days. All read
+  //    through issue_4490_get_venue_features or venue-viewer RLS
+  //    (issue_4490_can_view_venue), so a pre-auth fire would cache an empty
+  //    answer the host reads as "no spaces" or "every feature off". All three
+  //    fold isAuthReady into enabled.
+  "useVenueFeatures.ts",
+  "useVenueSpaces.ts",
+  "useVenueSpecialDays.ts",
   // ── #1792 (#1767 Phase 3b) — waiter mode. The pad reads the venue's own
   //    menus/menu_items/menu_modifier_groups and the open-tab summaries, all
   //    brand-member-RLS-gated. A pre-auth fire caches an RLS-empty 200, which a

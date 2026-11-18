@@ -55,17 +55,26 @@ import {
   useMyVenueAccess,
   type MyVenueAccess,
 } from "../../hooks/useMyVenueAccess";
+import { useVenueReservationSettings } from "../../hooks/useVenueReservationSettings";
+import { useSetVenueFeature, useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { VenueFeatureError } from "../../services/venueFeaturesService";
 import {
-  useSetReservationsEnabled,
-  useVenueReservationSettings,
-} from "../../hooks/useVenueReservationSettings";
+  VENUE_FEATURE_KEYS,
+  backfilledFeatureSet,
+  featureSetFrom,
+  type VenueFeatureKey,
+} from "../../types/venueFeatures";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { VenueModule } from "../../types/venueReservation";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { filterVenueModulesForCapabilities } from "./venueCapabilityGate";
+import {
+  filterVenueModulesForCapabilities,
+  scopedStaffManagesOffers,
+} from "./venueCapabilityGate";
+import { venueWriteErrorCopy } from "./features/venueFeaturesCopy";
 
 /** Lazy ConfirmDialog / Toast — both pull reanimated and red node/web suites
  * that mount VenueSuiteShell (e.g. #2737 shellScroll render proof). */
@@ -98,8 +107,9 @@ import {
 import { deriveVenueRailModules } from "./venueRail";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
-  deriveVenueModules,
-  shouldLeaveBookingModule,
+  deriveVenueNav,
+  shouldLeaveHiddenModule,
+  venueUsesSpaces,
   withVenueReviewsModule,
 } from "./venueModules";
 
@@ -134,6 +144,28 @@ const LazyVenueOrdersModule = React.lazy(async () => {
   const mod = await import("./VenueOrdersModule");
   return { default: mod.VenueOrdersModule };
 });
+
+/**
+ * #4490 — every feature module is its own host-owned lazy boundary (the
+ * Insights/Orders pattern above): Spaces and Availability & pricing pull Sheet,
+ * pickers and the site plan, none of which the eager shell needs.
+ */
+const LazyVenueSpacesModule = React.lazy(async () => {
+  const mod = await import("./features/VenueSpacesModule");
+  return { default: mod.VenueSpacesModule };
+});
+const LazyVenueAvailabilityPricingModule = React.lazy(async () => {
+  const mod = await import("./features/VenueAvailabilityPricingModule");
+  return { default: mod.VenueAvailabilityPricingModule };
+});
+
+/** All built features on: scoped staff's loading frame never shows "no pages". */
+const PENDING_SCOPED_FEATURES = featureSetFrom(
+  Object.fromEntries(VENUE_FEATURE_KEYS.map((key) => [key, true])) as Record<
+    VenueFeatureKey,
+    boolean
+  >,
+);
 
 // #4188 post-merge production regression — keep the fail-closed access answer
 // referentially stable while the permission RPC is loading or unavailable.
@@ -197,29 +229,61 @@ export function VenueSuiteShell({
   // requested module is lost by the time the retry succeeds. (A refetch that
   // fails after a successful load keeps the last `data`, so that answer holds.)
   const settingsResolved = settingsQuery.data !== undefined;
-  const setEnabled = useSetReservationsEnabled(brandId, venueId);
   const venueAccessQuery = useMyVenueAccess(venueId);
   const venueAccess = venueAccessQuery.data ?? PENDING_VENUE_ACCESS;
+
+  // #4490 — the nav derives from venue_features (I-4490-VENUE-FEATURES-GATE-
+  // SUITE). Until the features read answers, the venue reads as its backfill
+  // (the old reservations switch), so the loading frame shows today's list and
+  // never flashes a different workspace.
+  const featuresQuery = useVenueFeatures(brandId, venueId);
+  const setFeature = useSetVenueFeature(brandId, venueId);
+  // A failed features read falls back to the backfill rule (the old
+  // reservations switch), which is exactly what the server derives for a
+  // venue without stored rows — so it counts as resolved once the settings
+  // answer, and the #3389 bounce still works when only the features read fails.
+  const featuresResolved =
+    featuresQuery.data !== undefined || (featuresQuery.isError && settingsResolved);
+  const features = useMemo(
+    () =>
+      featuresQuery.data?.features ??
+      (venueAccess.scoped && !settingsResolved
+        ? PENDING_SCOPED_FEATURES
+        : backfilledFeatureSet({ reservationsEnabled })),
+    [featuresQuery.data, reservationsEnabled, settingsResolved, venueAccess.scoped],
+  );
+  const tableReservationsOn = features.table_reservations.enabled;
+  const spacesRequestedVenueId = useVenueSuiteStore((s) => s.spacesRequestedVenueId);
+  const navInput = useMemo(
+    () => ({
+      features,
+      activeSpaceCount: featuresQuery.data?.activeSpaceCount ?? 0,
+      spacesRequested:
+        (venueId !== null && spacesRequestedVenueId === venueId) ||
+        scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities),
+    }),
+    [
+      features,
+      featuresQuery.data?.activeSpaceCount,
+      spacesRequestedVenueId,
+      venueAccess.capabilities,
+      venueAccess.scoped,
+      venueId,
+    ],
+  );
+  const usesSpaces = venueUsesSpaces(navInput);
 
   const hasReviews = reviewsPanel !== null && reviewsPanel !== undefined;
   const visibleModules = useMemo(
     () => withVenueReviewsModule(
       filterVenueModulesForCapabilities(
-        deriveVenueModules(
-          venueAccess.scoped && !settingsResolved ? true : reservationsEnabled,
-        ),
+        deriveVenueNav(navInput),
         venueAccess.scoped,
         venueAccess.capabilities,
       ),
       hasReviews,
     ),
-    [
-      hasReviews,
-      reservationsEnabled,
-      settingsResolved,
-      venueAccess.scoped,
-      venueAccess.capabilities,
-    ],
+    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities],
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
@@ -442,20 +506,22 @@ export function VenueSuiteShell({
     </>
   );
 
-  // Guard: if the toggle flips OFF while on a booking module, snap to overview.
-  // #3389 — only once the settings have loaded, so a `?module=tables` deep
+  // Guard: if a feature flips OFF while its module is open, snap to overview.
+  // #3389 — only once the features have loaded, so a `?module=tables` deep
   // link is not bounced on the loading frame of a venue that takes bookings.
+  // #4490 — features, not the reservations toggle, decide (shouldLeaveHiddenModule).
   useEffect(() => {
+    if (venueAccess.scoped) return; // scoped staff fall to their first module below
     if (
-      shouldLeaveBookingModule({
+      shouldLeaveHiddenModule({
         activeModule,
-        reservationsEnabled,
-        settingsResolved,
+        visible: visibleModules,
+        featuresResolved,
       })
     ) {
       selectModule("overview");
     }
-  }, [activeModule, reservationsEnabled, settingsResolved, selectModule]);
+  }, [activeModule, featuresResolved, selectModule, venueAccess.scoped, visibleModules]);
 
   // #4420 — a `?module=reviews` link to a venue with no reviews panel (not
   // verified, or no place) lands on Overview instead of an empty module.
@@ -481,14 +547,28 @@ export function VenueSuiteShell({
     syncStore({ activeModule, visibleModules, selectModule, requestLeave });
   }, [syncStore, activeModule, visibleModules, selectModule, requestLeave]);
 
+  // #4490 — the Overview card turns on the Table reservations FEATURE (and
+  // Waitlist with it, as the old single switch did) through the feature RPC;
+  // the server mirrors the legacy reservations column.
+  const [turnOnError, setTurnOnError] = useState<string | null>(null);
   const handleTurnOnReservations = useCallback((): void => {
-    setEnabled.mutate(true, {
-      onSuccess: () => {
-        // Toggle-ON lands on Settings (the real 2.0 action; Tables is ComingSoon).
-        setActiveModule("settings");
+    setTurnOnError(null);
+    setFeature.mutate(
+      { key: "table_reservations", enabled: true, cascade: true },
+      {
+        onSuccess: (result) => {
+          if (!result.state.features.waitlist.enabled) {
+            setFeature.mutate({ key: "waitlist", enabled: true, cascade: true });
+          }
+          setActiveModule("settings");
+        },
+        onError: (error) => {
+          const e = error instanceof VenueFeatureError ? error : null;
+          setTurnOnError(venueWriteErrorCopy("feature", e?.code ?? "unknown", e?.detail ?? null));
+        },
       },
-    });
-  }, [setEnabled]);
+    );
+  }, [setFeature]);
 
   // Overview mounts the VenueIntelligenceModule, which OWNS its own ScrollView
   // (with its own `insets.bottom + 120` clearance) — so the shell must NOT wrap
@@ -530,7 +610,7 @@ export function VenueSuiteShell({
       // being pinned above it, and the invitation is one compact row.
       const header = (
         <>
-          {!reservationsEnabled ? (
+          {!tableReservationsOn ? (
             <GlassCard
               variant="base"
               padding={space[4]}
@@ -553,9 +633,18 @@ export function VenueSuiteShell({
                 onPress={handleTurnOnReservations}
                 variant="primary"
                 size="sm"
-                loading={setEnabled.isPending}
+                loading={setFeature.isPending}
                 testID="venue-overview-turn-on-reservations"
               />
+              {turnOnError !== null ? (
+                <Text
+                  style={styles.invitationError}
+                  accessibilityLiveRegion="polite"
+                  testID="venue-overview-turn-on-error"
+                >
+                  {turnOnError}
+                </Text>
+              ) : null}
             </GlassCard>
           ) : null}
           {hasReviews && renderReviewsSummary !== undefined
@@ -585,7 +674,22 @@ export function VenueSuiteShell({
           ref={settingsRef}
           brandId={brandId}
           venueId={venueId}
+          hoursLiveInAvailability={usesSpaces && visibleModules.includes("availability")}
         />
+      );
+    }
+    // #4490 — Spaces (P1-8).
+    if (activeModule === "spaces") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueSpacesModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
       );
     }
     // ORCH-1186-C — the always-visible command-band DISPLAY-ONLY menu builder
@@ -637,6 +741,36 @@ export function VenueSuiteShell({
       return <VenueTablesModule brandId={brandId} venueId={venueId} />;
     }
     if (activeModule === "availability") {
+      // #4490 — in the feature layout the module is "Availability & pricing":
+      // hours with several windows, special days, close a day, and the
+      // unchanged Table times (VenueAvailabilityModule) when table
+      // reservations are on. The classic layout keeps the old module as-is.
+      if (usesSpaces) {
+        return (
+          <React.Suspense
+            fallback={
+              <View style={styles.lazyModuleFallback}>
+                <ActivityIndicator />
+              </View>
+            }
+          >
+            <LazyVenueAvailabilityPricingModule
+              ref={availabilityRef}
+              brandId={brandId}
+              venueId={venueId}
+              showTableTimes={
+                tableReservationsOn &&
+                (!venueAccess.scoped ||
+                  venueAccess.capabilities.includes("restaurant.manage_reservations"))
+              }
+              canEditHours={
+                !venueAccess.scoped ||
+                scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities)
+              }
+            />
+          </React.Suspense>
+        );
+      }
       return (
         <VenueAvailabilityModule
           ref={availabilityRef}
@@ -671,7 +805,7 @@ export function VenueSuiteShell({
       <View style={styles.accessState} testID="venue-access-unavailable">
         <Text style={styles.accessTitle}>No venue pages assigned</Text>
         <Text style={styles.accessBody}>
-          Ask a brand owner or admin to assign the restaurant pages you need.
+          Ask a brand owner or admin to give you access to this venue.
         </Text>
         {venueAccessQuery.isError ? (
           <Button
@@ -703,6 +837,7 @@ export function VenueSuiteShell({
           workspaceSelfScrolls={workspaceSelfScrolls}
           scrollBottomPad={scrollBottomPad}
           railTestIdPrefix="venue-rail-"
+          railLabel="Venue sections"
           testID="venue-suite-shell-desktop"
         >
           {renderWorkspace()}
@@ -790,6 +925,10 @@ const styles = StyleSheet.create({
   invitationBody: {
     ...type.small,
     color: color.text2,
+  },
+  invitationError: {
+    ...type.caption,
+    color: color.errorText,
   },
 });
 

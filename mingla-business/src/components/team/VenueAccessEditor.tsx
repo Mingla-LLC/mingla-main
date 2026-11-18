@@ -45,9 +45,24 @@ const PROFILE_OPTIONS: readonly {
   label: string;
 }[] = [
   { id: "front_desk", label: "Front desk" },
-  { id: "restaurant_manager", label: "Restaurant manager" },
+  { id: "restaurant_manager", label: "Venue manager" },
   { id: "kitchen_bar", label: "Kitchen / bar" },
   { id: "custom", label: "Custom" },
+];
+
+/**
+ * #4490 — every venue type except Stay takes the venue capabilities (tables,
+ * orders, menu, QR, and the venue.* features). A Stay keeps its own set.
+ */
+const NON_STAY_CATEGORIES: readonly string[] = [
+  "restaurant",
+  "play",
+  "creative_and_arts",
+  "bar_lounge",
+  "club",
+  "cafe",
+  "event_space",
+  "coworking",
 ];
 
 const CAPABILITY_OPTIONS: readonly CapabilityOption[] = [
@@ -55,15 +70,19 @@ const CAPABILITY_OPTIONS: readonly CapabilityOption[] = [
   { capability: "stay.create_reservations", label: "Create Stay reservations", categories: ["stay"] },
   { capability: "stay.manage_reservations", label: "Update or cancel Stay reservations", categories: ["stay"] },
   { capability: "stay.view_availability", label: "View Stay availability", categories: ["stay"] },
-  { capability: "restaurant.view_orders", label: "View restaurant orders", categories: ["restaurant"] },
-  { capability: "restaurant.manage_orders", label: "Manage restaurant orders", categories: ["restaurant"] },
-  { capability: "restaurant.manage_menu", label: "Manage restaurant menu", categories: ["restaurant"] },
-  { capability: "restaurant.manage_qr", label: "Manage QR ordering spots", categories: ["restaurant"] },
-  { capability: "restaurant.manage_reservations", label: "Manage restaurant reservations", categories: ["restaurant"] },
+  { capability: "restaurant.view_orders", label: "View restaurant orders", categories: NON_STAY_CATEGORIES },
+  { capability: "restaurant.manage_orders", label: "Manage restaurant orders", categories: NON_STAY_CATEGORIES },
+  { capability: "restaurant.manage_menu", label: "Manage restaurant menu", categories: NON_STAY_CATEGORIES },
+  { capability: "restaurant.manage_qr", label: "Manage QR ordering spots", categories: NON_STAY_CATEGORIES },
+  { capability: "restaurant.manage_reservations", label: "Manage restaurant reservations", categories: NON_STAY_CATEGORIES },
+  // #4490 — shown only for features whose host surfaces have shipped (P1:
+  // spaces and hours). The other venue.* capabilities arrive with their phase.
+  { capability: "venue.manage_offers", label: "Manage spaces and opening hours", categories: NON_STAY_CATEGORIES },
 ];
 
 export function isVenueAccessAssignable(venue: VenueListing): boolean {
-  return venue.venueCategory === "stay" || venue.venueCategory === "restaurant";
+  // #4490 — every venue type can have scoped staff (was Stay and restaurant only).
+  return venue.venueCategory === "stay" || NON_STAY_CATEGORIES.includes(venue.venueCategory);
 }
 
 function categoryLabel(category: string): string {

@@ -12,12 +12,22 @@
  */
 
 import type { VenueModule } from "../../types/venueReservation";
+import {
+  BUILT_FEATURES,
+  type VenueFeatureKey,
+  type VenueFeatureSet,
+} from "../../types/venueFeatures";
+
+/** #4490 — the four rail groups of the feature-driven venue workspace. */
+export type VenueModuleGroup = "venue" | "offers" | "bookings" | "operations";
 
 export interface VenueModuleMeta {
   readonly id: VenueModule;
   readonly label: string;
   /** Master-rail band header (Design §2.1). Band A = Command, Band B = Booking. */
   readonly band: "command" | "booking";
+  /** #4490 — rail group in the feature-driven layout. */
+  readonly group: VenueModuleGroup;
   /** One-line job description (reused by the ComingSoon interstitial). */
   readonly summary: string;
 }
@@ -28,6 +38,7 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     id: "overview",
     label: "Overview",
     band: "command",
+    group: "venue",
     summary: "Your venue listing, AI scores, gallery, and guest feedback.",
   },
   // #4420 (round-3 item 19) — Mingla Local reviews, their own module. Not in
@@ -38,30 +49,35 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     id: "reviews",
     label: "Reviews",
     band: "command",
+    group: "venue",
     summary: "Read and reply to Mingla Local reviews of this place.",
   },
   tables: {
     id: "tables",
     label: "Tables",
     band: "booking",
+    group: "bookings",
     summary: "Set up your tables, zones, and party-size limits.",
   },
   availability: {
     id: "availability",
     label: "Availability",
     band: "booking",
+    group: "offers",
     summary: "Set reservation hours, turn times, and blackout dates.",
   },
   reservations: {
     id: "reservations",
     label: "Reservations",
     band: "booking",
+    group: "bookings",
     summary: "See and manage today's and upcoming bookings.",
   },
   waitlist: {
     id: "waitlist",
     label: "Waitlist",
     band: "booking",
+    group: "bookings",
     summary: "Quote waits and seat walk-ins from a live queue.",
   },
   // ORCH-1186-C — DISPLAY-ONLY menu builder. COMMAND band (always visible,
@@ -70,6 +86,7 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     id: "menu",
     label: "Menu",
     band: "command",
+    group: "operations",
     summary: "Build your menu — categories, items, and prices guests see online.",
   },
   // Issue #1735 — the combined Insights suite (site check + competitor watch;
@@ -81,6 +98,7 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     id: "insights",
     label: "Insights",
     band: "command",
+    group: "operations",
     summary: "Your site, your pricing, your competition.",
   },
   // Issue #1791 (#1767 Phase 3) — the live Orders queue. COMMAND band, present
@@ -94,13 +112,66 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     id: "orders",
     label: "Orders",
     band: "command",
+    group: "operations",
     summary: "Live tickets from every table, room, and counter.",
+  },
+  // #4490 — feature-driven modules. `spaces` ships in P1; the others are
+  // reserved and stay hidden until their phase ships (BUILT_FEATURES).
+  offers: {
+    id: "offers",
+    label: "Offers",
+    band: "command",
+    group: "offers",
+    summary: "Everything guests can buy at this venue.",
+  },
+  spaces: {
+    id: "spaces",
+    label: "Spaces",
+    band: "command",
+    group: "offers",
+    summary: "The rooms and areas of your venue, and what each one fits.",
+  },
+  today: {
+    id: "today",
+    label: "Today",
+    band: "booking",
+    group: "bookings",
+    summary: "Who is in, who is coming and what is waiting on you.",
+  },
+  calendar: {
+    id: "calendar",
+    label: "Calendar",
+    band: "booking",
+    group: "bookings",
+    summary: "Every space, every day.",
+  },
+  requests: {
+    id: "requests",
+    label: "Requests",
+    band: "booking",
+    group: "bookings",
+    summary: "Requests to answer and deposits to collect.",
+  },
+  members: {
+    id: "members",
+    label: "Members",
+    band: "booking",
+    group: "bookings",
+    summary: "Monthly members and their plans.",
+  },
+  checkin: {
+    id: "checkin",
+    label: "Check-in",
+    band: "command",
+    group: "operations",
+    summary: "Scan passes and sell at the gate.",
   },
   settings: {
     id: "settings",
     label: "Settings",
     band: "command",
-    summary: "Reservations toggle, fee, policies, and your venue profile.",
+    group: "operations",
+    summary: "Venue type and features, terms, details and team.",
   },
 };
 
@@ -218,4 +289,188 @@ export function shouldLeaveBookingModule(input: {
     input.settingsResolved &&
     !input.reservationsEnabled
   );
+}
+
+// ---------------------------------------------------------------------------
+// #4490 — feature-driven navigation.
+//
+// MINGLA-INVARIANT: I-4490-VENUE-FEATURES-GATE-SUITE
+// The venue workspace's modules are derived ONLY from `venue_features` (plus
+// whether the venue has spaces). `venue_category` never appears in this file:
+// a venue type is a label and a starting preset, it does not decide tabs.
+// Enforced by `__tests__/venueFeatures.derivation.issue4490.implementor.test.ts`
+// (every feature combination, category has no effect, the classic list is
+// reproduced exactly for every backfilled venue).
+//
+// Two layouts, one derivation:
+//  - CLASSIC: a venue that has not started using spaces (no space, Events here
+//    off). It shows exactly the pre-#4490 list, order, labels and rail groups,
+//    so no existing host sees a different workspace on deploy.
+//  - FEATURES: once the venue has a space (or Events here is on), the Offers
+//    group appears: Spaces and "Availability & pricing" (hours, special days,
+//    closing a day, and Table times when table reservations are on).
+// Modules whose phase has not shipped (Offers, Today, Calendar, Requests,
+// Members, Check-in) stay hidden through BUILT_FEATURES / BUILT_MODULES.
+// ---------------------------------------------------------------------------
+
+/** Modules whose host surfaces have shipped (P1). */
+export const BUILT_MODULES: ReadonlySet<VenueModule> = new Set<VenueModule>([
+  "overview",
+  "reviews",
+  "spaces",
+  "tables",
+  "availability",
+  "reservations",
+  "waitlist",
+  "menu",
+  "insights",
+  "orders",
+  "settings",
+]);
+
+export interface VenueNavInput {
+  features: VenueFeatureSet;
+  /** Active (not archived) spaces at this venue. */
+  activeSpaceCount: number;
+  /**
+   * The host asked for spaces this session (Settings › "Add spaces") before
+   * the first one exists. Lets them reach the Spaces module without a space.
+   */
+  spacesRequested?: boolean;
+  /** Any offer that books "Request first" (P3+). */
+  hasRequestOffers?: boolean;
+}
+
+const BOOKING_FEATURES: readonly VenueFeatureKey[] = [
+  "entry",
+  "group_packages",
+  "private_hire",
+  "by_the_hour",
+  "events_here",
+];
+
+function featureOn(features: VenueFeatureSet, key: VenueFeatureKey): boolean {
+  return BUILT_FEATURES.has(key) && features[key].enabled;
+}
+
+/** True when the venue uses the feature layout (see the header above). */
+export function venueUsesSpaces(input: VenueNavInput): boolean {
+  return (
+    input.activeSpaceCount > 0 ||
+    input.spacesRequested === true ||
+    featureOn(input.features, "events_here")
+  );
+}
+
+/**
+ * The visible module list for a venue, in display order.
+ * Classic layout = `deriveVenueModules(table_reservations)` exactly.
+ */
+export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
+  const { features } = input;
+  const tables = featureOn(features, "table_reservations");
+  const anyBooking = BOOKING_FEATURES.some((key) => featureOn(features, key));
+  const usesSpaces = venueUsesSpaces(input);
+
+  const candidates: Array<[VenueModule, boolean]> = usesSpaces
+    ? [
+        ["overview", true],
+        ["offers", BUILT_MODULES.has("offers")],
+        ["spaces", true],
+        ["availability", true],
+        ["today", anyBooking],
+        ["calendar", anyBooking],
+        [
+          "requests",
+          featureOn(features, "private_hire") || input.hasRequestOffers === true,
+        ],
+        // P1–P4 keep the Tables module where it is today (conflict 35).
+        ["tables", tables],
+        ["reservations", tables],
+        ["waitlist", featureOn(features, "waitlist")],
+        ["members", featureOn(features, "memberships")],
+        ["checkin", anyBooking],
+        ["menu", featureOn(features, "menu")],
+        ["insights", true],
+        ["orders", true],
+        ["settings", true],
+      ]
+    : [
+        ["overview", true],
+        ["tables", tables],
+        ["availability", tables],
+        ["reservations", tables],
+        ["waitlist", featureOn(features, "waitlist")],
+        ["menu", featureOn(features, "menu")],
+        ["insights", true],
+        ["orders", true],
+        ["settings", true],
+      ];
+  return candidates
+    .filter(([module, visible]) => visible && BUILT_MODULES.has(module))
+    .map(([module]) => module);
+}
+
+/** Label for a module given the list it sits in (the classic list keeps "Availability"). */
+export function venueModuleLabel(
+  module: VenueModule,
+  modules: readonly VenueModule[],
+): string {
+  if (module === "availability" && modules.includes("spaces")) {
+    return "Availability & pricing";
+  }
+  return VENUE_MODULES[module].label;
+}
+
+/** Rail group for a module given the list it sits in. */
+export function venueModuleGroupLabel(
+  module: VenueModule,
+  modules: readonly VenueModule[],
+): "Venue" | "Offers" | "Bookings" | "Operations" {
+  const meta = VENUE_MODULES[module];
+  if (module === "availability") {
+    return modules.includes("spaces") ? "Offers" : "Bookings";
+  }
+  switch (meta.group) {
+    case "venue":
+      return "Venue";
+    case "offers":
+      return "Offers";
+    case "bookings":
+      return "Bookings";
+    default:
+      return "Operations";
+  }
+}
+
+/**
+ * #4490 — replaces `shouldLeaveBookingModule` for the feature nav: leave a
+ * module that is no longer visible, but only once features have RESOLVED (the
+ * #3389 rule: never bounce on the loading frame or on a failed read).
+ */
+export function shouldLeaveHiddenModule(input: {
+  activeModule: VenueModule;
+  visible: readonly VenueModule[];
+  featuresResolved: boolean;
+}): boolean {
+  if (!input.featuresResolved) return false;
+  if (input.activeModule === "overview" || input.activeModule === "reviews") {
+    return false;
+  }
+  return !input.visible.includes(input.activeModule);
+}
+
+/**
+ * #4490 — `&item=<id>` deep-link reader (opens a space, offer or booking on
+ * arrival). Accepts a uuid only; anything else is ignored.
+ */
+export function parseVenueItemParam(
+  value: string | string[] | null | undefined,
+): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)
+    ? trimmed.toLowerCase()
+    : undefined;
 }

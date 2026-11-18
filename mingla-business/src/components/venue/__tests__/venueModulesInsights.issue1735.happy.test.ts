@@ -113,6 +113,8 @@ describe("issue #1735 — Insights module registration (T-G1/T-G2)", () => {
       id: "insights",
       label: "Insights",
       band: "command",
+      // [TEST-MOD-APPROVED #4490] — modules carry their rail group.
+      group: "operations",
       summary: "Your site, your pricing, your competition.",
     });
   });

@@ -60,6 +60,14 @@ interface VenueSuiteState {
   setSavedFlash: (venueId: string, message: string, at: number) => void;
   takeSavedFlash: (venueId: string, now: number) => string | null;
 
+  /**
+   * #4490 — the host asked to set up spaces (Settings › "Add spaces") before
+   * the venue has one. Keeps the Spaces module reachable for that venue until
+   * the suite unmounts; once a space exists the venue shows it on its own.
+   */
+  spacesRequestedVenueId: string | null;
+  requestSpaces: (venueId: string) => void;
+
   /** Shell lifecycle. */
   activate: (initialModule: VenueModule) => void;
   deactivate: () => void;
@@ -111,6 +119,9 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
     return pending;
   },
 
+  spacesRequestedVenueId: null,
+  requestSpaces: (venueId) => set({ spacesRequestedVenueId: venueId }),
+
   activate: (initialModule) =>
     set({ active: true, activeModule: initialModule }),
   deactivate: () =>
@@ -122,6 +133,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
       requestLeave: null,
       pendingLeaveFocus: null,
       dirtyModules: new Set(),
+      spacesRequestedVenueId: null,
     }),
   sync: ({ activeModule, visibleModules, selectModule, requestLeave }) =>
     set({

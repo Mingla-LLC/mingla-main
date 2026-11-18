@@ -3,29 +3,29 @@
  *
  * Kept out of VenueSuiteShell so node Jest suites can assert rail shape without
  * loading the shell's native dependency graph.
+ *
+ * #4490 — groups come from the module registry (`venueModuleGroupLabel`):
+ * Venue · Offers · Bookings · Operations. A classic-layout venue (no spaces)
+ * keeps exactly the pre-#4490 rail: Venue, Bookings (Tables, Availability,
+ * Reservations, Waitlist), Operations.
  */
 
 import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
 import type { VenueModule } from "../../types/venueReservation";
-import { VENUE_MODULES, isBookingModule } from "./venueModules";
+import { venueModuleGroupLabel, venueModuleLabel } from "./venueModules";
+
+const GROUP_ORDER = ["Venue", "Offers", "Bookings", "Operations"] as const;
 
 export function deriveVenueRailModules(
   modules: readonly VenueModule[],
   dirtyModules: ReadonlySet<VenueModule> = new Set(),
 ): SuiteDesktopModule[] {
-  const command = modules.filter((m) => VENUE_MODULES[m].band === "command");
-  const booking = modules.filter((m) => VENUE_MODULES[m].band === "booking");
-  // #4420 — Reviews sits with Overview at the top (the "Venue" group).
-  const isVenueTop = (m: VenueModule): boolean => m === "overview" || m === "reviews";
-  const orderedCommandTop = command.filter(isVenueTop);
-  const orderedCommandBottom = command.filter((m) => !isVenueTop(m));
-  return [...orderedCommandTop, ...booking, ...orderedCommandBottom].map(
-    (m) => ({
-      key: m,
-      label: VENUE_MODULES[m].label,
-      group:
-        isVenueTop(m) ? "Venue" : isBookingModule(m) ? "Bookings" : "Operations",
-      dirty: dirtyModules.has(m),
-    }),
-  );
+  const rows = modules.map((m) => ({
+    key: m,
+    label: venueModuleLabel(m, modules),
+    group: venueModuleGroupLabel(m, modules),
+    dirty: dirtyModules.has(m),
+  }));
+  // Stable within a group; groups in the fixed order.
+  return GROUP_ORDER.flatMap((group) => rows.filter((row) => row.group === group));
 }

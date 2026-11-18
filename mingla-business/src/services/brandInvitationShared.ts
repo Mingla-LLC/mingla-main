@@ -15,7 +15,13 @@ export type VenueCapability =
   | "restaurant.manage_orders"
   | "restaurant.manage_menu"
   | "restaurant.manage_qr"
-  | "restaurant.manage_reservations";
+  | "restaurant.manage_reservations"
+  // #4490 — venue capabilities (server: issue_4188_has_venue_capability).
+  | "venue.manage_offers"
+  | "venue.manage_bookings"
+  | "venue.view_bookings"
+  | "venue.check_in"
+  | "venue.manage_money";
 
 export interface VenueAccessGrant {
   venueId: string;

@@ -2,6 +2,13 @@
  * parser and UI bridge; stub only fetched settings and rendered child leaves. */
 import React from "react";
 
+// #4490 — the shell reads venue features. These harnesses drive the nav from the
+// mocked reservation settings, so the features read "fails" here and the shell
+// falls back to the server's backfill rule (features follow the old switch).
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({ data: undefined, isError: true, isLoading: false }),
+  useSetVenueFeature: () => ({ mutate: jest.fn(), isPending: false }),
+}));
 jest.mock("../../../hooks/useMyVenueAccess", () => ({
   useMyVenueAccess: () => ({
     data: { scoped: false, capabilities: [] },
@@ -54,7 +61,15 @@ async function mount(module: VenueModule, withReviews = true) {
 }
 beforeEach(() => { mockSettings = { data: undefined, isError: false }; useVenueSuiteStore.getState().deactivate(); });
 afterEach(async () => { await Renderer.act(async () => { mounted.splice(0).forEach(tree => tree.unmount()); }); });
-test.each(Object.keys(VENUE_MODULES) as VenueModule[])("%s accepted link renders its real shell branch with this venue", async module => {
+// [TEST-MOD-APPROVED #4490] — modules hidden for this venue (no spaces yet, or
+// a phase not shipped) are accepted links that land on Overview instead.
+const HIDDEN_FOR_CLASSIC_VENUE: VenueModule[] = ["offers", "spaces", "today", "calendar", "requests", "members", "checkin"];
+test.each(HIDDEN_FOR_CLASSIC_VENUE)("%s link to a venue that does not show it lands on Overview", async module => {
+  mockSettings = { data: { reservationsEnabled: true }, isError: false };
+  await mount(parseVenueModuleParam(module)!);
+  expect(useVenueSuiteStore.getState().activeModule).toBe("overview");
+});
+test.each((Object.keys(VENUE_MODULES) as VenueModule[]).filter(m => !HIDDEN_FOR_CLASSIC_VENUE.includes(m)))("%s accepted link renders its real shell branch with this venue", async module => {
   mockSettings = { data: { reservationsEnabled: true }, isError: false };
   const tree = await mount(parseVenueModuleParam(module)!);
   expect(useVenueSuiteStore.getState().activeModule).toBe(module);

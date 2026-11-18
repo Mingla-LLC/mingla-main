@@ -84,6 +84,12 @@ export interface SuiteDesktopShellProps {
   scrollBottomPad: number;
   /** testID prefix for rail rows, e.g. `"venue-rail-"` → `venue-rail-overview`. */
   railTestIdPrefix: string;
+  /**
+   * #4490 — screen-reader name of a grouped rail (the suite names itself:
+   * "Venue sections"). Was hard-coded "Restaurant Hub sections", which was
+   * wrong for a play venue.
+   */
+  railLabel?: string;
   testID?: string;
 }
 
@@ -128,6 +134,7 @@ export function SuiteDesktopShell({
   workspaceSelfScrolls,
   scrollBottomPad,
   railTestIdPrefix,
+  railLabel = "Sections",
   testID,
 }: SuiteDesktopShellProps): React.ReactElement {
   const grouped = modules.some((module) => module.group !== undefined);
@@ -140,7 +147,7 @@ export function SuiteDesktopShell({
             grouped ? styles.desktopRailGrouped : null,
           ]}
           accessibilityRole="tablist"
-          accessibilityLabel={grouped ? "Restaurant Hub sections" : undefined}
+          accessibilityLabel={grouped ? railLabel : undefined}
         >
           <SuiteDesktopRail
             modules={modules}

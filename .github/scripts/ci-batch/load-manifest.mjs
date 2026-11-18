@@ -358,7 +358,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4490 P1-3 implementor: listed migration 20280809024490 (events.venue_id/space_id/space_use + issue_4490_set_event_venue) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 event-venue pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
 // #4490 P1-4 implementor: listed migration 20280809034490 (experience creator fixes) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed.
 // #4490 P1-5 implementor: listed migration 20280809044490 (pg_public_venue_page, Host preview, admin read) before the #2099 pin owner in the #1857, #1931 and #2117 lanes and registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "bcafe4496f54d60f194e355f313483599b25ffe24fc5fa0a33b9a652a77124e8";
+// #4490 P1 venue grants implementor: listed migration 20280809064490 (issue_4188_set_member_venue_grants widened to venue.* capabilities and every non-stay venue type) and registered its pg17 suite (with sidecar); re-sealed.
+export const BOOTSTRAP_SHA256 = "a532ffb3f9e8fa08e2b8bb3f33b8ad8f0fd74da90a69084f55d90b1d678f1ceb";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
