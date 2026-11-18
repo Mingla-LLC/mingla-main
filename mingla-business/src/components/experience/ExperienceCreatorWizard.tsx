@@ -163,6 +163,12 @@ import {
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
+import {
+  useServerCoverAdoption,
+  type FetchServerCover,
+} from "../../hooks/useServerCoverAdoption";
+import type { ServerDraftCover } from "../../utils/draftCoverBase";
+import { asEventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { ThemeInput } from "@mingla/offering-rendering";
 // Deep import — avoid the package barrel (pulls expo-video via EventCoverMedia
 // and breaks Host web render suites that load this wizard).
@@ -339,6 +345,44 @@ const CREATION_STEPS = [
   { id: "review", label: "Review" },
 ];
 
+/**
+ * #4490 — the cover the server holds for an experience DRAFT right now. A
+ * cover video finishes on the server after its sheet closes; this read lets
+ * useServerCoverAdoption bring it back into the wizard (EventCreatorWizard
+ * does the same through fetchServerDraftCover, which reads event drafts only).
+ * Throws on a read error (the hook retries); null when no longer a draft.
+ */
+const fetchExperienceDraftCover: FetchServerCover = async (
+  draftId: string,
+): Promise<ServerDraftCover | null> => {
+  const { data, error } = await supabase
+    .from("events")
+    .select(
+      "cover_media_url,cover_media_poster_url,cover_media_type,cover_media_provider,cover_media_source_url,cover_media_credit,cover_media_credit_url,cover_media_alt",
+    )
+    .eq("id", draftId)
+    .eq("event_type", "experience")
+    .eq("status", "draft")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error !== null) throw error;
+  if (data === null) return null;
+  const text = (value: unknown): string | null =>
+    typeof value === "string" && value.length > 0 ? value : null;
+  const type = data.cover_media_type;
+  return {
+    coverMediaUrl: text(data.cover_media_url),
+    coverMediaPosterUrl: text(data.cover_media_poster_url),
+    coverMediaType:
+      type === "image" || type === "video" || type === "gif" ? type : null,
+    coverMediaProvider: asEventCoverMediaProvider(data.cover_media_provider),
+    coverMediaSourceUrl: text(data.cover_media_source_url),
+    coverMediaCredit: text(data.cover_media_credit),
+    coverMediaCreditUrl: text(data.cover_media_credit_url),
+    coverMediaAlt: text(data.cover_media_alt),
+  };
+};
+
 const RPC_ERROR_COPY: Record<string, string> = {
   not_authenticated: "Please sign in again.",
   brand_not_found: "We couldn't find your brand.",
@@ -358,6 +402,11 @@ const RPC_ERROR_COPY: Record<string, string> = {
   stop_address_unvalidated: "Pick each stop's address from the suggestions.",
   stop_too_many_images: "Each stop can have up to 5 photos.",
   experience_price_invalid: "Set a valid price, or mark the experience free.",
+  // #4490 — every price is named by the host.
+  experience_price_name_required: "Give each price a name.",
+  // #4490 — a cover video still finishing on the server.
+  cover_media_persist_mismatch:
+    "Your cover video is still processing. Try again in a minute.",
   event_date_required: "Pick at least one date.",
   slug_taken:
     "An experience with that name already exists. Try a small variation.",
@@ -541,7 +590,8 @@ export const ExperienceCreatorWizard: React.FC<
       }
       return [
         emptyPriceOption({
-          name: "Standard",
+          // #4490 — the host names the price; no forced Standard name.
+          name: "",
           priceMajor: initialWholePriceInput(
             initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor,
           ),
@@ -745,6 +795,26 @@ export const ExperienceCreatorWizard: React.FC<
     };
   }, [experienceId, themeOverrides, flushThemeWrite]);
   const [cover, setCover] = useState<CoverPatch>(initialCover ?? EMPTY_COVER);
+  // #4490 — a cover video finishes on the server after its sheet closes.
+  // Adopt it on every step change and app foreground (as the event wizard
+  // does), so a later save never sends an empty cover over the server's one.
+  // A live edit has no draft row to read, so adoption stays off there.
+  const handleAdoptServerCover = useCallback(
+    (server: ServerDraftCover): void => {
+      setCover((prev) => ({ ...prev, ...server }));
+    },
+    [],
+  );
+  useServerCoverAdoption({
+    draftId: experienceId ?? "d_pending_experience",
+    fetchServerCover:
+      experienceId !== null && !isLiveEdit ? fetchExperienceDraftCover : undefined,
+    localCoverUrl: cover.coverMediaUrl,
+    watching: false,
+    pulse: step,
+    onAdopt: handleAdoptServerCover,
+    onReadError: () => setToast("Couldn't refresh your cover. Retrying shortly."),
+  });
 
   // ORCH-1339 (D5) — the two guest-privacy display gates (wizard-owned state;
   // Pricing-step accordion is their single home for create AND edit).
@@ -1034,6 +1104,12 @@ export const ExperienceCreatorWizard: React.FC<
         is_free: isFree,
         capacity: unlimited ? null : parseInt(capacity, 10) || null,
         capacity_scope: capacityScope,
+        // #4490 — a NEW experience shares its spots across price options (no
+        // double booking). Edits never send the key, so an experience keeps
+        // the counting it was published with.
+        ...(existingExperienceId === undefined && !isLiveEdit
+          ? { spots_shared: true }
+          : {}),
         booking_spacing_minutes: bookingSpacingMinutes,
         min_notice_minutes: minNoticeMinutes,
         pass_tax: pricingSwitches.passTax,
@@ -1112,6 +1188,8 @@ export const ExperienceCreatorWizard: React.FC<
       stops,
       priceOptions,
       cover,
+      existingExperienceId,
+      isLiveEdit,
     ],
   );
 
