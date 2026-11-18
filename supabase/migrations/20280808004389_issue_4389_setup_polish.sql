@@ -1,8 +1,16 @@
--- Issue #4389 — Host polish pass P1/P8 (spec 2026-11-18, Seth's Q1/Q2 decisions).
+-- Issue #4389 — Host polish pass P1/P8 (spec 2026-11-18; Seth's decisions of
+-- 2026-11-18: Q1, and "a handover never reopens setup", which supersedes Q2).
 --
 -- "Setup done" (issue_4389_brand_setup_facts) changes in three ways:
---   P1  terms accepted by ANY active, accepted owner or admin count (was: the
---       current account owner only). A change of owner never undoes setup.
+--   P1  terms are done for the BRAND once any owner or admin of it accepted the
+--       current version (1.0). A brand-level record (public.brand_terms_acceptances,
+--       one row per brand and version) is written by a trigger whenever an
+--       active, accepted brand_owner / brand_admin row carries an acceptance,
+--       and is backfilled from every past acceptance (removed members
+--       included). So an owner handover never reopens setup, including the
+--       'leave' handover (#3660) and admin reassignment (#3622), which REMOVE
+--       the old owner. Terms also count while an active owner / admin holds the
+--       acceptance. A new terms version has no record yet, so it reopens.
 --   P8  a Paystack brand on the hold rail counts as able to take money (the
 --       hold-rail clause of pg_brand_can_collect); a new key bank_connected
 --       says whether a bank is actually attached.
@@ -10,10 +18,17 @@
 -- brand_readiness_internal: the brand_setup "Payment details" preview reads
 -- "Bank connected" only with a bank, "Ready to sell" on the hold rail.
 --
--- Per-person terms checks on actions (bank add, payments start, paid publish)
--- are unchanged on purpose. No backfill: both values are computed on read.
+-- Why a small table and not brands columns: it keeps one row per terms
+-- version (a new version is a new row, older acceptances stay as history),
+-- it is service-role only with RLS forced (the brands row is client-readable
+-- and widely typed), and the one writer is the trigger below, whatever path
+-- writes the member acceptance (today the brand-mingla-tos-accept edge
+-- function, which needs no change).
 --
--- Invariant (owned by tests): I-4389-SETUP-TERMS-ANY-ADMIN | issue #4389 | brand_setup terms are done when any active, accepted brand_owner or brand_admin accepted Mingla terms 1.0.
+-- Per-person terms checks on actions (bank add, payments start, paid publish)
+-- are unchanged on purpose: they still read the caller's own member row.
+--
+-- Invariant (owned by tests): I-4389-SETUP-TERMS-BRAND-LEVEL | issue #4389 | brand_setup terms are done when the brand has a brand_terms_acceptances row for version 1.0 (written by trigger from any active, accepted brand_owner / brand_admin acceptance, backfilled from all past ones) OR an active, accepted owner / admin holds 1.0; no handover or member removal reopens it; a new version does; roles below admin and pending invites never write it.
 -- Invariant (owned by tests): I-4389-SETUP-DETAILS-AGREES-WITH-SELL | issue #4389 | a Paystack hold-rail brand counts as able to take money in setup facts.
 -- Invariant (owned by tests): I-4389-FREE-ONLY-NEVER-WITH-COLLECT | issue #4389 | setup facts never report free_only_at while details (can take money) is true.
 --
@@ -23,6 +38,84 @@
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
+
+-- ── 0. Brand-level terms acceptance (P1) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.brand_terms_acceptances (
+  brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+  version text NOT NULL CHECK (length(btrim(version)) > 0),
+  first_accepted_at timestamptz NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (brand_id, version)
+);
+ALTER TABLE public.brand_terms_acceptances ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.brand_terms_acceptances FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.brand_terms_acceptances FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.brand_terms_acceptances TO service_role;
+COMMENT ON TABLE public.brand_terms_acceptances IS
+  'Issue #4389: the brand has accepted Mingla terms <version> (first time an owner or admin of it did). Written only by trigger issue_4389_record_brand_terms on brand_team_members; read by issue_4389_brand_setup_facts. Never deleted by a member removal or owner handover.';
+
+CREATE OR REPLACE FUNCTION public.issue_4389_record_brand_terms()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  -- The WHEN clause already limits this to active, accepted owner / admin
+  -- rows that carry an acceptance; re-check so the function is safe alone.
+  IF NEW.removed_at IS NULL
+     AND NEW.accepted_at IS NOT NULL
+     AND NEW.role IN ('brand_owner','brand_admin')
+     AND NEW.mingla_tos_accepted_at IS NOT NULL
+     AND NULLIF(btrim(COALESCE(NEW.mingla_tos_version_accepted, '')), '') IS NOT NULL THEN
+    INSERT INTO public.brand_terms_acceptances (brand_id, version, first_accepted_at)
+    VALUES (NEW.brand_id, NEW.mingla_tos_version_accepted, NEW.mingla_tos_accepted_at)
+    ON CONFLICT (brand_id, version) DO NOTHING;
+  END IF;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4389_record_brand_terms() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS issue_4389_record_brand_terms ON public.brand_team_members;
+CREATE TRIGGER issue_4389_record_brand_terms
+AFTER INSERT OR UPDATE OF mingla_tos_version_accepted, mingla_tos_accepted_at, accepted_at, role, removed_at
+ON public.brand_team_members
+FOR EACH ROW
+WHEN (NEW.removed_at IS NULL AND NEW.accepted_at IS NOT NULL
+  AND NEW.role IN ('brand_owner','brand_admin')
+  AND NEW.mingla_tos_accepted_at IS NOT NULL
+  AND NEW.mingla_tos_version_accepted IS NOT NULL)
+EXECUTE FUNCTION public.issue_4389_record_brand_terms();
+
+-- Backfill: every past acceptance by an owner or admin who had joined,
+-- removed members included (the earliest time per brand and version). A
+-- function (service_role only) so the pg17 suite runs the exact backfill;
+-- idempotent.
+CREATE OR REPLACE FUNCTION public.issue_4389_backfill_brand_terms()
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_n integer;
+BEGIN
+  INSERT INTO public.brand_terms_acceptances (brand_id, version, first_accepted_at)
+  SELECT m.brand_id, m.mingla_tos_version_accepted, min(m.mingla_tos_accepted_at)
+  FROM public.brand_team_members m
+  WHERE m.accepted_at IS NOT NULL
+    AND m.role IN ('brand_owner','brand_admin')
+    AND m.mingla_tos_accepted_at IS NOT NULL
+    AND NULLIF(btrim(COALESCE(m.mingla_tos_version_accepted, '')), '') IS NOT NULL
+  GROUP BY m.brand_id, m.mingla_tos_version_accepted
+  ON CONFLICT (brand_id, version) DO NOTHING;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN v_n;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4389_backfill_brand_terms() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4389_backfill_brand_terms() TO service_role;
+
+SELECT public.issue_4389_backfill_brand_terms();
 
 -- ── 1. Setup facts ─────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.issue_4389_brand_setup_facts(p_brand_id uuid)
@@ -51,10 +144,15 @@ BEGIN
   SELECT r.provider INTO v_provider FROM public.payout_country_rail(v_brand.payout_country) r;
   v_provider := COALESCE(v_provider, v_brand.payment_provider, 'stripe');
 
-  -- #4389 P1: terms accepted by ANY active, accepted owner or admin count.
-  -- A change of owner (#3622 keeps the old owner as brand_admin) never undoes
-  -- setup; a pending invite or a role below admin does not count.
+  -- #4389 P1: terms are done for the BRAND once an owner or admin of it
+  -- accepted the current version (brand_terms_acceptances, kept through any
+  -- handover or removal), or while an active, accepted owner / admin holds it.
+  -- A pending invite or a role below admin never counts; a new version
+  -- reopens it.
   v_terms := EXISTS (
+    SELECT 1 FROM public.brand_terms_acceptances a
+    WHERE a.brand_id = p_brand_id AND a.version = '1.0'
+  ) OR EXISTS (
     SELECT 1 FROM public.brand_team_members m
     WHERE m.brand_id = p_brand_id
       AND m.removed_at IS NULL
@@ -376,7 +474,7 @@ BEGIN
         || COALESCE(' by ' || to_char(v_review_deadline AT TIME ZONE 'UTC', 'FMDD Mon YYYY'), '') END;
     ELSIF v_cat.key = 'money.terms_member' THEN
       IF p_action = 'brand_setup' THEN
-        -- #4389 P1: accepted by any active owner or admin.
+        -- #4389 P1: the brand accepted (brand record or an active owner / admin).
         v_state := CASE WHEN (v_setup->>'terms')::boolean THEN 'verified' ELSE 'missing' END;
         v_preview := CASE WHEN v_state = 'verified' THEN 'Accepted' END;
       ELSE
@@ -524,6 +622,21 @@ BEGIN
   v_def := pg_get_functiondef('public.issue_4389_brand_setup_facts(uuid)'::regprocedure);
   IF position('m.user_id = v_brand.account_id' in v_def) > 0 THEN
     RAISE EXCEPTION 'issue_4389_setup_polish_verify: terms still owner-only';
+  END IF;
+  IF position('brand_terms_acceptances' in v_def) = 0 THEN
+    RAISE EXCEPTION 'issue_4389_setup_polish_verify: facts do not read the brand terms record';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'issue_4389_record_brand_terms'
+      AND tgrelid = 'public.brand_team_members'::regclass AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'issue_4389_setup_polish_verify: brand terms trigger missing';
+  END IF;
+  IF NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class
+      WHERE oid = 'public.brand_terms_acceptances'::regclass) THEN
+    RAISE EXCEPTION 'issue_4389_setup_polish_verify: brand_terms_acceptances must force RLS';
+  END IF;
+  IF has_table_privilege('authenticated', 'public.brand_terms_acceptances', 'SELECT')
+     OR has_table_privilege('anon', 'public.brand_terms_acceptances', 'SELECT') THEN
+    RAISE EXCEPTION 'issue_4389_setup_polish_verify: brand_terms_acceptances must be service_role only';
   END IF;
   IF position('bank_connected' in v_def) = 0
      OR position('payout_hold_cutover_at' in v_def) = 0 THEN

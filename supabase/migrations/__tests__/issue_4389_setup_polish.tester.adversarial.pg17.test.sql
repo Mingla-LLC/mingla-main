@@ -1,9 +1,12 @@
 -- Issue #4389 — tester adversarial suite for 20280808004389_issue_4389_setup_polish.sql,
 -- on the fully replayed PG17 schema. Different angles from the implementor suite:
 --   (A1) owner handover with the DEFAULT "leave" disposition (#3660) or an admin
---        reassignment (#3622): the old owner is REMOVED, not demoted. If they were
---        the only acceptor, terms reopen until the new owner accepts (Seth Q2).
---   (A2) "stay" handover, then the demoted ex-owner is removed -> terms reopen (Q2).
+--        reassignment (#3622): the old owner is REMOVED, not demoted. Even when
+--        they were the only acceptor, terms stay done (Seth 2026-11-18: a
+--        handover never reopens setup; supersedes Q2) via the brand-level record.
+--        [updated by the implementor, rework 2 — was: terms reopen]
+--   (A2) "stay" handover keeps it done; later removing the demoted ex-owner also
+--        keeps it done (brand-level record). [rework 2 — was: reopens]
 --   (A3) the brand owner's own acceptance (the trigger-written owner row) still
 --        counts under the new accepted_at/role clause (no regression).
 --   (A4) a Stripe brand carrying a hold-rail stamp never counts as able to take
@@ -13,10 +16,11 @@
 --        being the draft (one-draft rule follows).
 --   (A6) Paystack with a bank but an old ToS only -> details true, terms false,
 --        not complete, and the preview still says "Bank connected".
--- MINGLA-INVARIANT: I-4389-SETUP-TERMS-REOPEN-ONLY-WHEN-NO-ACCEPTOR | issue #4389 | brand_setup terms reopen exactly when no active, accepted owner or admin holds ToS 1.0 (handover "leave" / admin reassignment remove the old owner, so a sole-acceptor handover reopens it); a hold-rail stamp counts only for Paystack brands; a true draft remains the host's one draft.
+-- MINGLA-INVARIANT: I-4389-SETUP-TERMS-NEVER-REOPENED-BY-HANDOVER | issue #4389 | once an owner or admin of the brand accepted ToS 1.0, brand_setup terms stay done through any handover ('leave', 'stay', admin reassignment) or member removal; a hold-rail stamp counts only for Paystack brands; a true draft remains the host's one draft.
 --
--- FAILS-ON-REVERT: replay without 20280808004389 -> (A2-stay), (A5-complete) fail
--- (owner-only terms ignore the demoted acceptor and the admin).
+-- FAILS-ON-REVERT: replay without 20280808004389 -> (A1), (A2-stay), (A5-complete)
+-- fail (owner-only terms ignore the demoted acceptor and the admin; no brand
+-- record keeps a removed acceptor's acceptance).
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
 \set ON_ERROR_STOP on
@@ -97,10 +101,10 @@ begin
 
   -- (A1) default "leave" handover with the old owner as the only acceptor.
   perform pg_temp.handover(b, 'leave');
-  perform pg_temp.expect('(A1) leave handover, sole acceptor removed -> terms reopen',
-    not (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
+  perform pg_temp.expect('(A1) leave handover, sole acceptor removed -> terms stay done',
+    (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
   perform pg_temp.accept_terms(b, 'new');
-  perform pg_temp.expect('(A1) new owner accepts -> terms done',
+  perform pg_temp.expect('(A1) new owner accepts -> terms still done',
     (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
 
   -- (A2) "stay" handover keeps it done; removing the demoted acceptor reopens it.
@@ -111,8 +115,8 @@ begin
     (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
   update public.brand_team_members set removed_at = now()
   where brand_id = b and user_id = pg_temp.uid('own');
-  perform pg_temp.expect('(A2) demoted acceptor removed -> terms reopen',
-    not (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
+  perform pg_temp.expect('(A2) demoted acceptor removed -> terms stay done',
+    (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
 
   -- (A4) Stripe brand with a hold-rail stamp: not able to take money.
   b := pg_temp.mk(3);
