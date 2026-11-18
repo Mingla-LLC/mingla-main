@@ -60,6 +60,17 @@ export const PAID_FREE_CHOICE_PATCHES: LivePatch[] = [
       "    v_old_resolved := COALESCE(v_old_resolved, 0);\n    -- issue #3645 bundle 2C: a paid experience whose first option is free\n    -- (say, Kids 0 beside Adult) was sold at its whole price, not at 0. Only\n    -- that case changes: it needs a live option actually priced above 0, so\n    -- a re-priced ticket (or one re-priced to 0) still locks its real price.\n    IF v_old_resolved = 0 AND EXISTS (\n      SELECT 1 FROM public.ticket_types t\n       WHERE t.event_id = p_event_id AND t.deleted_at IS NULL AND t.price_cents > 0\n    ) THEN\n      SELECT COALESCE(e.whole_price_cents, 0) INTO v_old_resolved\n        FROM public.events e WHERE e.id = p_event_id;\n    END IF;\n\n    IF v_resolved_total IS DISTINCT FROM v_old_resolved THEN",
   },
   {
+    fn: "issue_3281_apply_experience_price_options",
+    signature:
+      "public.issue_3281_apply_experience_price_options(uuid,text,text,integer,integer,jsonb,boolean)",
+    name:
+      "a paid whole-price experience needs a price option priced above 0",
+    old:
+      "    RAISE EXCEPTION 'experience_price_invalid';\n  END IF;\n\n  FOR v_opt IN SELECT value FROM jsonb_array_elements(p_price_options)",
+    new:
+      "    RAISE EXCEPTION 'experience_price_invalid';\n  END IF;\n  -- issue #3645 bundle 2C: the mirror of the rule above. A paid whole-price\n  -- experience (positive total) whose options are all 0 has no price: it\n  -- would sell free without the host choosing free. Per-stop takes its\n  -- price from the stops, so it is not checked here.\n  IF p_pricing_mode = 'whole' AND p_legacy_total_cents > 0 AND NOT EXISTS (\n    SELECT 1 FROM jsonb_array_elements(p_price_options) o\n     WHERE COALESCE((o.value->>'price_cents')::integer, 0) > 0\n  ) THEN\n    RAISE EXCEPTION 'experience_price_invalid'\n      USING DETAIL = 'issue_3645_2c: paid with no priced option';\n  END IF;\n\n  FOR v_opt IN SELECT value FROM jsonb_array_elements(p_price_options)",
+  },
+  {
     fn: "issue_1973_current_experience_payload",
     signature: "public.issue_1973_current_experience_payload(uuid)",
     name: "the read-back says free from the one rule, not the first ticket",

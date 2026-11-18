@@ -299,7 +299,10 @@ const EXPERIENCE_DETAIL_SELECT =
  * server's issue_3645_experience_is_free: any live option priced above 0
  * means paid; else the host's stored choice (theme.experience_meta.is_free);
  * else the derived value for rows saved before the choice was stored (the
- * first option, then a whole price of 0).
+ * first option, then a whole price of 0). Where the server reads unknown
+ * (NULL: no ticket and no whole price) this answers false, as the writers
+ * treat a missing is_free (COALESCE(is_free, false)): the wizard then asks
+ * for a price or the free switch.
  */
 export function experienceIsFree(
   storedChoice: unknown,

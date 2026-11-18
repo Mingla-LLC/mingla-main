@@ -25,6 +25,8 @@ describe("issue #3645 2C — experienceIsFree", () => {
     ["legacy: no stored choice, free ticket", undefined, [free], 0, true],
     ["legacy: no stored choice, priced ticket", undefined, [paid], 500_000, false],
     ["legacy: no stored choice, no ticket, whole 0", undefined, [], 0, true],
+    // The server reads this as unknown (NULL); the writers treat it as paid.
+    ["legacy: no stored choice, no ticket, no whole price reads not free", undefined, [], null, false],
     // A stored choice that is not a boolean is ignored (both directions).
     ["a non-boolean \"false\" is ignored (free ticket reads free)", "false", [free], 0, true],
     ["a non-boolean \"true\" is ignored (no ticket, whole priced)", "true", [], 500_000, false],

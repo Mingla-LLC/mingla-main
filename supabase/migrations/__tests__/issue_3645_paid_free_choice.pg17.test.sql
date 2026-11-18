@@ -404,6 +404,32 @@ BEGIN
   RAISE NOTICE 'ISSUE-3645-2C RZ PASS: a ticket re-priced to 0 keeps its sold-price lock at 0';
 END $rz$;
 
+-- ─── PO  a paid whole-price experience needs a priced option ───────────────
+DO $po$
+DECLARE
+  v_brand uuid := '3645c2c0-0000-4000-8000-0000000000f5';
+  v_event uuid;
+  v_res text;
+  v_zero jsonb := pg_temp.payload(false, 'whole', 500000, NULL, NULL)
+    || jsonb_build_object('price_options', jsonb_build_array(
+         jsonb_build_object('name', 'Kids', 'price_cents', 0)));
+BEGIN
+  PERFORM pg_temp.brand(v_brand);
+  v_event := pg_temp.draft(v_brand, pg_temp.payload(false, 'whole', 500000, NULL, NULL));
+  -- Every option at 0 behind a positive total: no price, never sold free.
+  v_res := pg_temp.try_publish(v_event, v_zero);
+  IF v_res IS NULL OR v_res NOT LIKE '%experience_price_invalid%' THEN
+    RAISE EXCEPTION 'PO FAIL: paid with only zero options gave %', coalesce(v_res, 'published');
+  END IF;
+  IF pg_temp.status(v_event) <> 'draft' THEN RAISE EXCEPTION 'PO FAIL: it left draft'; END IF;
+  -- Marked free, the same zero options publish free.
+  v_res := pg_temp.try_publish(v_event, pg_temp.payload(true, 'whole', 0, NULL, NULL)
+    || jsonb_build_object('price_options', jsonb_build_array(
+         jsonb_build_object('name', 'Kids', 'price_cents', 0))));
+  IF v_res IS NOT NULL THEN RAISE EXCEPTION 'PO FAIL: free with zero options was refused: %', v_res; END IF;
+  RAISE NOTICE 'ISSUE-3645-2C PO PASS: a paid whole-price experience with only zero options is refused; free publishes';
+END $po$;
+
 -- ─── W0 / PX  no ticket at whole 0; the publish writer changes the choice ──
 DO $px$
 DECLARE
@@ -457,6 +483,12 @@ BEGIN
   IF (length(v_src) - length(replace(v_src, 'IF v_old_resolved = 0 AND EXISTS (', '')))
      / length('IF v_old_resolved = 0 AND EXISTS (') <> 1 THEN
     RAISE EXCEPTION 'K1 FAIL: the sold-price lock patch is not live exactly once';
+  END IF;
+  SELECT prosrc INTO v_src FROM pg_proc
+   WHERE oid = 'public.issue_3281_apply_experience_price_options(uuid,text,text,integer,integer,jsonb,boolean)'::regprocedure;
+  IF (length(v_src) - length(replace(v_src, 'issue_3645_2c: paid with no priced option', '')))
+     / length('issue_3645_2c: paid with no priced option') <> 1 THEN
+    RAISE EXCEPTION 'K1 FAIL: the priced-option guard is not live exactly once';
   END IF;
   FOR v_src IN SELECT prosrc FROM pg_proc WHERE oid IN (
     'public.biz_publish_experience(uuid,jsonb,boolean)'::regprocedure,

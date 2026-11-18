@@ -183,6 +183,31 @@ SELECT pg_temp.issue_3645_2c_patch(
   1
 );
 
+-- issue_3281_apply_experience_price_options: a paid whole-price experience needs a price option priced above 0.
+SELECT pg_temp.issue_3645_2c_patch(
+  'public.issue_3281_apply_experience_price_options(uuid,text,text,integer,integer,jsonb,boolean)',
+  $old$    RAISE EXCEPTION 'experience_price_invalid';
+  END IF;
+
+  FOR v_opt IN SELECT value FROM jsonb_array_elements(p_price_options)$old$,
+  $new$    RAISE EXCEPTION 'experience_price_invalid';
+  END IF;
+  -- issue #3645 bundle 2C: the mirror of the rule above. A paid whole-price
+  -- experience (positive total) whose options are all 0 has no price: it
+  -- would sell free without the host choosing free. Per-stop takes its
+  -- price from the stops, so it is not checked here.
+  IF p_pricing_mode = 'whole' AND p_legacy_total_cents > 0 AND NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_price_options) o
+     WHERE COALESCE((o.value->>'price_cents')::integer, 0) > 0
+  ) THEN
+    RAISE EXCEPTION 'experience_price_invalid'
+      USING DETAIL = 'issue_3645_2c: paid with no priced option';
+  END IF;
+
+  FOR v_opt IN SELECT value FROM jsonb_array_elements(p_price_options)$new$,
+  1
+);
+
 -- issue_1973_current_experience_payload: the read-back says free from the one rule, not the first ticket.
 SELECT pg_temp.issue_3645_2c_patch(
   'public.issue_1973_current_experience_payload(uuid)',

@@ -109,6 +109,8 @@ const CASES: Array<[string, Json, Json[], number | null, boolean]> = [
     false,
   ],
   ["legacy: no stored choice, no ticket, whole 0", {}, [], 0, true],
+  // The server reads this as unknown (NULL); the writers treat it as paid.
+  ["legacy: no stored choice, no ticket, no whole price reads not free", {}, [], null, false],
   ["a non-boolean \"false\" is ignored", { experience_meta: { is_free: "false" } }, [freeTicket], 0, true],
   ["a non-boolean \"true\" is ignored", { experience_meta: { is_free: "true" } }, [], 500_000, false],
 ];

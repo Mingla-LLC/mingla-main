@@ -141,6 +141,7 @@ import {
   type ExperienceStopDraft,
   stopPriceEntryIsValid,
   perStopTotalMinor,
+  priceMajorToCents,
 } from "./experienceWizardTypes";
 import {
   EXPERIENCE_INTENTS,
@@ -561,11 +562,12 @@ export const ExperienceCreatorWizard: React.FC<
 
   // Keep the lead option's amount in sync with the whole-price / free toggle.
   // Do NOT reset priceBasis — the Pricing step owns the unit selector.
-  // #3645 bundle 2C — not on mount: the seed already pairs them, except a
-  // saved paid experience whose first option is free (Kids 0 beside Adult,
-  // made through Ari), which must keep its saved option prices until the
-  // host changes the price or the free switch.
-  const leadSyncMounted = useRef(false);
+  // #3645 bundle 2C — not on mount for a whole-price seed: it already pairs
+  // them, except a saved paid experience whose first option is free (Kids 0
+  // beside Adult, made through Ari), which must keep its saved option prices
+  // until the host changes the price or the free switch. A per-stop seed
+  // still syncs on mount (its whole price is 0 and must match the lead).
+  const leadSyncMounted = useRef(initialDraft?.pricingMode !== "whole");
   useEffect(() => {
     if (!leadSyncMounted.current) {
       leadSyncMounted.current = true;
@@ -937,6 +939,14 @@ export const ExperienceCreatorWizard: React.FC<
     }
     if (isFree) return true;
     // #3645 — same rule as the server: a price that rounds to 0 minor units is no price.
+    // #3645 bundle 2C — and, as the server checks, some option is priced:
+    // a paid whole-price experience whose options are all 0 would sell free.
+    if (
+      pricingMode === "whole" &&
+      !priceOptions.some((o) => priceMajorToCents(o.priceMajor) > 0)
+    ) {
+      return false;
+    }
     if (pricingMode === "whole") return paidPriceHasMinorUnits(resolvedTotalMajor);
     // #3645 — per-stop: an EMPTY price means that one stop costs nothing (same
     // as 0), so only something typed that is not a valid amount is invalid.
