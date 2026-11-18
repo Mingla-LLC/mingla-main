@@ -250,10 +250,17 @@ CREATE TABLE IF NOT EXISTS public.purchase_shared_holders (
   reshared_at timestamptz NULL,
   revoked_at timestamptz NULL,
   revoked_reason text NULL CHECK (revoked_reason IN ('contact_lost')),
+  -- Where the purchase belongs, captured when the share starts, so the chat
+  -- can be re-decided even after the purchase row itself is gone.
+  brand_id uuid NULL,
+  event_id uuid NULL,
   PRIMARY KEY (kind, source_id, user_id),
   CONSTRAINT purchase_shared_holders_revoked_pair
     CHECK ((revoked_at IS NULL) = (revoked_reason IS NULL))
 );
+CREATE INDEX IF NOT EXISTS purchase_shared_holders_event_live
+  ON public.purchase_shared_holders (event_id)
+  WHERE revoked_at IS NULL AND event_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS purchase_shared_holders_user_live
   ON public.purchase_shared_holders (user_id, kind, source_id)
   WHERE revoked_at IS NULL;
@@ -359,6 +366,69 @@ BEGIN
 END;
 $function$;
 
+-- The brand a shared purchase belongs to.
+CREATE OR REPLACE FUNCTION public.issue_4473_purchase_brand(
+  p_kind text, p_source_id uuid
+)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_brand uuid;
+BEGIN
+  IF p_kind = 'order' THEN
+    SELECT e.brand_id INTO v_brand
+      FROM public.orders o JOIN public.events e ON e.id = o.event_id
+     WHERE o.id = p_source_id;
+  ELSIF p_kind = 'rsvp' THEN
+    SELECT e.brand_id INTO v_brand
+      FROM public.event_rsvps r JOIN public.events e ON e.id = r.event_id
+     WHERE r.id = p_source_id;
+  ELSIF p_kind = 'rsvp_guest' THEN
+    SELECT e.brand_id INTO v_brand
+      FROM public.event_rsvp_guests g
+      JOIN public.event_rsvps r ON r.id = g.rsvp_id
+      JOIN public.events e ON e.id = r.event_id
+     WHERE g.id = p_source_id;
+  ELSIF p_kind = 'reservation' THEN
+    SELECT r.brand_id INTO v_brand FROM public.reservations r WHERE r.id = p_source_id;
+  ELSIF p_kind = 'stay_group' THEN
+    SELECT g.brand_id INTO v_brand
+      FROM public.stay_reservation_groups g WHERE g.id = p_source_id;
+  ELSIF p_kind = 'venue_order' THEN
+    SELECT vo.brand_id INTO v_brand FROM public.venue_orders vo WHERE vo.id = p_source_id;
+  END IF;
+  RETURN v_brand;
+END;
+$function$;
+
+-- The event a shared purchase belongs to (orders, RSVPs and plus-ones only).
+CREATE OR REPLACE FUNCTION public.issue_4473_purchase_event(
+  p_kind text, p_source_id uuid
+)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_event uuid;
+BEGIN
+  IF p_kind = 'order' THEN
+    SELECT o.event_id INTO v_event FROM public.orders o WHERE o.id = p_source_id;
+  ELSIF p_kind = 'rsvp' THEN
+    SELECT r.event_id INTO v_event FROM public.event_rsvps r WHERE r.id = p_source_id;
+  ELSIF p_kind = 'rsvp_guest' THEN
+    SELECT r.event_id INTO v_event
+      FROM public.event_rsvp_guests g JOIN public.event_rsvps r ON r.id = g.rsvp_id
+     WHERE g.id = p_source_id;
+  END IF;
+  RETURN v_event;
+END;
+$function$;
+
 -- A row can only become live for an account that proves the contact.
 CREATE OR REPLACE FUNCTION public.tg_purchase_shared_holders_4473_guard()
 RETURNS trigger
@@ -379,6 +449,12 @@ BEGIN
      AND NOT public.issue_4473_holder_proves(NEW.kind, NEW.source_id, NEW.user_id)
   THEN
     RAISE EXCEPTION 'shared_holder_must_own_contact' USING ERRCODE = '42501';
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    NEW.brand_id := coalesce(NEW.brand_id,
+      public.issue_4473_purchase_brand(NEW.kind, NEW.source_id));
+    NEW.event_id := coalesce(NEW.event_id,
+      public.issue_4473_purchase_event(NEW.kind, NEW.source_id));
   END IF;
   RETURN NEW;
 END;
@@ -1460,6 +1536,8 @@ GRANT EXECUTE ON FUNCTION public.issue_4473_claim_link_challenge_for_user(uuid, 
 
 -- ── 9. Grants ──────────────────────────────────────────────────────────────
 REVOKE ALL ON FUNCTION public.issue_4473_purchase_contact(text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_4473_purchase_brand(text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_4473_purchase_event(text, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_4473_holder_proves(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_4473_purchase_shared_with(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_4473_revoke_unproved_shares(uuid[]) FROM PUBLIC, anon, authenticated;
@@ -1481,6 +1559,8 @@ REVOKE ALL ON FUNCTION public.consumer_can_read_event_for_caller(uuid) FROM PUBL
 REVOKE ALL ON FUNCTION public.issue_4420_caller_reads_exact_stops(uuid) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.issue_4473_purchase_contact(text, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_4473_purchase_brand(text, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_4473_purchase_event(text, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_4473_holder_proves(text, uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_4473_purchase_shared_with(text, uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_4473_revoke_unproved_shares(uuid[]) TO service_role;
