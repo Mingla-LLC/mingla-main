@@ -168,9 +168,10 @@ check(
 
 check(
   "T-A08 Composer placeholder swaps to caption mode when attachment is set",
-  // #4459: no attachment in a Guest chat; the placeholder names the brand.
+  // #4459: no attachment in a Guest chat; the placeholder names the brand when
+  // one is known, else falls back to "Write a reply".
   groupChatPanel !== null &&
-    /placeholder=\{chat\.conversation \? `Message as \$\{chat\.conversation\.name\}` : "Write a reply"\}/.test(groupChatPanel),
+    /placeholder=\{postingAs \? `Message as \$\{postingAs\}` : "Write a reply"\}/.test(groupChatPanel),
   "Caption-with-image UX requires placeholder swap so the planner knows the field is optional.",
 );
 
