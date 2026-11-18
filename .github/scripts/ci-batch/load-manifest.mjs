@@ -354,7 +354,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (it re-emits brand_readiness_internal, which needs brand_readiness_catalog from the skipped 20280307003355); re-sealed.
 // #4389 merge of main after #4453: kept main's eleven #4453 rows and skip lines, listed 20280808004389 after them and kept its #1931 skip line; re-sealed.
 // #4490 P1-1 implementor: listed migrations 20280809004490 (venue spaces + features) and 20280809054490 (#2099 pin owner) after 20280808004389 in the #1857, #1931 and #2117 lanes, registered the P1 features pg17 suite (with sidecar) in the #1931 and #2117 inventories, skipped the pin owner on the filtered #1931 template replay, and added both migrations to the #2099 provider path scope; re-sealed.
-export const BOOTSTRAP_SHA256 = "fadd900106310a7d65e3a38d61663a04a636ce84d6cf6c6f04f517f5f2e59adb";
+// #4490 P1-2 implementor: listed migration 20280809014490 (hours: windows, special days) between 20280809004490 and the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 hours pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
+export const BOOTSTRAP_SHA256 = "a63b10ad1968a246ee2a37b42066d6ae78840250e019872bd56b6495e35c156b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

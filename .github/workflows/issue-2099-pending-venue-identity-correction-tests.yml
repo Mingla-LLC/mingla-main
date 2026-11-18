@@ -15,9 +15,10 @@ on:
       - "supabase/migrations/20280403044261_issue_4261_chat_plans.sql"
       - "supabase/migrations/20280403054261_issue_4261_plan_places_and_link_previews.sql"
       - "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql"
-      # issue #4490 — the current pin owner (D4 replays it) and the migration
-      # whose venue feature lanes (spaces, combinations, features) it reviews.
+      # issue #4490 — the current pin owner (D4 replays it) and the migrations
+      # whose venue lanes (spaces, combinations, features, special hours) it reviews.
       - "supabase/migrations/20280809004490_issue_4490_p1_spaces_features.sql"
+      - "supabase/migrations/20280809014490_issue_4490_p1_hours.sql"
       - "supabase/migrations/20280809054490_issue_4490_p1_pending_venue_repin.sql"
       # issue #2648 — the four files below are READ by
       # issue_2855_pending_venue_schema_pin.implementor.test.ts, which this

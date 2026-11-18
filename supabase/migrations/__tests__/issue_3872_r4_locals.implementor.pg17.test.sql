@@ -32,7 +32,7 @@ BEGIN
     '00000000-0000-0000-0000-000000000002'::uuid
   ) ->> 'schema_fingerprint';
   IF NOT COALESCE(v_live IN (
-    'ab90b7977abd8b3f1132ebcf458ae9274e73d67905ca1e968f2203bcf4aa4f57'
+    'bc2859bb4f2b9da2fa58edff2ba9990315dcc9853d6b6d5c21f9cab005b037e7'
   ),false) THEN RAISE EXCEPTION 'Local pending-venue dependency seal mismatch: %',v_live; END IF;
   SELECT pg_get_functiondef('public.preview_pending_venue_identity_correction(uuid)'::regprocedure) INTO v_def;
   IF position(left(v_live,32) in v_def)=0 OR position('91042e6f4a170c709d016d9a598d0fae' in v_def)>0 OR position('0b2f6691528759d391240f966a45b350' in v_def)>0 THEN RAISE EXCEPTION 'Local preview pin does not match live reviewed seal'; END IF;
