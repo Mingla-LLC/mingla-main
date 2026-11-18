@@ -614,7 +614,9 @@ export function phase3dContractDigest(manifest) {
 // #4490 P1-4 implementor: listed migration 20280809034490 (experience creator fixes) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P1-5 implementor: listed migration 20280809044490 (pg_public_venue_page, Host preview, admin read) before the #2099 pin owner in the #1857, #1931 and #2117 lanes and registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P1 venue grants implementor: listed migration 20280809064490 (issue_4188_set_member_venue_grants widened to venue.* capabilities and every non-stay venue type) and registered its pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b8f1d1da45123d0a5087e5a6f9a192a3d294ee4939a7767c8a7fca042a4cd62b";
+// #4490 P2-1 implementor: listed migration 20280809074490 (venue offer engine: offer kinds on stay_offerings, pools, price options, booking settings, Stays isolation guards) and registered its pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
+// #4490 P2-2/P2-3 implementor: listed migrations 20280809084490 (venue offer checkout and cancel), 20280809094490 (check-in) and the #2099 pin owner 20280809104490 (skipped by exact filename on the filtered #1931 replay, like the P1 pin owner), registered their pg17 suites (with sidecars) and added them to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "294ad178c693dff9a908eae25c488ff2038e4e340ff90e1e1e07060481f56f3d";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

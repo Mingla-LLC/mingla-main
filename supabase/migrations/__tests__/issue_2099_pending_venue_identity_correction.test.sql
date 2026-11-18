@@ -83,7 +83,8 @@ BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
   IF p->>'ok'<>'true' OR NOT COALESCE(
     p->>'schema_fingerprint' IN (
-      '605e626794ad2ae7b5635671921513600ee5edc8efd1cd1376482a4ed728c0d2'
+      -- [TEST-MOD-APPROVED #4490] P2 repin (20280809104490): the venue offer lanes advance the reviewed pin.
+      'e52c7f88bca9e64e6b70b426f4bd293302f34f7b7b55d1acf9bf996a1dcacb37'
     ),
     false
   ) THEN
