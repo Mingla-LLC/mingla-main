@@ -700,3 +700,58 @@ Deno.test("agent-confirm-action canonicalizes pending proposals only, never an e
     "an executing retry replays its stored args verbatim",
   );
 });
+
+Deno.test("the tool window never grows past its limit when get_experience joins", () => {
+  for (const limit of [8, 12, 40]) {
+    for (
+      const query of [
+        "Edit my sunset experience",
+        "change the price to $40",
+        "Move the second stop",
+      ]
+    ) {
+      for (
+        const keys of [["core", "listings"], [
+          "core",
+          "listings",
+          "brand",
+          "money",
+        ]]
+      ) {
+        const picked = selectAriTools(AGENT_TOOLS, keys as Json, limit, query);
+        assert(picked.length <= limit, `${limit} ${query}: ${picked.length}`);
+      }
+    }
+  }
+});
+
+Deno.test("get_experience reads events twice: membership, then the revision", async () => {
+  const client = fakeClient(
+    accessTables({
+      id: EVENT,
+      brand_id: BRAND,
+      status: "draft",
+      updated_at: REVISION,
+      event_type: "experience",
+    }),
+    {},
+  );
+  await rawTool("get_experience").executor(
+    { event_id: EVENT },
+    client as Json,
+    USER,
+    {} as Json,
+  );
+  assertEquals(client.reads.filter((t) => t === "events").length, 2);
+  const bad = await assertRejects(
+    () =>
+      rawTool("get_experience").executor(
+        { event_id: "nope" },
+        client as Json,
+        USER,
+        {} as Json,
+      ),
+    ToolError,
+  );
+  assertEquals(bad.code, "INVALID_ARGS");
+});

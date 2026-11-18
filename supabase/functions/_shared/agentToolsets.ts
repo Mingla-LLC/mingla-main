@@ -360,7 +360,9 @@ export function selectAriTools(
       tool.name === "update_experience" ||
       tool.name === "manage_experience_stops"
     );
-    window.splice(editAt, 0, experienceRead);
+    // Never past the limit: if nothing could make room, the read stays out
+    // (request_tools still reaches it).
+    if (window.length < limit) window.splice(editAt, 0, experienceRead);
   }
   return window;
 }

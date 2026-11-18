@@ -609,8 +609,13 @@ const getExperience = writeTool(
   { event_id: UUID },
   ["event_id"],
   async (args, client, userId) => {
+    if (!isUuid(args.event_id)) {
+      throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+    }
+    // The caller's brand membership (one events read); the revision read
+    // below is the only other one.
     await assertAgentReadEvent(client, userId, args.event_id);
-    const { eventId } = await requireEvent(args, client, userId);
+    const eventId = args.event_id;
     // The revision is read BEFORE the graph: if an edit lands in between, the
     // older revision makes Ari's next write fail stale instead of overwriting.
     const { data: event, error } = await client.from("events")
