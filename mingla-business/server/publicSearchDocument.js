@@ -467,6 +467,7 @@ const publicDocumentCspSources = () => [
   ["connect-src", "https://analytics.tiktok.com", "TikTok pixel events"],
   ["connect-src", "https://analytics-ipv6.tiktokw.us", "TikTok pixel events (IPv6 endpoint)"],
   ["connect-src", "https://pixel-config.reddit.com", "Reddit pixel configuration"],
+  ["connect-src", "https://alb.reddit.com", "Reddit pixel events (#4238: PageVisit/ViewContent were blocked)"],
   ["connect-src", "https://tr.snapchat.com", "Snap pixel events"],
   ["connect-src", "https://tr6.snapchat.com", "Snap pixel events"],
   ...(sentryIngestOrigin() ? [["connect-src", sentryIngestOrigin(), "Sentry crash reports"]] : []),

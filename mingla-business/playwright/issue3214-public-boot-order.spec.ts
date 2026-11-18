@@ -487,6 +487,8 @@ const OBSERVED_SOURCES: Array<[directive: 'script-src' | 'connect-src' | 'frame-
   ['connect-src', 'https://analytics.tiktok.com'],
   ['connect-src', 'https://analytics-ipv6.tiktokw.us'],
   ['connect-src', 'https://pixel-config.reddit.com'],
+  // #4238: Reddit's pixel.js posts PageVisit/ViewContent to alb.reddit.com; it was refused in production.
+  ['connect-src', 'https://alb.reddit.com'],
   ['connect-src', 'https://tr.snapchat.com'],
   ['connect-src', 'https://tr6.snapchat.com'],
   ['connect-src', new URL(SENTRY_DSN_FOR_TEST).origin],
