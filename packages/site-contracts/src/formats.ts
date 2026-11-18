@@ -118,7 +118,8 @@ export const FORMAT_PRIMARY_ACTION: Readonly<Record<FormatKey, FormatAction>> = 
   art: { label: "Get tickets", short: "Tickets", route: "event" },
   trips: { label: "Book this trip", short: "Book a trip", route: "trip" },
   events: { label: "Buy tickets", short: "Tickets", route: "event" },
-  experiences: { label: "Book a session", short: "Book", route: "experience" },
+  // #4453 — neutral for any experience brand (an arcade as much as a sound bath).
+  experiences: { label: "Book now", short: "Book", route: "experience" },
 };
 
 /* ───────────────────────── sections ───────────────────────── */
@@ -188,7 +189,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
   play: [
     s("hero", undefined, ["booking_bar", "show_rating"]),
     s("offering_grid", { kind: "experience", mode: "upcoming" }, undefined, "lanes, rooms, parties"),
-    s("availability", { source: "experience" }, undefined, "session times"),
+    s("availability", { source: "experience" }, undefined, "times you can book"),
     s("marquee"),
     s("feature_cards", undefined, undefined, "value points"),
     s("process_steps"),
@@ -243,7 +244,7 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
   experiences: [
     s("hero", undefined, ["booking_bar", "fact_badge", "show_rating"]),
     s("offering_grid", { kind: "experience", mode: "upcoming" }),
-    s("availability", { source: "experience" }, undefined, "session times"),
+    s("availability", { source: "experience" }, undefined, "times you can book"),
     s("marquee"),
     s("feature_cards", undefined, undefined, "value points"),
     s("process_steps"),
@@ -345,7 +346,8 @@ export const FORMAT_PAGE_SETS: Readonly<Record<FormatKey, readonly FormatPage[]>
     page("about", "About", [s("rich_text", { page: "about" }), s("feature_cards"), s("newsletter_signup")]),
   ],
   experiences: [
-    page("sessions", "Sessions", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("process_steps")], { planned: "experiences", listing: true, collection: "experiences" }),
+    // #4453 — the slugs `sessions` and `book-a-session` stay (existing sites route on them); the words are neutral.
+    page("sessions", "Experiences", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("process_steps")], { planned: "experiences", listing: true, collection: "experiences" }),
     page("book-a-session", "Book", [s("availability", { source: "experience" }), s("faq")]),
     page("visit", "Visit", [s("destination_grid"), s("hours_location"), s("facts_table")]),
     page("about", "About", [s("rich_text", { page: "about" }), s("gallery"), s("testimonials", { from_collection: true })]),
@@ -451,7 +453,7 @@ const FORMAT_NOUN: Readonly<Record<FormatKey, string>> = {
   art: "a gallery or studio",
   trips: "group trips",
   events: "events and nights out",
-  experiences: "sessions and experiences",
+  experiences: "experiences and activities",
 };
 
 /** The fixed words shown when an owner picks an "avoid" style (D6). Never blocks. */

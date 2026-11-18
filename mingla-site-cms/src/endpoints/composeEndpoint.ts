@@ -13,7 +13,7 @@ import { materializeSetupContent, parseStagedRows, type StagedSetupRow } from ".
 import { composeFormatSite, plannedKeysOf } from "../lib/composeFormat";
 import { inventoryAndSources, loadStudioRecords, parseSignedDesignPass, type SignedDesignPass } from "../lib/designPassInputs";
 import { pageAllDraft, writeComposition } from "../lib/designPassWrite";
-import { isDesignKey } from "../contracts/generated/designs.ts";
+import { isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { emitCmsObservation } from "../lib/observability";
 
 /*
@@ -173,8 +173,16 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
       const navigationDoc = (await req.payload.find({
         collection: "navigation", overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: tenant.id } },
       })).docs[0] as unknown as AnyDoc | undefined;
+      // #4453 — Build composes in the design the site is drawn in (Studio's
+      // own setting), never only the plan's first pick: on Gameland Lagos the
+      // plan still named Voyage while the site was Pop, so Build wrote Voyage's
+      // over-the-picture hero and poster cards onto a Pop site.
+      const settingsDoc = (await req.payload.find({
+        collection: "site-settings", overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: tenant.id } },
+      })).docs[0] as unknown as AnyDoc | undefined;
+      const design = siteDesignKey(settingsDoc, parsed.designPass.design_key);
       const scoped = scopedRequest(req, { action: "compose_from_plan", userId: parsed.userId, siteId: envelope.site_id, brandId: parsed.brandId, rank: 50, args: {} }, tenantId);
-      let coverMediaId = parsed.coverPhotoPath ? await importBrandCover(scoped, parsed.coverPhotoPath, storageCoverRenditionDeps()) : null;
+      let coverMediaId = parsed.coverPhotoPath ? await importBrandCover(scoped, tenantId, parsed.coverPhotoPath, storageCoverRenditionDeps()) : null;
       const records = await loadStudioRecords(req, tenant.id);
       // #4453 booking-first Home — no brand cover and no photo in Media: the
       // hero takes the next offering's own Mingla picture (imported once).
@@ -192,7 +200,7 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
         plan: parsed.plan,
         answers: parsed.designPass.answers,
         brand: parsed.brand,
-        design: parsed.designPass.design_key,
+        design,
         // #4453 — with the flag off, no booking block is composed (never a failed draft).
         bookingBlocks: parsed.bookingBlocks,
         inventory,
@@ -205,6 +213,11 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
           allDraft: pageAllDraft(page as unknown as AnyDoc),
         })),
         currentWordmark: typeof navigationDoc?.wordmark === "string" ? navigationDoc.wordmark : null,
+        // #4453 — "Rebuild my pages" builds again: a page whose every section
+        // is still an unreviewed Draft (or that is empty) is replaced, exactly
+        // like Ari's design pass; a page with any section the owner reviewed,
+        // edited or added is kept.
+        replaceDrafts: true,
       });
       if (composed) {
         const written = await writeComposition(req, internal, tenantId, composed);
@@ -215,6 +228,8 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
             site_id: envelope.site_id,
             pages: plannedKeysOf(composed).filter((key) => key === "home" || composed.pages.some((page) => (page.planned === key || page.key === key) && present.has(page.slug))),
             created: written.created,
+            // #4453 — pages Build replaced (every section was still a Draft).
+            replaced: written.replaced,
             composer: "v2",
             format: composed.format,
             left_out: composed.left_out_pages,
@@ -273,7 +288,7 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
         rank: 50,
         args: {},
       }, tenantId);
-      const coverMediaId = await importBrandCover(scoped, parsed.coverPhotoPath, storageCoverRenditionDeps());
+      const coverMediaId = await importBrandCover(scoped, tenantId, parsed.coverPhotoPath, storageCoverRenditionDeps());
       if (coverMediaId) result = compose(coverMediaId);
     }
 
@@ -387,6 +402,12 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
     });
     return failure(code, code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : code === "FORBIDDEN" ? 403 : 409);
   }
+}
+
+/** The design the site is drawn in (Studio's setting), else the plan's design. */
+export function siteDesignKey(settings: AnyDoc | undefined, planDesign: string | null): DesignKey {
+  if (isDesignKey(settings?.design)) return settings.design;
+  return planDesign as DesignKey;
 }
 
 function slugOf(key: string): string {

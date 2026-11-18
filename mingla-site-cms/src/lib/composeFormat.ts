@@ -108,7 +108,7 @@ export type ComposeV2Result = {
   pages: ComposeV2Page[];
   /** Pages absent at their address (to create). */
   create: ComposeV2Page[];
-  /** Existing pages whose blocks are all still unreviewed Drafts (Ari's pass replaces them). */
+  /** Existing pages whose blocks are all still unreviewed Drafts, or empty (Ari's pass and Build replace them). */
   replace: Array<{ id: string; page: ComposeV2Page }>;
   /** Home, when it exists but is still empty from setup. */
   fillHome: ComposeV2Page | null;
@@ -133,7 +133,7 @@ export type ComposeV2Input = {
   sources: ComposeV2Sources;
   existing: ReadonlyArray<ComposeExistingPage & { allDraft?: boolean }>;
   currentWordmark: string | null;
-  /** Ari's design pass may replace pages still entirely Draft; Build never does. */
+  /** Ari's design pass and Build ("Rebuild my pages") replace pages still entirely Draft (or empty). */
   replaceDrafts?: boolean;
   fonts?: { display?: string | null; body?: string | null } | null;
   colors?: { primary?: string | null; accent?: string | null } | null;
@@ -174,14 +174,14 @@ const HEADING: Readonly<Record<string, string>> = {
 const GRID_HEADING: Readonly<Record<string, string>> = {
   trip: "Upcoming trips",
   event: "What's on",
-  experience: "Sessions",
+  experience: "Experiences",
   stay: "Rooms",
 };
 /** #4453 — a secondary format's grid on Home shows its one next offering. */
 const NEXT_HEADING: Readonly<Record<string, string>> = {
   trip: "Next trip",
   event: "Next up",
-  experience: "Next session",
+  experience: "Next experience",
   stay: "Rooms",
 };
 const HISTORY_HEADING: Readonly<Record<FormatKey, string>> = {
@@ -191,7 +191,7 @@ const HISTORY_HEADING: Readonly<Record<FormatKey, string>> = {
   art: "Past exhibitions",
   trips: "Where we've been",
   events: "Past nights",
-  experiences: "Past sessions",
+  experiences: "Past experiences",
 };
 const AVAILABILITY_SOURCE: Readonly<Record<string, string>> = {
   venue_slots: "venue_slots",
@@ -234,12 +234,33 @@ function eligible(ctx: Ctx, section: FormatSection, extra: Record<string, unknow
   return verdict.eligible ? null : verdict.reason;
 }
 
+/**
+ * #4453 — offering-grid layouts that print the card's words over its picture.
+ * Mingla's offering covers are often posters with their own words on them
+ * (found live on Gameland Lagos), so a new composition never picks one: the
+ * owner may still choose it in Studio.
+ */
+export const OVER_IMAGE_GRID_LAYOUTS: readonly string[] = ["poster"];
+
+/**
+ * The layout a new composed block takes: the design's own pick
+ * (`compositionVariant`), except that an offering grid never starts on an
+ * over-the-picture layout. It takes the design's card layout instead (cards,
+ * then photo cards, then the design's first other layout).
+ */
+export function composedVariant(design: (typeof DESIGNS)[DesignKey], type: Parameters<typeof compositionVariant>[1]): string {
+  const pick = compositionVariant(design, type);
+  if (type !== "offering_grid" || !OVER_IMAGE_GRID_LAYOUTS.includes(pick)) return pick;
+  const drawn = design.variants[type].filter((variant) => !OVER_IMAGE_GRID_LAYOUTS.includes(variant));
+  return ["cards", "photo-card"].find((variant) => drawn.includes(variant)) ?? drawn[0] ?? pick;
+}
+
 /** One section's block from real content, or null when its content is not in hand. */
 function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBlock | null {
   const { input, format } = ctx;
   const { brand, answers, sources, plan } = input;
   const design = DESIGNS[input.design];
-  const variant = isBlockType(section.type) ? compositionVariant(design, section.type) : undefined;
+  const variant = isBlockType(section.type) ? composedVariant(design, section.type) : undefined;
   const withVariant = (block: ComposedBlock): ComposedBlock => (variant ? { ...block, variant } : block);
   // #4453 — a block the design does not draw is never composed. Atelier is
   // frozen and offers no layout for the shared-only booking blocks
@@ -568,7 +589,7 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
   });
   const pages = [home, ...inner];
 
-  // ── What exists already is kept (Ari's pass may replace all-Draft pages) ──
+  // ── What exists already is kept (Ari's pass and Build replace all-Draft pages) ──
   const topLevel = new Map(input.existing.filter((page) => page.topLevel).map((page) => [page.slug, page]));
   const create: ComposeV2Page[] = [];
   const replace: Array<{ id: string; page: ComposeV2Page }> = [];

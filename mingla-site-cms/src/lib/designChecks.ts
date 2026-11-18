@@ -90,6 +90,60 @@ function relationId(value: unknown): string | null {
   return typeof value === "object" ? String((value as AnyDoc).id ?? "") || null : String(value);
 }
 
+/*
+ * #4453 — the fields a block carries that are never words a visitor reads:
+ * Studio's hidden Draft stamp (`review`: its ISO time "2026-11-18T22:11:13.266Z"
+ * read as the claims '11', '13.266', and so on, on every Draft block, found
+ * live on Gameland Lagos), ids, layout and Payload bookkeeping, and pictures.
+ */
+const MACHINE_BLOCK_KEYS: ReadonlySet<string> = new Set(["blockType", "variant", "id", "blockName", "review", "media", "video", "poster"]);
+const MACHINE_KEY_RE = /(?:href|url|_id|variant|blockType|id)$/i;
+
+/**
+ * The visitor-facing words of one block (or one list row). A field the block
+ * catalogue names is read only when it holds words (text and rich text, and
+ * the words inside its lists); its enums, ids, links, numbers and switches
+ * are never copy. A field the catalogue does not name is read as before,
+ * minus the machine fields above.
+ */
+function blockWords(value: AnyDoc, fields: Readonly<Record<string, FieldSpec>> | null, push: (text: string) => void): void {
+  const loose = (inner: unknown, key: string): void => {
+    if (MACHINE_BLOCK_KEYS.has(key)) return;
+    if (typeof inner === "string") {
+      if (inner.trim() && !MACHINE_KEY_RE.test(key)) push(inner);
+    } else if (Array.isArray(inner)) inner.forEach((row) => loose(row, key));
+    else if (inner && typeof inner === "object") {
+      if ((inner as AnyDoc).root) {
+        const text = lexicalText(inner).join("");
+        if (text) push(text);
+      } else for (const [child, deeper] of Object.entries(inner)) loose(deeper, child);
+    }
+  };
+  for (const [key, inner] of Object.entries(value)) {
+    if (MACHINE_BLOCK_KEYS.has(key)) continue;
+    const spec = fields?.[key];
+    if (!spec) {
+      loose(inner, key);
+      continue;
+    }
+    if (spec.kind === "text" || spec.kind === "rich_text") {
+      if (typeof inner === "string") {
+        if (inner.trim()) push(inner);
+      } else if (inner && typeof inner === "object" && (inner as AnyDoc).root) {
+        const text = lexicalText(inner).join("");
+        if (text) push(text);
+      }
+    } else if (spec.kind === "list") {
+      for (const row of Array.isArray(inner) ? inner : []) {
+        if (row && typeof row === "object" && !Array.isArray(row)) blockWords(row as AnyDoc, spec.item, push);
+      }
+    } else if (spec.kind === "media_list") {
+      // A picture's own words (its alt text) are still copy.
+      loose(inner, key);
+    }
+  }
+}
+
 /** Every visitor-facing piece of text on the draft's pages, with where it sits. */
 function pageTexts(pages: readonly AnyDoc[], paths: Map<string, string>): TextHit[] {
   const hits: TextHit[] = [];
@@ -100,20 +154,8 @@ function pageTexts(pages: readonly AnyDoc[], paths: Map<string, string>): TextHi
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const type = String(block?.blockType ?? "");
       const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} block ${index + 1}`;
-      const visit = (value: unknown, key: string) => {
-        if (typeof value === "string" && value.trim() && !/(?:href|url|_id|variant|blockType|id)$/i.test(key)) hits.push({ text: value, page_path, where });
-        else if (Array.isArray(value)) value.forEach((row) => visit(row, key));
-        else if (value && typeof value === "object") {
-          if ((value as AnyDoc).root) {
-            const text = lexicalText(value).join("");
-            if (text) hits.push({ text, page_path, where });
-          } else for (const [child, inner] of Object.entries(value)) visit(inner, child);
-        }
-      };
-      for (const [key, value] of Object.entries(block ?? {})) {
-        if (["blockType", "variant", "id", "blockName", "media", "video", "poster"].includes(key)) continue;
-        visit(value, key);
-      }
+      const fields = isBlockType(type) ? BLOCK_CATALOG[type].fields as Readonly<Record<string, FieldSpec>> : null;
+      blockWords((block ?? {}) as AnyDoc, fields, (text) => hits.push({ text, page_path, where }));
     }
   }
   return hits;
