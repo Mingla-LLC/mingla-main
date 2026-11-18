@@ -573,6 +573,29 @@ export function experienceStopsOffsetIssue(
   return `stops[${missing}].start_offset_minutes is missing. Read the experience with get_experience, then send every stop with its start_offset_minutes (null when it has none) and all its other fields.`;
 }
 
+/**
+ * The model-facing repair note for update_experience price options that do
+ * not each carry name, price_cents and price_basis (the server would re-price
+ * a partial option to 0 per person). null when every option is whole.
+ */
+export function experiencePriceOptionsIssue(
+  args: Record<string, unknown>,
+): string | null {
+  if (!Array.isArray(args.price_options)) return null;
+  const missing = args.price_options.findIndex((option) =>
+    option === null || typeof option !== "object" || Array.isArray(option) ||
+    ["name", "price_cents", "price_basis"].some((key) =>
+      (option as Record<string, unknown>)[key] == null
+    )
+  );
+  if (missing < 0) return null;
+  return `price_options[${missing}] must carry name, price_cents and price_basis. Read the experience with get_experience, then send every option with all its fields and its id.`;
+}
+
+/** Owner sentence when a price option edit would reset an option's price. */
+export const EXPERIENCE_PRICE_OPTION_REFUSAL =
+  "That change would reset a price option to free, so nothing was saved. Ask me again and I'll keep each option's price.";
+
 /** Owner sentence when a stop edit would drop a stop's saved start offset. */
 export const EXPERIENCE_STOP_OFFSET_REFUSAL =
   "That change would clear when a stop starts, so nothing was saved. Ask me again and I'll keep each stop's start time.";
@@ -665,9 +688,13 @@ const updateExperience = writeTool(
       maxItems: 20,
       description:
         "The complete list of price options, replacing the stored list. Read them with get_experience first and send every option with all its fields. Keep each existing option's id; an option without an id is a new option, and a stored option left out is removed. Each: name, price_cents, price_basis (person|group|block); group needs group_max 2–50; block needs block_minutes in 15/30/45/60 plus min_blocks/max_blocks. Non-person basis requires pricing_mode=whole. Once the experience has bookings, existing options may be renamed, hidden or have their spots changed, but not re-priced or removed (price_change_with_sales).",
+      // Every option should carry name, price_cents and price_basis: the
+      // server re-prices a partial option to 0/person. Not a schema
+      // `required` (an approval bound before this rule could then never
+      // replay): agent-chat returns experiencePriceOptionsIssue to the model,
+      // and the executor refuses a partial option on a first attempt.
       items: {
         type: "object",
-        required: ["name", "price_cents", "price_basis"],
         properties: {
           id: {
             type: "string",
@@ -701,6 +728,12 @@ const updateExperience = writeTool(
   ["event_id", "expected_revision"],
   async (args, client, userId, context) => {
     await requireEvent(args, client, userId);
+    // #3281 bundle 3: a partial option would be re-priced to 0 by the server.
+    // A retry skips this: an earlier attempt may have committed, and the
+    // receipt RPC replays it with the bound args unchanged.
+    if (!context?.retry && experiencePriceOptionsIssue(args) !== null) {
+      throw new ToolError(DOMAIN_REFUSED_CODE, EXPERIENCE_PRICE_OPTION_REFUSAL);
+    }
     const patchKeys = Object.keys(args).filter((key) =>
       !["event_id", "expected_revision", "edit_reason"].includes(key)
     );
@@ -737,7 +770,6 @@ const manageExperienceStops = writeTool(
       // `required` treats null as missing, so it is not listed here.)
       items: {
         type: "object",
-        required: ["place_name"],
         properties: {
           stop_order: {
             type: "integer",

@@ -29,7 +29,9 @@ import {
 import {
   DOMAIN_READ_ONLY,
   DOMAIN_TOOLS,
+  EXPERIENCE_PRICE_OPTION_REFUSAL,
   EXPERIENCE_STOP_OFFSET_REFUSAL,
+  experiencePriceOptionsIssue,
   experienceStopsOffsetIssue,
 } from "../agentDomainTools.ts";
 import {
@@ -121,15 +123,38 @@ Deno.test("create_experience stops take start_offset_minutes (0..32767, an integ
   assertEquals(offset.maximum, 32767); // experience_stops.start_offset_minutes is smallint
 });
 
-Deno.test("update_experience price options carry their id and every core field", () => {
+Deno.test("update_experience price options carry their id; a partial option is caught outside the schema", () => {
   const items = schemaOf("update_experience").properties.price_options.items;
   assertEquals(items.properties.id, {
     type: "string",
     format: "uuid",
     description: items.properties.id.description,
   });
-  // A partial {id, is_hidden} would let the server reset price to 0 / person.
-  assertEquals(items.required, ["name", "price_cents", "price_basis"]);
+  // Not a schema `required`: an approval bound before this rule must still
+  // replay. agent-chat and the executor catch a partial option instead.
+  assertEquals(items.required, undefined);
+  assertEquals(
+    experiencePriceOptionsIssue({
+      price_options: [
+        { id: OPTION, name: "Standard", price_cents: 0, price_basis: "person" },
+        { id: OPTION, is_hidden: true },
+      ],
+    })?.startsWith(
+      "price_options[1] must carry name, price_cents and price_basis",
+    ),
+    true,
+  );
+  assertEquals(
+    experiencePriceOptionsIssue({
+      price_options: [{
+        name: "Standard",
+        price_cents: 0,
+        price_basis: "person",
+      }],
+    }),
+    null,
+  );
+  assertEquals(experiencePriceOptionsIssue({ title: "T" }), null);
 });
 
 Deno.test("manage_experience_stops types every stop key the wizard sends", () => {
@@ -231,6 +256,9 @@ Deno.test("agent-chat returns the offset issue to the model in validateProposal"
   assert(hook.includes('call.name === "manage_experience_stops"'));
   assert(hook.includes("experienceStopsOffsetIssue(call.args)"));
   assert(hook.includes('code: "EXPERIENCE_STOP_OFFSET_MISSING"'));
+  assert(hook.includes('call.name === "update_experience"'));
+  assert(hook.includes("experiencePriceOptionsIssue(call.args)"));
+  assert(hook.includes('code: "EXPERIENCE_PRICE_OPTION_PARTIAL"'));
 });
 
 Deno.test("the executor refuses in plain words only when a saved offset would be lost", async () => {
@@ -344,22 +372,60 @@ Deno.test("stops and options read by get_experience validate when sent back", as
       `${name}: ${String(err)}`,
     );
   }
-  // A partial option is refused by the schema (it would be re-priced to 0).
+});
+
+Deno.test("a partial price option is refused on a first attempt and replayed on a retry", async () => {
+  const args = {
+    event_id: EVENT,
+    expected_revision: REVISION,
+    price_options: [{ id: OPTION, name: "Standard", price_cents: 0 }],
+  };
+  const bound = structuredClone(args);
+  const first = fakeClient({ events: [{ id: EVENT, brand_id: BRAND }] }, {
+    ok: true,
+  });
   const err = await assertRejects(
     () =>
-      authorizeAgentTool(
-        AGENT_TOOLS.find((t) => t.name === "update_experience")!,
-        {
-          event_id: EVENT,
-          expected_revision: REVISION,
-          price_options: [{ id: OPTION, is_hidden: true }],
-        },
-        refusesClient as Json,
-        USER,
-      ),
+      rawTool("update_experience").executor(args, first as Json, USER, {
+        operationId: "55555555-5555-4555-8555-555555555555",
+      } as Json),
     ToolError,
   );
-  assertEquals(err.code, "INVALID_ARGS");
+  assertEquals(err.code, DOMAIN_REFUSED_CODE);
+  assertEquals(err.message, EXPERIENCE_PRICE_OPTION_REFUSAL);
+  assertEquals(first.rpcCalls.length, 0);
+  // Bound before this rule and already executing: the receipt RPC replays it.
+  const retry = fakeClient({ events: [{ id: EVENT, brand_id: BRAND }] }, {
+    ok: true,
+  });
+  await rawTool("update_experience").executor(args, retry as Json, USER, {
+    operationId: "55555555-5555-4555-8555-555555555555",
+    retry: true,
+  } as Json);
+  assertEquals(retry.rpcCalls.map((c) => c.fn), [
+    "ari_execute_experience_operation",
+  ]);
+  assertEquals(retry.rpcCalls[0].args.p_args, bound);
+  // And the legacy shape still passes the schema, so confirm can reach replay.
+  const err2 = await assertRejects(() =>
+    authorizeAgentTool(
+      AGENT_TOOLS.find((t) => t.name === "update_experience")!,
+      args as Json,
+      {
+        from() {
+          throw new Error("schema passed");
+        },
+        rpc() {
+          throw new Error("schema passed");
+        },
+      } as Json,
+      USER,
+    )
+  );
+  assert(
+    !(err2 instanceof ToolError && err2.code === "INVALID_ARGS"),
+    String(err2),
+  );
 });
 
 Deno.test("get_experience is offered whenever an experience edit is, and not otherwise", () => {
@@ -629,7 +695,7 @@ Deno.test("agent-confirm-action canonicalizes pending proposals only, never an e
     new URL("../../agent-confirm-action/index.ts", import.meta.url),
   );
   assert(
-    /canonicalArgs = pending\.status === "pending"\s*\?\s*canonicalizeAgentProposalArgs\(pending\.tool_name, candidateArgs\)\s*:\s*candidateArgs;/
+    /if \(pending\.status === "pending"\) \{\s*canonicalArgs = canonicalizeAgentProposalArgs\(\s*pending\.tool_name,\s*candidateArgs,\s*\);\s*\} else \{\s*canonicalArgs = candidateArgs;\s*\}/
       .test(confirm),
     "an executing retry replays its stored args verbatim",
   );

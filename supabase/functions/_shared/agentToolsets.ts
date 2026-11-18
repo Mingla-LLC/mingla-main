@@ -343,11 +343,13 @@ export function selectAriTools(
     )
   ) {
     if (window.length >= limit) {
-      // Drop the lowest-ranked slot that is not an experience edit.
+      // Drop the lowest-ranked slot that is not an experience edit, nor
+      // list_events (how Ari finds an experience's id by name).
       for (let i = window.length - 1; i >= 0; i -= 1) {
         if (
           window[i].name !== "update_experience" &&
-          window[i].name !== "manage_experience_stops"
+          window[i].name !== "manage_experience_stops" &&
+          window[i].name !== "list_events"
         ) {
           window.splice(i, 1);
           break;

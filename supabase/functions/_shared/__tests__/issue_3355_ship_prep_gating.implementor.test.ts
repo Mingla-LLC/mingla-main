@@ -79,7 +79,7 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // the digest is recomputed the same way. The off path's prompt digests and
 // per-message selections are unchanged.
 const MAIN_DECLARATIONS_DIGEST =
-  "b7654b5760154c25ba0408daa9bb4ef2d7c67730068e8239f5b01146c916f3fe";
+  "4b8e1dd5fff12858ba2d72f8b3f04eb7a7ad52a006257daa268bf62e7674b00f";
 const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {

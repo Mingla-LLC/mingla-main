@@ -106,6 +106,7 @@ import {
 } from "../_shared/agentFollowupProposal.ts";
 import {
   bindTripStandardPlaceholderProposal,
+  experiencePriceOptionsIssue,
   experienceStopsOffsetIssue,
   preflightDiscountProposal,
   preflightMoneyProposal,
@@ -4164,6 +4165,12 @@ ${boundedAgentContext}
           }
           // #3281 bundle 3: a stop that does not say its offset would lose a
           // saved one; the model reads get_experience and proposes again.
+          if (call.name === "update_experience") {
+            const optionIssue = experiencePriceOptionsIssue(call.args);
+            if (optionIssue) {
+              return { code: "EXPERIENCE_PRICE_OPTION_PARTIAL", message: optionIssue };
+            }
+          }
           if (call.name === "manage_experience_stops") {
             const offsetIssue = experienceStopsOffsetIssue(call.args);
             if (offsetIssue) {

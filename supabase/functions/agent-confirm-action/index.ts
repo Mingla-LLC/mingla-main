@@ -953,9 +953,14 @@ async function handleConfirmAction(args: {
     // were canonical when claimed). Canonicalizing them again under a newer
     // deploy would change the bytes the #1972 receipt bound, so a committed
     // edit could never replay (operation_binding_mismatch).
-    canonicalArgs = pending.status === "pending"
-      ? canonicalizeAgentProposalArgs(pending.tool_name, candidateArgs)
-      : candidateArgs;
+    if (pending.status === "pending") {
+      canonicalArgs = canonicalizeAgentProposalArgs(
+        pending.tool_name,
+        candidateArgs,
+      );
+    } else {
+      canonicalArgs = candidateArgs;
+    }
   } catch (err: unknown) {
     if (err instanceof ToolError) {
       return errorResponse(400, err.code, err.message);
