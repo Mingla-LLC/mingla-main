@@ -1432,6 +1432,7 @@
         "mingla-sites/src/lib/offeringCards.ts",
         "mingla-sites/src/lib/pageExtras.ts",
         "mingla-business/src/sites/bookingPrefill.ts",
+        "mingla-business/src/sites/experiencePrefill.ts",
         "supabase/functions/brand-site-cms-callback/index.ts",
         "supabase/functions/brand-site-runtime-resolve/index.ts",
         "supabase/migrations/20280807044453_issue_4453_booking_reads.sql",
