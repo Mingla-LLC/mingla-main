@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import {
   DESIGNS,
   designSwatches,
@@ -12,7 +12,9 @@ import { useSaveBrandSitePlanDesign } from "../../../sites/planApi";
 import { swatchHex } from "../../../sites/siteLook";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { BrandSitesError } from "../../../services/brandSitesService";
+import { Sheet } from "../../ui/Sheet";
 import { useWebsite } from "../website/WebsiteContext";
+import { PlanStylePreview } from "./PlanStylePreview";
 import {
   Card,
   CardTitle,
@@ -44,6 +46,11 @@ export function PlanDesignPart({
   const format = planState.styleLibrary ? planFormatOf(planState.plan) : null;
   const choiceFit = choice ? styleFitLabel(format, choice) : null;
   const readOnly = forcedReadOnly || ctx.lock.heldByOther || planState.site?.paused === true;
+  // #4453 — the picked style's live preview: beside the picker on desktop web,
+  // in a sheet on phone and narrow screens.
+  const { width, height } = useWindowDimensions();
+  const wide = Platform.OS === "web" && width >= 1200;
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const persist = (designKey: DesignKey, sourceType: "owner" | "mingla") => {
     if (!planState.plan) return;
@@ -75,9 +82,13 @@ export function PlanDesignPart({
         ref={ctx.headingRef}
         phone={ctx.phone}
         title="Choose your design"
-        subtitle="Pick the starting system now. Detailed colours, fonts and preview come after Build your pages creates the first draft."
+        subtitle={wide
+          ? "Pick a style to see your site in it on the right. You can fine-tune colours and fonts after Build your pages creates the first draft."
+          : "Pick a style, then tap Preview to see your site in it. You can fine-tune colours and fonts after Build your pages creates the first draft."}
         right={<Chip label="No draft yet" tone="accent" />}
       />
+      <View style={wide ? styles.split : null}>
+      <View style={wide ? styles.pickerColumn : null}>
       <View style={styles.grid} accessibilityRole="radiogroup">
         {keys.map((key) => {
           const design = DESIGNS[key];
@@ -103,6 +114,18 @@ export function PlanDesignPart({
                 <View style={styles.fitRow} testID={`plan-design-fit-${key}`}>
                   <Chip label={fit.label} tone={fit.fit === "avoid" ? "warn" : fit.fit === "pick" ? "accent" : "neutral"} />
                   <Text style={styles.description}>{fit.reason}</Text>
+                </View>
+              ) : null}
+              {selected && !wide ? (
+                <View style={styles.previewRow}>
+                  <WButton
+                    label={`Preview ${design.label}`}
+                    icon="eye"
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => setSheetOpen(true)}
+                    testID="plan-design-preview-open"
+                  />
                 </View>
               ) : null}
               <View style={styles.swatches}>
@@ -149,12 +172,52 @@ export function PlanDesignPart({
           testID="plan-design-save"
         />
       </View>
+      </View>
+      {wide ? (
+        <View style={styles.previewColumn}>
+          <PlanStylePreview brandId={brandId} brandName={ctx.brandName} planState={planState} style={choice} wide />
+        </View>
+      ) : null}
+      </View>
+      {wide ? null : (
+        <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} snapPoint={0.9} testID="plan-design-preview-sheet">
+          <ScrollView contentContainerStyle={styles.sheet}>
+            <PlanStylePreview
+              brandId={brandId}
+              brandName={ctx.brandName}
+              planState={planState}
+              style={choice}
+              wide={false}
+              // The sheet is 90% of the screen: leave room for the title row, the buttons and breathing room.
+              frameMaxHeight={Math.max(280, Math.round(height * 0.9) - 230)}
+            />
+            <View style={styles.actions}>
+              <WButton label="Close" variant="secondary" onPress={() => setSheetOpen(false)} testID="plan-design-preview-close" />
+              {readOnly || !choice || choice === stored ? null : (
+                <WButton
+                  label={`Save ${DESIGNS[choice].label}`}
+                  variant="primary"
+                  loading={save.isPending}
+                  onPress={() => { setSheetOpen(false); onSave(); }}
+                  testID="plan-design-preview-save"
+                />
+              )}
+            </View>
+          </ScrollView>
+        </Sheet>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   grid: { flexDirection: "row", gap: 14, flexWrap: "wrap", marginBottom: 16 },
+  split: { flexDirection: "row", alignItems: "flex-start", gap: 24 },
+  pickerColumn: { flex: 1, minWidth: 0 },
+  // Web only (the side panel is web only): the preview stays in view while the styles scroll.
+  previewColumn: { flexGrow: 0, flexShrink: 0, flexBasis: "46%", minWidth: 420, ...(Platform.OS === "web" ? ({ position: "sticky", top: 16 } as unknown as object) : null) },
+  previewRow: { flexDirection: "row", marginTop: 12 },
+  sheet: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 72, gap: 16 },
   tile: {
     flexGrow: 1,
     flexBasis: 260,

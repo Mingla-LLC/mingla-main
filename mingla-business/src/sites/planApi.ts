@@ -18,7 +18,7 @@ import {
 import type { DesignKey } from "../../../packages/site-contracts/src/designs.ts";
 import type { FaqItem, ProcessStep, QuickFacts, ValuePoint } from "../../../packages/site-contracts/src/sitePlan.ts";
 import { brandSiteKeys } from "./brandSiteKeys";
-import { normalizeSitePlan, type SitePlanState } from "./sitePlanState";
+import { keepCoreFlags, normalizeSitePlan, type SitePlanState } from "./sitePlanState";
 import { useEnsureBrandSiteDraft } from "../hooks/useBrandSite";
 
 /*
@@ -146,7 +146,9 @@ export function useBrandSitePlan(brandId: string, enabled = true) {
 function useApplyPlan(brandId: string) {
   const queryClient = useQueryClient();
   return async (state: SitePlanState) => {
-    queryClient.setQueryData(brandSiteKeys.plan(brandId), state);
+    // Replies to writes carry no per-brand Sites values: keep the read's.
+    const previous = queryClient.getQueryData<SitePlanState>(brandSiteKeys.plan(brandId));
+    queryClient.setQueryData(brandSiteKeys.plan(brandId), keepCoreFlags(previous, state));
     // The Home to-do row and the site overview follow the plan.
     await queryClient.invalidateQueries({ queryKey: brandSiteKeys.planTodo(brandId) });
   };

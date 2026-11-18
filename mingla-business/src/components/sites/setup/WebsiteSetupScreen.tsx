@@ -560,7 +560,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
               <SetupStepList steps={status.steps} active={activeStep} canManage={canManage} published={published} onSelect={(key) => goStep(key)} />
             </ScrollView>
             <ScrollView style={styles.main} contentContainerStyle={styles.mainContent} keyboardShouldPersistTaps="handled">
-              <View style={styles.mainInner}>{body}</View>
+              <View style={[styles.mainInner, activeStep === "look" ? styles.mainInnerLook : null]}>{body}</View>
             </ScrollView>
             {ariOpen ? <View style={styles.ariColumn} testID="setup-ari-column">{ariPanel}</View> : null}
           </View>
@@ -706,6 +706,8 @@ const styles = StyleSheet.create({
   main: { flex: 1, minWidth: 0 },
   mainContent: { padding: space[6], paddingBottom: 96 },
   mainInner: { maxWidth: websitePaneMaxWidth, width: "100%" },
+  // #4453 — the design step has the picker and its live preview side by side.
+  mainInnerLook: { maxWidth: 1360 },
   ariColumn: { flex: 1, minWidth: ariThread.websiteAriMinWidth, maxWidth: ariThread.websiteAriMaxWidth, borderLeftWidth: 1, borderLeftColor: ui.cardBorder },
   ariFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: space[6] },
   ariFallbackText: { fontSize: 15, lineHeight: 22, color: ui.t2, textAlign: "center" },

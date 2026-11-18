@@ -50,15 +50,17 @@ export function normalizePlanPreview(raw: unknown): PlanPreviewState {
   };
 }
 
-export async function requestPlanPreviews(brandId: string, revision: number): Promise<PlanPreviewState> {
-  return normalizePlanPreview(await invokeBrandSiteControl<unknown>(`/v1/brands/${brandId}/plan-previews`, "POST", { plan_revision: revision }));
+/** `styles` (at most three) asks for those styles instead of Ari's picks (Core refuses an "avoid" style). */
+export async function requestPlanPreviews(brandId: string, revision: number, styles?: readonly DesignKey[]): Promise<PlanPreviewState> {
+  const body = styles && styles.length > 0 ? { plan_revision: revision, styles: styles.slice(0, 3) } : { plan_revision: revision };
+  return normalizePlanPreview(await invokeBrandSiteControl<unknown>(`/v1/brands/${brandId}/plan-previews`, "POST", body));
 }
 
 /** One request per plan revision; the server keeps the renders 24 h, so this stays fresh for a day. */
-export function usePlanPreviews(brandId: string, revision: number | null, enabled: boolean) {
+export function usePlanPreviews(brandId: string, revision: number | null, enabled: boolean, styles?: readonly DesignKey[]) {
   return useQuery({
-    queryKey: brandSiteKeys.planPreview(brandId, revision),
-    queryFn: () => requestPlanPreviews(brandId, revision as number),
+    queryKey: brandSiteKeys.planPreview(brandId, revision, styles),
+    queryFn: () => requestPlanPreviews(brandId, revision as number, styles),
     enabled: enabled && revision !== null,
     staleTime: 23 * 60 * 60 * 1000,
     retry: false,
