@@ -407,7 +407,12 @@ describe("#4473 shared purchases: data", () => {
       sharedOrder({ sourceId: "order-own", orderId: "order-own" }),
       sharedRsvp(),
       sharedReservation(),
-      { kind: "stay_group", sourceId: "stay-1", title: "Stay" },
+      {
+        kind: "stay_group", sourceId: "stay-1", role: "shared", sharedWithAnotherAccount: true,
+        title: "Stay", offeringType: "stay", createdAt: "2026-11-01T10:00:00Z",
+        stayGroupId: "stay-1", venueId: "venue-1", venueName: "Lantern Room",
+        publicReference: "LR-1", state: "confirmed", mode: "nightly",
+      },
     ]);
     const sources = mergeSharedSources(owned, shared);
     expect(sources.orders.map((order: { id: string }) => order.id)).toEqual(["order-own", "order-s1"]);
@@ -423,8 +428,11 @@ describe("#4473 shared purchases: data", () => {
     expect(sharedOrderItem.count).toBe(1);
     expect(items.find((item) => item.kind === "rsvp")?.shared).toBe(true);
     expect(items.find((item) => item.kind === "reservation")?.amountCents).toBeNull();
-    // A stay has no Purchases route, so it is not listed.
-    expect(items).toHaveLength(4);
+    // A well-formed shared stay is listed too (D5), read-only and with no amount.
+    const stay = items.find((item) => item.kind === "stay");
+    expect(stay?.shared).toBe(true);
+    expect(stay?.amountCents ?? null).toBeNull();
+    expect(items).toHaveLength(5);
   });
 
   test("Calendar rows: paid orders, going RSVPs and reservations, all read-only", () => {
