@@ -4,6 +4,7 @@ import {
   deleteMessage,
   listParticipants,
   removeParticipant,
+  restoreParticipant,
   setBroadcastOnly,
   type EventGroupParticipant,
 } from "../services/groupChatService";
@@ -14,6 +15,8 @@ export function useEventGroupChatModeration(conversationId: string | null): {
   refresh: () => Promise<void>;
   setBroadcastOnly: (value: boolean) => Promise<{ error: string | null }>;
   removeParticipant: (userId: string) => Promise<{ error: string | null }>;
+  /** #4459: lifts a sticky removal (the remove toast's Undo). */
+  restoreParticipant: (userId: string) => Promise<{ error: string | null }>;
   deleteMessage: (messageId: string) => Promise<{ error: string | null }>;
 } {
   const [participants, setParticipants] = useState<EventGroupParticipant[]>([]);
@@ -59,6 +62,16 @@ export function useEventGroupChatModeration(conversationId: string | null): {
     [conversationId, refresh],
   );
 
+  const restore = useCallback(
+    async (userId: string) => {
+      if (conversationId === null) return { error: "Conversation not loaded" };
+      const result = await restoreParticipant(conversationId, userId);
+      if (result.error === null) await refresh();
+      return result;
+    },
+    [conversationId, refresh],
+  );
+
   const softDelete = useCallback(async (messageId: string) => {
     return await deleteMessage(messageId);
   }, []);
@@ -69,6 +82,7 @@ export function useEventGroupChatModeration(conversationId: string | null): {
     refresh,
     setBroadcastOnly: updateBroadcastOnly,
     removeParticipant: remove,
+    restoreParticipant: restore,
     deleteMessage: softDelete,
   };
 }

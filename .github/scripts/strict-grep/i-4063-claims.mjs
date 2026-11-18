@@ -127,8 +127,12 @@ export function check(tree) {
 
   const hasVisibilityReemit = [...VISIBILITY_REEMITTED].every((name) => {
     const fn = functions.get(name);
+    // #4459 re-emits claim_attendance_internal_v2 (it now reports the brand
+    // Guest chat); the fail-closed rule (no visibility read) still binds it.
     return fn !== undefined &&
-      fn.relative.endsWith("_issue_4063_claim_core.sql") &&
+      (fn.relative.endsWith("_issue_4063_claim_core.sql") ||
+        (name === "claim_attendance_internal_v2" &&
+          fn.relative.endsWith("_issue_4459_brand_guest_chat.sql"))) &&
       !/\bvisibility\b/i.test(fn.body);
   });
   if (!hasVisibilityReemit) {

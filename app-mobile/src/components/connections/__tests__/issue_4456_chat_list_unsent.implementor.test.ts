@@ -33,7 +33,14 @@ Deno.test("#4456 Chats list: the unsent line replaces the preview", () => {
   assertEquals(preview({ sender_id: "me", unsent_kind: "admin", unsent_by: "sam" }), "chat:tombstoneAdminRemovedYours:Sam", "Sam removed yours");
   assertEquals(preview({ sender_id: "ana", unsent_kind: "admin", unsent_by: "sam" }), "chat:tombstoneAdminRemoved:Sam", "Sam removed");
   assertEquals(preview({ sender_id: "ana", unsent_kind: null }), null, "a live message keeps its preview");
-  assertEquals(preview({ sender_id: "ana", unsent_kind: "host" }), null, "hidden kinds are not previewed as unsent");
+  // #4459: the brand removing a message in its Guest chat reads "Message removed by <Brand>".
+  assertEquals(
+    chatTombstonePreview({ message: { sender_id: "ana", unsent_kind: "host" }, currentUserId: "me", nameOf, t, brandName: "Club X" }),
+    "chat:tombstoneHostRemoved:Club X",
+    "a brand removal names the brand",
+  );
+  assertEquals(preview({ sender_id: "ana", unsent_kind: "host" }), "chat:tombstoneHostRemovedGeneric", "without a brand name, the host");
+  assertEquals(preview({ sender_id: "ana", unsent_kind: "server" }), null, "hidden kinds are not previewed as unsent");
   assertEquals(preview(null), null, "no message");
 });
 

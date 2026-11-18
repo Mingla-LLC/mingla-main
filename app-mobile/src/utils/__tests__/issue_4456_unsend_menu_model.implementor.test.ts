@@ -81,7 +81,9 @@ Deno.test("#4456 stored rows: placeholder vs hidden", () => {
   assertEquals(unsentStateOf({ deleted_at: null }), {}, "live");
   assertEquals(unsentStateOf({ deleted_at: "x", unsent_kind: "sender", unsent_by: "u1" }), { tombstone: { kind: "sender", byUserId: "u1" } }, "sender");
   assertEquals(unsentStateOf({ deleted_at: "x", unsent_kind: "admin", unsent_by: null }), { tombstone: { kind: "admin", byUserId: null } }, "admin, account gone");
-  for (const kind of ["host", "server", "legacy", null, undefined]) {
+  // #4459: the brand removing a message in its Guest chat leaves a line.
+  assertEquals(unsentStateOf({ deleted_at: "x", unsent_kind: "host", unsent_by: "h1" }), { tombstone: { kind: "host", byUserId: "h1" } }, "host (#4459)");
+  for (const kind of ["server", "legacy", null, undefined]) {
     assertEquals(unsentStateOf({ deleted_at: "x", unsent_kind: kind }), { unsent: true }, `${kind} stays hidden`);
   }
 });

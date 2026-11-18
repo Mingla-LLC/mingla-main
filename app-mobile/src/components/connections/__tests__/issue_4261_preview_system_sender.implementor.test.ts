@@ -43,15 +43,26 @@ Deno.test("people's messages keep today's rules", () => {
     "Club X: Doors at 9",
     "brand message in an event chat",
   );
+  // #4459: a brand Guest chat (no event title: one chat per brand).
   assertEquals(
-    chatPreviewLine({ ...base, isBrandChannel: true, eventTitle: "Friday Rave", message: { message_type: "text", sender_id: "me", sender_name: "Me" }, text: "see you" }),
-    "Friday Rave · You: see you",
-    "brand channel line unchanged",
+    chatPreviewLine({ ...base, isBrandChannel: true, eventBrandName: "Club X", message: { message_type: "text", sender_id: "me", sender_name: "Me" }, text: "see you" }),
+    "You: see you",
+    "my own message in a Guest chat",
   );
   assertEquals(
-    chatPreviewLine({ ...base, isBrandChannel: true, eventTitle: "Friday Rave", message: { message_type: "system", sender_id: null, sender_name: "Deleted User" }, text: "Ada joined" }),
-    "Friday Rave · Ada joined",
-    "brand channel system row",
+    chatPreviewLine({ ...base, isBrandChannel: true, eventBrandName: "Club X", message: { message_type: "text", sender_id: "host", sender_name: "Club X", sender_kind: "brand" }, text: "Doors at 9" }),
+    "Club X: Doors at 9",
+    "a brand post is credited to the brand",
+  );
+  assertEquals(
+    chatPreviewLine({ ...base, isBrandChannel: true, eventBrandName: "Club X", message: { message_type: "text", sender_id: "ada", sender_name: "Ada", sender_kind: "guest" }, text: "hi all" }),
+    "Ada: hi all",
+    "a guest post shows the guest",
+  );
+  assertEquals(
+    chatPreviewLine({ ...base, isBrandChannel: true, eventBrandName: "Club X", message: { message_type: "system", sender_id: null, sender_name: "Deleted User" }, text: "Ada joined" }),
+    "Ada joined",
+    "a Guest chat system row is never prefixed",
   );
 });
 

@@ -20,6 +20,7 @@ interface PendingClaimRow {
   events?: {
     title?: string | null;
     cover_media_url?: string | null;
+    brand_id?: string | null;
   } | null;
 }
 
@@ -65,7 +66,7 @@ serve(async (req) => {
 
   let query = admin
     .from("pending_trip_chat_claims")
-    .select("id, order_id, event_id, buyer_email, claim_token, events!inner(title, cover_media_url)")
+    .select("id, order_id, event_id, buyer_email, claim_token, events!inner(title, cover_media_url, brand_id)")
     .is("claimed_at", null);
 
   if (claimToken !== null) {
@@ -95,39 +96,12 @@ serve(async (req) => {
 
   const claimed: ClaimedConversation[] = [];
 
+  // #4459: a claimed booking lands in the brand's one Guest chat (every listing
+  // type). The claim row is marked first — it is what makes an unbound guest
+  // checkout eligible — then the same server helper every booking rail uses
+  // (issue_4459_sync_brand_guest, behind add_buyer_to_event_chat) adds the
+  // member. Nothing here writes a participant row directly.
   for (const claim of claims) {
-    const { data: conv, error: convError } = await admin
-      .from("conversations")
-      .select("id, event_id, name")
-      .eq("event_id", claim.event_id)
-      .in("linked_entity_type", ["trip", "event"])
-      .maybeSingle();
-
-    if (convError) {
-      console.error(
-        `[claim-pending-trip-chat-participation] conversation lookup failed claim=${claim.id}`,
-        convError,
-      );
-      continue;
-    }
-    if (conv === null) continue;
-
-    const { error: participantError } = await admin
-      .from("conversation_participants")
-      .insert({ conversation_id: conv.id, user_id: user.id });
-
-    if (
-      participantError &&
-      !participantError.message.includes("duplicate key") &&
-      participantError.code !== "23505"
-    ) {
-      console.error(
-        `[claim-pending-trip-chat-participation] participant insert failed claim=${claim.id}`,
-        participantError,
-      );
-      continue;
-    }
-
     const { error: updateError } = await admin
       .from("pending_trip_chat_claims")
       .update({
@@ -145,10 +119,47 @@ serve(async (req) => {
       continue;
     }
 
+    const brandId = claim.events?.brand_id ?? null;
+    if (brandId === null) continue;
+    const { error: joinError } = await admin.rpc("issue_4459_sync_brand_guest", {
+      p_brand_id: brandId,
+      p_user_id: user.id,
+    });
+    if (joinError) {
+      console.error(
+        `[claim-pending-trip-chat-participation] guest chat join failed claim=${claim.id}`,
+        joinError,
+      );
+      continue;
+    }
+
+    const { data: conv, error: convError } = await admin
+      .from("conversations")
+      .select("id, name")
+      .eq("brand_id", brandId)
+      .eq("linked_entity_type", "brand_guests")
+      .maybeSingle();
+    if (convError) {
+      console.error(
+        `[claim-pending-trip-chat-participation] guest chat lookup failed claim=${claim.id}`,
+        convError,
+      );
+      continue;
+    }
+    if (conv === null) continue;
+    const { data: membership } = await admin
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("conversation_id", conv.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    // Left or removed earlier: the claim is recorded, but no chat is reported.
+    if (membership === null) continue;
+
     claimed.push({
       conversation_id: conv.id,
       event_id: claim.event_id,
-      event_name: conv.name ?? claim.events?.title ?? "Trip chat",
+      event_name: claim.events?.title ?? conv.name ?? "Guest chat",
     });
   }
 

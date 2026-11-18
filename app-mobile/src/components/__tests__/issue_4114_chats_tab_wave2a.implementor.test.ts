@@ -64,10 +64,10 @@ Deno.test("#4114 row anatomy: flat row, no Pair button, no Broadcast label, grey
   assert(/badge\.tone === 'muted' \? styles\.badgeMuted : styles\.badgeAccent/.test(row), "muted chats get the grey badge");
   assert(!/hasUnread = unreadCount > 0 && !isMuted/.test(row), "the old hide-when-muted rule stays deleted");
   assert(/from "react-native-gesture-handler\/ReanimatedSwipeable"/.test(row), "swipes use the Reanimated swipeable");
-  // Wave 6: a brand channel row (several chats) offers no pin / mark-unread
-  // swipe, except Unpin while one of its chats is pinned (#4114 rework).
-  assert(/renderLeftActions=\{isBrandChannel && !isPinned \? undefined : renderLeftActions\}/.test(row) && /renderRightActions=\{renderRightActions\}/.test(row), "both swipe directions");
-  assert(/canToggleUnread && !isBrandChannel \? \(/.test(row), "a brand row never offers mark unread");
+  // #4459: a brand Guest chat is one real chat with every swipe; only the
+  // Removed row (no chat behind it) has none.
+  assert(/renderLeftActions=\{isRemoved \? undefined : renderLeftActions\}/.test(row) && /renderRightActions=\{isRemoved \? undefined : renderRightActions\}/.test(row), "both swipe directions");
+  assert(/canToggleUnread && !isRemoved\s*\n?\s*\? \[\{/.test(row), "#4459: a Guest chat offers mark unread (its own one chat); a Removed row never does");
   assert(/export const ChatListItem = React\.memo\(/.test(row), "rows are memoised");
   const page = stripComments(await read("components/ConnectionsPage.tsx"));
   assert(!/is_online: false/.test(page), "no hard-coded presence");
@@ -133,7 +133,7 @@ Deno.test("#4114 states: skeleton rows in lockstep with the tab scaffold, inline
 
 Deno.test("#4114 wave 2a copy exists in all 29 locales", async () => {
   const keys = ["people_button_a11y", "people_button_a11y_badge", "new_message_title", "new_group", "add_friend_row", "filter_all", "filter_unread",
-    "filter_groups", "filter_events", "section_invites", "time_yesterday", "tag_event", "action_pin", "action_mark_unread", "action_mute",
+    "filter_groups", "filter_brands", "section_invites", "time_yesterday", "tag_brand", "action_pin", "action_mark_unread", "action_mute",
     "action_archive", "pin_limit", "archived_row", "error_inline", "offline_bar", "invite_join", "empty_subtitle"];
   for (const locale of LOCALES) {
     const copy = JSON.parse(await read(`i18n/locales/${locale}/connections.json`));
