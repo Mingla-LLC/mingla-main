@@ -1067,6 +1067,7 @@ function SitePagePlanCard({ args, isExecuting, onConfirm, onCancel }: Pick<ToolP
           setPlanOpen(false);
           onCancel();
         }}
+        copy={SITE_PAGE_PLAN_COPY}
       />
     </GlassChrome>
   );

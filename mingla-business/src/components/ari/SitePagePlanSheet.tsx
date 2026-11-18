@@ -7,7 +7,8 @@
  * the proposal; Cancel, a tap outside and Escape (web) just close the sheet.
  *
  * Do not import this from a screen: mount it through LazySitePagePlanSheet
- * (its code loads on intent on web, off the boot chunk).
+ * (on web its code rides the Website editor's on-intent chunk, off the boot
+ * chunk; WebsiteApp re-exports it for that).
  */
 import React from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -16,7 +17,7 @@ import { ariPalette, color, radius, scrim, space } from "../../constants/designS
 import { DESIGNS, designFor } from "../../../../packages/site-contracts/src/designs.ts";
 import { useBrandSitePlan } from "../../sites/planApi";
 import { useWebEscapeClose } from "../ui/useWebEscapeClose";
-import { SITE_PAGE_PLAN_COPY as COPY, sitePagePlan } from "./sitePagePlan";
+import { sitePagePlan, type SitePagePlanCopy } from "./sitePagePlan";
 
 export interface SitePagePlanSheetProps {
   visible: boolean;
@@ -26,9 +27,11 @@ export interface SitePagePlanSheetProps {
   error: string | null;
   onAdd: () => void;
   onAskForSomethingElse: () => void;
+  /** SITE_PAGE_PLAN_COPY, passed by the card (keeps the Ari copy module out of this chunk). */
+  copy: SitePagePlanCopy;
 }
 
-export function SitePagePlanSheet({ visible, onClose, args, isExecuting, error, onAdd, onAskForSomethingElse }: SitePagePlanSheetProps): React.ReactElement {
+export function SitePagePlanSheet({ visible, onClose, args, isExecuting, error, onAdd, onAskForSomethingElse, copy: COPY }: SitePagePlanSheetProps): React.ReactElement {
   useWebEscapeClose(visible, onClose);
   const plan = sitePagePlan(args);
   const brandId = typeof args.brand_id === "string" ? args.brand_id : "";

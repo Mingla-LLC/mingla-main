@@ -78,6 +78,10 @@ import { SettingsSection } from "./sections/SettingsSection";
 import { WebsiteSetupScreen } from "../setup/WebsiteSetupScreen";
 import { isSetupReturn } from "../../../utils/brandEditReturn";
 
+// #4453 — Ari's page plan sheet (web) loads through this chunk; see
+// components/ari/LazySitePagePlanSheet.web.tsx.
+export { SitePagePlanSheet } from "../../ari/SitePagePlanSheet";
+
 const HEARTBEAT_MS = 120_000;
 const STUDIO_RESULTS = new Set<StudioReturnResult>(["exchange_expired", "session_expired", "preview_expired", "preview_publish"]);
 

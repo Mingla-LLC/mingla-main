@@ -33,7 +33,9 @@ jest.mock("../../../sites/planApi", () => ({ useBrandSitePlan: () => ({ data: { 
 // eslint-disable-next-line import/first
 import { ToolProposalCard } from "../ToolProposalCard";
 // eslint-disable-next-line import/first
-import { sitePagePlan, SITE_PAGE_PLAN_COPY } from "../sitePagePlan";
+import { sitePagePlan } from "../sitePagePlan";
+// eslint-disable-next-line import/first
+import { SITE_PAGE_PLAN_COPY } from "../toolProposalCopy";
 
 const ARGS = {
   brand_id: "6f7d1c52-0d4e-4a43-9a0e-1f6b7f2a9b10",
@@ -143,5 +145,32 @@ describe("#4453 m11 rework Ari's page plan card", () => {
     const plan = sitePagePlan({ page: { title: "X" }, blocks: [{ type: "cta", variant: "v", heading: "Ask", cta_href: "https://evil.example", page_id: "p1" }, { type: "made_up" }] });
     expect(plan.blocks[0]).toMatchObject({ label: "Call to action", lines: ["Ask"] });
     expect(plan.blocks[1]!.label).toBe("Made up");
+  });
+});
+
+// #3493 boot payload: Expo moves every module two async web chunks share into
+// the eager __common chunk. The plan sheet therefore loads through the Website
+// editor's chunk (which already holds planApi and the site-contracts
+// catalogue) and takes its copy as a prop, so it never pulls the Ari copy
+// module into the Website chunk. FAILS-ON-REVERT: a separate dynamic import of
+// ./SitePagePlanSheet, or a runtime import of toolProposalCopy here, puts
+// ~137 KB back in __common.
+describe("#4453 plan sheet stays off the eager web chunk", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { readFileSync } = require("fs") as typeof import("fs");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { join } = require("path") as typeof import("path");
+  const src = (rel: string): string => readFileSync(join(__dirname, "..", rel), "utf8");
+  it("the web lazy sheet imports the Website editor chunk, and WebsiteApp re-exports the sheet", () => {
+    const lazy = src("LazySitePagePlanSheet.web.tsx");
+    expect(lazy).toMatch(/import\("\.\.\/sites\/website\/WebsiteApp"\)\)\.SitePagePlanSheet/);
+    expect(lazy).not.toMatch(/import\("\.\/SitePagePlanSheet"\)/);
+    expect(src("../sites/website/WebsiteApp.tsx")).toMatch(/export \{ SitePagePlanSheet \} from "\.\.\/\.\.\/ari\/SitePagePlanSheet";/);
+  });
+  it("the sheet and its plan model import no Ari copy at runtime", () => {
+    for (const rel of ["SitePagePlanSheet.tsx", "sitePagePlan.ts"]) {
+      const lines = src(rel).split("\n").filter((line) => /from "\.\/toolProposalCopy"/.test(line));
+      for (const line of lines) expect(line).toMatch(/^export type |^import type /);
+    }
   });
 });

@@ -753,3 +753,4 @@ export const SITE_PAGE_PLAN_COPY = {
   noGuess: "I won't guess prices, people or policies. Gaps stay hidden from visitors until you fill them.",
   ariNeeds: "Ari needs this",
 } as const;
+export type SitePagePlanCopy = typeof SITE_PAGE_PLAN_COPY;

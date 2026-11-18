@@ -30,7 +30,7 @@ describe("#4453 M5 venue page pre-fill", () => {
   });
 });
 
-import { experiencePrefill, matchExperienceDate } from "../bookingPrefill";
+import { EXPERIENCE_PREFILL_VALIDATORS, experiencePrefill, matchExperienceDate } from "../experiencePrefill";
 
 describe("#4453 M5 experience pre-fill", () => {
   const dates = [
@@ -46,5 +46,23 @@ describe("#4453 M5 experience pre-fill", () => {
     expect(matchExperienceDate(dates, experiencePrefill({ date: "2026-11-20", slot: "11:00" }), "UTC")).toBeNull();
     expect(matchExperienceDate(dates, experiencePrefill({ date: "2026-13-01", slot: "16:00" }), "UTC")).toBeNull();
     expect(experiencePrefill({ guests: "0", slot: "9pm" })).toEqual({ date: null, slot: null, guests: null });
+  });
+});
+
+// The experience page keeps its own copy of the three validators so the two
+// public pages share no module (#3493: a shared module lands in the eager
+// __common chunk). The twins must give the same answer for every input.
+describe("#4453 pre-fill validator twins", () => {
+  const inputs: Array<string | string[] | undefined> = [
+    undefined, "", "2026-11-20", "2026-02-30", "2026-13-01", "2024-02-29", "2026-11-20T00", ["2026-11-20", "x"],
+    "00:00", "23:59", "24:00", "9:30", "12:60", "0", "1", "12", "20", "21", "99", "4e1", "-1", "x".repeat(65),
+  ];
+  it("prefillDate, prefillTime and prefillCount answer the same in both modules", () => {
+    for (const value of inputs) {
+      expect(EXPERIENCE_PREFILL_VALIDATORS.prefillDate(value)).toBe(prefillDate(value));
+      expect(EXPERIENCE_PREFILL_VALIDATORS.prefillTime(value)).toBe(prefillTime(value));
+      expect(EXPERIENCE_PREFILL_VALIDATORS.prefillCount(value)).toBe(prefillCount(value));
+      expect(EXPERIENCE_PREFILL_VALIDATORS.prefillCount(value, 12)).toBe(prefillCount(value, 12));
+    }
   });
 });

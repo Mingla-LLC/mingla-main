@@ -39,7 +39,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { experiencePrefill, matchExperienceDate, type ExperiencePrefill } from "../../../src/sites/bookingPrefill";
+import { experiencePrefill, matchExperienceDate, type ExperiencePrefill } from "../../../src/sites/experiencePrefill";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { space, type, color } from "../../../src/constants/designSystem";

@@ -10,7 +10,10 @@
  */
 import { BLOCK_CATALOG } from "../../../../packages/site-contracts/src/blocks.ts";
 
-export { SITE_PAGE_PLAN_COPY } from "./toolProposalCopy";
+// The plan copy (SITE_PAGE_PLAN_COPY) stays in toolProposalCopy.ts and reaches the
+// sheet as a prop: importing it here would put the whole Ari copy module in the
+// web __common chunk (shared by the Ari and Website chunks).
+export type { SitePagePlanCopy } from "./toolProposalCopy";
 
 /** Where a piece of content came from (the tool's `have[].source`). */
 export const HAVE_SOURCE_LABELS: Readonly<Record<string, string>> = {
