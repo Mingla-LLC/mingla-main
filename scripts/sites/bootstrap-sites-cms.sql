@@ -214,6 +214,12 @@ SET
 -- reader. Without it every preview was refused by storage (400) and the
 -- preview page answered 404. The runtime still binds a preview to its own
 -- host's site and its exact digest.
+-- #4453 — and Ari's style previews from Website setup
+-- (`plan-previews/<brand>/plan-<32 hex>/<digest>.json`, the grammar of
+-- PLAN_KEY in packages/site-contracts/src/planPreview.ts), which Studio
+-- writes and the runtime's /plan-preview route reads with this same reader.
+-- Without it every style preview frame answered 404. The runtime still binds
+-- a plan preview to Core's signed key and its exact digest.
 DROP POLICY IF EXISTS sites_runtime_reader_pilot_select ON storage.objects;
 DROP POLICY IF EXISTS sites_runtime_reader_select ON storage.objects;
 CREATE POLICY sites_runtime_reader_select
@@ -226,6 +232,11 @@ USING (
     (
       bucket_id = 'sites-publication-artifacts'
       AND name ~ '^publications/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/([0-9a-f-]{36}|preview-[0-9a-f]{32})/[0-9a-f]{64}\.json$'
+    )
+    OR
+    (
+      bucket_id = 'sites-publication-artifacts'
+      AND name ~ '^plan-previews/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/plan-[0-9a-f]{32}/[0-9a-f]{64}\.json$'
     )
     OR
     (
@@ -255,6 +266,7 @@ WITH path_patterns AS (
     '^approved/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f-]{36}/[0-9a-f]{64}/((master|320|640|960|1440|1920|c400|c768|w1600)\.webp|master\.mp4)$'
       AS media_pattern,
     '^fonts/[0-9a-f]{64}\.woff2$' AS font_pattern,
+    '^plan-previews/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/plan-[0-9a-f]{32}/[0-9a-f]{64}\.json$' AS plan_pattern,
     repeat('a', 8) || '-' || repeat('a', 4) || '-4' || repeat('a', 3) ||
       '-8' || repeat('a', 3) || '-' || repeat('a', 12) AS site_a,
     repeat('b', 8) || '-' || repeat('b', 4) || '-4' || repeat('b', 3) ||
@@ -289,6 +301,17 @@ SELECT
   AND NOT ('fonts/../' || repeat('d', 64) || '.woff2') ~ font_pattern
   AND NOT ('fonts/' || site_a || '/' || repeat('d', 64) || '.woff2') ~ font_pattern
   AND NOT ('fonts/' || repeat('d', 64) || '.ttf') ~ font_pattern
+  AND ('plan-previews/' || site_a || '/plan-' || repeat('c', 32) || '/' || repeat('a', 64) || '.json') ~ plan_pattern
+  AND ('plan-previews/' || site_b || '/plan-' || repeat('0', 32) || '/' || repeat('f', 64) || '.json') ~ plan_pattern
+  AND NOT ('plan-previews/' || site_a || '/plan-' || repeat('c', 31) || '/' || repeat('a', 64) || '.json') ~ plan_pattern
+  AND NOT ('plan-previews/' || site_a || '/plan-' || repeat('C', 32) || '/' || repeat('a', 64) || '.json') ~ plan_pattern
+  AND NOT ('plan-previews/' || site_a || '/preview-' || repeat('c', 32) || '/' || repeat('a', 64) || '.json') ~ plan_pattern
+  AND NOT ('plan-previews/' || site_a || '/plan-' || repeat('c', 32) || '/' || repeat('a', 64) || '.jsonx') ~ plan_pattern
+  AND NOT ('plan-previews/' || site_a || '/plan-' || repeat('c', 32) || '/' || repeat('a', 63) || '.json') ~ plan_pattern
+  AND NOT ('plan-previews/../plan-' || repeat('c', 32) || '/' || repeat('a', 64) || '.json') ~ plan_pattern
+  AND NOT ('plan-previews/' || site_a || '/plan-' || repeat('c', 32) || '/../' || repeat('a', 64) || '.json') ~ plan_pattern
+  AND NOT ('publications/plan-previews/' || site_a || '/plan-' || repeat('c', 32) || '/' || repeat('a', 64) || '.json') ~ plan_pattern
+  AND NOT ('plan-previews/' || site_a || '/plan-' || repeat('c', 32) || '/' || repeat('a', 64) || '.json') ~ artifact_pattern
   AS sites_runtime_reader_path_semantics_valid
 FROM path_patterns
 \gset
