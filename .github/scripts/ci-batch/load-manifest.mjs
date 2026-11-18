@@ -334,7 +334,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
 // #4389 implementor (764896f3c0): listed migration 20280808004389 (setup polish: brand terms record, hold rail, derived free-only) after 20280806004473 in the #1857, #1931 and #2117 lanes and registered its implementor pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed. Rework 2 changes the migration's contents only (no new files); seal unchanged.
 // #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "1602031258f859d6ede1c7177a047fd4b3b4396f2549310e3cee59a6c32b2975";
+// #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (it re-emits brand_readiness_internal, which needs brand_readiness_catalog from the skipped 20280307003355); re-sealed.
+export const BOOTSTRAP_SHA256 = "35701fb46ae34663f547deca21cb2a09d1de788a41487e6f9e0aff12c0edec24";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

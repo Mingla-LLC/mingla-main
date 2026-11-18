@@ -590,7 +590,8 @@ export function phase3dContractDigest(manifest) {
 // #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
 // #4389 implementor (764896f3c0): listed migration 20280808004389 and registered its implementor pg17 suite (with sidecar); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "43cd7cd249b910cc518a9c9ff57f83e20c2cc5a5116f193278fa62b8ac982016";
+// #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (needs brand_readiness_catalog from the skipped 20280307003355); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c0db660a099504ce743a36e5c198c8f0f2302a11237df29c81097804572d6b9f";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
