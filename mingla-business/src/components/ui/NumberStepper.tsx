@@ -369,6 +369,10 @@ const styles = StyleSheet.create({
   },
   field: {
     minWidth: 64,
+    // #4490 — on web a TextInput keeps the browser's intrinsic input width
+    // (~20 characters), which squeezed the label into one letter per line in
+    // a 390-wide sheet. Six digits (100,000) fit in 120.
+    maxWidth: 120,
     height: 36,
     paddingHorizontal: space[2],
     paddingVertical: 0,
