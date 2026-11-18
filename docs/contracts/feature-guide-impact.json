@@ -4339,7 +4339,8 @@
         "mingla-business/src/i18n/locales/en/brandSetup.shared.json",
         "mingla-business/src/i18n/locales/en/brandSetup.switcher.json",
         "mingla-business/src/i18n/locales/en/homeSetup.prompt.json",
-        "mingla-business/src/i18n/locales/en/homeSetup.tap.json"
+        "mingla-business/src/i18n/locales/en/homeSetup.tap.json",
+        "supabase/migrations/20280808004389_issue_4389_setup_polish.sql"
       ]
     },
     {
