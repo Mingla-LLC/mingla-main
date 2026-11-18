@@ -28,6 +28,7 @@ import {
   FORMAT_PAGE_SETS,
   FORMAT_PRIMARY_ACTION,
   FORMAT_RECIPES,
+  HOME_BOOKING_TYPES,
   MAX_SECONDARY_HOME_SECTIONS,
   SECONDARY_HOME_TYPES,
   designFingerprint,
@@ -41,7 +42,7 @@ import {
 import { sectionEligibility, type ContentInventory, type SectionReason } from "../contracts/generated/sectionSources.ts";
 import { DEFAULT_SITE_ROUTES } from "../contracts/generated/routes.ts";
 import { compositionHeader, compositionVariant, DESIGNS, HERO_LAYOUTS_WITH_FACTS, type DesignKey } from "../contracts/generated/designs.ts";
-import { isBlockType } from "../contracts/generated/blocks.ts";
+import { BOOKING_BLOCK_NEW_TYPES, isBlockType } from "../contracts/generated/blocks.ts";
 import { mainActionPage, tickerPhrases, type FaqItem, type ProcessStep, type QuickFacts, type ValuePoint } from "../contracts/generated/sitePlan.ts";
 import { lexicalParagraphs, type ComposeBrand, type ComposedBlock, type ComposeExistingPage } from "./composeFromPlan";
 
@@ -143,6 +144,13 @@ export type ComposeV2Input = {
    * (collection_index) only where its slug already is its kind's base.
    */
   routes?: { stored: Readonly<Partial<Record<DetailKind, string | null>>>; canMove: boolean } | null;
+  /**
+   * #4453 — SITES_BOOKING_BLOCKS as Core signed it for this compose. False:
+   * no booking block (availability, ticket tiers, how it works), no hero
+   * booking bar and no Mingla rating is composed, because Studio's page gate
+   * would refuse the write. Absent: unchanged (the plan preview never writes).
+   */
+  bookingBlocks?: boolean;
 };
 
 /** Mingla's own section headings (never a fact). */
@@ -167,6 +175,13 @@ const GRID_HEADING: Readonly<Record<string, string>> = {
   trip: "Upcoming trips",
   event: "What's on",
   experience: "Sessions",
+  stay: "Rooms",
+};
+/** #4453 — a secondary format's grid on Home shows its one next offering. */
+const NEXT_HEADING: Readonly<Record<string, string>> = {
+  trip: "Next trip",
+  event: "Next up",
+  experience: "Next session",
   stay: "Rooms",
 };
 const HISTORY_HEADING: Readonly<Record<FormatKey, string>> = {
@@ -231,6 +246,9 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
   // (availability, ticket tiers, process steps); the artifact refuses one on
   // an Atelier site, so composing it failed that site's preview and Build.
   if (isBlockType(section.type) && (design.variants[section.type] ?? []).length === 0) return null;
+  // #4453 — with SITES_BOOKING_BLOCKS off, a booking block is left out.
+  const bookingOff = input.bookingBlocks === false;
+  if (bookingOff && (BOOKING_BLOCK_NEW_TYPES as readonly string[]).includes(section.type)) return null;
   const name = clean(brand.name, 120) ?? "";
   const tagline = clean(brand.tagline, 120);
   const who = clean(plan.story?.who, 300);
@@ -247,14 +265,14 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
         block.ctas = [{ label: FORMAT_PRIMARY_ACTION[format].label, href: `/${listing.slug}` }];
       }
       for (const extra of section.extras ?? []) {
-        if (extra === "show_rating" && eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
+        if (extra === "show_rating" && !bookingOff && eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
         if (extra === "show_search" && eligible(ctx, section, { show_search: true }) === null) block.show_search = true;
         // #4453 milestone 7b — the owner's own Quick facts (Q8), verbatim, on hero layouts that draw them.
         if (extra === "fact_badge" && eligible(ctx, section, { fact_badge: true }) === null && variant && HERO_LAYOUTS_WITH_FACTS.includes(variant)) {
           const badges = (answers.quick_facts?.facts ?? []).filter((fact) => fact.big.trim() && fact.small.trim()).slice(0, 3).map((fact) => ({ big: fact.big.trim(), small: fact.small.trim() }));
           if (badges.length) block.fact_badges = badges;
         }
-        if (extra === "booking_bar" && eligible(ctx, section, { booking_bar: true }) === null) {
+        if (extra === "booking_bar" && !bookingOff && eligible(ctx, section, { booking_bar: true }) === null) {
           const bar = heroBookingBar(ctx);
           if (bar) Object.assign(block, bar);
         }
@@ -325,7 +343,7 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
     }
     case "testimonials": {
       const block: ComposedBlock = { blockType: "testimonials", heading: HEADING.testimonials, from_collection: true, items: [] };
-      if (eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
+      if (!bookingOff && eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
       return withVariant(block);
     }
     case "hours_location": {
@@ -522,17 +540,25 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
   const recipe = FORMAT_RECIPES[format];
   const homeBlocks = placeSections(ctx, recipe, "home");
   if (homeBlocks[0]?.blockType !== "hero") homeBlocks.unshift(blockFor(ctx, { type: "page_header" }, "home")!);
-  // Each secondary format adds at most two of its offering or booking sections, before the sign-up.
+  // Each secondary format adds at most two of its offering or booking sections,
+  // #4453 booking-first: straight after the primary's booking block (its first
+  // run of booking sections after the hero; right after the hero when it has
+  // none), never down by the sign-up. Its grid shows its one next offering
+  // ("Next up"), then that offering's tickets.
   const extras: ComposedBlock[] = [];
   for (const other of secondary) {
     const sub: Ctx = { ...ctx, format: other };
     const picked = FORMAT_RECIPES[other].filter((section) => SECONDARY_HOME_TYPES.includes(section.type));
-    const placed = placeSections(sub, picked, "home").filter((block) =>
-      !homeBlocks.some((existing) => existing.blockType === block.blockType && existing.kind === block.kind && existing.source === block.source));
+    const placed = placeSections(sub, picked, "home")
+      .filter((block) => ![...homeBlocks, ...extras].some((existing) => existing.blockType === block.blockType && existing.kind === block.kind && existing.source === block.source))
+      .map((block) => (block.blockType === "offering_grid" ? { ...block, heading: NEXT_HEADING[String(block.kind)] ?? block.heading, limit: 1 } : block));
     extras.push(...placed.slice(0, MAX_SECONDARY_HOME_SECTIONS));
   }
-  const signUp = homeBlocks.findIndex((block) => block.blockType === "newsletter_signup");
-  homeBlocks.splice(signUp < 0 ? homeBlocks.length : signUp, 0, ...extras);
+  const isBooking = (block: ComposedBlock): boolean => (HOME_BOOKING_TYPES as readonly string[]).includes(String(block.blockType));
+  const first = homeBlocks.findIndex((block, index) => index > 0 && isBooking(block));
+  let after = first < 0 ? 1 : first;
+  while (first >= 0 && after < homeBlocks.length && isBooking(homeBlocks[after]!)) after += 1;
+  homeBlocks.splice(after, 0, ...extras);
   const home: ComposeV2Page = { key: "home", slug: "", title: "Home", kind: "standard", blocks: homeBlocks };
 
   // ── The page set ────────────────────────────────────────────────────────

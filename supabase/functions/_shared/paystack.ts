@@ -671,7 +671,8 @@ export type PaystackChargeClass =
     outcome: "succeeded";
     transactionId: string | null;
     amountSubunits: number;
-    feesSubunits: number;
+    /** Issue #3645: null when Paystack's answer carried no fee (never 0). */
+    feesSubunits: number | null;
     gatewayResponse: string | null;
   }
   | { outcome: "paused"; approvalUrl: string | null; gatewayResponse: string | null; transactionId: string | null }
@@ -687,6 +688,17 @@ function str(v: unknown): string | null {
 }
 
 /** Pure classification of a charge_authorization answer (see SPEC §4.4.3 step 5). */
+/**
+ * Issue #3645: Paystack's `fees` in subunits, or null when the answer has no
+ * usable fee. A missing fee must never read as 0: a payout netted with fee 0
+ * pays the host Paystack's fee as well.
+ */
+export function paystackFeeOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const fee = Number(value);
+  return Number.isFinite(fee) && fee >= 0 ? Math.trunc(fee) : null;
+}
+
 export function classifyPaystackChargeResponse(
   response: PaystackChargeAuthorizationResponse,
 ): PaystackChargeClass {
@@ -716,7 +728,7 @@ export function classifyPaystackChargeResponse(
       outcome: "succeeded",
       transactionId,
       amountSubunits: Number(data.amount ?? 0),
-      feesSubunits: Number(data.fees ?? 0),
+      feesSubunits: paystackFeeOrNull(data.fees),
       gatewayResponse: gateway,
     };
   }

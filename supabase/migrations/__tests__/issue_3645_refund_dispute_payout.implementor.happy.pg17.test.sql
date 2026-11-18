@@ -9,9 +9,10 @@
 --      instalment (deposit stays on the order).
 --   4. A Paystack dispute on an instalment reference is stored against the
 --      instalment (single subject) and returns the parent order.
---   5. Payout sweep, switch ON: the instalment candidate uses the row's provider,
---      gross = charged, minus refunds and open disputes on both rails; a fully
---      refunded instalment has no candidate. Switch OFF (shipped): nothing.
+--   5. Payout sweep, switch ON (shipped since 20280809003645): the instalment
+--      candidate uses the row's provider, gross = charged, minus refunds and
+--      open disputes on both rails; a fully refunded instalment has no
+--      candidate; a Stripe instalment waits for its fee snapshot.
 
 BEGIN;
 
@@ -114,17 +115,20 @@ BEGIN
     RAISE EXCEPTION 'rdp_4_dispute_duplicated';
   END IF;
 
-  -- 5. Sweep: shipped switch OFF → no instalment candidates.
-  PERFORM public.run_payout_release_dark_sweep(v_now);
-  IF EXISTS (SELECT 1 FROM public.payout_release_items WHERE source_type = 'order_installment') THEN
-    RAISE EXCEPTION 'rdp_5_switch_off_attached';
+  -- 5. Sweep: the switch is on (20280809003645).
+  IF public.issue_2036_installment_payout_ready() IS NOT TRUE THEN
+    RAISE EXCEPTION 'rdp_5_switch_not_on';
   END IF;
-  CREATE OR REPLACE FUNCTION public.issue_2036_installment_payout_ready()
-  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
-  AS $ready$ SELECT true; $ready$;
   -- A Stripe dispute on the Stripe instalment charge.
   INSERT INTO public.stripe_disputes(stripe_dispute_id, stripe_account_id, stripe_charge_id, amount, currency, status, reason, raw_event)
   VALUES ('dp_3645_rdp', 'acct_3645_rdp', 'ch_3645_rdp_i1', 1000, 'usd', 'needs_response', 'fraudulent', '{}'::jsonb);
+  PERFORM public.run_payout_release_dark_sweep(v_now);
+  -- The Stripe instalment waits until the sweep has captured Stripe's fee.
+  IF EXISTS (SELECT 1 FROM public.payout_release_items WHERE source_type = 'order_installment' AND source_id = v_s1) THEN
+    RAISE EXCEPTION 'rdp_5_stripe_attached_without_fee_snapshot';
+  END IF;
+  INSERT INTO public.payout_source_fee_snapshots(source_type, source_id, provider_fee_cents)
+  VALUES ('order_installment', v_s1, 248);
   PERFORM public.run_payout_release_dark_sweep(v_now);
   -- Paystack instalment 1: provider paystack, gross 541250, refunded 41250, disputed 200000.
   SELECT i.gross_cents, i.refunded_cents, i.disputed_cents, rel.provider INTO v_rows

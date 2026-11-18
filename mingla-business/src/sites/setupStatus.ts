@@ -252,3 +252,12 @@ export function setupDraftState(input: {
   if (input.composeFailed) return { kind: "failed", retry: "compose" };
   return input.approved ? { kind: "building" } : { kind: "not_ready" };
 }
+
+/**
+ * #4453 — whether the draft-ready screen offers "Rebuild my pages": the
+ * owner's rank may manage the site, nobody else holds the setup lock, and the
+ * site is not paused. Core still re-checks the rank and the approved plan.
+ */
+export function canRebuildPages(input: { canManage: boolean | undefined; lockHeldByOther: boolean; paused: boolean | undefined }): boolean {
+  return input.canManage === true && !input.lockHeldByOther && input.paused !== true;
+}

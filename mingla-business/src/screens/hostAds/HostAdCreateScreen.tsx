@@ -81,6 +81,7 @@ import {
   hostAdSliderRange,
   hostAdSnap,
   hostAdTopUpNeededCents,
+  hostAdPlanHoldPlaced,
   hostAdWeekRange,
   type HostAdCheckRow,
 } from "../../components/marketing/ads/hostAdBuilderModel";
@@ -1832,13 +1833,19 @@ export default function HostAdCreateRoute(): React.ReactElement {
     setError(null);
     try {
       const { fundHostAdPlan, launchHostAdPlan } = await loadHostAdPlanService();
-      const funded = await fundHostAdPlan({
-        planId: prepared.planId,
-        versionId: prepared.versionId,
-        planHash: prepared.planHash,
-      });
-      setActivePlanState(funded.state);
-      if (funded.state === "staff_review_required") {
+      // #4238: a plan Mingla approved (or already funded) holds its budget.
+      // Holding again is refused (ad_plan_not_fundable), so launch the hold.
+      const fundedState = hostAdPlanHoldPlaced(activePlanState)
+        ? (activePlanState as string)
+        : (
+            await fundHostAdPlan({
+              planId: prepared.planId,
+              versionId: prepared.versionId,
+              planHash: prepared.planHash,
+            })
+          ).state;
+      setActivePlanState(fundedState);
+      if (fundedState === "staff_review_required") {
         setLaunched("staff");
       } else {
         await launchHostAdPlan({
@@ -2172,8 +2179,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const anyRetarget = (guidanceOk?.per_app ?? []).some((row) => row.retarget === true);
   const metaFloorPay = minimumPay("meta");
   const walletPay = walletCreditCents === null ? null : hostAdPayFromCredit(walletCreditCents);
+  // #4238: an approved or funded plan already holds its budget; resuming it
+  // launches that hold, so nothing more is needed from Ads credit.
+  const holdPlaced = hostAdPlanHoldPlaced(activePlanState);
   const topUpNeeded =
-    walletCreditCents === null ? 0 : hostAdTopUpNeededCents(holdPayCents, walletCreditCents);
+    walletCreditCents === null || holdPlaced ? 0 : hostAdTopUpNeededCents(holdPayCents, walletCreditCents);
   const appLabel = (platform: string): string => PLATFORM_LABELS[platform] ?? platform;
 
   // ---- per-app check rows (Review) ----

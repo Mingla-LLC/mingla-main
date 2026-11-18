@@ -609,7 +609,11 @@ export function phase3dContractDigest(manifest) {
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (needs brand_readiness_catalog from the skipped 20280307003355); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4389 merge of main after #4453: kept main's #4453 rows and skip lines beside the #4389 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4238 merge of main after #4453 and #4389: kept main's rows, listed the two #4238 migrations after them; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "63511508a7e214251b0e7b7cbdc70efadfc3fdcf76370411076278ef5bde2894";
+// #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 replay inventories and its pg17 suite, hunk guard and sidecars in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 payout gaps PR checks: skipped 20280809003645 by exact filename in the #1931 and #2117 filtered template replays (the #2492 closure gate: it re-emits payout readers over occurrence_key / provider_fee_minor, which only skipped migrations create); re-sealed.
+// #3645 merge of main after #4389: kept main's #4453 and #4389 rows and skip lines, listed 20280809003645 after them and kept its #1931 and #2117 skip lines; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 merge of main after #4238: kept main's two #4238 rows after 20280809003645; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "43e07f9c1b285d43ff240d7d8344414338cf4ac340e2934f4a42f04d91978435";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

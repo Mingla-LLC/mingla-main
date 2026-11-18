@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/payout-release-sweep/__tests__/issue_3645_fee_capture_gaps.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-fee-capture-gaps",
+  "profile": "deno-1.46-stripe"
+}

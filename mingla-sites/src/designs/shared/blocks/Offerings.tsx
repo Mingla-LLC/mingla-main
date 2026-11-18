@@ -111,10 +111,16 @@ export function Book({ item, ctx, className }: { item: GridItem; ctx: SharedCont
   );
 }
 
-export function Cover({ item, sizes }: { item: GridItem; sizes: string }) {
+export function Cover({ item, sizes, face = false }: { item: GridItem; sizes: string; face?: boolean }) {
+  /*
+   * #4453 — no usable cover (none, or a video cover the feed cannot serve as a
+   * picture): on the cards layout (`face`), a designed face with the
+   * offering's title instead of an empty box. Decorative only: the title is
+   * also the card's heading. Other layouts keep their own no-picture rule.
+   */
   const image = item.card.coverUrl
     ? <img src={item.card.coverUrl} srcSet={item.card.coverSrcSet ?? undefined} sizes={item.card.coverSrcSet ? sizes : undefined} alt="" loading="lazy" decoding="async" />
-    : null;
+    : face ? <span className="mg-ph-none" aria-hidden="true"><span className="mg-ph-none__t">{item.card.title}</span></span> : null;
   // #4453 milestone 9 — with detail pages on, the image opens the site's own
   // page (a duplicate of the title link, so it is hidden from the keyboard and readers).
   return image && item.card.detailHref
@@ -190,7 +196,7 @@ export function OfferingGridCards(props: SharedBlockProps) {
         <div className={`mg-ocards mg-ocards--c${Math.min(items.length, 4)}`} data-mg-stagger="">
           {items.map((item) => (
             <article key={item.card.id} className="mg-ocard" data-offering-kind={item.card.kind}>
-              <div className="mg-ph"><Cover item={item} sizes="(min-width: 1000px) 33vw, (min-width: 720px) 50vw, 100vw" /></div>
+              <div className="mg-ph"><Cover item={item} face sizes="(min-width: 1000px) 33vw, (min-width: 720px) 50vw, 100vw" /></div>
               <div className="mg-ocard__b">
                 {item.card.dates ? <p className="mg-ocard__when">{item.card.dates}</p> : null}
                 <h3><CardTitle card={item.card} /></h3>

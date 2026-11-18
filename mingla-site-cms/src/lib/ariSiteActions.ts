@@ -49,6 +49,7 @@ import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { designCheckWarningCount, runDesignChecks, type DesignCheckResult } from "./designChecks";
 import { CONTENT_COLLECTIONS, runContentAction, scopedRequest, type ContentCollection } from "../endpoints/contentEndpoint";
 import { DESIGN_PASS_ACTIONS, runDesignPassAction } from "./designPass";
+import { defaultHeroPictureDeps, heroPictureFromOfferings } from "./heroPictureImport";
 import { ARI_PAGE_ACTIONS, runAriPageAction } from "./ariPage";
 import type { SignedDesignPass } from "./designPassInputs";
 
@@ -606,7 +607,13 @@ export const ARI_DESIGNER_ACTIONS = new Set([
 ]);
 
 export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: AriActionContext): Promise<Record<string, unknown>> {
-  if (DESIGN_PASS_ACTIONS.has(action)) return runDesignPassAction(action, args, ctx, { currentSettings, writeWorkLog, assertCites, decisionOf });
+  if (DESIGN_PASS_ACTIONS.has(action)) return runDesignPassAction(action, args, ctx, {
+    currentSettings,
+    writeWorkLog,
+    assertCites,
+    decisionOf,
+    heroPicture: (pass, next) => heroPictureFromOfferings(pass.scoped, { tenantId: pass.tenantId, next }, defaultHeroPictureDeps(pass.siteId)),
+  });
   // #4453 milestone 11 — "Add a page with Ari" (ariPage.ts; SITES_ARI_ADD_PAGE, checked by Core).
   if (ARI_PAGE_ACTIONS.has(action)) return runAriPageAction(action, args, ctx);
   switch (action) {
