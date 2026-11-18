@@ -299,6 +299,76 @@ BEGIN
   IF (v_result->>'count')::integer <> 6 THEN
     RAISE EXCEPTION 'S8 the linked account did not get the purchases: %', v_result;
   END IF;
+
+  -- S9. Guest chat backfill: a no-op without #4459's sync, one sync per
+  -- (brand, holder) with it. A recording stand-in replaces the sync for the
+  -- rest of this rolled-back transaction.
+  DROP FUNCTION IF EXISTS public.issue_4459_safe_sync(uuid, uuid, text);
+  IF public.issue_4473_backfill_shared_guest_sync() <> 0 THEN
+    RAISE EXCEPTION 'S9 the backfill did work without the Guest chat sync';
+  END IF;
+  CREATE TABLE pg_temp.i4473_sync_calls(brand_id uuid, user_id uuid, source text);
+  -- The syncs run inside definer functions owned by another role.
+  GRANT SELECT, INSERT, DELETE ON pg_temp.i4473_sync_calls TO PUBLIC;
+  CREATE FUNCTION public.issue_4459_safe_sync(p_brand_id uuid, p_user_id uuid, p_source text)
+  RETURNS void LANGUAGE sql AS
+    'INSERT INTO pg_temp.i4473_sync_calls VALUES ($1, $2, $3)';
+  v_n := public.issue_4473_backfill_shared_guest_sync();
+  IF v_n <> 2
+     OR (SELECT count(*) FROM pg_temp.i4473_sync_calls
+          WHERE brand_id = v_brand AND source = 'purchase_share'
+            AND user_id IN (v_second, v_linker)) <> 2 THEN
+    RAISE EXCEPTION 'S9 the backfill synced % holders: %', v_n,
+      (SELECT jsonb_agg(to_jsonb(c)) FROM pg_temp.i4473_sync_calls c);
+  END IF;
+
+  -- S10. Expiry sweep: the linked account's only proof passes 12 months with
+  -- no row changing. The sweep revokes its shares and re-syncs it; the second
+  -- account, still proved, is left alone. A second run does nothing.
+  DELETE FROM pg_temp.i4473_sync_calls;
+  UPDATE public.account_claim_contacts
+     SET last_proved_at = now() - interval '13 months'
+   WHERE user_id = v_linker;
+  v_n := public.issue_4473_sweep_lapsed_shared_holders(500);
+  IF v_n <> 6 THEN
+    RAISE EXCEPTION 'S10 the sweep revoked % rows, expected the 6 lapsed ones', v_n;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.purchase_shared_holders
+              WHERE user_id = v_linker
+                AND (revoked_at IS NULL OR revoked_reason <> 'contact_lost'))
+     OR (SELECT count(*) FROM public.purchase_shared_holders
+          WHERE user_id = v_second AND revoked_at IS NULL) <> 6 THEN
+    RAISE EXCEPTION 'S10 the sweep revoked the wrong holders';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_temp.i4473_sync_calls
+              WHERE user_id <> v_linker OR source <> 'purchase_share_expiry')
+     OR NOT EXISTS (SELECT 1 FROM pg_temp.i4473_sync_calls
+                     WHERE user_id = v_linker AND brand_id = v_brand) THEN
+    RAISE EXCEPTION 'S10 the lapse did not re-sync exactly the lapsed holder: %',
+      (SELECT jsonb_agg(to_jsonb(c)) FROM pg_temp.i4473_sync_calls c);
+  END IF;
+  IF public.issue_4473_sweep_lapsed_shared_holders(500) <> 0 THEN
+    RAISE EXCEPTION 'S10 a second sweep changed rows';
+  END IF;
+  -- The bound holds.
+  UPDATE public.account_claim_contacts
+     SET last_proved_at = now() - interval '13 months'
+   WHERE user_id = v_second;
+  DELETE FROM public.account_claim_contacts WHERE user_id = v_second AND channel = 'phone';
+  IF public.issue_4473_sweep_lapsed_shared_holders(4) <> 4
+     OR public.issue_4473_sweep_lapsed_shared_holders(4) <> 2 THEN
+    RAISE EXCEPTION 'S10 the sweep ignored its batch limit';
+  END IF;
+
+  -- S11. The hourly job is registered when pg_cron is present.
+  IF to_regnamespace('cron') IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM cron.job
+     WHERE jobname = 'issue_4473_shared_holder_expiry'
+       AND schedule = '23 * * * *'
+       AND command ILIKE '%issue_4473_sweep_lapsed_shared_holders%'
+  ) THEN
+    RAISE EXCEPTION 'S11 the expiry job is not scheduled hourly';
+  END IF;
 END;
 $test$;
 

@@ -104,6 +104,7 @@
         "supabase/migrations/20280220004202_issue_4202_retained_order_chat_reconnect.sql",
         "supabase/migrations/20280804004473_issue_4473_claim_clears_operator_closure.sql",
         "supabase/migrations/20280805004473_issue_4473_purchase_shared_holders.sql",
+        "supabase/migrations/20280806004473_issue_4473_shared_holder_sync_and_expiry.sql",
         "supabase/functions/_shared/purchaseClaimSweep.ts",
         "supabase/functions/claim-contact/index.ts",
         "app-mobile/app/purchases/missing.tsx",
