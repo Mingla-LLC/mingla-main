@@ -24,6 +24,8 @@ export function purchaseKindLabel(kind: PurchaseKind): string {
       return "Booking";
     case "venue_order":
       return "Receipt";
+    case "stay":
+      return "Stay";
   }
 }
 
@@ -41,6 +43,8 @@ export function purchaseCountLabel(item: PurchaseTimelineItem): string {
     ? "guest"
     : item.kind === "reservation"
     ? "person"
+    : item.kind === "stay"
+    ? "stay"
     : "order";
   return `${item.count} ${noun}${item.count === 1 ? "" : "s"}`;
 }

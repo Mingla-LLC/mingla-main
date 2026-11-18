@@ -92,7 +92,11 @@ export function PurchaseCard({
 
   const coverType = coverFailed ? null : purchaseCardCoverType(item);
   const kindLabel = purchaseKindLabel(item.kind);
-  const dateLine = formatTicketTimeLine(item.startsAt, item.timezone, null);
+  // #4473 — a shared stay has no dates; its list time is when it was shared.
+  const undated = item.kind === "stay";
+  const dateLine = undated
+    ? null
+    : formatTicketTimeLine(item.startsAt, item.timezone, null);
   const countLabel = purchaseCountLabel(item);
   const whenLine = dateLine ? `${dateLine} · ${countLabel}` : countLabel;
   const whereLine = [item.brandName, item.venueLine]
@@ -102,7 +106,7 @@ export function PurchaseCard({
   const amount = formatPurchaseMoney(item.amountCents, item.currency);
   const refundState = isRefundStatus(item.status);
   const cancelled = isCancelledStatus(item.status);
-  const tile = purchaseDateTileParts(item.startsAt, item.timezone);
+  const tile = undated ? null : purchaseDateTileParts(item.startsAt, item.timezone);
 
   return (
     <Pressable

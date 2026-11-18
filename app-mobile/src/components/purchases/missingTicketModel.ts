@@ -23,6 +23,13 @@ export function claimedEntryPath(entry: ClaimedEntry): string {
   if (entry.routeKind === "held_ticket") {
     return `/purchases/order/${encodeURIComponent(entry.routeId)}`;
   }
+  if (entry.routeKind === "stay") {
+    // #4473 — a shared stay opens read-only in Purchases; the buyer's own
+    // stay opens on its stay screen.
+    return entry.role === "shared"
+      ? `/purchases/stay/${encodeURIComponent(entry.routeId)}`
+      : `/stay/${encodeURIComponent(entry.routeId)}`;
+  }
   return "/purchases";
 }
 

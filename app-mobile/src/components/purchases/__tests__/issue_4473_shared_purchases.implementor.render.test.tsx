@@ -178,6 +178,9 @@ const { PurchaseCard } = require("../PurchaseCard");
 const { PurchaseShareNote, SharedPurchaseDetail } = require("../SharedPurchaseDetail");
 const { AddIdentitySheet, claimLinkContact } = require("../AddIdentitySheet");
 const { parseClaimedEntries } = require("../../../services/attendanceClaimService");
+const { sharedPurchaseRoute } = require("../../../services/sharedPurchasesService");
+const { calendarPlanMessageControl } = require("../../brandEnquiry/calendarPlanMessage");
+const { claimedEntryPath } = require("../missingTicketModel");
 
 type Renderer = import("react-test-renderer").ReactTestRenderer;
 type Node = import("react-test-renderer").ReactTestInstance;
@@ -263,6 +266,26 @@ function sharedReservation(overrides: Record<string, unknown> = {}) {
     partySize: 4,
     status: "confirmed",
     timezone: "Africa/Lagos",
+    ...overrides,
+  };
+}
+
+function sharedStay(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: "stay_group",
+    sourceId: "stay-s1",
+    stayGroupId: "stay-s1",
+    role: "shared",
+    sharedWithAnotherAccount: true,
+    sharedAt: "2026-11-17T10:00:00.000Z",
+    venueId: "venue-9",
+    venueName: "Harbour House",
+    title: "Harbour House",
+    offeringType: "stay",
+    publicReference: "STAY-7Q2K",
+    state: "confirmed",
+    mode: "instant",
+    createdAt: "2026-11-10T10:00:00.000Z",
     ...overrides,
   };
 }
@@ -687,5 +710,137 @@ describe("#4473 Is this your ticket?", () => {
     expect(text(phone)).toContain("I can't get to that phone");
     await press(byId(phone, "add-identity-landed-ask"));
     expect(maybeId(phone, "missing-ask-step")).toBeTruthy();
+  });
+});
+
+describe("#4473 D4 shared bookings carry no brand and no cancel", () => {
+  test("a shared Calendar booking never passes the venue id off as a brand id", () => {
+    const [row] = sharedCalendarReservations(parseSharedPurchases([sharedReservation()]));
+    expect(row.brand_id).toBe("");
+    expect(row.brand_id).not.toBe("venue-1");
+  });
+
+  test("Calendar plan sheet: no Message brand (so no Cancel) for a shared booking", () => {
+    const [shared] = sharedCalendarReservations(parseSharedPurchases([sharedReservation()]));
+    expect(calendarPlanMessageControl({ kind: "reservation", reservation: shared })).toBeNull();
+    const own = { ...shared, shared: false, brand_id: "brand-real", brand_slug: "harmattan" };
+    const ownControl = calendarPlanMessageControl({ kind: "reservation", reservation: own }, NOW.getTime());
+    expect(ownControl?.allowCancel).toBe(true);
+    expect(ownControl?.target.brandId).toBe("brand-real");
+    const [rsvp] = sharedCalendarRsvps(parseSharedPurchases([sharedRsvp()]));
+    expect(calendarPlanMessageControl({ kind: "rsvp", rsvp }, NOW.getTime())?.allowCancel).toBe(false);
+    expect(calendarPlanMessageControl({ kind: "calendar" })).toBeNull();
+    expect(calendarPlanMessageControl(null)).toBeNull();
+  });
+});
+
+describe("#4473 D5 shared stays are reachable", () => {
+  test("a shared stay has a Purchases route and joins the list, upcoming while active", () => {
+    const parsed = parseSharedPurchases([sharedStay(), sharedStay({ sourceId: "stay-old", stayGroupId: "stay-old", state: "checked_out" })]);
+    expect(sharedPurchaseRoute(parsed[0])).toEqual({ kind: "stay", id: "stay-s1" });
+    const timeline = buildPurchaseTimeline(
+      mergeSharedSources({ orders: [], rsvps: [], reservations: [], venueOrders: [] }, parsed),
+      NOW,
+    );
+    const upcoming = timeline.upcoming.flatMap((group: { items: Array<Record<string, unknown>> }) => group.items);
+    const past = timeline.past.flatMap((group: { items: Array<Record<string, unknown>> }) => group.items);
+    expect(upcoming.map((item) => [item.kind, item.id, item.shared, item.amountCents])).toEqual([
+      ["stay", "stay-s1", true, null],
+    ]);
+    expect(past.map((item) => item.id)).toEqual(["stay-old"]);
+  });
+
+  test("the list card says Stay and Shared, with no made-up date", () => {
+    const item = sharedTimelineItem(sharedStay());
+    const card = render(React.createElement(PurchaseCard, { item, onPress: jest.fn() }));
+    const copy = text(card);
+    expect(copy).toContain("Stay");
+    expect(copy).toContain("Shared");
+    expect(copy).toContain("Harbour House");
+    expect(copy).not.toContain("10");
+    expect(copy).not.toContain("Nov");
+  });
+
+  test("the read-only stay detail shows venue, reference, state and mode, and nothing to act on", async () => {
+    const renderer = render(
+      React.createElement(SharedPurchaseDetail, {
+        item: sharedTimelineItem(sharedStay()),
+        qrSize: 200,
+        onAddToCalendar: jest.fn(),
+        onOpenChat: jest.fn(),
+        onOpenEventPage: jest.fn(),
+      }),
+    );
+    await flush();
+    const copy = text(renderer);
+    for (const shown of ["Harbour House", "Reference", "STAY-7Q2K", "Status", "Confirmed", "Booking type", "Instant"]) {
+      expect(copy).toContain(shown);
+    }
+    expect(maybeId(renderer, "purchase-share-note-shared")).toBeTruthy();
+    expect(renderer.root.findAll((node) => node.type === "QRCode")).toHaveLength(0);
+    expect(maybeId(renderer, "shared-add-to-calendar")).toBeUndefined();
+    expect(maybeId(renderer, "shared-open-chat")).toBeUndefined();
+    expect(copy).not.toContain("When");
+    expect(copy).not.toContain("Cancel");
+  });
+
+  test("a claimed stay with no timezone still parses, and Open goes to the shared detail", () => {
+    const stayEntry = {
+      kind: "stay_group", id: "stay-s1", routeKind: "stay", routeId: "stay-s1",
+      offeringType: "stay", noun: "booking", title: "Harbour House", orderLabel: null,
+      startsAt: null, timezone: null, venueLine: "Harbour House", quantity: null,
+      source: "booking", role: "shared", sharedWithAnotherAccount: true,
+    };
+    const [parsed] = parseClaimedEntries([stayEntry]);
+    expect(parsed).toMatchObject({ kind: "stay_group", timezone: "UTC", role: "shared" });
+    expect(claimedEntryPath(parsed)).toBe("/purchases/stay/stay-s1");
+    // The buyer's own claimed stay keeps its own stay screen.
+    expect(claimedEntryPath({ ...parsed, role: null, sharedWithAnotherAccount: false })).toBe("/stay/stay-s1");
+  });
+
+  test("Found card Open for a shared stay lands on the read-only detail route", async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ data: { ok: true, challengeId: "11111111-1111-4111-8111-111111111111", channel: "email", sentTo: "s•••@gmail.com" }, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          ok: true,
+          claimed: {
+            count: 1,
+            more: false,
+            claimed: [{
+              kind: "stay_group", id: "stay-s1", routeKind: "stay", routeId: "stay-s1",
+              offeringType: "stay", noun: "booking", title: "Harbour House", orderLabel: null,
+              startsAt: null, timezone: null, venueLine: "Harbour House", quantity: null,
+              source: "booking", role: "shared", sharedWithAnotherAccount: true,
+            }],
+          },
+        },
+        error: null,
+      });
+    mockSweep.mockResolvedValue({ count: 0, eventIds: [], claims: [], claimed: [], more: false, rateLimited: false, throttled: false, reason: "add_identity" });
+    const onClose = jest.fn();
+    const renderer = render(
+      React.createElement(AddIdentitySheet, {
+        visible: true,
+        initialStep: "landed",
+        claimLink: {
+          code: "AB12CD34EF", noun: "booking", title: "Harbour House", orderLabel: null,
+          startsAt: null, timezone: "UTC", emailMasked: "s•••@gmail.com", phoneLast4: null,
+          preferredProof: "email", expired: false,
+        },
+        userId: "user-1",
+        identifiers: [],
+        onClose,
+      }),
+    );
+    await press(byId(renderer, "add-identity-landed-send"));
+    await act(async () => {
+      byId(renderer, "otp").props.onComplete("123456");
+    });
+    await flush();
+    expect(text(renderer)).toContain("Harbour House");
+    await press(byId(renderer, "add-identity-open-stay-s1"));
+    expect(onClose).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith("/purchases/stay/stay-s1");
   });
 });

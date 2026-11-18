@@ -129,7 +129,9 @@ export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
       !isClaimedEntryEnum(CLAIM_ROUTE_KINDS, row.routeKind) ||
       typeof row.routeId !== "string" ||
       !isClaimedEntryEnum(CLAIM_OFFERING_TYPES, row.offeringType) ||
-      typeof row.title !== "string" || typeof row.timezone !== "string" ||
+      typeof row.title !== "string" ||
+      (row.timezone !== null && row.timezone !== undefined &&
+        typeof row.timezone !== "string") ||
       !isClaimedEntryEnum(CLAIM_SOURCES, row.source)
     ) return [];
     return [{
@@ -142,7 +144,8 @@ export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
       title: row.title,
       orderLabel: typeof row.orderLabel === "string" ? row.orderLabel : null,
       startsAt: typeof row.startsAt === "string" ? row.startsAt : null,
-      timezone: row.timezone,
+      // #4473 — a stay carries no timezone; it is a booking, not a time.
+      timezone: typeof row.timezone === "string" ? row.timezone : "UTC",
       venueLine: typeof row.venueLine === "string" ? row.venueLine : null,
       quantity: typeof row.quantity === "number" ? row.quantity : 1,
       source: row.source,

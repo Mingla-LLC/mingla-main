@@ -60,7 +60,12 @@ export const userLevelKeys = {
 // model. Keep every list/detail/identity cache under one prefix so claims,
 // checkout completion, and realtime order updates can refresh the whole
 // surface without teaching each producer about individual screens.
-export type PurchaseKind = "order" | "rsvp" | "reservation" | "venue_order";
+export type PurchaseKind =
+  | "order"
+  | "rsvp"
+  | "reservation"
+  | "venue_order"
+  | "stay";
 
 export const purchaseKeys = {
   all: ["purchases"] as const,

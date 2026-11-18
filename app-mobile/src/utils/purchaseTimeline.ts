@@ -1,4 +1,10 @@
-export type PurchaseKind = "order" | "rsvp" | "reservation" | "venue_order";
+export type PurchaseKind =
+  | "order"
+  | "rsvp"
+  | "reservation"
+  | "venue_order"
+  // #4473 — only shared stays are listed here; owned stays live on /stay.
+  | "stay";
 export type PurchaseCoverMediaType = "image" | "video" | "gif";
 
 export interface PurchaseOrderSource {
@@ -79,11 +85,24 @@ export interface PurchaseVenueOrderSource {
   raw: unknown;
 }
 
+/** #4473 — a shared stay: venue, reference, state and mode; no dates. */
+export interface PurchaseStaySource {
+  id: string;
+  title: string;
+  createdAt: string;
+  timezone: string;
+  venueLine: string | null;
+  state: string;
+  shared?: boolean;
+  raw: unknown;
+}
+
 export interface PurchaseSources {
   orders: readonly PurchaseOrderSource[];
   rsvps: readonly PurchaseRsvpSource[];
   reservations: readonly PurchaseReservationSource[];
   venueOrders: readonly PurchaseVenueOrderSource[];
+  stays?: readonly PurchaseStaySource[];
 }
 
 export interface PurchaseTimelineItem {
@@ -316,8 +335,47 @@ function venueOrderItems(
   });
 }
 
+function stayItems(stays: readonly PurchaseStaySource[]): PurchaseTimelineItem[] {
+  return stays.flatMap((stay) => {
+    const createdAt = validDate(stay.createdAt);
+    if (!createdAt) return [];
+    return [{
+      key: `stay:${stay.id}`,
+      id: stay.id,
+      kind: "stay" as const,
+      title: stay.title,
+      brandName: stay.title,
+      coverMediaUrl: null,
+      coverMediaType: null,
+      startsAt: createdAt.toISOString(),
+      endsAt: createdAt.toISOString(),
+      timezone: stay.timezone || "UTC",
+      venueLine: stay.venueLine,
+      status: stay.state,
+      count: 1,
+      amountCents: null,
+      refundedAmountCents: 0,
+      currency: null,
+      source: null,
+      shared: stay.shared === true,
+      raw: stay.raw,
+    }];
+  });
+}
+
+const FINISHED_STAY_STATES = new Set([
+  "cancelled",
+  "completed",
+  "checked_out",
+  "expired",
+  "declined",
+  "no_show",
+]);
+
 function isUpcoming(item: PurchaseTimelineItem, now: Date): boolean {
   if (item.kind === "venue_order") return false;
+  // A stay carries no dates here; its state says whether it is still ahead.
+  if (item.kind === "stay") return !FINISHED_STAY_STATES.has(item.status);
   if (item.kind === "order" && TERMINAL_ORDER_STATUSES.has(item.status)) return false;
   if (
     item.kind === "reservation" &&
@@ -340,6 +398,7 @@ export function buildPurchaseTimeline(
     ...rsvpItems(sources.rsvps),
     ...reservationItems(sources.reservations),
     ...venueOrderItems(sources.venueOrders),
+    ...stayItems(sources.stays ?? []),
   ];
   const upcoming = all
     .filter((item) => isUpcoming(item, now))

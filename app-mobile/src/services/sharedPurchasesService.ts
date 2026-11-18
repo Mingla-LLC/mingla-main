@@ -26,6 +26,7 @@ import type {
   PurchaseReservationSource,
   PurchaseRsvpSource,
   PurchaseSources,
+  PurchaseStaySource,
   PurchaseVenueOrderSource,
 } from "../utils/purchaseTimeline";
 import type { MyReservationRow } from "../hooks/useMyReservations";
@@ -273,7 +274,7 @@ export function isPurchaseShareFlagged(
   );
 }
 
-/** The Purchases route kind + id for a shared purchase (stays have none). */
+/** The Purchases route kind + id for a shared purchase. */
 export function sharedPurchaseRoute(
   purchase: SharedPurchase,
 ): { kind: PurchaseKind; id: string } | null {
@@ -287,6 +288,8 @@ export function sharedPurchaseRoute(
       return { kind: "reservation", id: purchase.reservationId ?? purchase.sourceId };
     case "venue_order":
       return { kind: "venue_order", id: purchase.venueOrderId ?? purchase.sourceId };
+    case "stay_group":
+      return { kind: "stay", id: purchase.stayGroupId ?? purchase.sourceId };
     default:
       return null;
   }
@@ -326,6 +329,7 @@ export function sharedPurchaseSources(
   const rsvps: PurchaseRsvpSource[] = [];
   const reservations: PurchaseReservationSource[] = [];
   const venueOrders: PurchaseVenueOrderSource[] = [];
+  const stays: PurchaseStaySource[] = [];
   for (const purchase of purchases) {
     const route = sharedPurchaseRoute(purchase);
     if (!route) continue;
@@ -407,9 +411,20 @@ export function sharedPurchaseSources(
         shared: true,
         raw: purchase,
       });
+    } else if (purchase.kind === "stay_group" && purchase.createdAt) {
+      stays.push({
+        id: route.id,
+        title: purchase.venueName ?? purchase.title,
+        createdAt: purchase.createdAt,
+        timezone: purchase.timezone,
+        venueLine: purchase.venueName,
+        state: purchase.state ?? "confirmed",
+        shared: true,
+        raw: purchase,
+      });
     }
   }
-  return { orders, rsvps, reservations, venueOrders };
+  return { orders, rsvps, reservations, venueOrders, stays };
 }
 
 // ── Calendar ───────────────────────────────────────────────────────────────
@@ -516,7 +531,9 @@ export function sharedCalendarReservations(
     if (purchase.kind !== "reservation" || !purchase.startsAt) return [];
     return [{
       id: purchase.reservationId ?? purchase.sourceId,
-      brand_id: purchase.venueId ?? "",
+      // The payload carries a venue id, not a brand id: never pass one off as
+      // the other (Message brand would look up the wrong thing). Empty = none.
+      brand_id: "",
       brand_slug: null,
       brand_name: purchase.venueName ?? purchase.title,
       brand_cover_url: null,

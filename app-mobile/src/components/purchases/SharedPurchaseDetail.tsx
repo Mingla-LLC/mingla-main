@@ -155,7 +155,11 @@ export function SharedPurchaseDetail({
     };
   }, [purchase.eventId]);
 
-  const timeLine = formatTicketTimeLine(item.startsAt, item.timezone, null);
+  const isStay = purchase.kind === "stay_group";
+  // A stay is listed by when it was shared, which is not when it happens.
+  const timeLine = isStay
+    ? null
+    : formatTicketTimeLine(item.startsAt, item.timezone, null);
   const place = purchase.isOnline
     ? t("ticket.onlineEvent")
     : purchase.locationText ?? purchase.venueName ?? null;
@@ -229,6 +233,15 @@ export function SharedPurchaseDetail({
         {item.kind === "reservation" ? (
           <DetailRow label={t("shared.party")} value={String(purchase.partySize)} />
         ) : null}
+        {isStay && purchase.publicReference ? (
+          <DetailRow label={t("shared.reference")} value={purchase.publicReference} />
+        ) : null}
+        {isStay && purchase.state ? (
+          <DetailRow label={t("shared.state")} value={purchaseStatusLabel(purchase.state)} />
+        ) : null}
+        {isStay && purchase.mode ? (
+          <DetailRow label={t("shared.mode")} value={purchaseStatusLabel(purchase.mode)} />
+        ) : null}
       </View>
 
       <View style={styles.actions}>
@@ -246,11 +259,13 @@ export function SharedPurchaseDetail({
             testID="shared-open-chat"
           />
         ) : null}
-        <QuietButton
-          label={t("ticket.addToCalendar")}
-          onPress={onAddToCalendar}
-          testID="shared-add-to-calendar"
-        />
+        {isStay ? null : (
+          <QuietButton
+            label={t("ticket.addToCalendar")}
+            onPress={onAddToCalendar}
+            testID="shared-add-to-calendar"
+          />
+        )}
       </View>
 
       {validPasses.length > 0 ? (

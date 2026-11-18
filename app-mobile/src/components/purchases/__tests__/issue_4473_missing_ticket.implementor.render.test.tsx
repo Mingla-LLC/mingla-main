@@ -685,7 +685,10 @@ describe("#4473 model", () => {
     expect(claimedEntryPath(entry())).toBe("/purchases/order/order-1");
     expect(claimedEntryPath(entry({ routeKind: "held_ticket", routeId: "a b" }))).toBe("/purchases/order/a%20b");
     expect(claimedEntryPath(entry({ routeKind: "venue_order", routeId: "v1" }))).toBe("/purchases/venue_order/v1");
-    expect(claimedEntryPath(entry({ routeKind: "stay", routeId: "s1" }))).toBe("/purchases");
+    // The buyer's own stay opens on its stay screen; a shared one in Purchases.
+    expect(claimedEntryPath(entry({ routeKind: "stay", routeId: "s1" }))).toBe("/stay/s1");
+    expect(claimedEntryPath(entry({ routeKind: "stay", routeId: "s1", role: "shared" })))
+      .toBe("/purchases/stay/s1");
   });
 
   test("Last checked buckets and the resend clock", () => {

@@ -400,6 +400,9 @@
     "pickupCode": "Pickup code",
     "when": "When",
     "where": "Where",
-    "party": "Party size"
+    "party": "Party size",
+    "reference": "Reference",
+    "state": "Status",
+    "mode": "Booking type"
   }
 }

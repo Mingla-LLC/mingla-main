@@ -89,6 +89,7 @@ export function mergeSharedSources(
       ...owned.venueOrders,
       ...extra.venueOrders.filter((item) => !venueOrderIds.has(item.id)),
     ],
+    stays: [...(owned.stays ?? []), ...(extra.stays ?? [])],
   };
 }
 
@@ -119,6 +120,8 @@ async function fetchOwnedPurchaseDetail(
   kind: PurchaseKind,
   id: string,
 ): Promise<PurchaseTimelineItem | null> {
+  // Owned stays open on /stay; only shared ones are Purchases items.
+  if (kind === "stay") return null;
   const empty = { orders: [], rsvps: [], reservations: [], venueOrders: [] };
   if (kind === "order") {
     const [orders, held] = await Promise.all([

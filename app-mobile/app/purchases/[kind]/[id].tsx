@@ -92,6 +92,7 @@ const KINDS = new Set<PurchaseKind>([
   "rsvp",
   "reservation",
   "venue_order",
+  "stay",
 ]);
 
 const TICKET_MAPS_PALETTE: ThemePalette = {

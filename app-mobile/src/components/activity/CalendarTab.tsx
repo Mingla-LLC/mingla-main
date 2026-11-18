@@ -88,10 +88,8 @@ import {
 import { supabase } from "../../services/supabase";
 import { CalendarPlanMessageButton } from "../brandEnquiry/CalendarPlanMessageButton";
 import {
-  reservationMessageTarget,
-  rsvpMessageTarget,
-  stayMessageTarget,
-  ticketOrderMessageTarget,
+  calendarPlanMessageControl,
+  type CalendarPlanMessageRow,
 } from "../brandEnquiry/calendarPlanMessage";
 import { glass } from "../../constants/designSystem";
 import {
@@ -1194,19 +1192,14 @@ const CalendarTab = ({
 
   // #4111 Wave D (D6) — every non-card plan carries "Message {Brand}".
   const sheetMessageControl = useMemo(() => {
-    const row = actionRow;
-    if (row === null || row.kind === "calendar") return null;
-    const target = row.kind === "reservation"
-      ? reservationMessageTarget(row.reservation)
-      : row.kind === "stay"
-      ? stayMessageTarget(row.group)
-      : row.kind === "rsvp"
-      ? rsvpMessageTarget(row.rsvp)
-      : ticketOrderMessageTarget(row.row);
+    // #4473 — the rule (incl. no control for a shared booking) is pure and
+    // tested in calendarPlanMessage.ts.
+    const control = calendarPlanMessageControl(actionRow as CalendarPlanMessageRow | null);
+    if (control === null) return null;
     return (
       <CalendarPlanMessageButton
-        target={target}
-        onCancelReservation={row.kind === "reservation" ? cancelReservationById : undefined}
+        target={control.target}
+        onCancelReservation={control.allowCancel ? cancelReservationById : undefined}
       />
     );
   }, [actionRow, cancelReservationById]);
