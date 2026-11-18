@@ -5172,6 +5172,41 @@
         "mingla-business/src/components/venue/venueIntelligence.ts",
         "mingla-business/src/components/venue/venueReviewsSummary.ts"
       ]
+    },
+    {
+      "capability_key": "payouts-timing",
+      "paths": [
+        "supabase/functions/_shared/payoutHoldStamp.ts",
+        "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql"
+      ]
+    },
+    {
+      "capability_key": "trips-installments",
+      "paths": [
+        "supabase/functions/_shared/installments/paystackInstallmentWebhook.ts",
+        "supabase/functions/installment-pay-link/index.ts",
+        "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql"
+      ]
+    },
+    {
+      "capability_key": "payouts-paystack-nigeria",
+      "paths": [
+        "supabase/functions/_shared/paystack.ts"
+      ]
+    },
+    {
+      "capability_key": "venues-qr-ordering",
+      "paths": [
+        "supabase/functions/_shared/venueOrderPricing.ts",
+        "supabase/functions/venue-order-create/index.ts",
+        "supabase/functions/venue-order-staff/index.ts"
+      ]
+    },
+    {
+      "capability_key": "stays-hosting",
+      "paths": [
+        "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql"
+      ]
     }
   ]
 }
