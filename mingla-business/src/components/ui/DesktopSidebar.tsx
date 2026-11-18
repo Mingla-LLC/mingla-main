@@ -6,7 +6,10 @@
  * the bottom. Groups collapse (a collapsed group holding the page shows an
  * orange dot); the whole sidebar collapses to the 80 icon rail (remembered,
  * localStorage try/catch) and is always the rail on wizard / full-screen
- * routes. The rail has no Blast item. The rank gate applies: groups and items
+ * routes. The rail shows EVERY page (#4389 P3, Seth 2026-11-18): the top
+ * group, then each titled group's items after a thin divider (group titles
+ * and their chevrons live only in the expanded sidebar); every rail item has
+ * a hover / keyboard-focus label. The rail has no Blast item. The rank gate applies: groups and items
  * appear only for the tabs passed in (already rank-filtered by the caller).
  * Analytics stays out (BUILD_DECISIONS 11-14).
  *
@@ -15,7 +18,7 @@
  * Web only in practice: both mounts sit behind `useResponsiveLayout`.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallbackType } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 
@@ -68,7 +71,9 @@ const MARKETING_ICONS: Record<string, IconName> = {
   ads: "target",
   creators: "users",
   referrals: "gift",
-  people: "user",
+  // #4389 P4/P5 — People is the contact book (`notebook`), never Account's
+  // `user` (Creators keeps `users`), so the rail shows no two identical glyphs.
+  people: "notebook",
   templates: "template",
 };
 
@@ -169,52 +174,45 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
   const go = (path: string) => (): void => router.push(path as never);
 
   if (rail) {
-    // The 80 icon rail: the top group, then one icon per remaining group (its
-    // first item), Account at the bottom. No Blast item.
-    const railItems: SidebarItem[] = [
-      ...(groups[0]?.title === null ? groups[0].items : []),
-      ...groups.filter((g) => g.title !== null).map((g) => ({ ...g.items[0], key: `${g.key}:${g.items[0].key}`, label: g.title ?? g.items[0].label })),
-    ];
+    // #4389 P3 — the 80 icon rail shows every page: the top group, then each
+    // titled group's items after a thin divider (in place of its title).
+    // Expand and Account stay at the bottom. No Blast item.
     return (
       <View testID={testID} style={[styles.sidebar, styles.rail]} accessibilityRole="tablist">
         <View style={styles.railLogo}>
           <HostLogo width={LOGO_WIDTH_RAIL} />
         </View>
-        {railItems.map((item) => {
-          const group = groups.find((g) => item.key.startsWith(`${g.key}:`));
-          const on = group !== undefined ? group.items.some((i) => i.key === activeKey) : item.key === activeKey;
-          return (
-            <Pressable
-              key={item.key}
-              onPress={go(item.path)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={item.label}
-              style={(state: PressableStateCallbackType & { hovered?: boolean }) => [
-                styles.railItem,
-                on ? styles.itemOn : state.hovered ? styles.itemHover : null,
-              ]}
-            >
-              <Icon name={item.icon} size={20} color={on ? color.accent : color.text2} />
-            </Pressable>
-          );
-        })}
+        {groups.map((group) => (
+          <React.Fragment key={group.key}>
+            {group.title !== null ? (
+              <View style={styles.railDivider} testID={`sidebar-rail-divider-${group.key}`} />
+            ) : null}
+            {group.items.map((item) => {
+              const on = item.key === activeKey;
+              return (
+                <RailItem key={item.key} tipKey={item.key} label={item.label} role="tab" on={on} onPress={go(item.path)}>
+                  <Icon name={item.icon} size={20} color={on ? color.accent : color.text2} />
+                </RailItem>
+              );
+            })}
+          </React.Fragment>
+        ))}
         <View style={styles.spacer} />
         {!forcedRail ? (
-          <Pressable onPress={toggleCollapsed} accessibilityRole="button" accessibilityLabel="Expand sidebar" style={styles.railItem}>
+          <RailItem tipKey="expand" label="Expand sidebar" role="button" on={false} onPress={toggleCollapsed}>
             <Icon name="chevR" size={18} color={color.text3} />
-          </Pressable>
+          </RailItem>
         ) : null}
         {account !== null ? (
-          <Pressable
+          <RailItem
+            tipKey="account"
+            label={account.label}
+            role="tab"
+            on={activeKey === "account"}
             onPress={go(account.path)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeKey === "account" }}
-            accessibilityLabel={account.label}
-            style={[styles.railItem, activeKey === "account" ? styles.itemOn : null]}
           >
             <Icon name={account.icon} size={20} color={activeKey === "account" ? color.accent : color.text2} />
-          </Pressable>
+          </RailItem>
         ) : null}
       </View>
     );
@@ -262,6 +260,66 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
       {account !== null ? (
         <View style={styles.footer}>
           <SidebarRow item={account} on={activeKey === "account"} onPress={go(account.path)} />
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
+// MINGLA-INVARIANT: I-4389-RAIL-LABELS | issue #4389 | every collapsed-rail item (pages, Expand, Account) shows its page name in a label bubble on hover and on keyboard focus, hidden on leave, blur and press; the bubble is hidden from assistive tech (the Pressable carries the label). Enforced by src/components/ui/__tests__/issue_4389_sidebar_rail.implementor.test.tsx.
+/**
+ * #4389 P3 — one rail item with its hover / keyboard-focus label (web). The
+ * bubble sits to the right of the 48 item (the sidebar is fixed and does not
+ * clip), ignores the pointer and is hidden from assistive tech: the Pressable
+ * already carries the accessibility label.
+ */
+const RailItem: React.FC<{
+  tipKey: string;
+  label: string;
+  role: "tab" | "button";
+  on: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}> = ({ tipKey, label, role, on, onPress, children }) => {
+  const [tip, setTip] = useState(false);
+  const show = (): void => setTip(true);
+  const hide = (): void => setTip(false);
+  return (
+    <View style={styles.railSlot}>
+      <Pressable
+        onPress={() => {
+          hide();
+          onPress();
+        }}
+        onHoverIn={show}
+        onHoverOut={hide}
+        onFocus={show}
+        onBlur={hide}
+        accessibilityRole={role}
+        accessibilityState={role === "tab" ? { selected: on } : undefined}
+        accessibilityLabel={label}
+        testID={`sidebar-rail-item-${tipKey}`}
+        style={(state: PressableStateCallbackType & { hovered?: boolean }) => [
+          styles.railItem,
+          on ? styles.itemOn : state.hovered ? styles.itemHover : null,
+        ]}
+      >
+        {children}
+      </Pressable>
+      {tip ? (
+        <View
+          style={styles.railTipWrap}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          aria-hidden
+          testID={`sidebar-rail-tip-${tipKey}`}
+        >
+          <View style={styles.railTip}>
+            <Text style={styles.railTipText} numberOfLines={1}>
+              {label}
+            </Text>
+          </View>
         </View>
       ) : null}
     </View>
@@ -317,6 +375,20 @@ const styles = StyleSheet.create({
   itemOn: { backgroundColor: color.fill.railOn },
   itemHover: { backgroundColor: color.fill.rowHover },
   railItem: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  // #4389 P3 — the rail item's slot (anchors its label) and the thin divider
+  // that stands in for a group title.
+  railSlot: { position: "relative", width: 48, height: 48 },
+  railDivider: { width: 32, height: StyleSheet.hairlineWidth, backgroundColor: color.line, marginVertical: space[1] },
+  railTipWrap: { position: "absolute", left: 56, top: 0, height: 48, justifyContent: "center", zIndex: 1 },
+  railTip: {
+    paddingHorizontal: space[3],
+    paddingVertical: space[1],
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
+    backgroundColor: materials.onPhoto.solidFill,
+  },
+  railTipText: { ...type.caption, fontWeight: "600", color: color.text1 },
   footer: { paddingHorizontal: space[3], paddingTop: space[3], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
   spacer: { flex: 1 },
 });
