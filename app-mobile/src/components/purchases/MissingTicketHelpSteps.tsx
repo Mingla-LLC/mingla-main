@@ -151,6 +151,7 @@ export function AskSenderStep({
   const share = async (): Promise<void> => {
     setShareFailed(false);
     try {
+      // SHARE-NON-CONTENT:invite
       await Share.share({ message });
     } catch {
       setShareFailed(true);
