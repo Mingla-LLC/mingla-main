@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-site-control/issue_4453_compose_booking_blocks.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4453-brand-site-control-compose-booking-blocks",
+  "profile": "deno-2-unit"
+}

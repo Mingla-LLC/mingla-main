@@ -1,4 +1,3 @@
-// deno-lint-ignore-file require-await -- the fixture mirrors async HTTP
 /*
  * #4453 Fault 1 — provisioning accepts every registered design.
  *

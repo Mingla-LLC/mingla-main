@@ -299,6 +299,12 @@ export async function handleSitePlanRoute(
     // every composed section starts Draft.
     const designPass = await designPassForCompose(ctx, siteId, brandId, inputs);
     if (designPass === "error") return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
+    // #4453 — SITES_BOOKING_BLOCKS, signed in by Core (never the caller), the
+    // same way the content route signs it: Studio's page gate lets composed
+    // booking blocks be added only while it is on; off or unreadable, Studio
+    // composes none instead of failing the draft.
+    const bookingFlag = await ctx.serviceRpc("brand_site_booking_blocks_enabled", {});
+    const bookingBlocks = !bookingFlag.error && bookingFlag.data === true;
     const cms = await ctx.callCms({
       siteId,
       operationId,
@@ -327,6 +333,7 @@ export async function handleSitePlanRoute(
         ...(proof.reviewDrafts || designPass ? { review_drafts: true } : {}),
         ...(proof.rows.length ? { setup_content: proof.rows } : {}),
         ...(designPass ? { design_pass: designPass } : {}),
+        ...(bookingBlocks ? { booking_blocks: true } : {}),
       },
     });
     if (!cms.ok) return cms;
