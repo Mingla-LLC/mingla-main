@@ -119,7 +119,6 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
         {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} /> : null}
         <View style={styles.stack}>{children}</View>
         {active && switcherOpen ? (
-          // MINGLA-INVARIANT: I-DESKTOP-SWITCHER-ABOVE-CHROME | issue #4389 | on shell routes the brand switcher mounts in an overlay after the stack (not inside host-shell-topbar), zIndex above the sidebar's 50, starting right of the sidebar. Enforced by src/components/ui/__tests__/issue_4389_shell_switcher_overlay.implementor.test.tsx.
           <View
             style={[styles.overlayLayer, { left: inset + DESKTOP_BEZEL_MARGIN }]}
             testID="host-shell-switcher-overlay"

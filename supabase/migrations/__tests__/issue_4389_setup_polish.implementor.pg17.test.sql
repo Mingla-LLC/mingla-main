@@ -1,8 +1,8 @@
 -- Issue #4389 — Host polish pass P1/P8 (20280808004389_issue_4389_setup_polish.sql),
 -- on the fully replayed PG17 schema.
--- MINGLA-INVARIANT: I-4389-SETUP-TERMS-BRAND-LEVEL | issue #4389 | brand_setup terms are done when the brand has a brand_terms_acceptances row for 1.0 (written by trigger from any active, accepted brand_owner / brand_admin acceptance, backfilled from all past ones incl. removed members) OR an active, accepted owner / admin holds 1.0; no handover ('stay', 'leave', admin reassignment) or member removal reopens it; another version does not satisfy it; roles below admin and pending invites never write it.
+-- MINGLA-INVARIANT: I-4389-SETUP-TERMS-BRAND-LEVEL | issue #4389 | brand_setup terms are done when the brand has a brand_terms_acceptances row for 1.0 (written by trigger from any current, joined brand_owner / brand_admin acceptance, backfilled from all past ones incl. removed members) OR a current, joined owner / admin holds 1.0; no handover ('stay', 'leave', admin reassignment) or member removal reopens it; another version does not satisfy it; roles below admin and pending invites never write it.
 -- MINGLA-INVARIANT: I-4389-SETUP-DETAILS-AGREES-WITH-SELL | issue #4389 | a Paystack hold-rail brand (payout_hold_cutover_at set) counts as able to take money in setup facts (details true, bank_connected false, preview "Ready to sell").
--- MINGLA-INVARIANT: I-4389-FREE-ONLY-NEVER-WITH-COLLECT | issue #4389 | setup facts never report free_only_at while details is true; a free-only brand that cannot collect keeps its stamp and is never a draft.
+-- MINGLA-INVARIANT: I-4389-FREE-ONLY-NEVER-WITH-COLLECT | issue #4389 | setup facts never report free_only_at while details is true; a free-only brand that cannot collect keeps its stamp and its is_draft stays false.
 --
 --   (a) owner has no terms, an accepted admin accepted 1.0 -> terms true
 --   (b) owner handover, 'stay' (old owner demoted to admin) AND 'leave' (old

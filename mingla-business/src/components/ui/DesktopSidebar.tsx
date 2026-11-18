@@ -336,7 +336,6 @@ const RailTip: React.FC<{ tipKey: string; label: string; style?: ViewStyle }> = 
   </View>
 );
 
-// MINGLA-INVARIANT: I-4389-RAIL-LABELS | issue #4389 | every collapsed-rail item (pages, Expand, Account) shows its page name in a label bubble on hover and on keyboard focus, hidden on leave, blur and press; the bubble is hidden from assistive tech (the Pressable carries the label). Enforced by src/components/ui/__tests__/issue_4389_sidebar_rail.implementor.test.tsx.
 /**
  * #4389 P3 — one rail item with its hover / keyboard-focus label (web). The
  * bubble sits to the right of the 48 item (the sidebar is fixed and does not

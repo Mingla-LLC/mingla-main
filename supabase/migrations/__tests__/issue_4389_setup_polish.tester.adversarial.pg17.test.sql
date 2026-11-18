@@ -16,7 +16,7 @@
 --        being the draft (one-draft rule follows).
 --   (A6) Paystack with a bank but an old ToS only -> details true, terms false,
 --        not complete, and the preview still says "Bank connected".
--- MINGLA-INVARIANT: I-4389-SETUP-TERMS-NEVER-REOPENED-BY-HANDOVER | issue #4389 | once an owner or admin of the brand accepted ToS 1.0, brand_setup terms stay done through any handover ('leave', 'stay', admin reassignment) or member removal; a hold-rail stamp counts only for Paystack brands; a true draft remains the host's one draft.
+-- MINGLA-INVARIANT: I-4389-SETUP-TERMS-NEVER-REOPENED-BY-HANDOVER | issue #4389 | once an owner or admin of the brand accepted ToS 1.0, brand_setup terms stay done through any handover ('leave', 'stay', admin reassignment) or member removal; a hold-rail stamp counts only for Paystack brands; a brand with is_draft true is the one issue_4389_user_draft_brand returns for its host.
 --
 -- FAILS-ON-REVERT: replay without 20280808004389 -> (A1), (A2-stay), (A5-complete)
 -- fail (owner-only terms ignore the demoted acceptor and the admin; no brand
