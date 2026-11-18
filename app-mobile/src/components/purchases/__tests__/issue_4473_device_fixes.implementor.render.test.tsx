@@ -110,7 +110,9 @@ jest.mock("@gorhom/bottom-sheet", () => {
     BottomSheetView: passthrough("SheetView"),
     useBottomSheetTimingConfigs: () => ({}),
   };
-});
+  // The #1486 lane runs this file with no app-mobile install, so gorhom is not
+  // on disk there; the factory above is the whole module this test needs.
+}, { virtual: true });
 jest.mock("react-native-reanimated", () => ({
   Easing: { out: (f: unknown) => f, cubic: (t: number) => t },
 }));
@@ -948,8 +950,8 @@ describe("#4473 D9 the sheet settles back after the keyboard closes", () => {
   // the keyboard-lifted index, so keyboardBlurBehavior="restore" looked up
   // detents[103.5] (undefined) and never moved. The patched helper returns an
   // index whose detent is a real resting position.
-  // Jest does not transform node_modules here, so compile the patched module
-  // (the file the app's Metro bundle uses) to CommonJS and run it.
+  // Compile the patched module (the file the app's Metro bundle uses) to
+  // CommonJS and run it.
   const loadPatchedHelper = (): ((
     detents: number[] | undefined,
     highest: number | undefined,
@@ -957,8 +959,23 @@ describe("#4473 D9 the sheet settles back after the keyboard closes", () => {
   ) => number) => {
     const fs = jest.requireActual("fs") as typeof import("fs");
     const ts = jest.requireActual("typescript") as typeof import("typescript");
-    const file = require.resolve("@gorhom/bottom-sheet/src/utilities/keyboardDetentIndex.ts");
-    const { outputText } = ts.transpileModule(fs.readFileSync(file, "utf8"), {
+    // Read the helper from the patch patch-package applies on install, so the
+    // #1486 lane (no app-mobile install, no gorhom on disk) runs the same code.
+    const path = jest.requireActual("path") as typeof import("path");
+    const patch = fs.readFileSync(
+      path.resolve(__dirname, "../../../../patches/@gorhom+bottom-sheet+5.2.8.patch"),
+      "utf8",
+    );
+    const section = patch
+      .split(/^diff --git /m)
+      .find((part) => part.includes("b/node_modules/@gorhom/bottom-sheet/src/utilities/keyboardDetentIndex.ts"));
+    if (!section) throw new Error("the gorhom patch no longer adds keyboardDetentIndex.ts");
+    const source = section
+      .split("\n")
+      .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+      .map((line) => line.slice(1))
+      .join("\n");
+    const { outputText } = ts.transpileModule(source, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2019 },
     });
     const moduleExports: Record<string, unknown> = {};
