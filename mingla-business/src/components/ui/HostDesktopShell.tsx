@@ -14,9 +14,15 @@
  * ONE TREE (#4273): the Stack always sits in the same slot of the same View,
  * so moving between routes (or resizing) never remounts navigation. The rank
  * gate applies to sidebar items exactly as in (tabs) (navTabGate).
+ *
+ * #4389 P6/P9 — the brand switcher is mounted in an overlay layer AFTER the
+ * stack (zIndex above the sidebar's 50, starting right of it), never inside
+ * the top-bar strip, so the panel always paints above the page. Its chunk is
+ * prefetched on idle once the shell is active, so a first tap never shows
+ * nothing on a slow connection.
  */
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useGlobalSearchParams, usePathname, useSegments } from "expo-router";
 
@@ -35,10 +41,39 @@ import { hostDesktopShellModeFor } from "./hostDesktopShellRoutes";
 import { HostShellInsetContext } from "./hostShellContext";
 import { TopBar } from "./TopBar";
 
+const loadBrandSwitcherSheet = () => import("../brand/BrandSwitcherSheet");
 const LazyBrandSwitcherSheet = React.lazy(async () => {
-  const mod = await import("../brand/BrandSwitcherSheet");
+  const mod = await loadBrandSwitcherSheet();
   return { default: mod.BrandSwitcherSheet };
 });
+
+/** #4389 P9 cause C — the overlay sits above the fixed sidebar (zIndex 50). */
+export const SHELL_SWITCHER_OVERLAY_Z = 60;
+
+let switcherPrefetched = false;
+/** #4389 P9 cause C — warm the switcher chunk once, on idle. */
+const prefetchBrandSwitcherOnIdle = (): (() => void) => {
+  if (switcherPrefetched) return () => undefined;
+  const run = (): void => {
+    if (switcherPrefetched) return;
+    switcherPrefetched = true;
+    loadBrandSwitcherSheet().catch(() => {
+      // A failed warm-up is retried by the real open (React.lazy), which
+      // surfaces its own error; allow another warm-up later.
+      switcherPrefetched = false;
+    });
+  };
+  const idle = (globalThis as {
+    requestIdleCallback?: (cb: () => void) => number;
+    cancelIdleCallback?: (id: number) => void;
+  });
+  if (typeof idle.requestIdleCallback === "function") {
+    const id = idle.requestIdleCallback(run);
+    return () => idle.cancelIdleCallback?.(id);
+  }
+  const timer = setTimeout(run, 1500);
+  return () => clearTimeout(timer);
+};
 
 /** The rank-gated sidebar, mounted only when the shell is active. */
 const ShellSidebar: React.FC<{ rail: boolean }> = ({ rail }) => {
@@ -48,19 +83,11 @@ const ShellSidebar: React.FC<{ rail: boolean }> = ({ rail }) => {
   return <DesktopSidebar tabs={tabs} forceRail={rail} testID="host-shell-sidebar" />;
 };
 
-const ShellTopBar: React.FC = () => {
-  const [switcherOpen, setSwitcherOpen] = useState(false);
-  return (
-    <View style={styles.topBar} testID="host-shell-topbar">
-      <TopBar leftKind="brand" onBrandTap={() => setSwitcherOpen(true)} />
-      {switcherOpen ? (
-        <Suspense fallback={null}>
-          <LazyBrandSwitcherSheet visible onClose={() => setSwitcherOpen(false)} />
-        </Suspense>
-      ) : null}
-    </View>
-  );
-};
+const ShellTopBar: React.FC<{ onBrandTap: () => void }> = ({ onBrandTap }) => (
+  <View style={styles.topBar} testID="host-shell-topbar">
+    <TopBar leftKind="brand" onBrandTap={onBrandTap} />
+  </View>
+);
 
 export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isWideDesktop } = useResponsiveLayout();
@@ -74,12 +101,34 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   const active = Platform.OS === "web" && isWideDesktop && user != null && (mode === "sidebar" || mode === "rail");
   const rail = mode === "rail";
   const inset = active ? (rail || collapsed ? DESKTOP_RAIL_WIDTH : DESKTOP_SIDEBAR_WIDTH) : 0;
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  useEffect(() => {
+    if (!active) {
+      // Leaving the shell (route or width) closes the switcher, so it never
+      // reopens by itself when the shell comes back.
+      setSwitcherOpen(false);
+      return undefined;
+    }
+    return prefetchBrandSwitcherOnIdle();
+  }, [active]);
 
   return (
     <HostShellInsetContext.Provider value={active}>
       <View style={[styles.host, active ? [styles.canvas, { paddingLeft: inset + DESKTOP_BEZEL_MARGIN }] : null]}>
-        {active ? <ShellTopBar /> : null}
+        {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} /> : null}
         <View style={styles.stack}>{children}</View>
+        {active && switcherOpen ? (
+          // MINGLA-INVARIANT: I-DESKTOP-SWITCHER-ABOVE-CHROME | issue #4389 | on shell routes the brand switcher mounts in an overlay after the stack (not inside host-shell-topbar), zIndex above the sidebar's 50, starting right of the sidebar. Enforced by src/components/ui/__tests__/issue_4389_shell_switcher_overlay.implementor.test.tsx.
+          <View
+            style={[styles.overlayLayer, { left: inset + DESKTOP_BEZEL_MARGIN }]}
+            testID="host-shell-switcher-overlay"
+          >
+            <Suspense fallback={null}>
+              <LazyBrandSwitcherSheet visible onClose={() => setSwitcherOpen(false)} />
+            </Suspense>
+          </View>
+        ) : null}
       </View>
       {active ? <ShellSidebar rail={rail} /> : null}
     </HostShellInsetContext.Provider>
@@ -91,6 +140,7 @@ const styles = StyleSheet.create({
   canvas: { backgroundColor: color.canvas },
   topBar: { paddingTop: space[4], paddingRight: DESKTOP_BEZEL_MARGIN, paddingBottom: space[2] },
   stack: { flex: 1 },
+  overlayLayer: { position: "absolute", top: 0, bottom: 0, right: 0, zIndex: SHELL_SWITCHER_OVERLAY_Z },
 });
 
 export default HostDesktopShell;

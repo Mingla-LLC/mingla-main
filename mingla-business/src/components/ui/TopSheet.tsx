@@ -599,6 +599,9 @@ const TOPSHEET_CLOSE_EASE = "cubic-bezier(0.33, 0, 0.67, 1)"; // Easing.in(cubic
 // `closedY = -panelHeight`, so a dismiss is an UPWARD drag (negative offset).
 const TOPSHEET_DRAG_CLOSE_RATIO = 0.25; // fraction of panel height to commit a close
 const TOPSHEET_DRAG_CLOSE_VELOCITY = 0.5; // px/ms UPWARD flick that commits a close
+// #4389 P9 — a velocity close needs at least this much upward travel, so a
+// 1-2px jitter during a click on the handle band never closes the sheet.
+export const TOPSHEET_DRAG_MIN_PX = 12;
 
 const TopSheetWeb: React.FC<TopSheetProps> = ({
   visible,
@@ -804,9 +807,11 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
     // have re-rendered (and so re-closured handleDragEnd) before pointerup fires.
     const dragged = dragYRef.current; // <= 0 (upward)
     const velocity = velocityRef.current; // < 0 = upward
+    // #4389 P9 — `&&` binds tighter than `||`: an upward flick closes only
+    // after TOPSHEET_DRAG_MIN_PX of travel (a click's jitter never closes).
     const shouldClose =
       -dragged > panelHeight * TOPSHEET_DRAG_CLOSE_RATIO ||
-      velocity < -TOPSHEET_DRAG_CLOSE_VELOCITY;
+      velocity < -TOPSHEET_DRAG_CLOSE_VELOCITY && -dragged >= TOPSHEET_DRAG_MIN_PX;
     endDrag(shouldClose);
   };
 
