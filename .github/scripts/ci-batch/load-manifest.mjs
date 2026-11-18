@@ -333,7 +333,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459 to sort after main's 20280803004238 and #4473's 20280804004473) after 20280803004238 in the #1857, #1931 and #2117 lanes and the #1931 exact-filename skip list, kept its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
-export const BOOTSTRAP_SHA256 = "9177f03dd17c4c9a0b824f858a0d463f61989bed3d450d85a87f04f0df4a1bce";
+export const BOOTSTRAP_SHA256 = "046cb672b9a9514e4ef0739ef863e8ac35d33c2532bf9d9d80d8e88c3583459c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

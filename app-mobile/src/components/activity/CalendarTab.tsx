@@ -73,6 +73,8 @@ import {
   useTicketsRealtimeSubscription, // ORCH-0854
 } from "../../hooks/useCalendarEntries";
 import { useMyStayReservations } from "../../hooks/useStayGuest";
+import { useSharedPurchases } from "../../hooks/usePurchases";
+import { sharedCalendarReservations } from "../../services/sharedPurchasesService";
 import {
   SourceRefundAttentionSheet,
   type SourceRefundBank,
@@ -86,10 +88,8 @@ import {
 import { supabase } from "../../services/supabase";
 import { CalendarPlanMessageButton } from "../brandEnquiry/CalendarPlanMessageButton";
 import {
-  reservationMessageTarget,
-  rsvpMessageTarget,
-  stayMessageTarget,
-  ticketOrderMessageTarget,
+  calendarPlanMessageControl,
+  type CalendarPlanMessageRow,
 } from "../brandEnquiry/calendarPlanMessage";
 import { glass } from "../../constants/designSystem";
 import {
@@ -259,7 +259,18 @@ const CalendarTab = ({
   const { refetch: refetchReservations } = reservationsQuery;
   const { refetch: refetchStays } = staysQuery;
   const { refetch: refetchRsvps } = goingRsvpsQuery;
-  const myReservations = useMemo(() => reservationsQuery.data ?? [], [reservationsQuery.data]);
+  // #4473 — reservations shared with this account (read-only) join its own.
+  const sharedPurchasesQuery = useSharedPurchases(user?.id);
+  const myReservations = useMemo(() => {
+    const own = reservationsQuery.data ?? [];
+    const ownIds = new Set(own.map((reservation) => reservation.id));
+    return [
+      ...own,
+      ...sharedCalendarReservations(sharedPurchasesQuery.data ?? []).filter(
+        (reservation) => !ownIds.has(reservation.id),
+      ),
+    ];
+  }, [reservationsQuery.data, sharedPurchasesQuery.data]);
 
   // Realtime freshness. Each hook subscribes in an effect keyed on
   // [userId, queryClient] and removes its channel on cleanup, so a re-render
@@ -1089,6 +1100,11 @@ const CalendarTab = ({
         openTicket(row);
         return;
       case "reservation":
+        if (row.reservation.shared) {
+          // #4473 — a shared booking opens read-only in Purchases.
+          router.push(`/purchases/reservation/${encodeURIComponent(row.reservation.id)}` as never);
+          return;
+        }
         handleReservationPress(row.reservation);
         return;
       case "stay":
@@ -1155,7 +1171,8 @@ const CalendarTab = ({
     ];
     if (row.kind === "reservation") {
       const startMs = Date.parse(row.reservation.reserved_for);
-      const cancellable = Number.isFinite(startMs) && startMs > Date.now() &&
+      const cancellable = !row.reservation.shared &&
+        Number.isFinite(startMs) && startMs > Date.now() &&
         (row.reservation.status === "confirmed" || row.reservation.status === "requested");
       if (cancellable) {
         const reservation = row.reservation;
@@ -1175,19 +1192,14 @@ const CalendarTab = ({
 
   // #4111 Wave D (D6) — every non-card plan carries "Message {Brand}".
   const sheetMessageControl = useMemo(() => {
-    const row = actionRow;
-    if (row === null || row.kind === "calendar") return null;
-    const target = row.kind === "reservation"
-      ? reservationMessageTarget(row.reservation)
-      : row.kind === "stay"
-      ? stayMessageTarget(row.group)
-      : row.kind === "rsvp"
-      ? rsvpMessageTarget(row.rsvp)
-      : ticketOrderMessageTarget(row.row);
+    // #4473 — the rule (incl. no control for a shared booking) is pure and
+    // tested in calendarPlanMessage.ts.
+    const control = calendarPlanMessageControl(actionRow as CalendarPlanMessageRow | null);
+    if (control === null) return null;
     return (
       <CalendarPlanMessageButton
-        target={target}
-        onCancelReservation={row.kind === "reservation" ? cancelReservationById : undefined}
+        target={control.target}
+        onCancelReservation={control.allowCancel ? cancelReservationById : undefined}
       />
     );
   }, [actionRow, cancelReservationById]);

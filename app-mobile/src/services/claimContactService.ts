@@ -24,7 +24,12 @@ export class ClaimContactError extends Error {
       | "bad_code"
       | "expired"
       | "locked"
-      | "unavailable",
+      | "unavailable"
+      // #4473 — the "Is this your ticket?" link rail (claim-link).
+      | "no_contact"
+      | "link_expired"
+      | "unsupported_phone"
+      | "send_failed",
   ) {
     super(code);
   }
@@ -119,4 +124,93 @@ export async function verifyClaimContactCode(input: {
     foundCount: typeof claimed?.count === "number" ? claimed.count : claimedEntries.length,
     claimed: claimedEntries,
   };
+}
+
+function claimedSummary(payload: Record<string, unknown>): {
+  foundCount: number;
+  claimed: ClaimedEntry[];
+} {
+  const claimed = typeof payload.claimed === "object" && payload.claimed !== null
+    ? payload.claimed as Record<string, unknown>
+    : null;
+  const entries = parseClaimedEntries(claimed?.claimed);
+  return {
+    foundCount: typeof claimed?.count === "number" ? claimed.count : entries.length,
+    claimed: entries,
+  };
+}
+
+async function claimLinkInvoke(
+  body: Record<string, unknown>,
+  phase: "send" | "verify",
+): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.functions.invoke("claim-link", { body });
+  let payload: Record<string, unknown> | null =
+    !error && typeof data === "object" && data !== null
+      ? data as Record<string, unknown>
+      : null;
+  if (error) {
+    const context = error.context as Response | undefined;
+    if (context && typeof context.json === "function") {
+      try {
+        const parsed = await context.json();
+        payload = typeof parsed === "object" && parsed !== null
+          ? parsed as Record<string, unknown>
+          : null;
+      } catch {
+        payload = null;
+      }
+    }
+  }
+  if (payload?.ok === true && !error) return payload;
+  const reason = payload?.error;
+  let code: ClaimContactError["code"] = "unavailable";
+  if (reason === "no_email" || reason === "no_phone") code = "no_contact";
+  else if (reason === "expired") code = phase === "send" ? "link_expired" : "expired";
+  else if (reason === "invalid") code = phase === "send" ? "invalid_value" : "bad_code";
+  else if (
+    reason === "rate_limited" || reason === "limit_reached" ||
+    reason === "unsupported_phone" || reason === "send_failed" ||
+    reason === "bad_code" || reason === "locked"
+  ) code = reason;
+  throw new ClaimContactError(code);
+}
+
+/**
+ * #4473 "Is this your ticket?" — a signed-in account asks claim-link to send a
+ * code to the email or number stored on the purchase behind a /c link. The
+ * contact is looked up on the server and only ever comes back masked.
+ */
+export async function sendClaimLinkContactCode(input: {
+  code: string;
+  channel: ClaimContactChannel;
+}): Promise<{
+  challengeId: string | null;
+  sentTo: string | null;
+  alreadyConfirmed: boolean;
+  foundCount: number;
+  claimed: ClaimedEntry[];
+}> {
+  const payload = await claimLinkInvoke(
+    { op: "contact_code_send", code: input.code.trim().toUpperCase(), channel: input.channel },
+    "send",
+  );
+  const summary = claimedSummary(payload);
+  return {
+    challengeId: typeof payload.challengeId === "string" ? payload.challengeId : null,
+    sentTo: typeof payload.sentTo === "string" ? payload.sentTo : null,
+    alreadyConfirmed: payload.alreadyConfirmed === true,
+    ...summary,
+  };
+}
+
+export async function verifyClaimLinkContactCode(input: {
+  challengeId: string;
+  code: string;
+}): Promise<{ foundCount: number; claimed: ClaimedEntry[] }> {
+  const payload = await claimLinkInvoke(
+    { op: "contact_code_verify", challengeId: input.challengeId, otp: input.code },
+    "verify",
+  );
+  return claimedSummary(payload);
 }

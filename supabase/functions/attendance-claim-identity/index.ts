@@ -71,6 +71,7 @@ serve(async (req) => {
   let attemptId: string | null = null;
   let admitted = false;
   let outcome: Outcome = "internal_error";
+  let failureCode: string | null = null;
   try {
     // The identity sweep has its own 30-per-10-minutes budget. Token claims
     // keep their existing shared 10-per-10-minutes budget.
@@ -113,6 +114,14 @@ serve(async (req) => {
     );
     if (transferError) throw transferError;
 
+    // #4473 — purchases another account already owns are shared read-only
+    // with this account when it proves the same contact.
+    const { data: sharedData, error: sharedError } = await admin.rpc(
+      "issue_4473_share_purchases_by_verified_identity",
+      { p_user_id: authData.user.id },
+    );
+    if (sharedError) throw sharedError;
+
     // #4202 — the ordinary sweep above owns usable admission inventory and its
     // chat side effects. Only after it settles do we reconnect retained ended,
     // cancelled or refunded order history from the account's server-verified
@@ -131,18 +140,34 @@ serve(async (req) => {
       claimed?: Array<Record<string, unknown>>;
       more?: boolean;
     } | null;
-    const claimed = [
+    const sharedResult = sharedData as {
+      claimed?: Array<Record<string, unknown>>;
+      more?: boolean;
+    } | null;
+    const owned = [
       ...(Array.isArray(result?.claimed) ? result.claimed : []),
       ...(Array.isArray(transferResult?.claimed) ? transferResult.claimed : []),
-    ];
-    const eventIds = claimed.flatMap((entry) =>
+    ].map((entry): Record<string, unknown> => ({
+      ...entry,
+      sharedWithAnotherAccount: entry.sharedWithAnotherAccount === true,
+    }));
+    const sharedEntries = (
+      Array.isArray(sharedResult?.claimed) ? sharedResult.claimed : []
+    ).map((entry): Record<string, unknown> => ({
+      ...entry,
+      sharedWithAnotherAccount: true,
+    }));
+    const claimed = [...owned, ...sharedEntries];
+    // The legacy order-only fields describe purchases this account now owns;
+    // shared purchases are carried only in `claimed`.
+    const eventIds = owned.flatMap((entry) =>
       entry.kind === "order" && typeof entry.eventId === "string"
         ? [entry.eventId]
         : []
     );
     // #3524's order-only fields remain unchanged for older app clients. The
     // broader #4063 result is carried separately in `claimed`.
-    const claims = claimed.flatMap((entry) =>
+    const claims = owned.flatMap((entry) =>
       entry.kind === "order" && typeof entry.eventId === "string"
         ? [{
           orderId: typeof entry.orderId === "string"
@@ -165,16 +190,25 @@ serve(async (req) => {
       eventIds,
       claims,
       claimed,
-      more: result?.more === true || transferResult?.more === true,
+      more: result?.more === true || transferResult?.more === true ||
+        sharedResult?.more === true,
     });
-  } catch {
+  } catch (error) {
     outcome = "internal_error";
+    // #4473: a swallowed claim failure hid a sweep that aborted for 230
+    // buyers. Record the database error code on the attempt row; nothing is
+    // logged (this function never writes to the console, see #2979 A13).
+    const code = (error as { code?: unknown } | null)?.code;
+    failureCode = typeof code === "string" && /^[A-Za-z0-9_]{1,40}$/.test(code)
+      ? code
+      : "unknown";
     return json(500, { ok: false, error: "claim_failed" });
   } finally {
     if (attemptId && admitted) {
       await admin.from("attendance_claim_attempts").update({
         completed_at: new Date().toISOString(),
         outcome,
+        failure_code: failureCode,
       }).eq("id", attemptId).is("completed_at", null);
     }
   }

@@ -220,6 +220,22 @@ function mutateFunction(source, name, mutation) {
   return source.replace(marker, `$1\n  ${mutation}`);
 }
 
+// Replace text only inside one function's definition, so a file that defines
+// several functions mutates the one under test.
+function mutateWithinFunction(source, name, from, to) {
+  const pattern = new RegExp(
+    `CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+public\\.${name}\\s*\\([\\s\\S]*?\\bAS\\s+\\$([a-zA-Z0-9_]*)\\$[\\s\\S]*?\\$\\1\\$\\s*;`,
+    "i",
+  );
+  const match = pattern.exec(source);
+  if (match === null || !match[0].includes(from)) {
+    throw new Error(`self-test fixture missing ${name} or its ${from}`);
+  }
+  return source.slice(0, match.index) +
+    match[0].replace(from, to) +
+    source.slice(match.index + match[0].length);
+}
+
 function runSelfTest() {
   const realTree = readTree();
   const control = check(realTree);
@@ -247,11 +263,14 @@ function runSelfTest() {
   );
   const latestMintLink = latestDefining("mint_claim_link");
   const latestClaimByIdentity = latestDefining("claim_attendance_by_verified_identity");
+  // #4473 re-emits record_verified_phone; the mutation follows the latest one.
+  const latestPhoneRecorder = latestDefining("record_verified_phone");
   if (
     core === undefined ||
     links === undefined ||
     latestMintLink === undefined ||
-    latestClaimByIdentity === undefined
+    latestClaimByIdentity === undefined ||
+    latestPhoneRecorder === undefined
   ) {
     throw new Error("self-test fixtures missing");
   }
@@ -259,6 +278,7 @@ function runSelfTest() {
   const linksSource = realTree.read(links);
   const latestMintLinkSource = realTree.read(latestMintLink);
   const latestClaimByIdentitySource = realTree.read(latestClaimByIdentity);
+  const latestPhoneRecorderSource = realTree.read(latestPhoneRecorder);
 
   const cases = [
     [
@@ -308,8 +328,10 @@ function runSelfTest() {
     [
       "verified phone stops revoking extra proof",
       new Map([[
-        core,
-        coreSource.replace(
+        latestPhoneRecorder,
+        mutateWithinFunction(
+          latestPhoneRecorderSource,
+          "record_verified_phone",
           "UPDATE public.account_claim_contacts",
           "UPDATE public.not_claim_contacts",
         ),

@@ -18,6 +18,13 @@ import {
   type PurchaseVenueOrderSource,
 } from "../utils/purchaseTimeline";
 import type { PurchaseOrderRecord } from "../services/purchasesService";
+import {
+  fetchMyPurchaseShareFlags,
+  fetchMySharedPurchases,
+  sharedPurchaseSources,
+  type SharedPurchase,
+} from "../services/sharedPurchasesService";
+import type { PurchaseSources } from "../utils/purchaseTimeline";
 
 export interface PurchasesQueryResult {
   timeline: PurchaseTimeline;
@@ -56,6 +63,36 @@ function mapReservations(
   }));
 }
 
+/**
+ * #4473 — owned purchases first; a shared copy of something this account
+ * already owns is dropped, so nothing shows twice.
+ */
+export function mergeSharedSources(
+  owned: PurchaseSources,
+  shared: readonly SharedPurchase[],
+): PurchaseSources {
+  const extra = sharedPurchaseSources(shared);
+  const ownedIds = (items: readonly { id: string }[]) =>
+    new Set(items.map((item) => item.id));
+  const orderIds = ownedIds(owned.orders);
+  const rsvpIds = ownedIds(owned.rsvps);
+  const reservationIds = ownedIds(owned.reservations);
+  const venueOrderIds = ownedIds(owned.venueOrders);
+  return {
+    orders: [...owned.orders, ...extra.orders.filter((item) => !orderIds.has(item.id))],
+    rsvps: [...owned.rsvps, ...extra.rsvps.filter((item) => !rsvpIds.has(item.id))],
+    reservations: [
+      ...owned.reservations,
+      ...extra.reservations.filter((item) => !reservationIds.has(item.id)),
+    ],
+    venueOrders: [
+      ...owned.venueOrders,
+      ...extra.venueOrders.filter((item) => !venueOrderIds.has(item.id)),
+    ],
+    stays: [...(owned.stays ?? []), ...(extra.stays ?? [])],
+  };
+}
+
 function findTimelineItem(
   timeline: PurchaseTimeline,
   kind: PurchaseKind,
@@ -71,6 +108,20 @@ async function fetchPurchaseDetail(
   kind: PurchaseKind,
   id: string,
 ): Promise<PurchaseTimelineItem | null> {
+  const owned = await fetchOwnedPurchaseDetail(userId, kind, id);
+  if (owned) return owned;
+  // #4473 — not this account's own purchase: it may be shared with it.
+  const shared = sharedPurchaseSources(await fetchMySharedPurchases());
+  return findTimelineItem(buildPurchaseTimeline(shared, new Date()), kind, id);
+}
+
+async function fetchOwnedPurchaseDetail(
+  userId: string,
+  kind: PurchaseKind,
+  id: string,
+): Promise<PurchaseTimelineItem | null> {
+  // Owned stays open on /stay; only shared ones are Purchases items.
+  if (kind === "stay") return null;
   const empty = { orders: [], rsvps: [], reservations: [], venueOrders: [] };
   if (kind === "order") {
     const [orders, held] = await Promise.all([
@@ -211,19 +262,38 @@ export function usePurchases(
         refetchOnMount: true,
         retry: false,
       },
+      {
+        // #4473 — purchases shared with this account by a proven contact.
+        queryKey: [...purchaseKeys.list(safeUserId), "shared"],
+        queryFn: fetchMySharedPurchases,
+        enabled: !!userId,
+        staleTime,
+        refetchOnWindowFocus: true,
+        refetchOnMount: true,
+        retry: false,
+      },
     ],
   });
 
-  const [ordersQuery, rsvpsQuery, reservationsQuery, venueOrdersQuery] = queries;
+  const [
+    ordersQuery,
+    rsvpsQuery,
+    reservationsQuery,
+    venueOrdersQuery,
+    sharedQuery,
+  ] = queries;
   const reservations = mapReservations(reservationsQuery.data ?? []);
   const venueOrders = (venueOrdersQuery.data ?? []) as PurchaseVenueOrderSource[];
   const timeline = buildPurchaseTimeline(
-    {
-      orders: ordersQuery.data ?? [],
-      rsvps: rsvpsQuery.data ?? [],
-      reservations,
-      venueOrders,
-    },
+    mergeSharedSources(
+      {
+        orders: (ordersQuery.data ?? []) as PurchaseOrderRecord[],
+        rsvps: rsvpsQuery.data ?? [],
+        reservations,
+        venueOrders,
+      },
+      (sharedQuery.data ?? []) as SharedPurchase[],
+    ),
     new Date(),
   );
   const errors = queries.flatMap((query) =>
@@ -242,4 +312,26 @@ export function usePurchases(
       await Promise.all(queries.map((query) => query.refetch()));
     },
   };
+}
+
+/** #4473 — purchases shown to this account as shared (Calendar reads these). */
+export function useSharedPurchases(userId: string | null | undefined) {
+  return useQuery({
+    queryKey: [...purchaseKeys.list(userId ?? "none"), "shared"],
+    queryFn: fetchMySharedPurchases,
+    enabled: !!userId,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** #4473 — this account's own purchases that also show on another account. */
+export function usePurchaseShareFlags(userId: string | null | undefined) {
+  return useQuery({
+    queryKey: [...purchaseKeys.all, "shareFlags", userId ?? "none"],
+    queryFn: fetchMyPurchaseShareFlags,
+    enabled: !!userId,
+    staleTime: 60_000,
+    retry: false,
+  });
 }

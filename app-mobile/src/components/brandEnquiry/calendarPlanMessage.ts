@@ -144,3 +144,31 @@ export function stayMessageTarget(group: MyStayReservationGroup, nowMs = Date.no
     },
   };
 }
+
+/**
+ * #4473 — what a Calendar plan row may offer in its "Message {Brand}" control.
+ * A booking shared with this account carries a venue id but no brand id, and
+ * is not this account's to cancel: it gets no message control at all (so no
+ * Cancel inside it). Every other row keeps its target; only the account's own
+ * bookings may cancel from the sheet.
+ */
+export type CalendarPlanMessageRow =
+  | { kind: "calendar" }
+  | { kind: "reservation"; reservation: MyReservationRow }
+  | { kind: "stay"; group: MyStayReservationGroup }
+  | { kind: "rsvp"; rsvp: ConsumerRsvpRow }
+  | { kind: "ticket"; row: BusinessEventCalendarRow };
+
+export function calendarPlanMessageControl(
+  row: CalendarPlanMessageRow | null,
+  nowMs = Date.now(),
+): { target: CalendarPlanMessageTarget; allowCancel: boolean } | null {
+  if (row === null || row.kind === "calendar") return null;
+  if (row.kind === "reservation") {
+    if (row.reservation.shared) return null;
+    return { target: reservationMessageTarget(row.reservation, nowMs), allowCancel: true };
+  }
+  if (row.kind === "stay") return { target: stayMessageTarget(row.group, nowMs), allowCancel: false };
+  if (row.kind === "rsvp") return { target: rsvpMessageTarget(row.rsvp, nowMs), allowCancel: false };
+  return { target: ticketOrderMessageTarget(row.row, nowMs), allowCancel: false };
+}

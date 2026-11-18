@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import type { ClaimSweepResult } from "../../services/claimSweep";
+import { claimedEntryPath } from "./missingTicketModel";
 
 type Props = {
   result: ClaimSweepResult | null;
@@ -26,17 +27,7 @@ function summary(result: ClaimSweepResult): string {
 
 function destination(result: ClaimSweepResult): string {
   if (result.claimed.length !== 1) return "/purchases";
-  const item = result.claimed[0];
-  if (
-    item.routeKind === "order" || item.routeKind === "rsvp" ||
-    item.routeKind === "reservation" || item.routeKind === "venue_order"
-  ) {
-    return `/purchases/${item.routeKind}/${encodeURIComponent(item.routeId)}`;
-  }
-  if (item.routeKind === "held_ticket") {
-    return `/purchases/order/${encodeURIComponent(item.routeId)}`;
-  }
-  return "/purchases";
+  return claimedEntryPath(result.claimed[0]);
 }
 
 export function TicketFoundBanner({ result, onDismiss }: Props): React.ReactElement | null {

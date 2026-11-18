@@ -22,8 +22,13 @@
     "itemCount_other": "{{count}} items",
     "back": "Go back"
   },
-  "tab": { "upcoming": "Upcoming", "past": "Past" },
-  "badge": { "onMingla": "On Mingla" },
+  "tab": {
+    "upcoming": "Upcoming",
+    "past": "Past"
+  },
+  "badge": {
+    "onMingla": "On Mingla"
+  },
   "pill": {
     "tickets_one": "{{count}} ticket",
     "tickets_other": "{{count}} tickets",
@@ -73,7 +78,7 @@
   "missing": {
     "rowTitle": "Missing a ticket?",
     "title": "Missing a ticket?",
-    "body": "Tickets show up when this account has confirmed the email or mobile number they were bought with.",
+    "body": "Tickets appear on their own when this account has confirmed the email or number they were bought with.",
     "confirmedHeading": "Confirmed on this account",
     "noneConfirmed": "Nothing confirmed yet.",
     "differentHeading": "Bought with a different email or number?",
@@ -88,7 +93,7 @@
     "resend": "Send a new code",
     "resendIn": "Resend in {{seconds}}s",
     "invalidValue": "Enter an email address or a mobile number with its country code.",
-    "badCode": "That code didn't work. Try again.",
+    "badCode": "That code didn't work. Check the latest message and try again.",
     "rateLimited": "Too many attempts. Try again in a few minutes.",
     "alreadyOtherAccount": "That email or number is already confirmed on another Mingla account.",
     "limitReached": "You've added the most emails and numbers this account can hold.",
@@ -99,7 +104,119 @@
     "mobile": "Mobile",
     "foundCount_one": "{{count}} purchase found. It's now in Purchases.",
     "foundCount_other": "{{count}} purchases found. They're now in Purchases.",
-    "verifiedNoPurchase": "That contact is verified. We didn't find another purchase yet."
+    "verifiedNoPurchase": "That contact is verified. We didn't find another purchase yet.",
+    "checkAgain": "Check again",
+    "checkingNow": "Checking for tickets",
+    "checked": "Checked",
+    "lastChecked": {
+      "never": "Not checked yet",
+      "justNow": "Last checked just now",
+      "nothingNew": "Last checked just now. Nothing new.",
+      "minutes_one": "Last checked {{count}} minute ago",
+      "minutes_other": "Last checked {{count}} minutes ago",
+      "hours_one": "Last checked {{count}} hour ago",
+      "hours_other": "Last checked {{count}} hours ago",
+      "days_one": "Last checked {{count}} day ago",
+      "days_other": "Last checked {{count}} days ago"
+    },
+    "otherWaysHeading": "Bought it another way?",
+    "options": {
+      "add": {
+        "hint": "We send a code, then look for tickets"
+      },
+      "link": {
+        "title": "Use the link from your confirmation",
+        "hint": "Opens the ticket, then a code confirms it"
+      },
+      "ask": {
+        "title": "Someone else bought it",
+        "hint": "Ask them to send it to you"
+      }
+    },
+    "close": "Close",
+    "step": {
+      "add": "Step 1 of 2",
+      "code": "Step 2 of 2",
+      "checking": "Checking",
+      "found": "All set",
+      "none": "Confirmed",
+      "other": "Other ways",
+      "landed": "From your link"
+    },
+    "add": {
+      "body": "Use the one you bought with. We'll send a 6-digit code to confirm it's yours.",
+      "tabsLabel": "Email or mobile",
+      "mobileLabel": "Mobile number",
+      "mobileHint": "Formats as you type. We'll text the code.",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "name@example.com",
+      "emailHint": "Check spam if it doesn't land in a minute.",
+      "invalidEmail": "Enter a full email address, like name@example.com."
+    },
+    "code": {
+      "change": "Change",
+      "changeLabel": "Change the email or number",
+      "paste": "Paste code",
+      "resendIn": "Resend in {{time}}",
+      "hintIos": "On iPhone the code from Messages appears above the keyboard. It checks itself once all 6 digits are in.",
+      "hint": "It checks itself once all 6 digits are in."
+    },
+    "checking": {
+      "title": "Confirmed. Looking for tickets",
+      "body": "Anything bought with {{value}}"
+    },
+    "found": {
+      "title_one": "Found {{count}} ticket",
+      "title_other": "Found {{count}} tickets",
+      "body_one": "It's in Purchases now.",
+      "body_other": "They're in Purchases now.",
+      "bodyChat_one": "It's in Purchases now, and you're in the event's group chat.",
+      "bodyChat_other": "They're in Purchases now, and you're in each event's group chat.",
+      "open": "Open",
+      "openLabel": "Open {{title}}",
+      "done": "Done",
+      "shared": "{{value}} is also confirmed on another Mingla account, so this ticket shows on both. It's one ticket: the QR scans once at the door."
+    },
+    "none": {
+      "title": "No tickets on {{value}} yet",
+      "body": "It's confirmed and saved, so anything bought with it later lands here by itself. Still missing one?",
+      "tryAnother": "Try another email or number"
+    },
+    "link": {
+      "title": "Use your confirmation link",
+      "action": "Get your tickets",
+      "body": "Your Mingla ticket email and text each have a {{action}} link. It takes you straight to the ticket, then we send a quick code to the email or number it was bought with.",
+      "step1": "Open the Mingla email or text about your ticket",
+      "step2": "Tap {{action}}. Mingla opens on the ticket",
+      "step3": "Enter the code we send to that email or number",
+      "note": "You need that inbox or phone for the code. Lost it? Ask the buyer or the host to send the ticket to your current email or number.",
+      "done": "Got it"
+    },
+    "ask": {
+      "title": "Ask them to send it",
+      "action": "Send to a friend",
+      "body": "The buyer opens the ticket in Mingla, taps {{action}} and enters your email and number. You get a link; once you open it, the ticket is yours. They can take it back until you open it.",
+      "previewLabel": "Message we'll prefill",
+      "message": "Hey, can you send me my ticket on Mingla? Open it in the Mingla app and tap Send to a friend. Thanks!",
+      "messageWithContacts": "Hey, can you send me my ticket on Mingla? Open it in the Mingla app, tap Send to a friend, and use {{contacts}}. Thanks!",
+      "contactsPair": "{{first}} and {{second}}",
+      "privacy": "Your details are only added to the message you share.",
+      "share": "Share request",
+      "shareHint": "Opens your share sheet: WhatsApp, Messages, anything.",
+      "shareFailed": "We couldn't open sharing. Try again."
+    },
+    "landed": {
+      "title": "Is this your ticket?",
+      "bodyEmail": "It was bought with {{contact}}. To add it to this account, confirm that email with a 6-digit code.",
+      "bodyPhone": "It was bought with {{contact}}. To add it to this account, confirm that number with a 6-digit code.",
+      "send": "Send code to {{contact}}",
+      "cantInbox": "I can't get into that inbox",
+      "cantPhone": "I can't get to that phone",
+      "expired": "This link has expired. Ask the buyer or the host to send the ticket to your current email or number.",
+      "noContact": "We can't send a code for this one. Ask the buyer or the host to send the ticket to your current email or number.",
+      "unsupportedPhone": "We can't text that number yet. Ask the buyer to send the ticket to you instead.",
+      "sendFailed": "We couldn't send the code. Try again."
+    }
   },
   "ticket": {
     "timeLine": "{{when}} ({{zone}}) · {{venue}}",
@@ -272,5 +389,18 @@
     "errorInvalid": "Enter a valid email and mobile number.",
     "errorGeneric": "We couldn't send the ticket. Try again.",
     "errorTooLate": "{{name}} already opened this ticket."
+  },
+  "shared": {
+    "badge": "Shared",
+    "note": "Shared with you: this also shows on the buyer's Mingla account. It's one ticket, so the QR scans once at the door.",
+    "ownerNote": "Shows on both accounts. One ticket, scans once.",
+    "readOnly": "Only the buyer can send, cancel or change it.",
+    "pickupCode": "Pickup code",
+    "when": "When",
+    "where": "Where",
+    "party": "Party size",
+    "reference": "Reference",
+    "state": "Status",
+    "mode": "Booking type"
   }
 }
