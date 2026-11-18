@@ -212,9 +212,19 @@ export async function handleInstallmentPayLink(
       unknown
     >;
   const brandId = String(event.brand_id);
-  const { data: brand } = await supabase.from("brands")
+  // Issue #3645: the stamp decides whether this payment splits to the
+  // organiser now or waits for the payout sweep. A failed read refuses before
+  // any attempt is begun; it never guesses "unstamped".
+  const { data: brand, error: brandError } = await supabase.from("brands")
     .select("paystack_subaccount_code,payout_hold_cutover_at")
     .eq("id", brandId).maybeSingle();
+  if (brandError) {
+    console.error(
+      "[installment-pay-link] payout_hold_cutover_at read failed; refusing",
+      brandError,
+    );
+    return jsonResponse({ error: "payment_start_failed" }, 502);
+  }
   const { data: authorization } = await supabase.schema("private")
     .from("order_payment_authorizations")
     .select("authorization_email")
