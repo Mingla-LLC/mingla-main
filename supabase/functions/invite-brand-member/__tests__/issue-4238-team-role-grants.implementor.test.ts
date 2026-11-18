@@ -83,3 +83,15 @@ Deno.test("#4238 an inviter without an email is not treated as a self-invite", (
     { ok: true },
   );
 });
+
+Deno.test("#4238 the role grants migration leaves invitations already sent as they are", async () => {
+  // Pending owner invitations sent before the guard existed include real
+  // hand-overs to hosts (Seth, 18 Nov 2026): the migration must not revoke them.
+  // FAILS-ON-REVERT: re-adding a data step that updates brand_invitations.
+  const sql = await Deno.readTextFile(
+    new URL("../../../migrations/20281118004238_issue_4238_team_role_grants.sql", import.meta.url),
+  );
+  const executable = sql.split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
+  assert(!/UPDATE\s+public\.brand_invitations/i.test(executable), "the migration must not update brand_invitations");
+  assert(!/DELETE\s+FROM\s+public\.brand_invitations/i.test(executable), "the migration must not delete brand_invitations");
+});
