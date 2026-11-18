@@ -36,7 +36,7 @@ describe("#4453 Pop polish", () => {
     expect(css).toMatch(/\.mg-ocard__blurb \{[^}]*-webkit-line-clamp: 3;/);
     expect(css).toMatch(/\.mg-ocard:nth-child\(n\) \{ transform: none; \}/);
     const polish = css.slice(css.indexOf("polish (#4453"));
-    expect(polish).not.toMatch(/\.mg-ocard \.mg-ph \{[^}]*aspect-ratio/);
+    for (const m of polish.matchAll(/\.mg-ph \{[^}]*aspect-ratio: ([^;]+);/g)) expect(m[1]).toBe("4 / 5");
   });
 
   it("turns two or more cards into a swipe row on phones", () => {

@@ -248,6 +248,20 @@
   [data-design="pop"] .mg-page .mg-ocard__b { padding: 16px 18px 18px; }
 }
 
+/* no cover: a bubblegum sticker face with the title (never an empty pink box) */
+[data-design="pop"] .mg-page .mg-ph-none { background: var(--c-highlight-200); color: var(--c-ink-strong); background-image: radial-gradient(color-mix(in srgb, var(--c-ink-strong) 14%, transparent) 1.6px, transparent 1.7px); background-size: 18px 18px; }
+[data-design="pop"] .mg-page .mg-ph-none__t { font-weight: 900; padding: .1em .2em .14em; background: var(--c-surface); border: var(--pp-edge); border-radius: .3em; box-shadow: 4px 4px 0 var(--c-ink-strong); transform: rotate(-2deg); }
+/* one card (the next event): a spotlight — picture beside the copy, not a lone narrow card */
+@media (min-width: 721px) {
+  [data-design="pop"] .mg-page .mg-ocards--c1 { grid-template-columns: minmax(0, 1fr); }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ph { aspect-ratio: 4 / 5; max-height: 560px; height: 100%; }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ocard__b { padding: clamp(24px, 3vw, 44px); justify-content: center; gap: 12px; }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard h3 { font-size: clamp(26px, 2.6vw, 40px); }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ocard__blurb { -webkit-line-clamp: 4; line-clamp: 4; font-size: 16px; }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ocard__row { margin-top: 8px; }
+}
+
 /* phones: a wide display name must never push the call to action or the menu button off screen (found on the production build: Pop's menu button sat at 406-454 px on a 375 px phone) */
 @media (max-width: 720px) {
   [data-design="pop"] .mg-page .mg-hd__bar { gap: 8px; }
