@@ -122,6 +122,7 @@
         "app-mobile/src/components/purchases/ClaimLinkLandedSheet.tsx",
         "app-mobile/src/components/purchases/SharedPurchaseDetail.tsx",
         "app-mobile/src/components/purchases/SheetKeyboardDoneBar.tsx",
+        "app-mobile/src/components/onboarding/PhoneInput.tsx",
         "app-mobile/src/services/sharedPurchasesService.ts",
         "mingla-business/src/constants/buyerClaimCopy.ts"
       ]
@@ -2346,6 +2347,9 @@
         "app-mobile/src/components/share/shareRecipientsModel.ts",
         "app-mobile/src/components/share/shareSheetPerf.ts",
         "app-mobile/src/components/ui/BaseBottomSheet.tsx",
+        "app-mobile/src/wrappers/KeyboardToolbarRoot.native.tsx",
+        "app-mobile/src/wrappers/KeyboardToolbarRoot.tsx",
+        "app-mobile/patches/@gorhom+bottom-sheet+5.2.8.patch",
         "app-mobile/src/services/contentShareDeliveryService.ts"
       ]
     },
