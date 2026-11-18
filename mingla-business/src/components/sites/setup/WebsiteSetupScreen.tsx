@@ -11,9 +11,10 @@ import {
 import { supabase } from "../../../services/supabase";
 import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
-import { useSaveBrandSitePlan } from "../../../sites/planApi";
+import { useComposeBrandSiteFromPlan, useSaveBrandSitePlan } from "../../../sites/planApi";
+import { BrandSitesError } from "../../../services/brandSitesService";
 import { planBuildDone, SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
-import { ariStepToFollow, firstMissingStep, nameInSentence, nextOpenStep, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
+import { ariStepToFollow, canRebuildPages, firstMissingStep, nameInSentence, nextOpenStep, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { partLabel } from "../../../sites/sitePlanState";
 import { useCurrentBrandStore } from "../../../store/currentBrandStore";
@@ -632,6 +633,20 @@ function DraftReady({ grant, onPublish, onAdd, onAskAri, ariReady }: {
   ariReady: boolean;
 }): React.ReactElement {
   const ctx = useWebsite();
+  // #4453 — once a site exists, Build is the only place the composer ran, and
+  // it was never offered again: an owner (or a style switch) could not get
+  // Ari's full pages back. Rebuild runs the same composer; pages the owner
+  // edited are kept and every new section arrives as a Draft.
+  const compose = useComposeBrandSiteFromPlan(ctx.brandId);
+  const [confirmRebuild, setConfirmRebuild] = useState(false);
+  const canRebuild = canRebuildPages({ canManage: ctx.plan?.canManage, lockHeldByOther: ctx.lock.heldByOther, paused: ctx.plan?.site?.paused });
+  const rebuild = () => {
+    setConfirmRebuild(false);
+    compose.mutate(undefined, {
+      onSuccess: () => ctx.toast("Ari rebuilt your pages. New sections arrive as Drafts for you to review.", "success"),
+      onError: (error) => ctx.toast(error instanceof BrandSitesError ? error.message : "Your pages weren't rebuilt. Try again.", "error"),
+    });
+  };
   const preview = (
     <SitePreviewPanel
       grant={grant}
@@ -653,8 +668,26 @@ function DraftReady({ grant, onPublish, onAdd, onAskAri, ariReady }: {
         {ctx.phone ? null : <CardTitle>What&apos;s next</CardTitle>}
         <WButton label="Check and publish" variant="primary" onPress={onPublish} testID="setup-go-publish" />
         <WButton label="Add your first trip or event" onPress={onAdd} testID="setup-add-first" />
+        {canRebuild ? (
+          <WButton
+            label="Rebuild my pages"
+            loading={compose.isPending}
+            disabled={compose.isPending}
+            onPress={() => setConfirmRebuild(true)}
+            testID="setup-rebuild-pages"
+          />
+        ) : null}
         {ariReady ? <WButton label="Ask Ari to change something" variant="ghost" onPress={onAskAri} testID="setup-ask-change" /> : null}
       </View>
+      <ConfirmDialog
+        visible={confirmRebuild}
+        onClose={() => setConfirmRebuild(false)}
+        onConfirm={rebuild}
+        title="Rebuild your pages?"
+        description="Ari builds your pages again from your plan, in your chosen design. Pages you have edited yourself are kept. Every new section arrives as a Draft, and nothing goes live until you publish."
+        confirmLabel="Rebuild my pages"
+        testID="setup-rebuild-confirm"
+      />
     </View>
   );
 }

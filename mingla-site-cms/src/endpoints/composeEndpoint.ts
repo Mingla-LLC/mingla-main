@@ -7,6 +7,7 @@ import { verifyCoreRequest } from "../lib/gateway";
 import { PLAN_OFFERING_KEYS } from "../contracts/generated/sitePlan.ts";
 import { scopedRequest } from "./contentEndpoint";
 import { importBrandCover } from "../lib/brandCoverImport";
+import { defaultHeroPictureDeps, heroPictureFromOfferings } from "../lib/heroPictureImport";
 import { storageCoverRenditionDeps } from "../lib/artifactBuilder";
 import { materializeSetupContent, parseStagedRows, type StagedSetupRow } from "../lib/setupContent";
 import { composeFormatSite, plannedKeysOf } from "../lib/composeFormat";
@@ -173,8 +174,13 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
         collection: "navigation", overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: tenant.id } },
       })).docs[0] as unknown as AnyDoc | undefined;
       const scoped = scopedRequest(req, { action: "compose_from_plan", userId: parsed.userId, siteId: envelope.site_id, brandId: parsed.brandId, rank: 50, args: {} }, tenantId);
-      const coverMediaId = parsed.coverPhotoPath ? await importBrandCover(scoped, parsed.coverPhotoPath, storageCoverRenditionDeps()) : null;
+      let coverMediaId = parsed.coverPhotoPath ? await importBrandCover(scoped, parsed.coverPhotoPath, storageCoverRenditionDeps()) : null;
       const records = await loadStudioRecords(req, tenant.id);
+      // #4453 booking-first Home — no brand cover and no photo in Media: the
+      // hero takes the next offering's own Mingla picture (imported once).
+      if (!coverMediaId && records.photos.length === 0) {
+        coverMediaId = await heroPictureFromOfferings(scoped, { tenantId, next: parsed.designPass.facts.next_offering }, defaultHeroPictureDeps(envelope.site_id));
+      }
       const { inventory, sources } = inventoryAndSources({
         signed: parsed.designPass,
         records,

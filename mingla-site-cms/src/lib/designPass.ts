@@ -52,6 +52,12 @@ type Deps = {
   writeWorkLog: (ctx: AriActionContext, entry: { part: string; decision: string; cites: readonly WorkLogCite[]; tool: string; target: string | null; revision: string | null }) => Promise<string>;
   assertCites: (ctx: AriActionContext, cites: unknown) => Promise<WorkLogCite[]>;
   decisionOf: (value: unknown) => string;
+  /**
+   * #4453 booking-first Home — the hero's picture from the brand's own Mingla
+   * offerings (heroPictureImport.ts), asked only by the writing pass and only
+   * when the site has no hero picture and no photo. Absent: no import.
+   */
+  heroPicture?: (ctx: AriActionContext, next: SignedDesignPass["facts"]["next_offering"]) => Promise<string | null>;
 };
 
 function refuse(code: string, extra: Record<string, unknown> = {}): never {
@@ -171,7 +177,7 @@ async function releaseDesignPass(ctx: AriActionContext, claim: DesignPassClaim):
   }
 }
 
-async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc, canMoveBases = false): Promise<ComposeV2Input> {
+async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc, canMoveBases = false, heroPicture?: Deps["heroPicture"]): Promise<ComposeV2Input> {
   if (!signed.plan) refuse("VALIDATION_FAILED", { problems: ["the website plan is not set up yet"] });
   const brand = ctx.evidence?.brand;
   const description = (brand?.description ?? "").trim();
@@ -187,7 +193,8 @@ async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, des
   };
   const home = pages.find((page) => !page.parent && (page.slug ?? "") === "");
   const heroMedia = (Array.isArray(home?.blocks) ? home!.blocks as AnyDoc[] : []).find((block) => block.blockType === "hero")?.media;
-  const coverId = heroMedia ? String(typeof heroMedia === "object" ? heroMedia.id : heroMedia) : null;
+  let coverId = heroMedia ? String(typeof heroMedia === "object" ? heroMedia.id : heroMedia) : null;
+  if (!coverId && records.photos.length === 0 && heroPicture) coverId = await heroPicture(ctx, signed.facts.next_offering);
   const { inventory, sources } = inventoryAndSources({ signed, records, offerings_selected: signed.plan.offerings_selected, brand: composeBrand, cover_media_id: coverId });
   return {
     plan: signed.plan,
@@ -277,7 +284,7 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
     if (!isStyleKey(design) || !styles.includes(design)) refuse("VALIDATION_FAILED", { problems: ["design_key is not one of the styles Ari may use"] });
     // The current draft starts at the site's last publish (null: never published, so detail bases may move).
     const draftSince = await currentDraftSince(ctx);
-    const base = await composeInput(ctx, signed, design, settings, draftSince === null);
+    const base = await composeInput(ctx, signed, design, settings, draftSince === null, deps.heroPicture);
     const composed: ComposeV2Result | null = composeFormatSite(base);
     if (!composed) refuse("VALIDATION_FAILED", { problems: ["tick what the brand offers in the website plan first"] });
     // I-SITES-ARI-NEVER-PICKS-AVOID — Ari never proposes an avoid style; owners may (Your look, with a warning).
