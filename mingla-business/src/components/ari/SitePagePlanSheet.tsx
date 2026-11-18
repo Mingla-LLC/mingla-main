@@ -11,7 +11,7 @@
  * chunk; WebsiteApp re-exports it for that).
  */
 import React from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ariPalette, color, radius, scrim, space } from "../../constants/designSystem";
 import { DESIGNS, designFor } from "../../../../packages/site-contracts/src/designs.ts";
@@ -40,8 +40,13 @@ export function SitePagePlanSheet({ visible, onClose, args, isExecuting, error, 
   const style = design ? DESIGNS[design.key].label : null;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" role="button" testID="site-page-plan-scrim">
-        <Pressable style={styles.dialog} role="dialog" aria-modal accessibilityLabel={COPY.heading} onPress={() => undefined} testID="site-page-plan-sheet">
+      {/* The scrim is a sibling BEHIND the dialog, never its parent: on web a
+          Pressable renders a <button>, and the dialog's own buttons cannot sit
+          inside another button. A tap outside lands on the scrim and closes;
+          a tap inside the dialog never reaches it. */}
+      <View style={styles.backdrop}>
+        <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close" accessibilityRole="button" testID="site-page-plan-scrim" />
+        <View style={styles.dialog} role="dialog" aria-modal accessibilityLabel={COPY.heading} testID="site-page-plan-sheet">
           <View style={styles.head}>
             <Text style={styles.eyebrow}>{COPY.heading.toUpperCase()}</Text>
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Cancel" hitSlop={8} testID="site-page-plan-cancel">
@@ -113,14 +118,15 @@ export function SitePagePlanSheet({ visible, onClose, args, isExecuting, error, 
               <Text style={styles.btnPrimaryText}>{isExecuting ? "Working…" : COPY.confirm}</Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: scrim.modal, alignItems: "center", justifyContent: "center", padding: space[4] },
+  backdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[4] },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: scrim.modal },
   dialog: {
     width: "100%",
     maxWidth: 560,
@@ -131,8 +137,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     paddingTop: 18,
     paddingBottom: 16,
-    ...(Platform.OS === "web" ? { cursor: "default" } : {}),
-  } as object,
+  },
   head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginBottom: 6 },
   eyebrow: { fontSize: 10, fontWeight: "700", letterSpacing: 1.1, color: color.text2 },
   cancel: { fontSize: 13, fontWeight: "600", color: color.text2 },

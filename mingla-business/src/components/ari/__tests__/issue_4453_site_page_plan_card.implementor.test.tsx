@@ -9,7 +9,7 @@
  */
 import React from "react";
 
-type Node = { type: unknown; props: Record<string, unknown>; children: unknown[] };
+type Node = { type: unknown; props: Record<string, unknown>; children: unknown[]; findAll: (predicate: (node: Node) => boolean) => Node[] };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => {
@@ -131,6 +131,26 @@ describe("#4453 m11 rework Ari's page plan card", () => {
     await press(renderer, "site-page-plan-dismiss");
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("the scrim is a sibling behind the dialog, never its parent (no <button> inside a <button> on web)", async () => {
+    const { renderer } = await mount();
+    await press(renderer, "site-page-plan-card-open");
+    const scrims = renderer.root.findAll((n) => n.props.testID === "site-page-plan-scrim" && typeof n.props.onPress === "function");
+    expect(scrims.length).toBeGreaterThan(0);
+    for (const scrimNode of scrims) {
+      // Nothing pressable and no dialog content inside the scrim (the scrim's own
+      // host node repeats its testID, so it is excluded by testID).
+      const inner = scrimNode.findAll((n: Node) => n.props.testID !== "site-page-plan-scrim" && (typeof n.props.onPress === "function" || n.props.testID === "site-page-plan-sheet"));
+      expect(inner).toHaveLength(0);
+    }
+    // The dialog itself is not a pressable, so a tap inside never closes the plan.
+    const dialogs = renderer.root.findAll((n) => n.props.testID === "site-page-plan-sheet");
+    expect(dialogs.length).toBeGreaterThan(0);
+    for (const dialog of dialogs) expect(dialog.props.onPress).toBeUndefined();
+    // The dialog's own buttons are still there and still work.
+    expect(renderer.root.findAll((n) => n.props.testID === "site-page-plan-add" && typeof n.props.onPress === "function").length).toBeGreaterThan(0);
+    expect(visible(renderer)).toBe(true);
   });
 
   it("a failed add keeps the plan open with the reason", async () => {
