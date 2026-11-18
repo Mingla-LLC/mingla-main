@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { parsePhoneEntry } from "@mingla/phone-input/phoneNumber";
 
 import {
@@ -32,6 +32,14 @@ import {
   PURCHASE_SHEET_HANDLE,
   PURCHASE_SHEET_PHONE_THEME,
 } from "./purchaseSheetTheme";
+import {
+  PURCHASE_SHEET_KEYBOARD_TOOLBAR,
+  SheetKeyboardDoneBar,
+  sheetDoneBarId,
+} from "./SheetKeyboardDoneBar";
+
+const NAME_DONE_BAR_ID = sheetDoneBarId("send-name");
+const EMAIL_DONE_BAR_ID = sheetDoneBarId("send-email");
 
 type Props = {
   ticket: PurchaseTicket | null;
@@ -61,8 +69,8 @@ export function SendTicketSheet({
   const formScrollRef = useRef<
     React.ElementRef<typeof BottomSheetScrollView>
   >(null);
-  const focusedInputRef = useRef<"phone" | null>(null);
-  const keyboardVisibleRef = useRef(false);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const insets = useSafeAreaInsets();
   const normalizedEmail = email.trim().toLowerCase();
   const selectedCountry = useMemo(
     () => getCountryByCode(countryCode),
@@ -85,25 +93,29 @@ export function SendTicketSheet({
     });
   }, []);
 
-  useEffect(() => {
-    const keyboardShown = Keyboard.addListener("keyboardDidShow", () => {
-      keyboardVisibleRef.current = true;
-      if (focusedInputRef.current === "phone") scrollFormTo(110);
-    });
-    const keyboardHidden = Keyboard.addListener("keyboardDidHide", () => {
-      keyboardVisibleRef.current = false;
+  /**
+   * #4473 D7 — the sheet lifts with the keyboard (its Done bars are part of
+   * the keyboard), and focusing the mobile number scrolls the form to its end
+   * once the keyboard has settled, so the field and Send ticket sit above it
+   * on an iPhone SE. Runs on the field's own focus; no keyboard listener.
+   */
+  const revealOnFocus = useCallback((where: "top" | "end"): void => {
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+    if (where === "top") {
       scrollFormTo(0);
-    });
-    return () => {
-      keyboardShown.remove();
-      keyboardHidden.remove();
-    };
+      return;
+    }
+    revealTimer.current = setTimeout(() => {
+      formScrollRef.current?.scrollToEnd({ animated: true });
+    }, 280);
   }, [scrollFormTo]);
+
+  useEffect(() => () => {
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+  }, []);
 
   useEffect(() => {
     if (visible) return;
-    focusedInputRef.current = null;
-    keyboardVisibleRef.current = false;
     setName("");
     setEmail("");
     setPhoneInput("");
@@ -177,10 +189,12 @@ export function SendTicketSheet({
         keyboardDismissMode: "interactive",
         keyboardShouldPersistTaps: "handled",
       }}
-      keyboardBehavior="extend"
+      keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
+      keyboardToolbar={PURCHASE_SHEET_KEYBOARD_TOOLBAR}
       android_keyboardInputMode="adjustResize"
       snapPoints={["68%"]}
+      topInset={insets.top}
       theme="dark"
       backgroundStyle={PURCHASE_SHEET_BACKGROUND}
       handleStyle={PURCHASE_SHEET_HANDLE}
@@ -191,21 +205,22 @@ export function SendTicketSheet({
         <Text style={styles.title}>
           {t("send.sheetTitle", { index: ticket?.ticketIndex ?? 1 })}
         </Text>
+        <Text style={styles.label}>{t("send.nameLabel")}</Text>
         <BottomSheetTextInput
-          accessibilityLabel={t("send.namePlaceholder")}
+          accessibilityLabel={t("send.nameLabel")}
+          inputAccessoryViewID={NAME_DONE_BAR_ID}
           autoCapitalize="words"
           editable={!busy}
           maxLength={60}
           onChangeText={setName}
-          onFocus={() => {
-            focusedInputRef.current = null;
-            scrollFormTo(0);
-          }}
+          onFocus={() => revealOnFocus("top")}
           placeholder={t("send.namePlaceholder")}
           placeholderTextColor={C.placeholder}
           style={styles.input}
+          testID="send-ticket-name"
           value={name}
         />
+        <SheetKeyboardDoneBar nativeID={NAME_DONE_BAR_ID} />
         <Text style={styles.label}>{t("send.emailLabel")}</Text>
         <BottomSheetTextInput
           accessibilityLabel={t("send.emailLabel")}
@@ -213,18 +228,18 @@ export function SendTicketSheet({
           autoComplete="email"
           autoCorrect={false}
           editable={!busy}
+          inputAccessoryViewID={EMAIL_DONE_BAR_ID}
           keyboardType="email-address"
           onChangeText={setEmail}
-          onFocus={() => {
-            focusedInputRef.current = null;
-            scrollFormTo(0);
-          }}
+          onFocus={() => revealOnFocus("top")}
           placeholder={t("send.emailPlaceholder")}
           placeholderTextColor={C.placeholder}
           style={styles.input}
+          testID="send-ticket-email"
           textContentType="emailAddress"
           value={email}
         />
+        <SheetKeyboardDoneBar nativeID={EMAIL_DONE_BAR_ID} />
         <Text style={styles.label}>{t("send.phoneLabel")}</Text>
         <View style={styles.phoneField}>
           <PhoneInput
@@ -232,16 +247,10 @@ export function SendTicketSheet({
             disabled={busy}
             error={phoneProblem}
             inputComponent={BottomSheetTextInput}
-            onBlur={() => {
-              focusedInputRef.current = null;
-              setPhoneTouched(true);
-            }}
+            onBlur={() => setPhoneTouched(true)}
             onChangeCountry={setCountryCode}
             onChangePhone={setPhoneInput}
-            onFocus={() => {
-              focusedInputRef.current = "phone";
-              if (keyboardVisibleRef.current) scrollFormTo(110);
-            }}
+            onFocus={() => revealOnFocus("end")}
             phoneInputAccessibilityLabel={t("send.phoneLabel")}
             required
             smartEntry

@@ -2,4 +2,4 @@
 
 import React from "react";
 
-export const KeyboardToolbarRoot: React.FC = () => null;
+export const KeyboardToolbarRoot: React.FC<{ tone?: "system" | "dark" }> = () => null;
