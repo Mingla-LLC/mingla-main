@@ -16,6 +16,22 @@
 import { create } from "zustand";
 
 import { DESKTOP_RAIL_WIDTH, DESKTOP_SIDEBAR_WIDTH } from "../../constants/desktopLayout";
+import type { IconName } from "./Icon";
+
+/** One sidebar entry (#4389: shared by DesktopSidebar and the lazy DesktopSidebarRail). */
+export interface SidebarItem {
+  key: string;
+  label: string;
+  icon: IconName;
+  path: string;
+}
+
+export interface SidebarGroup {
+  key: string;
+  /** null = the untitled top group. */
+  title: string | null;
+  items: SidebarItem[];
+}
 
 const STORAGE_KEY = "mingla.host.sidebar.v1";
 

@@ -54,6 +54,7 @@
       "checkingBody": "Sprawdzamy je. Zwykle trwa to kilka minut. Możesz działać dalej.",
       "actionNeeded": "Potrzebna jest jeszcze jedna rzecz, zanim przyjmiesz płatności:",
       "ngDone": "Bank połączony. Możesz sprzedawać.",
+      "ngReadyNoBank": "Możesz sprzedawać. Dodaj bank w Wypłatach, aby otrzymywać pieniądze.",
       "done": "Wszystko gotowe.",
       "refreshErrorTitle": "Nie można teraz sprawdzić.",
       "refreshErrorBody": "Damy Ci znać.",

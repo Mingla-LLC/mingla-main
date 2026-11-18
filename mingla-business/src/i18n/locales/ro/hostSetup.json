@@ -54,6 +54,7 @@
       "checkingBody": "Le verificăm. De obicei durează câteva minute. Poți continua.",
       "actionNeeded": "Mai este nevoie de un lucru înainte să poți primi plăți:",
       "ngDone": "Bancă conectată. Poți începe să vinzi.",
+      "ngReadyNoBank": "Poți începe să vinzi. Adaugă o bancă în Plăți ca să primești banii.",
       "done": "Totul e gata.",
       "refreshErrorTitle": "Nu putem verifica acum.",
       "refreshErrorBody": "Te ținem la curent.",

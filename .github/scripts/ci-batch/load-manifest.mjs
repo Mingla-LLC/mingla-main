@@ -349,7 +349,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4453 final rework: skipped the booking-reads migration (20280807044453) on the filtered #1931 and #2117 template replays by exact filename (it calls #3313 helpers and reads #3827 ticket_type_links, which those replays skip; #2492 closure); re-sealed.
 // #4453 final rework 2: the design_keys migration (20280807004453) skipped on the filtered #1931 template replay by exact filename (its CHECK reads brand_site_plans.design_key, added only by the skipped #2830 migrations); re-sealed.
 // #4453 merge of main after #4481: renumbered the eleven #4453 migrations to 20280807004453..20280807104453 so they sort after #4473's 20280806004473 (production head), listed after main's rows in the #1857, #1931 and #2117 lanes, and kept main's plus the #4453 filtered-replay skips; re-sealed.
-export const BOOTSTRAP_SHA256 = "c780c23084bd41a3b1d04a4adab8f99617c6cd745f226013f0846d1b2fdf7004";
+// #4389 implementor (764896f3c0): listed migration 20280808004389 (setup polish: brand terms record, hold rail, derived free-only) after 20280806004473 in the #1857, #1931 and #2117 lanes and registered its implementor pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed. Rework 2 changes the migration's contents only (no new files); seal unchanged.
+// #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
+// #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (it re-emits brand_readiness_internal, which needs brand_readiness_catalog from the skipped 20280307003355); re-sealed.
+// #4389 merge of main after #4453: kept main's eleven #4453 rows and skip lines, listed 20280808004389 after them and kept its #1931 skip line; re-sealed.
+export const BOOTSTRAP_SHA256 = "aa194fe9f562f4f535ffc3123e702b454dfc97a0a04a265f636ea07b12791da5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

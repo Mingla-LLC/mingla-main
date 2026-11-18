@@ -81,6 +81,8 @@ export const BRAND_SETUP_COPY = {
     get checkingBody(): string { return t("f4.checkingBody"); },
     get actionNeeded(): string { return t("f4.actionNeeded"); },
     get ngDone(): string { return t("f4.ngDone"); },
+    /** #4389 P8 rework — Nigeria hold rail: can sell, no bank yet. */
+    get ngReadyNoBank(): string { return t("f4.ngReadyNoBank"); },
     get done(): string { return t("f4.done"); },
     get refreshErrorTitle(): string { return t("f4.refreshErrorTitle"); },
     get refreshErrorBody(): string { return t("f4.refreshErrorBody"); },
@@ -130,3 +132,13 @@ export const BRAND_SETUP_COPY = {
 
 /** Words that must never appear in host copy for this flow (U-7, U-8, Apple naming). */
 export const BRAND_SETUP_BANNED_WORDS = [/stripe/i, /paystack/i, /\bbusiness\b/i, /\breader\b/i, /\bterminal\b/i, /\bhardware\b/i] as const;
+
+/**
+ * #4389 P8 rework (Constitution 9) — the Nigeria "done" line. "Bank
+ * connected" only when the server says a bank is attached
+ * (`facts.bankConnected`); a hold-rail brand that can sell with no bank is
+ * told to add one in Payouts.
+ */
+export function paystackDoneLine(bankConnected: boolean): string {
+  return bankConnected ? BRAND_SETUP_COPY.f4.ngDone : BRAND_SETUP_COPY.f4.ngReadyNoBank;
+}

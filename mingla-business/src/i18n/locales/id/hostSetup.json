@@ -54,6 +54,7 @@
       "checkingBody": "Kami sedang memeriksanya. Biasanya butuh beberapa menit. Kamu bisa lanjut.",
       "actionNeeded": "Satu hal lagi diperlukan sebelum kamu bisa menerima pembayaran:",
       "ngDone": "Bank terhubung. Kamu siap berjualan.",
+      "ngReadyNoBank": "Kamu siap berjualan. Tambahkan bank di Pencairan agar dibayar.",
       "done": "Semua siap.",
       "refreshErrorTitle": "Belum bisa memeriksa sekarang.",
       "refreshErrorBody": "Kami akan memberi tahu kamu.",

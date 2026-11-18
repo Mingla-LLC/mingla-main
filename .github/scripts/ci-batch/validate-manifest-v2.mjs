@@ -604,7 +604,11 @@ export function phase3dContractDigest(manifest) {
 // #4453 final rework: the booking-reads migration skipped on the filtered #1931 and #2117 template replays (#2492 closure); re-sealed.
 // #4453 final rework 2: the design_keys migration skipped on the filtered #1931 template replay (column inside a CHECK); re-sealed.
 // #4453 merge of main after #4481: renumbered the eleven #4453 migrations to 20280807004453..20280807104453 so they sort after #4473's 20280806004473 (production head), listed after main's rows in the #1857, #1931 and #2117 lanes, and kept main's plus the #4453 filtered-replay skips; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "18a7968f968dca1d9d8f34306b81f6eb39455ed16a1c3be3ba2f70a28eccd3c7";
+// #4389 implementor (764896f3c0): listed migration 20280808004389 and registered its implementor pg17 suite (with sidecar); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
+// #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (needs brand_readiness_catalog from the skipped 20280307003355); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4389 merge of main after #4453: kept main's #4453 rows and skip lines beside the #4389 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7d1280853b2e55e16dea4508d7d87768af9fd26c15be9041e1ea76459ee503a4";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
