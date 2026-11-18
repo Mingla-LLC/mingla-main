@@ -331,6 +331,9 @@ const ToastWeb: React.FC<ToastItemProps> = ({ entry, placement }) => {
   );
 };
 
+/** #4490 D8 — never a button around buttons on web. */
+export const TOAST_CARD_ROLE: "button" | "none" = Platform.OS === "web" ? "none" : "button";
+
 interface ToastCardProps {
   entry: ToastEntry;
   onPressIn: () => void;
@@ -350,7 +353,11 @@ const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onH
       onPressOut={onPressOut}
       onHoverIn={onHoverIn}
       onHoverOut={onHoverOut}
-      accessibilityRole="button"
+      // #4490 D8 — on web a role="button" card around the close and action
+      // buttons rendered a <button> inside a <button> (invalid HTML, a
+      // hydration warning). The card still dismisses on click; on web the
+      // close button is the one keyboard/screen-reader control.
+      accessibilityRole={TOAST_CARD_ROLE}
       accessibilityLabel="Dismiss notification"
       style={[styles.cardShadow, shadow.toast]}
     >

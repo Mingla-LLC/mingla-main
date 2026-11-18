@@ -30,6 +30,9 @@ jest.mock("../../../hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => ({ isWideDesktop: true }),
 }));
 jest.mock("../escapeLayerStack", () => ({ useEscapeLayer: () => undefined }));
+// TEST-MOD-APPROVED #4490 D6 — the desktop Sheet now mounts an overlay ToastHost
+// (toasts draw above the sheet); its reanimated Toast is not needed here.
+jest.mock("../ToastHost", () => ({ ToastHost: () => null }));
 jest.mock("../SheetMobile", () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   Sheet: (props: { children: React.ReactNode }) => require("react").createElement("MobileSheetProbe", null, props.children),

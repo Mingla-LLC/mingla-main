@@ -117,6 +117,7 @@ describe("#4238 — CoverPicker guards use the per-target identity check", () =>
     const gallery = callbackBody("uploadGalleryPhoto", "addGalleryPhoto");
     expect(gallery.match(/if \(isBrand \|\| isVenue \|\| isAdCreative\) \{/g)?.length).toBe(2);
     const imageCover = callbackBody("pickImageOrGifCover", "pickVideoCover");
-    expect(imageCover).toContain('if (target.kind === "venue" || target.kind === "ad_creative") {');
+    // TEST-MOD-APPROVED #4490 D6 — the branch is now the shared rule, which also covers venue_draft.
+    expect(imageCover).toContain("if (coverTargetUploadsToBrandStorage(target)) {");
   });
 });

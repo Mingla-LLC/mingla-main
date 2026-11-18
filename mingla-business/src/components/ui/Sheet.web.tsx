@@ -82,6 +82,8 @@ import {
   type SheetSnapValue,
 } from "./SheetMobile";
 
+import { ToastHost } from "./ToastHost";
+
 // Re-export the type aliases so existing imports
 // `import { Sheet, SheetProps, SheetSnapValue } from '.../Sheet'`
 // resolve identically on web.
@@ -393,6 +395,12 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
             </View>
           </View>
         </View>
+        {/* #4490 D6 — a toast fired while this desktop card is open draws in
+            THIS window, above the card. Without an overlay host it went to the
+            app-root layer, which sits under the Modal portal, so cover-picker
+            toasts showed behind the sheet and half off screen. SheetMobile,
+            Modal and ConfirmDialog already mount the same host. */}
+        <ToastHost layer="overlay" open={visible} />
       </View>
     </Modal>
   );
