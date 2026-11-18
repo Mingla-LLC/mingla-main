@@ -7,7 +7,8 @@
 --   N1  every type the #4430 constraint accepted is still accepted (62 types).
 --   N2  the nine Host ad notice types are accepted.
 --   N3  business.ad_unknown is refused.
---   R1  brand admin: read, plan, launch, pause yes; fund and end no.
+--   R1  brand admin: read, plan, fund, launch, pause yes; end no.
+--       (fund for admins came with 20281118014238, the ads roles change.)
 --   R2  marketing without ads_spend still cannot launch or pause; finance
 --       cannot launch; a removed admin and an unaccepted admin get nothing.
 --   R3  the owner can still do everything; end stays owner-only.
@@ -154,9 +155,9 @@ BEGIN
     AND public.ad_can_host_action(v_brand, v_admin, 'plan')
     AND public.ad_can_host_action(v_brand, v_admin, 'launch')
     AND public.ad_can_host_action(v_brand, v_admin, 'pause')
-    AND NOT public.ad_can_host_action(v_brand, v_admin, 'fund')
+    AND public.ad_can_host_action(v_brand, v_admin, 'fund')
     AND NOT public.ad_can_host_action(v_brand, v_admin, 'end'),
-    'R1 brand admin launches and pauses, cannot fund or end');
+    'R1 brand admin funds, launches and pauses, cannot end');
   -- R2
   PERFORM pg_temp.s_assert(
     NOT public.ad_can_host_action(v_brand, v_marketing, 'launch')

@@ -13,6 +13,7 @@ import { composeFormatSite, plannedKeysOf } from "../lib/composeFormat";
 import { inventoryAndSources, loadStudioRecords, parseSignedDesignPass, type SignedDesignPass } from "../lib/designPassInputs";
 import { pageAllDraft, writeComposition } from "../lib/designPassWrite";
 import { isDesignKey } from "../contracts/generated/designs.ts";
+import { emitCmsObservation } from "../lib/observability";
 
 /*
  * #2829 W9a — "Create website draft": Core's signed call (brand-site-control
@@ -40,13 +41,14 @@ function text(value: unknown, max: number): string | null {
 export function parseComposeBody(
   body: unknown,
   envelopeSiteId: string,
-): { siteId: string; brandId: string; plan: ComposePlan; brand: ComposeBrand; coverPhotoPath: string | null; userId: string; reviewDrafts: boolean; setupContent: StagedSetupRow[]; designPass: SignedDesignPass | null } | null {
+): { siteId: string; brandId: string; plan: ComposePlan; brand: ComposeBrand; coverPhotoPath: string | null; userId: string; reviewDrafts: boolean; setupContent: StagedSetupRow[]; designPass: SignedDesignPass | null; bookingBlocks: boolean } | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const value = body as AnyDoc;
   // #4453 — `review_drafts` (SITES_PROOF_PART on: composed sections start Draft)
   // and `setup_content` (the owner's staged Website-setup entries).
   // #4453 milestone 7 — `design_pass` (SITES_ARI_DESIGN_PASS on for this brand: composer v2).
-  const allowed = new Set(["kind", "site_id", "brand_id", "user_id", "plan", "brand", "review_drafts", "setup_content", "design_pass"]);
+  // #4453 — `booking_blocks` (SITES_BOOKING_BLOCKS, signed in by Core; absent = off).
+  const allowed = new Set(["kind", "site_id", "brand_id", "user_id", "plan", "brand", "review_drafts", "setup_content", "design_pass", "booking_blocks"]);
   if (Object.keys(value).some((key) => !allowed.has(key))) return null;
   if (value.kind !== "compose_from_plan" || value.site_id !== envelopeSiteId) return null;
   if (typeof value.brand_id !== "string" || !UUID.test(value.brand_id)) return null;
@@ -59,6 +61,7 @@ export function parseComposeBody(
     : null;
   if (offerings === null) return null;
   if (value.review_drafts !== undefined && typeof value.review_drafts !== "boolean") return null;
+  if (value.booking_blocks !== undefined && typeof value.booking_blocks !== "boolean") return null;
   const designPass = value.design_pass === undefined ? null : parseSignedDesignPass(value.design_pass);
   if (value.design_pass !== undefined && !designPass) return null;
   let setupContent: StagedSetupRow[];
@@ -95,6 +98,7 @@ export function parseComposeBody(
     reviewDrafts: value.review_drafts === true || designPass !== null,
     setupContent,
     designPass,
+    bookingBlocks: value.booking_blocks === true,
   };
 }
 
@@ -145,6 +149,9 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
         minglaInternalTenantId: tenantId,
         // #4453 — composed sections are Draft until the owner reviews them.
         ...(parsed.reviewDrafts ? { minglaReviewSource: "composer" } : {}),
+        // #4453 — Core signed SITES_BOOKING_BLOCKS in as on: the composed
+        // booking blocks may be added (the Pages booking-blocks gate).
+        ...(parsed.bookingBlocks ? { minglaBookingBlocks: true } : {}),
       },
     } as PayloadRequest;
 
@@ -180,6 +187,8 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
         answers: parsed.designPass.answers,
         brand: parsed.brand,
         design: parsed.designPass.design_key,
+        // #4453 — with the flag off, no booking block is composed (never a failed draft).
+        bookingBlocks: parsed.bookingBlocks,
         inventory,
         sources,
         existing: pages.map((page) => ({
@@ -352,6 +361,24 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
     }, 200);
   } catch (error) {
     const code = error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : "SERVICE_TEMPORARILY_UNAVAILABLE";
+    // #4453 — the refusal's own code (a fixed upper-case word, never a
+    // message), so a failed compose is visible in the logs, not null.
+    emitCmsObservation({
+      event: "mingla_sites_state",
+      metric: "cms.compose.refused",
+      request_id: crypto.randomUUID(),
+      operation_id: null,
+      site_id: null,
+      publication_id: null,
+      direction: "core_to_cms",
+      route: "/internal/compose-from-plan",
+      state_transition: "compose_started->compose_refused",
+      latency_ms: 0,
+      retry_count: 0,
+      safe_error_code: code,
+      status_code: code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : code === "FORBIDDEN" ? 403 : 409,
+      version: "sites-v1",
+    });
     return failure(code, code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : code === "FORBIDDEN" ? 403 : 409);
   }
 }

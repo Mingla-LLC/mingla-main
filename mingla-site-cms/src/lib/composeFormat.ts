@@ -41,7 +41,7 @@ import {
 import { sectionEligibility, type ContentInventory, type SectionReason } from "../contracts/generated/sectionSources.ts";
 import { DEFAULT_SITE_ROUTES } from "../contracts/generated/routes.ts";
 import { compositionHeader, compositionVariant, DESIGNS, HERO_LAYOUTS_WITH_FACTS, type DesignKey } from "../contracts/generated/designs.ts";
-import { isBlockType } from "../contracts/generated/blocks.ts";
+import { BOOKING_BLOCK_NEW_TYPES, isBlockType } from "../contracts/generated/blocks.ts";
 import { mainActionPage, tickerPhrases, type FaqItem, type ProcessStep, type QuickFacts, type ValuePoint } from "../contracts/generated/sitePlan.ts";
 import { lexicalParagraphs, type ComposeBrand, type ComposedBlock, type ComposeExistingPage } from "./composeFromPlan";
 
@@ -143,6 +143,13 @@ export type ComposeV2Input = {
    * (collection_index) only where its slug already is its kind's base.
    */
   routes?: { stored: Readonly<Partial<Record<DetailKind, string | null>>>; canMove: boolean } | null;
+  /**
+   * #4453 — SITES_BOOKING_BLOCKS as Core signed it for this compose. False:
+   * no booking block (availability, ticket tiers, how it works), no hero
+   * booking bar and no Mingla rating is composed, because Studio's page gate
+   * would refuse the write. Absent: unchanged (the plan preview never writes).
+   */
+  bookingBlocks?: boolean;
 };
 
 /** Mingla's own section headings (never a fact). */
@@ -226,6 +233,14 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
   const design = DESIGNS[input.design];
   const variant = isBlockType(section.type) ? compositionVariant(design, section.type) : undefined;
   const withVariant = (block: ComposedBlock): ComposedBlock => (variant ? { ...block, variant } : block);
+  // #4453 — a block the design does not draw is never composed. Atelier is
+  // frozen and offers no layout for the shared-only booking blocks
+  // (availability, ticket tiers, process steps); the artifact refuses one on
+  // an Atelier site, so composing it failed that site's preview and Build.
+  if (isBlockType(section.type) && (design.variants[section.type] ?? []).length === 0) return null;
+  // #4453 — with SITES_BOOKING_BLOCKS off, a booking block is left out.
+  const bookingOff = input.bookingBlocks === false;
+  if (bookingOff && (BOOKING_BLOCK_NEW_TYPES as readonly string[]).includes(section.type)) return null;
   const name = clean(brand.name, 120) ?? "";
   const tagline = clean(brand.tagline, 120);
   const who = clean(plan.story?.who, 300);
@@ -242,14 +257,14 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
         block.ctas = [{ label: FORMAT_PRIMARY_ACTION[format].label, href: `/${listing.slug}` }];
       }
       for (const extra of section.extras ?? []) {
-        if (extra === "show_rating" && eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
+        if (extra === "show_rating" && !bookingOff && eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
         if (extra === "show_search" && eligible(ctx, section, { show_search: true }) === null) block.show_search = true;
         // #4453 milestone 7b — the owner's own Quick facts (Q8), verbatim, on hero layouts that draw them.
         if (extra === "fact_badge" && eligible(ctx, section, { fact_badge: true }) === null && variant && HERO_LAYOUTS_WITH_FACTS.includes(variant)) {
           const badges = (answers.quick_facts?.facts ?? []).filter((fact) => fact.big.trim() && fact.small.trim()).slice(0, 3).map((fact) => ({ big: fact.big.trim(), small: fact.small.trim() }));
           if (badges.length) block.fact_badges = badges;
         }
-        if (extra === "booking_bar" && eligible(ctx, section, { booking_bar: true }) === null) {
+        if (extra === "booking_bar" && !bookingOff && eligible(ctx, section, { booking_bar: true }) === null) {
           const bar = heroBookingBar(ctx);
           if (bar) Object.assign(block, bar);
         }
@@ -320,7 +335,7 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
     }
     case "testimonials": {
       const block: ComposedBlock = { blockType: "testimonials", heading: HEADING.testimonials, from_collection: true, items: [] };
-      if (eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
+      if (!bookingOff && eligible(ctx, section, { show_rating: true }) === null) block.show_rating = true;
       return withVariant(block);
     }
     case "hours_location": {

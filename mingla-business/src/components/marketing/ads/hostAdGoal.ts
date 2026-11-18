@@ -79,3 +79,26 @@ export function hostOptimizationSummary<P extends string>(
     visits: platforms.filter((platform) => map?.[platform] !== "sales"),
   };
 }
+
+/**
+ * #4238 honest Review: why an app aims for page visits instead of the page's
+ * goal. "not_yet" = the app can aim for this goal but its signal for this
+ * brand isn't ready (`ready !== true`), so the copy may say "yet". "cannot"
+ * = anything else (the app has no path for this goal), so the copy must not
+ * say "yet". Mirrors the rule in hostOptimizationByPlatform
+ * (hostAdPlanService.ts).
+ */
+export function hostAdGoalFallbackReason(
+  goal: "sales" | "signups",
+  connection: {
+    platform: string;
+    sales?: { ready: boolean } | null;
+    signups?: { ready: boolean } | null;
+  },
+): "cannot" | "not_yet" {
+  const platforms: readonly string[] =
+    goal === "sales" ? HOST_AD_SALES_PLATFORMS : HOST_AD_SIGNUP_PLATFORMS;
+  if (!platforms.includes(connection.platform)) return "cannot";
+  const signal = goal === "sales" ? connection.sales : connection.signups;
+  return signal?.ready === true ? "cannot" : "not_yet";
+}

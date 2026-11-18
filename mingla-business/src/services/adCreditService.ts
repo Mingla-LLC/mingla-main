@@ -7,6 +7,7 @@
 
 import { edgeErrorCode } from "./edgeErrorCode";
 import { supabase } from "./supabase";
+import type { HostAdCapabilities } from "./hostAdPlanService";
 
 export type AdCreditAppErrorCode =
   | "unauthorized"
@@ -57,6 +58,11 @@ export type AdCreditWalletPayload = {
   history: AdCreditLedgerRow[];
   /** #4238: least and most one top-up can pay, in pay cents (null or absent before this shipped). */
   top_up_limits?: AdCreditTopUpLimits | null;
+  /**
+   * #4238 ads roles: what this teammate may do with Ads credit (top_up,
+   * withdraw, ...), with who to ask. Absent on older servers.
+   */
+  capabilities?: HostAdCapabilities;
   currency_authority: {
     resolved: boolean;
     currency: string | null;
@@ -174,11 +180,14 @@ export async function quoteAdCreditTopUp(
   });
 }
 
+/** #4238 ads roles: the quote is checked for this brand (owner or Finance). */
 export async function quoteAdCreditWithdraw(
+  brandId: string,
   creditCents: number,
 ): Promise<AdCreditWithdrawQuote> {
   return invokeAdCredit<AdCreditWithdrawQuote>({
     action: "quote_withdraw",
+    brand_id: brandId,
     credit_cents: creditCents,
   });
 }

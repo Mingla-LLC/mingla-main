@@ -125,7 +125,8 @@ BEGIN
   END IF;
   IF NOT public.ad_can_host_action(v_brand, v_admin, 'read')
      OR NOT public.ad_can_host_action(v_brand, v_admin, 'plan')
-     OR public.ad_can_host_action(v_brand, v_admin, 'fund')
+     -- #4238: brand admins fund Host ads (top up, launch budget).
+     OR NOT public.ad_can_host_action(v_brand, v_admin, 'fund')
      -- #4238 W4b: brand admins launch and pause; ending stays owner-only.
      OR NOT public.ad_can_host_action(v_brand, v_admin, 'launch')
      OR NOT public.ad_can_host_action(v_brand, v_admin, 'pause')
