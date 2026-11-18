@@ -57,6 +57,7 @@ export const TOOL_CAPABILITY_KEYS: Readonly<Record<string, string>> = Object
     resume_discount: "events-discount-codes",
     end_discount: "events-discount-codes",
     create_experience: "experiences-create",
+    get_experience: "experiences-create",
     update_experience: "experiences-create",
     manage_experience_stops: "experiences-create",
     publish_experience: "experiences-create",

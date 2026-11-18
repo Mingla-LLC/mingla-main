@@ -244,12 +244,12 @@ export function checkContract(fixture) {
   );
   assert.equal(
     fixture.ledger.capabilities.length,
-    202,
-    "canonical ledger must stay exactly 202 rows",
+    203,
+    "canonical ledger must stay exactly 203 rows",
   );
   assert.equal(
     new Set(fixture.ledger.capabilities.map((row) => row.id)).size,
-    202,
+    203,
     "capability IDs must be unique",
   );
   for (const row of fixture.ledger.capabilities) {
@@ -265,12 +265,12 @@ export function checkContract(fixture) {
 
   assert.equal(
     fixture.schema.properties.capabilities.minItems,
-    202,
+    203,
     "evidence schema row floor",
   );
   assert.equal(
     fixture.schema.properties.capabilities.maxItems,
-    202,
+    203,
     "evidence schema row ceiling",
   );
   assert.ok(
@@ -486,8 +486,8 @@ export function checkContract(fixture) {
   need(
     fixture.certifier,
     [
-      "ledger.capabilities.length !== 202",
-      "rows.length === 202",
+      "ledger.capabilities.length !== 203",
+      "rows.length === 203",
       "`ledger_not_certifiable:${planned.capability_id}",
       "`status_laundering:${planned.capability_id}",
       "verified_zero_residue === true",
@@ -713,7 +713,7 @@ function selfTest() {
     good,
     (x) => {
       x.certifier = x.certifier.replace(
-        "ledger.capabilities.length !== 202",
+        "ledger.capabilities.length !== 203",
         "false",
       );
     },
@@ -975,6 +975,6 @@ if (process.argv.includes("--self-test")) selfTest();
 else {
   checkContract(readLive());
   console.log(
-    "issue-2060 Ari reliability foundation: PASS (202 capabilities; #2060 history remains 116)",
+    "issue-2060 Ari reliability foundation: PASS (203 capabilities; #2060 history remains 116)",
   );
 }

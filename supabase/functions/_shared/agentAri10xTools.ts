@@ -239,6 +239,7 @@ const ONBOARDING_STEPS = Object.freeze([
     title: "Set dates, recurrence and availability",
     capabilities: [
       "update_event",
+      "get_experience",
       "update_experience",
       "manage_venue_availability",
     ],
