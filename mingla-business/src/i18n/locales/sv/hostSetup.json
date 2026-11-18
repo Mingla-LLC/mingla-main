@@ -54,6 +54,7 @@
       "checkingBody": "Vi kontrollerar dem. Det brukar ta några minuter. Du kan fortsätta.",
       "actionNeeded": "En sak till behövs innan du kan ta emot betalningar:",
       "ngDone": "Banken är ansluten. Du kan börja sälja.",
+      "ngReadyNoBank": "Du kan börja sälja. Lägg till en bank under Utbetalningar för att få betalt.",
       "done": "Allt är klart.",
       "refreshErrorTitle": "Kunde inte kontrollera just nu.",
       "refreshErrorBody": "Vi håller dig uppdaterad.",
