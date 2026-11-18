@@ -77,14 +77,15 @@ test("send-to-friend requires email and a country-formatted mobile number", () =
 
 test("ticket phone entry stays on the bottom-sheet keyboard restoration rail", () => {
   assert.ok(sheet.includes("inputComponent={BottomSheetTextInput}"));
-  assert.ok(sheet.includes('keyboardBehavior="extend"'));
+  // #4473 D7 — the sheet now lifts with the keyboard (interactive) and the
+  // mobile field reveals itself on its own focus; no keyboard listener.
+  assert.ok(sheet.includes('keyboardBehavior="interactive"'));
   assert.ok(sheet.includes('keyboardBlurBehavior="restore"'));
   assert.ok(sheet.includes('android_keyboardInputMode="adjustResize"'));
   assert.ok(sheet.includes('keyboardDismissMode: "interactive"'));
   assert.ok(sheet.includes('keyboardShouldPersistTaps: "handled"'));
-  assert.ok(sheet.includes('Keyboard.addListener("keyboardDidShow"'));
-  assert.ok(sheet.includes('Keyboard.addListener("keyboardDidHide"'));
-  assert.ok(sheet.includes("scrollFormTo(110)"));
+  assert.ok(!sheet.includes("Keyboard.addListener"));
+  assert.ok(sheet.includes('onFocus={() => revealOnFocus("end")}'));
   assert.ok(sheet.includes("scrollFormTo(0)"));
   assert.ok(sharedPhoneInput.includes("onFocus?: () => void"));
   assert.ok(sharedPhoneInput.includes("onFocus?.();"));

@@ -301,6 +301,8 @@ beforeEach(() => {
   mockIdentifiers.current = { isLoading: false, isError: false, data: IDENTIFIERS };
   jest.spyOn(RN.AccessibilityInfo, "announceForAccessibility").mockImplementation(() => undefined);
   jest.spyOn(RN.AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  // react-native-web's Keyboard.dismiss reads `document`, absent in this node lane.
+  jest.spyOn(RN.Keyboard, "dismiss").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
