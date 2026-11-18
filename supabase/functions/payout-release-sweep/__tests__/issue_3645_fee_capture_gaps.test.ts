@@ -26,6 +26,7 @@ import {
   captureProviderFees,
   checkoutSessionPaymentIntentId,
   FEE_CANDIDATES_PER_FAMILY,
+  FEE_CAPTURE_BUDGET_MS,
   type FeeCandidate,
   handlePayoutReleaseSweep,
   interleaveFeeFamilies,
@@ -413,4 +414,78 @@ Deno.test("#3645 families are taken in turn, so one family's backlog cannot use 
   assertEquals(order.map((c) => c.source_id), [
     "order-0", "rsvp_contribution-0", "stay_reservation-0", "order-1", "stay_reservation-1", "order-2",
   ]);
+});
+
+function recordingAdmin() {
+  const rpcs: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const upserts: Array<Record<string, unknown>> = [];
+  return {
+    rpcs,
+    upserts,
+    admin: {
+      rpc: (name: string, args: Record<string, unknown>) => {
+        rpcs.push({ name, args });
+        return Promise.resolve({ data: { ok: true }, error: null });
+      },
+      from: () => ({
+        upsert: (row: Record<string, unknown>) => {
+          upserts.push(row);
+          return Promise.resolve({ error: null });
+        },
+      }),
+    },
+  };
+}
+
+Deno.test("#3645 a Paystack verify without a fee records nothing and is retried as a failure", async () => {
+  const noFee: ProviderFeeClients = {
+    ...stripeClients([]),
+    verifyPaystack: () => Promise.resolve({ id: 99, status: "success" }),
+  };
+  await assertRejects(
+    () => resolveProviderFeeWith({
+      source_type: "order", source_id: "o-1", provider: "paystack",
+      provider_reference: "mingla_ref", stripe_account_id: null,
+    }, noFee),
+    Error,
+    "paystack_fee_missing",
+  );
+  const realError = console.error;
+  console.error = () => {};
+  try {
+    for (const type of ["order", "rsvp_contribution", "venue_reservation", "venue_menu_order", "order_installment", "stay_reservation"] as const) {
+      const { admin, rpcs, upserts } = recordingAdmin();
+      const result = await captureProviderFees(admin, [{
+        source_type: type, source_id: `${type}-1`, provider: "paystack",
+        provider_reference: "mingla_ref", stripe_account_id: null,
+      }], { resolveProviderFee: (c) => resolveProviderFeeWith(c, noFee) });
+      assertEquals(result.captured, 0, type);
+      assertEquals(upserts, [], type);
+      assertEquals(rpcs.map((r) => r.name), ["record_payout_fee_capture_failure"], type);
+      assertEquals(rpcs[0].args.p_error, "paystack_fee_missing", type);
+    }
+  } finally {
+    console.error = realError;
+  }
+});
+
+Deno.test("#3645 a candidate cut off by the time budget is not recorded as a failure", async () => {
+  const { admin, rpcs } = recordingAdmin();
+  const realError = console.error;
+  console.error = () => {};
+  try {
+    const result = await captureProviderFees(admin, many("order", 3), {
+      feeCaptureBudgetMs: 30,
+      resolveProviderFee: () => new Promise(() => {}),
+    });
+    assertEquals(result.failed, 0);
+    assertEquals(result.leftForNextTick, 3);
+    assertEquals(rpcs.filter((r) => r.name === "record_payout_fee_capture_failure"), []);
+  } finally {
+    console.error = realError;
+  }
+});
+
+Deno.test("#3645 the fee-capture budget stays under the cron's 30 s HTTP timeout", () => {
+  assertEquals(FEE_CAPTURE_BUDGET_MS, 15_000);
 });

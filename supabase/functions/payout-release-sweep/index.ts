@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import {
+  paystackFeeOrNull,
+  paystackVerifyTransaction,
+} from "../_shared/paystack.ts";
 // Issue #1177 — the organiser Paystack transfer client lives in _shared so the
 // raw provider call never appears in the sweep source (DARK-sweep source guard).
 import {
@@ -467,10 +470,10 @@ export async function resolveProviderFeeWith(
     const transaction = await clients.verifyPaystack(
       candidate.provider_reference,
     );
-    const fee = Number(transaction.fees ?? 0);
-    if (!Number.isInteger(fee) || fee < 0) {
-      throw new Error("invalid_paystack_fee");
-    }
+    // Issue #3645: a verify answer without a usable fee is a failed read (it
+    // is retried), never fee 0, which would overpay the host by the fee.
+    const fee = paystackFeeOrNull(transaction.fees);
+    if (fee === null) throw new Error("paystack_fee_missing");
     return {
       provider_fee_cents: fee,
       provider_balance_transaction_id: String(
@@ -1423,7 +1426,10 @@ export async function handlePayoutReleaseSweep(
  * abandoned for this tick). What is left waits for the next tick.
  */
 export const FEE_CANDIDATES_PER_FAMILY = 25;
-export const FEE_CAPTURE_BUDGET_MS = 45_000;
+const BUDGET_EXHAUSTED = "fee_capture_budget_exhausted";
+// Below the cron's net.http_post timeout (30 s), leaving room for the ledger
+// sweep and payouts that follow.
+export const FEE_CAPTURE_BUDGET_MS = 15_000;
 
 /** Takes one candidate from each source family in turn. */
 export function interleaveFeeFamilies(candidates: FeeCandidate[]): FeeCandidate[] {
@@ -1524,7 +1530,7 @@ export async function captureProviderFees(
         deps.resolveProviderFee(candidate),
         new Promise<never>((_, reject) => {
           timer = setTimeout(
-            () => reject(new Error("fee_capture_budget_exhausted")),
+            () => reject(new Error(BUDGET_EXHAUSTED)),
             remaining,
           );
         }),
@@ -1532,8 +1538,21 @@ export async function captureProviderFees(
       await recordFeeCapture(admin, candidate, fee);
       result.captured++;
     } catch (error) {
-      result.failed++;
       const message = error instanceof Error ? error.message : String(error);
+      if (message === BUDGET_EXHAUSTED) {
+        // Out of time, not a failed read: nothing is recorded, and this
+        // candidate and the rest wait for the next tick.
+        result.leftForNextTick = ordered.length - i;
+        console.error(JSON.stringify({
+          event: "payout_fee_capture_budget_spent",
+          function_name: "payout-release-sweep",
+          captured: result.captured,
+          failed: result.failed,
+          left_for_next_tick: result.leftForNextTick,
+        }));
+        break;
+      }
+      result.failed++;
       console.error("[payout-release-sweep] provider fee capture deferred", {
         sourceType: candidate.source_type,
         sourceId: candidate.source_id,
