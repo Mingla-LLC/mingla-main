@@ -83,8 +83,27 @@ const SIDEBAR_Z = (() => {
   return Number(/zIndex:\s*(\d+)/.exec(block)?.[1]);
 })();
 
+type IdleGlobal = { requestIdleCallback?: (cb: () => void) => number; cancelIdleCallback?: (id: number) => void };
+/**
+ * #4389 P3-2 (flake fix) — S1 used to leave the shell's idle prefetch on its
+ * setTimeout(1500) fallback. Under load S1 could run past 1.5s, the prefetch
+ * fired and marked the chunk warmed, and S2 then saw no idle call. S1 now
+ * parks the idle callback (never runs), and the lazy sheet is awaited by
+ * flushing until it appears, not by one timer tick.
+ */
+const flushUntil = async (done: () => boolean): Promise<void> => {
+  for (let i = 0; i < 50 && !done(); i += 1) {
+    await TestRenderer.act(async () => {
+      await Promise.resolve();
+    });
+  }
+};
+
 describe("#4389 P6 — shell brand switcher overlay", () => {
   test("S1: the switcher mounts in an overlay after the stack, outside the top bar, above the sidebar", async () => {
+    const g = globalThis as IdleGlobal;
+    g.requestIdleCallback = () => 0; // parked: S1 never warms the chunk
+    g.cancelIdleCallback = () => undefined;
     let tree: Tree | null = null;
     await TestRenderer.act(async () => {
       tree = TestRenderer.create(
@@ -98,10 +117,8 @@ describe("#4389 P6 — shell brand switcher overlay", () => {
     await TestRenderer.act(async () => {
       (pressable(t, "mock-brand-chip").props.onPress as () => void)();
     });
-    // Let React.lazy resolve.
-    await TestRenderer.act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    // Let React.lazy resolve (deterministic: flush until the sheet shows).
+    await flushUntil(() => hosts(t, "mock-switcher").length > 0);
     const overlay = hosts(t, "host-shell-switcher-overlay");
     expect(overlay).toHaveLength(1);
     const sheet = hosts(t, "mock-switcher");
@@ -131,13 +148,15 @@ describe("#4389 P6 — shell brand switcher overlay", () => {
     });
     expect(hosts(t, "host-shell-switcher-overlay")).toHaveLength(0);
     await TestRenderer.act(async () => t.unmount());
+    delete g.requestIdleCallback;
+    delete g.cancelIdleCallback;
   });
 
   // #4389 P9 cause C — the first open lazy-loads the sheet behind
   // Suspense fallback={null}; the shell warms that chunk once on idle.
   test("S2: the active shell prefetches the switcher chunk once, on idle", async () => {
     const calls: (() => void)[] = [];
-    const g = globalThis as { requestIdleCallback?: (cb: () => void) => number; cancelIdleCallback?: (id: number) => void };
+    const g = globalThis as IdleGlobal;
     g.requestIdleCallback = (cb) => {
       calls.push(cb);
       return calls.length;
@@ -154,7 +173,7 @@ describe("#4389 P6 — shell brand switcher overlay", () => {
     expect(calls).toHaveLength(1);
     await TestRenderer.act(async () => {
       calls[0]!();
-      await new Promise((r) => setTimeout(r, 0));
+      await Promise.resolve();
     });
     await TestRenderer.act(async () => (tree as unknown as Tree).unmount());
     // A second shell mount does not prefetch again.
