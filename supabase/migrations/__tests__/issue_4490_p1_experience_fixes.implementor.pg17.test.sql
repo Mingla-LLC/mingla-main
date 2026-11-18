@@ -2,7 +2,7 @@
 -- #4490 P1-4: executable PostgreSQL 17 proof of the experience creator fixes
 -- (20280809034490, spec 01 §6). BEGIN ... ROLLBACK.
 --
--- MINGLA-INVARIANT: I-4490-EXPERIENCE-SHARED-SPOTS | issue #4490 | when an experience shares spots, every price option counts against the same spots (per day for per_day experiences); experiences saved before keep per-option counting (spots_shared defaults false).
+-- MINGLA-INVARIANT: I-4490-EXPERIENCE-SHARED-SPOTS | issue #4490 | when an experience shares spots, every price option counts against the same spots (per day for per_day experiences); experiences saved before #4490 keep per-option counting (backfilled false), new ones share (column default true).
 --
 -- X-1  group size 150 is accepted; 100001 is refused as a price error (no smallint overflow).
 -- X-2  a 120-minute block is accepted; 50 minutes (not a 15-minute step) is refused.
@@ -163,8 +163,12 @@ BEGIN
   SELECT id INTO v_solo FROM public.ticket_types WHERE event_id = v_event AND name = 'Solo' AND deleted_at IS NULL;
   SELECT id INTO v_squad FROM public.ticket_types WHERE event_id = v_event AND name = 'Squad' AND deleted_at IS NULL;
   SELECT start_at INTO v_day_start FROM public.event_dates WHERE id = v_date;
-  PERFORM public.t4490_ok((SELECT NOT spots_shared FROM public.events WHERE id = v_event),
-    'X-4a an experience saved without the new key keeps per-option counting (spots_shared false)');
+  PERFORM public.t4490_ok((SELECT spots_shared FROM public.events WHERE id = v_event)
+      AND (SELECT column_default FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'events' AND column_name = 'spots_shared') = 'true',
+    'X-4a a new experience shares its spots by default (existing rows were backfilled false)');
+  -- Per-option counting, as every experience published before #4490 keeps.
+  PERFORM public.issue_3281_apply_experience_r3_settings(v_event, jsonb_build_object('spots_shared', false));
   INSERT INTO public.orders (id, event_id, payment_status, payment_method, source, total_cents, currency, buyer_phone_e164,
                              event_date_id, booked_start_at, booked_end_at)
   VALUES (v_order, v_event, 'paid', 'apple_pay', 'online_checkout', 0, 'ngn', '+2348025550101',

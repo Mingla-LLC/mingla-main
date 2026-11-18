@@ -1104,12 +1104,6 @@ export const ExperienceCreatorWizard: React.FC<
         is_free: isFree,
         capacity: unlimited ? null : parseInt(capacity, 10) || null,
         capacity_scope: capacityScope,
-        // #4490 — a NEW experience shares its spots across price options (no
-        // double booking). Edits never send the key, so an experience keeps
-        // the counting it was published with.
-        ...(existingExperienceId === undefined && !isLiveEdit
-          ? { spots_shared: true }
-          : {}),
         booking_spacing_minutes: bookingSpacingMinutes,
         min_notice_minutes: minNoticeMinutes,
         pass_tax: pricingSwitches.passTax,
@@ -1188,8 +1182,6 @@ export const ExperienceCreatorWizard: React.FC<
       stops,
       priceOptions,
       cover,
-      existingExperienceId,
-      isLiveEdit,
     ],
   );
 

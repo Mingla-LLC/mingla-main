@@ -7,9 +7,9 @@
 --   3. No forced "Standard": a blank price-option name is refused
 --      (22023 experience_price_name_required) at every index. Saved rows keep
 --      their names. The legacy no-options path is unchanged.
---   4. Shared spots: events.spots_shared (default false, so every live
---      experience keeps per-option counting). When on, every option of the
---      experience counts against the same spots. A per_day experience now
+--   4. Shared spots: events.spots_shared (existing rows false, so every live
+--      experience keeps per-option counting; new rows true). When on, every
+--      option of the experience counts against the same spots. A per_day experience now
 --      counts the whole local day, and "Rule A" (one start per day) is gone.
 --   5. cover_media_persist_mismatch: publishing with an empty cover URL (a
 --      cover video still processing) keeps the server's cover and no longer
@@ -46,10 +46,15 @@ ALTER TABLE public.ticket_types
     )
   );
 
+-- Existing rows take false (per-option counting, as published); every row
+-- created after this migration takes true (new experiences share spots,
+-- whichever client creates them: Host wizard, Ari, older builds).
 ALTER TABLE public.events
   ADD COLUMN spots_shared boolean NOT NULL DEFAULT false;
+ALTER TABLE public.events
+  ALTER COLUMN spots_shared SET DEFAULT true;
 COMMENT ON COLUMN public.events.spots_shared IS
-  '#4490: true = every price option of this experience draws from the same spots (no double booking across options). Default false keeps the per-option counting every existing experience was published with; the Host wizard sends true for new experiences.';
+  '#4490: true = every price option of this experience draws from the same spots (no double booking across options). Rows that existed before #4490 were backfilled false (the per-option counting they were published with); new rows default to true. issue_3281_apply_experience_r3_settings accepts spots_shared to change it.';
 
 CREATE OR REPLACE FUNCTION public.issue_3281_apply_experience_price_options(
   p_event_id uuid,

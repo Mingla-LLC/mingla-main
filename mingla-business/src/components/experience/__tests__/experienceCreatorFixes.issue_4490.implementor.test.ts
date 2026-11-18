@@ -5,17 +5,15 @@
  * 2. Block length: 15 minutes up to 8 hours; a stored long block survives an edit.
  * 3. No forced "Standard": options start unnamed and a blank name is sent as typed;
  *    the server refuses it (experience_price_name_required) with its own copy.
- * 4. New experiences ask the server to share spots across price options.
- * 5. A processing cover video: the wizard adopts the server's cover and has copy
- *    for the two new server codes.
+ * 4. New experiences share spots across price options by the server's column
+ *    default (events.spots_shared DEFAULT true for new rows); no payload key.
+ * (Wizard wiring — name field on every price, cover adoption, error copy — is
+ *  exercised by the existing experience wizard render suites.)
  *
  * MINGLA-INVARIANT: I-4490-EXPERIENCE-NO-FORCED-STANDARD | issue #4490 | no Host
  * code path names a price option "Standard" on the host's behalf; the host names
  * every price, and the server refuses a blank name.
  */
-
-import fs from "node:fs";
-import path from "node:path";
 
 import {
   EXPERIENCE_BLOCK_MINUTES,
@@ -25,10 +23,6 @@ import {
   priceOptionToPayload,
   toExperienceBlockMinutes,
 } from "../experienceWizardTypes";
-
-const ROOT = path.resolve(__dirname, "../../../..");
-const read = (relative: string): string =>
-  fs.readFileSync(path.join(ROOT, relative), "utf8");
 
 describe("#4490 experience price options", () => {
   it("starts every new option unnamed", () => {
@@ -104,44 +98,5 @@ describe("#4490 block lengths", () => {
     expect(experienceBlockPillLabel(60)).toBe("1h");
     expect(experienceBlockPillLabel(90)).toBe("1h 30m");
     expect(experienceBlockPillLabel(480)).toBe("8h");
-  });
-});
-
-describe("#4490 wizard wiring (source)", () => {
-  const pricing = read("src/components/experience/ExperiencePricingStep.tsx");
-  const wizard = read("src/components/experience/ExperienceCreatorWizard.tsx");
-  const edit = read("app/experience/[id]/edit.tsx");
-  const types = read("src/components/experience/experienceWizardTypes.ts");
-
-  it("has no 50-person clamp and names every price, the first one too", () => {
-    expect(pricing).not.toMatch(/Math\.min\(\s*50/);
-    expect(types).not.toMatch(/Math\.min\(\s*50/);
-    expect(pricing).not.toMatch(/index > 0 \? \(\s*<>\s*<Text style=\{styles\.fieldLabel\}>Name/);
-    expect(pricing).toContain("Group size must be at least 2 people.");
-    expect(pricing).not.toContain("Group size must be 2–50 people.");
-  });
-
-  it("never seeds or sends Standard", () => {
-    expect(wizard).not.toMatch(/name:\s*"Standard"/);
-    expect(edit).not.toMatch(/name:\s*"Standard"/);
-    expect(types).not.toMatch(/"Standard"/);
-  });
-
-  it("keeps long blocks on edit", () => {
-    expect(edit).not.toContain("[15, 30, 45, 60].includes");
-    expect(edit).toContain("toExperienceBlockMinutes(t.blockMinutes)");
-  });
-
-  it("asks the server to share spots for a new experience only", () => {
-    expect(wizard).toMatch(
-      /existingExperienceId === undefined && !isLiveEdit\s*\?\s*\{ spots_shared: true \}/,
-    );
-  });
-
-  it("has copy for the two new server codes and adopts the server cover", () => {
-    expect(wizard).toContain('experience_price_name_required: "Give each price a name."');
-    expect(wizard).toContain("Your cover video is still processing. Try again in a minute.");
-    expect(wizard).toContain("useServerCoverAdoption({");
-    expect(wizard).toMatch(/\.eq\("event_type", "experience"\)/);
   });
 });
