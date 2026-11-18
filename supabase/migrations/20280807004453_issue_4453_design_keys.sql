@@ -1,6 +1,6 @@
 -- Issue #4453 PR 4 (design platform + Voyage): one list of website design keys.
 --
--- MINGLA-INVARIANT: I-SITES-DESIGN-KEYS-ONE-LIST | issue #4453 | design keys come from
+-- Invariant I-SITES-DESIGN-KEYS-ONE-LIST (owned by its pg17 test): design keys come from
 -- packages/site-contracts DESIGN_KEYS; Core's brand_site_design_keys(), the
 -- brand_site_plans CHECK, brand_site_plan_save_design and
 -- brand_context_completeness_internal all read the one function, and the pg17

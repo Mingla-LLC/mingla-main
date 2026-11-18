@@ -1,6 +1,6 @@
 -- Issue #4453 PR 6c (designs: Pop, Sunset, Pulse): the website design keys grow by three, to all ten.
 --
--- MINGLA-INVARIANT: I-SITES-DESIGN-KEYS-ONE-LIST | issue #4453 | design keys come from
+-- Invariant I-SITES-DESIGN-KEYS-ONE-LIST (owned by its pg17 test): design keys come from
 -- packages/site-contracts DESIGN_KEYS; brand_site_design_keys() is the one Core list (the
 -- plan CHECK, brand_site_plan_save_design and brand_context_completeness_internal read it),
 -- pinned to the generated fixture by issue_4453_design_keys.implementor.pg17.test.sql.

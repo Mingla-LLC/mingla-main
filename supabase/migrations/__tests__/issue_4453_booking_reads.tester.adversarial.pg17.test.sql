@@ -6,7 +6,7 @@
 -- with no or a broken timezone (UTC), and a key and value scan of every
 -- answer for guest or staff data. BEGIN ... ROLLBACK: every fixture, the
 -- dropped foreign keys and the disabled scope guards roll back.
--- MINGLA-INVARIANT: I-SITES-BOOKING-FACTS-FROM-MINGLA | issue #4453 | a night a site shows as open, and the number left, are what Mingla's own quote would still sell (sellable minus active holds and active commitments).
+-- MINGLA-INVARIANT: I-SITES-BOOKING-FACTS-FROM-MINGLA | issue #4453 | a night a site shows as open, and the number left, are what Mingla's own quote would still sell (sellable minus live holds and live commitments).
 --
 -- A-1  a night whose every unit is committed is FULL with no link.
 -- A-2  a night with 3 of 4 units committed or held shows 1 left ("few").

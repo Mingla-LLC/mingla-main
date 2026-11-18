@@ -2,7 +2,7 @@
 -- #4453 milestone 9, tester's adversarial proof of the detail read and the
 -- edited stay feed (20280807084453, 20280807054453), through the REAL feed
 -- (no stand-in). BEGIN ... ROLLBACK.
--- MINGLA-INVARIANT: I-SITES-DETAIL-ONLY-LIVE-OWN | issue #4453 | a detail page exists only for a public, published, uncancelled offering in the site's own feed: another brand's slug or id, a private, draft, cancelled or deleted offering, and any room while a stay flag is off all answer NULL.
+-- MINGLA-INVARIANT: I-SITES-DETAIL-ONLY-LIVE-OWN | issue #4453 | a detail page exists only for a public, published, uncancelled offering in the site's own feed: another brand's slug or id, a private, unpublished, cancelled or deleted offering, and any room while a stay flag is off all answer NULL.
 --
 -- A-1  guessing across brands: site A asked for brand B's event slug, B's event id, B's room id: NULL.
 -- A-2  private, draft, cancelled and deleted events of the site's OWN brand: NULL, and not in the feed.

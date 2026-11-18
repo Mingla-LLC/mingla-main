@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 PR 6b: executable PostgreSQL 17 proof that Journal, Grid and Terra are design keys.
--- MINGLA-INVARIANT: I-SITES-DESIGN-KEYS-ONE-LIST | issue #4453 | brand_site_design_keys() equals site-contracts DESIGN_KEYS (generated fixture); 6b replaces only the function.
+-- Invariant I-SITES-DESIGN-KEYS-ONE-LIST (owned by its pg17 test): brand_site_design_keys() equals site-contracts DESIGN_KEYS (generated fixture); 6b replaces only the function.
 --
 -- T-1 SC-D1   brand_site_design_keys() returns exactly the eight keys through terra (DESIGN_KEYS order)
 --             and equals the generated fixture.

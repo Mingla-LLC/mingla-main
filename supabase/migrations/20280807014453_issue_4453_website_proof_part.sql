@@ -1,10 +1,10 @@
 -- Issue #4453 PR 3 (content foundation): the Website setup part
 -- "What guests say and where you've been" (spec v1 Part 3, spec v2 §6.7).
 --
--- MINGLA-INVARIANT: I-SITES-SETUP-CONTENT-SERVICE-ONLY | issue #4453 | brand_site_setup_content
+-- Invariant I-SITES-SETUP-CONTENT-SERVICE-ONLY (owned by its pg17 test): brand_site_setup_content
 -- has no anon or authenticated grants, RLS is enabled and forced, and a
 -- materialised row is immutable (pg17 test issue_4453_website_proof_part).
--- MINGLA-INVARIANT: I-SITES-NO-INVENTED-PROOF | issue #4453 | a staged review exists only
+-- Invariant I-SITES-NO-INVENTED-PROOF (owned by its pg17 test): a staged review exists only
 -- with the owner's "This is a real review" tick (confirmed_real_by/at NOT NULL),
 -- recorded by a brand admin or owner (rank 50+); past trips must have ended.
 --

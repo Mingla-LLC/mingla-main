@@ -2,7 +2,7 @@
 // Issue #4453 — the Host app's Website wiring for the three-style preview,
 // the style library and "Add a page with Ari".
 //
-// MINGLA-INVARIANT: I-PROPOSED-4453-SITES-HOST-WIRING | issue #4453 | With SITES_PLAN_PREVIEW, SITES_STYLE_LIBRARY and SITES_ARI_ADD_PAGE off the Host app's Website setup and Pages section render as before; only "Start the build" writes from the preview chooser; both look pickers read lookPickerKeys (never DESIGN_KEYS); the Draft page card acts only through the owner's content actions; the dev harnesses redirect in a release build and read no auth.
+// MINGLA-INVARIANT: I-PROPOSED-4453-SITES-HOST-WIRING | issue #4453 | With SITES_PLAN_PREVIEW, SITES_STYLE_LIBRARY and SITES_ARI_ADD_PAGE off the Host app's Website setup and Pages section render as before; only "Start the build" writes from the preview chooser; both look pickers read lookPickerKeys (never DESIGN_KEYS); the proposed-page card acts only through the owner's content actions; the dev harnesses redirect in a release build and read no auth.
 //
 // WHY A GATE. These rules are about which branch, call or import a file uses,
 // so they can only be checked by reading source. They used to live in three
