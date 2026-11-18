@@ -418,6 +418,7 @@
         "mingla-business/app/(tabs)/marketing/_layout.tsx",
         "mingla-business/app/(tabs)/marketing/ads/create.tsx",
         "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+        "mingla-business/src/components/ui/coverTarget.ts",
         "mingla-business/src/components/marketing/ads/HostAdAudiencePicker.tsx",
         "mingla-business/src/components/marketing/ads/HostAdBudgetPanel.tsx",
         "mingla-business/src/components/marketing/ads/HostAdCountryPicker.tsx",

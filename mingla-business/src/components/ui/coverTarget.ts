@@ -13,6 +13,8 @@
  * Per SPEC_ORCH-0989 §4.2 (LOCKED).
  */
 
+import { isValidAdCreativeOwnerKey } from "../../services/eventCoverVideoEdgeContract";
+
 export type CoverTarget =
   | {
       // META-ORCH-1059 Sub-B: "experience" joins event/trip — experiences are
@@ -74,3 +76,27 @@ export const adCreativeCoverTarget = (
   brandId,
   ownerKey,
 });
+
+/**
+ * #4238 — does this target carry the identity its upload lane keys on?
+ *
+ *   - event / trip / experience → the server events-row id.
+ *   - brand / venue / venue_draft → the brand (always present).
+ *   - ad_creative → a valid owner key (`host-ad:<draftId>`, `ari:<id>`, …).
+ *     It has NO events row, so it must never be held to the row-id rule:
+ *     that is what blocked every Host ad video with "This needs a server
+ *     record before media upload." An empty draft id (`host-ad:`) fails the
+ *     owner-key grammar and is still refused, before any file is picked.
+ */
+export const coverTargetHasUploadIdentity = (target: CoverTarget): boolean => {
+  switch (target.kind) {
+    case "brand":
+    case "venue":
+    case "venue_draft":
+      return true;
+    case "ad_creative":
+      return isValidAdCreativeOwnerKey(target.ownerKey);
+    default:
+      return target.eventRowId.trim().length > 0;
+  }
+};
