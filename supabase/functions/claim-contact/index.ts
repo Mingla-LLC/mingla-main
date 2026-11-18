@@ -25,6 +25,7 @@ import { emailAdapter } from "../_shared/adapters/emailAdapter.ts";
 import { renderContactCodeEmail } from "../_shared/email/contactCodeEmail.ts";
 import { EMAIL_SENDERS } from "../_shared/email/senders.ts";
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+import { runPurchaseClaimSweep } from "../_shared/purchaseClaimSweep.ts";
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const E164 = /^\+[1-9][0-9]{1,14}$/;
@@ -144,36 +145,13 @@ async function sweep(
   deps: ClaimContactDeps,
   userId: string,
 ): Promise<{ result: Record<string, unknown> | null; limited: boolean }> {
-  const attempt = await deps.rpc("begin_attendance_claim_attempt", {
-    p_user_id: userId,
-    p_kind: "identity",
-  });
-  const budget = objectResult(attempt.data);
-  if (attempt.error || budget.allowed !== true) {
-    return { result: null, limited: budget.allowed === false };
-  }
-  const claimed = await deps.rpc("claim_attendance_by_verified_identity", {
-    p_user_id: userId,
-  });
-  if (claimed.error) return { result: null, limited: false };
-  const transfer = await deps.rpc("issue_4063_claim_offered_tickets", {
-    p_user_id: userId,
-    p_qr_token_pepper: deps.qrPepper(),
-  });
-  if (transfer.error) return { result: null, limited: false };
-  const primary = objectResult(claimed.data);
-  const held = objectResult(transfer.data);
-  const primaryClaimed = Array.isArray(primary.claimed) ? primary.claimed : [];
-  const heldClaimed = Array.isArray(held.claimed) ? held.claimed : [];
-  return {
-    result: {
-      ...primary,
-      claimed: [...primaryClaimed, ...heldClaimed],
-      count: primaryClaimed.length + heldClaimed.length,
-      more: primary.more === true || held.more === true,
-    },
-    limited: false,
-  };
+  // #4473: unowned purchases attach, sent tickets arrive, and purchases owned
+  // by another account are shared read-only with this one.
+  return await runPurchaseClaimSweep(
+    (name, args) => deps.rpc(name, args),
+    userId,
+    deps.qrPepper(),
+  );
 }
 
 function normalize(channel: string, value: string): string | null {

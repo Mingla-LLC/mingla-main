@@ -146,6 +146,7 @@ import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import { TicketFoundBanner } from "../src/components/purchases/TicketFoundBanner";
+import { ClaimLinkLandedSheet } from "../src/components/purchases/ClaimLinkLandedSheet";
 import { useClaimRecheck } from "../src/hooks/useClaimRecheck";
 import type { OnboardingMode } from "../src/hooks/ticketFirstLogic";
 import * as friendsService from "../src/services/friendsService";
@@ -470,6 +471,9 @@ function AppContent() {
   } | null>(null);
   const [ticketClaim, setTicketClaim] = useState<PendingClaim | null>(null);
   const [ticketClaimResolving, setTicketClaimResolving] = useState(false);
+  // #4473 — a signed-in account opened a /c link the sweep did not attach:
+  // "Is this your ticket?" asks it to prove the purchase contact.
+  const [linkLandedClaim, setLinkLandedClaim] = useState<PendingClaim | null>(null);
   const pendingClaimLoadGenerationRef = useRef(0);
   const [onboardingModeOverride, setOnboardingModeOverride] =
     useState<OnboardingMode | null>(null);
@@ -789,7 +793,16 @@ function AppContent() {
         if (pendingClaimLoadGenerationRef.current === generation) {
           setTicketClaimResolving(false);
         }
-        if (userIdRef.current) await recheckClaims("claim_link");
+        if (userIdRef.current) {
+          const sweep = await recheckClaims("claim_link");
+          if (
+            resolution.status === "claim" &&
+            (sweep === null || sweep.count === 0) &&
+            pendingClaimLoadGenerationRef.current === generation
+          ) {
+            setLinkLandedClaim(resolution.claim);
+          }
+        }
       })().catch((error) => {
         setTicketClaimResolving(false);
         console.warn("[ClaimLink] Failed to resolve incoming claim link", error);
@@ -3292,6 +3305,11 @@ function AppContent() {
         <TicketFoundBanner
           result={ticketFoundBannerResult}
           onDismiss={dismissTicketFoundBanner}
+        />
+        <ClaimLinkLandedSheet
+          claim={linkLandedClaim}
+          onClose={() => setLinkLandedClaim(null)}
+          userId={user?.id ?? null}
         />
       <ToastProvider>
         <CardsCacheProvider>

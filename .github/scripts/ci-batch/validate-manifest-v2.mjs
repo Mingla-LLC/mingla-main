@@ -588,7 +588,7 @@ export function phase3dContractDigest(manifest) {
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
 // #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459) after 20280803004238 and kept its pg17 suites and sidecars; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ee7ba5d0d09c47f6a7e72689d2bc2bd9d34f69d71f32dc3b2d0bcad903e83ef5";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "b9bc3ac5bbfef696d7d2d3facdc5efefb11c231c95fb93715884d11b86875ced";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

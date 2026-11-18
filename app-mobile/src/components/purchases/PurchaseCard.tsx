@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { EventCoverMedia } from "@mingla/offering-rendering";
+import { useTranslation } from "react-i18next";
 
 import type {
   PurchaseCoverMediaType,
@@ -82,6 +83,7 @@ export function PurchaseCard({
   onPress,
   dimmed = false,
 }: PurchaseCardProps): React.ReactElement {
+  const { t } = useTranslation("purchases");
   const [coverFailed, setCoverFailed] = useState(false);
   useEffect(() => {
     setCoverFailed(false);
@@ -90,7 +92,11 @@ export function PurchaseCard({
 
   const coverType = coverFailed ? null : purchaseCardCoverType(item);
   const kindLabel = purchaseKindLabel(item.kind);
-  const dateLine = formatTicketTimeLine(item.startsAt, item.timezone, null);
+  // #4473 — a shared stay has no dates; its list time is when it was shared.
+  const undated = item.kind === "stay";
+  const dateLine = undated
+    ? null
+    : formatTicketTimeLine(item.startsAt, item.timezone, null);
   const countLabel = purchaseCountLabel(item);
   const whenLine = dateLine ? `${dateLine} · ${countLabel}` : countLabel;
   const whereLine = [item.brandName, item.venueLine]
@@ -100,12 +106,16 @@ export function PurchaseCard({
   const amount = formatPurchaseMoney(item.amountCents, item.currency);
   const refundState = isRefundStatus(item.status);
   const cancelled = isCancelledStatus(item.status);
-  const tile = purchaseDateTileParts(item.startsAt, item.timezone);
+  const tile = undated ? null : purchaseDateTileParts(item.startsAt, item.timezone);
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open ${kindLabel} for ${item.title}`}
+      accessibilityLabel={
+        item.shared
+          ? `Open ${kindLabel} for ${item.title}, ${t("shared.badge")}`
+          : `Open ${kindLabel} for ${item.title}`
+      }
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
@@ -157,6 +167,13 @@ export function PurchaseCard({
           >
             {purchaseStatusLabel(item.status)}
           </Text>
+          {item.shared ? (
+            <View style={styles.sharedPill} testID="purchase-card-shared">
+              <Text numberOfLines={1} style={styles.sharedText}>
+                {t("shared.badge")}
+              </Text>
+            </View>
+          ) : null}
           {amount ? (
             <Text
               numberOfLines={1}
@@ -258,6 +275,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   statusWarn: { color: "#f8a35f" },
+  sharedPill: {
+    flexShrink: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: "rgba(59,130,246,0.16)",
+  },
+  sharedText: { color: "#bfdbfe", fontSize: 10, fontWeight: "700" },
   amount: {
     flexShrink: 0,
     marginLeft: "auto",

@@ -64,6 +64,14 @@ export type ClaimedEntry = {
   sentByFirstName: string | null;
   chatJoined: boolean | null;
   conversationId: string | null;
+  /**
+   * #4473 — the contact that matched this purchase is also confirmed on another
+   * Mingla account, so the purchase shows on both. Optional on the wire: the
+   * backend starts sending it later, and anything but `true` reads as false.
+   */
+  sharedWithAnotherAccount: boolean;
+  /** #4473 — "shared" when this account sees the purchase as a shared copy. */
+  role: "shared" | null;
 };
 
 const CLAIM_KINDS = new Set<ClaimedEntry["kind"]>([
@@ -121,7 +129,9 @@ export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
       !isClaimedEntryEnum(CLAIM_ROUTE_KINDS, row.routeKind) ||
       typeof row.routeId !== "string" ||
       !isClaimedEntryEnum(CLAIM_OFFERING_TYPES, row.offeringType) ||
-      typeof row.title !== "string" || typeof row.timezone !== "string" ||
+      typeof row.title !== "string" ||
+      (row.timezone !== null && row.timezone !== undefined &&
+        typeof row.timezone !== "string") ||
       !isClaimedEntryEnum(CLAIM_SOURCES, row.source)
     ) return [];
     return [{
@@ -134,7 +144,8 @@ export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
       title: row.title,
       orderLabel: typeof row.orderLabel === "string" ? row.orderLabel : null,
       startsAt: typeof row.startsAt === "string" ? row.startsAt : null,
-      timezone: row.timezone,
+      // #4473 — a stay carries no timezone; it is a booking, not a time.
+      timezone: typeof row.timezone === "string" ? row.timezone : "UTC",
       venueLine: typeof row.venueLine === "string" ? row.venueLine : null,
       quantity: typeof row.quantity === "number" ? row.quantity : 1,
       source: row.source,
@@ -145,6 +156,8 @@ export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
       conversationId: typeof row.conversationId === "string"
         ? row.conversationId
         : null,
+      sharedWithAnotherAccount: row.sharedWithAnotherAccount === true,
+      role: row.role === "shared" ? "shared" : null,
     }];
   });
 }
