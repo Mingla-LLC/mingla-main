@@ -58,23 +58,4 @@ export const launchCoverVideoPicker = async (
   }));
 };
 
-/**
- * #4238 B7 — Host ads only: several videos in one pick (iOS 14+ and the
- * Android photo picker), capped at the room left in the ad.
- */
-export const launchAdVideosPicker = async (
-  options: { maxFiles: number },
-): Promise<CoverPickerResult> => {
-  const ImagePicker = await import("expo-image-picker");
-  return normalizePickerResult(await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ["videos"],
-    allowsMultipleSelection: true,
-    selectionLimit: Math.max(1, options.maxFiles),
-    orderedSelection: true,
-    preferredAssetRepresentationMode:
-      ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-    quality: 1,
-  }));
-};
-
-export const revokeCoverPickedAssets =(_assets: readonly CoverPickerAsset[]): void => {};
+export const revokeCoverPickedAssets = (_assets: readonly CoverPickerAsset[]): void => {};

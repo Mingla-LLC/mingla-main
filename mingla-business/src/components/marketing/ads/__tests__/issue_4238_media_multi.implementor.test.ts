@@ -29,11 +29,11 @@ import {
   hostAdPickRefusal,
   hostAdRemoveFromAd,
   hostAdUploadOwnerKey,
-  hostAdUploadPhaseFor,
   planHostAdPick,
   type HostAdPickedVideo,
 } from "../hostAdMediaQueue";
-import { adTileFitLine } from "../../../../utils/adVideoFit";
+import { adTileFitLine } from "../hostAdTileFit";
+import { hostAdUploadPhaseFor } from "../hostAdUploadPhase";
 import { AD_CREATIVE_OWNER_KEY_PATTERN } from "../../../../services/eventCoverVideoEdgeContract";
 
 const clip = (name: string, seconds: number, size = 20_000_000): HostAdPickedVideo => ({

@@ -11,7 +11,9 @@
  * own owner key, so the jobs run side by side. Ad videos never supersede each
  * other on the server, so parallel jobs for one draft are allowed.
  */
-import { VIDEO_LIMITS } from "@mingla/video-upload";
+// The limits module alone: the package index carries the upload transport,
+// which stays out of the boot bundle (#4238 bundle movement).
+import { VIDEO_LIMITS } from "@mingla/video-upload/limits.js";
 
 /** The most videos and photos one Host ad can carry. */
 export const HOST_AD_MEDIA_MAX = 5;
@@ -142,7 +144,9 @@ export function planHostAdPick(input: {
   return plan;
 }
 
-export type HostAdUploadPhase = "uploading" | "preparing" | "ready" | "failed";
+import type { HostAdUploadPhase } from "./hostAdUploadPhase";
+
+export type { HostAdUploadPhase };
 
 /** One background upload, as the media step tracks it. */
 export type HostAdUploadItem = {
@@ -171,35 +175,6 @@ export type HostAdUploadItem = {
 export function hostAdUploadOwnerKey(draftId: string, token: string): string {
   const safe = token.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 16);
   return `host-ad:${draftId}-${safe}`;
-}
-
-/** How a lane stage reads on a tile. */
-export function hostAdUploadPhaseFor(stage: {
-  phase: string;
-  percent: number | null;
-  canRetry?: boolean;
-}): { phase: HostAdUploadPhase; percent: number | null; canRetry: boolean } {
-  switch (stage.phase) {
-    case "ready":
-    case "applying":
-    case "applied":
-      return { phase: "ready", percent: 100, canRetry: false };
-    case "processing":
-      return { phase: "preparing", percent: null, canRetry: false };
-    case "error":
-      return { phase: "failed", percent: null, canRetry: stage.canRetry !== false };
-    case "detached":
-      return { phase: "failed", percent: null, canRetry: true };
-    case "uploading":
-    case "compressing":
-      return {
-        phase: "uploading",
-        percent: typeof stage.percent === "number" ? Math.max(0, Math.min(99, Math.round(stage.percent))) : null,
-        canRetry: false,
-      };
-    default:
-      return { phase: "uploading", percent: 0, canRetry: false };
-  }
 }
 
 /** Ids of creatives in this ad after removing some; never more than 5. */

@@ -89,30 +89,7 @@ export const launchCoverVideoPicker = async (
   };
 };
 
-/**
- * #4238 B7 — Host ads only: several videos in one pick. Covers for events,
- * brands and venues keep the single-file `launchCoverVideoPicker`.
- */
-export const launchAdVideosPicker = async (
-  options: { maxFiles: number },
-): Promise<CoverPickerResult> => {
-  const result = await pickBrowserFiles({
-    accept: COVER_VIDEO_PICKER_OPTIONS.accept,
-    multiple: true,
-    maxFiles: Math.max(1, options.maxFiles),
-  });
-  const assets = await Promise.all(
-    result.files.map(async (file) =>
-      toCoverAsset(file, {
-        duration: await readBrowserVideoDurationMs(file.uri),
-        type: "video",
-      }),
-    ),
-  );
-  return { canceled: result.canceled, assets };
-};
-
-export const revokeCoverPickedAssets =(assets: readonly CoverPickerAsset[]): void => {
+export const revokeCoverPickedAssets = (assets: readonly CoverPickerAsset[]): void => {
   revokeBrowserPickedFiles(
     assets
       .filter((asset) => asset.objectUrl !== undefined)

@@ -153,7 +153,7 @@ import {
   hostAdSetupErrorCopy,
 } from "../../components/marketing/ads/hostAdSetupCopy";
 import { HostAdMediaSection, type HostAdMediaTile } from "../../components/marketing/ads/HostAdMediaSection";
-import { HostAdVideoUploadSlot, type HostAdUploadReport } from "../../components/marketing/ads/HostAdVideoUploadSlot";
+import type { HostAdUploadReport } from "../../components/marketing/ads/HostAdVideoUploadSlot";
 import {
   HOST_AD_MEDIA_MAX,
   hostAdAddToAd,
@@ -167,8 +167,6 @@ import {
   type HostAdPickRefusal,
   type HostAdUploadItem,
 } from "../../components/marketing/ads/hostAdMediaQueue";
-import { launchAdVideosPicker, revokeCoverPickedAssets } from "../../components/ui/coverPickerDeviceMedia";
-import { normalizePickerDurationMs } from "../../components/ui/coverPickerVideoTrimUpload";
 import { color, edge, radius, space, type } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
@@ -194,10 +192,19 @@ import type {
 } from "../../services/hostAdPlanService";
 import { loadHostAdPlanService } from "./hostAdKitService";
 import { randomUuid } from "../../utils/randomId";
-import { adTileFitLine } from "../../utils/adVideoFit";
+import { adTileFitLine } from "../../components/marketing/ads/hostAdTileFit";
 import { hostOptimizationByPlatform } from "../../services/hostAdPlanService";
 
 // #4238: platforms are named the way Hosts know them.
+
+// #4238 B7: the upload slot, multi-picker and video transport load on intent
+// through the one shared authoring runtime (see its header), so Host web never
+// downloads upload code at boot.
+const loadVideoAuthoringRuntime = () => import("../../services/eventCoverVideoAuthoringRuntime");
+const HostAdVideoUploadSlot = React.lazy(() =>
+  loadVideoAuthoringRuntime().then((runtime) => ({ default: runtime.HostAdVideoUploadSlot })),
+);
+
 const PLATFORM_LABELS = HOST_AD_PLATFORM_NAMES;
 
 /** #4238 B7: what a refused pick says on its tile. */
@@ -2985,10 +2992,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setNotice(hb("media.draftNotReady"));
       return;
     }
-    let picked: Awaited<ReturnType<typeof launchAdVideosPicker>>;
+    let runtime: Awaited<ReturnType<typeof loadVideoAuthoringRuntime>>;
+    let picked: Awaited<ReturnType<typeof runtime.launchAdVideosPicker>>;
     try {
+      runtime = await loadVideoAuthoringRuntime();
       // Web can pick past the room (the rest go to the library); native caps it.
-      picked = await launchAdVideosPicker({
+      picked = await runtime.launchAdVideosPicker({
         maxFiles: Platform.OS === "web" ? HOST_AD_MEDIA_MAX : Math.max(1, adMediaRoom),
       });
     } catch (cause) {
@@ -2997,7 +3006,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }
     if (picked.canceled || picked.assets.length === 0) return;
     const files: HostAdPickedVideo[] = picked.assets.map((asset) => {
-      const durationMs = normalizePickerDurationMs(asset.duration);
+      const durationMs = runtime.normalizePickerDurationMs(asset.duration);
       return {
         uri: asset.uri,
         fileName: asset.fileName ?? null,
@@ -3061,7 +3070,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setNotice(hb("media.repeat", { name: hostAdCreativeNameFor(plan.repeats[0].fileName) }));
     }
     if (Platform.OS === "web" && plan.refused.length + plan.repeats.length === picked.assets.length) {
-      revokeCoverPickedAssets(picked.assets);
+      runtime.revokeCoverPickedAssets(picked.assets);
     }
     setMediaUndo(null);
     setRightsConfirmed(false);
@@ -3867,6 +3876,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       {/* #4238 B7: one background upload per picked clip. Mounted at the
           screen root so changing steps never stops an upload; a removed tile
           stays mounted as `cancelled` so its job is cancelled. */}
+      <React.Suspense fallback={null}>
       {brandId
         ? uploads.map((item) => (
             <HostAdVideoUploadSlot
@@ -3879,6 +3889,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             />
           ))
         : null}
+      </React.Suspense>
       <Sheet
         visible={duplicateAsk !== null}
         onClose={() => setDuplicatePicks((current) => current.slice(1))}

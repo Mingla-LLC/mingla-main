@@ -13,7 +13,8 @@ import { Platform } from "react-native";
 import { useEventCoverVideoUpload } from "../../../hooks/useEventCoverVideoUpload";
 import { useNetInfoSafe } from "../../../lib/netinfoSafe";
 import { resolveRawClipUploadUri } from "../../ui/coverPickerVideoTrimUpload";
-import { hostAdUploadPhaseFor, type HostAdUploadItem } from "./hostAdMediaQueue";
+import type { HostAdUploadItem } from "./hostAdMediaQueue";
+import { hostAdUploadPhaseFor } from "./hostAdUploadPhase";
 
 export type HostAdUploadReport = {
   key: string;
