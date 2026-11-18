@@ -788,6 +788,8 @@ export default function HomeTab(): React.ReactElement {
           brandName={currentBrand.displayName}
           checklist={setupChecklist}
           onContinue={openSetup}
+          // #4389 P2 — wide desktop: Continue sits in the title row.
+          layout={isWideDesktop ? "inline" : "stacked"}
         />
         {tapCardMode !== null && (Platform.OS === "ios" || Platform.OS === "android") ? (
           <Suspense fallback={null}>
@@ -1031,7 +1033,11 @@ export default function HomeTab(): React.ReactElement {
             ) : null
           ) : (
             <>
-              {setupSection}
+              {/* #4389 P2 — the same 16px gutter as the pulse panel below,
+                  so the card's edges line up with the other Home panels. */}
+              <View style={styles.setupWrap} testID="home-desktop-setup-wrap">
+                {setupSection}
+              </View>
               <BusinessPulsePanel
                 brandId={currentBrand.id}
                 defaultCurrency={currentBrand.defaultCurrency ?? null}
