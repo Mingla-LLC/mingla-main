@@ -558,7 +558,20 @@
         "supabase/functions/_shared/hostRetargetLiveAdd.ts",
         "supabase/migrations/20280801004238_issue_4238_ads_follow_event.sql",
         "supabase/migrations/20280802004238_issue_4238_builder_intelligence.sql",
-        "supabase/migrations/20280803004238_issue_4238_host_ad_notices_roles.sql"
+        "supabase/migrations/20280803004238_issue_4238_host_ad_notices_roles.sql",
+        "mingla-business/src/components/marketing/ads/HostAdMediaSection.tsx",
+        "mingla-business/src/components/marketing/ads/HostAdVideoUploadSlot.tsx",
+        "mingla-business/src/components/marketing/ads/hostAdMediaQueue.ts",
+        "mingla-business/src/components/marketing/ads/hostAdTileFit.ts",
+        "mingla-business/src/components/marketing/ads/hostAdUploadPhase.ts",
+        "mingla-business/src/components/marketing/ads/hostAdVideoPicker.native.ts",
+        "mingla-business/src/components/marketing/ads/hostAdVideoPicker.ts",
+        "mingla-business/src/hooks/useHostAdPermissions.ts",
+        "mingla-business/src/services/eventCoverVideoAuthoringRuntime.ts",
+        "mingla-business/src/services/hostAdCreativeLibraryService.ts",
+        "mingla-business/src/utils/hostAdPermission.ts",
+        "supabase/functions/_shared/hostAdWidening.ts",
+        "supabase/migrations/20281118014238_issue_4238_ads_roles.sql"
       ]
     },
     {
@@ -901,7 +914,8 @@
         "mingla-business/src/components/invite/BusinessAppDownloadCta.tsx",
         "mingla-business/src/components/invite/InviteScreenShell.tsx",
         "mingla-business/src/components/invite/WrongAccountRecovery.tsx",
-        "mingla-business/src/components/invites/LazyInvitePeopleStep.tsx"
+        "mingla-business/src/components/invites/LazyInvitePeopleStep.tsx",
+        "supabase/migrations/20281118004238_issue_4238_team_role_grants.sql"
       ]
     },
     {
@@ -2032,10 +2046,12 @@
         "mingla-business/src/components/marketing/AdCreditLedgerRow.tsx",
         "mingla-business/src/components/marketing/ads/HostAdTopUpSheet.tsx",
         "mingla-business/src/services/adCreditService.ts",
+        "mingla-business/src/utils/brandPaymentsPermission.ts",
         "supabase/functions/_shared/adCreditStatements.ts",
         "supabase/functions/_shared/adCreditStripe.ts",
         "supabase/functions/_shared/adMoney.ts",
-        "supabase/functions/ad-credit/index.ts"
+        "supabase/functions/ad-credit/index.ts",
+        "supabase/migrations/20281118014238_issue_4238_ads_roles.sql"
       ]
     },
     {

@@ -7,7 +7,9 @@
  * restatement of the role rules:
  *   plan / launch / pause / end → ad_can_host_action(<that action>)
  *   change_live                 → ad_can_host_action('fund') (host-ad-campaign)
- *   top_up / withdraw           → biz_can_manage_payments_for_brand (ad-credit)
+ *   top_up                      → biz_can_manage_payments_for_brand (ad-credit)
+ *   withdraw                    → ad_can_withdraw_credit (ad-credit withdraw:
+ *                                 owner or Finance, #4238 ads roles)
  * A failed check is "not allowed" (fail closed). The person to ask is the
  * brand's owner, who can do every Host ad action, read from this brand only.
  */
@@ -30,7 +32,11 @@ export type HostAdCapabilityAnswer = {
   ask_name?: string;
 };
 
-/** The ad_can_host_action action behind each capability (null = payments). */
+/**
+ * The ad_can_host_action action behind each capability (null = an ad-credit
+ * check: top_up → biz_can_manage_payments_for_brand, withdraw →
+ * ad_can_withdraw_credit).
+ */
 export const HOST_AD_CAPABILITY_AUTHORITY: Record<
   HostAdCapability,
   "plan" | "launch" | "pause" | "fund" | "end" | null
@@ -46,6 +52,32 @@ export const HOST_AD_CAPABILITY_AUTHORITY: Record<
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
+
+/**
+ * #4238 ads roles: the one withdraw authority, shared by ad-credit
+ * (quote_withdraw, apply_withdraw) and the withdraw capability. "error" when
+ * the check itself failed (callers refuse; never treated as allowed).
+ */
+export async function adCreditWithdrawAuthority(
+  db: Db,
+  brandId: string,
+  userId: string,
+): Promise<"allowed" | "denied" | "error"> {
+  try {
+    const { data, error } = await db.rpc("ad_can_withdraw_credit", {
+      p_brand_id: brandId,
+      p_user_id: userId,
+    });
+    if (error) {
+      console.error("[ad-credit] withdraw auth failed:", error.message);
+      return "error";
+    }
+    return data === true ? "allowed" : "denied";
+  } catch (cause) {
+    console.error("[ad-credit] withdraw auth threw:", String(cause));
+    return "error";
+  }
+}
 
 export async function hostAdCapabilities(
   db: Db,
@@ -75,18 +107,21 @@ export async function hostAdCapabilities(
       return false;
     }
   };
-  const [plan, launch, pause, fund, end, money] = await Promise.all([
+  const [plan, launch, pause, fund, end, money, withdraw] = await Promise.all([
     ask("plan"),
     ask("launch"),
     ask("pause"),
     ask("fund"),
     ask("end"),
     payments(),
+    adCreditWithdrawAuthority(db, brandId, userId).then((answer) =>
+      answer === "allowed"
+    ),
   ]);
   const allowed: Record<HostAdCapability, boolean> = {
     plan,
     top_up: money,
-    withdraw: money,
+    withdraw,
     launch,
     pause,
     change_live: fund,

@@ -1,4 +1,9 @@
-import { canHostAdAction, type HostAdAction } from "../hostAdPermission";
+import {
+  canHostAdAction,
+  canHostAdTopUp,
+  canHostAdWithdraw,
+  type HostAdAction,
+} from "../hostAdPermission";
 
 const actions: HostAdAction[] = [
   "read",
@@ -49,7 +54,31 @@ describe("issue #3697 Host Ads action authority", () => {
   });
 
   it("keeps direct end owner-only", () => {
-    expect(granted("brand_admin")).toEqual(["read", "plan"]);
+    // #4238 ads roles (20281118014238), updated on purpose: a brand admin now
+    // funds, launches and pauses; end stays owner-only.
+    expect(granted("brand_admin")).toEqual([
+      "read",
+      "plan",
+      "fund",
+      "launch",
+      "pause",
+    ]);
+    expect(granted("brand_admin", { ads_end: true })).not.toContain("end");
     expect(granted("finance_manager", { ads_end: true })).not.toContain("end");
+  });
+
+  it("#4238 ads roles: top up is owner, admin and Finance; withdraw is owner and Finance", () => {
+    const who = (role: Parameters<typeof canHostAdTopUp>[0]["role"], accepted = true) => ({
+      topUp: canHostAdTopUp({ role, accepted }),
+      withdraw: canHostAdWithdraw({ role, accepted }),
+    });
+    expect(who("brand_owner")).toEqual({ topUp: true, withdraw: true });
+    expect(who("brand_admin")).toEqual({ topUp: true, withdraw: false });
+    expect(who("finance_manager")).toEqual({ topUp: true, withdraw: true });
+    expect(who("marketing_manager")).toEqual({ topUp: false, withdraw: false });
+    expect(who("event_manager")).toEqual({ topUp: false, withdraw: false });
+    expect(who("finance_manager", false)).toEqual({ topUp: false, withdraw: false });
+    expect(who("brand_admin", false)).toEqual({ topUp: false, withdraw: false });
+    expect(who(null)).toEqual({ topUp: false, withdraw: false });
   });
 });

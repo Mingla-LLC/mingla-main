@@ -93,6 +93,7 @@ describe("adCreditService Wave 7", () => {
     });
   });
 
+  const BRAND_ID_FOR_QUOTE = "11111111-1111-4111-8111-111111111111";
   it("quoteAdCreditWithdraw returns credit + fee refund split", async () => {
     mockInvoke.mockResolvedValueOnce(
       ok({
@@ -102,10 +103,12 @@ describe("adCreditService Wave 7", () => {
         fee_returned_cents: 375,
       }),
     );
-    const q = await quoteAdCreditWithdraw(2125);
+    // #4238 ads roles: the quote names the brand so the server can check
+    // withdraw authority (owner or Finance).
+    const q = await quoteAdCreditWithdraw(BRAND_ID_FOR_QUOTE, 2125);
     expect(q.refund_cents).toBe(2500);
     expect(mockInvoke).toHaveBeenCalledWith("ad-credit", {
-      body: { action: "quote_withdraw", credit_cents: 2125 },
+      body: { action: "quote_withdraw", brand_id: BRAND_ID_FOR_QUOTE, credit_cents: 2125 },
     });
   });
 
