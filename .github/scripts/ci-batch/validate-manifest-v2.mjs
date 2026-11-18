@@ -588,7 +588,8 @@ export function phase3dContractDigest(manifest) {
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
 // #4473 purchase shared holders: listed migration 20280805004473 after 20280804004473 in the #1857, #1931 and #2117 lanes (guarded for both filtered replays; both verified) and registered its two pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4473 shared holder Guest chat sync and hourly expiry: listed migration 20280806004473 after 20280805004473 in the #1857, #1931 and #2117 lanes (both filtered replays verified); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e95e3b791bee63e5a00bf62566ea76902b6067bf3fc9cd5d474f1d394e42bc9e";
+// #4473 gatekeeper suite: registered the tester's pg17 suite and sidecar in the #1931 and #2117 inventories next to the other #4473 suites; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "eb9091cd06cfdc1ca3b13e5d02c32c8ed4cb01109afe91b191bc652fdab5b0db";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

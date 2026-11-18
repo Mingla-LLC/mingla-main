@@ -21465,6 +21465,8 @@
         "supabase/migrations/__tests__/issue_4473_purchase_shared_holders.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4473_purchase_shared_holders.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4473_purchase_shared_holders.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4473_shared_holders_gatekeeper.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4473_shared_holders_gatekeeper.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -26983,6 +26985,8 @@
         "supabase/migrations/__tests__/issue_4473_purchase_shared_holders.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4473_purchase_shared_holders.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4473_purchase_shared_holders.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4473_shared_holders_gatekeeper.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4473_shared_holders_gatekeeper.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -54279,5 +54283,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "e95e3b791bee63e5a00bf62566ea76902b6067bf3fc9cd5d474f1d394e42bc9e"
+  "phase3eContractSha256": "eb9091cd06cfdc1ca3b13e5d02c32c8ed4cb01109afe91b191bc652fdab5b0db"
 }
