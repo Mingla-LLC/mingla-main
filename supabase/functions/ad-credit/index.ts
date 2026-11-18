@@ -27,7 +27,11 @@ import {
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { quoteTopUp, quoteWithdraw } from "../_shared/adMoney.ts";
+import {
+  adCreditTopUpLimits,
+  quoteTopUp,
+  quoteWithdraw,
+} from "../_shared/adMoney.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
   adCreditTopUpMetadata,
@@ -266,6 +270,10 @@ serve(async (req: Request): Promise<Response> => {
     return json({
       wallet: wallet ?? null,
       history: history ?? [],
+      // #4238: the top-up buttons start at the minimum quoteTopUp accepts.
+      top_up_limits: authority.ok
+        ? adCreditTopUpLimits(authority.currency)
+        : null,
       currency_authority: authority.ok
         ? authority.authority
         : (authority.authority ?? {

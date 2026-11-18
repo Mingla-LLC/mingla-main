@@ -298,6 +298,7 @@
         "paid": "Credito aggiunto. Ora puoi avviare.",
         "cancelled": "Pagamento annullato. Non è stato addebitato nulla.",
         "failed": "Il pagamento non è andato a buon fine. Non è stato aggiunto nulla.",
+        "minimum": "Il minimo che puoi ricaricare è {{amount}}.",
         "noAccess": "Per ricaricare serve l’accesso ai pagamenti del brand. {{name}} può aggiungere credito.",
         "returnFailed": "Il pagamento è tornato ma il credito non è ancora arrivato. Riprova o chiedi aiuto.",
         "method": "Carta e altri modi di pagare · in {{currency}}"

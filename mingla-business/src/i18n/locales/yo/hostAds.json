@@ -298,6 +298,7 @@
         "paid": "A ti fi kirẹ́dítì kún un. O lè bẹ̀rẹ̀ báyìí.",
         "cancelled": "A fagilé ìsanwó. A kò gba nǹkan kan.",
         "failed": "Ìsanwó náà kò lọ. A kò fi nǹkan kan kún un.",
+        "minimum": "Iye tí ó kéré jù tí o lè fi kún un ni {{amount}}.",
         "noAccess": "Fífi owó kún un nílò àṣẹ sí ìsanwó àmì-ìdámọ̀. {{name}} lè fi kirẹ́dítì kún un.",
         "returnFailed": "Ìsanwó náà padà ṣùgbọ́n kirẹ́dítì kò tíì dé. Gbìyànjú lẹ́ẹ̀kan sí i tàbí gba ìrànlọ́wọ́.",
         "method": "Káàdì àti àwọn ọ̀nà ìsanwó míì · ní {{currency}}"

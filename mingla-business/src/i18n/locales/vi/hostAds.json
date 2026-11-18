@@ -298,6 +298,7 @@
         "paid": "Đã cộng tín dụng. Bạn có thể chạy ngay.",
         "cancelled": "Đã hủy thanh toán. Không bị tính phí.",
         "failed": "Thanh toán không thành công. Không có gì được cộng.",
+        "minimum": "Số tiền nạp tối thiểu là {{amount}}.",
         "noAccess": "Nạp cần quyền thanh toán của thương hiệu. {{name}} có thể nạp tín dụng.",
         "returnFailed": "Thanh toán đã quay lại nhưng tín dụng chưa vào. Hãy thử lại hoặc nhận trợ giúp.",
         "method": "Thẻ và cách thanh toán khác · bằng {{currency}}"

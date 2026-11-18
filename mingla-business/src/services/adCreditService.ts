@@ -43,6 +43,8 @@ export type AdCreditLedgerRow = {
   external_ref: string | null;
 };
 
+export type AdCreditTopUpLimits = { min_pay_cents: number; max_pay_cents: number };
+
 export type AdCreditWalletPayload = {
   wallet: null | {
     brand_id: string;
@@ -53,6 +55,8 @@ export type AdCreditWalletPayload = {
     updated_at: string | null;
   };
   history: AdCreditLedgerRow[];
+  /** #4238: least and most one top-up can pay, in pay cents (null or absent before this shipped). */
+  top_up_limits?: AdCreditTopUpLimits | null;
   currency_authority: {
     resolved: boolean;
     currency: string | null;

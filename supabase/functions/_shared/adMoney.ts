@@ -66,6 +66,23 @@ export const AD_CREDIT_TOP_UP_LIMITS_CENTS = {
 
 export type AdCreditCurrency = keyof typeof AD_CREDIT_TOP_UP_LIMITS_CENTS;
 
+/**
+ * #4238: the top-up limits for one currency, sent to the Host with the wallet
+ * so the amount buttons start at the minimum quoteTopUp accepts. Null for a
+ * currency without Ads credit.
+ */
+export function adCreditTopUpLimits(
+  currency: string,
+): { min_pay_cents: number; max_pay_cents: number } | null {
+  const cur = currency.trim().toUpperCase();
+  if (!(cur in AD_CREDIT_TOP_UP_LIMITS_CENTS)) return null;
+  const limits = AD_CREDIT_TOP_UP_LIMITS_CENTS[cur as AdCreditCurrency];
+  return {
+    min_pay_cents: limits.min_pay_cents,
+    max_pay_cents: limits.max_pay_cents,
+  };
+}
+
 export type AdCreditEntryKind = "top_up" | "withdraw" | "unspend_return";
 
 /**
