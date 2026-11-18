@@ -349,7 +349,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4453 final rework: skipped the booking-reads migration (20280807044453) on the filtered #1931 and #2117 template replays by exact filename (it calls #3313 helpers and reads #3827 ticket_type_links, which those replays skip; #2492 closure); re-sealed.
 // #4453 final rework 2: the design_keys migration (20280807004453) skipped on the filtered #1931 template replay by exact filename (its CHECK reads brand_site_plans.design_key, added only by the skipped #2830 migrations); re-sealed.
 // #4453 merge of main after #4481: renumbered the eleven #4453 migrations to 20280807004453..20280807104453 so they sort after #4473's 20280806004473 (production head), listed after main's rows in the #1857, #1931 and #2117 lanes, and kept main's plus the #4453 filtered-replay skips; re-sealed.
-export const BOOTSTRAP_SHA256 = "c740c4e8c5bcbc21e89bba68b2a789405fabd377c43ba087d09ab7ef41391b09";
+export const BOOTSTRAP_SHA256 = "c780c23084bd41a3b1d04a4adab8f99617c6cd745f226013f0846d1b2fdf7004";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

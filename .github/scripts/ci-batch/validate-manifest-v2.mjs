@@ -604,7 +604,7 @@ export function phase3dContractDigest(manifest) {
 // #4453 final rework: the booking-reads migration skipped on the filtered #1931 and #2117 template replays (#2492 closure); re-sealed.
 // #4453 final rework 2: the design_keys migration skipped on the filtered #1931 template replay (column inside a CHECK); re-sealed.
 // #4453 merge of main after #4481: renumbered the eleven #4453 migrations to 20280807004453..20280807104453 so they sort after #4473's 20280806004473 (production head), listed after main's rows in the #1857, #1931 and #2117 lanes, and kept main's plus the #4453 filtered-replay skips; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b9bc3ac5bbfef696d7d2d3facdc5efefb11c231c95fb93715884d11b86875ced";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "18a7968f968dca1d9d8f34306b81f6eb39455ed16a1c3be3ba2f70a28eccd3c7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
