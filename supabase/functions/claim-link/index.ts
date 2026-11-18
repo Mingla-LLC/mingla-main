@@ -624,6 +624,11 @@ export function createClaimLinkHandler(
     if (result.outcome !== "ok" || typeof result.value !== "string") {
       return mapChallengeFailure(req, result.outcome, result);
     }
+    // #4473: only a sign-in challenge may mint a sign-in. A code proved for
+    // another purpose (adding a contact to a signed-in account) never does.
+    if (result.purpose !== "claim_sign_in") {
+      return json(req, { ok: false, error: "invalid" }, 400);
+    }
     const email = result.value;
     const { data: userData, error: userError } = await deps.rpc(
       "issue_4063_auth_user_for_email",

@@ -12,6 +12,9 @@
 --    still eligible through another booking stays in. Each run is bounded and
 --    safe to re-run.
 --
+-- 3. Without #4459, an order share that ends removes the account from the
+--    event's buyer chat unless it is still entitled another way.
+--
 -- No production row is changed by this file except the backfill's Guest chat
 -- membership writes made through issue_4459_safe_sync, when #4459 is present.
 
@@ -58,6 +61,7 @@ $function$;
 
 -- Guest chat sync on every share start, end or delete. A lapse found by the
 -- expiry sweep (or an eager revocation) is labelled 'purchase_share_expiry'.
+-- Without #4459, an ended order share leaves the event's buyer chat instead.
 CREATE OR REPLACE FUNCTION public.tg_purchase_shared_holders_4473_guest_sync()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -67,12 +71,45 @@ AS $function$
 DECLARE
   v_row public.purchase_shared_holders%ROWTYPE;
   v_brand uuid;
+  v_event uuid;
   v_source text := 'purchase_share';
 BEGIN
+  v_row := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+
   IF to_regprocedure('public.issue_4459_safe_sync(uuid,uuid,text)') IS NULL THEN
+    -- Before #4459 a shared order joined the event's buyer chat. When that
+    -- share ends, leave the chat unless something else still entitles the
+    -- account: another live, proven shared order on the event or a ticket
+    -- held for it. Owning an order, being the chat's creator or being on the
+    -- brand team are checked by the existing buyer-chat helper.
+    IF v_row.kind = 'order'
+       AND (TG_OP = 'DELETE'
+         OR (TG_OP = 'UPDATE' AND OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL))
+       AND to_regprocedure('public.drop_unentitled_buyer_from_event_chat(uuid,uuid)') IS NOT NULL
+    THEN
+      SELECT o.event_id INTO v_event FROM public.orders o WHERE o.id = v_row.source_id;
+      IF v_event IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1
+             FROM public.purchase_shared_holders s
+             JOIN public.orders o ON s.kind = 'order' AND o.id = s.source_id
+            WHERE s.user_id = v_row.user_id AND s.revoked_at IS NULL
+              AND s.source_id <> v_row.source_id
+              AND o.event_id = v_event
+              AND o.payment_status IN ('paid', 'partial_refund')
+              AND public.issue_4473_holder_proves('order', o.id, v_row.user_id))
+         AND NOT EXISTS (
+           SELECT 1 FROM public.tickets t
+            WHERE t.event_id = v_event
+              AND to_jsonb(t)->>'holder_user_id' = v_row.user_id::text
+              AND t.status IN ('valid', 'used'))
+      THEN
+        EXECUTE 'SELECT public.drop_unentitled_buyer_from_event_chat($1, $2)'
+          USING v_event, v_row.user_id;
+      END IF;
+    END IF;
     RETURN NULL;
   END IF;
-  v_row := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
   IF TG_OP = 'UPDATE' AND OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL THEN
     v_source := 'purchase_share_expiry';
   END IF;

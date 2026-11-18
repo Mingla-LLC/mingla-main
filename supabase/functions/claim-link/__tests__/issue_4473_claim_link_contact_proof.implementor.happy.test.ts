@@ -401,3 +401,50 @@ Deno.test("#4473 an unknown or foreign challenge is refused before any code chec
   assertEquals((await body(response)).error, "invalid");
   assertEquals(providerCalls, 0);
 });
+
+Deno.test("#4473 a contact-proof challenge never mints a sign-in", async () => {
+  const calls: string[] = [];
+  let created = 0;
+  let minted = 0;
+  const handler = createClaimLinkHandler(deps((name) => {
+    calls.push(name);
+    if (name === "pg_venue_order_rate_limit_hit") {
+      return Promise.resolve({ data: { allowed: true }, error: null });
+    }
+    if (name === "issue_4063_settle_contact_challenge") {
+      return Promise.resolve({
+        data: {
+          outcome: "ok",
+          purpose: "claim_add_contact",
+          channel: "email",
+          value: BUYER_EMAIL,
+          userId: USER_ID,
+        },
+        error: null,
+      });
+    }
+    throw new Error(`unexpected rpc ${name}`);
+  }, {
+    userId: () => Promise.resolve(null),
+    createEmailUser: () => {
+      created += 1;
+      return Promise.resolve(true);
+    },
+    magicLinkToken: () => {
+      minted += 1;
+      return Promise.resolve("token");
+    },
+  }));
+  const response = await handler(request({
+    op: "email_code_verify",
+    challengeId: CHALLENGE_ID,
+    otp: "123456",
+  }, false));
+  const result = await body(response);
+  assertEquals(response.status, 400);
+  assertEquals(result.error, "invalid");
+  assertEquals(result.tokenHash, undefined);
+  assertEquals(created, 0);
+  assertEquals(minted, 0);
+  assert(!calls.includes("issue_4063_auth_user_for_email"));
+});

@@ -1472,6 +1472,13 @@ REVOKE ALL ON FUNCTION public.pg_my_purchase_share_flags() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.issue_4063_contact_conflict(uuid, text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_4063_record_claim_contact(uuid, text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.record_verified_phone(uuid, text) FROM PUBLIC, anon, authenticated;
+-- Re-emitted readers and the patched predicate: state their grants here, so a
+-- replay that skipped the migrations which first restricted them ends with
+-- the same privileges as production.
+REVOKE ALL ON FUNCTION public.account_owns_contact(uuid, text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.pg_my_claim_identifiers() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.consumer_can_read_event_for_caller(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.issue_4420_caller_reads_exact_stops(uuid) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.issue_4473_purchase_contact(text, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_4473_holder_proves(text, uuid, uuid) TO service_role;
@@ -1484,5 +1491,9 @@ GRANT EXECUTE ON FUNCTION public.pg_my_purchase_share_flags() TO authenticated, 
 GRANT EXECUTE ON FUNCTION public.issue_4063_contact_conflict(uuid, text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_4063_record_claim_contact(uuid, text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.record_verified_phone(uuid, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.account_owns_contact(uuid, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.pg_my_claim_identifiers() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.consumer_can_read_event_for_caller(uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_4420_caller_reads_exact_stops(uuid) TO authenticated, service_role;
 
 COMMIT;
