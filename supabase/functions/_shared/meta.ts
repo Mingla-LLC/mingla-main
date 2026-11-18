@@ -170,6 +170,45 @@ export type MetaPlacementAssets = Record<
   MetaPlacementAsset
 >;
 
+/**
+ * #4238 (Tinoe's Yard, 18 Nov 2026): a Host video is uploaded once, vertical
+ * (9:16), with no square or 4:5 stills. Meta then refused create with
+ * meta_placement_variants_required, so no Host video ad could reach Meta.
+ * When the vertical slot is a video and a square or 4:5 slot is empty, the
+ * same video fills it; buildMetaCreativeBody sends that as one ordinary video
+ * ad (video_data) that Meta places everywhere itself. Image creatives and
+ * videos that do carry 1:1 / 4:5 stills are unchanged.
+ */
+export function fillMetaPlacementsFromVerticalVideo(
+  assets: Partial<MetaPlacementAssets>,
+): Partial<MetaPlacementAssets> {
+  const vertical = assets["9:16"];
+  if (!vertical || vertical.kind !== "video") return assets;
+  return {
+    "1:1": assets["1:1"] ?? vertical,
+    "4:5": assets["4:5"] ?? vertical,
+    "9:16": vertical,
+  };
+}
+
+/** The one video when every Meta placement is that same video, else null. */
+export function singleMetaPlacementVideo(
+  assets: MetaPlacementAssets | undefined | null,
+): Extract<MetaPlacementAsset, { kind: "video" }> | null {
+  if (!assets) return null;
+  const vertical = assets["9:16"];
+  if (!vertical || vertical.kind !== "video") return null;
+  for (const ratio of ["1:1", "4:5"] as const) {
+    const asset = assets[ratio];
+    if (
+      !asset || asset.kind !== "video" || asset.videoId !== vertical.videoId
+    ) {
+      return null;
+    }
+  }
+  return vertical;
+}
+
 export function resolveMetaClient(
   conn?: AdConnectionRow | null,
   lane?: MetaLane,
@@ -752,7 +791,14 @@ export function buildMetaCreativeBody(
 
   const objectStorySpec: Record<string, unknown> = { page_id: pageId };
   if (igIdentity) objectStorySpec.instagram_user_id = igIdentity;
-  const placementAssets = input.metaPlacementAssets;
+  // #4238: one video in every slot is an ordinary video ad, not a
+  // placement-customised asset feed (which would list the same video thrice).
+  const singleVideo = singleMetaPlacementVideo(input.metaPlacementAssets);
+  const placementAssets = singleVideo ? undefined : input.metaPlacementAssets;
+  const videoId = singleVideo ? singleVideo.videoId : input.videoId;
+  const videoThumbnailImageHash = singleVideo
+    ? singleVideo.thumbnailImageHash
+    : input.videoThumbnailImageHash;
   let assetFeedSpec: Record<string, unknown> | null = null;
   if (placementAssets) {
     const labels: Record<MetaPlacementRatio, string> = {
@@ -837,13 +883,13 @@ export function buildMetaCreativeBody(
         },
       ],
     };
-  } else if (input.videoId) {
+  } else if (videoId) {
     // A4.g video_data branch (GR-57/M-10) — #866 produces video_id via
     // POST /act_{id}/advideos + poll video_status === 'ready'.
     objectStorySpec.video_data = {
-      video_id: input.videoId,
-      ...(input.videoThumbnailImageHash
-        ? { image_hash: input.videoThumbnailImageHash }
+      video_id: videoId,
+      ...(videoThumbnailImageHash
+        ? { image_hash: videoThumbnailImageHash }
         : {}),
       title: input.headline ?? "",
       message: input.message,
