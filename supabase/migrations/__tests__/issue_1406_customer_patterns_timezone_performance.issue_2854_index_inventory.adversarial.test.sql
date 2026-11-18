@@ -159,8 +159,14 @@ BEGIN
   -- hash 6b8508599f829dc2d9ce3d1e41f3543c -> 3158b5e3ff37207ce334bd6bb4caa0d7,
   -- measured on a PG17 full replay of 5253f49dd9; dropping exactly those three
   -- indexes measures 85 / 6b8508599f829dc2d9ce3d1e41f3543c again.
-  IF v_index_count <> 88
-    OR v_index_fingerprint <> '3158b5e3ff37207ce334bd6bb4caa0d7'
+  -- [TEST-MOD-APPROVED #4473] 20280806004473_issue_4473_shared_holder_sync_and_expiry
+  -- adds orders_4473_owned_email_idx and orders_4473_owned_phone_idx (partial
+  -- lookups for owned purchases). Count 88 -> 90,
+  -- hash 3158b5e3ff37207ce334bd6bb4caa0d7 -> 0c4a5b0bc6ad79ab0337f55fcf540fe8,
+  -- measured on a PG17 full replay of dc553ef4d4; dropping exactly those two
+  -- indexes measures 88 / 3158b5e3ff37207ce334bd6bb4caa0d7 again.
+  IF v_index_count <> 90
+    OR v_index_fingerprint <> '0c4a5b0bc6ad79ab0337f55fcf540fe8'
   THEN
     RAISE EXCEPTION
       'T-2 FAIL: complete business-index inventory drift count=% hash=%',
@@ -168,7 +174,7 @@ BEGIN
       v_index_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 88 / 3158b5e3ff37207ce334bd6bb4caa0d7';
+  RAISE NOTICE 'T-2 PASS: complete business-index inventory is exactly 90 / 0c4a5b0bc6ad79ab0337f55fcf540fe8';
 END;
 $test$;
 
@@ -220,9 +226,11 @@ BEGIN
   -- indexes make the terminal inventory 85; excluding #871 → 84.
   -- [TEST-MOD-APPROVED #4423] #4423's three orders foreign-key covering
   -- indexes make the terminal inventory 88; excluding #871 → 87.
+  -- [TEST-MOD-APPROVED #4473] #4473's two orders owned-purchase lookup
+  -- indexes make the terminal inventory 90; excluding #871 → 89.
   -- Fingerprint is recomputed each run against the live projected set so a second
   -- post-#1406 index still fails the count check below.
-  IF v_projected_count <> 87
+  IF v_projected_count <> 89
   THEN
     RAISE EXCEPTION
       'T-3 FAIL: projected #1406 inventory drift count=% hash=%',
@@ -230,7 +238,7 @@ BEGIN
       v_projected_fingerprint;
   END IF;
 
-  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 87 rows (hash %)', v_projected_fingerprint;
+  RAISE NOTICE 'T-3 PASS: excluding only the #871 index reconstructs 89 rows (hash %)', v_projected_fingerprint;
 END;
 $test$;
 
