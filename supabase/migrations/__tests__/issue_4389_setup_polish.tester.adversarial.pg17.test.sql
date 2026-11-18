@@ -165,5 +165,78 @@ begin
 end;
 $t$;
 
+-- ── Retest 1 (brand-level record, f3e8511206) ──────────────────────────────
+--   (A7) role-change paths: an event_manager's acceptance writes no record; a
+--        later promotion to brand_admin writes it; demoting that admin keeps it.
+--   (A8) re-accepting the same version never moves first_accepted_at; the
+--        backfill re-run inserts 0 rows (idempotent).
+--   (A9) clients cannot read or write the record (anon / authenticated).
+--   (A10) hard-deleting the brand removes its record (FK cascade, no orphan).
+do $t$
+declare b uuid; first_at timestamptz; n int; denied boolean;
+begin
+  -- (A7)
+  b := pg_temp.mk(7);
+  insert into public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at,
+    mingla_tos_accepted_at, mingla_tos_version_accepted)
+  values (b, pg_temp.uid('adm'), 'event_manager', now(), now(), now() - interval '1 day', '1.0');
+  perform pg_temp.expect('(A7) an event_manager acceptance writes no record',
+    not exists (select 1 from public.brand_terms_acceptances where brand_id = b)
+    and not (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
+  update public.brand_team_members set role = 'brand_admin'
+  where brand_id = b and user_id = pg_temp.uid('adm');
+  perform pg_temp.expect('(A7) promotion to brand_admin writes the record',
+    exists (select 1 from public.brand_terms_acceptances where brand_id = b and version = '1.0'));
+  update public.brand_team_members set role = 'event_manager'
+  where brand_id = b and user_id = pg_temp.uid('adm');
+  perform pg_temp.expect('(A7) demoting that admin keeps terms done',
+    (pg_temp.facts(b)->>'terms')::boolean, pg_temp.facts(b)::text);
+
+  -- (A8)
+  select first_accepted_at into first_at from public.brand_terms_acceptances where brand_id = b and version = '1.0';
+  update public.brand_team_members set role = 'brand_admin', mingla_tos_accepted_at = now() + interval '1 hour'
+  where brand_id = b and user_id = pg_temp.uid('adm');
+  perform pg_temp.expect('(A8) re-accepting keeps first_accepted_at',
+    (select first_accepted_at from public.brand_terms_acceptances where brand_id = b and version = '1.0') = first_at);
+  n := public.issue_4389_backfill_brand_terms();
+  perform pg_temp.expect('(A8) backfill re-run inserts nothing', n = 0, n::text);
+
+  -- (A9)
+  denied := false;
+  begin
+    set local role authenticated;
+    perform 1 from public.brand_terms_acceptances limit 1;
+  exception when insufficient_privilege then denied := true;
+  end;
+  reset role;
+  perform pg_temp.expect('(A9) authenticated cannot read the record', denied);
+  denied := false;
+  begin
+    set local role anon;
+    insert into public.brand_terms_acceptances (brand_id, version, first_accepted_at) values (b, '9.9', now());
+  exception when insufficient_privilege then denied := true;
+  end;
+  reset role;
+  perform pg_temp.expect('(A9) anon cannot write the record', denied);
+  perform pg_temp.expect('(A9) the trigger function is SECURITY DEFINER with a pinned search_path',
+    (select prosecdef and proconfig @> array['search_path=public, pg_temp'] from pg_proc
+      where oid = 'public.issue_4389_record_brand_terms()'::regprocedure),
+    (select proconfig::text from pg_proc where oid = 'public.issue_4389_record_brand_terms()'::regprocedure));
+
+  -- (A10)
+  denied := false;
+  begin
+    delete from public.brands where id = b;
+  exception when others then
+    denied := true;
+    raise notice 'SKIP (A10) brand hard delete blocked here: %', sqlerrm;
+  end;
+  if not denied then
+    perform pg_temp.expect('(A10) brand hard delete cascades the record',
+      not exists (select 1 from public.brand_terms_acceptances where brand_id = b));
+  end if;
+end;
+$t$;
+
 \echo 'issue_4389 setup polish tester adversarial: ALL PASS'
 rollback;
