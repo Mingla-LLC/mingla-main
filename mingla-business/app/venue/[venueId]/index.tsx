@@ -208,6 +208,12 @@ export default function VenueManagementPage(): React.ReactElement {
     }
   }, [brandSlug, venueSlug, router]);
 
+  // #4490 — the Host preview of a venue that is not public yet.
+  const handlePreviewPage = useCallback((): void => {
+    if (venueId === null) return;
+    router.push(`/venue/${venueId}/preview` as never);
+  }, [venueId, router]);
+
   // ----- claim-feedback loop (ORCH-1064, venue-keyed) -----
   const followUpAt = venue?.claimFollowUpAt ?? null;
   const hasFollowUp =
@@ -413,6 +419,28 @@ export default function VenueManagementPage(): React.ReactElement {
                   testID="venue-page-share"
                 />
               </View>
+            ) : venue !== null && venueId !== null ? (
+              // #4490 — a venue that is not public yet (in review, say) has no
+              // public page to view, but its owner can see exactly the page
+              // guests will get, with booking switched off.
+              isWideDesktop ? (
+                <Button
+                  label="Preview page"
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon="eye"
+                  onPress={handlePreviewPage}
+                  testID="venue-page-preview"
+                />
+              ) : (
+                <IconChrome
+                  icon="eye"
+                  size={36}
+                  accessibilityLabel="Preview page"
+                  onPress={handlePreviewPage}
+                  testID="venue-page-preview"
+                />
+              )
             ) : (
               // Empty placeholder for layout balance (TopBar.tsx:71-73). The
               // controls are HIDDEN, never disabled.

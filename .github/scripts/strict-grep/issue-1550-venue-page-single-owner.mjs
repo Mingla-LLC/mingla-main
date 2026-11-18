@@ -77,11 +77,22 @@ const PATHS = {
   sharedScreen: "packages/brand-rendering/PublicVenueScreen.tsx",
   buyerRoute: "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
   consumerRoute: "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
+  // #4490 — the Host's PREVIEW of the same page, for a venue that is not public
+  // yet. It mounts the SAME shared screen (so it can never drift from what
+  // guests get) with booking switched off; it draws no venue body of its own.
+  hostPreviewRoute: "mingla-business/app/venue/[venueId]/preview.tsx",
+  // #4490 — the two files that decide the page from a venue's FEATURES. They are
+  // pure page logic: no colour, never the venue type, never auth.
+  featurePage: "packages/brand-rendering/venueFeaturePage.ts",
+  featureSections: "packages/brand-rendering/VenueFeatureSections.tsx",
 };
 const EXPECTED_FILES = Object.keys(PATHS).length;
 
-/** The two files that are ALLOWED to import the shared screen (R-1). */
-const ALLOWED_IMPORTERS = [PATHS.buyerRoute, PATHS.consumerRoute];
+/**
+ * The files ALLOWED to import the shared screen (R-1): the two public routes
+ * and, since #4490, the Host's preview of the same page.
+ */
+const ALLOWED_IMPORTERS = [PATHS.buyerRoute, PATHS.consumerRoute, PATHS.hostPreviewRoute];
 
 /** Roots the importer sweep walks. A venue page could only live in these. */
 const SWEEP_ROOTS = ["mingla-business", "app-mobile", "packages", "mingla-admin"];
@@ -235,7 +246,7 @@ export function runGate(raw, swept, sweptTotal) {
 
   const failures = [];
 
-  // ---- R-1: exactly the two routes import the shared screen. -------------
+  // ---- R-1: exactly the allowed mounts import the shared screen. ----------
   const importers = swept
     .filter((f) => f.rel !== PATHS.sharedScreen && importsSharedScreen(f.code))
     .map((f) => f.rel)
@@ -243,9 +254,9 @@ export function runGate(raw, swept, sweptTotal) {
   const expected = [...ALLOWED_IMPORTERS].sort();
   for (const extra of importers.filter((r) => !expected.includes(r))) {
     failures.push(
-      `${extra}: imports PublicVenueScreen. Exactly TWO non-test files may — the buyer-web ` +
-        "route and the consumer route. A third mount is a second implementation waiting to " +
-        "diverge; that is the whole reason #1560 exists.",
+      `${extra}: imports PublicVenueScreen. Exactly THREE non-test files may — the buyer-web ` +
+        "route, the consumer route and the Host's preview of the same page (#4490). Any other " +
+        "mount is a second implementation waiting to diverge; that is the whole reason #1560 exists.",
     );
   }
   for (const missing of expected.filter((r) => !importers.includes(r))) {
@@ -256,7 +267,7 @@ export function runGate(raw, swept, sweptTotal) {
   }
 
   // ---- R-2 / R-3: the two routes are adapters, on the deep specifier. -----
-  for (const key of ["buyerRoute", "consumerRoute"]) {
+  for (const key of ["buyerRoute", "consumerRoute", "hostPreviewRoute"]) {
     for (const [needle, why] of FORBIDDEN_BODY_TOKENS) {
       if (codes[key].includes(needle)) {
         failures.push(
@@ -299,6 +310,29 @@ export function runGate(raw, swept, sweptTotal) {
     );
   }
 
+  // ---- R-5 (#4490): the page is decided by FEATURES, not the venue type. ---
+  for (const key of ["featurePage", "featureSections"]) {
+    const code = rawCodes[key];
+    if (/#[0-9a-fA-F]{3,8}\b/.test(code)) {
+      failures.push(
+        `${PATHS[key]}: contains a hex colour literal. Every colour comes from the page's ` +
+          "resolved theme palette (#4490).",
+      );
+    }
+    if (/venueCategory/.test(code)) {
+      failures.push(
+        `${PATHS[key]}: reads \`venueCategory\`. A venue type is a label and a starting preset ` +
+          "only; tabs, the info row and the booking bar are derived from features (#4490).",
+      );
+    }
+    if (/useAuth/.test(code)) {
+      failures.push(
+        `${PATHS[key]}: calls useAuth. The public venue page is anonymous-tolerant ` +
+          "(I-anon-buyer-routes).",
+      );
+    }
+  }
+
   if (failures.length > 0) {
     return {
       code: 1,
@@ -313,8 +347,9 @@ export function runGate(raw, swept, sweptTotal) {
     messages: [
       `OK [I-PROPOSED-1550-VENUE-PAGE-SINGLE-OWNER]: ${EXPECTED_FILES} targets present and ` +
         `substantive; ${sweptTotal} source files swept; exactly ${importers.length} non-test ` +
-        "importers, and they are the two routes; no venue-body JSX in either; deep specifier " +
-        "holds; the shared module carries no React.lazy and no StayGuestExperience import.",
+        "importers, and they are the two public routes and the Host preview; no venue-body JSX in " +
+        "any; deep specifier holds; the shared module carries no React.lazy and no " +
+        "StayGuestExperience import; the feature-page files hold no colour, no venue type, no auth.",
     ],
   };
 }
@@ -377,6 +412,12 @@ if (process.argv.includes("--self-test")) {
       filler +
       'import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";\n' +
       "return <PublicVenueScreen venue={vm} />;\n",
+    hostPreviewRoute:
+      filler +
+      'import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";\n' +
+      "return <PublicVenueScreen venue={vm} preview={note} />;\n",
+    featurePage: filler + "export const deriveVenuePage = () => null;\n",
+    featureSections: filler + "export const VenueWaysToCome = () => null;\n",
   });
   /** A plausible swept tree: the two routes plus 700 innocent files. */
   const cleanSweep = () => {
@@ -480,6 +521,18 @@ if (process.argv.includes("--self-test")) {
     if (!result.messages.join("\n").includes("did not walk the tree")) {
       problems.push("empty-sweep failure did not explain the vacuity");
     }
+  }
+
+  // 9b — #4490: the feature-page files stay colour-free, type-free and anonymous.
+  for (const [key, token] of [
+    ["featurePage", 'const accent = "#ff8a3b";'],
+    ["featureSections", "const c = '#fff';"],
+    ["featurePage", "if (venue.venueCategory === 'club') return null;"],
+    ["featureSections", "const { user } = useAuth();"],
+  ]) {
+    const raw = clean();
+    raw[key] += `\n${token}\n`;
+    expect(`feature-page rule: ${token.slice(0, 26)}`, run(raw).code, 1);
   }
 
   // 10 — a route that stops importing the screen.

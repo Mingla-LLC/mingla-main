@@ -138,6 +138,9 @@ module.exports = {
     // "Experiences here" prices, the pinned Save / Schedule / Share /
     // Reserve-or-Directions bar acting on the deck card, the state Close.
     "**/__tests__/issue_4347_venue_explorer_model.implementor.test.ts",
+    // issue #4490 — the deck place sheet's main button follows what the venue
+    // sells (features), not its type.
+    "**/__tests__/issue_4490_deck_venue_cta.implementor.test.ts",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

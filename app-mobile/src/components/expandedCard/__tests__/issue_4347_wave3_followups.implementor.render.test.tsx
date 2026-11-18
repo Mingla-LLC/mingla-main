@@ -153,7 +153,9 @@ describe("F4 one primary-button colour across the place and plan sheets", () => 
   test("F4-2 the place sheet's Reserve and Directions and the plan's Schedule all use the same style", () => {
     const modal = stripComments(read("components/ExpandedCardModal.tsx"));
     const actions = stripComments(read("components/expandedCard/ActionButtons.tsx"));
-    for (const id of ["sheet-primary-reserve", "sheet-primary-directions"]) {
+    // [TEST-MOD-APPROVED #4490] the venue-page arm (entry, groups, hire …) is a
+    // third button in the same pinned style.
+    for (const id of ["sheet-primary-reserve", "sheet-primary-venue", "sheet-primary-directions"]) {
       const at = modal.indexOf(`testID="${id}"`);
       expect(at).toBeGreaterThan(-1);
       const block = modal.slice(at, modal.indexOf("</TouchableOpacity>", at));

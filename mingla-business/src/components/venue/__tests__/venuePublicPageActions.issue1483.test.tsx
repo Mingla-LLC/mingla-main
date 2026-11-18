@@ -496,8 +496,13 @@ describe("#1483 — venue page header + public-page actions", () => {
     expect(byTestID(tree, "venue-page-share")).toHaveLength(0);
     expect(tree.root.findAll((n) => n.type === "ShareModalMock")).toHaveLength(0);
     // No disabled ghost either — the controls are absent, not inert.
+    // [TEST-MOD-APPROVED #4490] the owner's "Preview page" control is the one
+    // thing a non-public venue shows; no other control is allowed.
     expect(
-      tree.root.findAll((n) => n.type === "IconChromeMock"),
+      tree.root.findAll(
+        (n) =>
+          n.type === "IconChromeMock" && n.props.testID !== "venue-page-preview",
+      ),
     ).toHaveLength(0);
 
     unmount(tree);

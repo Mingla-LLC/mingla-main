@@ -1,16 +1,12 @@
 /**
- * #4490 — React Query reads for the feature-driven venue page. No auth: the
- * public hook serves signed-out guests, the preview hook serves a signed-in
- * brand member who passes the server's own check.
+ * #4490 — the React Query read for the feature-driven public venue page. No
+ * auth anywhere: it serves signed-out guests (the Host preview, which does need
+ * a session, lives in `useVenuePreviewPage.ts`).
  */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { PublicVenueFeaturesView } from "@mingla/brand-rendering/venueFeaturePage";
 
-import {
-  getPublicVenueFeatures,
-  getVenuePreviewPage,
-  type VenuePreviewPage,
-} from "../services/publicVenuePageService";
+import { getPublicVenueFeatures } from "../services/publicVenuePageService";
 
 const STALE_MS = 45 * 1000;
 const DISABLED_KEY = ["public-venue-features-disabled"] as const;
@@ -22,10 +18,6 @@ export const publicVenueFeatureKeys = {
     venueSlug: string,
   ): readonly ["public-venue-features", "page", string, string] =>
     [...publicVenueFeatureKeys.all, "page", brandSlug, venueSlug] as const,
-  preview: (
-    venueId: string,
-  ): readonly ["public-venue-features", "preview", string] =>
-    [...publicVenueFeatureKeys.all, "preview", venueId] as const,
 };
 
 /**
@@ -51,17 +43,3 @@ export const usePublicVenueFeatures = (
     },
   });
 };
-
-/** The Host preview of a venue (any claim status). */
-export const useVenuePreviewPage = (
-  venueId: string | null,
-): UseQueryResult<VenuePreviewPage | null> =>
-  useQuery<VenuePreviewPage | null>({
-    queryKey:
-      venueId === null ? DISABLED_KEY : publicVenueFeatureKeys.preview(venueId),
-    enabled: venueId !== null,
-    staleTime: STALE_MS,
-    retry: 1,
-    queryFn: async (): Promise<VenuePreviewPage | null> =>
-      venueId === null ? null : getVenuePreviewPage(venueId),
-  });

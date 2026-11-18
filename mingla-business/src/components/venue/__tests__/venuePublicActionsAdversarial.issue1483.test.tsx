@@ -414,10 +414,22 @@ describe("#1483 adversarial — claim-status boundary, late-brand race, path int
       expect(shareModals(tree)).toHaveLength(0);
       // Not merely absent from the right slot — absent from the whole page,
       // and no inert/greyed stand-in of any kind.
+      // [TEST-MOD-APPROVED #4490] A venue that is not public yet gets ONE
+      // control: "Preview page" (venue-page-preview), the owner's view of the
+      // page guests will get. Every OTHER control stays absent, so the
+      // assertion below now excludes only that testID instead of allowing none.
       expect(
-        tree.root.findAll((n) => n.type === "IconChromeMock"),
+        tree.root.findAll(
+          (n) =>
+            n.type === "IconChromeMock" &&
+            n.props.testID !== "venue-page-preview",
+        ),
       ).toHaveLength(0);
-      expect(tree.root.findAll((n) => n.type === "ButtonMock")).toHaveLength(0);
+      expect(
+        tree.root.findAll(
+          (n) => n.type === "ButtonMock" && n.props.testID !== "venue-page-preview",
+        ),
+      ).toHaveLength(0);
       // The page is still usable: the shared bar (and its back affordance) is
       // present in every one of these states.
       expect(byTestID(tree, "venue-page-topbar")).toHaveLength(1);
@@ -439,7 +451,13 @@ describe("#1483 adversarial — claim-status boundary, late-brand race, path int
     q.venue = { ...ACADEMY, claimStatus: "suspended" };
     const tree = mount();
 
-    expect(tree.root.findAll((n) => n.type === "ButtonMock")).toHaveLength(0);
+    // [TEST-MOD-APPROVED #4490] only the owner's "Preview page" button is
+    // allowed on a non-public venue (see A-1b).
+    expect(
+      tree.root.findAll(
+        (n) => n.type === "ButtonMock" && n.props.testID !== "venue-page-preview",
+      ),
+    ).toHaveLength(0);
     expect(controlCount(tree)).toBe(0);
 
     unmount(tree);

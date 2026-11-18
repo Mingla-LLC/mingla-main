@@ -187,7 +187,7 @@ const VenueEventRows = ({
               {price}
             </Text>
           ) : null}
-          {onOpenEvent !== undefined ? (
+          {onOpenEvent !== undefined || disabled ? (
             <View
               style={[
                 styles.ticketsPill,

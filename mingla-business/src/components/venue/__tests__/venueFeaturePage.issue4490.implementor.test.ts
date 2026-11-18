@@ -6,10 +6,9 @@
  * the lead precedence, dependencies failing closed, the null payload being
  * today's page, the P1 "built tabs" filter, hours windows and special days,
  * event times in the venue's own zone, and the reducer's new bar action.
- * It also pins that these files hold no colour and never read the venue type.
+ * (That these files hold no colour, never read the venue type and never call
+ * auth is enforced by the additive gate issue-1550-venue-page-single-owner R-5.)
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
 
 import {
@@ -532,31 +531,5 @@ describe("the nine venue types are labels and starting presets", () => {
       event_space: "event space",
       coworking: "coworking space",
     });
-  });
-});
-
-// ---- structure: no colour, no venue type, no auth in the new files --------
-
-describe("the new guest files", () => {
-  const root = join(__dirname, "../../../../..", "packages/brand-rendering");
-  const strip = (src: string): string =>
-    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-  const files = ["venueFeaturePage.ts", "VenueFeatureSections.tsx"].map((f) => ({
-    f,
-    code: strip(readFileSync(join(root, f), "utf8")),
-  }));
-
-  test("no hex colour literal and no raw design-token colour import", () => {
-    for (const { f, code } of files) {
-      expect(code).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-      expect(`${f}:${/\b(text|accent|glass|semantic|backgroundColor)\b[^;]*designTokens/.test(code)}`).toBe(`${f}:false`);
-    }
-  });
-
-  test("the venue type is never read and auth is never touched", () => {
-    for (const { code } of files) {
-      expect(code).not.toMatch(/venueCategory/);
-      expect(code).not.toMatch(/useAuth/);
-    }
   });
 });

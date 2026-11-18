@@ -90,6 +90,7 @@ import {
   usePublicVenueDiscoveryPrice,
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
+import { toVenueViewModel } from "../../../../src/components/venue/toPublicVenueViewModel";
 import { usePublicVenueFeatures } from "../../../../src/hooks/usePublicVenueFeatures";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
@@ -162,32 +163,6 @@ const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
 
 /** #1793 — a stable empty menu, so the ordering surface's deps do not churn. */
 const EMPTY_MENU_GROUPS: PublicMenuGroup[] = [];
-
-/** `PublicVenue` (this app's read model) → the shared screen's view model. */
-const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
-  id: venue.id,
-  brandId: venue.brandId,
-  brandSlug: venue.brandSlug,
-  brandName: venue.brandName,
-  slug: venue.slug,
-  name: venue.name,
-  address: venue.address,
-  city: venue.city,
-  lat: venue.lat,
-  lng: venue.lng,
-  venueCategory: venue.venueCategory,
-  coverMediaUrl: venue.coverMediaUrl,
-  coverMediaType: venue.coverMediaType,
-  theme: venue.theme,
-  hours: venue.hours,
-  // issue #1562 — the venue's OWN clock, so "open now" is resolved where the
-  // venue is rather than where the visitor happens to be standing.
-  timezone: venue.timezone,
-  galleryPhotoUrls: venue.galleryPhotoUrls,
-  pitch: venue.pitch,
-  // #4334 — the Google Maps link opens the named place.
-  googlePlaceId: venue.googlePlaceId ?? null,
-});
 
 function PublicVenueRouteBody(): React.ReactElement {
   const router = useRouter();

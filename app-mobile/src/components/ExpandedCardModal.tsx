@@ -83,6 +83,9 @@ import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
 // brand has reservations enabled (useVenueReservable gate — no dead tap).
 import VenueReserveSheet from "./expandedCard/VenueReserveSheet";
 import { useVenueReservable } from "../hooks/useVenueReservable";
+// #4490 — the main button follows what the venue sells, not its type.
+import { useVenueFeaturesForPlace } from "../hooks/useVenueFeaturesForPlace";
+import { deckVenueCta } from "./expandedCard/deckVenueCta";
 import { ImageLightbox } from "./ImageLightbox";
 // issue #2468 / #4347 wave 2 — every maps link on this sheet goes through
 // expandedCard/placeDirections (openPlaceDirections), which wraps the ONE host
@@ -691,6 +694,13 @@ export default function ExpandedCardModal({
   // card.id is a place_pool.id; the hook is disabled (no fetch) for non-uuid ids
   // (stroll/picnic/curated/Ticketmaster). reservable=false → no affordance.
   const { data: venueReservable } = useVenueReservable(card?.id);
+  // #4490 — what the venue sells (null for an unclaimed place or a failed read,
+  // which keeps today's button). Decides the pinned main button below.
+  const { data: venueFeatures } = useVenueFeaturesForPlace(card?.id);
+  const deckCta = useMemo(
+    () => deckVenueCta({ place: venueFeatures, reservable: venueReservable }),
+    [venueFeatures, venueReservable],
+  );
   const [isReserveSheetOpen, setIsReserveSheetOpen] = useState(false);
 
   type ShareHandoffPhase = 'idle' | 'expanded_dismissing' | 'provider_presenting' | 'provider_visible' | 'expanded_restoring';
@@ -2019,6 +2029,7 @@ export default function ExpandedCardModal({
                 shareBusy={shareHandoffBusy}
                 shareControlRef={shareControlRef}
                 reserve={
+                  deckCta.kind === 'reserve' &&
                   venueReservable?.reservable === true &&
                   venueReservable.brand_id !== null &&
                   venueReservable.venue_id !== null ? (
@@ -2028,11 +2039,42 @@ export default function ExpandedCardModal({
                       activeOpacity={0.85}
                       onPress={() => setIsReserveSheetOpen(true)}
                       accessibilityRole="button"
-                      accessibilityLabel={t('cards:sheet.reserve_a11y', { name: card.title })}
+                      accessibilityLabel={
+                        deckCta.labelKey === 'sheet.reserve'
+                          ? t('cards:sheet.reserve_a11y', { name: card.title })
+                          : t('cards:sheet.open_venue_a11y', {
+                              label: t(`cards:${deckCta.labelKey}`, { defaultValue: deckCta.fallbackLabel }),
+                              name: card.title,
+                              defaultValue: `${deckCta.fallbackLabel} at ${card.title}`,
+                            })
+                      }
                     >
                       <Icon name="restaurant-outline" size={18} color={PINNED_PRIMARY.label} />
                       <Text style={pinnedPrimaryStyles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                        {t('cards:sheet.reserve')}
+                        {t(`cards:${deckCta.labelKey}`, { defaultValue: deckCta.fallbackLabel })}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : deckCta.kind === 'venue' ? (
+                    /* #4490 — entry, groups, hire, by the hour or plans: the
+                       venue page on the lead's tab (never a table sheet). */
+                    <TouchableOpacity
+                      testID="sheet-primary-venue"
+                      style={pinnedPrimaryStyles.button}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        router.push(deckCta.path as never);
+                        onClose();
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('cards:sheet.open_venue_a11y', {
+                        label: t(`cards:${deckCta.labelKey}`, { defaultValue: deckCta.fallbackLabel }),
+                        name: card.title,
+                        defaultValue: `${deckCta.fallbackLabel} at ${card.title}`,
+                      })}
+                    >
+                      <Icon name="ticket-outline" size={18} color={PINNED_PRIMARY.label} />
+                      <Text style={pinnedPrimaryStyles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                        {t(`cards:${deckCta.labelKey}`, { defaultValue: deckCta.fallbackLabel })}
                       </Text>
                     </TouchableOpacity>
                   ) : (
@@ -2477,7 +2519,8 @@ export default function ExpandedCardModal({
           button EXACTLY (RESERVABLE_VENUE_GATE) — any card that shows the button
           can open the sheet. Regression test asserts both gates share the
           condition so they can't drift again. */}
-      {venueReservable?.reservable === true &&
+      {deckCta.kind === 'reserve' &&
+        venueReservable?.reservable === true &&
         venueReservable.brand_id !== null &&
         venueReservable.venue_id !== null && isReserveSheetOpen && (
           <VenueReserveSheet

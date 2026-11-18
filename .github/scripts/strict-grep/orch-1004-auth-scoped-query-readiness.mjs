@@ -206,6 +206,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useVenueFeatures.ts",
   "useVenueSpaces.ts",
   "useVenueSpecialDays.ts",
+  // ── #4490 — the Host's preview of a venue page not public yet
+  //    (biz_preview_venue_page reads auth.uid() for a brand member). Folds
+  //    isAuthReady into enabled.
+  "useVenuePreviewPage.ts",
   // ── #1792 (#1767 Phase 3b) — waiter mode. The pad reads the venue's own
   //    menus/menu_items/menu_modifier_groups and the open-tab summaries, all
   //    brand-member-RLS-gated. A pre-auth fire caches an RLS-empty 200, which a
@@ -365,6 +369,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
   ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],
+  ["usePublicVenueFeatures.ts", "anon-safe verified-venue features via pg_public_venue_page (SECURITY DEFINER, granted to anon, verified venues of live brands only, no auth.uid() read); the signed-out venue page decides its tabs, info row and booking bar from it (#4490)"],
   ["usePublicMenuBundle.ts", "anon-safe verified-venue menu + its service windows via public_menus_view (SECURITY DEFINER, claim_status='verified'); the guest ordering surface reads it with no account at all (#1793)"],
   ["usePublicBrandEnquiry.ts", "anon-safe brand_enquiry_public_profile (SECURITY DEFINER, granted to anon) + business_public_brands_view identity; the signed-out brand, offering and cancel pages read them with no account (#4111)"],
   ["usePublicBrandSections.ts", "anon-safe brand page Happening now / Past via pg_public_brand_offering_section (SECURITY DEFINER, public + published only, no auth.uid() read); buyer-web renders it with no account (#3426)"],
