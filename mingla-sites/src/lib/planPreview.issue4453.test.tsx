@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-SITES-PLAN-PREVIEW-HOST-ONLY | issue #4453 | a plan key renders only on the reserved preview host and only within 24 h; a site preview key never parses as a plan key (and vice versa); the route is noindex, no-store and no-referrer.
 /*
  * #4453 milestone 10 — the runtime's plan preview (/plan-preview).
  *

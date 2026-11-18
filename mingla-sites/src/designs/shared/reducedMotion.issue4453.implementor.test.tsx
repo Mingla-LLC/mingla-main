@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// MINGLA-INVARIANT: I-SITES-MOTION-OPTIONAL | issue #4453 | every page is complete with motion off: nothing is hidden until the motion module (designs/shared/motion.ts) has run, and it never runs under prefers-reduced-motion, `motion: none` or Save-Data.
 /*
  * #4453 SC-D4 / I-SITES-MOTION-OPTIONAL — with reduced motion, `motion: none`
  * or Save-Data nothing animates and every word is visible: the motion module

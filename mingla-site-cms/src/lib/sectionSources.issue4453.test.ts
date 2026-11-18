@@ -1,10 +1,11 @@
+// MINGLA-INVARIANT: I-SITES-SECTION-NEEDS-CONTENT | issue #4453 | a section is placed only when its source holds real content; a count the caller does not know is 0, so the section is not eligible.
 /*
  * #4453 PR 3 — the content-foundation contracts (generated copies of
  * packages/site-contracts): sectionEligibility (spec v1 §4.1, spec v2 §6.4),
  * the setup part in PLAN_PARTS and planBuildBlockers (SC-3.1), and the
  * owner-answer validators that mirror Core's CHECKs (SC-3.7).
  *
- * invariant: I-SITES-SECTION-NEEDS-CONTENT (declared in sectionSources.ts).
+ * invariant: I-SITES-SECTION-NEEDS-CONTENT (declared on line 1 of this file).
  */
 import { describe, expect, it } from "vitest";
 import { EMPTY_INVENTORY, MINGLA_REVIEWS_MIN, sectionEligibility, type ContentInventory } from "../contracts/generated/sectionSources.ts";

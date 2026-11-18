@@ -1,7 +1,6 @@
+// MINGLA-INVARIANT: I-SITES-DETAIL-BOOKS-ON-MINGLA | issue #4453 | a detail page's one booking action is the feed row's public_url (a canonical Mingla page passing isMinglaActionHref); no price, count or date on it comes from anything but the feed or brand_site_offering_detail; with SITES_DETAIL_PAGES off there is no detail route and cards link to Mingla.
 /*
  * #4453 milestone 9 (spec v2.1 §1.2, §1.3, N1) — offering detail pages.
- *
- * MINGLA-INVARIANT: I-SITES-DETAIL-BOOKS-ON-MINGLA | issue #4453 | a detail page's one booking action is the feed row's public_url (a canonical Mingla page passing isMinglaActionHref); no price, count or date on it comes from anything but the feed or brand_site_offering_detail; with SITES_DETAIL_PAGES off there is no detail route and cards link to Mingla.
  *
  * Pins: routing (step 3b) and 404 for unknown, cancelled, hidden and
  * another brand's offerings; the redirect when a slug changes; flag on and

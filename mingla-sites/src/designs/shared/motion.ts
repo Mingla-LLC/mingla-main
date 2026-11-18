@@ -11,7 +11,7 @@
  * - the count-up (the final number is already in the HTML);
  * - word spans for word lighting (desktop only).
  *
- * MINGLA-INVARIANT: I-SITES-MOTION-OPTIONAL | issue #4453 | every page is complete with motion off: nothing is hidden until this module has run, and it never runs under prefers-reduced-motion, `motion: none` or Save-Data (reduced-motion render test).
+ * Invariant I-SITES-MOTION-OPTIONAL (declared in reducedMotion.issue4453.implementor.test.tsx): every page is complete with motion off: nothing is hidden until this module has run, and it never runs under prefers-reduced-motion, `motion: none` or Save-Data.
  *
  * Transform and opacity only. Native scrolling is never taken over.
  */

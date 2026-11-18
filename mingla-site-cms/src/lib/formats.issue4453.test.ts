@@ -1,9 +1,10 @@
+// MINGLA-INVARIANT: I-SITES-ARI-NEVER-PICKS-AVOID | issue #4453 | Ari never proposes a style the fit table marks avoid for the brand's primary format; an owner may still pick it, with a warning.
 /*
  * #4453 milestone 7 — formats.ts (generated copy): SC-F1 (primary format),
  * the v2.1 §2.4 fit table (N4), fixed reasons (N5), uniqueness (§6.6, D7
  * warns only) and the page-set slug rules (v2.1 §1.1).
  *
- * invariant: I-SITES-ARI-NEVER-PICKS-AVOID (declared in formats.ts).
+ * invariant: I-SITES-ARI-NEVER-PICKS-AVOID (declared on line 1 of this file).
  */
 import { describe, expect, it } from "vitest";
 import {

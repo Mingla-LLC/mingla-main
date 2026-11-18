@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
+// MINGLA-INVARIANT: I-SITES-BAND-INK | issue #4453 | text on a design's dark band (newsletter photo band, band callouts) is drawn in the band's own roles; every band role resolved from the REAL stylesheets and the design's default tokens passes AA (headings 3:1, text 4.5:1) for every design that draws the shared library.
 /*
  * #4453 6a rework after the tester's FAIL (comment 6932025288).
- *
- * MINGLA-INVARIANT: I-SITES-BAND-INK | issue #4453 | text on a design's dark band (newsletter photo band, band callouts) is drawn in the band's own roles; every band role resolved from the REAL stylesheets and the design's default tokens passes AA (headings 3:1, text 4.5:1) for every design that draws the shared library.
  *
  * - P1-1: resolves each design's stylesheet role map (--mg-* → --c-* → hex, color-mix included) and
  *   checks every colour the shared stylesheet draws on a band against that band, plus the band heading

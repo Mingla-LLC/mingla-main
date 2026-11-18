@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-SITES-SHARE-NO-PREVIEW-KEY | issue #4453 | a share view's HTML and props never contain the preview artifact key; no credential in it opens /preview or a draft_by_ari / hidden page.
 /*
  * #4453 milestone 11 (spec v2.1 N10) — a share view never carries the owner's
  * preview key, and nothing it carries opens /preview, a Draft page from Ari or
@@ -8,8 +9,6 @@
  * built from those props). Every URL and credential found there is tried
  * against the REAL /preview route (real key parser; the loader opens only the
  * true key) and against the share route itself.
- *
- * MINGLA-INVARIANT: I-SITES-SHARE-NO-PREVIEW-KEY | issue #4453 | a share view's HTML and props never contain the preview artifact key; no credential in it opens /preview or a draft_by_ari / hidden page.
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";

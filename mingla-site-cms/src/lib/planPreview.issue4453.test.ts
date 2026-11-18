@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-SITES-SAMPLE-NEVER-PUBLISHED | issue #4453 | sample listings live only in a plan artifact's plan_samples; assertArtifactV2 refuses SAMPLE_CONTENT_IN_ARTIFACT for a publication, site preview or share; Build never reads a sample pack.
 /*
  * #4453 milestone 10 — Studio's plan preview (composer v2 dry run + the real
  * builder in plan mode, in memory).

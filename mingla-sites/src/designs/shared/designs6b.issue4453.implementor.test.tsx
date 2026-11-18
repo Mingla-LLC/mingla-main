@@ -3,7 +3,7 @@
  * #4453 PR 6b (designs: Journal, Grid, Terra) — the implementor's regression suite.
  *
  * MINGLA-INVARIANT: I-SITES-DESIGN-KEYS-ONE-LIST | issue #4453 | DESIGN_KEYS == renderers == stylesheets == Studio design enum == Core brand_site_design_keys() (6b adds journal, grid, terra).
- * MINGLA-INVARIANT: I-SITES-DEFAULTS-AA | issue #4453 | every gallery design's default text pairs pass WCAG AA (4.5:1 small, 3:1 large) on every surface it draws (6b: Journal, Grid, Terra; their bands are covered by I-SITES-BAND-INK in rework6a).
+ * Invariant I-SITES-DEFAULTS-AA (declared in designPlatform.issue4453.implementor.test.tsx): every gallery design's default text pairs pass WCAG AA (4.5:1 small, 3:1 large) on every surface it draws (6b: Journal, Grid, Terra; their bands are covered by I-SITES-BAND-INK in rework6a).
  * MINGLA-INVARIANT: I-SITES-FONT-AXES | issue #4453 | a design slot's variable-font axes (wdth, opsz, SOFT, WONK) sit inside its family's axes (FONT_AXES); a wdth range is carried on its faces as font-stretch and emitted on @font-face; every gallery design's first-view fonts and whole page font total stay ≤ 180 KB and ≤ 24 @font-face entries.
  *
  * - SC-D1 parity: the three keys have a renderer, a stylesheet, a Studio enum value (design, header and

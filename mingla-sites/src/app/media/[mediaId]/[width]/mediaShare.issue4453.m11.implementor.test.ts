@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-SITES-SHARE-MEDIA-SCOPED | issue #4453 | a share link's asset credential is its own token (`?s=`), checked against Core and the link's expiry on every lookup, and serves only media its share view names.
 /*
  * #4453 milestone 11 — a share link's own media (`?s=<share token>`).
  *
@@ -7,8 +8,6 @@
  * view only: a picture only a hidden or Draft-by-Ari page names, another
  * artifact's picture, another site's link, an expired or revoked link, and the
  * preview key passed as `s` are all refused.
- *
- * MINGLA-INVARIANT: I-SITES-SHARE-MEDIA-SCOPED | issue #4453 | a share link's asset credential is its own token (`?s=`), checked against Core and the link's expiry on every lookup, and serves only media its share view names.
  */
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";

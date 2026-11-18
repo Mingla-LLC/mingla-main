@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
+// MINGLA-INVARIANT: I-SITES-HANDOFF-IS-A-DIALOG | issue #4453 | every Mingla booking action is a real link to host.usemingla.com; with JavaScript the hand-off sheet traps focus, closes on Escape and returns focus; it never asks for payment details or an email.
 /*
  * #4453 milestone 5 — the live booking layouts, the hand-off sheet and the
  * sticky phone bar, rendered (SC-B1, SC-B2, SC-B3, SC-B4, SC-B5).
- *
- * MINGLA-INVARIANT: I-SITES-HANDOFF-IS-A-DIALOG | issue #4453 | every Mingla booking action is a real link to host.usemingla.com; with JavaScript the hand-off sheet traps focus, closes on Escape and returns focus; it never asks for payment details or an email.
  */
 import fs from "node:fs";
 import path from "node:path";

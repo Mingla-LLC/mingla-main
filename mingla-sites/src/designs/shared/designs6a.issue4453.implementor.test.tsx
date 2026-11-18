@@ -3,7 +3,7 @@
  * #4453 PR 6a (designs: Nocturne, Haven, Maison) — the implementor's regression suite.
  *
  * MINGLA-INVARIANT: I-SITES-DESIGN-KEYS-ONE-LIST | issue #4453 | DESIGN_KEYS == renderers == stylesheets == Studio design enum == Core brand_site_design_keys() (6a adds nocturne, haven, maison).
- * MINGLA-INVARIANT: I-SITES-DEFAULTS-AA | issue #4453 | every gallery design's default text pairs pass WCAG AA (4.5:1 small, 3:1 large) on every surface it draws.
+ * Invariant I-SITES-DEFAULTS-AA (declared in designPlatform.issue4453.implementor.test.tsx): every gallery design's default text pairs pass WCAG AA (4.5:1 small, 3:1 large) on every surface it draws.
  *
  * - SC-D1 parity: the three keys have a renderer, a stylesheet, a Studio enum value (design and every
  *   layout, live and version tables) and a Core entry; Ari's declared designs stay atelier + voyage (#3355).

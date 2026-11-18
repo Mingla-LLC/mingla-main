@@ -1,9 +1,8 @@
+// MINGLA-INVARIANT: I-SITES-ARI-DRAFT-PREVIEW-ONLY | issue #4453 | a draft_by_ari page resolves only through ariDraftPreviewPage (the private /preview route); resolveSitePath, isIndexable and the share view never return it.
 /*
  * #4453 m11 rework (spec v2.1 §3.2-§3.3, SC-AP-Web, SC-N3, N10) — the owner's
  * PRIVATE preview opens a Draft page from Ari so the editor can show it; the
  * live resolver (live site, sitemap) and share links never do.
- *
- * MINGLA-INVARIANT: I-SITES-ARI-DRAFT-PREVIEW-ONLY | issue #4453 | a draft_by_ari page resolves only through ariDraftPreviewPage (the private /preview route); resolveSitePath, isIndexable and the share view never return it.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

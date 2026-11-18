@@ -11,7 +11,7 @@
  * the look-alike check only warns, it runs once per draft, and everything it
  * writes goes to the draft through composer v2.
  *
- * invariant: I-SITES-ARI-NEVER-PICKS-AVOID (declared in formats.ts).
+ * invariant: I-SITES-ARI-NEVER-PICKS-AVOID (declared in formats.issue4453.test.ts).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleUpsertError } from "../../node_modules/@payloadcms/drizzle/dist/upsertRow/handleUpsertError.js"; // not in the package exports: the real file, by path

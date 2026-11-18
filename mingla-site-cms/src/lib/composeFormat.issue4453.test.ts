@@ -1,10 +1,11 @@
+// MINGLA-INVARIANT: I-SITES-COMPOSER-V2-NEVER-INVENTS | issue #4453 | composer v2 writes only Mingla's fixed words and the owner's own answers; every fact is a live field, and a section or page with no content is left out.
 /*
  * #4453 milestone 7 — composer v2 (SC-F1, SC-F2, SC-N4, v2 §6.2 "never
  * invents"): every format composes its §4.2 Home order and its §1.1 page set
  * on a full fixture, and only always-eligible sections on an empty one; empty
  * sections and pages are left out; nothing typed is a fact.
  *
- * invariant: I-SITES-COMPOSER-V2-NEVER-INVENTS (declared in composeFormat.ts).
+ * invariant: I-SITES-COMPOSER-V2-NEVER-INVENTS (declared on line 1 of this file).
  */
 import { describe, expect, it } from "vitest";
 import { composeFormatSite, plannedKeysOf, type ComposeV2Input } from "./composeFormat";

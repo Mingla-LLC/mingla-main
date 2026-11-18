@@ -1,8 +1,8 @@
+// MINGLA-INVARIANT: I-SITES-DEFAULTS-AA | issue #4453 | every gallery-generation design's default text pairs pass WCAG AA (4.5:1 small, 3:1 large), measured on the token values (contrast test below).
 /*
  * #4453 PR 4 (design platform + Voyage) — the implementor's regression suite.
  *
  * MINGLA-INVARIANT: I-SITES-DESIGN-KEYS-ONE-LIST | issue #4453 | DESIGN_KEYS == renderers == stylesheets == Studio design enum == Core brand_site_design_keys() (SC-D1 parity test below + the pg17 test).
- * MINGLA-INVARIANT: I-SITES-DEFAULTS-AA | issue #4453 | every gallery-generation design's default text pairs pass WCAG AA (4.5:1 small, 3:1 large), measured on the token values (contrast test below).
  *
  * - SC-D1 parity: design keys, renderers, stylesheets, Studio enum, Core fixture and migration agree.
  * - Library parity: the runtime library is exactly site-contracts SHARED_LAYOUTS; every voyage

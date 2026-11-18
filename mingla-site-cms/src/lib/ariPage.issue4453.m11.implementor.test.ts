@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-SITES-ARI-QUESTIONS-OWNER-ONLY | issue #4453 | owner_questions, ari_request and origin never appear in any artifact; a page Ari added that the owner has not accepted (draft_by_ari) is disabled in every artifact and absent from every artifact but the private preview, so no menu, footer or page_links entry points at it.
+// MINGLA-INVARIANT: I-SITES-NO-UNSELLABLE-OFFERS | issue #4453 | no Ari page plan or owner answer may offer something Mingla cannot sell yet (gift cards, vouchers, memberships, passes); each is refused with UNSELLABLE_OFFER and writes nothing.
 /*
  * #4453 milestone 11 (spec v2.1 §3, SC-AP1, SC-AP2, SC-AP3, SC-N3) — "Add a
  * page with Ari" in Studio: the confirmed plan writes exactly one disabled
@@ -6,8 +8,6 @@
  * written verbatim; "Publish this page" reviews and switches it on; and the
  * builder never publishes a Draft-by-Ari page, its menu entry or its
  * questions (only the private preview keeps it, disabled and marked).
- *
- * MINGLA-INVARIANT: I-SITES-ARI-QUESTIONS-OWNER-ONLY | issue #4453 | owner_questions, ari_request and origin never appear in any artifact; a Draft-by-Ari page is disabled in every artifact and absent from every artifact but the private preview, so no menu, footer or page_links entry points at it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

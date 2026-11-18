@@ -167,8 +167,8 @@ describe("#4453 M7 Young and Stamped composed in Voyage, through the real builde
       ...composed.pages.map((page) => ({ id: ids.get(page.slug), tenant: "t1", slug: page.slug, title: page.title, kind: page.kind, enabled: true, blocks: page.blocks, ...(page.collection_kind ? { collection_kind: page.collection_kind } : {}) })),
       {
         id: "page-ari", tenant: "t1", slug: "private-hire", title: "Private hire", kind: "standard", enabled: false,
-        origin: "ari", ari_draft: true, ari_request: "ARI-DRAFT-REQUEST-NEVER-PUBLIC",
-        owner_questions: [{ key: "q1", question: "ARI-DRAFT-QUESTION-NEVER-PUBLIC", block_index: 0, field_path: "subheading" }],
+        origin: "ari", ari_draft: true, ari_request: "ARIDRAFT_REQUEST_NEVER_PUBLIC",
+        owner_questions: [{ key: "q1", question: "ARIDRAFT_QUESTION_NEVER_PUBLIC", block_index: 0, field_path: "subheading" }],
         blocks: [{ id: "ari-b0", blockType: "page_header", heading: "Private hire", review: { state: "draft", source: "ari" } }],
       },
     ];
@@ -199,7 +199,7 @@ describe("#4453 M7 Young and Stamped composed in Voyage, through the real builde
     expect(artifact.design.key).toBe("voyage");
     // #4453 milestone 11 (SC-N3, SC-AP2) — the Draft page from Ari, its menu entry and its questions are not in the publish.
     expect(built.serialized).not.toContain("private-hire");
-    expect(built.serialized).not.toContain("ARI-DRAFT-");
+    expect(built.serialized).not.toContain("ARIDRAFT_");
     const home = artifact.pages.find((page: { path: string }) => page.path === "");
     const order = FORMAT_RECIPES.trips.map((section) => section.type).filter((type) => !["availability"].includes(type) || true);
     const homeTypes = home.blocks.map((block: { type: string }) => block.type);

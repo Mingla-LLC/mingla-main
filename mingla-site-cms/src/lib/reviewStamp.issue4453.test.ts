@@ -1,8 +1,9 @@
+// MINGLA-INVARIANT: I-SITES-DRAFT-NEVER-PUBLISHED | issue #4453 | an artifact carries no review stamp, and a publish with an unreviewed section on an enabled page is refused with UNREVIEWED_SECTIONS.
 /*
  * #4453 PR 3 (content foundation, spec v1 §4.3) — the Draft stamp.
  *
- * invariant: I-SITES-DRAFT-NEVER-PUBLISHED (declared in
- * packages/site-contracts/src/publishChecks.ts). This suite pins: the
+ * invariant: I-SITES-DRAFT-NEVER-PUBLISHED (declared on line 1 of this
+ * file). This suite pins: the
  * composer's and Ari's writes stamp new or changed sections Draft and a
  * caller can never set the stamp; "Looks right" and a person's own save
  * review a section; a publish with one Draft section on an enabled page is

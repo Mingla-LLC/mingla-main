@@ -67,7 +67,7 @@ function ysSites() {
   // The preview adds a Draft page from Ari (disabled), as the owner's newest preview does after Ari plans one.
   const about = artifact.pages.find((page) => page.path === "about") ?? artifact.pages[0];
   const draftPage = { ...structuredClone(about), path: "private-hire", title: "Private hire", enabled: false, draft_by_ari: true };
-  draftPage.blocks = draftPage.blocks.map((block) => (block.type === "page_header" ? { ...block, heading: "ARI-DRAFT-SMOKE Private hire" } : block));
+  draftPage.blocks = draftPage.blocks.map((block) => (block.type === "page_header" ? { ...block, heading: "ARIDRAFT_SMOKE Private hire" } : block));
   const previewBytes = Buffer.from(JSON.stringify({ ...artifact, publication_id: previewId, pages: [...artifact.pages, draftPage] }));
   const previewDigest = createHash("sha256").update(previewBytes).digest("hex");
   writeFileSync(join(dir, `${previewDigest}.json`), previewBytes);
@@ -457,7 +457,7 @@ async function ysChecks(out) {
     else console.log("ok ys Draft page from Ari is not published (/private-hire 404)");
     for (const path of ["/", "/trips", "/about"]) {
       const html = await (await fetch(`http://${YS_HOST}:${APP_PORT}${path}`)).text();
-      if (/private-hire|ARI-DRAFT-/.test(html)) out.push(`ys ${path}: links to or shows the Draft page from Ari`);
+      if (/private-hire|ARIDRAFT_/.test(html)) out.push(`ys ${path}: links to or shows the Draft page from Ari`);
     }
   }
   // #4453 milestone 11 (N10) — a private share link never carries the owner's preview key (HTML, asset URLs,
@@ -466,7 +466,7 @@ async function ysChecks(out) {
     const { token, previewKey, previewDigest } = ys.share;
     const base = `http://${YS_HOST}:${APP_PORT}`;
     const owner = await fetch(`${base}/preview?k=${encodeURIComponent(previewKey)}&path=private-hire`);
-    if (owner.status !== 200 || !(await owner.text()).includes("ARI-DRAFT-SMOKE")) out.push(`ys share: the owner's preview did not open the Draft page (HTTP ${owner.status})`);
+    if (owner.status !== 200 || !(await owner.text()).includes("ARIDRAFT_SMOKE")) out.push(`ys share: the owner's preview did not open the Draft page (HTTP ${owner.status})`);
     else console.log("ok ys owner's preview opens the Draft page from Ari");
     const found = new Set([token]);
     let mediaUrl = null;
@@ -478,7 +478,7 @@ async function ysChecks(out) {
       const hits = [previewKey, encodeURIComponent(previewKey), previewDigest].filter((secret) => text.includes(secret) || unescaped.includes(secret));
       if (hits.length || /[?&]k=/.test(unescaped)) out.push(`ys share /${path}: the response carries the preview key (${hits.length} hits)`);
       else console.log(`ok ys share /${path}: 0 preview-key hits in the full response`);
-      if (/private-hire|ARI-DRAFT-/.test(unescaped)) out.push(`ys share /${path}: links to or shows the Draft page from Ari`);
+      if (/private-hire|ARIDRAFT_/.test(unescaped)) out.push(`ys share /${path}: links to or shows the Draft page from Ari`);
       for (const match of unescaped.matchAll(/[?&]([a-z]{1,2})=([^"&\s\\<>)]+)/gi)) found.add(decodeURIComponent(match[2]));
       mediaUrl ??= unescaped.match(/\/media\/[0-9a-f-]{36}\/[a-z0-9.]+\?s=[A-Za-z0-9_-]{43}/i)?.[0] ?? null;
     }
@@ -486,7 +486,7 @@ async function ysChecks(out) {
       for (const param of ["k", "s"]) {
         const probe = await fetch(`${base}/preview?${param}=${encodeURIComponent(credential)}&path=private-hire`);
         const body = await probe.text();
-        if (probe.status === 200 || /ARI-DRAFT-/.test(body)) out.push(`ys share: a value found in the share view opens /preview (${param}=${credential.slice(0, 12)}…)`);
+        if (probe.status === 200 || /ARIDRAFT_/.test(body)) out.push(`ys share: a value found in the share view opens /preview (${param}=${credential.slice(0, 12)}…)`);
       }
     }
     console.log(`ok ys share: none of ${found.size} values found in the share view opens /preview`);

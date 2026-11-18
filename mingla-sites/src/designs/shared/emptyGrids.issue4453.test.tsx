@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-SITES-NO-PUBLIC-EMPTY-STATE | issue #4453 | an upcoming offering grid with no live offering is left out of the public site in every design; only an owner preview (a preview- publication) keeps the hint.
 /*
  * #4453 PR 3 (SC-4.4, I-SITES-NO-PUBLIC-EMPTY-STATE) — an upcoming offering
  * grid with no live offering is left out of the public site in every design:

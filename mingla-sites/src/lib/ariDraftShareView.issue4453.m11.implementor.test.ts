@@ -1,10 +1,9 @@
+// MINGLA-INVARIANT: I-SITES-ARI-DRAFT-NEVER-SHARED | issue #4453 | a page marked draft_by_ari is removed from a share view with every link to it, and the artifact contract refuses draft_by_ari on an enabled page.
 /*
  * #4453 milestone 11 (spec v2.1 §3.3, decision N10, SC-AP2) — a page Ari added
  * that the owner has not accepted ("Draft by Ari") never reaches a share link:
  * the page and every link to it are dropped, even if the page were ever marked
  * enabled. The artifact contract only accepts the marker on a disabled page.
- *
- * MINGLA-INVARIANT: I-SITES-ARI-DRAFT-NEVER-SHARED | issue #4453 | a page marked draft_by_ari is removed from a share view with every link to it, and the artifact contract refuses draft_by_ari on an enabled page.
  */
 import { describe, expect, it, vi } from "vitest";
 

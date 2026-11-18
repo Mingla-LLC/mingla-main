@@ -34,7 +34,7 @@ function previewWithDraft(): { artifact: SiteArtifact; key: string; draftPicture
   artifact.media = [...artifact.media, { ...structuredClone(sample), id: draftPicture, url: `/media/${draftPicture}/1440.webp` } as never];
   const about = artifact.pages.find((page: { path: string }) => page.path === "about-us");
   artifact.pages = [...artifact.pages, {
-    ...structuredClone(about), path: "private-hire", title: "Private hire DRAFT-BY-ARI-TITLE", enabled: false, draft_by_ari: true,
+    ...structuredClone(about), path: "private-hire", title: "Private hire DRAFTBYARI_TITLE", enabled: false, draft_by_ari: true,
     blocks: [{ type: "gallery", images: [{ id: draftPicture, url: `/media/${draftPicture}/1440.webp`, alt: "" }] }],
   }];
   return { artifact: artifact as SiteArtifact, key: `publications/${artifact.site_id}/preview-${"e".repeat(32)}/${DIGEST}.json`, draftPicture };
@@ -45,7 +45,7 @@ describe("#4453 m11 tester: a share view hands out nothing that opens /preview o
     const { artifact, key } = previewWithDraft();
     expect(ariDraftPreviewPage(artifact, "private-hire")).not.toBeNull(); // control: the owner's preview still opens it
     const text = JSON.stringify(withSharedView(withPreviewMediaKey(artifact, { share: TOKEN })));
-    for (const secret of [key, encodeURIComponent(key), DIGEST, "k=", "private-hire", "DRAFT-BY-ARI-TITLE"]) expect(text, secret).not.toContain(secret);
+    for (const secret of [key, encodeURIComponent(key), DIGEST, "k=", "private-hire", "DRAFTBYARI_TITLE"]) expect(text, secret).not.toContain(secret);
     expect(text).toContain(`s=${TOKEN}`);
   });
 
