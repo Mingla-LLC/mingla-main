@@ -198,6 +198,27 @@ describe("per-app fit on each tile", () => {
   });
 });
 
+describe("honest Review questions and server roles in the builder", () => {
+  test("the wider question shows the server's reasons and a button that names them", () => {
+    expect(executable).toContain(".widening_summary");
+    expect(executable).toContain("hostAdWideningKind(lines)");
+    expect(executable).toContain('hb("review.runWithoutBuyers")');
+    expect(executable).not.toMatch(/label=\{hb\("review\.useWider"\)\}/);
+  });
+
+  test("the goal fallback says what the app will aim for instead", () => {
+    expect(executable).toContain("hostAdGoalFallbackReason(wanted, connection)");
+    expect(executable).toContain('hb("review.aimVisits")');
+    expect(executable).not.toContain('hb("review.runAnyway")');
+  });
+
+  test("Launch follows the server's role answers and waits for clips getting ready", () => {
+    expect(executable).toMatch(/hostAdLaunchBlocker\(\{[\s\S]{0,700}capabilities,\s*\}\)/);
+    expect(executable).toContain("preparingAdCount === 0");
+    expect(executable).toContain("disabled={blocker !== null}");
+  });
+});
+
 describe("B9 and B10", () => {
   test("B9: the words check reads the apps this ad runs on", () => {
     expect(executable).toMatch(/hostAdCopyError\(planApps\.length > 0 \? planApps : activeApps,/);

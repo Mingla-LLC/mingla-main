@@ -122,13 +122,19 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   it("reuses the shared resumable video picker instead of inventing an Ads uploader", () => {
     expect(planEndpoint).toContain('.from("ad_creatives")');
     expect(planEndpoint).toContain('.eq("kind", "video")');
-    expect(createRoute).toContain("CoverPickerSheet");
-    expect(createRoute).toContain('mediaMode="video-only"');
+    // #4238 B7/B8 (approved design): several clips upload at once, each on the
+    // SAME shared resumable lane (`useEventCoverVideoUpload`, target
+    // `ad_creative`) through one background slot per clip; no Ads uploader.
+    const slot = read("src/components/marketing/ads/HostAdVideoUploadSlot.tsx");
+    expect(createRoute).toContain("<HostAdVideoUploadSlot");
+    expect(slot).toContain("useEventCoverVideoUpload(");
+    expect(slot).toContain('"ad_creative"');
     // [TEST-MOD-APPROVED #3040] B-C14 — no client record call; the route links
     // the server-created creative id, and says nothing reaches ad platforms
     // before the plan is funded and confirmed.
-    expect(createRoute).toContain("patch.adCreativeId");
+    expect(createRoute).toContain("report.creativeId");
     expect(createRoute).toContain("setCreativeIds((current) =>");
+    expect(slot).not.toMatch(/uploadAsync|createUpload|bunny.*upload/i);
     expect(createRoute).not.toMatch(/uploadAsync|createUpload|bunny.*upload/i);
   });
 

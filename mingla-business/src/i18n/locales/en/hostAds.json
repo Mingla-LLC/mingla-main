@@ -247,7 +247,7 @@
         "launchShort": "Launch",
         "topUp": "Top up {{amount}}",
         "blockOffline": "Connect to launch",
-        "blockLaunch": "Launching needs launch access. {{name}} can launch it.",
+        "blockLaunch": "Launching needs the owner or an admin. Ask {{name}}.",
         "blockFund": "Launching needs access to Ads credit. {{name}} can launch it.",
         "theOwner": "The owner",
         "blockChecking": "Checking your ad with each app",
@@ -276,7 +276,12 @@
         "alreadyBuilt": "This ad is already set up on an app, so it can't be cancelled here. Get help and Mingla will sort it.",
         "waitUploads_one": "{{count}} video is still getting ready. Wait, or remove it.",
         "waitUploads_other": "{{count}} videos are still getting ready. Wait, or remove them.",
-        "rightsMissing": "Tick this box to launch. It confirms you have the rights to these videos and photos."
+        "rightsMissing": "Tick this box to launch. It confirms you have the rights to these videos and photos.",
+        "runWithoutBuyers": "Run without leaving out past buyers",
+        "runThisWay": "Run it this way",
+        "visitsQuestionYet": "{{app}} can't aim for {{unit}} on this brand yet, so it will aim for people likely to visit your page.",
+        "visitsQuestionCannot": "{{app}} can't aim for {{unit}}, so it will aim for people likely to visit your page.",
+        "aimVisits": "Aim for page visits"
       },
       "rights": {
         "title": "Media rights",
@@ -410,7 +415,10 @@
         "error": "Couldn't load your Ads credit. Your ads keep running.",
         "added": "Ads credit added.",
         "notAdded": "Your payment came back but the credit wasn't added yet. Try again, or get help.",
-        "cancelled": "Payment cancelled. No credit was added."
+        "cancelled": "Payment cancelled. No credit was added.",
+        "topUpNeedsRole": "Topping up needs the owner, an admin or Finance.",
+        "withdrawNeedsRole": "Withdrawing is for the owner or Finance. Ask {{name}}.",
+        "theOwner": "the owner"
       },
       "tools": {
         "compare": "Compare your ads",
@@ -431,7 +439,11 @@
         "ends": "When it ends",
         "endsV": "The rest stays as credit",
         "withdraw": "Withdraw",
-        "withdrawV": "Back to how you paid, fee included"
+        "withdrawV": "Back to how you paid, fee included",
+        "whoLaunches": "Top up and launch",
+        "whoLaunchesV": "The owner and admins",
+        "whoWithdraws": "Withdraw credit",
+        "whoWithdrawsV": "The owner and Finance"
       },
       "list": {
         "errorTitle": "Couldn't load your ads",

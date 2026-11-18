@@ -35,6 +35,7 @@ import {
   HOST_AD_PLATFORM_NAMES,
   hostAdErrorMessage,
   hostAdStatusLabel,
+  hostAdWideningKind,
 } from "../../components/marketing/ads/hostAdCopy";
 import {
   goBackToAds,
@@ -175,7 +176,7 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
-import { hostAdPageGoal } from "../../components/marketing/ads/hostAdGoal";
+import { hostAdGoalFallbackReason, hostAdPageGoal } from "../../components/marketing/ads/hostAdGoal";
 import type {
   HostAdConnection,
   HostAdCopyWarning,
@@ -2191,14 +2192,41 @@ export default function HostAdCreateRoute(): React.ReactElement {
     .filter((row): row is HostAdCheckRow & { note?: string } => row !== null);
   const blocker = hostAdLaunchBlocker({
     offline,
-    canLaunch: permissions.canLaunch && capabilities.launch?.allowed !== false,
+    canLaunch: permissions.canLaunch,
     canFund: permissions.canFund,
     askName,
     checks: checkRows,
-    checked: prepared !== null && prepared.status === "ready",
+    // #4238 B7: clips still getting ready keep Launch closed (the dock says why).
+    checked: prepared !== null && prepared.status === "ready" && preparingAdCount === 0,
     rightsConfirmed,
     topUpNeededCents: topUpNeeded,
+    // #4238 roles: the server's own answers (admins launch and fund) win.
+    capabilities,
   });
+  // #4238 honest Review questions: say the real reason each app gave.
+  const wideningLines = (platform: string): string[] =>
+    (prepared?.targeting.find((row) => row.platform === platform)?.widening_summary ?? []).filter(
+      (line) => typeof line === "string" && line.trim().length > 0,
+    );
+  const wideningAcceptLabel = (platform: string): string => {
+    const lines = wideningLines(platform);
+    if (lines.length === 0) return hb("review.useWider");
+    const kind = hostAdWideningKind(lines);
+    return kind === "past_buyers"
+      ? hb("review.runWithoutBuyers")
+      : kind === "area"
+        ? hb("review.useWider")
+        : hb("review.runThisWay");
+  };
+  const visitsQuestion = (platform: string): string => {
+    const connection = planConnections.find((item) => item.platform === platform);
+    const wanted: "sales" | "signups" = goal === "signups" ? "signups" : "sales";
+    const reason = connection ? hostAdGoalFallbackReason(wanted, connection) : "cannot";
+    return hb(reason === "not_yet" ? "review.visitsQuestionYet" : "review.visitsQuestionCannot", {
+      app: appLabel(platform),
+      unit,
+    });
+  };
   const blockerText = (): string | null => {
     if (!blocker) return null;
     switch (blocker.kind) {
@@ -3425,7 +3453,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 </View>
                 {row.state === "question" && row.note === "wider" ? (
                   <>
-                    <Text style={bs.small}>{hb("review.wider")}</Text>
+                    {/* #4238: the server's own reasons, never a guess about the area. */}
+                    {wideningLines(row.platform).length > 0 ? (
+                      wideningLines(row.platform).map((line) => (
+                        <Text key={line} style={bs.small} testID={`host-ad-widening-${row.platform}`}>{line}</Text>
+                      ))
+                    ) : (
+                      <Text style={bs.small}>{hb("review.wider")}</Text>
+                    )}
                     <View style={bs.actions}>
                       <Button
                         label={hb("review.turnOff", { app: appLabel(row.platform) })}
@@ -3438,7 +3473,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         }}
                       />
                       <Button
-                        label={hb("review.useWider")}
+                        label={wideningAcceptLabel(row.platform)}
                         variant="secondary"
                         size="sm"
                         onPress={() => {
@@ -3452,7 +3487,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 ) : null}
                 {row.state === "question" && row.note === "visits" ? (
                   <>
-                    <Text style={bs.small}>{hb("review.visitsQuestion", { unit })}</Text>
+                    <Text style={bs.small} testID={`host-ad-visits-question-${row.platform}`}>{visitsQuestion(row.platform)}</Text>
                     <View style={bs.actions}>
                       <Button
                         label={hb("review.turnOff", { app: appLabel(row.platform) })}
@@ -3466,7 +3501,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         }}
                       />
                       <Button
-                        label={hb("review.runAnyway")}
+                        label={hb("review.aimVisits")}
                         variant="secondary"
                         size="sm"
                         onPress={() => {
@@ -3677,7 +3712,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       <Button
         label={hb("review.launch")}
         fullWidth
-        disabled={blocker !== null || waitingForClips}
+        disabled={blocker !== null}
         loading={busy && checkState !== "checking"}
         onPress={() => setSheet("launch")}
         testID="host-ad-launch"
