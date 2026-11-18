@@ -1447,6 +1447,7 @@
         "mingla-sites/e2e/goldens/baseline/voyage/trips-1440.png",
         "mingla-sites/e2e/goldens/baseline/voyage/trips-390.png",
         "mingla-sites/package.json",
+        "mingla-site-cms/tsconfig.json",
         "mingla-sites/src/lib/previewPublication.ts",
         "mingla-business/src/components/sites/website/preview/FullScreenPreviewBar.tsx",
         "mingla-business/src/components/sites/website/preview/SitePreviewPanel.tsx",
