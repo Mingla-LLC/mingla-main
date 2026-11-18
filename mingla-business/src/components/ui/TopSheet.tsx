@@ -601,7 +601,7 @@ const TOPSHEET_DRAG_CLOSE_RATIO = 0.25; // fraction of panel height to commit a 
 const TOPSHEET_DRAG_CLOSE_VELOCITY = 0.5; // px/ms UPWARD flick that commits a close
 // #4389 P9 — a velocity close needs at least this much upward travel, so a
 // 1-2px jitter during a click on the handle band never closes the sheet.
-export const TOPSHEET_DRAG_MIN_PX = 12;
+const TOPSHEET_DRAG_MIN_PX = 12;
 
 const TopSheetWeb: React.FC<TopSheetProps> = ({
   visible,

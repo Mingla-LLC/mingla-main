@@ -69,12 +69,19 @@ const fire = (node: Node, prop: string): void => {
 
 const ALL_PAGES = ["home", "hub", "ari", "overview", "campaigns", "ads", "creators", "referrals", "people", "templates"];
 
-function renderRail(): Tree {
+/** The rail is a lazy chunk (#4389 bundle): flush until it has rendered. */
+async function renderRail(): Promise<Tree> {
   let tree: Tree | null = null;
   TestRenderer.act(() => {
     tree = TestRenderer.create(<DesktopSidebar tabs={SIDEBAR_SOURCE_TABS} />);
   });
-  return tree as unknown as Tree;
+  const t = tree as unknown as Tree;
+  for (let i = 0; i < 50 && hosts(t, "sidebar-rail-item-home").length === 0 && hosts(t, "sidebar-item-home").length === 0; i += 1) {
+    await (TestRenderer.act as unknown as (cb: () => Promise<void>) => Promise<void>)(async () => {
+      await Promise.resolve();
+    });
+  }
+  return t;
 }
 
 describe("#4389 P3–P5 collapsed rail", () => {
@@ -83,8 +90,8 @@ describe("#4389 P3–P5 collapsed rail", () => {
     useDesktopSidebarStore.setState({ collapsed: true, closedGroups: [] });
   });
 
-  test("R1: the rail shows every page in order, a divider per titled group, Expand and Account at the bottom", () => {
-    const tree = renderRail();
+  test("R1: the rail shows every page in order, a divider per titled group, Expand and Account at the bottom", async () => {
+    const tree = await renderRail();
     const keys = tree.root
       .findAll((n) => typeof n.type === "string" && typeof n.props.testID === "string" && (n.props.testID as string).startsWith("sidebar-rail-item-"))
       .map((n) => (n.props.testID as string).replace("sidebar-rail-item-", ""));
@@ -100,8 +107,8 @@ describe("#4389 P3–P5 collapsed rail", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
-  test("R2: hover and keyboard focus show the page name; leave, blur and press hide it; it is hidden from assistive tech", () => {
-    const tree = renderRail();
+  test("R2: hover and keyboard focus show the page name; leave, blur and press hide it; it is hidden from assistive tech", async () => {
+    const tree = await renderRail();
     for (const key of [...ALL_PAGES, "expand", "account"]) {
       expect(hosts(tree, `sidebar-rail-tip-${key}`)).toHaveLength(0);
       fire(item(tree, key), "onHoverIn");
@@ -133,8 +140,8 @@ describe("#4389 P3–P5 collapsed rail", () => {
 
   // #4389 P3 rework — a full rail is ~780 tall; on a 768 window the page
   // list scrolls inside the rail while the logo and Expand + Account stay put.
-  test("R4: pages scroll inside the rail; the logo, Expand and Account stay outside the scroll region", () => {
-    const tree = renderRail();
+  test("R4: pages scroll inside the rail; the logo, Expand and Account stay outside the scroll region", async () => {
+    const tree = await renderRail();
     const scroll = hosts(tree, "sidebar-rail-scroll");
     expect(scroll).toHaveLength(1);
     const inScroll = (key: string): boolean => isInside(hosts(tree, `sidebar-rail-item-${key}`)[0]!, scroll[0]!);
@@ -157,8 +164,8 @@ describe("#4389 P3–P5 collapsed rail", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
-  test("R5: a scrolled page's label follows the item, drawn outside the clipping scroll view", () => {
-    const tree = renderRail();
+  test("R5: a scrolled page's label follows the item, drawn outside the clipping scroll view", async () => {
+    const tree = await renderRail();
     const scroll = tree.root.findAll((n) => n.props.testID === "sidebar-rail-scroll" && typeof n.props.onScroll === "function")[0]!;
     TestRenderer.act(() => {
       (scroll.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { y: 60, height: 500 } } });
@@ -179,7 +186,7 @@ describe("#4389 P3–P5 collapsed rail", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
-  test("R3 (P4/P5): People is `notebook`, Account `user`, Creators `users`; no two rail glyphs repeat", () => {
+  test("R3 (P4/P5): People is `notebook`, Account `user`, Creators `users`; no two rail glyphs repeat", async () => {
     const { groups, account } = buildSidebarGroups(SIDEBAR_SOURCE_TABS);
     const all = groups.flatMap((g) => g.items);
     const icon = (key: string): string | undefined => all.find((i) => i.key === key)?.icon;
@@ -193,7 +200,7 @@ describe("#4389 P3–P5 collapsed rail", () => {
     const railIcons = [...all.map((i) => i.icon), account?.icon];
     expect(new Set(railIcons).size).toBe(railIcons.length);
 
-    const tree = renderRail();
+    const tree = await renderRail();
     expect(hosts(tree, "icon-notebook")).toHaveLength(1);
     expect(hosts(tree, "icon-user")).toHaveLength(1);
     expect(hosts(tree, "icon-rocket")).toHaveLength(1);
@@ -201,9 +208,9 @@ describe("#4389 P3–P5 collapsed rail", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
-  test("the expanded sidebar keeps its group titles and the People notebook", () => {
+  test("the expanded sidebar keeps its group titles and the People notebook", async () => {
     useDesktopSidebarStore.setState({ collapsed: false, closedGroups: [] });
-    const tree = renderRail();
+    const tree = await renderRail();
     expect(hosts(tree, "sidebar-group-promote")).toHaveLength(1);
     expect(hosts(tree, "sidebar-group-audience")).toHaveLength(1);
     expect(hosts(tree, "sidebar-rail-item-home")).toHaveLength(0);

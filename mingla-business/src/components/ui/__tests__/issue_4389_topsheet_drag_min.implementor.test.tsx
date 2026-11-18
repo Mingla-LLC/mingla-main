@@ -47,7 +47,10 @@ jest.mock("react-native-safe-area-context", () => ({
 }));
 
 import { Text } from "react-native";
-import { TOPSHEET_DRAG_MIN_PX, TopSheet } from "../TopSheet";
+import { TopSheet } from "../TopSheet";
+
+/** Mirrors TopSheet.tsx TOPSHEET_DRAG_MIN_PX (kept module-private: eager chunk). */
+const TOPSHEET_DRAG_MIN_PX = 12;
 
 interface Node { type: unknown; props: Record<string, unknown> }
 type Tree = { root: { findAll: (p: (n: Node) => boolean) => Node[] }; unmount: () => void };
@@ -94,6 +97,9 @@ function drag(band: () => Node, dy: number, ms: number): void {
   });
 }
 
+const src4389 = (): string =>
+  (require("fs") as typeof import("fs")).readFileSync((require("path") as typeof import("path")).join(__dirname, "../TopSheet.tsx"), "utf8");
+
 describe("#4389 P9 — TopSheetWeb drag band minimum travel", () => {
   test("D1: a 2px upward move at high velocity (a click's jitter) never closes", () => {
     const onClose = jest.fn();
@@ -106,7 +112,7 @@ describe("#4389 P9 — TopSheetWeb drag band minimum travel", () => {
   });
 
   test("D2: an upward flick of 12px or more still closes", () => {
-    expect(TOPSHEET_DRAG_MIN_PX).toBe(12);
+    expect(src4389()).toMatch(/const TOPSHEET_DRAG_MIN_PX = 12;/);
     const onClose = jest.fn();
     const { tree, band } = mount(onClose);
     drag(band, -TOPSHEET_DRAG_MIN_PX, 4); // 3 px/ms
