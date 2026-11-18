@@ -77,6 +77,7 @@ function full(format: FormatKey, design = "voyage" as ComposeV2Input["design"]):
       venue_id: { restaurants: id(10), play: id(11), art: id(12), hotels: id(13) },
       stay_offering_id: id(20),
       address: "1 High Street, London",
+      hours: [{ day: "Every day", value: "12pm to 12am" }],
     },
     existing: [],
     currentWordmark: null,

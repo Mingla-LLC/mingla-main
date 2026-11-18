@@ -75,6 +75,11 @@ export type ComposeV2Sources = {
   stay_offering_id: string | null;
   /** The brand's own street address (Mingla brand field), or null. */
   address: string | null;
+  /**
+   * #4453 — the place's real opening hours, one row per day or range, when
+   * Core sends them. Absent today: Core passes only the address.
+   */
+  hours?: ReadonlyArray<{ day: string; value: string }>;
 };
 
 export type ComposeV2Page = {
@@ -319,8 +324,19 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
       return withVariant(block);
     }
     case "hours_location": {
+      // #4453 — the block needs at least one row of opening hours (the public
+      // contract and Studio's own block both refuse an empty list). Composed
+      // from the address alone, it failed every venue's plan preview and
+      // Build (found live on Gameland Lagos, 2026-11-18). It waits for real
+      // hours instead; the address alone is never padded with invented ones.
       const address = clean(sources.address, 300);
-      return address ? withVariant({ blockType: "hours_location", heading: HEADING.hours_location, address }) : null;
+      const hours = (sources.hours ?? [])
+        .map((row) => ({ day: clean(row.day, 20), value: clean(row.value, 80) }))
+        .filter((row): row is { day: string; value: string } => Boolean(row.day && row.value))
+        .slice(0, 7);
+      return address && hours.length > 0
+        ? withVariant({ blockType: "hours_location", heading: HEADING.hours_location, address, hours })
+        : null;
     }
     case "faq":
       return answers.faq.length
