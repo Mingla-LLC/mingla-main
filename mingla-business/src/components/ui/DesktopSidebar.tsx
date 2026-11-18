@@ -68,7 +68,8 @@ export interface SidebarGroup {
 const MARKETING_ICONS: Record<string, IconName> = {
   overview: "megaphone",
   campaigns: "send",
-  ads: "target",
+  // #4389 P2-2 (Seth 2026-11-18) — `target` read like the Ari orb at 20px.
+  ads: "rocket",
   creators: "users",
   referrals: "gift",
   // #4389 P4/P5 — People is the contact book (`notebook`), never Account's

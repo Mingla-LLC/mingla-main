@@ -184,6 +184,9 @@ describe("#4389 P3–P5 collapsed rail", () => {
     const all = groups.flatMap((g) => g.items);
     const icon = (key: string): string | undefined => all.find((i) => i.key === key)?.icon;
     expect(icon("people")).toBe("notebook");
+    // #4389 P2-2 — Ads is the rocket, never a ringed mark beside the Ari orb.
+    expect(icon("ads")).toBe("rocket");
+    expect(all.map((i) => i.icon)).not.toContain("target");
     expect(icon("creators")).toBe("users");
     expect(account?.icon).toBe("user");
     expect(icon("people")).not.toBe(account?.icon);
@@ -193,6 +196,8 @@ describe("#4389 P3–P5 collapsed rail", () => {
     const tree = renderRail();
     expect(hosts(tree, "icon-notebook")).toHaveLength(1);
     expect(hosts(tree, "icon-user")).toHaveLength(1);
+    expect(hosts(tree, "icon-rocket")).toHaveLength(1);
+    expect(hosts(tree, "icon-target")).toHaveLength(0);
     TestRenderer.act(() => tree.unmount());
   });
 
