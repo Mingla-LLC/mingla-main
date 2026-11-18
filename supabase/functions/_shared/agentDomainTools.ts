@@ -594,7 +594,9 @@ const getExperience = writeTool(
       .select("status, updated_at, event_type")
       .eq("id", eventId).is("deleted_at", null).maybeSingle();
     if (error) throw new ToolError("RPC_FAILED", error.message);
-    if (!event || (event as Record<string, unknown>).event_type !== "experience") {
+    if (
+      !event || (event as Record<string, unknown>).event_type !== "experience"
+    ) {
       throw new ToolError(
         "BRAND_ACCESS_DENIED",
         "That experience is unavailable",
@@ -741,7 +743,8 @@ const manageExperienceStops = writeTool(
             type: "integer",
             minimum: 0,
             maximum: 4,
-            description: "Set from the stop's position; any value sent is replaced.",
+            description:
+              "Set from the stop's position; any value sent is replaced.",
           },
           place_id: { type: "string" },
           place_name: { type: "string" },
@@ -798,7 +801,10 @@ const manageExperienceStops = writeTool(
     // saved offset (a draft re-creates its stops). Refuse only when the
     // experience has one to lose, so set-date stops and older proposals still
     // go through. Never rewrites `args`: #1972 binds the exact payload.
-    if (experienceStopsOffsetIssue(args) !== null) {
+    // A retry of an approval already `executing` skips the check: an earlier
+    // attempt may have committed (the receipt RPC replays its answer), and
+    // refusing it would tell the owner "nothing was saved" for a saved edit.
+    if (!context?.retry && experienceStopsOffsetIssue(args) !== null) {
       const { data: saved, error } = await client.from("experience_stops")
         .select("start_offset_minutes")
         .eq("event_id", eventId)
@@ -806,7 +812,10 @@ const manageExperienceStops = writeTool(
         .limit(1);
       if (error) throw new ToolError("RPC_FAILED", error.message);
       if ((saved ?? []).length > 0) {
-        throw new ToolError(DOMAIN_REFUSED_CODE, EXPERIENCE_STOP_OFFSET_REFUSAL);
+        throw new ToolError(
+          DOMAIN_REFUSED_CODE,
+          EXPERIENCE_STOP_OFFSET_REFUSAL,
+        );
       }
     }
     return await executeExperienceWrite(

@@ -1248,7 +1248,6 @@ export function canonicalizeAgentProposalArgs(
   return args;
 }
 
-
 const manageBrandHours: AgentToolDefinition = {
   name: "manage_brand_hours",
   description:

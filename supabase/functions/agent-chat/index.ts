@@ -4167,7 +4167,10 @@ ${boundedAgentContext}
           if (call.name === "manage_experience_stops") {
             const offsetIssue = experienceStopsOffsetIssue(call.args);
             if (offsetIssue) {
-              return { code: "EXPERIENCE_STOP_OFFSET_MISSING", message: offsetIssue };
+              return {
+                code: "EXPERIENCE_STOP_OFFSET_MISSING",
+                message: offsetIssue,
+              };
             }
           }
           if (call.name !== "draft_campaign") return null;
