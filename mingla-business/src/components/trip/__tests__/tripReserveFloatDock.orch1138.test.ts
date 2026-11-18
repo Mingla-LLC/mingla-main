@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 /**
  * ORCH-1138 [trip-page-redesign] device-rework #3 — Reserve CTA float→dock
  * (BUSINESS / public-web parity with the consumer app).
@@ -136,7 +137,7 @@ describe("ORCH-1138 DR3 — trip Reserve CTA float→dock (business/web)", () =>
   test("DR3g the route no longer reserves a bar-sized paddingBottom void", () => {
     // the old `spacing.xl + 96 + insets.bottom` clearance (the void) is GONE.
     expect(routeSrc).not.toMatch(/spacing\.xl \+ 96 \+ insets\.bottom/);
-    expect(routeSrc).toContain("contentBottomInset={spacing.md}");
+    expect(routeSrc).toContain("contentBottomInset={space[4]}");
   });
 
   // ── Behavioral replica of the route's floatingPillVisible predicate ──

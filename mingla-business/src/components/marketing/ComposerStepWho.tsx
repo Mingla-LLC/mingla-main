@@ -6,14 +6,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export interface ComposerStepWhoProps {
@@ -101,32 +94,32 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.xxs,
+    gap: space[1],
   },
   picker: {
     minHeight: 48, // F.8: was 56
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.md, // F.8: was radius.lg
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   pickerEmpty: {
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   pickerFilled: {
-    borderColor: accent.border,
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
   },
   desktopPicker: {
-    borderColor: "rgba(255, 255, 255, 0.11)",
+    borderColor: color.lineStrong,
     backgroundColor: "transparent",
   },
   desktopPickerFilled: {
-    borderColor: "rgba(235, 120, 37, 0.5)",
+    borderColor: color.lineStrong,
   },
   pickerPressed: {
     opacity: 0.85,
@@ -135,26 +128,26 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   pickerLabel: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "600",
     flex: 1,
   },
   pickerCount: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     flexShrink: 0,
   },
   pickerChevron: {
-    ...typography.bodyLg,
-    color: textTokens.secondary,
+    ...type.row,
+    color: color.text2,
   },
   reachText: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   disabledCaption: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
 });

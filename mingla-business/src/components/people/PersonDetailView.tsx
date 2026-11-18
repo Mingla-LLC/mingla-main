@@ -1,6 +1,6 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { accent, spacing, text, typography } from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import type {
   BrandPersonContact,
   BrandPersonDetail,
@@ -137,7 +137,7 @@ export function PersonDetailView({
               <Icon
                 name={contact.channel === "email" ? "mail" : "phone"}
                 size={20}
-                color={text.secondary}
+                color={color.text2}
               />
               <View style={styles.legacyContactCopy}>
                 <Text style={styles.value} numberOfLines={2}>{contact.value}</Text>
@@ -151,7 +151,7 @@ export function PersonDetailView({
             <Text style={styles.heading}>Marketing preferences</Text>
             {person.suppressions.map((suppression) => (
               <View key={`${suppression.channel}:${suppression.scope}`} style={styles.preferenceRow}>
-                <Icon name="shield" size={20} color={text.secondary} />
+                <Icon name="shield" size={20} color={color.text2} />
                 <Text style={styles.value}>
                   {suppression.channel === "email"
                     ? "Email marketing suppressed"
@@ -269,7 +269,7 @@ export function PersonDetailView({
           <Text style={styles.heading}>Marketing preferences</Text>
           {person.suppressions.map((suppression) => (
             <View key={`${suppression.channel}:${suppression.scope}`} style={styles.preferenceRow}>
-              <Icon name="shield" size={20} color={text.secondary} />
+              <Icon name="shield" size={20} color={color.text2} />
               <Text style={styles.value}>
                 {suppression.channel === "email"
                   ? "Email marketing suppressed"
@@ -285,27 +285,27 @@ export function PersonDetailView({
 
 const styles = StyleSheet.create({
   content: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
     paddingBottom: 120,
-    gap: spacing.lg,
+    gap: space[6],
     maxWidth: 720,
     width: "100%",
     alignSelf: "center",
   },
-  loading: { padding: spacing.lg, gap: spacing.md, alignItems: "center" },
-  status: { ...typography.bodySm, color: text.tertiary },
-  hero: { alignItems: "center", gap: spacing.sm, maxWidth: 560, width: "100%", alignSelf: "center" },
-  name: { ...typography.h1, color: text.primary, textAlign: "center" },
-  mergeButton: { marginTop: spacing.sm, minWidth: 176, borderColor: accent.border },
-  card: { gap: spacing.sm },
-  heading: { ...typography.h3, color: text.primary },
-  preferenceRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  legacyContactRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  loading: { padding: space[6], gap: space[4], alignItems: "center" },
+  status: { ...type.small, color: color.text3 },
+  hero: { alignItems: "center", gap: space[2], maxWidth: 560, width: "100%", alignSelf: "center" },
+  name: { ...type.title, color: color.text1, textAlign: "center" },
+  mergeButton: { marginTop: space[2], minWidth: 176, borderColor: color.accentLine },
+  card: { gap: space[2] },
+  heading: { ...type.h1, color: color.text1 },
+  preferenceRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: space[2] },
+  legacyContactRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: space[2] },
   legacyContactCopy: { flex: 1 },
-  legacyPrimary: { ...typography.caption, color: text.secondary },
-  value: { ...typography.body, color: text.primary, flex: 1 },
-  recoveryCard: { gap: spacing.md },
-  recoveryTitle: { ...typography.h3, color: text.primary },
-  recoveryActions: { gap: spacing.sm },
+  legacyPrimary: { ...type.caption, color: color.text2 },
+  value: { ...type.body, color: color.text1, flex: 1 },
+  recoveryCard: { gap: space[4] },
+  recoveryTitle: { ...type.h1, color: color.text1 },
+  recoveryActions: { gap: space[2] },
 });

@@ -1,15 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { showAlert } from "../ui/showAlert";
 // Library-recommended primitive for sticky-composer-above-keyboard pattern.
 // react-native-keyboard-controller is the canonical Mingla keyboard library
 // per I-PROPOSED-KEYBOARD-LIBRARY-ONLY (ORCH-0892-C) — already a project dep.
@@ -43,33 +42,36 @@ import { liftedBottomSpacer } from "../../wrappers/keyboardClearance";
 import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 import { useRouter } from "expo-router";
 
-import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, materials, radius, size, space } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { useEventGroupChat } from "../../hooks/useEventGroupChat";
 import { useEventGroupChatModeration } from "../../hooks/useEventGroupChatModeration";
-import type { PlannerImageAttachment } from "../../services/groupChatService";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { SafeScreen } from "../ui/SafeScreen";
 import { GroupChatModerationSheet } from "./GroupChatModerationSheet";
 import { GroupChatMessageMedia } from "./GroupChatMessageMedia";
 import { groupChatMediaKind } from "../../utils/groupChatMedia";
-import {
-  launchImageLibraryAsync,
-  requestMediaLibraryPermissionsAsync,
-} from "../../utils/platformImagePicker";
 
-interface GroupChatPanelProps {
-  eventId: string;
+export interface GroupChatPanelProps {
+  /** A listing: opens its brand's Guest chat (#4459). */
+  eventId?: string;
+  /** #4459: Messages → Guests opens by brand. */
+  brandId?: string;
+  /** #4459: the desktop Messages page shows the panel beside the inbox (no Back). */
+  embedded?: boolean;
 }
 
-export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
+export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId, embedded = false }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const chat = useEventGroupChat(eventId);
+  const chat = useEventGroupChat(eventId ?? null, brandId ?? null);
   const moderation = useEventGroupChatModeration(chat.conversation?.id ?? null);
+  // #4459: the Guest chat speaks as its brand. Without a brand name (an older
+  // or partial conversation row) the copy falls back to the plain wording
+  // rather than printing "Message as undefined".
+  const postingAs = chat.conversation?.name?.trim() || null;
   const [composer, setComposer] = useState("");
-  const [attachment, setAttachment] = useState<PlannerImageAttachment | null>(null);
   const [sending, setSending] = useState(false);
   const [moderationOpen, setModerationOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -100,68 +102,66 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
 
   const handleSend = async () => {
     const content = composer.trim();
-    if (content.length === 0 && attachment === null) return;
+    if (content.length === 0) return;
     setSending(true);
     try {
-      const result = await chat.postMessage(content, attachment);
+      const result = await chat.postMessage(content);
       if (result.error) throw new Error(result.error);
       setComposer("");
-      setAttachment(null);
     } catch (err) {
-      Alert.alert("Message failed", err instanceof Error ? err.message : "Try again.");
+      showAlert("Message failed", err instanceof Error ? err.message : "Try again.");
     } finally {
       setSending(false);
     }
   };
 
-  const handlePickImage = async () => {
-    const { status, granted } = await requestMediaLibraryPermissionsAsync();
-    if (status !== "granted" && !granted) {
-      Alert.alert(
-        "Photo access needed",
-        "Grant Mingla access to your photos in iOS Settings to attach an image.",
-      );
-      return;
-    }
-    const result = await launchImageLibraryAsync({
-      mediaTypes: "images",
-      allowsEditing: false,
-      quality: 0.7,
-      allowsMultipleSelection: false,
-    });
-    if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0];
-    const ext = asset.uri.split(".").pop()?.toLowerCase() || "jpg";
-    setAttachment({
-      uri: asset.uri,
-      name: asset.fileName ?? `image_${Date.now()}.${ext}`,
-      type: asset.mimeType ?? `image/${ext === "jpg" ? "jpeg" : ext}`,
-      size: asset.fileSize ?? 0,
-    });
-  };
-
-  const handleClearAttachment = () => {
-    setAttachment(null);
-  };
-
   const handleToggleBroadcast = async (value: boolean) => {
     const result = await moderation.setBroadcastOnly(value);
     if (result.error) {
-      Alert.alert("Could not update chat", result.error);
+      showAlert("Could not update chat", result.error);
       return;
     }
     await chat.refresh();
   };
 
-  const handleRemoveParticipant = async (userId: string) => {
-    const result = await moderation.removeParticipant(userId);
-    if (result.error) Alert.alert("Could not remove member", result.error);
+  // #4459 — removing a guest is sticky (new bookings never add them back), so
+  // it asks first, then offers Undo (restore).
+  const handleRemoveParticipant = (userId: string) => {
+    const name = moderation.participants.find((p) => p.user_id === userId)?.display_name ?? "This guest";
+    showAlert(
+      `Remove ${name}?`,
+      "They leave this Guest chat and new bookings won't add them back. Their booking is unchanged.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => void (async () => {
+            const result = await moderation.removeParticipant(userId);
+            if (result.error) {
+              showAlert("Could not remove guest", result.error);
+              return;
+            }
+            showAlert(`${name} was removed`, "You can add them back.", [
+              {
+                text: "Undo",
+                onPress: () => void (async () => {
+                  const undo = await moderation.restoreParticipant(userId);
+                  if (undo.error) showAlert("Could not add them back", undo.error);
+                })(),
+              },
+              { text: "OK", style: "cancel" },
+            ]);
+          })(),
+        },
+      ],
+    );
   };
 
   const handleDeleteMessage = async (messageId: string) => {
     const result = await moderation.deleteMessage(messageId);
     if (result.error) {
-      Alert.alert("Could not delete message", result.error);
+      showAlert("Could not delete message", result.error);
       return;
     }
     await chat.refresh();
@@ -170,20 +170,22 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   return (
     <SafeScreen style={styles.screen}>
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          style={styles.iconButton}
-        >
-          <Icon name="arrowL" size={18} color={textTokens.primary} />
-        </Pressable>
+        {embedded ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => router.back()}
+            style={styles.iconButton}
+          >
+            <Icon name="arrowL" size={18} color={color.text1} />
+          </Pressable>
+        )}
         <View style={styles.headerCopy}>
           <Text style={styles.title} numberOfLines={1}>
             {chat.conversation?.event_name ?? "Group chat"}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            Read, reply, and moderate buyer chat
+            {postingAs ? `Posting as ${postingAs}` : "Read, reply, and moderate your guests"}
           </Text>
         </View>
         <Pressable
@@ -192,13 +194,13 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
           onPress={() => setModerationOpen(true)}
           style={styles.iconButton}
         >
-          <Icon name="moreH" size={18} color={textTokens.primary} />
+          <Icon name="moreH" size={18} color={color.text1} />
         </Pressable>
       </View>
 
       {chat.loading ? (
         <View style={styles.state}>
-          <ActivityIndicator color={accent.warm} />
+          <ActivityIndicator color={color.text2} />
         </View>
       ) : chat.error ? (
         <View style={styles.state}>
@@ -207,7 +209,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
         </View>
       ) : chat.conversation === null ? (
         <View style={styles.state}>
-          <Text style={styles.errorText}>No group chat exists for this event yet.</Text>
+          <Text style={styles.errorText}>Your brand's Guest chat isn't ready yet. Try again in a moment.</Text>
         </View>
       ) : (
         <>
@@ -225,8 +227,19 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             data={invertedMessages}
             keyExtractor={(message) => message.id}
             renderItem={({ item: message }) => {
-              const mine = message.sender_id === currentUserId;
+              // #4459: a brand post stores no sender; its author is team-only.
+              const mine = message.sender_id === currentUserId ||
+                (message.author_id != null && message.author_id === currentUserId);
               const blast = message.marketing_campaign_id !== null;
+              // Team posts read as the brand (the team also sees who sent them);
+              // guests by their own name.
+              const fromBrand = message.sender_kind === "brand";
+              const brandName = postingAs ?? "Your brand";
+              const senderLabel = fromBrand
+                ? `Sent as ${brandName} by ${mine ? "you" : message.author_name ?? "a teammate"}`
+                : mine
+                  ? null
+                  : message.sender_display_name_snapshot;
               // #4114 Wave 6: Explorer photos and videos are private-bucket
               // paths (signed in GroupChatMessageMedia); view once is never shown.
               const hasImage = groupChatMediaKind(message) !== "none";
@@ -239,6 +252,9 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                     blast && styles.messageRowBlast,
                   ]}
                 >
+                  {senderLabel ? (
+                    <Text style={styles.senderLabel} numberOfLines={1}>{senderLabel}</Text>
+                  ) : null}
                   {hasImage ? <GroupChatMessageMedia message={message} mine={mine} /> : null}
                   {hasCaption ? (
                     <Text
@@ -260,7 +276,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                       accessibilityLabel="Delete message"
                       onPress={() => void handleDeleteMessage(message.id)}
                     >
-                      <Icon name="trash" size={13} color={mine ? textTokens.inverse : textTokens.tertiary} />
+                      <Icon name="trash" size={13} color={mine ? color.textStrong : color.text3} />
                     </Pressable>
                   </View>
                 </View>
@@ -291,24 +307,6 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
               is lifted, so the two terms are added once, in different places,
               instead of one of them twice. */}
           <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED}>
-            {attachment ? (
-              <View style={styles.attachmentPreview}>
-                <Image
-                  source={{ uri: attachment.uri }}
-                  style={styles.attachmentPreviewImage}
-                  resizeMode="cover"
-                  accessibilityLabel="Selected image preview"
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Remove attachment"
-                  onPress={handleClearAttachment}
-                  style={styles.attachmentRemove}
-                >
-                  <Icon name="close" size={14} color={textTokens.primary} />
-                </Pressable>
-              </View>
-            ) : null}
             <View
               style={[
                 styles.composer,
@@ -327,35 +325,45 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                   // gap and nothing else.
                   paddingBottom: liftedBottomSpacer(
                     keyboardHeight > 0,
-                    Math.max(insets.bottom, 0) + spacing.lg,
+                    Math.max(insets.bottom, 0) + space[6],
                   ),
                 },
               ]}
             >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Attach image"
-                onPress={handlePickImage}
-                style={styles.attachButton}
-                disabled={sending}
-              >
-                <Icon name="plus" size={20} color={textTokens.primary} />
-              </Pressable>
+              {/* #4420 round 3 (6, 24): floating composer; send is an
+                  icon-only Paper circle, dimmed until there is a message.
+                  #4459: Guest chats are text only in v1 (no attach button). */}
+              <View style={styles.field}>
               <TextInput
                 value={composer}
                 onChangeText={setComposer}
-                placeholder={attachment ? "Add a caption (optional)" : "Write a reply"}
-                placeholderTextColor={textTokens.tertiary}
+                placeholder={postingAs ? `Message as ${postingAs}` : "Write a reply"}
+                placeholderTextColor={color.text3}
                 style={styles.input}
                 multiline
               />
-              <Button
-                label="Send"
-                leadingIcon="send"
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send"
+                accessibilityState={{ disabled: composer.trim().length === 0 || sending, busy: sending }}
                 onPress={handleSend}
-                loading={sending}
-                disabled={(composer.trim().length === 0 && attachment === null) || sending}
-              />
+                disabled={composer.trim().length === 0 || sending}
+                style={[
+                  styles.send,
+                  (composer.trim().length === 0 || sending) && styles.sendIdle,
+                ]}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color={color.ink} />
+                ) : (
+                  <Icon
+                    name="send"
+                    size={20}
+                    color={composer.trim().length === 0 ? color.text4 : color.ink}
+                  />
+                )}
+              </Pressable>
             </View>
           </KeyboardAvoidingView>
         </>
@@ -377,16 +385,22 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#111318",
+    backgroundColor: color.card,
+  },
+  senderLabel: {
+    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: "700",
+    color: color.text3,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
     borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
+    borderBottomColor: color.line,
   },
   iconButton: {
     width: 40,
@@ -395,9 +409,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   headerCopy: {
     flex: 1,
@@ -405,132 +419,113 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
+  // #4459: "Posting as <Brand>" under the title.
   subtitle: {
     marginTop: 2,
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   state: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+    gap: space[4],
+    padding: space[6],
   },
   errorText: {
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   messages: {
     flex: 1,
   },
   messagesContent: {
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: space[4],
+    gap: space[2],
   },
   messageRow: {
     maxWidth: "84%",
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
     borderWidth: 1,
   },
   messageRowMine: {
     alignSelf: "flex-end",
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.card3,
+    borderColor: color.lineStrong,
   },
   messageRowOther: {
     alignSelf: "flex-start",
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   messageRowBlast: {
     alignSelf: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
   },
   messageText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 14,
     lineHeight: 20,
   },
   messageTextMine: {
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
   messageTextWithImage: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   messageMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
   },
   messageMeta: {
     fontSize: 10,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   composer: {
     // Floats over the chat list (no top border / backdrop) — bottom inset + extra
     // breathing room is applied inline via insets in the JSX above.
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
-  attachButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    overflow: "hidden",
+  field: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    minHeight: size.btn.phone,
+    paddingLeft: space[1],
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.lineStrong,
+    backgroundColor: materials.sheet.solidFill,
+  },
+  send: {
+    width: size.btn.phone,
+    height: size.btn.phone,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.paper,
   },
-  attachmentPreview: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    width: 120,
-    height: 120,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  attachmentPreviewImage: {
-    width: "100%",
-    height: "100%",
-  },
-  attachmentRemove: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
+  sendIdle: {
+    backgroundColor: color.card2,
   },
   input: {
     flex: 1,
-    minHeight: 44,
+    minHeight: size.btn.phone,
     maxHeight: 120,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    color: textTokens.primary,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    paddingHorizontal: space[2],
+    paddingTop: 14,
+    paddingBottom: 14,
+    color: color.text1,
   },
 });
 

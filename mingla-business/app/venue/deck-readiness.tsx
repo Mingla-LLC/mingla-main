@@ -8,10 +8,9 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  canvas,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandPlaceAuthoringContext } from "../../src/hooks/useBrandPlacePipelineState";
@@ -351,36 +350,36 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   chrome: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   chromeTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    gap: space[2],
+    paddingHorizontal: space[6],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
     textAlign: "center",
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     textAlign: "center",
   },
 });

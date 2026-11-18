@@ -38,6 +38,9 @@ jest.mock("@mingla/offering-rendering", () => {
     panelBorder: "#ddd",
     accent: "#f60",
     accentWash: "#fee",
+    panelStrong: "#fff",
+    glass: "#fff",
+    glassTint: "light",
     accentText: "#fff",
     primaryText: "#111",
     secondaryText: "#333",
@@ -197,9 +200,11 @@ test("Upcoming presents all four human labels and preserves the raw callback obj
   expect(cards).toEqual(expectedLabels);
   expect(
     visibleText(tree.toJSON()).filter((text) =>
-      ["Event", "RSVP", "Trip", "Experience"].includes(text),
+      ["Event", "Tickets", "RSVP", "Trip", "Experience"].includes(text),
     ),
-  ).toEqual(["Event", "RSVP", "Trip", "Experience"]);
+    // #4420 wave 2 (spec §1.1.8): the shared card's kind chip names a ticketed
+    // event "Tickets"; the accessible label above still says "Event".
+  ).toEqual(["Tickets", "RSVP", "Trip", "Experience"]);
 
   const rsvpCard = tree.root.findAll(
     (node) =>

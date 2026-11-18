@@ -203,12 +203,12 @@ describe("#3355 Ari rendition foundation", () => {
       path.join(root, "src/components/ari/renditions/AriRenditionPreview.tsx"),
       "utf8",
     );
-    expect(preview).toContain(": glass.tint.profileBase");
+    expect(preview).toContain(": color.fill.inset"); // [TEST-MOD-APPROVED #4420] glass.tint.profileBase → color.fill.inset
     expect(preview).toContain("borderRadius: ariThread.bubbleRadius");
     expect(preview).toContain("borderTopLeftRadius: ariThread.bubbleTail");
     expect(preview).toContain("paddingHorizontal: ariThread.bubblePadH");
     expect(preview).toContain("paddingVertical: ariThread.bubblePadV");
-    expect(preview).toContain("borderColor: glass.border.profileBase");
+    expect(preview).toContain("borderColor: color.line"); // [TEST-MOD-APPROVED #4420] glass.border.profileBase → color.line
     expect(preview).not.toContain(
       'cardWarning: { borderColor: "#f07a3d", backgroundColor: "#0b0c0f" }',
     );

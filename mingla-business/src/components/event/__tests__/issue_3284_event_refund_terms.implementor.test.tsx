@@ -182,7 +182,7 @@ jest.mock("../../../store/liveEventStore", () => ({
     selector({ updateLiveEventFields: mockUpdateLiveEventFields }),
 }));
 
-import { semantic } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 import { PARTY_TYPE_SLUGS } from "../../../constants/eventTaxonomy";
 import {
   EVENT_FLEXIBLE_POLICY,
@@ -372,7 +372,7 @@ describe("ED — RefundPolicyEditor on an event (E1–E12)", () => {
   });
 
   test("ED-3 tier inputs name the event and error text uses the AA errorText token", async () => {
-    expect(semantic.errorText).toBe("#f87171");
+    expect(color.errorText).toBe("#f87171");
     const invalid: RefundPolicy = {
       kind: "custom",
       tiers: [

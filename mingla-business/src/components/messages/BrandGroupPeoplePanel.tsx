@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 
-import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, scrim, space } from "../../constants/designSystem";
 import type { BrandGroupMember } from "../../services/brandGroupRosterService";
 import { Icon } from "../ui/Icon";
 
@@ -58,7 +58,7 @@ export function BrandGroupPeoplePanel({
         </View>
         {onClose ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Close people list" onPress={onClose} style={styles.iconButton}>
-            <Icon name="close" size={18} color={textTokens.primary} />
+            <Icon name="close" size={18} color={color.text1} />
           </Pressable>
         ) : null}
       </View>
@@ -68,7 +68,7 @@ export function BrandGroupPeoplePanel({
           #4270's check). */}
 
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-        {loading ? <ActivityIndicator color={accent.warm} style={styles.state} /> : error ? (
+        {loading ? <ActivityIndicator color={color.text2} style={styles.state} /> : error ? (
           <Text style={styles.stateText}>{error}</Text>
         ) : members.length === 0 ? (
           <Text style={styles.stateText}>No current teammates were found.</Text>
@@ -93,8 +93,8 @@ export function BrandGroupPeoplePanel({
           value={muted}
           onValueChange={onToggleMute}
           disabled={muteBusy}
-          trackColor={{ false: "rgba(255,255,255,0.12)", true: accent.warm }}
-          thumbColor="#ffffff"
+          trackColor={{ false: color.fill.step, true: color.paper }}
+          thumbColor={color.textStrong}
           accessibilityLabel="Mute notifications"
           accessibilityState={{ checked: muted, disabled: muteBusy }}
         />
@@ -118,27 +118,27 @@ export function BrandGroupPeopleSheet(props: BrandGroupPeoplePanelProps & { visi
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.62)" },
-  sheet: { height: "72%", maxHeight: "78%", overflow: "hidden", paddingTop: 8, borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: 1, borderBottomWidth: 0, borderColor: glass.border.profileElevated, backgroundColor: canvas.profile },
-  handle: { width: 38, height: 4, alignSelf: "center", marginBottom: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.28)" },
-  panel: { flex: 1, minHeight: 0, backgroundColor: canvas.profile },
-  header: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
+  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: scrim.modal },
+  sheet: { height: "72%", maxHeight: "78%", overflow: "hidden", paddingTop: 8, borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: 1, borderBottomWidth: 0, borderColor: color.lineStrong, backgroundColor: color.canvas },
+  handle: { width: 38, height: 4, alignSelf: "center", marginBottom: 4, borderRadius: 2, backgroundColor: color.fill.handle },
+  panel: { flex: 1, minHeight: 0, backgroundColor: color.canvas },
+  header: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
   headerCopy: { flex: 1, minWidth: 0 },
-  title: { color: textTokens.primary, fontSize: 17, fontWeight: "800" },
-  subtitle: { marginTop: 3, color: textTokens.tertiary, fontSize: 11 },
-  iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, borderWidth: 1, borderColor: glass.border.profileElevated },
+  title: { color: color.text1, fontSize: 17, fontWeight: "800" },
+  subtitle: { marginTop: 3, color: color.text3, fontSize: 11 },
+  iconButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, borderWidth: 1, borderColor: color.lineStrong },
   list: { flex: 1, minHeight: 120 },
-  listContent: { paddingHorizontal: spacing.md },
-  state: { margin: spacing.xl },
-  stateText: { padding: spacing.xl, color: textTokens.secondary, textAlign: "center" },
-  memberRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
-  avatar: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19, backgroundColor: "rgba(235,120,37,0.20)" },
-  avatarText: { color: accent.warm, fontSize: 11, fontWeight: "900" },
+  listContent: { paddingHorizontal: space[4] },
+  state: { margin: space[7] },
+  stateText: { padding: space[7], color: color.text2, textAlign: "center" },
+  memberRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[2], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  avatar: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19, backgroundColor: color.fill.tile },
+  avatarText: { color: color.text1, fontSize: 11, fontWeight: "900" },
   memberCopy: { flex: 1, minWidth: 0 },
-  memberName: { color: textTokens.primary, fontSize: 12, fontWeight: "800" },
-  memberEmail: { marginTop: 2, color: textTokens.tertiary, fontSize: 10 },
-  role: { maxWidth: 72, overflow: "hidden", paddingHorizontal: 7, paddingVertical: 5, borderRadius: 9, borderWidth: 1, borderColor: "rgba(235,120,37,0.32)", color: accent.warm, fontSize: 8, fontWeight: "800" },
-  notificationRow: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderTopWidth: 1, borderTopColor: glass.border.profileBase },
-  notificationTitle: { color: textTokens.primary, fontSize: 12, fontWeight: "800" },
-  notificationBody: { marginTop: 2, color: textTokens.tertiary, fontSize: 9 },
+  memberName: { color: color.text1, fontSize: 12, fontWeight: "800" },
+  memberEmail: { marginTop: 2, color: color.text3, fontSize: 10 },
+  role: { maxWidth: 72, overflow: "hidden", paddingHorizontal: 7, paddingVertical: 5, borderRadius: 9, borderWidth: 1, borderColor: color.lineStrong, color: color.text1, fontSize: 8, fontWeight: "800" },
+  notificationRow: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderTopWidth: 1, borderTopColor: color.line },
+  notificationTitle: { color: color.text1, fontSize: 12, fontWeight: "800" },
+  notificationBody: { marginTop: 2, color: color.text3, fontSize: 9 },
 });

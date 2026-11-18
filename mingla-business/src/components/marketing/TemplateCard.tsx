@@ -9,13 +9,7 @@
 import React, { useCallback, useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 import type { MarketingTemplateRow } from "../../types/marketing";
 
@@ -64,7 +58,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({ template, onPress })
             <Text style={styles.pillText}>Read-only</Text>
           </View>
         ) : null}
-        <Icon name="chevR" size={16} color={textTokens.tertiary} />
+        <Icon name="chevR" size={16} color={color.text3} />
       </View>
       <Text style={styles.preview} numberOfLines={1}>
         {preview}
@@ -75,13 +69,13 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({ template, onPress })
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.lg,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     gap: 2,
     minHeight: 64,
   },
@@ -91,29 +85,29 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    gap: spacing.xs,
+    gap: space[1],
   },
   title: {
-    ...typography.body,
+    ...type.body,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     flex: 1,
   },
   pill: {
     paddingVertical: 2,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     borderRadius: radius.full,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   pillText: {
-    ...typography.micro,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   preview: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
 });

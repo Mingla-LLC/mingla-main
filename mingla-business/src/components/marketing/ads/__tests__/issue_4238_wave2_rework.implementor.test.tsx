@@ -30,6 +30,12 @@ jest.mock("../../../ari/AriOrb", () => ({ AriOrb: "AriOrb" }));
 jest.mock("../../../ari/ToolEditForm", () => ({ ToolEditForm: "ToolEditForm", isToolProposalEditable: () => false }));
 jest.mock("../../../../hooks/useBrands", () => ({ useBrandCascadePreview: () => ({ data: null, isLoading: false }) }));
 jest.mock("../../../../diagnostics/reportNonFatal", () => ({ reportNonFatal: jest.fn() }));
+// #4238: the lazy Host Ads chunk is one barrel; load only what Ari's card reads
+// so the screens (expo-router) stay out of this test.
+jest.mock("../../../../screens/hostAds/HostAdScreens", () => ({
+  AriAdCardExtras: require("../../../../components/ari/AriAdCardExtras").default,
+  hostAdAriRefusalIn: require("../../../../components/marketing/ads/hostAdManageCopy").hostAdAriRefusalIn,
+}));
 jest.mock("lucide-react-native", () => ({
   AlertTriangle: "AlertTriangle", Pencil: "Pencil", Play: "Play", Plus: "Plus", X: "X",
 }));

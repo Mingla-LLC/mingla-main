@@ -1,7 +1,9 @@
 /**
  * ORCH-0821 — StreamingText
- * Shows a thinking indicator (blinking cursor in ariPalette.cursor) for use
- * while Ari is generating a response. Buffered MVP — real word-by-word
+ * Shows a thinking indicator while Ari is generating a response.
+ * #4420 (Seth): no lone caret in an empty pill. Before the first token the
+ * bubble holds three pulsing dots beside the thinking orb, and the row keeps
+ * the thread's screen gutter (space[4]) so the orb never touches the edge. Buffered MVP — real word-by-word
  * streaming is a Phase 1.5 enhancement.
  */
 
@@ -17,11 +19,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import {
-  ariPalette,
-  ariThread,
-  glass,
-} from "../../constants/designSystem";
+import { ariPalette, ariThread, color, materials, space } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
 
 export interface StreamingTextProps {
@@ -61,8 +59,10 @@ export const StreamingText: React.FC<StreamingTextProps> = ({ visible }) => {
       <View style={styles.orbWrap}>
         <AriOrb size="sm" thinking decorative />
       </View>
-      <View style={styles.bubble}>
-        <Animated.View style={[styles.cursor, cursorStyle]} />
+      <View style={styles.bubble} testID="ari-thinking-dots">
+        <Animated.View style={[styles.dot, cursorStyle]} />
+        <Animated.View style={[styles.dot, styles.dotMid]} />
+        <Animated.View style={[styles.dot, cursorStyle]} />
       </View>
     </View>
   );
@@ -72,6 +72,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
+    paddingHorizontal: space[4],
   },
   orbWrap: {
     marginTop: 2,
@@ -80,7 +81,7 @@ const styles = StyleSheet.create({
   bubble: {
     // Android opaque equivalent; iOS/web keep glass + hairline (matches ChatBubble).
     backgroundColor:
-      Platform.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileBase,
+      Platform.OS === "android" ? materials.pane.solidFill : color.fill.inset,
     borderTopLeftRadius: ariThread.bubbleTail, // 4 tail
     borderTopRightRadius: ariThread.bubbleRadius, // 16
     borderBottomLeftRadius: ariThread.bubbleRadius,
@@ -90,14 +91,21 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...(Platform.OS === "android"
       ? {}
-      : { borderWidth: 1, borderColor: glass.border.profileBase }),
+      : { borderWidth: 1, borderColor: color.line }),
     minWidth: 36,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
+    gap: space[1],
   },
-  cursor: {
-    width: 2,
-    height: 14, // matches premium chat font-size, not the older 24pt body line-height
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: ariPalette.cursor,
+  },
+  dotMid: {
+    opacity: 0.6,
   },
 });
 

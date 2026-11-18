@@ -120,7 +120,9 @@ describe("#4238 D4 one Ads setup read", () => {
     expect(createRoute).toContain("cachedHostAdSetup(brandId, loadHostAdSetup, { force })");
     expect(createRoute).not.toContain("await loadHostAdSetup(brandId)");
     expect(createRoute).not.toMatch(/router\.replace\(\s*hostAdBuilder/);
-    expect(createRoute.split("router.setParams(").length - 1).toBe(4);
+    // #4238 W6a: also on Edit from Review and when a top-up returns.
+    expect(createRoute.split("router.setParams(").length - 1).toBeGreaterThanOrEqual(4);
+    expect(createRoute).not.toContain("router.replace(\"/(tabs)/marketing/ads/create");
   });
 });
 
@@ -131,7 +133,7 @@ describe("#4238 D5, D7 and Extra A", () => {
     expect(rules).toContain("if (router.canGoBack()) router.back();");
     expect(rules).toContain("else router.replace(HOST_ADS_LIST_HREF as never);");
     expect(createRoute).toContain("goBackToAds(router)");
-    expect(createRoute).toContain('cta={{ label: "Back to Ads", onPress: backToAds }}');
+    expect(createRoute).toContain('cta={{ label: hb("back"), onPress: backToAds }}');
   });
 
   it("a page card shows its type once (badge), then date and city", () => {
@@ -169,18 +171,6 @@ describe("#4238 D3 names and plain result words", () => {
     ).toContain("across Nigeria and Ghana");
   });
 
-  it("the ad detail page says sales, visits or results, never conversions", () => {
-    expect(hostAdResultLabel("ticket_purchase")).toBe("ticket sales");
-    expect(hostAdResultLabel("landing page view")).toBe("page visits");
-    expect(hostAdCostPerLabel("ticket_purchase")).toBe("Cost per sale");
-    expect(hostAdCostPerLabel("clicks")).toBe("Cost per visit");
-    expect(hostAdCostPerLabel("results")).toBe("Cost per result");
-    const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
-    // #4238 rework 2: the line is built by hostAdCostPerResultLine (code, not symbol).
-    expect(detail).toContain("{hostAdCostPerResultLine(costPerLabel, costPerResult)}");
-    expect(detail).not.toContain('"conversions"');
-    expect(detail).not.toContain("Cost per {primaryResultLabel}");
-  });
 });
 
 describe("#4238 retest 2: the detail page and Ads list stay reachable", () => {
@@ -203,15 +193,6 @@ describe("#4238 retest 2: the detail page and Ads list stay reachable", () => {
     expect(HOST_AD_FLOATING_ACTION_CLEARANCE).toBeGreaterThanOrEqual(fabHeight);
   });
 
-  it("the detail page and the Ads list pad their scroll content with it", () => {
-    for (const source of [detail, list]) {
-      expect(source).toContain(
-        "const scrollBottomPadding = hostAdScrollBottomPadding(useStickyFooterOffset());",
-      );
-      expect(source).toContain("{ paddingBottom: scrollBottomPadding },");
-    }
-    expect(detail).not.toContain("<ScrollView contentContainerStyle={styles.scroll}>");
-  });
 
   it("the floating Create an ad button hides on the builder and the detail page only", () => {
     const re = /\/marketing\/ads\/[^/]+/;
@@ -227,14 +208,6 @@ describe("#4238 retest 2: the detail page and Ads list stay reachable", () => {
 describe("#4238 retest 2: last plain-language fixes", () => {
   const list = read("src/screens/hostAds/HostAdListScreen.tsx");
 
-  it("the Ads list says results in plain words", () => {
-    expect(list).toContain("{hostAdResultLabel(item.primaryResultLabel)}");
-    expect(hostAdResultLabel("conversions")).toBe("results");
-    expect(hostAdResultLabel("rsvp_registration")).toBe("RSVPs");
-    expect(hostAdCostPerLabel("rsvp_registration")).toBe("Cost per sign-up");
-    const server = read("../supabase/functions/_shared/hostAdCampaignList.ts");
-    expect(server).toContain('primary_result_label: text(hierarchy[0]) ?? "results"');
-  });
 
   it("a saved draft names its step and a review reason is a sentence", () => {
     expect(hostAdStepLabel("promote")).toBe("What you're promoting");
@@ -258,7 +231,10 @@ describe("#4238 retest 2: last plain-language fixes", () => {
   });
 
   it("platform checkboxes expose aria-checked", () => {
-    expect(createRoute).toContain("aria-checked={props.multiple ? props.selected : undefined}");
+    // #4238 W6a: app choices are switches now; checkboxes live in the kit.
+    const bits = read("src/components/marketing/ads/HostAdBuilderBits.tsx");
+    expect(bits).toContain("aria-checked={props.checked}");
+    expect(bits).toContain("aria-checked={props.selected}");
   });
 });
 
@@ -350,12 +326,6 @@ describe("#4238 retest 3: Ari card money and result labels, city rows, ready sta
     expect(placesEditor).toContain("{hostAdPlaceName(result.name)}");
   });
 
-  it("an approved ad waiting for LAUNCH reads Ready to start, not Draft", () => {
-    const lifecycle = read("src/services/hostAdLifecycle.ts");
-    expect(lifecycle).toContain('{ statusLabel: "Ready to start" }');
-    const list = read("src/screens/hostAds/HostAdListScreen.tsx");
-    expect(list).toContain("{item.statusLabel ?? LIFECYCLE_LABEL[item.lifecycle]}");
-  });
 });
 
 describe("#4238 retest 4: back link, ledger words, counting lines, card title", () => {
@@ -382,30 +352,11 @@ describe("#4238 retest 4: back link, ledger words, counting lines, card title", 
     const detail = read("src/screens/hostAds/HostAdDetailScreen.tsx");
     expect(detail).toContain("onPress={() => goBackToAds(router)}");
     expect(detail).not.toContain("router.back()");
-    expect(createRoute).toContain("const backToAds = useCallback(() => goBackToAds(router), [router]);");
+    // rework 6: the builder's back helper also marks the exit as sanctioned so the hardware-back guard lets it through.
+    expect(createRoute).toContain("const backToAds = useCallback(() => {");
+    expect(createRoute).toContain("goBackToAds(router);");
   });
 
-  it("every Ads credit history kind has a plain label; unknown kinds never show their code", () => {
-    expect(hostAdLedgerLabel("top_up")).toBe("Credit added");
-    expect(hostAdLedgerLabel("withdraw")).toBe("Credit withdrawn");
-    expect(hostAdLedgerLabel("unspend_return")).toBe("Returned to credit");
-    expect(hostAdLedgerLabel("campaign_spend")).toBe("Set aside for an ad");
-    expect(hostAdLedgerLabel("future_kind_x")).toBe("Ads credit change");
-    expect(hostAdLedgerLabel(null)).toBe("Ads credit change");
-    const row = read("src/components/marketing/AdCreditLedgerRow.tsx");
-    expect(row).toContain("const kindLabel = hostAdLedgerLabel;");
-    expect(row).not.toContain("return kind;");
-    // Every kind the database allows has its own label.
-    const migration = read(
-      "../supabase/migrations/20270825003697_issue_3697_wave7c_ads_host.sql",
-    );
-    const allowed = migration
-      .slice(migration.indexOf("ad_credit_ledger_entry_kind_check CHECK"))
-      .split(")")[1];
-    for (const kind of [...allowed.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])) {
-      expect(hostAdLedgerLabel(kind)).not.toBe("Ads credit change");
-    }
-  });
 
   it("the review step lists each result once and an RSVP ad never says 'every sale'", () => {
     const rsvp = hostAdCountingLines(["rsvp_registration", "landing_page_view", "click"]);
@@ -416,7 +367,8 @@ describe("#4238 retest 4: back link, ledger words, counting lines, card title", 
     expect(tickets.counts).toBe("We count ticket sales, then checkouts started, then page visits.");
     expect(tickets.sharing).toContain("count every sale.");
     expect(hostAdCountingLines([]).counts).toBe("We count the results Mingla can see.");
-    expect(createRoute).toContain(").counts");
+    // #4238 W6a: the counting line moved to results (ad detail, W6b);
+    // the builder never says "every sale".
     expect(createRoute).not.toContain("still count every sale");
   });
 

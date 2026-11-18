@@ -12,9 +12,9 @@
 --   4. A successful claim JOINS THE EVENT CHAT through the same helper the
 --      identity rail uses, and reports `chatJoined` + `conversationId` read back
 --      AFTER the join.
---   5. An `experience` order legitimately has no chat, claims successfully, and
---      reports `chatJoined = false` — the RPC never promises a chat it did not
---      join.
+--   5. An `experience` order claims successfully and, since #4459, joins the
+--      brand's one Guest chat like every other listing type; `chatJoined` is
+--      still read back after the join, never assumed.
 --   6. The desktop handoff code mints, redeems once, and runs THE claim body
 --      (identity predicate included) rather than a second copy of it.
 --
@@ -214,7 +214,7 @@ INSERT INTO public.orders(
   (pg_temp.i3524_uuid('order-29'), pg_temp.i3524_uuid('event'),
    'carol@example.test', '+15550100103', 'Carol', 1000, 'USD', 'paid', 'online_checkout',
    decode(repeat('33', 32), 'hex'), 'governed_v2', now() - interval '29 days'),
-  -- an experience: no group chat exists for it, and none can be created
+  -- an experience: since #4459 it joins the brand Guest chat too
   (pg_temp.i3524_uuid('order-exp'), pg_temp.i3524_uuid('exp'),
    'dave@example.test', '+15550100104', 'Dave', 1000, 'USD', 'paid', 'online_checkout',
    decode(repeat('44', 32), 'hex'), 'governed_v2', now()),
@@ -592,11 +592,12 @@ BEGIN
        FROM public.orders WHERE id = pg_temp.i3524_uuid('order-fresh')),
     'a SUCCESSFUL claim is what consumes the token');
 
-  -- ONE writer: exactly one conversation for the event, one participant row.
+  -- ONE writer: exactly one Guest chat for the brand (#4459), one participant row.
   SELECT count(*) INTO v_n FROM public.conversations
-   WHERE event_id = v_event AND linked_entity_type IN ('trip', 'event');
-  PERFORM pg_temp.i3524_ok(v_n = 1,
-    'add_buyer_to_event_chat ran once — one conversation, never a second writer');
+   WHERE brand_id = pg_temp.i3524_uuid('brand') AND linked_entity_type = 'brand_guests';
+  PERFORM pg_temp.i3524_ok(v_n = 1 AND v_conv = (SELECT id FROM public.conversations
+     WHERE brand_id = pg_temp.i3524_uuid('brand') AND linked_entity_type = 'brand_guests'),
+    'add_buyer_to_event_chat joins the brand Guest chat — one conversation, never a second writer');
   SELECT count(*) INTO v_n FROM public.conversation_participants
    WHERE conversation_id = v_conv AND user_id = pg_temp.i3524_uuid('owner');
   PERFORM pg_temp.i3524_ok(v_n = 1, 'exactly one participant row for the claimant');
@@ -622,23 +623,23 @@ BEGIN
   PERFORM pg_temp.i3524_ok(v_res->>'result' = 'claimed',
     'a 29-day-old link still works — the constant is 30 days, not "recent"');
 
-  -- ── (5) AN EXPERIENCE CLAIMS, AND IS TOLD THE TRUTH ───────────────────────
+  -- ── (5) AN EXPERIENCE CLAIMS AND JOINS THE BRAND GUEST CHAT (#4459) ────────
   v_res := public.claim_attendance_internal_v2(
     pg_temp.i3524_uuid('owner4'), 'order', v_exp,
     pg_temp.i3524_uuid('order-exp'), decode(repeat('44', 32), 'hex'));
   PERFORM pg_temp.i3524_ok(v_res->>'result' = 'claimed',
     'an experience order claims successfully');
-  PERFORM pg_temp.i3524_ok((v_res->>'chatJoined')::boolean IS FALSE,
-    'chatJoined is FALSE for an event type that has no chat');
-  PERFORM pg_temp.i3524_ok(v_res->>'conversationId' IS NULL,
-    'and no conversation id is invented');
+  PERFORM pg_temp.i3524_ok((v_res->>'chatJoined')::boolean,
+    'chatJoined is true: an experience guest is in the brand Guest chat');
+  PERFORM pg_temp.i3524_ok((v_res->>'conversationId')::uuid = v_conv,
+    'and the conversation is the same brand Guest chat as the event''s');
   PERFORM pg_temp.i3524_ok(
     (SELECT buyer_user_id FROM public.orders
       WHERE id = pg_temp.i3524_uuid('order-exp')) = pg_temp.i3524_uuid('owner4'),
     'the ticket is still linked — no chat is not a failed claim');
   SELECT count(*) INTO v_n FROM public.conversations WHERE event_id = v_exp;
   PERFORM pg_temp.i3524_ok(v_n = 0,
-    'no conversation was conjured for the experience');
+    'no per-listing conversation was conjured for the experience');
 
   -- ── (6) THE DESKTOP HANDOFF: MINT -> REDEEM -> THE ONE CLAIM BODY ─────────
   v_res := public.mint_attendance_claim_handoff(
@@ -673,8 +674,9 @@ BEGIN
   PERFORM pg_temp.i3524_ok(
     (SELECT count(*) FROM public.conversation_participants cp
       JOIN public.conversations c ON c.id = cp.conversation_id
-     WHERE c.event_id = v_event AND cp.user_id = pg_temp.i3524_uuid('owner5')) = 1,
-    'the scanned-code claimant is in the one event conversation');
+     WHERE c.brand_id = pg_temp.i3524_uuid('brand') AND c.linked_entity_type = 'brand_guests'
+       AND cp.user_id = pg_temp.i3524_uuid('owner5')) = 1,
+    'the scanned-code claimant is in the one brand Guest chat');
 
   -- ── (7) THE ATTEMPT LEDGER LEARNED BOTH NEW OUTCOMES ──────────────────────
   INSERT INTO public.attendance_claim_attempts(user_id, kind, completed_at, outcome)

@@ -8,7 +8,6 @@ import {
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import type { PhoneInputTheme } from "@mingla/phone-input";
 import { parsePhoneEntry } from "@mingla/phone-input/phoneNumber";
 
 import {
@@ -27,6 +26,12 @@ import {
   type PurchaseTicket,
 } from "../../services/purchasesService";
 import { postHogService } from "../../services/postHogService";
+import {
+  PURCHASE_SHEET_BACKGROUND,
+  PURCHASE_SHEET_COLORS as C,
+  PURCHASE_SHEET_HANDLE,
+  PURCHASE_SHEET_PHONE_THEME,
+} from "./purchaseSheetTheme";
 
 type Props = {
   ticket: PurchaseTicket | null;
@@ -37,21 +42,6 @@ type Props = {
 };
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SEND_PHONE_THEME: PhoneInputTheme = {
-  backgroundPrimary: "#fff",
-  textPrimary: "#17191e",
-  textTertiary: "#8b8f96",
-  borderDefault: "#d8dbe0",
-  borderFocused: "#eb7825",
-  borderError: "#b42318",
-  searchBackground: "#f4f5f7",
-  rowPressedBackground: "#f4f5f7",
-  divider: "#e6e8ec",
-  accessoryBackground: "#fff",
-  accessoryBorder: "#e6e8ec",
-  accent: "#eb7825",
-  errorText: "#b42318",
-};
 
 export function SendTicketSheet({
   ticket,
@@ -191,7 +181,9 @@ export function SendTicketSheet({
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       snapPoints={["68%"]}
-      theme="light"
+      theme="dark"
+      backgroundStyle={PURCHASE_SHEET_BACKGROUND}
+      handleStyle={PURCHASE_SHEET_HANDLE}
       visible={visible}
       wrapInRNModal
     >
@@ -210,7 +202,7 @@ export function SendTicketSheet({
             scrollFormTo(0);
           }}
           placeholder={t("send.namePlaceholder")}
-          placeholderTextColor="#8b8f96"
+          placeholderTextColor={C.placeholder}
           style={styles.input}
           value={name}
         />
@@ -228,7 +220,7 @@ export function SendTicketSheet({
             scrollFormTo(0);
           }}
           placeholder={t("send.emailPlaceholder")}
-          placeholderTextColor="#8b8f96"
+          placeholderTextColor={C.placeholder}
           style={styles.input}
           textContentType="emailAddress"
           value={email}
@@ -254,7 +246,7 @@ export function SendTicketSheet({
             required
             smartEntry
             testID="send-ticket-phone"
-            theme={SEND_PHONE_THEME}
+            theme={PURCHASE_SHEET_PHONE_THEME}
             value={phoneInput}
           />
         </View>
@@ -298,45 +290,54 @@ export function SendTicketSheet({
 }
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 36 },
+  body: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 36 },
   title: {
-    color: "#17191e",
+    color: C.text,
     fontSize: 24,
     fontWeight: "800",
     marginBottom: 20,
   },
   input: {
     minHeight: 54,
-    borderRadius: 15,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#d8dbe0",
-    backgroundColor: "#fff",
-    color: "#17191e",
+    borderColor: C.borderStrong,
+    backgroundColor: C.field,
+    color: C.text,
     fontSize: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     marginBottom: 12,
   },
   label: {
-    color: "#4e535b",
+    color: C.textLabel,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
     marginBottom: 7,
   },
   phoneField: { marginBottom: 10 },
-  deliveryNote: { color: "#4e535b", fontSize: 13, lineHeight: 19 },
-  explainer: { color: "#60656e", fontSize: 14, lineHeight: 21, marginTop: 2 },
-  error: { color: "#b42318", fontSize: 13, lineHeight: 18, marginTop: 13 },
+  deliveryNote: { color: C.textMeta, fontSize: 12, lineHeight: 18 },
+  explainer: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: C.field,
+    overflow: "hidden",
+  },
+  error: { color: C.error, fontSize: 13, lineHeight: 18, marginTop: 13 },
   submit: {
-    minHeight: 52,
-    borderRadius: 15,
-    backgroundColor: "#eb7825",
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 20,
+    marginTop: 16,
   },
-  submitText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  submitText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   position: {
-    color: "#8b8f96",
+    color: C.textMeta,
     fontSize: 12,
     textAlign: "center",
     marginTop: 12,

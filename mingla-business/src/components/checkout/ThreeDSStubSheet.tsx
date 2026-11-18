@@ -17,11 +17,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  semantic,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
+import { checkoutStyles, color } from "./checkoutTheme";
 
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -122,44 +119,44 @@ export const ThreeDSStubSheet: React.FC<ThreeDSStubSheetProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    gap: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
+    gap: space[4],
   },
   title: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.3,
   },
   subhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
   codeWrap: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   errorText: {
     marginTop: 6,
     fontSize: 12,
-    color: semantic.error,
+    color: color.danger,
     fontWeight: "500",
   },
   stubHint: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
   },
   actions: {
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   cancelSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
-});
+}));
 
 export default ThreeDSStubSheet;

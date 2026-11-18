@@ -257,6 +257,9 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
   const MIN_VISIBLE_CLEARANCE = 12;
   const BOTTOM_NAV_CLEARANCE_PX = 80;
   const spacing = { md: 16, sm: 8 };
+  // [TEST-MOD-APPROVED #4420] the screen reads the Graphite `space` scale now
+  // (space[2] = spacing.sm, space[4] = spacing.md); the arithmetic is unchanged.
+  const space = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 32, 8: 40, 9: 48, 10: 64 };
 
   type Device = {
     name: string;
@@ -329,6 +332,7 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
             keyboardHeight,
             insets,
             spacing,
+            space,
             composerContentHeight,
             DONE_BAR_OCCUPIED,
             MIN_VISIBLE_CLEARANCE,

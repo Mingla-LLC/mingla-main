@@ -3,13 +3,12 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 import { Calendar, Clock, UtensilsCrossed } from "lucide-react-native";
 
 import {
-  accent,
-  androidOpaque,
   radius,
   restaurantHubLayout,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -18,8 +17,8 @@ export type VenueHubEmptyIcon = "reservations" | "waitlist" | "menu";
 
 export function emptyIconBorderColor(platform: string): string {
   // #2726: Android's blur-free icon chip needs the approved opaque warm edge;
-  // translucent accent.border remains correct over real/fallback web glass.
-  return platform === "android" ? accent.warm : accent.border;
+  // translucent color.accentLine remains correct over real/fallback web glass.
+  return platform === "android" ? color.accent : color.accentLine;
 }
 
 export interface VenueHubEmptyStateProps {
@@ -37,7 +36,7 @@ export interface VenueHubEmptyStateProps {
 }
 
 function EmptyIcon({ icon }: { icon: VenueHubEmptyIcon }): React.ReactElement {
-  const props = { size: 24, color: accent.warm } as const;
+  const props = { size: 24, color: color.accent } as const;
   if (icon === "reservations") return <Calendar {...props} />;
   if (icon === "waitlist") return <Clock {...props} />;
   return <UtensilsCrossed {...props} />;
@@ -97,7 +96,7 @@ export function VenueHubEmptyState({
               variant="primary"
               size="md"
               shape="pill"
-              accentColor={accent.warm}
+              accentColor={color.accent}
               loading={loading}
               disabled={disabled}
               fullWidth={false}
@@ -128,36 +127,36 @@ const styles = StyleSheet.create({
     maxWidth: restaurantHubLayout.emptyContentMaxWidth,
     alignSelf: "center",
     alignItems: "center",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   iconContainer: {
-    width: spacing.xxl,
-    height: spacing.xxl,
+    width: space[9],
+    height: space[9],
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.md,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.accentFill : accent.tint,
+    marginBottom: space[4],
+    backgroundColor: Platform.OS === "android" ? materials.selected.solidFill : color.accentLine,
     borderColor: emptyIconBorderColor(Platform.OS),
     borderWidth: 1,
     overflow: "hidden",
     elevation: 0,
   },
   title: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   action: {
     alignSelf: "center",
     maxWidth: restaurantHubLayout.compactCtaMaxWidth,
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
 });
 

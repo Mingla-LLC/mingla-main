@@ -21,12 +21,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../src/constants/designSystem";
 import type { ScannerInvitationRow } from "../../../../src/services/scannerInvitationsService";
 import { useAuth } from "../../../../src/context/AuthContext";
@@ -75,14 +72,6 @@ const formatRelativeTime = (iso: string | null | undefined): string => {
     return `${Math.floor(delta / RELATIVE_TIME_MS.hour)}h ago`;
   }
   return `${Math.floor(delta / RELATIVE_TIME_MS.day)}d ago`;
-};
-
-const hashStringToHue = (s: string): number => {
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) {
-    hash = (hash * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
 };
 
 const getInitials = (name: string | null | undefined): string => {
@@ -221,7 +210,7 @@ export default function EventScannersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -250,7 +239,7 @@ export default function EventScannersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -281,7 +270,7 @@ export default function EventScannersListRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -447,7 +436,6 @@ interface InvitationRowProps {
 const InvitationRow: React.FC<InvitationRowProps> = ({ invitation, onPress }) => {
   const displayName = invitation.invitee_name ?? invitation.email;
   const initials = getInitials(displayName);
-  const hue = hashStringToHue(invitation.id);
   const subline = `${invitation.email} · invited ${formatRelativeTime(invitation.created_at ?? null)}`;
   const pill = invitationStatusPill(invitation.status);
 
@@ -459,10 +447,7 @@ const InvitationRow: React.FC<InvitationRowProps> = ({ invitation, onPress }) =>
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View
-        style={[
-          styles.avatar,
-          { backgroundColor: `hsl(${hue}, 60%, 45%)` },
-        ]}
+        style={styles.avatar}
       >
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
@@ -493,22 +478,22 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
   chromeRight: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chromeRightSlot: {
     width: 36,
@@ -517,34 +502,35 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + 2,
-    padding: spacing.md - 2,
+    gap: space[2] + 2,
+    padding: space[4] - 2,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   rowPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
   },
   avatar: {
+    backgroundColor: color.fill.step,
     width: 40,
     height: 40,
     borderRadius: 999,
@@ -555,7 +541,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowBody: {
     flex: 1,
@@ -564,11 +550,11 @@ const styles = StyleSheet.create({
   rowName: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSubline: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   rowPills: {
@@ -581,32 +567,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radiusTokens.sm,
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   permPillText: {
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 1.0,
-    color: accent.warm,
+    color: color.text1,
   },
   actionSheet: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   actionTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     marginBottom: 4,
   },
   actionEmail: {
     fontSize: 13,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    marginBottom: space[2],
   },
   actionPills: {
     flexDirection: "row",
@@ -614,13 +600,13 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
   actionDisabledNote: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   toastWrap: {
     position: "absolute",

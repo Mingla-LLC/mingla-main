@@ -14,8 +14,8 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 
@@ -89,7 +89,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
     <GlassCard
       variant="elevated"
       radius="lg"
-      padding={spacing.lg}
+      padding={space[6]}
       style={styles.card}
     >
       <View style={styles.row}>
@@ -161,13 +161,13 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   col: {
     flex: 1,
@@ -179,30 +179,30 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginBottom: 4,
   },
   labelSecond: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   bigValue: {
     fontSize: 26,
     fontWeight: "700",
     letterSpacing: -0.4,
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   midValue: {
     fontSize: 16,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
     fontVariant: ["tabular-nums"],
   },
   coveredLine: {
     fontSize: 12,
-    color: textTokens.secondary,
-    marginTop: -spacing.sm,
-    marginBottom: spacing.md,
+    color: color.text2,
+    marginTop: -space[2],
+    marginBottom: space[4],
   },
 });
 

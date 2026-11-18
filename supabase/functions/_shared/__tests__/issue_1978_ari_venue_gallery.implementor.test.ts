@@ -118,7 +118,7 @@ Deno.test("#1978 implementor: PROMPT_VERSION advertises manage_venue_gallery", (
   // [TEST-MOD-APPROVED #1976] Prompt revision advanced for payout/tax connect-status ads.
   // [TEST-MOD-APPROVED #1980] Prompt revision advanced for marketing draft/growth report tools.
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v38"); // #4453 PR 2: booking lock website rules on top of the #3355 + #4389 prompt
+  assertEquals(PROMPT_VERSION, "v39"); // #4453 PR 2 booking lock website rules on top of #4238 W5 v38
   // #3355 Wave B: tools are advertised by the capability index (it feeds
   // each tool's generated description), no longer pasted into the prompt.
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +

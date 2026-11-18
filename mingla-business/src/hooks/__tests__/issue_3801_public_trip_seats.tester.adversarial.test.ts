@@ -185,7 +185,8 @@ describe("issue #3801 tester — the seats pill under hostile reader responses",
 
   it("is sold out only when the last open seat is gone", async () => {
     expect(await pill([capped("A", 8, 0), capped("B", 2, 0), capped("C", 1, 1)])).toBe(
-      "1 seats left · 11 max",
+      // [TEST-MOD-APPROVED #4420] singular seat copy.
+      "1 seat left · 11 max",
     );
     expect(await pill([capped("A", 8, 0), capped("B", 2, 0), capped("C", 1, 0)])).toBe(
       "Sold out · 11 of 11 booked",

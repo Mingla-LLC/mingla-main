@@ -19,10 +19,7 @@
 import React, { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import {
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+
 import { useAuth } from "../../context/AuthContext";
 import {
   useAcceptMyInvitation,
@@ -37,6 +34,7 @@ import { Toast } from "../ui/Toast";
 
 import { acceptErrorCopy } from "./inviteAcceptErrorCopy";
 
+import { color, space } from "../../constants/designSystem";
 export interface InvitePendingSheetProps {
   invitationId: string;
   brandName: string;
@@ -173,30 +171,30 @@ function declineErrorMessageFor(err: unknown): string {
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingTop: space[4],
+    paddingBottom: space[7],
     flex: 1,
+    // #4420: the Sheet owns the 20pt side padding; no second inset here.
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   subhead: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   actions: {
     marginTop: "auto",
-    paddingTop: spacing.sm,
+    paddingTop: space[2],
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
   toastWrap: {
     position: "absolute",
@@ -206,7 +204,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: "flex-end",
     alignItems: "center",
-    padding: spacing.lg,
+    padding: space[6],
   },
 });
 

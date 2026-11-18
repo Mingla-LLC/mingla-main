@@ -14,7 +14,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import {
   radius as radiusTokens,
-  text as textTokens,
+  color,
 } from "../../constants/designSystem";
 import { Pill } from "../ui/Pill";
 
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.primary,
+    color: color.text1,
   },
   pastPill: {
     flexDirection: "row",
@@ -83,14 +83,14 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     paddingHorizontal: 8,
     borderRadius: radiusTokens.full,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: color.line,
   },
   pastText: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.2,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });

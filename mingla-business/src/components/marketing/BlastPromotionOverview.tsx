@@ -57,17 +57,7 @@ import {
 } from "../../services/promotionOverview";
 import { fetchPromotionOverview } from "../../services/promotionOverviewService";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import {
-  accent,
-  androidOpaque,
-  canvas,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, materials, radius, shadow, space, type } from "../../constants/designSystem";
 
 export type OverviewListingParam = {
   kind: PromotionListingKind;
@@ -222,7 +212,7 @@ export function BlastPromotionOverview({
         },
         {
           key: "ads",
-          icon: "sparkle",
+          icon: "target",
           title: "Ads",
           subtitle: words.ads,
           path: "/(tabs)/marketing/ads",
@@ -300,7 +290,7 @@ export function BlastPromotionOverview({
               {scopeLabel}
             </Text>
           )}
-          <Icon name="chevD" size={16} color={textTokens.secondary} />
+          <Icon name="chevD" size={16} color={color.text2} />
         </Pressable>
         {listing !== null && !firstLoad ? (
           <Pressable
@@ -351,7 +341,7 @@ export function BlastPromotionOverview({
               <Icon
                 name="close"
                 size={16}
-                color={state.hovered && isWeb ? textTokens.primary : textTokens.secondary}
+                color={state.hovered && isWeb ? color.text1 : color.text2}
               />
             )}
           </Pressable>
@@ -370,7 +360,7 @@ export function BlastPromotionOverview({
           testID="blast-overview-error"
         >
           <View style={styles.errorTile}>
-            <Icon name="flag" size={20} color={semantic.warning} />
+            <Icon name="flag" size={20} color={color.warning} />
           </View>
           <View style={styles.errorText} role="alert">
             <Text style={styles.errorTitle}>{"Promotion results didn't load"}</Text>
@@ -484,7 +474,7 @@ function WayCard({
           contentStyle={[styles.wayContent, action ? styles.wayContentAction : null]}
         >
           <View style={styles.wayTile}>
-            <Icon name={way.icon} size={20} color={accent.warm} />
+            <Icon name={way.icon} size={20} color={color.text1} />
           </View>
           <View style={styles.wayText}>
             <View style={styles.wayTitleLine}>
@@ -503,7 +493,7 @@ function WayCard({
       <View pointerEvents="box-none" style={styles.wayActions}>
         {action}
         <View pointerEvents="none">
-          <Icon name="chevR" size={16} color={textTokens.tertiary} />
+          <Icon name="chevR" size={16} color={color.text3} />
         </View>
       </View>
     </View>
@@ -655,7 +645,7 @@ function PickerOption({
           <Icon
             name="check"
             size={20}
-            color={accent.warm}
+            color={color.text1}
             testID={testID !== undefined ? `${testID}-check` : undefined}
           />
         ) : null}
@@ -823,19 +813,19 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     height: 44,
     paddingLeft: 16,
     paddingRight: 14,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
-  pickerHover: { borderColor: accent.border },
-  pickerPrefix: { color: textTokens.tertiary, fontSize: 13, fontWeight: "600" },
+  pickerHover: { borderColor: color.lineStrong },
+  pickerPrefix: { color: color.text3, fontSize: 13, fontWeight: "600" },
   pickerValue: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "700",
     flexShrink: 1,
@@ -843,13 +833,13 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.85 },
   focusRing: {
-    outlineColor: accent.warm,
+    outlineColor: color.focus,
     outlineWidth: 2,
     outlineStyle: "solid",
     outlineOffset: 2,
   },
   focusRingCard: {
-    outlineColor: accent.warm,
+    outlineColor: color.focus,
     outlineWidth: 2,
     outlineStyle: "solid",
     outlineOffset: 2,
@@ -863,9 +853,9 @@ const styles = StyleSheet.create({
   },
   textButtonPressed: { opacity: 0.7 },
   textButtonLabel: {
-    ...typography.buttonMd,
+    ...type.btnSm,
     fontWeight: "700",
-    color: accent.warm,
+    color: color.text1,
   },
   textButtonHover: { textDecorationLine: "underline" },
   notice: {
@@ -877,10 +867,10 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: Platform.OS === "android" ? androidOpaque.accentFill : accent.tint,
+    borderColor: color.lineStrong,
+    backgroundColor: Platform.OS === "android" ? materials.selected.solidFill : color.fill.tile,
   },
-  noticeText: { flex: 1, color: textTokens.primary, fontSize: 14, lineHeight: 20 },
+  noticeText: { flex: 1, color: color.text1, fontSize: 14, lineHeight: 20 },
   // A real 44pt box (react-native-web ignores hitSlop); the negative margins
   // keep its layout footprint at the 32pt it had, so the notice looks the same.
   noticeDismiss: {
@@ -893,7 +883,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   guide: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
     lineHeight: 18,
     marginTop: -4,
@@ -911,11 +901,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: semantic.warningTint,
+    backgroundColor: color.warningTint,
   },
   errorText: { flex: 1, gap: 2 },
-  errorTitle: { color: textTokens.primary, fontSize: 16, lineHeight: 22, fontWeight: "700" },
-  errorBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  errorTitle: { color: color.text1, fontSize: 16, lineHeight: 22, fontWeight: "700" },
+  errorBody: { color: color.text2, fontSize: 14, lineHeight: 20 },
   errorAction: { flexDirection: "row", marginTop: 10 },
   waysGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   wayCell: {
@@ -936,18 +926,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tile,
   },
   wayText: { flex: 1, minWidth: 0, gap: 2, paddingRight: 28 },
-  wayTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  wayTitleLine: { flexDirection: "row", alignItems: "center", gap: space[2] },
   wayTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 16,
     lineHeight: 22,
     fontWeight: "600",
     flexShrink: 1,
   },
-  waySubtitle: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
+  waySubtitle: { color: color.text2, fontSize: 13, lineHeight: 18 },
   wayHoverRing: {
     position: "absolute",
     top: 0,
@@ -956,7 +946,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   wayActions: {
     position: "absolute",
@@ -977,22 +967,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: radius.md,
   },
-  optionHover: { backgroundColor: glass.tint.profileBase },
-  optionSelected: { backgroundColor: accent.tint },
+  optionHover: { backgroundColor: color.fill.inset },
+  optionSelected: { backgroundColor: color.fill.tabOn },
   optionText: { flex: 1, minWidth: 0, gap: 2 },
-  optionTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "600" },
-  optionSubtitle: { color: textTokens.secondary, fontSize: 13 },
+  optionTitle: { color: color.text1, fontSize: 15, fontWeight: "600" },
+  optionSubtitle: { color: color.text2, fontSize: 13 },
   optionCheck: { width: 20, height: 20 },
   optionGroup: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
     textTransform: "uppercase",
     marginTop: 12,
     marginBottom: 4,
     marginHorizontal: 12,
   },
   emptyOptions: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 13,
     lineHeight: 18,
     marginTop: 8,
@@ -1005,16 +995,16 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: canvas.profile,
+    borderColor: color.lineStrong,
+    backgroundColor: color.canvas,
     overflow: "scroll",
-    shadowColor: "#000",
+    shadowColor: shadow.pane.shadowColor,
     shadowOffset: { width: 0, height: 16 },
     shadowOpacity: 0.45,
     shadowRadius: 40,
   },
   menuTitle: {
-    color: textTokens.primary,
+    color: color.text1,
     fontSize: 15,
     fontWeight: "800",
     marginTop: 4,
@@ -1026,7 +1016,7 @@ const styles = StyleSheet.create({
   skeletonCellWide: { alignItems: "flex-start", paddingHorizontal: 24 },
   skeletonDivider: {
     borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: glass.border.profileElevated,
+    borderLeftColor: color.lineStrong,
   },
   skeletonLabel: { marginTop: 8 },
   skeletonRow: {

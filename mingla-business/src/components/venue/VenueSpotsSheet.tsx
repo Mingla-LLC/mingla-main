@@ -28,10 +28,9 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -438,18 +437,18 @@ export function VenueSpotsSheet({
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   heading: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   sub: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
-    marginBottom: spacing.sm,
+    ...type.small,
+    color: color.text2,
+    marginTop: 2,
+    marginBottom: space[2],
   },
   // Bound the scroll viewport to the panel so the CTA never overflows past the
   // panel's overflow:hidden (the ORCH-1193 sheet-cutoff contract).
@@ -457,44 +456,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingBottom: spacing.xl,
-    gap: spacing.sm,
+    paddingBottom: space[7],
+    gap: space[2],
   },
   muted: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   errorNote: {
-    ...typography.bodySm,
-    color: semantic.error,
-    marginBottom: spacing.xs,
+    ...type.small,
+    color: color.danger,
+    marginBottom: space[1],
   },
   emptyCard: {
     width: "100%",
     alignSelf: "stretch",
   },
   emptyTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   emptyBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.xxs,
+    ...type.small,
+    color: color.text2,
+    marginTop: 2,
   },
   group: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   groupHeader: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   groupTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   groupMeta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   groupPrint: {
     alignSelf: "flex-start",
@@ -509,79 +508,79 @@ const styles = StyleSheet.create({
   spotRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   spotLeft: {
     flex: 1,
   },
   spotLabel: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   spotMeta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginTop: spacing.xxs,
+    ...type.caption,
+    color: color.text3,
+    marginTop: 2,
   },
   todo: {
-    ...typography.caption,
-    color: semantic.warning,
-    marginTop: spacing.xxs,
+    ...type.caption,
+    color: color.warning,
+    marginTop: 2,
   },
   spotActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   action: {
     minHeight: 44,
     minWidth: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     borderRadius: radius.sm,
   },
   actionDisabled: {
     opacity: 0.4,
   },
   actionText: {
-    ...typography.buttonMd,
-    color: textTokens.secondary,
+    ...type.btnSm,
+    color: color.text2,
   },
   actionOn: {
-    color: semantic.success,
+    color: color.success,
   },
   actionOff: {
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   pressed: {
     opacity: 0.6,
   },
   picker: {
-    marginTop: spacing.sm,
-    gap: spacing.xxs,
+    marginTop: space[2],
+    gap: 2,
   },
   pickerTitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   pickerRow: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: space[1],
     borderRadius: radius.sm,
   },
   pickerRowText: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   pickerEmpty: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   printAll: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
+    marginTop: space[2],
+    marginBottom: space[4],
   },
 });
 

@@ -53,16 +53,15 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { Icon } from "../ui/Icon";
 import {
-  accent,
-  androidOpaque,
   bpCompact,
   bpRegular,
-  canvas,
-  glass,
+  color,
+  edge,
+  materials,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  shadow,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
@@ -84,7 +83,7 @@ export const COMPOSER_SCRIM_HEIGHT = 24;
 
 export const ComposerCommitScrim: React.FC = () => (
   <LinearGradient
-    colors={["rgba(12, 14, 18, 0)", "rgba(12, 14, 18, 1)"]}
+    colors={[color.transparent, color.canvas]}
     locations={[0, 1]}
     pointerEvents="none"
     importantForAccessibility="no-hide-descendants"
@@ -187,7 +186,7 @@ export const ComposerCommitBar: React.FC<ComposerCommitBarProps> = ({
           // meta carries no `viewport-fit=cover`, so `env(safe-area-inset-*)`
           // resolves to 0 and `insets.bottom` reads 0 on mobile web; a bare
           // inset puts the bar flush against the browser chrome.
-          paddingBottom: Math.max(insets.bottom, spacing.md),
+          paddingBottom: Math.max(insets.bottom, space[4]),
         },
       ]}
       testID="composer-commit-bar"
@@ -229,7 +228,7 @@ export const ComposerCommitBar: React.FC<ComposerCommitBarProps> = ({
             ]}
             testID="composer-commit-bar-preview"
           >
-            <Icon name="eye" size={20} color={textTokens.secondary} />
+            <Icon name="eye" size={20} color={color.text2} />
             {previewLabelled ? (
               <Text style={styles.iconBtnLabel}>Preview</Text>
             ) : null}
@@ -260,10 +259,8 @@ export const ComposerCommitBar: React.FC<ComposerCommitBarProps> = ({
             size={18}
             color={
               busy
-                ? textTokens.tertiary
-                : scheduled
-                  ? accent.warm
-                  : textTokens.primary
+                ? color.text3
+                : color.text1
             }
           />
           {compact ? null : (
@@ -277,7 +274,7 @@ export const ComposerCommitBar: React.FC<ComposerCommitBarProps> = ({
           <Icon
             name="chevD"
             size={16}
-            color={busy ? textTokens.tertiary : textTokens.secondary}
+            color={busy ? color.text3 : color.text2}
           />
         </Pressable>
 
@@ -301,7 +298,7 @@ export const ComposerCommitBar: React.FC<ComposerCommitBarProps> = ({
           testID="composer-commit-bar-primary"
         >
           {busy ? (
-            <ActivityIndicator size="small" color={canvas.discover} />
+            <ActivityIndicator size="small" color={color.canvas} />
           ) : null}
           <Text
             style={[
@@ -332,53 +329,53 @@ const styles = StyleSheet.create({
    */
   host: {
     flexShrink: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   hostCompact: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   hostGlass: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   hostOpaque: {
-    backgroundColor: androidOpaque.rowFill,
+    backgroundColor: materials.pane.solidFill,
   },
   hostShadow: {
-    shadowColor: "#000000",
+    shadowColor: shadow.pane.shadowColor,
     shadowOpacity: 0.28,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: -6 },
   },
   topHighlight: {
     height: 1,
-    marginHorizontal: -spacing.md,
-    marginTop: -spacing.md,
-    marginBottom: spacing.md - 1,
-    backgroundColor: glass.highlight.profileBase,
+    marginHorizontal: -space[4],
+    marginTop: -space[4],
+    marginBottom: space[4] - 1,
+    backgroundColor: edge.rimSelected.borderTopColor,
   },
   progressTrack: {
     height: 2,
-    marginHorizontal: -spacing.md,
-    marginTop: -spacing.md,
-    marginBottom: spacing.md - 2,
+    marginHorizontal: -space[4],
+    marginTop: -space[4],
+    marginBottom: space[4] - 2,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   progressFill: {
     height: 2,
     width: "40%",
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   caption: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    ...type.caption,
+    color: color.text3,
+    marginBottom: space[2],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   iconBtn: {
     height: CONTROL_HEIGHT,
@@ -387,19 +384,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
     backgroundColor: "transparent",
   },
   iconBtnLabelled: {
     width: undefined,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   iconBtnLabel: {
-    ...typography.buttonMd,
-    color: textTokens.secondary,
+    ...type.btnSm,
+    color: color.text2,
   },
   iconBtnPressed: {
     opacity: 0.78,
@@ -410,36 +407,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.control,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: edge.ringInputFocus.borderColor,
+    backgroundColor: color.fill.inset,
   },
   chipCompact: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   chipSet: {
-    backgroundColor: accent.tint,
-    borderColor: accent.warm,
+    backgroundColor: color.fill.tile,
+    borderColor: color.lineStrong,
   },
   chipSetOpaque: {
-    backgroundColor: androidOpaque.accentFill,
-    borderColor: accent.warm,
+    backgroundColor: materials.selected.solidFill,
+    borderColor: color.lineStrong,
   },
   chipDisabled: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileElevated,
+    backgroundColor: color.fill.inset,
+    borderColor: color.lineStrong,
   },
   chipPressed: {
     opacity: 0.85,
   },
   chipLabel: {
-    ...typography.buttonMd,
-    color: textTokens.primary,
+    ...type.btnSm,
+    color: color.text1,
   },
   chipLabelDisabled: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   /**
    * The one saturated colour in the frame, and the widest thing on the screen.
@@ -456,29 +453,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
+    gap: space[2],
     paddingHorizontal: 20,
     borderRadius: radius.full,
   },
   primaryEnabled: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.paper,
   },
   primaryDisabled: {
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.control,
+    borderColor: edge.ringInputFocus.borderColor,
   },
   primaryPressed: {
     opacity: 0.9,
   },
   primaryLabel: {
-    ...typography.buttonLg,
+    ...type.btn,
     // 6.67:1 on #eb7825. White would be 2.90:1 and fails AA at this size.
-    color: canvas.discover,
+    color: color.ink,
     fontWeight: "600",
   },
   primaryLabelDisabled: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 });
 

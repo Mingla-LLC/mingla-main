@@ -59,10 +59,8 @@ import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import {
-  spacing,
-  text as textTokens,
-} from "../../../src/constants/designSystem";
+import { space, materials } from "../../../src/constants/designSystem";
+import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
 import {
@@ -106,7 +104,10 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
+import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
+import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
+import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -184,6 +185,7 @@ function CheckoutPaymentScreenContent({
       : null;
 
   const publicEventQuery = usePublicEventById(eventId);
+  const stripWide = useCheckoutWideLayout();
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
   // ORCH-1162 Bug 3 — CTA brand accent (matches the public page Pay button).
@@ -239,12 +241,6 @@ function CheckoutPaymentScreenContent({
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(
     null,
   );
-  // ORCH-0839-B: declineToast state is retained but dormant. Stripe's hosted
-  // page handles all card-decline UX inside its own surface. The Toast wrap
-  // below preserves the absolute-positioning lesson per
-  // feedback_toast_needs_absolute_wrap.md even though it has no caller in
-  // the new code path.
-  const [declineToast, setDeclineToast] = useState<boolean>(false);
   // ORCH-0852: shown briefly after PaymentSheet success, before navigation.
   // Mirrors consumer's "Ticket secured!" toast in
   // app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx.
@@ -1018,11 +1014,23 @@ function CheckoutPaymentScreenContent({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* #4420 wave 2 (§4.1) — phone: the offering this step belongs to. */}
+        <CheckoutOfferingStrip
+          wide={stripWide}
+          title={event.name.trim().length > 0 ? event.name : "Untitled event"}
+          eyebrow={resolveChosenDaysLine(
+            event,
+            publicEventQuery.data?.occurrences ?? [],
+            eventDateIds,
+          )}
+          byline={brand?.displayName ?? null}
+          coverUrl={event.coverMediaUrl ?? null}
+        />
         {/* Order summary recap */}
         <GlassCard
           variant="base"
           radius="lg"
-          padding={spacing.md}
+          padding={space[4]}
           style={styles.summary}
         >
           <Text style={styles.summaryLabel}>ORDER SUMMARY</Text>
@@ -1034,7 +1042,7 @@ function CheckoutPaymentScreenContent({
             all-in (incl. tax) is shown above (WYSIWYP); the buyer types no
             address. */}
 
-        <GlassCard variant="base" radius="lg" padding={spacing.md}>
+        <GlassCard variant="base" radius="lg" padding={space[4]}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           {/* issue #2188 — provider-NEUTRAL. This screen serves Stripe brands
               and Nigerian Paystack brands from the same code path, and a Lagos
@@ -1056,8 +1064,15 @@ function CheckoutPaymentScreenContent({
             the success toast + auto-navigate happen inside handlePay so
             this surface stays minimal. */}
 
+        {/* #4420 §4.2 — "Payment not completed": the step's own message,
+            framed as an alert banner in the host's status colours. */}
         {paymentError !== null ? (
-          <Text style={styles.errorText}>{paymentError}</Text>
+          <CheckoutStatusBanner
+            tone="error"
+            title="Payment not completed"
+            body={paymentError}
+            testID="checkout-payment-not-completed"
+          />
         ) : null}
         {/* issue #3281 — the quote refused an extra (it sold out, say), so the
             button stays off; say why and take the guest back to change it. */}
@@ -1093,7 +1108,7 @@ function CheckoutPaymentScreenContent({
       <View
         style={[
           styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
+          { paddingBottom: insets.bottom + space[4] },
         ]}
       >
         <View style={styles.totalRow}>
@@ -1121,15 +1136,10 @@ function CheckoutPaymentScreenContent({
 
       {/* Toast — top-anchored absolute wrapper (Cycle 8a lesson per
           feedback_toast_needs_absolute_wrap.md). ORCH-0852: success toast
-          fires on PaymentSheet success before navigation; decline toast
-          retained from ORCH-0839-B for parity even though dormant. */}
+          fires on PaymentSheet success before navigation. issue #4420 wave 2
+          (D-C4): the dormant decline toast is gone; a failed payment shows
+          its message in the payment step (paymentError). */}
       <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={declineToast}
-          kind="error"
-          message="Card declined — try another payment method."
-          onDismiss={() => setDeclineToast(false)}
-        />
         <Toast
           visible={successToast}
           kind="success"
@@ -1141,71 +1151,71 @@ function CheckoutPaymentScreenContent({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = checkoutStyles(() => StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
+    backgroundColor: color.canvas,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
   },
   summary: {
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   summaryLabel: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   summaryLine: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 4,
-    gap: spacing.sm,
+    gap: space[2],
   },
   summaryQty: {
     fontSize: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
     minWidth: 28,
   },
   summaryName: {
     flex: 1,
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "500",
   },
   summaryTotal: {
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "600",
   },
   summaryDivider: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: color.fill.pressed,
   },
   // ORCH-1147 — combined "Fees & tax" line in the order summary.
   summaryFeesTaxRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   summaryFeesTaxLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   summaryFeesTaxValue: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     fontWeight: "600",
   },
   summaryTotalRow: {
@@ -1215,29 +1225,29 @@ const styles = StyleSheet.create({
   },
   summaryTotalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   summaryTotalValue: {
     fontSize: 17,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
   paymentCopy: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
   paymentMeta: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 11,
-    color: textTokens.quaternary,
+    color: color.text4,
   },
   errorText: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     fontSize: 12,
-    color: "#ef4444",
+    color: color.errorText,
     fontWeight: "500",
   },
   bottomBar: {
@@ -1245,11 +1255,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(12, 14, 18, 0.94)",
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    backgroundColor: materials.chrome.glassFill,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    borderTopColor: color.line,
   },
   // #1841 — `bottomBarHidden` deleted with the keyboard plumbing that was its
   // only consumer. A style whose sole purpose was hiding the bar behind a
@@ -1259,16 +1269,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   totalLabel: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontWeight: "500",
   },
   totalValue: {
     fontSize: 20,
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     letterSpacing: -0.3,
   },
@@ -1280,4 +1290,4 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-});
+}));

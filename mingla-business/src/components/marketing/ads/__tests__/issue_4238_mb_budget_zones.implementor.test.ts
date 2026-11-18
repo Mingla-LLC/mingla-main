@@ -14,7 +14,6 @@ import {
   hostAdDailyFromTotal,
   hostAdDaysInRun,
   hostAdProportionalCents,
-  hostAdRecommendedDaily,
   hostAdSplitWithMinimums,
 } from "../hostAdBudget";
 
@@ -70,9 +69,10 @@ describe("#4238 C2 minimums first, the rest evenly", () => {
     expect(plan.capShares.reduce((a, b) => a + b, 0)).toBe(5_000_000_00);
     expect(plan.capShares.every((cap, i) => cap >= plan.split.rows[i].dailyCents)).toBe(true);
   });
-  it("recommends 1.6× the minimums, rounded up", () => {
-    // NGN 111,000 of minimums → NGN 177,600 → NGN 180,000 a day.
-    expect(hostAdRecommendedDaily(111_000_00)).toBe(180_000_00);
-    expect(hostAdRecommendedDaily(0)).toBe(0);
+  it("#4238 W6a (U-2): the 1.6 × helper is gone; the recommendation is the server's", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const budget = require("../hostAdBudget") as Record<string, unknown>;
+    expect(budget.hostAdRecommendedDaily).toBeUndefined();
   });
+
 });

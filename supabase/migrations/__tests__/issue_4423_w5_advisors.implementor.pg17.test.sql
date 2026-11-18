@@ -687,7 +687,9 @@ insert into w5_called values
   ('pg_derive_brand_stripe_status', false, true),
   ('pg_direct_event_checkout_bundle', true, true),
   ('pg_discover_business_events', true, true),
-  ('pg_eligible_experiences_for_deck', true, true),
+  -- #4420: anon EXECUTE revoked on purpose (20280723004420); its only callers are
+  -- the discover-cards and generate-curated-experiences edge functions (service role).
+  ('pg_eligible_experiences_for_deck', false, true),
   ('pg_my_claim_identifiers', false, true),
   ('pg_my_order_ticket_states', false, true),
   ('pg_my_stay_reservation_groups', false, true),

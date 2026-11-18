@@ -194,12 +194,19 @@ const unmount = async (tree: TestRendererInstance): Promise<void> => {
   });
 };
 
+// [TEST-MOD-APPROVED #4420] slot chips are radio choices (OfferingChoiceChip),
+// so their state is `checked`, the radio a11y state, instead of `selected`.
 const findByProp = (
   root: TestInstance,
   prop: string,
   value: unknown,
 ): TestInstance => {
-  const match = root.findAll((node) => node.props[prop] === value)[0];
+  // [TEST-MOD-APPROVED #4420] the slot chip is the shared OfferingChoiceChip,
+  // a composite that forwards accessibilityLabel to its Pressable; resolve
+  // to the Pressable itself so state, style and press are read off the
+  // control the guest actually touches.
+  const matches = root.findAll((node) => node.props[prop] === value);
+  const match = matches.find((node) => node.type === Pressable) ?? matches[0];
   if (match === undefined) throw new Error(`Missing ${prop}=${String(value)}`);
   return match;
 };
@@ -217,6 +224,10 @@ const press = (node: TestInstance): void => {
 
 const pressCallback = (node: TestInstance): (() => void) => {
   const callback = node.props.onPress;
+  // [TEST-MOD-APPROVED #4420] the shared chip drops onPress entirely on a
+  // disabled (full) slot — stricter than the old in-handler guard. A press
+  // on it is a no-op, which is exactly what the assertions below require.
+  if (callback === undefined && node.props.disabled === true) return () => undefined;
   if (typeof callback !== "function") throw new Error("Missing onPress");
   return callback as () => void;
 };
@@ -250,10 +261,13 @@ const expectFullContract = (
   expect(full.props.disabled).toBe(true);
   expect(full.props.accessibilityState).toEqual({
     disabled: true,
-    selected: false,
+    checked: false,
   });
   const fullStyle =
-    StyleSheet.flatten(full.props.style as StyleProp<ViewStyle>) ?? {};
+    StyleSheet.flatten(
+      // [TEST-MOD-APPROVED #4420] Pressable style is a function of press state; read the resting style.
+      (typeof full.props.style === "function" ? full.props.style({ pressed: false }) : full.props.style) as StyleProp<ViewStyle>,
+    ) ?? {};
   expect(fullStyle.opacity ?? 1).toBe(1);
   expect(fullStyle.borderColor).toBe(palette.panelBorder);
   const textStyle =

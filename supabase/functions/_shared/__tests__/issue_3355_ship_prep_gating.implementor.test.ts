@@ -66,9 +66,21 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
     "65e687c809e6f14987a74fe1736558083c2552ab8a2a613ea0fa8b79f4ef6da4",
 };
 /** origin/main's AGENT_TOOLS as declared to the model (sha-256 of the JSON). */
+// #4238 W1 item 3: propose_ad_plan gains the sign-ups goal (enum and
+// description), so the declared tools change on both paths.
+// #4238 W5: Ari as the Host's ad assistant adds get_ad_budget_guidance and
+// apply_ad_suggestion (187→189) on both paths, and propose_ad_plan takes the
+// fallback acknowledgement and up to 5 creatives; the digest is recomputed with
+// this file's own sha256 over ariTurnToolDeclarations(ariTurnAgentTools(false),
+// false). The off path's prompt digests and per-message selections are
+// unchanged (checked above and below).
+// #3281 bundle 3: Ari experience parity adds get_experience (189→190) on both
+// paths and types the experience stop, price option and create stop schemas;
+// the digest is recomputed the same way. The off path's prompt digests and
+// per-message selections are unchanged.
 const MAIN_DECLARATIONS_DIGEST =
-  "72e6c9b02d8039292d87233052bdf10391fab46adb3a7da7c1570c3b9ea7e844";
-const MAIN_DECLARATION_COUNT = 187;
+  "4b8e1dd5fff12858ba2d72f8b3f04eb7a7ad52a006257daa268bf62e7674b00f";
+const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {
   "Create a discount code FAVY10 for 10% off until 19 December": [

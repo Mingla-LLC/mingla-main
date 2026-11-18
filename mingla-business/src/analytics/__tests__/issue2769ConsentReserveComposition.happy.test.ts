@@ -28,7 +28,11 @@ describe("#2331 privacy bar / reserve composition", () => {
 
   test("the shared renderer always shows the persistent reserve action", () => {
     const screen = read("packages/brand-rendering/PublicVenueScreen.tsx");
-    expect(screen).toContain("const showPersistentReserveCta = showReserveCta;");
+    // [TEST-MOD-APPROVED #4420 D-V2] — still no consent gate: the one added
+    // condition is the ordering basket owning the bottom edge on the Menu tab.
+    expect(screen).toContain(
+      "const showPersistentReserveCta =\n    showReserveCta &&\n    !(orderingOwnsBar && normalizedReservationUiState.activeTab === \"menu\");",
+    );
     expect(screen).not.toContain("consentActionMayCollide");
     expect(screen).not.toContain("PUBLIC_VENUE_CONSENT_SAFE_DESKTOP_MIN_WIDTH");
     expect(screen).not.toContain("webConsentState");

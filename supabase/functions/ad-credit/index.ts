@@ -16,10 +16,22 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
+import {
+  buildAdCreditReceipt,
+  loadAdNames,
+  type NameQuery,
+  buildAdCreditStatement,
+  type LedgerRow,
+  statementMonthBounds,
+} from "../_shared/adCreditStatements.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { quoteTopUp, quoteWithdraw } from "../_shared/adMoney.ts";
+import {
+  adCreditTopUpLimits,
+  quoteTopUp,
+  quoteWithdraw,
+} from "../_shared/adMoney.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
   adCreditTopUpMetadata,
@@ -141,6 +153,17 @@ function buildAdCreditCheckoutReturnUrls(
   };
 }
 
+/** Adapter so the shared name lookup never sees the supabase client types. */
+// deno-lint-ignore no-explicit-any
+type NameDb = { from: (table: string) => any };
+const nameQuery = (db: NameDb): NameQuery =>
+async (table, columns, column, values) => {
+  const { data } = await db.from(table).select(columns).in(column, values) as {
+    data: unknown;
+  };
+  return Array.isArray(data) ? data : null;
+};
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -247,6 +270,10 @@ serve(async (req: Request): Promise<Response> => {
     return json({
       wallet: wallet ?? null,
       history: history ?? [],
+      // #4238: the top-up buttons start at the minimum quoteTopUp accepts.
+      top_up_limits: authority.ok
+        ? adCreditTopUpLimits(authority.currency)
+        : null,
       currency_authority: authority.ok
         ? authority.authority
         : (authority.authority ?? {
@@ -255,6 +282,74 @@ serve(async (req: Request): Promise<Response> => {
           provider: null,
           reason: authority.detail,
         }),
+    });
+  }
+
+  // #4238 W4b §10b: receipts and monthly statements, read from the ledger
+  // only, for the people who can fund ads (the top-up authority). No VAT
+  // line until Seth or finance decide (VAT_ON_AD_FEE).
+  if (action === "get_receipt" || action === "get_statement") {
+    const { data: canFund, error: fundErr } = await supabase.rpc(
+      "biz_can_manage_payments_for_brand",
+      { p_brand_id: brandId, p_user_id: user.id },
+    );
+    if (fundErr) {
+      console.error("[ad-credit] receipt auth failed:", fundErr.message);
+      return json({ error: "internal_error" }, 500);
+    }
+    if (canFund !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
+    const columns =
+      "id, entry_kind, amount_cents, fee_cents, pay_cents, refund_cents, balance_after_cents, currency, campaign_id, external_ref, metadata, created_at";
+    if (action === "get_receipt") {
+      const ledgerId = typeof body.ledger_id === "string" ? body.ledger_id : "";
+      if (!UUID_REGEX.test(ledgerId)) {
+        return json(
+          { error: "validation_error", detail: "ledger_id_invalid" },
+          400,
+        );
+      }
+      const { data: row, error } = await supabase.from("ad_credit_ledger")
+        .select(columns).eq("id", ledgerId).eq("brand_id", brandId)
+        .maybeSingle();
+      if (error) {
+        console.error("[ad-credit] receipt read failed:", error.message);
+        return json({ error: "internal_error" }, 500);
+      }
+      if (!row) return json({ error: "not_found" }, 404);
+      const names = await loadAdNames(nameQuery(supabase), [row as LedgerRow]);
+      return json({ receipt: buildAdCreditReceipt(row as LedgerRow, names) });
+    }
+    const bounds = statementMonthBounds(body.month);
+    if (!bounds) {
+      return json({ error: "validation_error", detail: "month_invalid" }, 400);
+    }
+    const [{ data: before, error: beforeErr }, { data: rows, error: rowsErr }] =
+      await Promise.all([
+        supabase.from("ad_credit_ledger").select(columns)
+          .eq("brand_id", brandId).lt("created_at", bounds[0])
+          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("ad_credit_ledger").select(columns)
+          .eq("brand_id", brandId).gte("created_at", bounds[0])
+          .lt("created_at", bounds[1]).order("created_at", { ascending: true })
+          .limit(2000),
+      ]);
+    if (beforeErr || rowsErr) {
+      console.error(
+        "[ad-credit] statement read failed:",
+        (beforeErr ?? rowsErr)?.message,
+      );
+      return json({ error: "internal_error" }, 500);
+    }
+    const names = await loadAdNames(nameQuery(supabase), (rows ?? []) as LedgerRow[]);
+    return json({
+      statement: buildAdCreditStatement({
+        month: String(body.month),
+        before: (before ?? null) as LedgerRow | null,
+        rows: (rows ?? []) as LedgerRow[],
+        names,
+      }),
     });
   }
 
@@ -340,6 +435,7 @@ serve(async (req: Request): Promise<Response> => {
       const reference = buildAdCreditPaystackReference({
         brandId,
         clientIdem,
+        payCents: quoted.pay_cents,
       });
       try {
         const init = await paystackInitializeTransaction({

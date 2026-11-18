@@ -12,7 +12,9 @@
  * and the host's pay code end states. The guest pay page keeps its own copy of
  * the three tones it shows (doorPayGuestTone.ts), pinned to this map by test.
  */
-import { glass, semantic, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+} from "../../constants/designSystem";
 import type { IconName } from "../ui/Icon";
 
 export type DoorTone = "ok" | "neutral" | "caution" | "bad";
@@ -31,33 +33,33 @@ export interface DoorToneStyle {
 
 export const DOOR_TONE_STYLES: Readonly<Record<DoorTone, DoorToneStyle>> = {
   ok: {
-    ringFill: semantic.successTint,
+    ringFill: color.successTint,
     ringBorder: null,
-    iconColor: semantic.success,
+    iconColor: color.success,
     iconSize: 30,
     defaultIcon: "check",
     liveRegion: "polite",
   },
   neutral: {
-    ringFill: glass.tint.profileElevated,
-    ringBorder: glass.border.profileElevated,
-    iconColor: textTokens.secondary,
+    ringFill: color.fill.tile,
+    ringBorder: color.lineStrong,
+    iconColor: color.text2,
     iconSize: 28,
     defaultIcon: "clock",
     liveRegion: "polite",
   },
   caution: {
-    ringFill: semantic.warningTint,
+    ringFill: color.warningTint,
     ringBorder: null,
-    iconColor: semantic.warning,
+    iconColor: color.warning,
     iconSize: 28,
     defaultIcon: "flag",
     liveRegion: "assertive",
   },
   bad: {
-    ringFill: semantic.errorRing,
+    ringFill: color.errorTint,
     ringBorder: null,
-    iconColor: semantic.errorText,
+    iconColor: color.errorText,
     iconSize: 28,
     defaultIcon: "close",
     liveRegion: "assertive",

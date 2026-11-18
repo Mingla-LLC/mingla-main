@@ -1,5 +1,20 @@
 \set ON_ERROR_STOP on
 
+-- #4420 (20280724004420): while an event hides its address its stored theme keeps no
+-- street; the exact location lives in event_withheld_location. The assertions below
+-- read the host's view of the theme (the stored theme with that location merged).
+CREATE OR REPLACE FUNCTION pg_temp.i4420_host_theme(p_id uuid, p_theme jsonb)
+RETURNS jsonb LANGUAGE plpgsql AS $i4420$
+BEGIN
+  IF to_regprocedure('public.issue_4420_event_theme_full(uuid,jsonb)') IS NULL THEN
+    RETURN p_theme;
+  END IF;
+  EXECUTE 'SELECT public.issue_4420_event_theme_full($1, $2)' INTO p_theme USING p_id, p_theme;
+  RETURN p_theme;
+END
+$i4420$;
+
+
 -- Issue #3827 — implementor proof that a live edit keeps the two copies of an
 -- event's location in step, that "hide address until ticket" can be switched
 -- off, and that a save which moves nothing keeps the pin's precision.
@@ -98,6 +113,7 @@ BEGIN
   UPDATE public.events SET location_geo = point(-73.9578, 40.7222), coordinate_precision = 'exact'
    WHERE id = v_event;
   SELECT * INTO v_row FROM public.events WHERE id = v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.status IS DISTINCT FROM 'scheduled'
      OR v_row.location_text IS DISTINCT FROM 'Lantern Room · 61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Lantern Room'
@@ -183,6 +199,7 @@ BEGIN
       'clientRevision', 1))), NULL, NULL);
   PERFORM public.business_publish_rsvp_graph(v_event, gen_random_uuid());
   SELECT * INTO v_row FROM public.events WHERE id = v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.status IS NULL OR v_row.status NOT IN ('scheduled', 'live')
      OR v_row.location_text IS DISTINCT FROM 'Lantern Room · 61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Lantern Room'
@@ -213,6 +230,8 @@ BEGIN
     'Moving the night to the new room', f.v_revision + 1);
 
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '250 Bedford Avenue, Brooklyn' THEN
     RAISE EXCEPTION 'H-01 FAIL: the structured address is still "%" — the editor will show the old address',
       v_row.theme #>> '{business_event,location,address}';
@@ -247,6 +266,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('venueName', 'The Bedford Hall')),
     'Correcting the name of the venue', f.v_revision + 2);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.location_text IS DISTINCT FROM 'The Bedford Hall · 250 Bedford Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'The Bedford Hall'
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '250 Bedford Avenue, Brooklyn' THEN
@@ -275,6 +295,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('hideAddressUntilTicket', false)),
     'Showing the address to everyone now', f.v_revision + 1);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF (v_row.theme #>> '{business_event,hideAddressUntilTicket}')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'H-02 FAIL: the host switched hide-address OFF and the key readers use is still % — the address stays hidden',
       v_row.theme #> '{business_event,hideAddressUntilTicket}';
@@ -290,6 +311,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('hideAddressUntilTicket', true)),
     'Hiding the address again for now', f.v_revision + 2);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF (v_row.theme #>> '{business_event,hideAddressUntilTicket}')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'H-02 FAIL: switching hide-address back ON did not stick (%)',
       v_row.theme #> '{business_event,hideAddressUntilTicket}';
@@ -299,6 +321,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('name', 'Issue 3827 night, renamed')),
     'Renaming the night for the poster', f.v_revision + 3);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF (v_row.theme #>> '{business_event,hideAddressUntilTicket}')::boolean IS DISTINCT FROM true
      OR v_row.location_text IS DISTINCT FROM 'Lantern Room · 61 Wythe Avenue, Brooklyn' THEN
     RAISE EXCEPTION 'H-02 FAIL: an unrelated save changed hide-address or the label (% / %)',
@@ -318,6 +341,7 @@ DECLARE
 BEGIN
   SELECT * INTO f FROM pg_temp.issue_3827_event_fixture('h03');
   SELECT * INTO v_before FROM public.events WHERE id = f.v_event;
+  v_before.theme := pg_temp.i4420_host_theme(v_before.id, v_before.theme);  -- #4420
   -- A vibe changed. The editor still sends the STORED pin, no precision (the
   -- shape installed apps send today), and locationText null.
   PERFORM public.business_update_live_event_atomic(f.v_event,
@@ -325,6 +349,7 @@ BEGIN
       'taxonomy', pg_temp.issue_3827_taxonomy(40.7222, -73.9578, NULL)),
     'Adding a vibe tag to the listing', f.v_revision + 1);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.coordinate_precision IS DISTINCT FROM 'exact' THEN
     RAISE EXCEPTION 'H-03 FAIL: a save that moved nothing left precision % (expected the stored exact)',
       v_row.coordinate_precision;
@@ -343,6 +368,7 @@ BEGIN
       'taxonomy', pg_temp.issue_3827_taxonomy(40.7081, -73.9571, NULL)),
     'Moving the pin without a precision', f.v_revision + 2);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.coordinate_precision IS NOT NULL THEN
     RAISE EXCEPTION 'H-03 FAIL: a MOVED pin with no precision was given the old pin''s precision (%)',
       v_row.coordinate_precision;
@@ -370,6 +396,7 @@ BEGIN
     RAISE EXCEPTION 'H-04 FAIL: the live RSVP edit was not accepted (%)', v_result -> 'updateResult';
   END IF;
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'The Bedford Hall'
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '250 Bedford Avenue, Brooklyn' THEN
     RAISE EXCEPTION 'H-04 FAIL: the structured halves are still % — the editor will show the old venue and address',
@@ -386,6 +413,7 @@ BEGIN
       'location', jsonb_build_object('venueName', NULL, 'address', '250 Bedford Avenue, Brooklyn')),
     'Dropping the venue name from the listing', NULL);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.location_text IS DISTINCT FROM '250 Bedford Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS NOT NULL
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '250 Bedford Avenue, Brooklyn' THEN
@@ -399,6 +427,7 @@ BEGIN
       'location_text', 'Older client label'),
     'An edit from an app that has not updated', NULL);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF v_row.location_text IS DISTINCT FROM 'Older client label'
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '250 Bedford Avenue, Brooklyn' THEN
     RAISE EXCEPTION 'H-04 FAIL: a payload without `location` no longer behaves as it did (label "%", halves %)',
@@ -455,6 +484,8 @@ BEGIN
   END IF;
 
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+
+  v_row.theme := pg_temp.i4420_host_theme(v_row.id, v_row.theme);  -- #4420
   IF COALESCE(v_row.rsvp_contribution_enabled, false) THEN
     RAISE EXCEPTION 'H-05 FAIL: the refused edit left chip-ins on';
   END IF;

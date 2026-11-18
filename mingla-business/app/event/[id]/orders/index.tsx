@@ -14,11 +14,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  canvas,
-  glass,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../../../src/constants/designSystem";
 import {
   type OrderRecord,
@@ -144,7 +141,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -174,7 +171,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -199,7 +196,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -233,7 +230,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
       <View
         style={[
           styles.host,
-          { paddingTop: insets.top, backgroundColor: canvas.discover },
+          { paddingTop: insets.top, backgroundColor: color.canvas },
         ]}
       >
         <View style={styles.chromeRow}>
@@ -261,7 +258,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       {/* Chrome */}
@@ -392,37 +389,37 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
   chromeRight: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chromeRightSlot: {
     width: 36,
   },
   searchWrap: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingBottom: space[2],
   },
   filtersScroll: {
     flexGrow: 0,
   },
   filtersContent: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs + 2,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[1] + 2,
   },
   filterPill: {
     height: 32,
@@ -433,17 +430,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   filterPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   filterPillInactive: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   filterPillLabel: {
     fontSize: 13,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   filterPillLabelActive: {
     fontWeight: "600",
@@ -452,18 +449,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   list: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
   },
   emptyLoadingText: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     textAlign: "center",
   },
 });

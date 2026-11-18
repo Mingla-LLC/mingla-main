@@ -578,7 +578,52 @@ function mapExperience(input: MapInput): PublicExperience {
  * a resolved event-row id. Throws on any RLS / network error (no silent
  * fallbacks per the error-handling contract).
  */
-async function loadExperienceSidecars(eventId: string): Promise<{
+/**
+ * #4420 — the stops come from the canonical public reader, never from
+ * experience_stops directly. The table only serves a stop row to the public while
+ * the experience's address is visible; the reader applies the address rule (no
+ * street or pin while the host hides it until booking) and still returns each
+ * stop's name, photos and time. Returned in the table's row shape for mapExperience.
+ */
+async function loadPublicExperienceStops(
+  brandSlug: string,
+  experienceSlug: string,
+): Promise<{
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any[];
+  error: unknown;
+}> {
+  const { data, error } = await supabase.rpc("pg_public_experience_by_slug", {
+    p_brand_slug: brandSlug,
+    p_experience_slug: experienceSlug,
+  });
+  if (error !== null && error !== undefined) return { data: [], error };
+  const stops =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? (data as { stops?: unknown }).stops
+      : null;
+  if (!Array.isArray(stops)) return { data: [], error: null };
+  return {
+    data: (stops as RpcExpStop[]).map((s) => ({
+      id: s.id,
+      stop_order: s.stopOrder,
+      place_name: s.placeName ?? "",
+      address: s.address ?? null,
+      image_urls: Array.isArray(s.imageUrls) ? s.imageUrls : [],
+      start_time: s.startTime ?? null,
+      ai_description: s.description ?? "",
+      lat: typeof s.lat === "number" ? s.lat : null,
+      lng: typeof s.lng === "number" ? s.lng : null,
+    })),
+    error: null,
+  };
+}
+
+async function loadExperienceSidecars(
+  eventId: string,
+  brandSlug: string,
+  experienceSlug: string,
+): Promise<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stops: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -596,15 +641,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
   // ORCH-1138 Leg 3 — also fold the canonical remaining reader in parallel.
   const [stopsResp, ticketsResp, datesResp, pricingById, remainingResp] =
     await Promise.all([
-      supabase
-        .from("experience_stops")
-        // ORCH-1138 Leg 3 (§4.2) — add ai_description, lat, lng (real authored
-        // columns on already-anon-readable experience_stops; no RLS change).
-        .select(
-          "id, stop_order, place_name, address, image_urls, start_time, ai_description, lat, lng",
-        )
-        .eq("event_id", eventId)
-        .order("stop_order", { ascending: true }),
+      loadPublicExperienceStops(brandSlug, experienceSlug),
       supabase
         .from("ticket_types")
         .select(
@@ -986,7 +1023,11 @@ export async function getPublicExperienceById(
   );
   const brand: PublicExperienceBrand = mapBrand(brandRow, brandTheme);
 
-  const sidecars = await loadExperienceSidecars(eventId);
+  const sidecars = await loadExperienceSidecars(
+    eventId,
+    brandRow.slug as string,
+    event.slug as string,
+  );
   // ORCH-1076 — resolve buyer-readiness for PAID experiences.
   const isPaid = ticketsArePaidOnline(sidecars.tickets);
   const bookable = await resolveBookable(brand.id, isPaid);

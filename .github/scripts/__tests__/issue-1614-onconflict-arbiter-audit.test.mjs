@@ -232,9 +232,15 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //       adding people to a group now goes through the server RPC, so the
   //       client no longer writes invites directly. No new site is added.
   //
+  // #4238 Host ads per-ad metrics, census +1 (116):
+  //   +1  `ad_creative_metrics_daily (campaign_id,provider_ad_id,metric_date)` —
+  //       admin-ad-spend-sync/index.ts records each ad's daily spend row;
+  //       arbiter: `UNIQUE (campaign_id, provider_ad_id, metric_date)` in
+  //       20280802004238_issue_4238_builder_intelligence.sql.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 115);
+  assert.equal(sites.length, 116);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

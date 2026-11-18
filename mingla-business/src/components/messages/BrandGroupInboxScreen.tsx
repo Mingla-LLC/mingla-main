@@ -14,6 +14,12 @@ import { SafeScreen } from "../ui/SafeScreen";
 import { TopBar } from "../ui/TopBar";
 import { Icon } from "../ui/Icon";
 import { BrandGroupInboxList } from "./BrandGroupInboxList";
+import { BrandGuestChatSection } from "./BrandGuestChatSection";
+// #4459 — the Guest chat thread beside the inbox on wide desktop (design v2:
+// inbox 340, thread flexible), loaded on intent through the one shared chunk.
+import { LazyGroupChatPanel } from "../groupChat/LazyGroupChatPanel";
+import { useBrandGuestChats } from "../../hooks/useBrandGuestChats";
+import { brandGuestChatHref, type BrandGuestChatSummary } from "../../services/brandGuestChatList";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -21,7 +27,8 @@ import { useSupportStaff } from "../../hooks/useSupportStaff";
 import { brandEnquiryThreadRoute } from "../../utils/brandEnquiryWaiting";
 import { brandGroupThreadHref } from "../../utils/brandGroupThreadModel";
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
-import { spacing } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
+
 
 // #4111 — the enquiry list loads with this route, never in the boot chunk.
 // Same module as the enquiry route's thread, so the two share one lazy chunk.
@@ -29,9 +36,18 @@ const LazyBrandEnquiryListSection = React.lazy(async () => ({
   default: (await import("./BrandEnquiryScreens")).BrandEnquiryListSection,
 }));
 
-/** Support inbox row + customer enquiries: everything above the groups. */
-function MessagesInboxHeader({ isStaff }: { isStaff: boolean }): React.ReactElement {
+/** Support inbox row + customer enquiries + Guest chats: everything above the groups. */
+function MessagesInboxHeader({
+  isStaff,
+  onOpenGuestChat,
+  selectedGuestChatId,
+}: {
+  isStaff: boolean;
+  onOpenGuestChat: (chat: BrandGuestChatSummary) => void;
+  selectedGuestChatId: string | null;
+}): React.ReactElement {
   const router = useRouter();
+  const guestChats = useBrandGuestChats();
   return (
     <View style={styles.header}>
       {isStaff ? (
@@ -50,9 +66,22 @@ function MessagesInboxHeader({ isStaff }: { isStaff: boolean }): React.ReactElem
         </Pressable>
       ) : null}
       {/* #4111 D4 — customer enquiries sit above the Brand groups. */}
-      <React.Suspense fallback={null}>
-        <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
-      </React.Suspense>
+      {/* #4420: the enquiries sit on the same 16 gutter as the support row
+          and the group rows (they ran to the pane edge). */}
+      <View style={styles.enquiries}>
+        <React.Suspense fallback={null}>
+          <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
+        </React.Suspense>
+      </View>
+      {/* #4459 design v2 — Guests sits above "Your Brand groups". */}
+      <BrandGuestChatSection
+        chats={guestChats.chats}
+        loading={guestChats.loading}
+        error={guestChats.error}
+        onRetry={() => void guestChats.refresh()}
+        selectedConversationId={selectedGuestChatId}
+        onOpen={onOpenGuestChat}
+      />
     </View>
   );
 }
@@ -63,6 +92,11 @@ export function BrandGroupInboxScreen(): React.ReactElement {
   const { groups, loading, error, refresh } = useBrandGroups();
   const staff = useSupportStaff();
   const { isWideDesktop } = useResponsiveLayout();
+  const [openGuestChat, setOpenGuestChat] = React.useState<BrandGuestChatSummary | null>(null);
+  const handleOpenGuestChat = (chat: BrandGuestChatSummary): void => {
+    if (isWideDesktop) setOpenGuestChat(chat);
+    else router.push(brandGuestChatHref(chat.brand_id) as never);
+  };
 
   const list = (
     <BrandGroupInboxList
@@ -73,7 +107,13 @@ export function BrandGroupInboxScreen(): React.ReactElement {
       viewerId={user?.id ?? null}
       isStaff={staff.isStaff}
       onOpen={(group) => router.push(brandGroupThreadHref(group) as never)}
-      header={<MessagesInboxHeader isStaff={staff.isStaff} />}
+      header={
+        <MessagesInboxHeader
+          isStaff={staff.isStaff}
+          onOpenGuestChat={handleOpenGuestChat}
+          selectedGuestChatId={isWideDesktop ? openGuestChat?.conversation_id ?? null : null}
+        />
+      }
     />
   );
 
@@ -83,11 +123,17 @@ export function BrandGroupInboxScreen(): React.ReactElement {
       {isWideDesktop ? (
         <View style={styles.desktop}>
           <View style={styles.desktopList}>{list}</View>
+          {openGuestChat ? (
+            <View style={styles.desktopThread} testID="brand-guest-chat-desktop-thread">
+              <LazyGroupChatPanel key={openGuestChat.brand_id} brandId={openGuestChat.brand_id} embedded />
+            </View>
+          ) : (
           <ScrollView style={styles.desktopEmptyScroll} contentContainerStyle={styles.desktopEmpty}>
             <Icon name="chat" size={36} color={brandGroupChat.textMuted} />
             <Text style={styles.desktopEmptyTitle}>Your Mingla conversations</Text>
             <Text style={styles.desktopEmptyText}>Pick a Brand group on the left. Brand groups are created automatically and stay in sync with each brand’s active team.</Text>
           </ScrollView>
+          )}
         </View>
       ) : list}
     </SafeScreen>
@@ -96,17 +142,20 @@ export function BrandGroupInboxScreen(): React.ReactElement {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: brandGroupChat.screenBg },
-  header: { gap: spacing.sm, paddingBottom: spacing.sm },
-  supportRow: { minHeight: 64, marginHorizontal: spacing.md, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12, borderRadius: 16, backgroundColor: brandGroupChat.accentSoft },
+  header: { gap: space[2], paddingBottom: space[2] },
+  supportRow: { minHeight: 64, marginHorizontal: space[4], flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12, borderRadius: 16, backgroundColor: brandGroupChat.accentSoft },
   supportRowPressed: { opacity: 0.75 },
-  supportIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.18)" },
+  supportIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
   supportCopy: { flex: 1, minWidth: 0, gap: 2 },
   supportTitle: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "700" },
   supportText: { color: brandGroupChat.textSoft, fontSize: 13 },
   desktop: { flex: 1, flexDirection: "row" },
-  desktopList: { width: 320, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
+  desktopThread: { flex: 1, minWidth: 0 },
+  enquiries: { marginHorizontal: space[4] },
+  // #4420 twopane template (T6): the list pane is 340.
+  desktopList: { width: 340, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
   desktopEmptyScroll: { flex: 1 },
-  desktopEmpty: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.xl },
+  desktopEmpty: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: space[2], padding: space[7] },
   desktopEmptyTitle: { color: brandGroupChat.textPrimary, fontSize: 18, fontWeight: "700" },
   desktopEmptyText: { color: brandGroupChat.textSoft, fontSize: 14, lineHeight: 20, maxWidth: 380, textAlign: "center" },
 });

@@ -371,7 +371,8 @@ describe("issue #2101 — every public checkout entry consumes `.blocked`", () =
   });
 
   test.each([
-    ["DESKTOP sticky ticket box", "orch-1167-event-desktop-ticket-box"],
+    // issue #4420 — no desktop sticky panel any more: the desktop page uses
+    // the same inline box (via FoundationEventPreview, below) and the glass bar.
     ["PHONE floating bar", "orch-1167-event-floating-bar"],
     ["PHONE inline box via FoundationEventPreview", "onDockLayout={handleDockLayout}"],
   ])("EVENT %s carries the lever (both layouts)", (_label, anchor) => {

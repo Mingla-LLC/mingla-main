@@ -302,11 +302,12 @@ describe("#3188 structural pins the renderer must keep (T-12 / SC-9..SC-11)", ()
       "const socialsBlock",
       "const SocialLinksRow",
       "const SocialIcon",
-      "const stickyPanel",
+      // issue #4420 wave 2 — the sticky panel became the flyer actions and
+      // the Next-up teaser became the glass bar.
+      "const flyerActions",
       "styles.phoneIdentityWrap",
       "socialsRow: {",
       "socialBtn: {",
-      "nextTeaser: {",
     ]) {
       expect(src).toContain(landmark);
     }
@@ -324,7 +325,7 @@ describe("#3188 structural pins the renderer must keep (T-12 / SC-9..SC-11)", ()
     const phoneSocials = src.indexOf("{socialsBlock}", phoneWrap);
     expect(phoneWrap).toBeGreaterThan(-1);
     expect(phoneSocials).toBeGreaterThan(phoneWrap);
-    const panelStart = src.indexOf("const stickyPanel");
+    const panelStart = src.indexOf("const flyerActions");
     const deskSocials = src.indexOf("{socialsBlock}", panelStart);
     expect(panelStart).toBeGreaterThan(-1);
     expect(deskSocials).toBeGreaterThan(panelStart);

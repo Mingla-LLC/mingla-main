@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 193,
-    "capability_count": 205,
+    "registered_tool_count": 196,
+    "capability_count": 208,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 192,
+      "registered_unverified": 195,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -1030,6 +1030,52 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.get",
+      "domain": "experiences",
+      "outcome": "Read an experience's editable graph (status, revision, stops with offsets, price options with ids) before editing it",
+      "safety": "read",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue_3281"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/experience/[id]/edit.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getExperience"
+          }
+        ]
+      },
+      "ari_tool": "get_experience",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:get_experience toward #3281 bundle 3"
+        }
+      ],
+      "owning_issues": [
+        3281,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-11-17"
     },
     {
       "id": "ari.experience.update",
@@ -3042,6 +3088,105 @@
       ],
       "confidence": "medium",
       "verified_at": "2026-11-02"
+    },
+    {
+      "id": "ari.ads.get_ad_budget_guidance",
+      "domain": "ads",
+      "outcome": "Read a Host ad's budget guidance (minimum, learning amount, expected results) in pay terms",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "authorization_actions": [
+        "plan"
+      ],
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/create.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getAdBudgetGuidance"
+          }
+        ]
+      },
+      "ari_tool": "get_ad_budget_guidance",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:get_ad_budget_guidance toward #4238 W5"
+        }
+      ],
+      "owning_issues": [
+        4238,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-11-16"
+    },
+    {
+      "id": "ari.ads.apply_ad_suggestion",
+      "domain": "ads",
+      "outcome": "Apply the one server-recomputed suggestion on a running Host ad (budget within 20%, end date, last tickets)",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "standard",
+      "authorization_actions": [
+        "fund",
+        "launch"
+      ],
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const applyAdSuggestion"
+          }
+        ]
+      },
+      "ari_tool": "apply_ad_suggestion",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:apply_ad_suggestion toward #4238 W5"
+        }
+      ],
+      "owning_issues": [
+        4238,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-11-16"
     },
     {
       "id": "ari.marketing.update_draft",
@@ -5431,7 +5576,7 @@
       },
       "owners": {
         "ui": [
-          "mingla-business/app/(tabs)/marketing/audiences/index.tsx"
+          "mingla-business/app/(tabs)/marketing/people/index.tsx"
         ],
         "source": [
           {

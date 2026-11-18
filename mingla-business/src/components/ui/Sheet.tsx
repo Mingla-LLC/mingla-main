@@ -19,6 +19,7 @@
 
 export { Sheet, default } from "./SheetMobile";
 export type {
+  SheetPresentation,
   SheetProps,
   SheetSnapPoint,
   SheetSnapValue,

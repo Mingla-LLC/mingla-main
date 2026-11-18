@@ -117,7 +117,10 @@ describe("ORCH-1190 R2 — table card spans full width on a narrow mobile viewpo
   it("renders the populated table tile (not loading/empty)", () => {
     const html = renderHtml(<VenueTablesModule brandId="b1" />);
     expect(html).toContain("Test Table");
-    expect(html).toContain("2 seats · parties 1–2 · Indoor · Standard");
+    // [TEST-MOD-APPROVED #4420] tables are grouped under a zone header
+    // ("Indoor · 1"), so the zone left the row's meta line.
+    expect(html).toContain("2 seats · parties 1–2 · Standard");
+    expect(html).toContain("Indoor · 1");
   });
 
   it("the table card carries BOTH width:100% AND alignSelf:stretch (cannot collapse under a non-stretch ancestor)", () => {

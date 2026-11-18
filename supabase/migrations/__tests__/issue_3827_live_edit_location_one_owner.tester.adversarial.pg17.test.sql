@@ -49,6 +49,12 @@
 -- other case that calls a #3827 helper fails because the helper does not exist.
 --
 -- Run after the full migration chain on PostgreSQL 17. Each case rolls back.
+--
+-- [TEST-MOD-APPROVED #4420] While an event hides its address, #4420 keeps the
+-- street, pin and combined label out of events.theme (event_withheld_location
+-- holds them). Every read below merges them back with
+-- issue_4420_event_theme_full, the theme the owner's editor sees, so each case
+-- still asserts the same halves it always did.
 
 -- A brand, its owner and a PUBLISHED in-person ticketed event with a venue, an
 -- address, an exact pin and hide-address on, published through the entry point
@@ -95,6 +101,7 @@ BEGIN
   UPDATE public.events SET location_geo = point(-73.9578, 40.7222), coordinate_precision = 'exact'
    WHERE id = v_event;
   SELECT * INTO v_row FROM public.events WHERE id = v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.status IS DISTINCT FROM 'scheduled'
      OR v_row.location_text IS DISTINCT FROM 'Lantern Room · 61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Lantern Room'
@@ -217,6 +224,7 @@ BEGIN
       'clientRevision', 1))), NULL, NULL);
   PERFORM public.business_publish_rsvp_graph(v_event, gen_random_uuid());
   SELECT * INTO v_row FROM public.events WHERE id = v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.status IS NULL OR v_row.status NOT IN ('scheduled', 'live')
      OR v_row.location_text IS DISTINCT FROM 'Lantern Room · 61 Wythe Avenue, Brooklyn' THEN
     RAISE EXCEPTION 'fixture: the published RSVP is not the shape the suite assumes (status %, label %)',
@@ -250,11 +258,13 @@ DECLARE
 BEGIN
   SELECT * INTO f FROM pg_temp.t3827_event('t01');
   SELECT * INTO v_before FROM public.events WHERE id = f.v_event;
+  v_before.theme := public.issue_4420_event_theme_full(v_before.id, v_before.theme);
 
   PERFORM public.business_update_live_event_atomic(f.v_event,
     jsonb_build_object('core', jsonb_build_object('venueName', 'The Bedford Hall')),
     'Correcting the name of the venue', f.v_revision + 1);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'The Bedford Hall · 61 Wythe Avenue, Brooklyn' THEN
     RAISE EXCEPTION 'T-01 FAIL: a venue-name-only edit left the label "%" (the address half was dropped or the venue did not move)',
       v_row.location_text;
@@ -294,6 +304,7 @@ BEGIN
       'taxonomy', pg_temp.t3827_taxonomy(40.7222, -73.9578, '61 Wythe Avenue, Brooklyn')),
     'Saving the very same address again', f.v_revision + 4);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM v_label
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Didi Museum ' THEN
     RAISE EXCEPTION 'T-01 FAIL: re-saving an unchanged venue and address moved the label from "%" to "%"',
@@ -304,6 +315,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('venueName', 'Room · Two')),
     'A venue whose name has the separator', f.v_revision + 5);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'Room · Two · 61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Room · Two'
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '61 Wythe Avenue, Brooklyn' THEN
@@ -316,6 +328,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('venueName', E' \t ')),
     'Removing the venue name entirely', f.v_revision + 6);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM '61 Wythe Avenue, Brooklyn'
      OR v_row.theme #> '{business_event,location,venueName}' IS DISTINCT FROM 'null'::jsonb
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '61 Wythe Avenue, Brooklyn' THEN
@@ -328,6 +341,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('venueName', v_long)),
     'A very long venue name indeed', f.v_revision + 7);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM v_long
      OR v_row.location_text IS DISTINCT FROM v_long || ' · 61 Wythe Avenue, Brooklyn' THEN
     RAISE EXCEPTION 'T-01 FAIL: a long venue name was cut or lost (label length %)', length(v_row.location_text);
@@ -366,6 +380,7 @@ BEGIN
   END IF;
   v_rev := v_rev + 1;
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.title IS DISTINCT FROM 'T3827 night, renamed' THEN
     RAISE EXCEPTION 'T-02 FAIL: the save with a NULL reason did not write the title (%)', v_row.title;
   END IF;
@@ -398,6 +413,7 @@ BEGIN
     RAISE EXCEPTION 'T-02 FAIL: a 201 character reason with no buyers was not refused as invalid_edit_reason (%)', v_err;
   END IF;
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.title IS DISTINCT FROM 'T3827 spaces reason' THEN
     RAISE EXCEPTION 'T-02 FAIL: a refused save still wrote the title (%)', v_row.title;
   END IF;
@@ -461,6 +477,7 @@ BEGIN
 
   -- The refusals wrote nothing: title, both location copies, pin and revision.
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.title IS DISTINCT FROM 'T3827 night'
      OR v_row.location_text IS DISTINCT FROM 'Lantern Room · 61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Lantern Room'
@@ -581,6 +598,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('address', 'Brooklyn Steel, 319 Frost Street')),
     'Ari moved the night to another hall', f.v_revision + 1);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'Brooklyn Steel, 319 Frost Street' THEN
     RAISE EXCEPTION 'T-05 FAIL: Ari''s location replace left the label "%" (the old venue or address survived in it)',
       v_row.location_text;
@@ -603,6 +621,7 @@ BEGIN
       'taxonomy', pg_temp.t3827_taxonomy(40.7195, -73.9387, '319 Frost Street, Brooklyn', 'exact')),
     'Pinning the exact street address', f.v_revision + 2);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'Brooklyn Steel, 319 Frost Street · 319 Frost Street, Brooklyn' THEN
     RAISE EXCEPTION 'T-05 FAIL: an address edit after Ari''s replace composed "%"', v_row.location_text;
   END IF;
@@ -612,6 +631,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('venueName', 'Elsewhere', 'address', '599 Johnson Avenue')),
     'Both halves sent in one patch', f.v_revision + 3);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'Elsewhere · 599 Johnson Avenue'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Elsewhere'
      OR v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '599 Johnson Avenue' THEN
@@ -624,6 +644,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('address', '')),
     'Ari cleared the location entirely', f.v_revision + 4);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS NOT NULL
      OR v_row.theme #>> '{business_event,location,venueName}' IS NOT NULL
      OR v_row.theme #>> '{business_event,location,address}' IS NOT NULL THEN
@@ -742,6 +763,8 @@ BEGIN
   END;
 
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'Lantern Room · 61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'Lantern Room' THEN
     RAISE EXCEPTION 'T-06 FAIL: a refused caller changed the location (%)', v_row.location_text;
@@ -763,11 +786,13 @@ BEGIN
   -- (a) A NULL address means "unchanged": the theme and the label are
   --     byte-identical afterwards, through the door authenticated callers have.
   SELECT * INTO v_before FROM public.events WHERE id = f.v_event;
+  v_before.theme := public.issue_4420_event_theme_full(v_before.id, v_before.theme);
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social', 'chill'],
     ARRAY[]::text[], 40.7222, -73.9578, NULL, '');
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social', 'chill'],
     ARRAY[]::text[], 40.7222, -73.9578, '    ', '');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.theme IS DISTINCT FROM v_before.theme
      OR v_row.location_text IS DISTINCT FROM v_before.location_text
      OR v_row.coordinate_precision IS DISTINCT FROM 'exact' THEN
@@ -783,6 +808,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], NULL, NULL, '250 Bedford Avenue, Brooklyn', '');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '250 Bedford Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'The Old Label'
      OR v_row.location_text IS DISTINCT FROM 'The Old Label · 250 Bedford Avenue, Brooklyn' THEN
@@ -808,6 +834,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], NULL, NULL, '61 Wythe Avenue, Brooklyn', '');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.theme #>> '{business_event,location,address}' IS DISTINCT FROM '61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS NOT NULL
      OR v_row.location_text IS DISTINCT FROM '61 Wythe Avenue, Brooklyn' THEN
@@ -848,6 +875,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], 40.7222, -73.9578, NULL, 'rooftop');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.coordinate_precision IS DISTINCT FROM 'exact' THEN
     RAISE EXCEPTION 'T-08 FAIL: an unrecognised token on an unmoved pin left precision %', v_row.coordinate_precision;
   END IF;
@@ -856,6 +884,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], 40.7222, -73.9578, NULL, ' approximate ');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.coordinate_precision IS DISTINCT FROM 'approximate' THEN
     RAISE EXCEPTION 'T-08 FAIL: a valid token on an unmoved pin was ignored (precision %)', v_row.coordinate_precision;
   END IF;
@@ -863,6 +892,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], 40.7081, -73.9571, NULL, 'rooftop');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.coordinate_precision IS NOT NULL OR NOT (v_row.location_geo ~= point(-73.9571, 40.7081)) THEN
     RAISE EXCEPTION 'T-08 FAIL: a moved pin with an unrecognised token stored precision % at %',
       v_row.coordinate_precision, v_row.location_geo;
@@ -871,6 +901,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], NULL, NULL, NULL, 'exact');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.coordinate_precision IS NOT NULL OR NOT (v_row.location_geo ~= point(-73.9571, 40.7081)) THEN
     RAISE EXCEPTION 'T-08 FAIL: a token with no pin changed the precision (%) or the pin (%)',
       v_row.coordinate_precision, v_row.location_geo;
@@ -880,6 +911,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], 40.7222, -73.9578, NULL, '');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.coordinate_precision IS NOT NULL OR v_row.location_geo IS NULL THEN
     RAISE EXCEPTION 'T-08 FAIL: a first pin with no token stored precision % at %',
       v_row.coordinate_precision, v_row.location_geo;
@@ -889,6 +921,7 @@ BEGIN
   PERFORM public.business_patch_event_taxonomy(f.v_event, 'Brooklyn', ARRAY['festival'], ARRAY['social'],
     ARRAY[]::text[], 40.7222, -73.9000, NULL, '');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.coordinate_precision IS NOT NULL THEN
     RAISE EXCEPTION 'T-08 FAIL: a pin that kept its latitude and changed its longitude kept precision %',
       v_row.coordinate_precision;
@@ -917,6 +950,7 @@ BEGIN
       'allowTransfers', false)),
     'Showing the address and renaming the venue', f.v_revision + 1);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.theme #> '{business_event,hideAddressUntilTicket}' IS DISTINCT FROM 'false'::jsonb THEN
     RAISE EXCEPTION 'T-09 FAIL: hide-address sent with a venue edit did not reach the key readers use (%)',
       v_row.theme #> '{business_event,hideAddressUntilTicket}';
@@ -943,6 +977,7 @@ BEGIN
     jsonb_build_object('core', jsonb_build_object('hideAddressUntilTicket', true)),
     'Hiding the address until they buy', f.v_revision + 2);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.theme #> '{business_event,hideAddressUntilTicket}' IS DISTINCT FROM 'true'::jsonb
      OR v_row.theme #> '{business_event,settings}' ? 'hideAddressUntilTicket' THEN
     RAISE EXCEPTION 'T-09 FAIL: hide-address ON on a row with no settings object stored %', v_row.theme -> 'business_event';
@@ -994,6 +1029,7 @@ BEGIN
   -- One approved going guest.
   PERFORM pg_temp.t3827_rsvp_guest(f.v_event, 'going', 'approved');
   SELECT * INTO v_before FROM public.events WHERE id = f.v_event;
+  v_before.theme := public.issue_4420_event_theme_full(v_before.id, v_before.theme);
   v_result := public.biz_update_live_rsvp(f.v_event,
     jsonb_build_object('title', 'Renamed behind a guest''s back'), NULL);
   IF (v_result ->> 'ok')::boolean IS DISTINCT FROM false OR v_result ->> 'reason' IS DISTINCT FROM 'missing_edit_reason' THEN
@@ -1010,6 +1046,7 @@ BEGIN
     RAISE EXCEPTION 'T-10 FAIL: a 201 character reason with a going guest answered %', v_result;
   END IF;
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.title IS DISTINCT FROM v_before.title THEN
     RAISE EXCEPTION 'T-10 FAIL: a refused RSVP edit wrote the title (%)', v_row.title;
   END IF;
@@ -1050,6 +1087,7 @@ BEGIN
     RAISE EXCEPTION 'T-10 FAIL: a changed venue queued % messages for one going guest', v_result #>> '{updateResult,notified_count}';
   END IF;
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'The Bedford Hall · 61 Wythe Avenue, Brooklyn'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'The Bedford Hall' THEN
     RAISE EXCEPTION 'T-10 FAIL: the RSVP venue edit stored label "%" and halves %',
@@ -1062,6 +1100,7 @@ BEGIN
     jsonb_build_object('title', 'T3827 RSVP, new title', 'location_text', 'Plain label', 'location', NULL),
     'A null location key from a client', NULL);
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.location_text IS DISTINCT FROM 'Plain label'
      OR v_row.theme #>> '{business_event,location,venueName}' IS DISTINCT FROM 'The Bedford Hall' THEN
     RAISE EXCEPTION 'T-10 FAIL: a null `location` key was treated as structured (label "%", halves %)',
@@ -1082,6 +1121,7 @@ DECLARE
 BEGIN
   SELECT * INTO f FROM pg_temp.t3827_event('t11');
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF public.business_event_buyer_count(f.v_event) IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'T-11 fixture: the event already has buyers';
   END IF;
@@ -1116,6 +1156,8 @@ BEGIN
   END IF;
 
   SELECT * INTO v_row FROM public.events WHERE id = f.v_event;
+
+  v_row.theme := public.issue_4420_event_theme_full(v_row.id, v_row.theme);
   IF v_row.visibility IS DISTINCT FROM 'public' THEN
     RAISE EXCEPTION 'T-11 FAIL: the refused visibility change was written (%)', v_row.visibility;
   END IF;

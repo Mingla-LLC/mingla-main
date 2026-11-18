@@ -171,6 +171,10 @@
       "readyBank": "Akaun bank di {{country}}",
       "readyBankAny": "Akaun bank di negara anda",
       "readyTax": "Nombor cukai (syarikat berdaftar sahaja)"
+    },
+    "stepper": {
+      "saved": "Disimpan",
+      "steps": "Langkah"
     }
   },
   "doorMode": {

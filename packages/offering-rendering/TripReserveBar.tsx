@@ -52,6 +52,7 @@ import type { ResolvedTheme } from "./designTokens";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import type { ReserveSplitButton, ReserveSplitCtas } from "./tripOfferingTypes";
 import { accentFill, accentOutline } from "./themeAccentStyle";
+import { OfferingGlassBar } from "./OfferingGlassBar";
 
 export type { ReserveSplitButton, ReserveSplitCtas } from "./tripOfferingTypes";
 
@@ -90,6 +91,13 @@ export interface TripReserveBarProps {
   sheetBottomOvershoot?: number;
   /** Fired ONLY for the docked variant — reports its layout for float→dock. */
   onDockLayout?: (event: LayoutChangeEvent) => void;
+  /**
+   * issue #4420 — the floating glass bar's own bold line (e.g. "Due today
+   * ₦200,000") and quiet line ("Shared room · Total ₦650,000"). Absent ⇒ the
+   * CTA price and the kicker.
+   */
+  glassTitle?: string;
+  glassSubtitle?: string | null;
   testID?: string;
 }
 
@@ -108,8 +116,10 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   safeAreaBottom,
   sheetBottomOvershoot = 0,
   onDockLayout,
+  glassTitle,
+  glassSubtitle,
   testID,
-}) => {
+}: TripReserveBarProps) => {
   // The safe-area floor both variants honor — MAX(surface-threaded inset, home
   // floor). The surface owns useSafeAreaInsets() (the package stays pure); inside a
   // gorhom sheet the surface threads its SCREEN-level inset so this never under-pads.
@@ -319,62 +329,34 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
   }
 
   // ── FLOATING — just the button (compact self-width pill) ──
+  // issue #4420 — the floating variant is the shared glass bottom bar: what
+  // the guest commits to on the left (the live price, then the kicker or the
+  // page's own summary), the one next step on the right. Unavailable states
+  // show their words with no button (no dead tap).
   const floatBody = tappable ? (
-    <Pressable
+    <OfferingGlassBar
+      palette={palette}
+      theme={theme}
+      title={glassTitle ?? (price.length > 0 ? price : cta.label)}
+      subtitle={glassSubtitle !== undefined ? glassSubtitle : kicker}
+      ctaLabel={cta.label}
       onPress={handlePress}
-      accessibilityRole="button"
-      accessibilityLabel={
+      ctaAccessibilityLabel={
         cta.kind === "buy" && price.length > 0 ? `${cta.label}, ${price}` : cta.label
       }
-      style={({ pressed }) => [
-        styles.floatButton,
-        accentFill(palette),
-        pressed ? styles.reservePressed : null,
-      ]}
-      testID={testID !== undefined ? `${testID}-action` : undefined}
-    >
-      {theme !== undefined ? (
-        <ThemeAccentGradientLayer
-          theme={theme}
-          palette={palette}
-          borderRadius={styles.floatButton.borderRadius}
-        />
-      ) : null}
-      {/* ORCH-1175 — the floating pill ALSO shows the live selected price (the
-          same `cta.price` the docked bar + §10 box read) so it never lags the
-          box. Truncates first (flexShrink) so a long price can't shove the
-          label + arrow off-edge (F-4 arrow-bleed guard parity). */}
-      {price.length > 0 ? (
-        <Text
-          style={[styles.floatPrice, { color: palette.accentText }]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
-          {price} ·{" "}
-        </Text>
-      ) : null}
-      <Text style={[styles.floatCta, { color: palette.accentText }, fontStyle]}>
-        {cta.label} →
-      </Text>
-    </Pressable>
+      style={styles.glassBar}
+      actionTestID={testID !== undefined ? `${testID}-action` : undefined}
+    />
   ) : (
-    <View
-      style={[
-        styles.floatButtonDisabled,
-        { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder },
-      ]}
-      accessibilityRole="text"
-      accessibilityLabel={
-        unavailableSub !== null
-          ? `${unavailableTitle}. ${unavailableSub}`
-          : unavailableTitle
-      }
+    <OfferingGlassBar
+      palette={palette}
+      theme={theme}
+      title={unavailableTitle}
+      subtitle={unavailableSub}
+      ctaLabel={null}
+      style={styles.glassBar}
       testID={testID !== undefined ? `${testID}-unavailable` : undefined}
-    >
-      <Text style={[styles.floatDisabledTitle, { color: palette.tertiaryText }]}>
-        {unavailableTitle}
-      </Text>
-    </View>
+    />
   );
 
   if (splitCtas !== undefined) {
@@ -411,9 +393,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 6,
-    paddingHorizontal: 16,
-    alignItems: "center",
+    paddingHorizontal: 12,
+    alignItems: "stretch",
   },
+  // issue #4420 — the glass bar spans the gutter, capped for wide phones.
+  glassBar: { alignSelf: "center", width: "100%", maxWidth: 560 },
   floatSplitWrapper: {
     position: "absolute",
     left: 0,
@@ -421,47 +405,6 @@ const styles = StyleSheet.create({
     zIndex: 6,
     paddingHorizontal: 16,
   },
-  floatButton: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    paddingHorizontal: 26,
-    paddingVertical: 15,
-    minHeight: 52,
-    ...Platform.select({
-      android: { elevation: 0, shadowOpacity: 0 },
-      default: {
-        shadowColor: "#000000",
-        shadowOpacity: 0.28,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 8 },
-      },
-    }),
-  },
-  // ORCH-1175 — the live price segment inside the floating pill. Yields space
-  // first (flexShrink:1) so the label + arrow stay intact on a long price.
-  floatPrice: {
-    fontSize: 16,
-    fontWeight: "900",
-    fontVariant: ["tabular-nums"],
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  floatCta: { fontSize: 16, fontWeight: "900", flexShrink: 0 },
-  floatButtonDisabled: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    minHeight: 48,
-  },
-  floatDisabledTitle: { fontSize: 14, fontWeight: "900", textAlign: "center" },
   reserve: {
     flexDirection: "row",
     alignItems: "center",

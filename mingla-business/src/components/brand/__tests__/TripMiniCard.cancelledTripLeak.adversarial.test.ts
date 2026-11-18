@@ -183,7 +183,8 @@ describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
     );
     expect(cardBody).not.toBeNull();
     expect(cardBody![0]).toMatch(
-      /<Pressable\s+onPress=\{\(\)\s*=>\s*onPress\(trip\)\}/,
+      // #4420 wave 2 — the shared BrandOfferingCard is the pressable.
+      /<BrandOfferingCard\s+onPress=\{\(\)\s*=>\s*onPress\(trip\)\}/,
     );
     // No `disabled={trip.status === 'cancelled'}` short-circuit.
     expect(cardBody![0]).not.toMatch(/disabled=\{trip\.status/);

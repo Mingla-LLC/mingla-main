@@ -18,14 +18,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 
-import {
-  ariThread,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  typography,
-} from "../../constants/designSystem";
+import { ariThread, color, radius, space, type } from "../../constants/designSystem";
 
 import { AgentMessage } from "../../services/agentChatService";
 import { AriSentAttachments } from "./AriAttachmentCards";
@@ -96,10 +89,9 @@ import { friendlyWebsiteSetupAnswer } from "./websiteSetupProposalCopy";
 
 /** #3355 — inverted-list tolerance (px) for "still at newest". */
 const NEWEST_PIN_TOLERANCE_PX = 48;
-/** Matches `ariPalette.userBubble` / accent.warm — avoid requiring ariPalette in
- *  suites that mock a partial designSystem (issue_1985). */
-const NEW_REPLY_FILL = "#eb7825";
-const NEW_REPLY_ON_FILL = "#0F1115";
+/** #4420: the "new reply" pill is a Paper control with ink text. */
+const NEW_REPLY_FILL = color.paper;
+const NEW_REPLY_ON_FILL = color.ink;
 
 type AriRenditionCardComponent =
   typeof import("./renditions/AriRenditionPreview").AriRenditionCard;
@@ -906,7 +898,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   >
                     <Check
                       size={12}
-                      color={ariThread.tertiaryText}
+                      color={color.text3}
                       strokeWidth={2.25}
                     />
                     <Text style={styles.deliverySentText}>Sent</Text>
@@ -1530,7 +1522,7 @@ function renderToolResult(
       accessibilityRole="text"
       accessibilityLabel={label}
     >
-      <Check size={13} color={semantic.success} strokeWidth={2.5} />
+      <Check size={13} color={color.success} strokeWidth={2.5} />
       <Text style={styles.successText}>{label}</Text>
     </View>
   );
@@ -1546,15 +1538,15 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.sm,
+    bottom: space[2],
     alignItems: "center",
     zIndex: 2,
   },
   newReplyButton: {
     minHeight: 44,
     minWidth: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.full,
     backgroundColor: NEW_REPLY_FILL,
     alignItems: "center",
@@ -1567,7 +1559,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   content: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     // ORCH-1101: tighter top; bottom keeps scroll clearance above the composer.
     //
     // #2649 — THESE VALUES ARE PRE-TRANSFORM AND ARE DELIBERATELY SWAPPED. The
@@ -1577,8 +1569,8 @@ const styles = StyleSheet.create({
     // scroll clearance above the composer. Leaving them "the right way round"
     // collapses the visual bottom clearance from 32 to 8 (measured). Do not
     // "fix" this back.
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
+    paddingTop: space[7],
+    paddingBottom: space[2],
     width: "100%",
     maxWidth: ariThread.threadMaxWidth,
     alignSelf: "center",
@@ -1586,76 +1578,76 @@ const styles = StyleSheet.create({
   feedbackWrap: {
     alignSelf: "flex-start",
     marginLeft: ariThread.orbGap,
-    marginTop: spacing.xs,
-    gap: spacing.xs,
+    marginTop: space[1],
+    gap: space[1],
   },
   feedbackActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   feedbackPrompt: {
-    marginRight: spacing.xs,
-    color: ariThread.tertiaryText,
-    fontSize: typography.caption.fontSize,
+    marginRight: space[1],
+    color: color.text3,
+    fontSize: type.caption.fontSize,
   },
   feedbackButton: {
     minHeight: 34,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   feedbackButtonSelected: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   feedbackPressed: {
     opacity: 0.68,
   },
   feedbackButtonText: {
-    color: ariThread.secondaryText,
-    fontSize: typography.caption.fontSize,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
   },
   feedbackPositiveText: {
-    color: semantic.success,
+    color: color.success,
   },
   feedbackNegativeText: {
-    color: semantic.error,
+    color: color.danger,
   },
   feedbackSaved: {
-    marginLeft: spacing.xs,
-    color: ariThread.tertiaryText,
-    fontSize: typography.caption.fontSize,
+    marginLeft: space[1],
+    color: color.text3,
+    fontSize: type.caption.fontSize,
   },
   feedbackReasons: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   feedbackReason: {
     minHeight: 36,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   feedbackReasonText: {
-    color: ariThread.secondaryText,
-    fontSize: typography.caption.fontSize,
+    color: color.text2,
+    fontSize: type.caption.fontSize,
     fontWeight: "600",
   },
   // ORCH-1103 REWORK 2 — chips sit under the Ari bubble, indented past the orb
   // gutter (24px orb + orbGap, matching ChatBubble's orbWrap) so they align with
   // the bubble text, with a small breath above.
   flowLockedLabel: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     marginLeft: 24 + ariThread.orbGap,
-    color: ariThread.tertiaryText,
-    fontSize: typography.caption.fontSize,
+    color: color.text3,
+    fontSize: type.caption.fontSize,
   },
   choicesRow: {
     marginTop: ariThread.gapGroup,
@@ -1668,29 +1660,29 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   retryTurnText: {
-    color: ariThread.actionText,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
   },
   deliveryMeta: {
     alignSelf: "flex-end",
-    color: ariThread.tertiaryText,
+    color: color.text3,
     fontSize: 12,
     lineHeight: 16,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   deliverySent: {
     alignSelf: "flex-end",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   deliverySentText: {
-    color: ariThread.tertiaryText,
+    color: color.text3,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -1698,14 +1690,14 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     width: "84%",
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
-    marginTop: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingTop: space[2],
+    marginTop: space[1],
   },
   deliveryFailureCopy: {
-    color: ariThread.secondaryText,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -1719,33 +1711,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: semantic.successTint,
+    backgroundColor: color.successTint,
     borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.4)",
+    borderColor: color.success,
     borderRadius: radius.full,
     overflow: "hidden",
     paddingHorizontal: ariThread.ribbonPadH, // 10
     paddingVertical: ariThread.ribbonPadV, // 5
   },
   successText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: semantic.success,
+    color: color.success,
   },
   cancelledRibbon: {
     alignSelf: "flex-start",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radius.full,
     overflow: "hidden",
     paddingHorizontal: ariThread.ribbonPadH,
     paddingVertical: ariThread.ribbonPadV,
   },
   cancelledText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: "rgba(255, 255, 255, 0.7)",
+    color: color.text2,
   },
   // An in-turn tool failure is still surfaced via the top Toast + Ari's
   // follow-up reply and renders no ribbon. #3614 — a refused CONFIRMATION has
@@ -1753,18 +1745,18 @@ const styles = StyleSheet.create({
   failedRibbon: {
     alignSelf: "flex-start",
     maxWidth: "84%",
-    backgroundColor: semantic.errorTint,
+    backgroundColor: color.errorTint,
     borderWidth: 1,
-    borderColor: semantic.error,
+    borderColor: color.danger,
     borderRadius: radius.md,
     paddingHorizontal: ariThread.ribbonPadH,
     paddingVertical: ariThread.ribbonPadV,
   },
   failedText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
     // #3284 — error TEXT on a dark surface needs errorText, not error.
-    color: semantic.errorText,
+    color: color.errorText,
   },
 });
 

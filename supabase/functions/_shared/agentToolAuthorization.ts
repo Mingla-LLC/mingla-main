@@ -33,6 +33,7 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   set_event_guest_privacy: "event",
   discard_event_draft: "event",
   publish_experience: "experience",
+  get_experience: "experience",
   update_experience: "experience",
   manage_experience_stops: "experience",
   unpublish_experience: "experience",
@@ -99,6 +100,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   set_pricing_switches: role("finance_manager", "event"),
   set_brand_pricing_defaults: role("finance_manager", "brand"),
   publish_experience: role("event_manager", "event"),
+  // issue #3281 bundle 3 — the SQL read-back requires event_manager too.
+  get_experience: role("event_manager", "event"),
   update_experience: role("event_manager", "event"),
   manage_experience_stops: role("event_manager", "event"),
   unpublish_experience: role("event_manager", "event"),
@@ -175,6 +178,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   pause_ad_campaign: role("finance_manager", "brand", ["pause"]),
   end_ad_campaign: role("finance_manager", "brand", ["end"]),
   get_ad_campaign_report: role("finance_manager", "brand", ["read"]),
+  // #4238 W5: guidance is the plan step's read; a suggestion moves money
+  // (change_live = fund) or starts the last-tickets ad (= launch).
+  get_ad_budget_guidance: role("finance_manager", "brand", ["plan"]),
+  apply_ad_suggestion: role("finance_manager", "brand", ["fund", "launch"]),
   run_growth_tool: role("marketing_manager", "brand"),
   get_growth_tool_report: role("marketing_manager", "brand"),
   get_payout_status: role("finance_manager", "brand"),

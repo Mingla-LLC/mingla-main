@@ -179,6 +179,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
     // #3645 — pure, so it is supplied REAL: the order of "save, then publish".
     if (name.endsWith("/rsvpPublishWithoutChipIns")) return jest.requireActual("../../../utils/rsvpPublishWithoutChipIns");
+    // #4420 — the wizards' invite publish gate (pure; real module).
+    if (name.endsWith("/invites/wizardInvitePublishGate")) return jest.requireActual("../../invites/wizardInvitePublishGate");
     if (name.endsWith("/refundPolicyTerms")) return { OfferingRefundTermsError: class extends Error {} };
     if (name.endsWith("/recurrenceRule")) return { expandRecurrenceToDates: () => [] };
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };
@@ -199,6 +201,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     // "not read yet" OBJECT, never a component.
     if (name.endsWith("/invites/LazyInvitePeopleStep")) return { InvitePlanSummaryBridge: ({ onChange }: { onChange: (summary: unknown) => void }) => { React.useEffect(() => { onChange(inviteSummaryStub); }, [onChange]); return null; }, PENDING_WIZARD_INVITE_SUMMARY: { plan: { data: undefined, isPending: true, isFetching: true, isError: false }, quote: { data: undefined, isPending: true, isFetching: true, isError: false }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }, InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780]
     if (name.endsWith("/invites/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780]
+    // [TEST-MOD-APPROVED #4420] the Event wizard's footer is the shared StepperFooter; it renders the same Button leaves.
+    if (name.endsWith("/ui/Stepper")) return { Stepper: leaf("Stepper"), StepperFooter: (p: any) => React.createElement(React.Fragment, null, p.previousLabel !== undefined && p.onBack !== undefined ? React.createElement("Button", { label: p.previousLabel, onPress: p.onBack, disabled: p.backDisabled === true }) : null, React.createElement("Button", { label: p.continueLabel, onPress: p.onContinue, disabled: p.continueDisabled === true, loading: p.continueLoading === true, testID: p.continueTestID })) };
     const exportName = name.split("/").pop()!;
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet)$/.test(exportName)) {
       return { [exportName]: leaf(exportName) };

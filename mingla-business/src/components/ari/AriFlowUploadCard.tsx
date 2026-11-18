@@ -18,11 +18,7 @@ import React, { Suspense, useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
-import {
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { type as typeTokens, color, space } from "../../constants/designSystem";
 import { brandKeys } from "../../hooks/brandKeys";
 import { useBrand } from "../../hooks/useBrands";
 import { brandSiteKeys } from "../../sites/brandSiteKeys";
@@ -241,12 +237,12 @@ export const AriFlowUploadCard: React.FC<AriFlowUploadCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
+    gap: space[2],
+    marginTop: space[2],
     alignSelf: "stretch",
   },
   note: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...typeTokens.small,
+    color: color.text2,
   },
 });

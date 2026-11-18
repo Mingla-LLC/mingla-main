@@ -46,7 +46,7 @@ describe("ORCH-1057 · Item A — Ember Send button", () => {
     // token itself is pinned by issue_3429_ari_chat_polish.implementor.test.ts
     // ("onUserBubble: canvas.depth").
     expect(inputBar).toMatch(
-      /<ArrowUp\s+size=\{20\}\s+color=\{canvas\.depth\}\s+strokeWidth=\{2\.75\}\s*\/>/,
+      /<ArrowUp\s+size=\{20\}\s+color=\{canSend \? color\.ink : color\.text4\}\s+strokeWidth=\{2\.75\}\s*\/>/, // [TEST-MOD-APPROVED #4420] ink on Paper, text4 idle
     );
   });
 
@@ -78,15 +78,17 @@ describe("ORCH-1057 · Item A — Ember Send button", () => {
   });
 
   it("honors the Android opaque-glass policy (no Android shadow under the rounded fill)", () => {
-    // iOS gets the ember glow; the Android branch must NOT carry shadow*/elevation.
-    expect(inputBar).toMatch(/Platform\.select/);
-    expect(inputBar).toContain("shadowColor: ariPalette.ember");
+    // [TEST-MOD-APPROVED #4420] the orange ember glow is retired with the ember disc; the send
+    // is a flat Paper disc with no shadow on any platform.
+    expect(inputBar).toMatch(/Platform\.select|Platform\.OS/);
+    expect(inputBar).not.toContain("shadowColor: ariPalette.ember");
     const defaultBranch = inputBar.slice(inputBar.indexOf("default: {"));
     expect(defaultBranch).not.toMatch(/shadow(Color|Opacity|Radius|Offset)/);
     expect(defaultBranch).not.toMatch(/elevation/);
   });
 });
 
+// [TEST-MOD-APPROVED #4420] text.primary → color.text1 (same value).
 describe("ORCH-1057 · Item B — header lucide icons", () => {
   it("imports Menu + Settings from lucide-react-native", () => {
     expect(chatScreen).toMatch(
@@ -96,10 +98,10 @@ describe("ORCH-1057 · Item B — header lucide icons", () => {
 
   it("renders Menu (24) and Settings (22) with primary color", () => {
     expect(chatScreen).toMatch(
-      /<Menu\s+size=\{24\}\s+color=\{textTokens\.primary\}\s+strokeWidth=\{2\}\s*\/>/,
+      /<Menu\s+size=\{24\}\s+color=\{color\.text1\}\s+strokeWidth=\{2\}\s*\/>/,
     );
     expect(chatScreen).toMatch(
-      /<Settings\s+size=\{22\}\s+color=\{textTokens\.primary\}\s+strokeWidth=\{2\}\s*\/>/,
+      /<Settings\s+size=\{22\}\s+color=\{color\.text1\}\s+strokeWidth=\{2\}\s*\/>/,
     );
   });
 

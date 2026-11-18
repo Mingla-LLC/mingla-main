@@ -26,13 +26,10 @@ import * as Haptics from "expo-haptics";
 import { Sheet } from "../ui/Sheet";
 import { Spinner } from "../ui/Spinner";
 import {
-  spacing,
   radius,
-  typography,
-  text as textTokens,
-  accent,
-  semantic,
-  glass,
+  space,
+  type,
+  color,
 } from "../../constants/designSystem";
 import {
   CURRENT_MINGLA_TOS_VERSION,
@@ -206,7 +203,7 @@ export function MinglaToSAcceptanceGate({
           ]}
         >
           {acceptMutation.isPending ? (
-            <Spinner size={24} color={"#ffffff"} />
+            <Spinner size={24} color={color.textStrong} />
           ) : (
             <Text style={styles.ctaText}>Accept and continue</Text>
           )}
@@ -219,63 +216,63 @@ export function MinglaToSAcceptanceGate({
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
+    paddingBottom: space[6],
+    gap: space[2],
   },
   title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   subtitle: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   bodyText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    paddingVertical: spacing.sm,
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    paddingVertical: space[2],
   },
   // #4389 — the scrolling area above the agree row and CTA.
   scrollArea: { flex: 1 },
-  scrollAreaContent: { gap: spacing.sm, paddingBottom: spacing.sm },
+  scrollAreaContent: { gap: space[2], paddingBottom: space[2] },
   scroll: {
     borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    paddingHorizontal: spacing.sm,
+    borderColor: color.line,
+    paddingHorizontal: space[2],
   },
   scrollContent: {
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
+    paddingVertical: space[4],
+    gap: space[2],
   },
   tosBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   linkRow: {
     minHeight: 44,
     justifyContent: "center",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   linkText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: accent.warm,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.accent,
     fontWeight: "600",
     textDecorationLine: "underline",
   },
   agreeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
     minHeight: 44,
   },
   checkbox: {
@@ -283,33 +280,33 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: radius.sm,
     borderWidth: 2,
-    borderColor: textTokens.tertiary,
+    borderColor: color.text3,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxOn: {
-    backgroundColor: accent.warm,
-    borderColor: accent.warm,
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
   checkboxMark: {
-    color: "#ffffff",
+    color: color.textStrong,
     fontWeight: "700",
     fontSize: 16,
   },
   agreeText: {
     flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    color: color.text1,
   },
   error: {
-    fontSize: typography.bodySm.fontSize,
-    color: semantic.error,
+    fontSize: type.small.fontSize,
+    color: color.danger,
   },
   cta: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: space[4],
+    paddingHorizontal: space[6],
     borderRadius: radius.md,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 52,
@@ -321,8 +318,8 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   ctaText: {
-    fontSize: typography.body.fontSize,
-    color: "#ffffff",
+    fontSize: type.body.fontSize,
+    color: color.textStrong,
     fontWeight: "700",
     letterSpacing: 0.4,
   },

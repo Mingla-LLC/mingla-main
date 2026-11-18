@@ -429,14 +429,16 @@ BEGIN
     RAISE EXCEPTION 'I-04 an order refunded AFTER arming was still claimed';
   END IF;
 
-  -- ── I-05 the group chat is there too.
-  v_conv := pg_temp.i2217_uuid('conv');
-  IF NOT EXISTS (SELECT 1 FROM public.conversations WHERE id = v_conv) THEN
+  -- ── I-05 the group chat is there too. Since #4459 that is the brand's one
+  --    Guest chat; the retired per-listing room gains no member.
+  IF NOT EXISTS (SELECT 1 FROM public.conversations WHERE id = pg_temp.i2217_uuid('conv')) THEN
     RAISE EXCEPTION 'I-05 fixture conversation vanished';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.conversation_participants
+  SELECT id INTO v_conv FROM public.conversations
+   WHERE brand_id = pg_temp.i2217_uuid('brand') AND linked_entity_type = 'brand_guests';
+  IF v_conv IS NULL OR NOT EXISTS (SELECT 1 FROM public.conversation_participants
                   WHERE conversation_id = v_conv AND user_id = v_owner) THEN
-    RAISE EXCEPTION 'I-05 claimed buyer was not added to the event chat';
+    RAISE EXCEPTION 'I-05 claimed buyer was not added to the brand Guest chat';
   END IF;
 
   -- ── I-06 idempotent. A second sweep claims nothing and breaks nothing.
@@ -480,11 +482,13 @@ BEGIN
     RAISE EXCEPTION 'I-09 a ticket scan evicted the buyer from the chat';
   END IF;
 
-  -- ── I-10 a revoked ticket DOES evict.
+  -- ── I-10 #4459: Guest chat membership follows the paid ORDER (SPEC v2 §2),
+  --    so a revoked ticket on a still-paid order keeps the buyer in the brand
+  --    Guest chat; only a refund or cancellation (I-11) removes them.
   UPDATE public.tickets SET status='void' WHERE id = pg_temp.i2217_uuid('t-email');
-  IF EXISTS (SELECT 1 FROM public.conversation_participants
+  IF NOT EXISTS (SELECT 1 FROM public.conversation_participants
               WHERE conversation_id = v_conv AND user_id = v_owner) THEN
-    RAISE EXCEPTION 'I-10 a revoked ticket left the buyer in the chat';
+    RAISE EXCEPTION 'I-10 a revoked ticket on a paid order removed the buyer from the Guest chat';
   END IF;
 
   -- ── I-11 a refund evicts too, through the orders trigger.

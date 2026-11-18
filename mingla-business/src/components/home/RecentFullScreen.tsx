@@ -15,10 +15,9 @@ import { TopBar } from "../ui/TopBar";
 import { RecentRow } from "./RecentRow";
 import { RecentStatePanel } from "./RecentStatePanel";
 import {
-  accent,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { useBusinessRecent } from "../../hooks/useBusinessRecentReader";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -114,7 +113,7 @@ export function RecentFullScreen(props: {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top + (Platform.OS === "web" ? spacing.sm : 0) },
+        { paddingTop: insets.top + (Platform.OS === "web" ? space[2] : 0) },
       ]}
     >
       <View style={styles.bar}>
@@ -209,46 +208,46 @@ export function RecentFullScreen(props: {
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
-  bar: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  bar: { paddingHorizontal: space[4], paddingBottom: space[2] },
   banner: {
-    color: textTokens.secondary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    fontSize: typography.caption.fontSize,
+    color: color.text2,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
+    fontSize: type.caption.fontSize,
   },
   bannerMessage: { flex: 1 },
   bannerRow: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    paddingRight: spacing.md,
+    paddingRight: space[4],
   },
   retryButton: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
-  retryLabel: { color: accent.warm, fontWeight: "700" },
+  retryLabel: { color: color.text1, fontWeight: "700" },
   footerRetry: {
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.sm,
+    padding: space[2],
   },
   mobileList: { flex: 1 },
   desktopList: { flex: 1, minHeight: 0 },
-  content: { padding: spacing.md, paddingBottom: spacing.xl * 4 },
+  content: { padding: space[4], paddingBottom: space[7] * 4 },
   desktopGrid: { flexDirection: "row", flexWrap: "wrap" },
-  cell: { width: "25%", padding: spacing.xs },
-  separator: { height: spacing.sm },
-  state: { padding: spacing.xl, alignItems: "center" },
+  cell: { width: "25%", padding: space[1] },
+  separator: { height: space[2] },
+  state: { padding: space[7], alignItems: "center" },
   stateTitle: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
+    color: color.text2,
+    fontSize: type.body.fontSize,
   },
   footer: {
-    color: textTokens.tertiary,
+    color: color.text3,
     textAlign: "center",
-    padding: spacing.md,
+    padding: space[4],
   },
 });

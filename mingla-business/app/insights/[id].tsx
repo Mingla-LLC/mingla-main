@@ -20,7 +20,7 @@ import {
 } from "../../src/analytics/businessAnalyticsEvents";
 import { ListingInsightsScreen } from "../../src/components/analytics/ListingInsightsScreen";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
-import { canvas } from "../../src/constants/designSystem";
+import { color } from "../../src/constants/designSystem";
 
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -119,6 +119,6 @@ export default function ListingInsightsRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
 });

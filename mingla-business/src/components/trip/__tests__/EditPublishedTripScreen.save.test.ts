@@ -33,7 +33,8 @@ describe("ORCH-0876 — EditPublishedTripScreen save flow contract", () => {
   });
 
   test("renders the generalized ChangeSummaryModal with entityLabel='trip'", () => {
-    expect(SRC).toContain('import { ChangeSummaryModal } from "../event/ChangeSummaryModal"');
+    // #4420 — through the on-intent wrapper (same component, own chunk).
+    expect(SRC).toContain('import { ChangeSummaryModal } from "../event/LazyChangeSummaryModal"');
     expect(SRC).toMatch(/<ChangeSummaryModal\b[\s\S]*?entityLabel="trip"/);
   });
 
@@ -117,7 +118,7 @@ describe("ORCH-0876 — EditPublishedTripScreen save flow contract", () => {
   });
 
   test("seeds local edit state from server Trip on mount AND re-seeds on prop change", () => {
-    expect(SRC).toMatch(/useEffect\([\s\S]*?setEditState\(tripToLocalEditState\(trip\)\)/);
+    expect(SRC).toMatch(/useEffect\([\s\S]*?tripToLocalEditState\(trip\)[\s\S]*?setEditState\(reseeded\)/);
   });
 
   test("emits all 7 cover_media_* keys when cover URL changes", () => {

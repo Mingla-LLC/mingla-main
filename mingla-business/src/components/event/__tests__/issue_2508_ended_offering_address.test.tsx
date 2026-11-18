@@ -260,7 +260,8 @@ describe("#2508 an ended offering keeps its address and offers no way to buy", (
     expect(rendered).toContain("Street");
 
     // The maps control and the copy button both render, on an ENDED offering.
-    expect(rendered).toContain("Open maps");
+    // issue #4420 — the place line's link reads "Open in Maps".
+    expect(rendered).toContain("Open in Maps");
     expect(
       tree.root.findAllByProps({ testID: "issue-2508-copy-address" }).length,
     ).toBeGreaterThan(0);
@@ -277,7 +278,7 @@ describe("#2508 an ended offering keeps its address and offers no way to buy", (
     // while quietly dropping the other.
     expect(rendered).toContain("PAST EVENT");
     expect(rendered).toContain("Copy address");
-    expect(rendered).toContain("Open maps");
+    expect(rendered).toContain("Open in Maps");
     expect(rendered).not.toContain("General");
     expect(
       tree.root.findAllByProps({ testID: "orch-1167-ticket-box" }),

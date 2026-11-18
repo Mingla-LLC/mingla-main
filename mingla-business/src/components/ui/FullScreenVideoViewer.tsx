@@ -12,7 +12,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
 
-import { spacing, text as textTokens } from "../../constants/designSystem";
+import { color, space } from "../../constants/designSystem";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { Icon } from "./Icon";
 import { MediaViewerShell } from "../media/MediaViewerShell";
@@ -35,7 +35,7 @@ export function FullScreenVideoViewer({ uri, title, onClose }: FullScreenVideoVi
   useEffect(() => registerVideoPlayerForReload(player), [player]);
   const header = (
     <View style={styles.header}>
-      <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_video_a11y")} onPress={onClose} hitSlop={8} style={styles.close}><Icon name="close" size={20} color={textTokens.primary} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_video_a11y")} onPress={onClose} hitSlop={8} style={styles.close}><Icon name="close" size={20} color={color.text1} /></Pressable>
       <Text style={styles.title} numberOfLines={1}>{title}</Text>
     </View>
   );
@@ -53,9 +53,9 @@ const styles = StyleSheet.create({
     height: 56,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingHorizontal: space[4],
   },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  title: { flex: 1, color: textTokens.primary, fontSize: 16, fontWeight: "700" },
+  title: { flex: 1, color: color.text1, fontSize: 16, fontWeight: "700" },
 });

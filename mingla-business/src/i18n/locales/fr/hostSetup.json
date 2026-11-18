@@ -171,6 +171,10 @@
       "readyBank": "Compte bancaire en {{country}}",
       "readyBankAny": "Compte bancaire dans votre pays",
       "readyTax": "Numéro fiscal (sociétés immatriculées uniquement)"
+    },
+    "stepper": {
+      "saved": "Enregistré",
+      "steps": "Étapes"
     }
   },
   "doorMode": {

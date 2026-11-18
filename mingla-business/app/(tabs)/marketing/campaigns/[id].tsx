@@ -40,17 +40,7 @@ import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffs
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
-import {
-  accent,
-  androidOpaque,
-  canvas,
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../src/constants/designSystem";
+import { color, materials, radius, space, type } from "../../../../src/constants/designSystem";
 import { useCampaignReport } from "../../../../src/hooks/marketing/useCampaignReport";
 import { useCampaignGroupView } from "../../../../src/hooks/marketing/useCampaignGroupView";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
@@ -114,12 +104,12 @@ function formatDateTime(iso: string | null): string {
 
 function statusTone(status: MessageStatus): string {
   if (status === "sent" || status === "delivered" || status === "clicked") {
-    return textTokens.primary;
+    return color.text1;
   }
-  if (status === "failed" || status === "bounced") return semantic.warning;
-  if (status === "unsubscribed") return semantic.warning;
-  if (status === "preview_skipped") return textTokens.tertiary;
-  return textTokens.secondary;
+  if (status === "failed" || status === "bounced") return color.warning;
+  if (status === "unsubscribed") return color.warning;
+  if (status === "preview_skipped") return color.text3;
+  return color.text2;
 }
 
 function maskEmail(email: string | null): string {
@@ -170,7 +160,7 @@ export default function CampaignReportRoute(): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   // Width and text size only: whether stat cells sit two to a row.
   const { width, fontScale } = useWindowDimensions();
-  const statOneColumn = fontScale >= 1.6 || width - spacing.md * 2 < 320;
+  const statOneColumn = fontScale >= 1.6 || width - space[4] * 2 < 320;
 
   const view = groupQuery.data;
   const tabs = view === undefined ? [] : tabMembers(view.members, activeId ?? view.focusCampaignId);
@@ -217,7 +207,7 @@ export default function CampaignReportRoute(): React.ReactElement {
       <View style={styles.host}>
         <Header onBack={handleBack} title="Campaign" />
         <View style={styles.centerHost}>
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       </View>
     );
@@ -277,7 +267,7 @@ export default function CampaignReportRoute(): React.ReactElement {
             accessibilityLabel={started ? `Preview of the ${methodWord} as sent` : `Preview of the ${methodWord}`}
             testID="campaign-preview-card"
           >
-            <Suspense fallback={<View style={styles.previewLoading}><ActivityIndicator size="small" color={textTokens.secondary} /></View>}>
+            <Suspense fallback={<View style={styles.previewLoading}><ActivityIndicator size="small" color={color.text2} /></View>}>
               <SentMethodPreview resolution={resolution} />
             </Suspense>
           </View>
@@ -296,7 +286,7 @@ export default function CampaignReportRoute(): React.ReactElement {
             <PushNumbers member={active} oneColumn={statOneColumn} />
           ) : !reportQuery.hasResolved && !reportQuery.isError ? (
             <View style={styles.numbersLoading}>
-              <ActivityIndicator size="small" color={textTokens.secondary} />
+              <ActivityIndicator size="small" color={color.text2} />
             </View>
           ) : reportQuery.isError || reportQuery.data === undefined ? (
             <Text style={styles.numbersLater}>
@@ -382,11 +372,11 @@ const EmailNumbers: React.FC<{ report: CampaignReport; oneColumn: boolean }> = (
             unknown (not 0) for campaigns sent before the webhook existed,
             because a 0% open rate reads as "nobody read it". */}
         <StatCell label="Total audience" value={recipientStats.total} oneColumn={oneColumn} />
-        <StatCell label="Accepted by provider" value={recipientStats.accepted} tone={semantic.success} oneColumn={oneColumn} />
+        <StatCell label="Accepted by provider" value={recipientStats.accepted} tone={color.success} oneColumn={oneColumn} />
         <StatCell
           label="Delivered"
           value={recipientStats.hasDeliveryCoverage ? recipientStats.delivered : null}
-          tone={semantic.success}
+          tone={color.success}
           state={
             !recipientStats.deliveryHealthy
               ? "degraded"
@@ -410,11 +400,11 @@ const EmailNumbers: React.FC<{ report: CampaignReport; oneColumn: boolean }> = (
           oneColumn={oneColumn}
         />
         <StatCell label="Clicked a link" value={recipientStats.clicked} oneColumn={oneColumn} />
-        <StatCell label="Bounced" value={recipientStats.bounced} tone={semantic.warning} oneColumn={oneColumn} />
-        <StatCell label="Marked as spam" value={recipientStats.complained} tone={semantic.warning} oneColumn={oneColumn} />
-        <StatCell label="Preview only" value={recipientStats.preview_skipped} tone={textTokens.tertiary} oneColumn={oneColumn} />
-        <StatCell label="Failed to send" value={recipientStats.failed} tone={semantic.warning} oneColumn={oneColumn} />
-        <StatCell label="Unsubscribed" value={recipientStats.unsubscribed} tone={semantic.warning} oneColumn={oneColumn} />
+        <StatCell label="Bounced" value={recipientStats.bounced} tone={color.warning} oneColumn={oneColumn} />
+        <StatCell label="Marked as spam" value={recipientStats.complained} tone={color.warning} oneColumn={oneColumn} />
+        <StatCell label="Preview only" value={recipientStats.preview_skipped} tone={color.text3} oneColumn={oneColumn} />
+        <StatCell label="Failed to send" value={recipientStats.failed} tone={color.warning} oneColumn={oneColumn} />
+        <StatCell label="Unsubscribed" value={recipientStats.unsubscribed} tone={color.warning} oneColumn={oneColumn} />
       </View>
 
       <LinkClicks clickStats={clickStats} oneColumn={oneColumn} totalLabel="Total taps" uniqueLabel="Unique people" />
@@ -501,10 +491,10 @@ const SmsNumbers: React.FC<{ member: CampaignGroupMember; report: CampaignReport
       ) : null}
       <Text style={styles.sectionLabel}>WHO IT WENT TO</Text>
       <View style={styles.statsGrid} testID="campaign-sms-numbers">
-        <StatCell label="Sent" value={recipientStats.accepted} tone={semantic.success} oneColumn={oneColumn} />
+        <StatCell label="Sent" value={recipientStats.accepted} tone={color.success} oneColumn={oneColumn} />
         <StatCell label="Held for quiet hours" value={member.sms?.deferred ?? 0} oneColumn={oneColumn} />
-        <StatCell label="Failed to send" value={recipientStats.failed} tone={semantic.warning} oneColumn={oneColumn} />
-        <StatCell label="Preview only" value={recipientStats.preview_skipped} tone={textTokens.tertiary} oneColumn={oneColumn} />
+        <StatCell label="Failed to send" value={recipientStats.failed} tone={color.warning} oneColumn={oneColumn} />
+        <StatCell label="Preview only" value={recipientStats.preview_skipped} tone={color.text3} oneColumn={oneColumn} />
       </View>
       <LinkClicks clickStats={clickStats} oneColumn={oneColumn} totalLabel="Link taps" uniqueLabel="Unique people who tapped" />
       <View style={styles.smsFacts}>
@@ -523,9 +513,9 @@ const PushNumbers: React.FC<{ member: CampaignGroupMember; oneColumn: boolean }>
     <View style={styles.numbers}>
       <Text style={styles.sectionLabel}>WHO IT WENT TO</Text>
       <View style={styles.statsGrid} testID="campaign-push-numbers">
-        <StatCell label="Sent" value={counts.sent} tone={semantic.success} oneColumn={oneColumn} />
-        <StatCell label="Not delivered" value={counts.failed} tone={semantic.warning} oneColumn={oneColumn} />
-        <StatCell label="Skipped (muted or no device)" value={counts.skipped} tone={textTokens.tertiary} oneColumn={oneColumn} />
+        <StatCell label="Sent" value={counts.sent} tone={color.success} oneColumn={oneColumn} />
+        <StatCell label="Not delivered" value={counts.failed} tone={color.warning} oneColumn={oneColumn} />
+        <StatCell label="Skipped (muted or no device)" value={counts.skipped} tone={color.text3} oneColumn={oneColumn} />
         {counts.queued > 0 ? <StatCell label="Waiting" value={counts.queued} oneColumn={oneColumn} /> : null}
       </View>
     </View>
@@ -577,7 +567,7 @@ const Header: React.FC<{ onBack: () => void; title: string }> = ({
       ]}
       hitSlop={8}
     >
-      <Icon name="arrowL" size={24} color={textTokens.primary} />
+      <Icon name="arrowL" size={24} color={color.text1} />
     </Pressable>
     <Text style={styles.headerTitle} numberOfLines={1}>
       {title}
@@ -654,14 +644,14 @@ const StatCell: React.FC<StatCellProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
+    gap: space[2],
     minHeight: 56,
   },
   iconBtn: {
@@ -670,9 +660,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   iconBtnPressed: {
     opacity: 0.78,
@@ -681,8 +671,8 @@ const styles = StyleSheet.create({
     width: 44,
   },
   headerTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
     fontWeight: "600",
     flex: 1,
     textAlign: "center",
@@ -691,13 +681,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     // paddingBottom is injected per-render via useStickyFooterOffset()
     // (ORCH-0889).
-    gap: spacing.md,
+    gap: space[4],
   },
   scrollContentWide: {
     width: "100%",
@@ -705,47 +695,47 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   methodBody: {
-    gap: spacing.md,
+    gap: space[4],
   },
   statusBlock: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   statusHeadline: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   statusDetail: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   keepEditing: {
     alignSelf: "flex-start",
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.warm,
-    backgroundColor: accent.tint,
-    marginTop: spacing.xs,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
+    marginTop: space[1],
   },
   keepEditingPressed: {
     opacity: 0.85,
   },
   keepEditingLabel: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   column: {
-    gap: spacing.md,
+    gap: space[4],
   },
   columnChild: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   wideRow: {
     flexDirection: "row",
-    gap: spacing.lg,
+    gap: space[6],
     alignItems: "flex-start",
   },
   previewColumn: {
@@ -753,106 +743,106 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     minWidth: 360,
     maxWidth: 520,
-    gap: spacing.sm,
+    gap: space[2],
   },
   statsColumn: {
     flexGrow: 6,
     flexBasis: 0,
     minWidth: 320,
-    gap: spacing.sm,
+    gap: space[2],
   },
   previewCard: {
     borderRadius: radius.xl,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   previewCardAndroid: {
     // Android glass policy: an opaque backdrop, never a translucent tint.
-    backgroundColor: androidOpaque.rowFill,
-    borderColor: androidOpaque.rowBorder,
+    backgroundColor: materials.pane.solidFill,
+    borderColor: color.card2,
   },
   sourceLabel: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   previewLoading: {
-    paddingVertical: spacing.xl,
+    paddingVertical: space[7],
     alignItems: "center",
   },
   numbers: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   numbersLater: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
   },
   numbersLoading: {
-    paddingVertical: spacing.lg,
+    paddingVertical: space[6],
     alignItems: "center",
   },
   audienceLine: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   smsFacts: {
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[1],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   smsFact: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   previewBanner: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
-    backgroundColor: semantic.warningTint,
+    backgroundColor: color.warningTint,
     borderLeftWidth: 3,
-    borderLeftColor: semantic.warning,
+    borderLeftColor: color.warning,
     gap: 4,
   },
   previewBannerTitle: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "700",
   },
   previewBannerText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
   },
   previewBannerEmphasis: {
     fontStyle: "italic",
     fontWeight: "600",
   },
   sectionLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[2],
   },
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   statCell: {
     flexBasis: "47%",
     flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     gap: 2,
   },
   statCellAndroid: {
-    backgroundColor: androidOpaque.rowFill,
-    borderColor: androidOpaque.rowBorder,
+    backgroundColor: materials.pane.solidFill,
+    borderColor: color.card2,
     elevation: 0,
     overflow: "hidden",
   },
@@ -860,117 +850,117 @@ const styles = StyleSheet.create({
     flexBasis: "100%",
   },
   statLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   statValue: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   statValueRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    gap: spacing.xs,
+    gap: space[1],
   },
   statPercent: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   linksCard: {
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    padding: spacing.md,
-    gap: spacing.sm,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    padding: space[4],
+    gap: space[2],
   },
   linksHeader: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
   },
   linkRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 4,
   },
   linkUrl: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     flex: 1,
   },
   linkCount: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
   honestyNote: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     gap: 4,
   },
   honestyTitle: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "700",
   },
   honestyText: {
-    ...typography.bodySm,
-    color: textTokens.tertiary,
+    ...type.small,
+    color: color.text3,
   },
   trackingDegraded: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    marginTop: spacing.sm,
+    ...type.small,
+    color: color.text2,
+    marginTop: space[2],
   },
   emptyCard: {
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[6],
+    paddingHorizontal: space[4],
     borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   emptyText: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
   recipientList: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   recipientRow: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     gap: 4,
   },
   recipientEmail: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
     fontWeight: "500",
   },
   recipientMeta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   recipientStatus: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
   },
   recipientClicks: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   recipientFailure: {
-    ...typography.bodySm,
-    color: semantic.warning,
+    ...type.small,
+    color: color.warning,
   },
 });

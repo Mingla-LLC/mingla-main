@@ -31,6 +31,7 @@ export type InputVariant =
   | "email"
   | "phone"
   | "number"
+  | "integer"
   | "password"
   | "search";
 
@@ -63,6 +64,13 @@ export const VARIANT_BEHAVIOUR: Record<InputVariant, VariantBehaviour> = {
   },
   number: {
     keyboardType: "numeric",
+    autoCorrect: false,
+    autoCapitalize: "none",
+  },
+  // #4420 (asked by #4238 for ad ages): whole numbers only. "number-pad"
+  // has no decimal key on iOS and is the digits pad on Android and web.
+  integer: {
+    keyboardType: "number-pad",
     autoCorrect: false,
     autoCapitalize: "none",
   },

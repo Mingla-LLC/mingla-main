@@ -59,10 +59,19 @@ export function check(raw) {
   if ((page.match(/if \(blockForDayTruth\(\)\) return;/g) ?? []).length !== 3) {
     failures.push("all three checkout entry points do not fail closed on day truth");
   }
-  if ((page.match(/leadingPurchaseSection=\{multiDateDayChooser\}/g) ?? []).length !== 2) {
+  // #4420 — the premium frame keeps ONE in-flow ticket box at every width
+  // (no desktop sticky panel). When the sticky panel exists it is a second
+  // purchase container, and every container must still get the chooser and
+  // the multiplier; the floating CTA always gets the multiplier.
+  const hasDesktopPanel = page.includes("orch-1167-event-desktop-ticket-box");
+  if (!hasDesktopPanel && !/const stickyPanel = null;/.test(page)) {
+    failures.push("desktop purchase container is neither the sticky panel nor explicitly absent");
+  }
+  const containers = hasDesktopPanel ? 2 : 1;
+  if ((page.match(/leadingPurchaseSection=\{multiDateDayChooser\}/g) ?? []).length !== containers) {
     failures.push("desktop and mobile purchase containers do not share chooser injection");
   }
-  if ((page.match(/priceMultiplier=\{selectedDayMultiplier\}/g) ?? []).length !== 3) {
+  if ((page.match(/priceMultiplier=\{selectedDayMultiplier\}/g) ?? []).length !== containers + 1) {
     failures.push("desktop, mobile box, and floating CTA do not share multiplier");
   }
   const dayTruthStart = raw.page.indexOf("  const requiresMultiDatePurchase =");
@@ -156,12 +165,18 @@ export function check(raw) {
       failures.push(`both public-page Toasts must settle chooser focus: ${token}`);
     }
   }
+  // #4420 — Toast never renders a native <Modal> on any platform now (it
+  // registers with a non-modal host), so page focus is never captured; the
+  // recovery mode is carried as `announce` and renders an assertive alert.
   for (const token of [
-    "if (preservePageFocusOnWeb) return surface;",
-    'accessibilityRole={preservePageFocusOnWeb ? "alert" : undefined}',
-    "styles.webStatusRoot",
+    "announce: preservePageFocusOnWeb",
+    'accessibilityRole={entry.announce ? "alert" : undefined}',
+    'accessibilityLiveRegion={entry.announce ? "assertive" : "polite"}',
   ]) {
     if (!raw.toast.includes(token)) failures.push(`non-modal recovery Toast missing: ${token}`);
+  }
+  if (/import\s*\{[^}]*\bModal\b[^}]*\}\s*from\s*["']react-native["']/.test(raw.toast) || /<Modal\b/.test(stripCommentsLite(raw.toast))) {
+    failures.push("non-modal recovery Toast must not render a native Modal");
   }
   if (!raw.page.includes("retryCanonicalDayTruth(") ||
       !raw.recovery.includes("if (!refreshed) {") ||
@@ -205,6 +220,10 @@ export function check(raw) {
   }
 }
 
+function stripCommentsLite(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
 const sources = readSources();
 if (process.argv.includes("--self-test")) {
   check(sources);
@@ -222,7 +241,9 @@ if (process.argv.includes("--self-test")) {
     ["previewFoundation", "<FoundationEventPreview", "<View"],
     ["chooser", '"aria-checked": selected', '"aria-checked": false'],
     ["chooser", 'transitionDuration: reducedMotion ? "0ms" : "150ms"', 'transitionDuration: "0ms"'],
-    ["toast", "if (preservePageFocusOnWeb) return surface;", "if (false) return surface;"],
+    ["toast", "announce: preservePageFocusOnWeb", "announce: false"],
+    ["toast", 'accessibilityRole={entry.announce ? "alert" : undefined}', 'accessibilityRole={undefined}'],
+    ["toast", "      <ToastItem entry={entry} placement=\"top\" />", "      <Modal><ToastItem entry={entry} placement=\"top\" /></Modal>"],
     ["page", "preservePageFocusOnWeb={toast.preservePageFocus}", "preservePageFocusOnWeb={false}"],
     ["tester", 'mount("stale"', 'mount("ready"'],
     ["registry", '"id": "issue-2399-multiday-picker-ticket-box"', '"id": "missing-issue-2399-suite"'],

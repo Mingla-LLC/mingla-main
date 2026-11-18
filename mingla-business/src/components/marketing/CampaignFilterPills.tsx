@@ -5,14 +5,7 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import type { CampaignStatus } from "../../types/marketing";
 
 export type CampaignFilter = CampaignStatus | "all";
@@ -87,37 +80,37 @@ const styles = StyleSheet.create({
   host: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[1],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   pill: {
     minHeight: 36,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     alignItems: "center",
     justifyContent: "center",
   },
   pillActive: {
-    borderColor: accent.border,
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tabOn,
   },
   pillPressed: {
     opacity: 0.85,
   },
   label: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
   },
   labelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
   labelInactive: {
-    color: textTokens.secondary,
+    color: color.text2,
   },
 });

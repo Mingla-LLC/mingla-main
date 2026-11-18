@@ -224,7 +224,8 @@ export function messageActionGroups(actions: readonly MessageActionId[]): Messag
     .filter((group) => group.length > 0);
 }
 
-export type TombstoneKind = "sender" | "admin";
+/** #4459: "host" is the brand team removing a message in its Guest chat. */
+export type TombstoneKind = "sender" | "admin" | "host";
 
 /**
  * Issue #4456: the unsent line, as an i18n key and params.
@@ -238,7 +239,15 @@ export function tombstoneLine(input: {
   actorIsMe: boolean;
   authorName: string;
   actorName: string;
+  /** #4459: the brand of a Guest chat ("Message removed by <Brand>"). */
+  brandName?: string | null;
 }): { key: string; params: Record<string, string> } {
+  if (input.kind === "host") {
+    const brand = (input.brandName ?? "").trim();
+    return brand
+      ? { key: "chat:tombstoneHostRemoved", params: { name: brand } }
+      : { key: "chat:tombstoneHostRemovedGeneric", params: {} };
+  }
   if (input.kind === "admin") {
     if (input.actorIsMe) return { key: "chat:tombstoneYouRemoved", params: {} };
     if (input.authorIsMe) return { key: "chat:tombstoneAdminRemovedYours", params: { name: input.actorName } };
@@ -256,9 +265,10 @@ export interface MessageTombstone {
 
 /**
  * Issue #4456: how a stored row reads in the thread. A message unsent by its
- * author or removed by a group admin becomes a placeholder (`tombstone`); any
- * other removal (Host moderation, account deletion, rows from before #4456)
- * stays hidden (`unsent`), as before.
+ * author or removed by a group admin becomes a placeholder (`tombstone`), and
+ * so does one the brand removed (#4459: "Message removed by <Brand>"); any
+ * other removal (account deletion, rows from before #4456) stays hidden
+ * (`unsent`), as before.
  */
 export function unsentStateOf(row: {
   deleted_at?: string | null;
@@ -266,7 +276,7 @@ export function unsentStateOf(row: {
   unsent_by?: string | null;
 }): { unsent?: true; tombstone?: MessageTombstone } {
   if (!row.deleted_at) return {};
-  if (row.unsent_kind === "sender" || row.unsent_kind === "admin") {
+  if (row.unsent_kind === "sender" || row.unsent_kind === "admin" || row.unsent_kind === "host") {
     return { tombstone: { kind: row.unsent_kind, byUserId: row.unsent_by ?? null } };
   }
   return { unsent: true };
@@ -310,7 +320,6 @@ export const CHAT_BACK_LAYERS = [
   "groupInfo",
   "moreMenu",
   "eventAudience",
-  "sendTarget",
   "collabDeck",
   "collabMatches",
   "collabPlans",

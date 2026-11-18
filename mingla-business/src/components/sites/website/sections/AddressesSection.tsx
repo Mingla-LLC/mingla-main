@@ -17,6 +17,7 @@ import { canMakeMain, disconnectExplanation, domainChip, MX_WARNING, needsSetup,
 import { dnsGuide, isDnsRegistrar, type DnsRegistrar } from "../../../../../../packages/site-contracts/src/dnsGuides.ts";
 import { formatWebsiteDateTime } from "../../../../sites/websiteCopy";
 
+import { color } from "../../../../constants/designSystem";
 const REGISTRARS: readonly { value: DnsRegistrar; label: string }[] = [
   { value: "namecheap", label: "Namecheap" },
   { value: "godaddy", label: "GoDaddy" },
@@ -289,7 +290,7 @@ const styles = StyleSheet.create({
   sub: { fontSize: 12.5, lineHeight: 17, color: ui.t3 },
   label: { fontSize: 13, fontWeight: "600", color: ui.t2, marginTop: 14, marginBottom: 6 },
   inputRow: { flexDirection: "row", gap: 8, alignItems: "center" },
-  input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: "rgba(255,255,255,0.03)", paddingHorizontal: 12, color: ui.t1, fontSize: 14 },
+  input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: ui.border2, backgroundColor: color.fill.tableHead, paddingHorizontal: 12, color: ui.t1, fontSize: 14 },
   rowCenter: { flexDirection: "row", alignItems: "center", gap: 12 },
   actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 14 },
   help: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 8 },

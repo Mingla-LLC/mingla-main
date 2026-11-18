@@ -29,6 +29,7 @@ import {
   PhoneInput,
   getCountryByCode,
   type PhoneInputIconName,
+  type PhoneInputMetrics,
   type PhoneInputPickerPresentation,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
@@ -40,13 +41,12 @@ import {
 } from "@mingla/phone-input/phoneNumber";
 
 import {
-  accent,
-  canvas,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  edge,
+  radius,
+  size,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { devicePhoneRegion } from "../../utils/devicePhoneRegion";
 import { Icon } from "./Icon";
@@ -165,21 +165,36 @@ export const phoneFieldError = (
   return entry.result.ok ? null : entry.result.message;
 };
 
-/** The dark Business sheet palette (matches the People "Add a person" field). */
+/** The dark Business sheet palette: the same fill and rims as ui/Input. */
 export const BUSINESS_SHEET_PHONE_THEME: PhoneInputTheme = {
-  backgroundPrimary: canvas.depth,
-  textPrimary: textTokens.primary,
-  textTertiary: textTokens.tertiary,
-  borderDefault: glass.border.profileElevated,
-  borderFocused: accent.warm,
-  borderError: semantic.error,
-  searchBackground: canvas.profile,
-  rowPressedBackground: glass.tint.profileBase,
-  divider: glass.border.profileBase,
-  accessoryBackground: canvas.depth,
-  accessoryBorder: glass.border.profileElevated,
-  accent: accent.warm,
-  errorText: semantic.error,
+  backgroundPrimary: color.canvas,
+  fieldBackground: color.fill.input,
+  textPrimary: color.text1,
+  textTertiary: color.text3,
+  borderDefault: color.lineStrong,
+  borderFocused: edge.ringInputFocus.borderColor,
+  borderError: edge.ringError.borderColor,
+  searchBackground: color.canvas,
+  rowPressedBackground: color.fill.inset,
+  divider: color.line,
+  accessoryBackground: color.canvas,
+  accessoryBorder: color.lineStrong,
+  accent: color.text1,
+  errorText: color.errorText,
+};
+
+/**
+ * #4420 — the ui/Input geometry: 48 tall, radius sm, a 1px rim (1.5 focused),
+ * no focus shadow, the 14 inner padding, and the error flush with the field.
+ */
+export const BUSINESS_PHONE_METRICS: PhoneInputMetrics = {
+  height: size.input,
+  borderWidth: 1,
+  focusedBorderWidth: edge.ringInputFocus.borderWidth,
+  borderRadius: radius.sm,
+  horizontalPadding: 14,
+  errorIndent: 0,
+  focusShadow: false,
 };
 
 const iconRenderer = (
@@ -258,6 +273,7 @@ export function PhoneField({
         phoneInputAccessibilityLabel={accessibilityLabel}
         iconRenderer={iconRenderer}
         theme={theme}
+        metrics={BUSINESS_PHONE_METRICS}
         labels={{
           phonePlaceholder: placeholder,
           countryButtonAccessibilityLabel: (name: string) =>
@@ -279,7 +295,7 @@ export function PhoneField({
           style={styles.switch}
           testID={testID ? `${testID}-switch-country` : undefined}
         >
-          <Text style={[styles.switchText, { color: actionColor ?? theme.accent ?? accent.warm }]}>
+          <Text style={[styles.switchText, { color: actionColor ?? theme.accent ?? color.text1 }]}>
             {`Switch to ${suggestedCountry.flag} ${suggestedCountry.name} (${suggestedCountry.dialCode})`}
           </Text>
         </Pressable>
@@ -291,11 +307,11 @@ export function PhoneField({
 const styles = StyleSheet.create({
   switch: {
     alignSelf: "flex-start",
-    marginTop: spacing.xs,
-    paddingVertical: spacing.xs,
+    marginTop: space[1],
+    paddingVertical: space[1],
   },
   switchText: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
   },
 });

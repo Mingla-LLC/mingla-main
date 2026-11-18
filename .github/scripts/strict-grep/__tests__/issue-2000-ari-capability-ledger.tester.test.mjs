@@ -109,10 +109,17 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // #4389 adds start_payments_onboarding and start_door_sale, read-only setup
 // and door sale handoffs (185→187 tools / 197→199 capabilities).
 // Merged with #3355: 188 tools / 200 capabilities; registered_unverified 187.
-// #4453 milestone 7: get_site_design_brief, propose_site_design_pass, propose_site_chrome (3 rows, registered_unverified); 191 tools / 203 capabilities; registered_unverified 190.
-// #4453 milestone 11: propose_site_page, answer_site_page_question (2 rows, registered_unverified); 193 tools / 205 capabilities; registered_unverified 192.
+// #4238 W5 adds get_ad_budget_guidance (read) and apply_ad_suggestion (money,
+// one confirmed tap) — 188→190 tools / 200→202 capabilities;
+// registered_unverified 187→189.
+// #3281 bundle 3 adds get_experience (read) — 190→191 tools / 202→203
+// capabilities; registered_unverified 189→190.
+// #4453 milestone 7: get_site_design_brief, propose_site_design_pass, propose_site_chrome (3 rows, registered_unverified).
+// #4453 milestone 11: propose_site_page, answer_site_page_question (2 rows, registered_unverified).
+// Merged with #4238 W5 and #3281 bundle 3: 196 tools / 208 capabilities; registered_unverified 195.
 const EXPECTED_TOOL_NAMES = [
   "answer_site_page_question",
+  "apply_ad_suggestion",
   "approve_ad_plan",
   "build_host_onboarding_blueprint",
   "cancel_campaign",
@@ -152,6 +159,7 @@ const EXPECTED_TOOL_NAMES = [
   "extract_listing_candidates",
   "fetch_public_listing_page",
   "forget_memory_note",
+  "get_ad_budget_guidance",
   "get_ad_campaign_report",
   "get_block_catalog",
   "get_brand_analytics",
@@ -163,6 +171,7 @@ const EXPECTED_TOOL_NAMES = [
   "get_campaign_report",
   "get_capability_inventory",
   "get_event_order_reconciliation",
+  "get_experience",
   "get_growth_tool_report",
   "get_listing_conversion",
   "get_listing_type_capabilities",
@@ -308,19 +317,19 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 205,
+  capabilityCount: 208,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 192,
+    registered_unverified: 195,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "d105f0c663197d2ac4a503dc3df52072e126fd422bc6a4ededc72fff040de565",
-  statusDigest: "afd6da6ad2c1d38468870a25928c119747f17fc9bbf7702d9ab4b2296359dd47",
-  mappingDigest: "212a5a734f7e78f953dab030c170ad1525da176f970b147eeeb471b4a884b554",
-  sourceRefDigest: "20eec61d8b591e3f4ec40f72c472b79a89d675e8f2642f19e7d74a973e41457c",
+  idDigest: "711b051898090a477181047c4373d144c340db22531615649f4aa59addc674fc",
+  statusDigest: "3026390b6304df93749b31e3e53acf52531b3230dd4b2433173e277ef4dc53b9",
+  mappingDigest: "ca3cc7feafc6d97da8937e0f2c8ae345b4214dbf79aaad756135ae3d1302010d",
+  sourceRefDigest: "c20fa5bc0ef634fc2c40788e31edcc0348ce9d0a67df97edfa505d293beef276",
 });
 
 function readLedger() {
@@ -346,9 +355,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("193-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("196-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("0/192/0/8/0/5 classification changed");
+    failures.push("0/195/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

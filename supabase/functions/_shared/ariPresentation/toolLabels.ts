@@ -365,6 +365,11 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<Record<string, ToolOwnerCopy>> =
     approve_ad_plan: row("Launch Host ad", "Launch this ad", "Ad launched"),
     pause_ad_campaign: row("Pause Host ad", "Pause this ad", "Ad paused"),
     end_ad_campaign: row("End Host ad", "End this ad", "Ad ended"),
+    apply_ad_suggestion: row(
+      "Apply ad suggestion",
+      "Apply this change",
+      "Ad updated",
+    ),
     // Orders and money
     refund_order: row("Refund order", "Refund this order", "Order refunded"),
     cancel_order: row(

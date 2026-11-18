@@ -126,8 +126,9 @@ BEGIN
   IF NOT public.ad_can_host_action(v_brand, v_admin, 'read')
      OR NOT public.ad_can_host_action(v_brand, v_admin, 'plan')
      OR public.ad_can_host_action(v_brand, v_admin, 'fund')
-     OR public.ad_can_host_action(v_brand, v_admin, 'launch')
-     OR public.ad_can_host_action(v_brand, v_admin, 'pause')
+     -- #4238 W4b: brand admins launch and pause; ending stays owner-only.
+     OR NOT public.ad_can_host_action(v_brand, v_admin, 'launch')
+     OR NOT public.ad_can_host_action(v_brand, v_admin, 'pause')
      OR public.ad_can_host_action(v_brand, v_admin, 'end') THEN
     RAISE EXCEPTION 'brand_admin_ads_matrix_wrong';
   END IF;

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/claim-contact/__tests__/issue_4473_shared_sweep.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4473-shared-sweep-implementor-happy",
+  "profile": "deno-1.46-stripe"
+}

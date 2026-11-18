@@ -39,8 +39,10 @@ describe("META-ORCH-0972 Sub-C / ORCH-1155 PublicBrandPage data-driven tabs (sha
   });
 
   test("renders the zero-offering brand without hiding identity/about (About default)", () => {
-    // About is the default-selected tab and always present even with no offerings.
-    expect(sharedBrandPage).toContain('useState<Tab>("about")');
+    // About is always present even with no offerings. #4420 wave 2 (D-B2,
+    // approved) made Upcoming the default whenever that tab exists, so the old
+    // `useState<Tab>("about")` pin was retired; the default rule is covered by
+    // packages/brand-rendering/__tests__/orch_1155_brand_redesign.test.tsx T-1.
     expect(sharedBrandPage).toContain("const AboutTab");
     expect(sharedBrandPage).toContain("EmptyPane");
   });
@@ -51,7 +53,8 @@ describe("META-ORCH-0972 Sub-C / ORCH-1155 PublicBrandPage data-driven tabs (sha
     expect(sharedBrandPage).toContain("const TripList");
     expect(sharedBrandPage).toContain("const ExperienceList");
     expect(sharedBrandPage).toContain("ExperienceMiniCard");
-    expect(sharedBrandPage).toContain("NextOfferingTeaser");
+    // #4420 wave 2 replaced the NextOfferingTeaser with the desktop Next-up
+    // bar (orch_1155_brand_redesign "desktop flyer actions" covers it).
   });
 
   test("public service fetches all offering buckets in parallel without kind branching", () => {

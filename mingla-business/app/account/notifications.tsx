@@ -33,7 +33,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from "react-native";
@@ -42,10 +41,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  accent,
-  canvas,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../src/constants/designSystem";
 import {
   useCreatorAccount,
@@ -74,6 +71,7 @@ import {
 
 import { teamChatKey } from "../../src/hooks/useBusinessNotifications";
 import { GlassCard } from "../../src/components/ui/GlassCard";
+import { Switch } from "../../src/components/ui/Switch";
 import { Icon } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
@@ -105,14 +103,14 @@ export function MinglaTeamPrefsGroup({ userId }: { userId: string | null }): Rea
 interface ChildType {
   readonly type: BusinessNotificationType;
   readonly label: string;
-  readonly description: string;
+  readonly description?: string;
 }
 
 const ORDER_CHILDREN: readonly ChildType[] = [
-  { type: "business.order_paid", label: "New sale", description: "When a ticket sells" },
-  { type: "business.event_sold_out", label: "Sold out", description: "When a listing sells out" },
-  { type: "business.low_inventory", label: "Almost gone", description: "When inventory runs low" },
-  { type: "business.refund_processed", label: "Refunds", description: "When a refund is processed" },
+  { type: "business.order_paid", label: "New sale" },
+  { type: "business.event_sold_out", label: "Sold out" },
+  { type: "business.low_inventory", label: "Almost gone" },
+  { type: "business.refund_processed", label: "Refunds" },
   {
     type: "business.cancel_refunds_released",
     label: "Cancel refunds released",
@@ -121,18 +119,29 @@ const ORDER_CHILDREN: readonly ChildType[] = [
 ];
 
 const PAYMENTS_CHILDREN: readonly ChildType[] = [
-  { type: "business.dispute_opened", label: "Disputes opened", description: "When a buyer disputes a charge" },
-  { type: "business.dispute_action_needed", label: "Evidence due", description: "When you must submit dispute evidence" },
-  { type: "business.payout_paid", label: "Payouts", description: "When money lands in your bank" },
+  // #4238 W6b — the stop date and the top-up that reaches the end date.
+  { type: "business.ad_credit_low", label: "Ad credit low", description: "When an ad will stop before its end date" },
+  { type: "business.dispute_opened", label: "Disputes opened" },
+  { type: "business.dispute_action_needed", label: "Evidence due" },
+  { type: "business.payout_paid", label: "Payouts" },
   { type: "business.account_status_changed", label: "Account status", description: "When payments are paused or restored" },
 ];
 
 const AUDIENCE_CHILDREN: readonly ChildType[] = [
-  { type: "business.new_review", label: "New reviews", description: "When someone reviews your brand" },
+  { type: "business.new_review", label: "New reviews" },
+  // #4238 W6b — Host ad notices (push + in-app; the server sends them in each person's language).
+  { type: "business.ad_live", label: "Ad is live", description: "When an app approves your ad" },
+  { type: "business.ad_rejected", label: "Ad not approved", description: "When an app turns down your ad" },
+  { type: "business.ad_part_rejected", label: "Some videos not approved", description: "When an app turns down part of your ad" },
+  { type: "business.ad_paused", label: "Ad paused", description: "When your ad stops, and why" },
+  { type: "business.ad_ended", label: "Ad ended", description: "How your ad did, and credit that came back" },
+  { type: "business.ad_slow_sales", label: "Slow sales", description: "When an ad sells fewer tickets than expected" },
+  { type: "business.ad_creative_tired", label: "Tired video", description: "When people have seen your video a lot" },
+  { type: "business.ad_last_tickets", label: "Last tickets", description: "When few tickets are left" },
 ];
 
 const TEAM_CHILDREN: readonly ChildType[] = [
-  { type: "business.team_member_joined", label: "Teammate joined", description: "When an invited teammate accepts" },
+  { type: "business.team_member_joined", label: "Teammate joined" },
   { type: "business.claim_decision", label: "Claim decisions", description: "When a venue claim is approved or declined" },
 ];
 
@@ -306,7 +315,7 @@ export default function NotificationsRoute(): React.ReactElement {
     <View
       style={[
         styles.host,
-        { paddingTop: insets.top, backgroundColor: canvas.discover },
+        { paddingTop: insets.top, backgroundColor: color.canvas },
       ]}
     >
       <View style={styles.chromeRow}>
@@ -324,7 +333,7 @@ export default function NotificationsRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          { paddingBottom: insets.bottom + space[7] },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -379,7 +388,7 @@ export default function NotificationsRoute(): React.ReactElement {
           preferencesDisabled={typePrefsUnavailable}
         />
 
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Brand group messages"
             description="When anyone posts in your brand's group"
@@ -406,7 +415,7 @@ export default function NotificationsRoute(): React.ReactElement {
         />
 
         {/* Scanner activity (existing, no v1 children) */}
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Scanner activity"
             description="When scanners check in guests at the door"
@@ -416,7 +425,7 @@ export default function NotificationsRoute(): React.ReactElement {
         </GlassCard>
 
         {/* Marketing (existing, creator_accounts-backed) */}
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Marketing"
             description="Newsletter and product updates from Mingla"
@@ -427,7 +436,7 @@ export default function NotificationsRoute(): React.ReactElement {
 
         {/* META-ORCH-1187 [Growth Analytics Hub] — Privacy: analytics opt-out.
             Toggle ON = sharing anonymous usage data (analyticsOptOut=false). */}
-        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+        <GlassCard variant="elevated" radius="md" padding={space[4]}>
           <SimpleToggleRow
             label="Analytics"
             description="Help improve Mingla by sharing anonymous usage data. You can turn this off any time."
@@ -480,7 +489,7 @@ const MasterCard: React.FC<MasterCardProps> = ({
   onChild,
   preferencesDisabled,
 }) => (
-  <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+  <GlassCard variant="elevated" radius="md" padding={space[4]}>
     <View style={styles.masterRow}>
       <Pressable
         onPress={onToggleExpand}
@@ -502,17 +511,14 @@ const MasterCard: React.FC<MasterCardProps> = ({
         <Icon
           name={expanded ? "chevU" : "chevD"}
           size={16}
-          color={textTokens.tertiary}
+          color={color.text3}
         />
       </Pressable>
       <Switch
         value={masterOn}
         onValueChange={onToggleMaster}
-        trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-        thumbColor="#ffffff"
         accessibilityLabel={`${label} master toggle`}
         disabled={preferencesDisabled}
-        accessibilityState={{ checked: masterOn, disabled: preferencesDisabled }}
       />
     </View>
 
@@ -533,9 +539,11 @@ const MasterCard: React.FC<MasterCardProps> = ({
           >
             <View style={styles.childTextCol}>
               <Text style={styles.childLabel}>{child.label}</Text>
-              <Text style={styles.childDescription} numberOfLines={1}>
-                {child.description}
-              </Text>
+              {child.description !== undefined ? (
+                <Text style={styles.childDescription} numberOfLines={1}>
+                  {child.description}
+                </Text>
+              ) : null}
             </View>
             <View style={styles.childToggles}>
               <ChannelToggle
@@ -581,10 +589,7 @@ const ChannelToggle: React.FC<ChannelToggleProps> = ({
       value={value}
       onValueChange={onToggle}
       disabled={disabled}
-      trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-      thumbColor="#ffffff"
       accessibilityLabel={a11y}
-      accessibilityState={{ checked: value, disabled }}
     />
   </View>
 );
@@ -610,7 +615,6 @@ const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
     onPress={() => onToggle(!value)}
     disabled={disabled}
     accessibilityRole="switch"
-    accessibilityState={{ checked: value, disabled }}
     accessibilityLabel={label}
     style={styles.toggleRow}
   >
@@ -624,8 +628,7 @@ const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
       value={value}
       onValueChange={onToggle}
       disabled={disabled}
-      trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
-      thumbColor="#ffffff"
+      accessibilityLabel={label}
     />
   </Pressable>
 );
@@ -637,16 +640,16 @@ const styles = StyleSheet.create({
   chromeRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    paddingBottom: space[2],
+    gap: space[2],
   },
   chromeTitle: {
     flex: 1,
     fontSize: 17,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.2,
     textAlign: "center",
   },
@@ -657,17 +660,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
+    gap: space[4],
   },
 
   // Master row
   masterRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[4],
+    paddingVertical: space[2],
   },
   masterText: {
     flex: 1,
@@ -676,20 +679,20 @@ const styles = StyleSheet.create({
   masterOffNote: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.tertiary,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
+    color: color.text3,
+    paddingTop: space[1],
+    paddingBottom: space[2],
   },
 
   // Child rows
   childRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.lg,
+    gap: space[4],
+    paddingVertical: space[2],
+    paddingLeft: space[6],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
+    borderTopColor: color.line,
   },
   childDisabled: {
     opacity: 0.4,
@@ -701,18 +704,18 @@ const styles = StyleSheet.create({
   childLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   childDescription: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   childToggles: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    gap: space[2],
   },
   channelCol: {
     alignItems: "center",
@@ -723,15 +726,15 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontWeight: "600",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
 
   // Simple toggle rows
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[4],
+    paddingVertical: space[2],
   },
   toggleCol: {
     flex: 1,
@@ -740,13 +743,13 @@ const styles = StyleSheet.create({
   toggleLabel: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     marginBottom: 2,
   },
   toggleDescription: {
     fontSize: 12,
     lineHeight: 16,
-    color: textTokens.secondary,
+    color: color.text2,
   },
 
   toastWrap: {

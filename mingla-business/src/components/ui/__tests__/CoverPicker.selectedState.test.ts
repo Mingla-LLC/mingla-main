@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 /**
  * META-ORCH-1059 [cover picker selected-state] regression.
  *
@@ -112,8 +113,8 @@ describe("META-ORCH-1059 CoverPicker selected-state wiring (source)", () => {
     expect(src).toMatch(/selected && styles\.tileSelected/);
     expect(src).toContain("styles.selectedBadge");
     expect(src).toMatch(/<Icon\s+name="check"/);
-    // accent.border is the selected ring colour
-    expect(src).toMatch(/tileSelected:\s*\{[^}]*borderColor:\s*accent\.border/s);
+    // color.accentLine is the selected ring colour
+    expect(src).toMatch(/tileSelected:\s*\{[^}]*borderColor:\s*color\.accentLine/s);
   });
 
   test("the Library preview also shows the selected check when a cover is applied", () => {

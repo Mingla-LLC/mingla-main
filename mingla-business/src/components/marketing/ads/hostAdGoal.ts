@@ -6,12 +6,39 @@
 
 type Platform = "meta" | "tiktok" | "snapchat" | "google" | "reddit";
 
-/** Platforms with a website-sales path a Host ad may use. */
+/**
+ * Platforms with a website-sales path a Host ad may use. #4238 W6a: Google
+ * stays off this list (ADV-3: it is never frozen as sales here). The builder
+ * shows Google as "Needs setup" for sales and sign-ups and never puts it in
+ * such a plan; the server refuses one with host_ad_google_needs_setup.
+ */
 export const HOST_AD_SALES_PLATFORMS: readonly Platform[] = [
   "meta",
   "snapchat",
   "tiktok",
 ];
+
+/** #4238 item 3: platforms with a sign-ups path (free and RSVP pages). */
+export const HOST_AD_SIGNUP_PLATFORMS: readonly Platform[] = ["meta", "snapchat"];
+
+/** Page types whose result is a sign-up (no ticket is sold). */
+const HOST_AD_SIGNUP_RESULTS: readonly string[] = ["rsvp", "signups", "registrations"];
+
+/**
+ * #4238 W6a: the one goal a Host sees, from the page they picked: ticket
+ * pages sell tickets, RSVP and free pages get sign-ups, everything else gets
+ * visits. The server stays the authority (a free ticket page is refused for
+ * sales and the builder moves it to sign-ups).
+ */
+export function hostAdPageGoal(
+  page: { page_type: string; result_kind: string | null } | null | undefined,
+): "sales" | "signups" | "visits" {
+  if (hostAdPageSellsTickets(page)) return "sales";
+  if (page && (page.page_type === "rsvp" || HOST_AD_SIGNUP_RESULTS.includes(page.result_kind ?? ""))) {
+    return "signups";
+  }
+  return "visits";
+}
 
 /**
  * Page types that sell tickets through Mingla checkout. A brand website

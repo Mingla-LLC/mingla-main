@@ -8,13 +8,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 
-import {
-  accent,
-  glass,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../../constants/designSystem";
+import { color, space, type } from "../../../../constants/designSystem";
 import { formatHostAdMoneyCents } from "../hostAdMoney";
 import { HOST_AD_RESULTS_COPY } from "../hostAdCopy";
 import {
@@ -73,7 +67,7 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <Line x1="0" x2={width} y1={height} y2={height} stroke={glass.border.profileElevated} />
+          <Line x1="0" x2={width} y1={height} y2={height} stroke={color.lineStrong} />
           {series.budget !== null ? (
             <>
               <Line
@@ -81,14 +75,14 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
                 x2={width}
                 y1={y(series.budget)}
                 y2={y(series.budget)}
-                stroke={textTokens.tertiary}
+                stroke={color.text3}
                 strokeDasharray="4 5"
               />
-              <SvgText x={width + 4} y={y(series.budget) + 4} fill={textTokens.tertiary} fontSize="11">
+              <SvgText x={width + 4} y={y(series.budget) + 4} fill={color.text3} fontSize="11">
                 Budget
               </SvgText>
               {series.pauseAt !== null ? (
-                <SvgText x={width + 4} y={Math.min(height - 2, y(series.pauseAt) + 16)} fill={textTokens.tertiary} fontSize="11">
+                <SvgText x={width + 4} y={Math.min(height - 2, y(series.pauseAt) + 16)} fill={color.text3} fontSize="11">
                   98%
                 </SvgText>
               ) : null}
@@ -98,7 +92,7 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
             <Path
               d={path.d}
               fill="none"
-              stroke={accent.warm}
+              stroke={color.text1}
               strokeWidth="3"
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -110,8 +104,8 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
               cx={point.x}
               cy={point.y}
               r="5"
-              fill={accent.warm}
-              stroke={textTokens.primary}
+              fill={color.text1}
+              stroke={color.card}
               strokeWidth="2"
             />
           ))}
@@ -153,9 +147,9 @@ export function AdSpendChart({ series }: { series: SpendSeries }): React.ReactEl
 }
 
 const styles = StyleSheet.create({
-  empty: { ...typography.bodySm, color: textTokens.secondary, marginTop: spacing.md },
-  axisRow: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },
-  fewRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.xs },
-  axisText: { ...typography.caption, color: textTokens.tertiary },
-  note: { ...typography.caption, color: textTokens.tertiary, marginTop: spacing.xs },
+  empty: { ...type.small, color: color.text2, marginTop: space[4] },
+  axisRow: { flexDirection: "row", justifyContent: "space-between", marginTop: space[1] },
+  fewRow: { flexDirection: "row", flexWrap: "wrap", gap: space[4], marginTop: space[1] },
+  axisText: { ...type.caption, color: color.text3 },
+  note: { ...type.caption, color: color.text3, marginTop: space[1] },
 });

@@ -321,6 +321,7 @@ describe("#1776 brand-book export happy path", () => {
     expect(source).toContain('event.key === "Escape"');
     expect(source).toContain("documentValue.activeElement");
     expect(source).toMatch(/reduceMotion\s*\?\s*\([\s\S]*?<Icon name="clock"/);
-    expect(source).toContain('panelBackground={Platform.OS === "android" ? "#16181b" : undefined}');
+    // [TEST-MOD-APPROVED #4420] the Android opaque panel is the Graphite solid sheet token.
+    expect(source).toContain('panelBackground={Platform.OS === "android" ? materials.sheet.solidFill : undefined}');
   });
 });

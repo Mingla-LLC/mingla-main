@@ -33,9 +33,10 @@ describe("#4238 D3 alerts in every viewer zone", () => {
     const started = "2026-11-03T22:30:00Z"; // 23:30 in Lagos on 3 Nov
     const now = "2026-11-07T10:00:00Z";
     expect(hostAdRunDay(started, now, "Africa/Lagos")).toBe(5);
-    const learning = hostAdLearningAlert({ name: "Sunday Rooftop", live: true, startedAt: started, nowIso: now, timezone: "Africa/Lagos" });
+    // #4238 W2 6d: the words follow the goal (this is a "Sell tickets" ad).
+    const learning = hostAdLearningAlert({ name: "Sunday Rooftop", live: true, startedAt: started, nowIso: now, timezone: "Africa/Lagos", goal: "sales" });
     expect(learning?.body).toBe(
-      "Day 5. The apps are still finding who buys. Leave it running for about a week before changing it.",
+      "Day 5. The apps are still finding people likely to buy. Leave it running for about a week before changing it.",
     );
     expect(hostAdLearningAlert({ name: "x", live: true, startedAt: started, nowIso: "2026-11-12T10:00:00Z", timezone: "Africa/Lagos" })).toBeNull();
     const pacing = hostAdPacingAlert({
@@ -61,6 +62,26 @@ describe("#4238 D3 paused because… and once a day", () => {
       expect(hostAdCopyIsPlain(line as string)).toBe(true);
     }
     expect(hostAdPausedReason("something_new")).toBeNull();
+  });
+  it("#4238 W2 5b: true reasons — sold out, not on sale yet, closed and private never say 'ended'", () => {
+    for (const reason of ["not_on_sale", "bookings_closed"]) {
+      const line = hostAdPausedReason(reason);
+      expect(line?.startsWith("Paused because")).toBe(true);
+      expect(hostAdCopyIsPlain(line as string)).toBe(true);
+    }
+    expect(hostAdPausedReason("sold_out")).toContain("sold out");
+    expect(hostAdPausedReason("not_on_sale")).not.toContain("sold out");
+    expect(hostAdPausedReason("destination_unavailable")).not.toContain("ended");
+    expect(hostAdPausedReason("event_ended")).toContain("Ads credit");
+  });
+  it("#4238 W2 6d: a visits or sign-ups ad never says it is finding buyers", () => {
+    const started = "2026-11-03T22:30:00Z";
+    const now = "2026-11-05T10:00:00Z";
+    for (const goal of ["visits", "signups", null] as const) {
+      const body = hostAdLearningAlert({ name: "x", live: true, startedAt: started, nowIso: now, goal })?.body ?? "";
+      expect(body).not.toMatch(/buy/);
+    }
+    expect(hostAdLearningAlert({ name: "x", live: true, startedAt: started, nowIso: now, goal: "signups" })?.body).toContain("sign up");
   });
   it("the next edit opens 24 hours after the last one", () => {
     expect(hostAdNextLiveEditAt("2026-11-07T10:00:00Z", "2026-11-07T20:00:00Z")).toBe("2026-11-08T10:00:00.000Z");

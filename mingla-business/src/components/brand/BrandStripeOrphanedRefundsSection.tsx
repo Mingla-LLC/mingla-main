@@ -21,16 +21,11 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { GlassCard } from "../ui/GlassCard";
 import { Spinner } from "../ui/Spinner";
-import {
-  spacing,
-  typography,
-  text as textTokens,
-  accent,
-  semantic,
-} from "../../constants/designSystem";
+
 import { formatCurrency } from "../../utils/currency";
 import { useBrandStripeOrphanedRefunds } from "../../hooks/useBrandStripeOrphanedRefunds";
 
+import { color, space, type } from "../../constants/designSystem";
 interface BrandStripeOrphanedRefundsSectionProps {
   brandId: string;
 }
@@ -42,9 +37,9 @@ export function BrandStripeOrphanedRefundsSection({
 
   if (refundsQuery.isLoading) {
     return (
-      <GlassCard variant="base" padding={spacing.md} style={styles.card}>
+      <GlassCard variant="base" padding={space[4]} style={styles.card}>
         <View style={styles.loadingRow}>
-          <Spinner size={24} color={accent.warm} />
+          <Spinner size={24} color={color.text1} />
           <Text style={styles.loadingText}>Loading refund history…</Text>
         </View>
       </GlassCard>
@@ -53,7 +48,7 @@ export function BrandStripeOrphanedRefundsSection({
 
   if (refundsQuery.isError) {
     return (
-      <GlassCard variant="base" padding={spacing.md} style={styles.card}>
+      <GlassCard variant="base" padding={space[4]} style={styles.card}>
         <Text style={styles.errorText}>
           Couldn't load refund history. The data is safely stored — try again later.
         </Text>
@@ -65,7 +60,7 @@ export function BrandStripeOrphanedRefundsSection({
 
   if (refunds.length === 0) {
     return (
-      <GlassCard variant="base" padding={spacing.md} style={styles.card}>
+      <GlassCard variant="base" padding={space[4]} style={styles.card}>
         <Text style={styles.title}>Refund history</Text>
         <Text style={styles.empty}>No refunds processed since detach.</Text>
       </GlassCard>
@@ -73,7 +68,7 @@ export function BrandStripeOrphanedRefundsSection({
   }
 
   return (
-    <GlassCard variant="base" padding={spacing.md} style={styles.card}>
+    <GlassCard variant="base" padding={space[4]} style={styles.card}>
       <Text style={styles.title}>Refund history (post-detach)</Text>
       <Text style={styles.subtitle}>
         {refunds.length} refund{refunds.length === 1 ? "" : "s"} processed since this account was disconnected.
@@ -118,69 +113,69 @@ function formatDate(iso: string): string {
 
 const styles = StyleSheet.create({
   card: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
   },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   loadingText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   errorText: {
-    fontSize: typography.bodySm.fontSize,
-    color: semantic.error,
+    fontSize: type.small.fontSize,
+    color: color.errorText,
   },
   title: {
-    fontSize: typography.h3.fontSize,
+    fontSize: type.h1.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
-    marginBottom: spacing.xs,
+    color: color.text1,
+    marginBottom: space[1],
   },
   subtitle: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    marginBottom: spacing.md,
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    marginBottom: space[4],
   },
   empty: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.small.fontSize,
+    color: color.text3,
   },
   list: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.sm,
+    paddingVertical: space[2],
   },
   rowLeft: {
     flexDirection: "column",
     gap: 2,
   },
   amount: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   date: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   status: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   statusOk: {
-    color: semantic.success,
+    color: color.success,
   },
   statusErr: {
-    color: semantic.error,
+    color: color.errorText,
   },
 });
 

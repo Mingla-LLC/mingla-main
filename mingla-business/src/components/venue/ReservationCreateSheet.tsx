@@ -17,11 +17,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ScrollView as BodyScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useAvailableSlots } from "../../hooks/useVenueAvailability";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
@@ -426,13 +425,13 @@ export function ReservationCreateSheet({
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingTop: space[2],
   },
   heading: {
-    ...typography.h3,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    ...type.h1,
+    color: color.text1,
+    marginBottom: space[2],
   },
   // ORCH-1193: bound the body scroll viewport to the fixed-height panel so the
   // CTA scrolls into view instead of overflowing past overflow:hidden.
@@ -440,23 +439,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingBottom: spacing.xxl,
-    gap: spacing.xs,
+    paddingBottom: space[9],
+    gap: space[1],
   },
   groupLabel: {
-    ...typography.labelCap,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xxs,
+    ...type.label,
+    color: color.text3,
+    marginTop: space[4],
+    marginBottom: 2,
   },
   helper: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   stepper: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
   stepBtn: {
     width: 44,
@@ -464,83 +463,83 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
   },
   stepBtnLabel: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
   },
   stepValue: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.h1,
+    color: color.text1,
     minWidth: 32,
     textAlign: "center",
     fontVariant: ["tabular-nums"],
   },
   chipRow: {
     flexDirection: "row",
-    gap: spacing.xs,
-    paddingVertical: spacing.xxs,
+    gap: space[1],
+    paddingVertical: 2,
   },
   chipRowWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: color.fill.inset,
   },
   chipActive: {
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   chipLabel: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
     fontWeight: "600",
   },
   chipLabelActive: {
-    color: "#0c0e12",
+    color: color.ink,
   },
   slotGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
+    gap: space[1],
   },
   slot: {
     minWidth: 72,
     minHeight: 44,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: color.fill.inset,
   },
   slotActive: {
     borderWidth: 2,
-    borderColor: accent.warm,
+    borderColor: color.accent,
   },
   slotFull: {
     opacity: 0.4,
   },
   slotLabel: {
-    ...typography.bodySm,
-    color: textTokens.primary,
+    ...type.small,
+    color: color.text1,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
   slotLabelActive: {
-    color: accent.warm,
+    color: color.accent,
   },
   slotFullText: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
   },
   saveBtn: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
   },
 });
 

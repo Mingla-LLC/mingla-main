@@ -91,6 +91,10 @@
       "country": "Bank country",
       "pay": "Get paid",
       "done": "You're all set"
+    },
+    "stepper": {
+      "saved": "Saved",
+      "steps": "Steps"
     }
   }
 }

@@ -57,16 +57,27 @@ fi
 
 start_stack() {
   local workdir="$1" label="$2"
+  shift 2
   if stack_running "$workdir"; then
     log "${label} stack already running"
   else
+    # #4238 rework 2 (tester P2-1): a port another process already listens on
+    # (e.g. another chat's colima VM forwarding 55322) would send this
+    # script's migration replay into THAT database. Refuse before starting.
+    local port
+    for port in "$@"; do
+      if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "FAIL start-local-sites: ${label} port ${port} is already in use by another process (lsof -nP -iTCP:${port} -sTCP:LISTEN); stop it or set SITES_LOCAL_CORE_*_PORT" >&2
+        exit 2
+      fi
+    done
     log "starting the ${label} stack (the first start pulls images and takes a few minutes)"
     "$SUPABASE_BIN" start --workdir "$workdir"
   fi
 }
 
-start_stack "$CORE_WORKDIR" "Core"
-start_stack "$CMS_WORKDIR" "Sites CMS"
+start_stack "$CORE_WORKDIR" "Core" "$SITES_LOCAL_CORE_API_PORT" "$SITES_LOCAL_CORE_DB_PORT"
+start_stack "$CMS_WORKDIR" "Sites CMS" "$SITES_LOCAL_CMS_API_PORT" "$SITES_LOCAL_CMS_DB_PORT"
 
 if [[ "$reset" == true ]]; then
   log "resetting the Core database (--reset)"

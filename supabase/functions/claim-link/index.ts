@@ -3,6 +3,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
+  qrTokenPepper,
   serviceClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
@@ -21,6 +22,11 @@ import {
   contactCodeHash,
   generateContactCode,
 } from "../_shared/contactCode.ts";
+import {
+  checkVerification,
+  startVerification,
+} from "../_shared/twilioVerify.ts";
+import { runPurchaseClaimSweep } from "../_shared/purchaseClaimSweep.ts";
 
 export {
   contactCodeHash,
@@ -54,7 +60,33 @@ export interface ClaimLinkDeps {
   ): Promise<boolean>;
   createEmailUser(email: string): Promise<boolean>;
   magicLinkToken(email: string): Promise<string | null>;
+  // #4473 "Is this your ticket?": a signed-in account proves the contact on
+  // the purchase behind the link. Optional so older callers keep compiling;
+  // a missing dependency answers `unavailable`.
+  qrPepper?(): string;
+  startPhone?(phone: string): Promise<
+    | { ok: true }
+    | { ok: false; error: "rate_limited" | "unavailable" | "invalid" }
+  >;
+  checkPhone?(
+    phone: string,
+    code: string,
+  ): Promise<
+    | { ok: true; approved: boolean }
+    | { ok: false; error: "expired" | "unavailable" | "invalid" }
+  >;
 }
+
+// Countries the SMS code path serves; the same list claim-contact accepts.
+const SUPPORTED_PHONE_COUNTRIES = new Set([
+  "CA",
+  "GB",
+  "GH",
+  "KE",
+  "NG",
+  "US",
+  "ZA",
+]);
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -105,7 +137,14 @@ export function parseClaimLinkBody(
       ? value
       : null;
   }
-  if (value.op === "email_code_verify") {
+  if (value.op === "contact_code_send") {
+    return only(value, ["op", "code", "channel"]) &&
+      typeof value.code === "string" &&
+      (value.channel === "email" || value.channel === "phone")
+      ? value
+      : null;
+  }
+  if (value.op === "email_code_verify" || value.op === "contact_code_verify") {
     return only(value, ["op", "challengeId", "otp"]) &&
       typeof value.challengeId === "string" &&
       UUID.test(value.challengeId) &&
@@ -178,6 +217,213 @@ function mapChallengeFailure(
   return json(req, { ok: false, error: "invalid" }, 400);
 }
 
+function gateResponse(
+  req: Request,
+  gate: "allow" | "limited" | "unavailable",
+): Response | null {
+  if (gate === "allow") return null;
+  return json(
+    req,
+    { ok: false, error: gate === "limited" ? "rate_limited" : "unavailable" },
+    gate === "limited" ? 429 : 503,
+  );
+}
+
+async function sweepFor(
+  req: Request,
+  deps: ClaimLinkDeps,
+  userId: string,
+  extra: Record<string, unknown> = {},
+): Promise<Response> {
+  if (!deps.qrPepper) return json(req, { ok: false, error: "unavailable" }, 503);
+  let pepper: string;
+  try {
+    pepper = deps.qrPepper();
+  } catch {
+    return json(req, { ok: false, error: "unavailable" }, 503);
+  }
+  const claim = await runPurchaseClaimSweep(
+    (name, args) => deps.rpc(name, args),
+    userId,
+    pepper,
+  );
+  if (claim.limited) return json(req, { ok: false, error: "rate_limited" }, 429);
+  if (claim.result === null) {
+    return json(req, { ok: false, error: "unavailable" }, 503);
+  }
+  return json(req, { ok: true, ...extra, claimed: claim.result });
+}
+
+// #4473 "Is this your ticket?" — a signed-in account asks for a code at the
+// email or phone stored on the purchase behind a claim link. The value is
+// looked up on the server and only ever shown masked. Proving it records a
+// claim-only contact on this account, then the sweeps run.
+async function contactProof(
+  req: Request,
+  deps: ClaimLinkDeps,
+  op: string,
+  body: Record<string, unknown>,
+  code: string | null,
+  pepper: OfferingInvitePepper,
+  ipHash: string,
+): Promise<Response> {
+  const userId = await deps.userId(req);
+  if (userId === null) {
+    return json(req, { ok: false, error: "unauthorized" }, 401);
+  }
+
+  if (op === "contact_code_send") {
+    const channel = String(body.channel);
+    const limitedResponse = gateResponse(
+      req,
+      await limited(deps, `cl_contact_send:${userId}`, 5),
+    );
+    if (limitedResponse) return limitedResponse;
+    if (channel === "phone" && !deps.startPhone) {
+      return json(req, { ok: false, error: "unavailable" }, 503);
+    }
+    const challengeId = crypto.randomUUID();
+    const otp = channel === "email" ? generateContactCode() : "";
+    const digest = channel === "email"
+      ? await contactCodeHash(pepper.bytes, challengeId, otp)
+      : null;
+    const { data, error } = await deps.rpc(
+      "issue_4473_begin_claim_link_contact_challenge",
+      {
+        p_challenge_id: challengeId,
+        p_user_id: userId,
+        p_claim_code: code,
+        p_channel: channel,
+        p_code_hash: digest,
+        p_ip_hash: ipHash,
+      },
+    );
+    if (error) return json(req, { ok: false, error: "unavailable" }, 503);
+    const result = objectResult(data);
+    if (result.outcome === "already_on_this_account") {
+      return await sweepFor(req, deps, userId, { alreadyConfirmed: true });
+    }
+    if (result.outcome === "no_email" || result.outcome === "no_phone") {
+      return json(req, { ok: false, error: result.outcome });
+    }
+    if (result.outcome === "limit_reached") {
+      return json(req, { ok: false, error: "limit_reached" }, 409);
+    }
+    if (result.outcome !== "started" || typeof result.target !== "string") {
+      return mapChallengeFailure(req, result.outcome, result);
+    }
+    if (channel === "email") {
+      if (!(await deps.sendEmail(result.target, otp, challengeId))) {
+        return json(req, { ok: false, error: "send_failed" }, 502);
+      }
+    } else {
+      const country = await deps.rpc("mingla_e164_country", {
+        p_contact: result.target,
+      });
+      if (
+        country.error ||
+        typeof country.data !== "string" ||
+        !SUPPORTED_PHONE_COUNTRIES.has(country.data)
+      ) {
+        return json(req, { ok: false, error: "unsupported_phone" }, 400);
+      }
+      const sent = await deps.startPhone!(result.target);
+      if (!sent.ok) {
+        return json(
+          req,
+          { ok: false, error: sent.error },
+          sent.error === "rate_limited" ? 429 : 502,
+        );
+      }
+    }
+    return json(req, {
+      ok: true,
+      challengeId,
+      channel,
+      sentTo: maskContactForClaim(
+        result.target,
+        channel === "phone" ? "phone" : "email",
+      ),
+    });
+  }
+
+  const challengeId = String(body.challengeId);
+  const otp = String(body.otp).trim();
+  if (!OTP.test(otp)) return json(req, { ok: false, error: "invalid" }, 400);
+  const limitedResponse = gateResponse(
+    req,
+    await limited(deps, `cl_contact_verify:${userId}`, 5),
+  );
+  if (limitedResponse) return limitedResponse;
+  const pending = await deps.rpc("issue_4473_claim_link_challenge_for_user", {
+    p_challenge_id: challengeId,
+    p_user_id: userId,
+  });
+  if (pending.error) return json(req, { ok: false, error: "unavailable" }, 503);
+  const challenge = objectResult(pending.data);
+  if (
+    challenge.outcome !== "ok" ||
+    (challenge.channel !== "email" && challenge.channel !== "phone") ||
+    typeof challenge.value !== "string"
+  ) {
+    return json(req, { ok: false, error: "invalid" }, 400);
+  }
+  let providerApproved = false;
+  let digest: string | null = null;
+  if (challenge.channel === "phone") {
+    if (!deps.checkPhone) {
+      return json(req, { ok: false, error: "unavailable" }, 503);
+    }
+    const checked = await deps.checkPhone(challenge.value, otp);
+    if (!checked.ok) {
+      return json(
+        req,
+        { ok: false, error: checked.error },
+        checked.error === "expired" ? 410 : 502,
+      );
+    }
+    providerApproved = checked.approved;
+  } else {
+    digest = await contactCodeHash(pepper.bytes, challengeId, otp);
+  }
+  const settled = await deps.rpc("issue_4063_settle_contact_challenge", {
+    p_challenge_id: challengeId,
+    p_code_hash: digest,
+    p_provider_approved: providerApproved,
+  });
+  if (settled.error) return json(req, { ok: false, error: "unavailable" }, 503);
+  const settledResult = objectResult(settled.data);
+  if (settledResult.outcome !== "ok") {
+    return mapChallengeFailure(req, settledResult.outcome, settledResult);
+  }
+  if (
+    settledResult.userId !== userId ||
+    settledResult.purpose !== "claim_add_contact"
+  ) {
+    return json(req, { ok: false, error: "invalid" }, 400);
+  }
+  const recorded = await deps.rpc("issue_4063_record_claim_contact", {
+    p_user_id: userId,
+    p_channel: settledResult.channel,
+    p_value: settledResult.value,
+  });
+  if (recorded.error) return json(req, { ok: false, error: "unavailable" }, 503);
+  const recordResult = objectResult(recorded.data).result;
+  if (recordResult === "limit_reached") {
+    return json(req, { ok: false, error: "limit_reached" }, 409);
+  }
+  if (recordResult === "retry") {
+    return json(req, { ok: false, error: "unavailable" }, 503);
+  }
+  if (
+    recordResult !== "recorded" &&
+    recordResult !== "already_on_this_account"
+  ) {
+    return json(req, { ok: false, error: "invalid" }, 400);
+  }
+  return await sweepFor(req, deps, userId);
+}
+
 export function createClaimLinkHandler(
   deps: ClaimLinkDeps,
 ): (req: Request) => Promise<Response> {
@@ -206,11 +452,13 @@ export function createClaimLinkHandler(
     if (body === null) return json(req, { ok: false, error: "invalid" }, 400);
 
     const op = String(body.op);
-    const code = op === "email_code_verify" ? null : codeValue(body);
+    const verifyOp = op === "email_code_verify" ||
+      op === "contact_code_verify";
+    const code = verifyOp ? null : codeValue(body);
     if (code === null && op === "resolve") {
       return json(req, { ok: true, status: "not_found" });
     }
-    if (code === null && op !== "email_code_verify") {
+    if (code === null && !verifyOp) {
       return json(req, { ok: false, error: "invalid" }, 400);
     }
 
@@ -344,6 +592,10 @@ export function createClaimLinkHandler(
       });
     }
 
+    if (op === "contact_code_send" || op === "contact_code_verify") {
+      return await contactProof(req, deps, op, body, code, pepper, ipHash);
+    }
+
     const challengeId = String(body.challengeId);
     const otp = String(body.otp).trim();
     if (!OTP.test(otp)) return json(req, { ok: false, error: "invalid" }, 400);
@@ -371,6 +623,11 @@ export function createClaimLinkHandler(
     const result = objectResult(data);
     if (result.outcome !== "ok" || typeof result.value !== "string") {
       return mapChallengeFailure(req, result.outcome, result);
+    }
+    // #4473: only a sign-in challenge may mint a sign-in. A code proved for
+    // another purpose (adding a contact to a signed-in account) never does.
+    if (result.purpose !== "claim_sign_in") {
+      return json(req, { ok: false, error: "invalid" }, 400);
     }
     const email = result.value;
     const { data: userData, error: userError } = await deps.rpc(
@@ -406,6 +663,15 @@ function productionDeps(): ClaimLinkDeps {
     },
     pepper: resolveOfferingInviteTokenPepper,
     userId: userIdFromAuthHeader,
+    qrPepper: qrTokenPepper,
+    startPhone: async (phone) => {
+      const result = await startVerification(phone);
+      return result.ok ? { ok: true } : result;
+    },
+    checkPhone: async (phone, code) => {
+      const result = await checkVerification(phone, code);
+      return result.ok ? { ok: true, approved: result.approved } : result;
+    },
     sendEmail: async (target, code, challengeId) => {
       const rendered = renderContactCodeEmail({
         code,

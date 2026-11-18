@@ -24,6 +24,7 @@ import type {
   Platform,
 } from "./adChannelCore.ts";
 import { proportionalSplit } from "./adBudgetChange.ts";
+import { hostLiveAdSetBudgets } from "./adHostPlanRules.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -37,6 +38,9 @@ export const HOST_LIVE_EDIT_STATES = new Set([
   "partially_ready",
   "partially_live",
 ]);
+
+/** #4238 W4a (5a): apps whose LIFETIME budget Mingla pushes on a live edit. */
+export const HOST_LIVE_LIFETIME_PUSH: ReadonlySet<Platform> = new Set(["meta"]);
 
 /** Apps whose daily budget Mingla can push today. */
 export const HOST_LIVE_DAILY_PUSH: ReadonlySet<Platform> = new Set([
@@ -60,6 +64,14 @@ export type HostLiveCampaign = {
    * (providerDailyMinimumCents); null or absent = no known minimum.
    */
   provider_daily_minimum_cents?: number | null;
+  /**
+   * #4238 5a: the campaign runs on a lifetime (total) budget. Its daily
+   * amount is never pushed (the app has none); the new total is enforced by
+   * Mingla's spend sync at the new cap.
+   * W4a: on Meta the new provider cap is pushed as the campaign's
+   * lifetime_budget (HOST_LIVE_LIFETIME_PUSH), never above the new total.
+   */
+  lifetime?: boolean;
 };
 
 export type HostLivePlanLine = {
@@ -68,6 +80,14 @@ export type HostLivePlanLine = {
   new_provider_budget_cents: number;
   new_provider_delivery_budget_cents: number;
   daily_changed: boolean;
+  /** #4238 W4a: the one-ad-set floor F in provider money (null = unknown). */
+  floor_cents?: number | null;
+  /**
+   * #4238 W4a (5a): a lifetime campaign whose provider total moves to the
+   * new cap (Meta). The cap is the new total in provider money, so the app
+   * can never spend more than the Host's new total.
+   */
+  lifetime_changed?: boolean;
 };
 
 export type HostLivePlan =
@@ -79,7 +99,107 @@ export type HostLivePlan =
     /** Apps that keep their daily amount (Mingla can't push it there). */
     dailyNotPushed: Platform[];
   }
-  | { ok: false; error: string; detail?: string };
+  | {
+    ok: false;
+    error: string;
+    detail?: string;
+    /** host_ad_live_edit_learning_reset: what the Host is asked to confirm. */
+    learning?: { change_pct: number | null; days_live: number; learning_until: string };
+  };
+
+/**
+ * #4238 amendment B item 7 (B-F4): the only keys a live edit may carry. A
+ * live ad changes budget and end date only; area, audience, age, goal, apps,
+ * ads, copy and video never change live (a wider area or new video is a new
+ * ad). Any other key is refused by name, never silently dropped.
+ *
+ * MINGLA-INVARIANT: I-4238-LIVE-EDIT-ALLOWLIST | issue #4238 | host-ad-campaign change_live refuses every body key outside HOST_LIVE_EDIT_FIELDS with 400 host_ad_live_edit_field_not_editable:<key> before any claim or push.
+ */
+export const HOST_LIVE_EDIT_FIELDS: ReadonlySet<string> = new Set([
+  "action",
+  "brand_id",
+  "plan_id",
+  "new_budget_cents",
+  "new_ends_at",
+  "idempotency_key",
+  "suggestion_id",
+  // #4238 6a: the Host's explicit learning-reset confirmation.
+  "acknowledge_learning_reset",
+]);
+
+/** The first body key a live edit may not carry, or null. */
+export function hostLiveEditUnknownField(
+  body: Record<string, unknown>,
+): string | null {
+  for (const key of Object.keys(body)) {
+    if (!HOST_LIVE_EDIT_FIELDS.has(key)) return key;
+  }
+  return null;
+}
+
+/**
+ * #4238 rework 1 (tester P1-2 / P1-3): what a Host plan's apps spend a day,
+ * in the BRAND's money (Ads credit), for the detail page and the edit sheet.
+ *
+ * Never `ad_campaigns.daily_budget_cents`: that column is null whenever the
+ * budget sits on the ad group / ad squad (TikTok, Snapchat, Reddit, Meta with
+ * a retarget ad set) or on a run total, and it is in the ad ACCOUNT's money.
+ * The plan's frozen allocation holds the daily per app in both moneys
+ * (host_delivery_budget_cents / provider_delivery_budget_cents); a live edit
+ * records the new provider daily as amended_provider_delivery_budget_cents,
+ * converted back at the same frozen ratio the edit used. Any app without a
+ * readable allocation makes the answer unknown (null), never a 0.
+ *
+ * MINGLA-INVARIANT: I-4238-PLAN-DAILY-IN-BRAND-MONEY | issue #4238 | The Host ad detail's daily amount comes from the plan allocation (amendment-aware, frozen-rate converted to the brand's money), never from ad_campaigns.daily_budget_cents; an unreadable app gives null, never 0.
+ */
+export function hostPlanDailyCreditCents(input: {
+  campaigns: readonly Record<string, unknown>[];
+  allocations: readonly Record<string, unknown>[];
+}): number | null {
+  if (input.campaigns.length === 0) return null;
+  let total = 0;
+  for (const campaign of input.campaigns) {
+    const allocation = input.allocations.find((row) =>
+      row.platform === campaign.platform
+    );
+    if (!allocation) return null;
+    const host = Number(allocation.host_delivery_budget_cents);
+    const provider = Number(allocation.provider_delivery_budget_cents);
+    if (
+      !Number.isSafeInteger(host) || host <= 0 ||
+      !Number.isSafeInteger(provider) || provider <= 0
+    ) return null;
+    const amendedRaw = campaign.amended_provider_delivery_budget_cents;
+    const amended = amendedRaw === null || amendedRaw === undefined
+      ? null
+      : Number(amendedRaw);
+    if (amended === null) {
+      total += host;
+      continue;
+    }
+    if (!Number.isSafeInteger(amended) || amended <= 0) return null;
+    total += provider === host
+      ? amended
+      : Math.floor((amended * host) / provider);
+  }
+  return total;
+}
+
+/**
+ * #4238 rework 1 (tester P1-1): the public page a Host ad promoted, from the
+ * plan's frozen destination, so "Share results" goes through the sanctioned
+ * share helper with a real link. Only a clean https URL (no query, no
+ * fragment, no tracking tags) is returned; anything else is null.
+ */
+export function hostPlanPublicPageUrl(snapshot: unknown): string | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const url = (snapshot as Record<string, unknown>).canonical_url;
+  return typeof url === "string" && /^https:\/\/[^\s?#]+$/.test(url) ? url : null;
+}
+
+/** #4238 6a: the learning window and the budget change it tolerates. */
+export const HOST_LEARNING_WINDOW_DAYS = 7;
+export const HOST_LEARNING_MAX_CHANGE = 0.2;
 
 const positive = (value: unknown): number | null => {
   const number = Number(value);
@@ -88,6 +208,72 @@ const positive = (value: unknown): number | null => {
 
 function wholeDaysLeft(nowMs: number, endMs: number): number {
   return Math.max(1, Math.ceil((endMs - nowMs) / 86_400_000));
+}
+
+/**
+ * #4238 rework 2: the daily (brand's money) a new total gives: what is left
+ * after the spend so far, over the whole days left. The same rule
+ * planHostLiveEdit uses for the daily it pushes, and the Host app's edit
+ * sheet uses (total = spent + daily x days left).
+ */
+export function hostLiveNewDailyCents(
+  newHostBudgetCents: number,
+  hostSpendCents: number,
+  nowMs: number,
+  endMs: number,
+): number {
+  const remaining = Math.max(0, newHostBudgetCents - hostSpendCents);
+  return Math.max(1, Math.floor(Math.max(1, remaining) / wholeDaysLeft(nowMs, endMs)));
+}
+
+/**
+ * #4238 rework 2 (tester P1-1 / P3-2): what the apps really spend a day now,
+ * in the brand's money, all apps added up.
+ * - A daily-budget app: its current daily (amendment-aware) at the frozen
+ *   host/app ratio.
+ * - A lifetime (total) budget app, e.g. Meta CBO: the app paces what is left
+ *   of its cap over the days left, so that pace IS its daily. Showing the
+ *   plan daily instead would let "Raise" set a smaller total than the app
+ *   is already pacing, which lowers real delivery.
+ * Any unreadable row gives null, never 0.
+ *
+ * MINGLA-INVARIANT: I-4238-LIVE-DAILY-NOW | issue #4238 | The learning-restart rule (server planHostLiveEdit and the Host edit sheet) and the edit sheet's starting daily judge the daily the apps get now: a daily app's current daily, a lifetime app's pace (cap - spent) / days left, both at the frozen ratio; never the plan total.
+ */
+export function hostLiveDailyNowCents(
+  campaigns: readonly HostLiveCampaign[],
+  nowMs: number,
+  endMs: number,
+): number | null {
+  if (campaigns.length === 0 || !Number.isFinite(endMs)) return null;
+  const days = wholeDaysLeft(nowMs, endMs);
+  let total = 0;
+  for (const row of campaigns) {
+    if (row.lifetime === true) {
+      const host = row.host_budget_cents;
+      const provider = row.provider_budget_cents;
+      if (
+        !Number.isSafeInteger(host) || host <= 0 ||
+        !Number.isSafeInteger(provider) || provider <= 0 ||
+        !Number.isSafeInteger(row.current_cap_cents) ||
+        !Number.isSafeInteger(row.provider_spend_cents)
+      ) return null;
+      const pace = Math.floor(
+        Math.max(0, row.current_cap_cents - row.provider_spend_cents) / days,
+      );
+      total += provider === host ? pace : Math.floor((pace * host) / provider);
+      continue;
+    }
+    const host = row.host_delivery_budget_cents;
+    const provider = row.provider_delivery_budget_cents;
+    const daily = row.current_daily_cents;
+    if (
+      !Number.isSafeInteger(host) || host <= 0 ||
+      !Number.isSafeInteger(provider) || provider <= 0 ||
+      !Number.isSafeInteger(daily) || daily <= 0
+    ) return null;
+    total += provider === host ? daily : Math.floor((daily * host) / provider);
+  }
+  return total;
 }
 
 /**
@@ -105,6 +291,13 @@ export function planHostLiveEdit(input: {
   lastBookableAt: string | null;
   hostSpendCents: number;
   campaigns: HostLiveCampaign[];
+  /**
+   * #4238 6a: when the ad first went live (ms); null = not live yet. Inside
+   * the first 7 days a DAILY-amount change over 20% (rework 2) or any end-date change resets
+   * the apps' learning, so it needs `acknowledgeLearningReset: true`.
+   */
+  liveSinceMs?: number | null;
+  acknowledgeLearningReset?: boolean;
 }): HostLivePlan {
   if (!HOST_LIVE_EDIT_STATES.has(input.planState)) {
     return { ok: false, error: "host_ad_live_edit_state_invalid" };
@@ -142,6 +335,51 @@ export function planHostLiveEdit(input: {
   if (budget === null && endsAt === null) {
     return { ok: false, error: "host_ad_live_edit_empty" };
   }
+  // #4238 6a (I-4238-LEARNING-CONFIRM): server-side, never only a client
+  // warning. #4238 rework 2 (tester P1-1): judged on the DAILY amount the
+  // apps get (what is left over the days left, the same daily this plan
+  // pushes below) against the daily they get now (hostLiveDailyNowCents),
+  // never on the total: the total is spent + daily x days left, so it does
+  // not track the daily. Exactly 20% passes; more, or any end-date change,
+  // needs the explicit acknowledgement.
+  const liveSince = input.liveSinceMs ?? null;
+  if (
+    liveSince !== null && Number.isFinite(liveSince) &&
+    input.nowMs - liveSince < HOST_LEARNING_WINDOW_DAYS * 86_400_000 &&
+    input.acknowledgeLearningReset !== true
+  ) {
+    const endMsForDaily = Date.parse(endsAt ?? input.currentEndsAt ?? "");
+    const currentEndMs = Date.parse(input.currentEndsAt ?? "");
+    const currentDaily = Number.isFinite(currentEndMs)
+      ? hostLiveDailyNowCents(input.campaigns, input.nowMs, currentEndMs)
+      : null;
+    const nextDaily = budget !== null && Number.isFinite(endMsForDaily)
+      ? hostLiveNewDailyCents(budget, input.hostSpendCents, input.nowMs, endMsForDaily)
+      : null;
+    const changePct = nextDaily !== null && currentDaily !== null && currentDaily > 0
+      ? Math.abs(nextDaily - currentDaily) / currentDaily
+      : null;
+    const endChanged = endsAt !== null &&
+      Date.parse(endsAt) !== Date.parse(input.currentEndsAt ?? "");
+    // A budget change whose daily can't be read is treated as a big one.
+    const unreadable = budget !== null && changePct === null;
+    if (
+      (changePct !== null && changePct > HOST_LEARNING_MAX_CHANGE) || endChanged ||
+      unreadable
+    ) {
+      return {
+        ok: false,
+        error: "host_ad_live_edit_learning_reset",
+        learning: {
+          change_pct: changePct === null ? null : Math.round(changePct * 1000) / 10,
+          days_live: Math.floor((input.nowMs - liveSince) / 86_400_000) + 1,
+          learning_until: new Date(
+            liveSince + HOST_LEARNING_WINDOW_DAYS * 86_400_000,
+          ).toISOString(),
+        },
+      };
+    }
+  }
   const newBudget = budget ?? input.currentHostBudgetCents;
   // #4238 r8 P1-1: a total at or under the spend so far leaves nothing to
   // run on (and no cap that fits), so it is refused in plain words.
@@ -164,7 +402,7 @@ export function planHostLiveEdit(input: {
   );
   // Daily: what is left, over the days left (unchanged when no end date).
   const dailyTotal = Number.isFinite(endMs)
-    ? Math.max(1, Math.floor(Math.max(1, remaining) / wholeDaysLeft(input.nowMs, endMs)))
+    ? hostLiveNewDailyCents(newBudget, input.hostSpendCents, input.nowMs, endMs)
     : null;
   const hostDailies = dailyTotal === null ? null : proportionalSplit(
     dailyTotal,
@@ -184,7 +422,7 @@ export function planHostLiveEdit(input: {
     // An app with nothing spent and a share under one cent has no cap that
     // fits inside the total: too little is left to keep it running.
     if (newCap < 1) return { ok: false, error: "host_ad_live_edit_below_spend" };
-    const canPush = HOST_LIVE_DAILY_PUSH.has(row.platform);
+    const canPush = HOST_LIVE_DAILY_PUSH.has(row.platform) && row.lifetime !== true;
     let newDaily = hostDailies === null
       ? row.current_daily_cents
       : Math.max(1, Math.floor(hostDailies[index] * dailyRatio));
@@ -222,6 +460,10 @@ export function planHostLiveEdit(input: {
       new_provider_budget_cents: newCap,
       new_provider_delivery_budget_cents: newDaily,
       daily_changed: dailyChanged,
+      floor_cents: minimum,
+      lifetime_changed: row.lifetime === true &&
+        HOST_LIVE_LIFETIME_PUSH.has(row.platform) &&
+        newCap !== row.current_cap_cents,
     });
   }
   return {
@@ -238,15 +480,28 @@ type Target = {
   externalId: string;
   previousCents: number;
   nextCents: number;
+  /** #4238 W4a: pause or resume the retarget ad set with this edit. */
+  status?: "pause" | "resume" | null;
+  /** The local ad_sets row (ad-set targets only). */
+  localId?: string;
+  stage?: "prospecting" | "retarget" | null;
 };
 
-async function dailyTargets(
+/**
+ * #4238 W4a T-2: a Meta campaign with ad-set budgets (ABO — the Host
+ * retarget structure) has no campaign daily budget, so its budget is pushed
+ * at ad-set level like Snapchat and TikTok. A Host campaign with a retarget
+ * ad set takes hostLiveAdSetBudgets: the retarget ad set runs only at 2F or
+ * more, every running ad set stays at or above F, and below 2F it is paused
+ * with its budget moved to prospecting.
+ */
+export async function dailyTargets(
   db: Db,
   campaign: Record<string, unknown>,
   line: HostLivePlanLine,
   previousDaily: number,
 ): Promise<Target[]> {
-  if (line.platform === "meta") {
+  const campaignTarget = (): Target[] => {
     const externalId = String(campaign.external_campaign_id ?? "");
     if (!externalId) throw new Error("campaign_budget_target_missing");
     return [{
@@ -255,24 +510,75 @@ async function dailyTargets(
       previousCents: previousDaily,
       nextCents: line.new_provider_delivery_budget_cents,
     }];
-  }
+  };
+  if (
+    line.platform === "meta" && campaign.daily_budget_cents !== null &&
+    campaign.daily_budget_cents !== undefined
+  ) return campaignTarget();
   const { data: adSets, error } = await db.from("ad_sets")
-    .select("id,external_adset_id,budget_cents").eq("campaign_id", campaign.id)
+    .select("id,external_adset_id,budget_cents,stage,status")
+    .eq("campaign_id", campaign.id)
     .order("id");
+  if (line.platform === "meta") {
+    // Meta is ABO only when its ad sets carry the budgets; otherwise the
+    // budget is on the campaign (CBO), as before.
+    const abo = !error && Array.isArray(adSets) &&
+      adSets.some((row: Record<string, unknown>) => Number(row.budget_cents) > 0);
+    if (!abo) return campaignTarget();
+  }
   if (error || !Array.isArray(adSets) || adSets.length === 0) {
     throw new Error("ad_set_budget_target_missing");
   }
-  const weights = adSets.map((row: Record<string, unknown>) => {
+  const rows = adSets as Record<string, unknown>[];
+  const retarget = rows.find((row) => row.stage === "retarget");
+  const prospecting = rows.find((row) => row.stage === "prospecting");
+  if (campaign.owner_kind === "host" && retarget && prospecting) {
+    // Paused by an earlier edit = the latest retarget event is a removal.
+    const { data: lastMove } = await db.from("ad_plan_automation_events")
+      .select("kind,created_at").eq("campaign_id", campaign.id)
+      .in("kind", ["retarget_added", "retarget_removed"])
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const paused = lastMove?.kind === "retarget_removed";
+    const before = (row: Record<string, unknown>) => {
+      const cents = Number(row.budget_cents);
+      return Number.isSafeInteger(cents) && cents > 0 ? cents : 0;
+    };
+    const next = hostLiveAdSetBudgets({
+      platform: line.platform,
+      dailySpendCents: line.new_provider_delivery_budget_cents,
+      floorCents: line.floor_cents ?? null,
+      adSets: [
+        { id: String(prospecting.id), stage: "prospecting", paused: false },
+        { id: String(retarget.id), stage: "retarget", paused },
+      ],
+    });
+    return next.map((item) => {
+      const row = item.stage === "retarget" ? retarget : prospecting;
+      return {
+        level: "ad_set" as const,
+        externalId: String(row.external_adset_id ?? ""),
+        previousCents: before(row),
+        // A paused retarget ad set keeps its last budget (never pushed 0).
+        nextCents: item.cents > 0 ? item.cents : before(row),
+        status: item.status,
+        localId: String(row.id),
+        stage: item.stage,
+      };
+    });
+  }
+  const weights = rows.map((row) => {
     const cents = Number(row.budget_cents);
     return Number.isSafeInteger(cents) && cents > 0 ? cents : 1;
   });
   const before = proportionalSplit(previousDaily, weights);
   const after = proportionalSplit(line.new_provider_delivery_budget_cents, weights);
-  return adSets.map((row: Record<string, unknown>, index: number) => ({
+  return rows.map((row, index: number) => ({
     level: "ad_set" as const,
     externalId: String(row.external_adset_id ?? ""),
     previousCents: before[index],
     nextCents: after[index],
+    localId: String(row.id),
+    stage: null,
   }));
 }
 
@@ -311,6 +617,8 @@ export async function runHostLiveEdit(
   },
   input: {
     plan: HostLivePlan & { ok: true };
+    /** #4238 W4a: retarget moves are recorded on the plan. */
+    planId?: string;
     versionId: string;
     planHash: string;
     campaigns: Record<string, unknown>[];
@@ -322,6 +630,13 @@ export async function runHostLiveEdit(
   const { db, getAdapter } = deps;
   const pushed: Array<{ platform: Platform; connection: AdConnectionRow; undo: () => Promise<void> }> = [];
   const evidence: Record<string, Record<string, unknown>> = {};
+  const retargetMoves: Array<{
+    campaign: Record<string, unknown>;
+    line: HostLivePlanLine;
+    kind: "retarget_added" | "retarget_removed";
+    target: Target;
+  }> = [];
+  const adSetBudgets: Target[] = [];
   const report = async (problem: HostLiveEditProblem) => {
     if (!deps.onProblem) return;
     try {
@@ -388,7 +703,7 @@ export async function runHostLiveEdit(
           campaign.provider_delivery_budget_cents,
       );
       const needsEnd = line.platform === "meta" && input.plan.newEndsAt !== null;
-      if (!line.daily_changed && !needsEnd) continue;
+      if (!line.daily_changed && !needsEnd && line.lifetime_changed !== true) continue;
       const { data: connection } = await db.from("ad_connections").select("*")
         .eq("id", campaign.connection_id).maybeSingle();
       if (!connection?.connected || connection.status !== "connected") {
@@ -401,20 +716,79 @@ export async function runHostLiveEdit(
             throw new Error("provider_budget_readback_unavailable");
           }
           const confirmed = [];
-          for (const target of await dailyTargets(db, campaign, line, previousDaily)) {
-            await adapter.setBudget(connection, target.level, target.externalId, target.nextCents);
-            pushed.push({
-              platform: line.platform,
-              connection,
-              undo: () => adapter.setBudget(connection, target.level, target.externalId, target.previousCents),
-            });
-            const readback = await adapter.getBudget(connection, target.level, target.externalId);
-            if (readback.cents !== target.nextCents) {
-              throw new Error(`provider_budget_readback_mismatch:${target.nextCents}:${readback.cents}`);
+          const targets = await dailyTargets(db, campaign, line, previousDaily);
+          // #4238 W4a: pause the retarget ad set BEFORE prospecting takes its
+          // budget, and resume it only AFTER prospecting gave it back, so the
+          // apps never run above the new daily total in between.
+          const ordered = [
+            ...targets.filter((target) => target.status === "pause"),
+            ...targets.filter((target) => target.status !== "pause" && target.status !== "resume"),
+            ...targets.filter((target) => target.status === "resume"),
+          ];
+          for (const target of ordered) {
+            if (target.status === "pause") {
+              await adapter.setStatus(connection, target.level, target.externalId, "PAUSED");
+              pushed.push({
+                platform: line.platform,
+                connection,
+                undo: () => adapter.setStatus(connection, target.level, target.externalId, "ACTIVE"),
+              });
+              retargetMoves.push({ campaign, line, kind: "retarget_removed", target });
+              continue;
             }
-            confirmed.push({ level: target.level, external_id: target.externalId, daily_budget_cents: readback.cents });
+            if (target.nextCents !== target.previousCents) {
+              await adapter.setBudget(connection, target.level, target.externalId, target.nextCents);
+              pushed.push({
+                platform: line.platform,
+                connection,
+                undo: () => adapter.setBudget(connection, target.level, target.externalId, target.previousCents),
+              });
+              const readback = await adapter.getBudget(connection, target.level, target.externalId);
+              if (readback.cents !== target.nextCents) {
+                throw new Error(`provider_budget_readback_mismatch:${target.nextCents}:${readback.cents}`);
+              }
+              confirmed.push({ level: target.level, external_id: target.externalId, daily_budget_cents: readback.cents });
+            }
+            if (target.status === "resume") {
+              await adapter.setStatus(connection, target.level, target.externalId, "ACTIVE");
+              pushed.push({
+                platform: line.platform,
+                connection,
+                undo: () => adapter.setStatus(connection, target.level, target.externalId, "PAUSED"),
+              });
+              retargetMoves.push({ campaign, line, kind: "retarget_added", target });
+            }
+            if (target.localId && target.level === "ad_set") adSetBudgets.push(target);
           }
           evidence[line.campaign_id] = { confirmed, pushed_at: new Date().toISOString() };
+        }
+        if (line.lifetime_changed === true) {
+          if (
+            typeof adapter.setLifetimeBudget !== "function" ||
+            typeof adapter.getLifetimeBudget !== "function"
+          ) {
+            throw new Error("provider_lifetime_budget_unavailable");
+          }
+          const externalId = String(campaign.external_campaign_id ?? "");
+          if (!externalId) throw new Error("campaign_budget_target_missing");
+          const previousCap = Number(
+            campaign.amended_provider_budget_cents ?? campaign.provider_budget_cents,
+          );
+          await adapter.setLifetimeBudget(connection, "campaign", externalId, line.new_provider_budget_cents);
+          pushed.push({
+            platform: line.platform,
+            connection,
+            undo: () => adapter.setLifetimeBudget!(connection, "campaign", externalId, previousCap),
+          });
+          const readback = await adapter.getLifetimeBudget(connection, "campaign", externalId);
+          if (readback.cents !== line.new_provider_budget_cents) {
+            throw new Error(`provider_budget_readback_mismatch:${line.new_provider_budget_cents}:${readback.cents}`);
+          }
+          evidence[line.campaign_id] = {
+            ...(evidence[line.campaign_id] ?? {}),
+            lifetime_budget_cents: readback.cents,
+            pushed_at: new Date().toISOString(),
+          };
         }
         if (needsEnd && typeof adapter.setEndTime === "function") {
           const { data: adSets } = await db.from("ad_sets")
@@ -496,11 +870,50 @@ export async function runHostLiveEdit(
       // (the answer was lost). Check before undoing anything.
       return await recoverOrRevert(409, `record error: ${message.slice(0, 200)}`);
     }
+    await recordAdSetMoves();
     return succeeded(data);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[host-live-edit] interrupted", { detail: detail.slice(0, 300) });
     return await recoverOrRevert(502, `interrupted: ${detail.slice(0, 200)}`);
+  }
+
+  /**
+   * #4238 W4a: after the edit is recorded, keep Mingla's ad-set budgets in
+   * step (the next edit splits from them) and record each retarget move
+   * (retarget_added / retarget_removed). Best effort: the app already
+   * matches the recorded edit; a failure here is logged, never undone.
+   */
+  async function recordAdSetMoves(): Promise<void> {
+    try {
+      for (const target of adSetBudgets) {
+        await db.from("ad_sets").update({ budget_cents: target.nextCents })
+          .eq("id", target.localId);
+      }
+      if (retargetMoves.length > 0 && input.planId) {
+        const { error } = await db.from("ad_plan_automation_events").insert(
+          retargetMoves.map((move) => ({
+            plan_id: input.planId,
+            campaign_id: move.campaign.id,
+            platform: move.line.platform,
+            kind: move.kind,
+            status: "applied",
+            applied_at: new Date().toISOString(),
+            detail: {
+              idempotency_key: input.idempotencyKey,
+              external_adset_id: move.target.externalId,
+              daily_spend_cents: move.line.new_provider_delivery_budget_cents,
+              floor_cents: move.line.floor_cents ?? null,
+            },
+          })),
+        );
+        if (error) throw new Error(String(error.message ?? "insert"));
+      }
+    } catch (error) {
+      console.error("[host-live-edit] ad-set moves not recorded", {
+        detail: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+      });
+    }
   }
 
   function succeeded(edit: unknown, extra: Record<string, unknown> = {}): HostLiveEditResult {
@@ -550,4 +963,26 @@ export async function runHostLiveEdit(
     }
     return await failure(status, "host_ad_live_edit_not_recorded");
   }
+}
+
+/**
+ * #4238 6a / item 4: when a Host ad first went live — the earliest ACTIVE
+ * status event of its campaigns, else the earliest campaign create time (the
+ * launch). Null when nothing is known (never guessed as "long ago").
+ */
+export async function loadHostLiveSinceMs(
+  db: Db,
+  campaigns: readonly Record<string, unknown>[],
+): Promise<number | null> {
+  const ids = campaigns.map((row) => String(row.id ?? "")).filter(Boolean);
+  if (ids.length === 0) return null;
+  const { data, error } = await db.from("ad_status_events")
+    .select("created_at").in("campaign_id", ids).eq("to_status", "ACTIVE")
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  const active = !error && data ? Date.parse(String(data.created_at ?? "")) : NaN;
+  if (Number.isFinite(active)) return active;
+  const created = campaigns
+    .map((row) => Date.parse(String(row.created_at ?? "")))
+    .filter((ms) => Number.isFinite(ms));
+  return created.length > 0 ? Math.min(...created) : null;
 }

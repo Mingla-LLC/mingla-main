@@ -9,14 +9,7 @@
 import React, { useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { Icon, type IconName } from "../ui/Icon";
 import type {
   CampaignStatus,
@@ -30,12 +23,12 @@ interface StatusVisual {
 }
 
 const STATUS_VISUAL: Record<CampaignStatus, StatusVisual> = {
-  sent: { icon: "send", color: textTokens.secondary, label: "Sent" },
-  scheduled: { icon: "clock", color: accent.warm, label: "Scheduled" },
-  failed: { icon: "close", color: semantic.warning, label: "Failed" },
-  draft: { icon: "edit", color: textTokens.tertiary, label: "Draft" },
-  sending: { icon: "send", color: textTokens.secondary, label: "Sending" },
-  cancelled: { icon: "close", color: textTokens.tertiary, label: "Cancelled" },
+  sent: { icon: "send", color: color.text2, label: "Sent" },
+  scheduled: { icon: "clock", color: color.text1, label: "Scheduled" },
+  failed: { icon: "close", color: color.warning, label: "Failed" },
+  draft: { icon: "edit", color: color.text3, label: "Draft" },
+  sending: { icon: "send", color: color.text2, label: "Sending" },
+  cancelled: { icon: "close", color: color.text3, label: "Cancelled" },
 };
 
 function formatRelative(iso: string | null, fallbackIso: string | null): string {
@@ -109,7 +102,7 @@ export const OverviewRecentCampaignRow: React.FC<OverviewRecentCampaignRowProps>
             {metaText}
           </Text>
         </View>
-        <Icon name="chevR" size={16} color={textTokens.tertiary} />
+        <Icon name="chevR" size={16} color={color.text3} />
       </Pressable>
       {isLast === true ? null : <View style={styles.separator} />}
     </>
@@ -122,9 +115,9 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
     minHeight: 56,
   },
   rowPressed: {
@@ -139,16 +132,16 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   title: {
-    ...typography.body,
-    color: textTokens.primary,
+    ...type.body,
+    color: color.text1,
   },
   meta: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
   separator: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: glass.border.profileBase,
-    marginLeft: spacing.md + ICON_COLUMN_WIDTH + spacing.sm,
+    backgroundColor: color.line,
+    marginLeft: space[4] + ICON_COLUMN_WIDTH + space[2],
   },
 });

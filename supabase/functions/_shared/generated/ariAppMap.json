@@ -351,6 +351,16 @@
       "capability_keys": []
     },
     {
+      "pattern": "/brand/[id]/guest-chat",
+      "params": [
+        "id"
+      ],
+      "title": "Guest chat",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/guest-chat.tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/brand/[id]/listing",
       "params": [
         "id"
@@ -1078,14 +1088,6 @@
       ]
     },
     {
-      "pattern": "/hub/getstarted",
-      "params": [],
-      "title": "Getstarted",
-      "title_source": "path",
-      "file": "mingla-business/app/(tabs)/hub/getstarted.tsx",
-      "capability_keys": []
-    },
-    {
       "pattern": "/hub/listing",
       "params": [],
       "title": "Listing",
@@ -1170,14 +1172,6 @@
       "title": "Ads create",
       "title_source": "path",
       "file": "mingla-business/app/(tabs)/marketing/ads/create.tsx",
-      "capability_keys": []
-    },
-    {
-      "pattern": "/marketing/audiences",
-      "params": [],
-      "title": "Audiences",
-      "title_source": "path",
-      "file": "mingla-business/app/(tabs)/marketing/audiences/index.tsx",
       "capability_keys": []
     },
     {
@@ -1664,14 +1658,6 @@
       "title": "Travelers",
       "title_source": "path",
       "file": "mingla-business/app/trip/[id]/travelers/index.tsx",
-      "capability_keys": []
-    },
-    {
-      "pattern": "/trip/coming-soon",
-      "params": [],
-      "title": "Coming soon",
-      "title_source": "path",
-      "file": "mingla-business/app/trip/coming-soon.tsx",
       "capability_keys": []
     },
     {

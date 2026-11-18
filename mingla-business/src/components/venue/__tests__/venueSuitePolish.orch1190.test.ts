@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 /**
  * ORCH-1190 — venue suite polish batch (8 items). Implementor happy-path
  * regression test.
@@ -88,9 +89,9 @@ describe("ORCH-1190 #2 — service periods read-only + redirect to Settings", ()
 describe("ORCH-1190 #3 — brand-colored toggle (no native green)", () => {
   it("a shared BrandSwitch exists and bakes in the brand track color", () => {
     expect(BRAND_SWITCH).toContain("export function BrandSwitch");
-    expect(BRAND_SWITCH).toContain("accent.warm");
+    expect(BRAND_SWITCH).toContain("color.accent");
     // ON = brand orange, OFF = neutral (never the native green).
-    expect(BRAND_SWITCH).toMatch(/true:\s*accent\.warm/);
+    expect(BRAND_SWITCH).toMatch(/true:\s*color\.accent/);
   });
   it("NO bare <Switch> survives in any venue-suite file (all routed via BrandSwitch)", () => {
     for (const f of SWITCH_HOST_FILES) {

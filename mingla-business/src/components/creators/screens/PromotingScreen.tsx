@@ -10,6 +10,7 @@ export default function PromotingRoute(): React.ReactElement {
   return (
     <ProgramScreen
       title="Promoting"
+      desktopWidth="detail"
       fallback="/(tabs)/account"
       refreshing={false}
       onRefresh={() => {

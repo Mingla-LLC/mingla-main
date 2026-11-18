@@ -46,9 +46,9 @@ import { useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
@@ -100,6 +100,7 @@ import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueModules,
   shouldLeaveBookingModule,
+  withVenueReviewsModule,
 } from "./venueModules";
 
 export { deriveVenueRailModules } from "./venueRail";
@@ -150,6 +151,23 @@ export interface VenueSuiteShellProps {
   venueId?: string | null;
   focus?: "feedback";
   initialModule?: VenueModule;
+  /**
+   * #4420 B8 — content that scrolls with the Overview dashboard, at its top
+   * (the page's Local reviews panel). Never pinned above the scroll.
+   */
+  overviewHeader?: React.ReactNode;
+  /**
+   * #4420 (round-3 item 19) — the page's Mingla Local reviews panel, shown as
+   * its own Reviews module (right after Overview). `null` (no verified place)
+   * hides the module.
+   */
+  reviewsPanel?: React.ReactNode;
+  /**
+   * #4420 (R8 P19) — the one-line Reviews summary at the top of Overview; the
+   * shell hands it the handler that opens the Reviews module. Shown only when
+   * the Reviews module is.
+   */
+  renderReviewsSummary?: (openReviews: () => void) => React.ReactNode;
 }
 
 export function VenueSuiteShell({
@@ -157,6 +175,9 @@ export function VenueSuiteShell({
   venueId = null,
   focus,
   initialModule = "overview",
+  overviewHeader = null,
+  reviewsPanel = null,
+  renderReviewsSummary,
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -180,15 +201,20 @@ export function VenueSuiteShell({
   const venueAccessQuery = useMyVenueAccess(venueId);
   const venueAccess = venueAccessQuery.data ?? PENDING_VENUE_ACCESS;
 
+  const hasReviews = reviewsPanel !== null && reviewsPanel !== undefined;
   const visibleModules = useMemo(
-    () => filterVenueModulesForCapabilities(
-      deriveVenueModules(
-        venueAccess.scoped && !settingsResolved ? true : reservationsEnabled,
+    () => withVenueReviewsModule(
+      filterVenueModulesForCapabilities(
+        deriveVenueModules(
+          venueAccess.scoped && !settingsResolved ? true : reservationsEnabled,
+        ),
+        venueAccess.scoped,
+        venueAccess.capabilities,
       ),
-      venueAccess.scoped,
-      venueAccess.capabilities,
+      hasReviews,
     ),
     [
+      hasReviews,
       reservationsEnabled,
       settingsResolved,
       venueAccess.scoped,
@@ -431,6 +457,12 @@ export function VenueSuiteShell({
     }
   }, [activeModule, reservationsEnabled, settingsResolved, selectModule]);
 
+  // #4420 — a `?module=reviews` link to a venue with no reviews panel (not
+  // verified, or no place) lands on Overview instead of an empty module.
+  useEffect(() => {
+    if (activeModule === "reviews" && !hasReviews) setActiveModule("overview");
+  }, [activeModule, hasReviews]);
+
   useEffect(() => {
     if (
       !venueAccess.scoped ||
@@ -493,11 +525,19 @@ export function VenueSuiteShell({
       // scroll that broke scrolling on native. (`focus` is the venue-claim
       // feedback deep-link, which followed the recap into Settings — it is no
       // longer consumed at the Overview slot.)
-      return (
-        <View style={styles.overviewWrap}>
+      // #4420 B8 + round-3 item 12 — the invitation and the page's Local
+      // reviews panel now scroll WITH the dashboard (as its header) instead of
+      // being pinned above it, and the invitation is one compact row.
+      const header = (
+        <>
           {!reservationsEnabled ? (
-            <View style={styles.invitationWrap}>
-              <GlassCard variant="elevated" style={styles.invitationCard}>
+            <GlassCard
+              variant="base"
+              padding={space[4]}
+              style={styles.invitationCard}
+              contentStyle={styles.invitationStack}
+            >
+              <View style={styles.invitationCopy}>
                 <Text style={styles.invitationTitle}>
                   Take table reservations on Mingla
                 </Text>
@@ -505,24 +545,39 @@ export function VenueSuiteShell({
                   Free to switch on. Manage tables, hours, and bookings in one
                   place.
                 </Text>
-                <Button
-                  label="Turn on Reservations"
-                  onPress={handleTurnOnReservations}
-                  variant="primary"
-                  size="md"
-                  loading={setEnabled.isPending}
-                  fullWidth
-                  testID="venue-overview-turn-on-reservations"
-                />
-              </GlassCard>
-            </View>
+              </View>
+              {/* #4420 (round-3 items 12 and 14) — a compact action sized to
+                  its label, not a full-width bar under the copy. */}
+              <Button
+                label="Turn on Reservations"
+                onPress={handleTurnOnReservations}
+                variant="primary"
+                size="sm"
+                loading={setEnabled.isPending}
+                testID="venue-overview-turn-on-reservations"
+              />
+            </GlassCard>
           ) : null}
+          {hasReviews && renderReviewsSummary !== undefined
+            ? renderReviewsSummary(() => selectModule("reviews"))
+            : null}
+          {overviewHeader}
+        </>
+      );
+      return (
+        <View style={styles.overviewWrap}>
           {/* META-ORCH-1255(C) D-D: venue-scoped so the RPC resolves THIS
               venue's place signals + timezone (the legacy brand place pointer
               is inert for new venues). */}
-          <VenueIntelligenceModule brandId={brandId} venueId={venueId} />
+          <VenueIntelligenceModule brandId={brandId} venueId={venueId} header={header} />
         </View>
       );
+    }
+    // #4420 (round-3 item 19) — Mingla Local reviews, their own module. The
+    // panel renders inside the shell's ScrollView
+    // (moduleSelfScrolls("reviews") === false), like Menu.
+    if (activeModule === "reviews") {
+      return <View style={styles.reviewsWrap}>{reviewsPanel}</View>;
     }
     if (activeModule === "settings") {
       return (
@@ -690,11 +745,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
-    gap: spacing.sm,
+    padding: space[7],
+    gap: space[2],
   },
-  accessTitle: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
-  accessBody: { ...typography.bodySm, color: textTokens.secondary, textAlign: "center" },
+  accessTitle: { ...type.h1, color: color.text1, textAlign: "center" },
+  accessBody: { ...type.small, color: color.text2, textAlign: "center" },
   // phone / native
   phoneHost: {
     flex: 1,
@@ -704,29 +759,37 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.xxl,
+    paddingVertical: space[9],
   },
   phoneScroll: {
     // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
+  },
+  reviewsWrap: {
+    paddingHorizontal: space[4],
+    paddingTop: space[4],
   },
   // overview + invitation
   overviewWrap: {
     flex: 1,
   },
-  invitationWrap: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
   invitationCard: {
-    gap: spacing.sm,
+    marginBottom: space[4],
+  },
+  invitationStack: {
+    alignItems: "flex-start",
+    gap: space[3],
+  },
+  invitationCopy: {
+    alignSelf: "stretch",
+    gap: space[1],
   },
   invitationTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
+    ...type.row,
+    color: color.text1,
   },
   invitationBody: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.small,
+    color: color.text2,
   },
 });
 

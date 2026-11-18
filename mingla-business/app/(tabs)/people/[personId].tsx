@@ -5,7 +5,7 @@ import { PersonDetailView } from "../../../src/components/people/PersonDetailVie
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { useShareNetworkState } from "../../../src/components/ui/useShareNetworkState";
-import { canvas } from "../../../src/constants/designSystem";
+import { color } from "../../../src/constants/designSystem";
 import { capturePeople } from "../../../src/features/people/peopleAnalytics";
 import { useBrandPerson } from "../../../src/hooks/marketing/useBrandPeople";
 import { useBrandPersonMaintenance } from "../../../src/hooks/marketing/useBrandPersonMaintenance";
@@ -428,4 +428,4 @@ export default function BrandPersonDetailRoute(): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({ host: { backgroundColor: canvas.discover } });
+const styles = StyleSheet.create({ host: { backgroundColor: color.canvas } });

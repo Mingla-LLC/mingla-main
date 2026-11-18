@@ -52,10 +52,7 @@ import {
   rosterStatus,
   type RosterFilter,
 } from "../../../components/programs/rosterStatus";
-import {
-  spacing,
-  text as textTokens,
-} from "../../../constants/designSystem";
+import { color, space } from "../../../constants/designSystem";
 
 const PLATFORMS = ["instagram", "tiktok", "youtube", "x", "snapchat"] as const;
 
@@ -277,6 +274,7 @@ export default function CreatorRoster({
   return (
     <ProgramScreen
       title="My creators"
+      desktopWidth="detail"
       fallback={blastHubHref("creators")}
       embedded={embedded}
       right={
@@ -290,7 +288,7 @@ export default function CreatorRoster({
           hitSlop={8}
           style={styles.plus}
         >
-          <Icon name="plus" size={22} color={textTokens.primary} />
+          <Icon name="plus" size={22} color={color.text1} />
         </Pressable>
       }
       refreshing={false}
@@ -582,14 +580,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  label: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  label: { color: color.text2, fontSize: 13, fontWeight: "600" },
   notes: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontStyle: "italic",
     fontSize: 14,
     lineHeight: 20,
   },
-  notice: { color: textTokens.primary, fontWeight: "600" },
-  tiny: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
+  notice: { color: color.text1, fontWeight: "600" },
+  tiny: { color: color.text3, fontSize: 12, lineHeight: 16 },
 });

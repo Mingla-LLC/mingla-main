@@ -2,11 +2,9 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
+  color,
   radius,
-  spacing,
-  text as textTokens,
+  space,
 } from "../../constants/designSystem";
 import type {
   VenueAccessGrant,
@@ -164,7 +162,7 @@ export function VenueAccessEditor({
               <Icon
                 name={grant ? "check" : "plus"}
                 size={18}
-                color={grant ? accent.warm : textTokens.tertiary}
+                color={grant ? color.text1 : color.text3}
               />
             </Pressable>
             {grant ? (
@@ -212,7 +210,7 @@ export function VenueAccessEditor({
                       <Icon
                         name={checked ? "check" : "plus"}
                         size={16}
-                        color={checked ? accent.warm : textTokens.quaternary}
+                        color={checked ? color.text1 : color.text4}
                       />
                       <Text style={styles.capabilityText}>{option.label}</Text>
                     </Pressable>
@@ -228,23 +226,23 @@ export function VenueAccessEditor({
 }
 
 const styles = StyleSheet.create({
-  host: { marginBottom: spacing.md },
-  heading: { fontSize: 15, fontWeight: "700", color: textTokens.primary },
-  helper: { fontSize: 13, lineHeight: 18, color: textTokens.secondary, marginTop: 3, marginBottom: spacing.sm },
-  empty: { padding: spacing.md, borderRadius: radius.md, backgroundColor: glass.tint.profileBase },
-  emptyText: { fontSize: 13, color: textTokens.secondary },
-  card: { borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.lg, marginBottom: spacing.sm, overflow: "hidden", backgroundColor: glass.tint.profileBase },
-  cardSelected: { borderColor: accent.warm },
-  venueHeader: { minHeight: 58, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  host: { marginBottom: space[4] },
+  heading: { fontSize: 15, fontWeight: "700", color: color.text1 },
+  helper: { fontSize: 13, lineHeight: 18, color: color.text2, marginTop: 3, marginBottom: space[2] },
+  empty: { padding: space[4], borderRadius: radius.sm, backgroundColor: color.fill.inset },
+  emptyText: { fontSize: 13, color: color.text2 },
+  card: { borderWidth: 1, borderColor: color.line, borderRadius: radius.md, marginBottom: space[2], overflow: "hidden", backgroundColor: color.fill.inset },
+  cardSelected: { borderColor: color.paper },
+  venueHeader: { minHeight: 58, paddingHorizontal: space[4], paddingVertical: space[2], flexDirection: "row", alignItems: "center", gap: space[2] },
   venueText: { flex: 1, minWidth: 0 },
-  venueName: { fontSize: 15, fontWeight: "700", color: textTokens.primary },
-  venueCategory: { fontSize: 12, color: textTokens.tertiary, marginTop: 2 },
-  grantBody: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase, padding: spacing.md, gap: spacing.xs },
-  profileRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm },
-  profileChip: { borderWidth: 1, borderColor: glass.border.profileBase, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: 7 },
-  profileChipSelected: { borderColor: accent.warm, backgroundColor: "rgba(235, 120, 37, 0.12)" },
-  profileText: { fontSize: 12, color: textTokens.secondary, fontWeight: "600" },
-  profileTextSelected: { color: accent.warm },
-  capabilityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  capabilityText: { flex: 1, fontSize: 13, color: textTokens.primary },
+  venueName: { fontSize: 15, fontWeight: "700", color: color.text1 },
+  venueCategory: { fontSize: 12, color: color.text3, marginTop: 2 },
+  grantBody: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line, padding: space[4], gap: space[1] },
+  profileRow: { flexDirection: "row", flexWrap: "wrap", gap: space[1], marginBottom: space[2] },
+  profileChip: { borderWidth: 1, borderColor: color.line, borderRadius: radius.full, paddingHorizontal: space[2], paddingVertical: 7 },
+  profileChipSelected: { borderColor: color.paper, backgroundColor: color.fill.tabOn },
+  profileText: { fontSize: 12, color: color.text2, fontWeight: "600" },
+  profileTextSelected: { color: color.text1 },
+  capabilityRow: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: space[2] },
+  capabilityText: { flex: 1, fontSize: 13, color: color.text1 },
 });

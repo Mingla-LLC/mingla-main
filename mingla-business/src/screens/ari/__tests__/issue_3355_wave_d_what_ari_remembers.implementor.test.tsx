@@ -58,6 +58,24 @@ jest.mock("../../../wrappers/SmartScrollView", () => ({
     require("react").createElement("scroll", null, children),
 }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ back: jest.fn() }) }));
+// [TEST-MOD-APPROVED #4420] The Graphite Glass layout pass gave the settings
+// screen a chevron Icon (svg), the shared time-zone picker (round 3 item 12)
+// and the desktop two-column split. They are stubbed so this suite keeps
+// proving the memory rows, not the svg runtime.
+jest.mock("../../../components/ui/Icon", () => ({
+  Icon: () => null,
+}));
+jest.mock("../../../components/brand/BrandEditTimezoneField", () => ({
+  BrandEditTimezoneField: (props: Record<string, unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("react").createElement("timezone-field", props),
+}));
+jest.mock("../../../components/ui/DesktopCanvas", () => ({
+  DesktopColumns: () => null,
+}));
+jest.mock("../../../hooks/useResponsiveLayout", () => ({
+  useResponsiveLayout: () => ({ isWideDesktop: false }),
+}));
 // #3355 rework 3 (R3-6): delete asks through the app's cross-platform
 // ConfirmDialog (Alert.alert's buttons do nothing on Host web).
 jest.mock("../../../components/ui/ConfirmDialog", () => ({
@@ -73,7 +91,16 @@ jest.mock("../../../constants/designSystem", () => {
     {},
     { get: (_target, key) => (key === Symbol.toPrimitive ? () => 0 : token) },
   );
+  // [TEST-MOD-APPROVED #4420] Graphite token names join the permissive mock.
   return {
+    color: token,
+    space: token,
+    type: token,
+    edge: token,
+    materials: token,
+    scrim: token,
+    shadow: token,
+    size: token,
     ariPalette: token,
     ariThread: token,
     canvas: token,

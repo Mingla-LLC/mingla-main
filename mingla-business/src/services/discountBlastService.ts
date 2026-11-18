@@ -1,6 +1,6 @@
 import { captureDiscountEvent } from "../analytics/discountAnalytics";
 import { majorFromMinor } from "../utils/currency";
-import { fetchBrandDiscountById, type BrandDiscount } from "./discountService";
+import type { BrandDiscount } from "./discountService";
 import {
   createDraft,
   ensureBrandBuyersAudience,
@@ -51,8 +51,12 @@ export async function createDiscountBlastDraft(input: {
   brandId: string;
   discountId: string;
 }): Promise<string> {
+  // #4420 — discountService loads on intent, like every other discount surface;
+  // a static import here hoisted it into the eager `__common` boot chunk.
   const [discount, brandResult] = await Promise.all([
-    fetchBrandDiscountById(input.brandId, input.discountId),
+    import("./discountService").then((service) =>
+      service.fetchBrandDiscountById(input.brandId, input.discountId),
+    ),
     supabase
       .from("brands")
       .select("slug")

@@ -15,9 +15,9 @@
  * Two independent readings must AGREE, and disagreeing is a failure:
  *
  *   A. THE TREE. Walk the rendered output and look for the actual elements a
- *      guest would read — the category chip node, the place chip node, the
- *      answer bar's price cell, the reserve CTA. Nothing here consults the
- *      model; it reads what was drawn.
+ *      guest would read — the cover eyebrow the screen hands the shell
+ *      (category · place, #4420), the price fact row, the reserve CTA.
+ *      Nothing here consults the model; it reads what was drawn.
  *   B. THE MODEL. `venueFiveSecondScore` in `venueFirstScreen.ts`, fed the same
  *      inputs the screen was fed.
  *
@@ -202,11 +202,12 @@ jest.mock("@mingla/offering-rendering", () => {
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
-    const { children, heroEyebrow, heroTitle, stickyPanel, ...rest } = props as {
+    const { children, heroEyebrow, heroTitle, stickyPanel, desktopFlyerActions, ...rest } = props as {
       children?: React.ReactNode;
       heroEyebrow?: React.ReactNode;
       heroTitle?: React.ReactNode;
       stickyPanel?: React.ReactNode;
+      desktopFlyerActions?: React.ReactNode;
     };
     return ReactLocal.createElement(
       "ParallaxCoverShell",
@@ -214,6 +215,8 @@ jest.mock("@mingla/offering-rendering", () => {
       ReactLocal.createElement("ShellHeroEyebrow", null, heroEyebrow),
       ReactLocal.createElement("ShellHeroTitle", null, heroTitle),
       ReactLocal.createElement("ShellStickyPanel", null, stickyPanel),
+      // [TEST-MOD-APPROVED #4420] the desktop flyer actions render as a child.
+      ReactLocal.createElement("ShellFlyerActions", null, desktopFlyerActions),
       ReactLocal.createElement("ShellBody", null, children),
     );
   };
@@ -581,40 +584,79 @@ const requireShell = (mounted: Mounted): TreeNode => {
   return shell;
 };
 
-/** The answer bar's cells, by the label each one leads with. */
-const answerCellLabels = (mounted: Mounted): string[] => {
-  const bar = findByTestId(mounted, "issue-1561-answer-bar");
-  if (bar === null) return [];
-  return (bar.children ?? [])
-    .filter((child): child is TreeNode => typeof child !== "string")
-    .map((cell) => flatText((cell.children ?? [])[0] as TreeNode));
-};
-
 /**
- * [TEST-MOD-APPROVED #1562] — the three lines of ONE cell, found by its label.
- * THROWS when the label is not on the bar, so "the qualifier is present" can
- * never pass because the whole cell was missing.
- *
- * This exists to make #1550's first from-rate mitigation checkable: the
- * qualifier must live in the SAME BLOCK as the number, never as a footnote
- * elsewhere. Reading both off one cell node is what proves they are not
- * separable — a qualifier moved anywhere else on the page fails this lookup.
+ * [TEST-MOD-APPROVED #4420 D-V1] — "what is it / where" moved from two body
+ * chips to the cover eyebrow ("Restaurant · London"), above the name. Read
+ * what the screen hands the shell to print; THROWS when there is no eyebrow,
+ * so a missing answer can never read as a pass.
  */
-const requireAnswerCellLines = (mounted: Mounted, label: string): string[] => {
-  const bar = findByTestId(mounted, "issue-1561-answer-bar");
-  if (bar === null) throw new Error("expected an answer bar and found none");
-  for (const child of bar.children ?? []) {
-    if (typeof child === "string") continue;
-    const lines = (child.children ?? [])
-      .filter((line): line is TreeNode => typeof line !== "string")
-      .map((line) => flatText(line));
-    if (lines[0] === label) return lines;
+const coverEyebrow = (mounted: Mounted): string[] => {
+  const identity = propsOf(requireShell(mounted)).coverIdentity as
+    | { eyebrow?: readonly (string | null | undefined)[] }
+    | undefined;
+  if (identity === undefined || !Array.isArray(identity.eyebrow)) {
+    throw new Error("expected the shell's coverIdentity eyebrow and found none");
   }
-  throw new Error(
-    `expected an answer cell labelled "${label}"; the bar carried ` +
-      `[${answerCellLabels(mounted).join(", ")}]`,
+  return identity.eyebrow.filter(
+    (p): p is string => typeof p === "string" && p.trim().length > 0,
   );
 };
+const categoryOf = (mounted: Mounted): string => coverEyebrow(mounted)[0] ?? "";
+const placeOf = (mounted: Mounted): string | null => coverEyebrow(mounted)[1] ?? null;
+
+/**
+ * [TEST-MOD-APPROVED #4420 D-V1] — the answer bar's cells now read as the
+ * shared fact rows. The rendered rows, by key ("time", "where", "price",
+ * "booking"), each with its drawn lines (value, then detail).
+ */
+const factRows = (mounted: Mounted): Map<string, string[]> => {
+  const out = new Map<string, string[]>();
+  const block = findByTestId(mounted, "issue-4420-venue-facts");
+  if (block === null) return out;
+  for (const node of mounted.nodes) {
+    const id = propsOf(node).testID;
+    if (typeof id !== "string") continue;
+    const m = /^issue-4420-venue-facts-(time|where|price|booking)$/.exec(id);
+    if (m === null) continue;
+    const lines = mounted.nodes
+      .filter((n) => n.type === "Text")
+      .filter((n) => {
+        // Text nodes that live inside this row.
+        let found = false;
+        const visit = (x: TreeNode | string): void => {
+          if (found || typeof x === "string") return;
+          if (x === n) found = true;
+          (x.children ?? []).forEach(visit);
+        };
+        visit(node);
+        return found;
+      })
+      .map((n) => flatText(n))
+      .filter((t) => t.length > 0);
+    out.set(m[1] as string, lines);
+  }
+  return out;
+};
+/** The rows' keys, in render order. */
+const factKeys = (mounted: Mounted): string[] => [...factRows(mounted).keys()];
+
+/**
+ * The drawn lines of ONE row. THROWS when the row is absent. The Stay
+ * qualifier must still sit in the SAME row as the number (#1550's first
+ * from-rate mitigation), so reading both off one row proves they are not
+ * separable.
+ */
+const requireFactLines = (mounted: Mounted, key: string): string[] => {
+  const lines = factRows(mounted).get(key);
+  if (lines === undefined) {
+    throw new Error(
+      `expected a "${key}" fact row; the page drew [${factKeys(mounted).join(", ")}]`,
+    );
+  }
+  return lines;
+};
+const hasSpendFact = (mounted: Mounted): boolean =>
+  (factRows(mounted).get("price")?.[0] ?? "").startsWith("Typically");
 
 const hasReserveCta = (mounted: Mounted): boolean =>
   mounted.nodes.some(
@@ -687,7 +729,7 @@ const SHELL = { seam: 28, bodyPaddingTop: 24, desktopPaddingTop: 32, desktopHero
  * Where the answer bar's bottom edge sits, in CSS pixels from the top of the
  * viewport, on the FIRST paint (nothing scrolled).
  */
-const answerBarBottom = (mounted: Mounted, width: number, isDesktop: boolean): number => {
+const factsBottom = (mounted: Mounted, width: number, isDesktop: boolean): number => {
   const shell = requireShell(mounted);
   const ratio = propsOf(shell).coverAspectRatio;
   if (typeof ratio !== "number" || ratio <= 0) {
@@ -700,19 +742,19 @@ const answerBarBottom = (mounted: Mounted, width: number, isDesktop: boolean): n
     ? Math.min((Math.min(width, 1200) - 64) * (9 / 21), SHELL.desktopHeroMax) +
       SHELL.desktopPaddingTop
     : width / ratio - SHELL.seam + SHELL.bodyPaddingTop;
-  const identity = requireByTestId(mounted, "issue-1561-answer-bar");
+  const identity = requireByTestId(mounted, "issue-4420-venue-facts");
   const identityWrap = mounted.nodes.find((node) =>
     (node.children ?? []).some((child) => child === identity),
   );
   if (identityWrap === undefined) {
-    throw new Error("the answer bar is not inside an identity block");
+    throw new Error("the fact rows are not inside the identity block");
   }
   // Everything in the identity block ABOVE the bar, plus the bar itself.
   const siblings = (identityWrap.children ?? []).filter(
     (child): child is TreeNode => typeof child !== "string",
   );
   const barIndex = siblings.indexOf(identity);
-  if (barIndex < 0) throw new Error("the answer bar left its own parent");
+  if (barIndex < 0) throw new Error("the fact rows left their own parent");
   const above = siblings
     .slice(0, barIndex + 1)
     .reduce((sum, node) => sum + flowHeight(node), 0);
@@ -792,29 +834,29 @@ describe("#1561 — the five-second test, measured on the rendered first screen"
       assertRealRender(mounted, `restaurant-${width}`);
 
       // (A) read the TREE.
-      const category = flatText(
-        requireByTestId(mounted, "issue-1561-category-chip"),
-      );
-      const place = flatText(requireByTestId(mounted, "issue-1561-place-chip"));
-      const labels = answerCellLabels(mounted);
+      const category = categoryOf(mounted);
+      const place = placeOf(mounted) ?? "";
       expect(category).toBe("Restaurant");
       expect(place).toBe("London");
-      expect(labels).toContain("Typically");
+      expect(hasSpendFact(mounted)).toBe(true);
       expect(hasReserveCta(mounted)).toBe(true);
 
       // (B) the four answers, scored.
       const score =
         (category.length > 0 ? 1 : 0) +
         (place.length > 0 ? 1 : 0) +
-        (labels.includes("Typically") ? 1 : 0) +
+        (hasSpendFact(mounted) ? 1 : 0) +
         (hasReserveCta(mounted) ? 1 : 0);
       expect(score).toBe(4);
 
       // ABOVE THE FOLD. The answers exist AND arrive before the first scroll.
-      const bottom = answerBarBottom(mounted, width, isDesktop);
+      const bottom = factsBottom(mounted, width, isDesktop);
       expect(bottom).toBeLessThan(height);
-      // …and not by a rounding accident: a quarter of the screen must remain.
-      expect(height - bottom).toBeGreaterThan(height * 0.15);
+      // [TEST-MOD-APPROVED #4420 D-V1] …and clear of the 68pt glass bar that
+      // floats over the bottom of the first screen, so no answer is hidden
+      // under it. (Was "15% of the screen remains": the four fact rows are
+      // taller than the old one-line strip by design.)
+      expect(height - bottom).toBeGreaterThan(68);
 
       // The hero no longer eats the page.
       expect(heroShareOf(mounted, width, height, isDesktop)).toBeLessThan(
@@ -832,35 +874,33 @@ describe("#1561 — the five-second test, measured on the rendered first screen"
       const mounted = mountCase(STAY, width, isDesktop);
       assertRealRender(mounted, `stay-${width}`);
 
-      const category = flatText(
-        requireByTestId(mounted, "issue-1561-category-chip"),
-      );
-      const place = flatText(requireByTestId(mounted, "issue-1561-place-chip"));
-      const labels = answerCellLabels(mounted);
+      const category = categoryOf(mounted);
+      const place = placeOf(mounted);
 
       // "what is this place" was 0/4 on BOTH Stays. A hotel now says so.
       expect(category).toBe("Hotel");
       expect(place).toBe("Miami Beach, FL");
-      // The time cell is check-in/check-out, never a trading-hours table.
-      expect(labels).toContain("Check-in");
+      // The time row is check-in/check-out, never a trading-hours table.
+      expect(requireFactLines(mounted, "time")[0]).toMatch(/^Check-in from /);
       // [TEST-MOD-APPROVED #1562] — the gap this file shipped asserting is
       // CLOSED. It read `expect(labels).not.toContain("From")`; the arm behind
       // it now resolves, so the same assertion is inverted by the change that
       // earned it. A hotel is not a restaurant, so "Typically" must still be
       // absent — pricing model, not a fallback.
-      expect(labels).toContain("From");
-      expect(labels).not.toContain("Typically");
+      expect(requireFactLines(mounted, "price")[0]).toMatch(/^From /);
+      expect(hasSpendFact(mounted)).toBe(false);
       // MITIGATION 1, read off the tree: the number and the qualifier that
       // keeps it honest are three lines of ONE cell. `$275` is the cheapest
       // ROOM — not the $75 cabana, which is priced per booking and is not a
       // night — and it does not appear without "before taxes and fees".
-      expect(requireAnswerCellLines(mounted, "From")).toEqual([
-        "From",
-        "$275",
-        "per night · before taxes and fees",
+      // [TEST-MOD-APPROVED #4420 D-V1] — one row now: the number with its
+      // "a night", and the qualifier line under it.
+      expect(requireFactLines(mounted, "price")).toEqual([
+        "From $275 a night",
+        "Before taxes and fees · 2 room types",
       ]);
 
-      const bottom = answerBarBottom(mounted, width, isDesktop);
+      const bottom = factsBottom(mounted, width, isDesktop);
       expect(bottom).toBeLessThan(height);
 
       expect(heroShareOf(mounted, width, height, isDesktop)).toBeLessThan(
@@ -910,11 +950,9 @@ describe("#1561 — the tree and the model agree, or it is a failure", () => {
       });
 
       const fromTree = {
-        whatIsThisPlace:
-          flatText(requireByTestId(mounted, "issue-1561-category-chip")).length > 0,
-        whereIsIt:
-          flatText(requireByTestId(mounted, "issue-1561-place-chip")).length > 0,
-        whatDoesItCost: answerCellLabels(mounted).includes("Typically"),
+        whatIsThisPlace: categoryOf(mounted).length > 0,
+        whereIsIt: (placeOf(mounted) ?? "").length > 0,
+        whatDoesItCost: hasSpendFact(mounted),
         canIBookIt: hasReserveCta(mounted),
       };
 
@@ -979,12 +1017,10 @@ describe("#1561 — the measurement table", () => {
           width,
           isDesktop,
         );
-        const category = flatText(
-          requireByTestId(mounted, "issue-1561-category-chip"),
-        );
-        const place = flatText(requireByTestId(mounted, "issue-1561-place-chip"));
-        const labels = answerCellLabels(mounted);
-        const hasPrice = labels.includes("Typically") || labels.includes("From");
+        const category = categoryOf(mounted);
+        const place = placeOf(mounted) ?? "";
+        const labels = factKeys(mounted);
+        const hasPrice = labels.includes("price");
         const score =
           (category.length > 0 ? 1 : 0) +
           (place.length > 0 ? 1 : 0) +
@@ -1000,7 +1036,7 @@ describe("#1561 — the measurement table", () => {
             hasReserveCta(mounted) ? "yes" : "no",
             `${score}/4`,
             `hero ${(heroShareOf(mounted, width, height, isDesktop) * 100).toFixed(1)}%`,
-            `bar bottom ${answerBarBottom(mounted, width, isDesktop).toFixed(0)}/${height}`,
+            `bar bottom ${factsBottom(mounted, width, isDesktop).toFixed(0)}/${height}`,
             `cells ${labels.join("+")}`,
           ].join(" | "),
         );
@@ -1187,14 +1223,12 @@ describe("#1561 — every photo count, including none", () => {
     );
     assertRealRender(mounted, "sparse");
     // "what is this place" still answers, because the category always can.
-    expect(flatText(requireByTestId(mounted, "issue-1561-category-chip"))).toBe(
-      "Venue",
-    );
-    // There is no place to name, so no place chip is invented.
-    expect(findByTestId(mounted, "issue-1561-place-chip")).toBeNull();
-    // Nothing to price, nothing to time, nothing to book ⇒ no bar at all,
-    // rather than three blank cells.
-    expect(findByTestId(mounted, "issue-1561-answer-bar")).toBeNull();
+    expect(categoryOf(mounted)).toBe("Venue");
+    // There is no place to name, so no place is invented.
+    expect(placeOf(mounted)).toBeNull();
+    // Nothing to price, nothing to time, nothing to book, nowhere ⇒ no fact
+    // rows at all, rather than blank ones.
+    expect(findByTestId(mounted, "issue-4420-venue-facts")).toBeNull();
     expect(propsOf(requireShell(mounted)).coverPlaceholderLabel).toBe("Venue");
     expect(mounted.json).not.toContain("PHOTOS");
     mounted.unmount();

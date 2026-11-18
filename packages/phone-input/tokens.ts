@@ -69,7 +69,7 @@ export const touchTargets = {
  */
 import type { PhoneInputTheme } from "./types";
 
-export const DEFAULT_PHONE_INPUT_THEME: Required<PhoneInputTheme> = {
+export const DEFAULT_PHONE_INPUT_THEME: Required<Omit<PhoneInputTheme, "fieldBackground">> = {
   backgroundPrimary: colors.backgroundPrimary,
   textPrimary: colors.textPrimary,
   textTertiary: colors.textTertiary,

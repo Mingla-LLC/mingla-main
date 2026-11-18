@@ -118,6 +118,12 @@ export interface PhoneInputProps {
   onFocus?: () => void;
   onBlur?: () => void;
   /**
+   * #4420 — keep one line of space under the field whether or not an error is
+   * showing, so the form below never jumps when the error appears or clears.
+   * Off by default: existing hosts keep their layout.
+   */
+  reserveErrorSpace?: boolean;
+  /**
    * Optional host-owned native text input. Bottom-sheet hosts pass their
    * keyboard-aware input here so focus, blur, and sheet restoration stay on
    * the same interaction rail. Ordinary hosts keep the native TextInput.
@@ -133,6 +139,29 @@ export interface PhoneInputProps {
    * raw value themselves are unchanged.
    */
   smartEntry?: boolean;
+  /**
+   * Issue #4420 — optional field geometry, so a host can match its own text
+   * inputs (the Host app: 48 tall, a 1px rim that thickens on focus, no
+   * focus shadow, the error flush with the field). Every key is optional and
+   * an omitted object keeps the defaults (app-mobile is unchanged).
+   */
+  metrics?: PhoneInputMetrics;
+}
+
+export interface PhoneInputMetrics {
+  /** Field height. Default 56. */
+  height?: number;
+  /** Idle border width. Default 2. */
+  borderWidth?: number;
+  /** Focused border width. Default the idle width. */
+  focusedBorderWidth?: number;
+  borderRadius?: number;
+  /** Left padding of the country button and both paddings of the text. */
+  horizontalPadding?: number;
+  /** Left indent of the error line. Default 4. */
+  errorIndent?: number;
+  /** Draw the soft focus shadow. Default true. */
+  focusShadow?: boolean;
 }
 
 export const PhoneInput = ({
@@ -154,8 +183,10 @@ export const PhoneInput = ({
   maxLength,
   onFocus,
   onBlur,
+  reserveErrorSpace = false,
   inputComponent,
   smartEntry = false,
+  metrics,
 }: PhoneInputProps): React.ReactElement => {
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -175,7 +206,7 @@ export const PhoneInput = ({
     { start: number; end: number } | undefined
   >(undefined);
 
-  const t: Required<PhoneInputTheme> = useMemo(
+  const t: Required<Omit<PhoneInputTheme, "fieldBackground">> = useMemo(
     () => ({ ...DEFAULT_PHONE_INPUT_THEME, ...(theme ?? {}) }),
     [theme],
   );
@@ -194,8 +225,11 @@ export const PhoneInput = ({
 
   // Trigger shake animation when error appears, unless the platform's reduced
   // motion setting asks us to present the border and alert copy immediately.
+  // #4420 — only when an error APPEARS (none → some). A host that refines the
+  // message as the person types (wrong country, too short, too long) used to
+  // shake the field on every keystroke, which read as the form glitching.
   useEffect(() => {
-    if (error && error !== prevError.current && !reduceMotion) {
+    if (error && !prevError.current && !reduceMotion) {
       Animated.sequence([
         Animated.timing(shakeAnim, {
           toValue: -10,
@@ -327,9 +361,19 @@ export const PhoneInput = ({
   }, [disabled]);
 
   // Render-time inline styles that respect the resolved theme.
+  const fieldHeight = metrics?.height;
   const containerStyle: ViewStyle = {
     ...styles.container,
-    backgroundColor: t.backgroundPrimary,
+    ...(fieldHeight !== undefined ? { minHeight: fieldHeight, height: fieldHeight } : null),
+    ...(metrics?.borderRadius !== undefined ? { borderRadius: metrics.borderRadius } : null),
+    ...(metrics?.borderWidth !== undefined || metrics?.focusedBorderWidth !== undefined
+      ? {
+          borderWidth: focused
+            ? metrics.focusedBorderWidth ?? metrics.borderWidth ?? styles.container.borderWidth
+            : metrics.borderWidth ?? styles.container.borderWidth,
+        }
+      : null),
+    backgroundColor: theme?.fieldBackground ?? t.backgroundPrimary,
     borderColor: error
       ? t.borderError
       : focused
@@ -346,10 +390,18 @@ export const PhoneInput = ({
   };
   const textInputStyle: TextStyle = {
     ...styles.textInput,
+    ...(fieldHeight !== undefined ? { minHeight: fieldHeight - 2, height: "100%" } : null),
+    ...(metrics?.horizontalPadding !== undefined ? { paddingHorizontal: metrics.horizontalPadding } : null),
     color: t.textPrimary,
+  };
+  const countrySectionStyle: ViewStyle = {
+    ...styles.countrySection,
+    ...(fieldHeight !== undefined ? { minHeight: fieldHeight - 2, height: "100%" } : null),
+    ...(metrics?.horizontalPadding !== undefined ? { paddingLeft: metrics.horizontalPadding } : null),
   };
   const errorTextStyle: TextStyle = {
     ...styles.errorText,
+    ...(metrics?.errorIndent !== undefined ? { paddingLeft: metrics.errorIndent } : null),
     color: t.errorText,
   };
   const accessoryBarStyle: ViewStyle = {
@@ -367,13 +419,13 @@ export const PhoneInput = ({
       <Animated.View
         style={[
           containerStyle,
-          focused && !error ? shadowSm : null,
+          focused && !error && metrics?.focusShadow !== false ? shadowSm : null,
           { transform: [{ translateX: shakeAnim }] },
         ]}
       >
         <TouchableOpacity
           ref={countryTriggerRef}
-          style={styles.countrySection}
+          style={countrySectionStyle}
           onPress={handleOpenPicker}
           activeOpacity={0.6}
           disabled={disabled}
@@ -438,13 +490,15 @@ export const PhoneInput = ({
 
       {error ? (
         <Text
-          style={errorTextStyle}
+          style={reserveErrorSpace ? [errorTextStyle, styles.errorSlotText] : errorTextStyle}
           accessibilityRole="alert"
           aria-live="polite"
           testID={testID ? `${testID}-error` : undefined}
         >
           {error}
         </Text>
+      ) : reserveErrorSpace ? (
+        <View style={styles.errorSlot} testID={testID ? `${testID}-error-slot` : undefined} />
       ) : null}
 
       {pickerVisible ? (
@@ -529,6 +583,13 @@ const styles = StyleSheet.create({
     ...typography.sm,
     marginTop: spacing.xs,
     paddingLeft: spacing.xs,
+  },
+  // One error line: typography.sm's lineHeight, plus its marginTop when empty.
+  errorSlot: {
+    minHeight: 20 + spacing.xs,
+  },
+  errorSlotText: {
+    minHeight: 20,
   },
   accessoryBar: {
     flexDirection: "row",

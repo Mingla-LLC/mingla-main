@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/stripe-webhook/__tests__/issue_4420_webhook_retry_idempotency.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4420-stripe-webhook-retry-idempotency",
+  "profile": "deno-1.46-stripe"
+}

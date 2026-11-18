@@ -16,14 +16,24 @@ import viSetup from "./locales/vi/hostSetup.json";
 import yoSetup from "./locales/yo/hostSetup.json";
 import zhSetup from "./locales/zh/hostSetup.json";
 
+// #4238 W6a — the Promote builder words ride in the same lazy language file.
+import ruAds from "./locales/ru/hostAds.json";
+import svAds from "./locales/sv/hostAds.json";
+import thAds from "./locales/th/hostAds.json";
+import trAds from "./locales/tr/hostAds.json";
+import ukAds from "./locales/uk/hostAds.json";
+import viAds from "./locales/vi/hostAds.json";
+import yoAds from "./locales/yo/hostAds.json";
+import zhAds from "./locales/zh/hostAds.json";
+
 // #4389 — the host setup words ride in the same lazy language file.
 export default {
-  ru: { ...ru, ...ruSetup },
-  sv: { ...sv, ...svSetup },
-  th: { ...th, ...thSetup },
-  tr: { ...tr, ...trSetup },
-  uk: { ...uk, ...ukSetup },
-  vi: { ...vi, ...viSetup },
-  yo: { ...yo, ...yoSetup },
-  zh: { ...zh, ...zhSetup },
+  ru: { ...ru, ...ruSetup, ...ruAds },
+  sv: { ...sv, ...svSetup, ...svAds },
+  th: { ...th, ...thSetup, ...thAds },
+  tr: { ...tr, ...trSetup, ...trAds },
+  uk: { ...uk, ...ukSetup, ...ukAds },
+  vi: { ...vi, ...viSetup, ...viAds },
+  yo: { ...yo, ...yoSetup, ...yoAds },
+  zh: { ...zh, ...zhSetup, ...zhAds },
 };

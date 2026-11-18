@@ -1,7 +1,10 @@
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { accent, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../constants/designSystem";
 import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
 import { Icon } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
@@ -71,7 +74,7 @@ export const FollowersKpiTile: React.FC<FollowersKpiTileProps> = ({
           importantForAccessibility="no-hide-descendants"
           style={styles.chevron}
         >
-          <Icon name="chevR" size={14} color={textTokens.tertiary} />
+          <Icon name="chevR" size={14} color={color.text3} />
         </View>
       ) : null}
     </View>
@@ -99,14 +102,14 @@ export const FollowersKpiTile: React.FC<FollowersKpiTileProps> = ({
 
 const styles = StyleSheet.create({
   highlightedTile: {
-    backgroundColor: "rgba(235, 120, 37, 0.12)",
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
     borderWidth: 1,
   },
   chevron: {
     position: "absolute",
-    top: spacing.md,
-    right: spacing.md,
+    top: space[4],
+    right: space[4],
   },
   pressed: {
     opacity: 0.82,

@@ -30,6 +30,8 @@ const actions = new Set([
   "create_payment",
   "cancel_preview",
   "cancel",
+  // issue #4420 wave 2 (D-S7) — "Email me the booking link again".
+  "resend_guest_link",
 ]);
 const MAX_REQUEST_BYTES = 262_144;
 const STRICT_E164 = /^\+[1-9][0-9]{7,14}$/;
@@ -524,6 +526,109 @@ function errorResponse(error: RpcError, requestId: string): Response {
   });
 }
 
+/**
+ * issue #4420 wave 2 (D-S7) — the masked contact of a group the caller may
+ * not read. Service role only, and only ever the mask ("g•••@example.com");
+ * null (fall back to the ordinary refusal) when there is no service key, no
+ * group or no address.
+ */
+/**
+ * issue #4420 wave 2 (D-S7) — re-send a Stay booking's guest email to the
+ * booking's OWN address (service role; at most once per group per ten
+ * minutes, enforced in SQL). The caller is never told the address, only the
+ * mask; nothing is sent to the caller.
+ */
+async function stayGroupResendLink(
+  url: string,
+  groupId: string,
+  requestId: string,
+  dependencies: StayReservationsDependencies,
+): Promise<Response> {
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!serviceKey) {
+    return json(503, {
+      kind: "error",
+      code: "stay_resend_unavailable",
+      message: "We couldn't resend the link right now.",
+      requestId,
+    });
+  }
+  const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+    createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as RpcClient;
+  const { data, error } = await service.rpc(
+    "issue_4420_stay_group_resend_link",
+    { p_group_id: groupId },
+  );
+  if (error) {
+    console.warn(JSON.stringify({ event: "stay_resend_link_failed", requestId }));
+    return json(502, {
+      kind: "error",
+      code: "stay_resend_unavailable",
+      message: "We couldn't resend the link right now.",
+      requestId,
+    });
+  }
+  if (typeof data !== "string" || !data.includes("•••@")) {
+    return json(409, {
+      kind: "error",
+      code: "stay_resend_not_available",
+      message: "This booking has no link to resend.",
+      requestId,
+    });
+  }
+  return json(200, { kind: "success", data: { maskedEmail: data }, requestId });
+}
+
+async function stayGroupOtherContact(
+  url: string,
+  groupId: unknown,
+  requestId: string,
+  dependencies: StayReservationsDependencies,
+): Promise<Response | null> {
+  if (typeof groupId !== "string" || !UUID.test(groupId)) return null;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!serviceKey) return null;
+  const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+    createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as RpcClient;
+  const { data, error } = await service.rpc(
+    "issue_4420_stay_group_other_contact_view",
+    { p_group_id: groupId },
+  );
+  if (error) {
+    console.warn(JSON.stringify({
+      event: "stay_group_other_contact_lookup_failed",
+      requestId,
+    }));
+    return null;
+  }
+  const view = data && typeof data === "object" && !Array.isArray(data)
+    ? data as Record<string, unknown>
+    : null;
+  const masked = view?.masked_email;
+  if (typeof masked !== "string" || !masked.includes("•••@")) return null;
+  const text = (value: unknown): string | null =>
+    typeof value === "string" && value.length > 0 ? value : null;
+  return json(403, {
+    kind: "error",
+    code: "stay_group_other_contact",
+    message: "This booking is under another email.",
+    maskedEmail: masked,
+    // What the recovery page may show a non-owner (never dates, rooms or
+    // totals): the Stay, the brand (for "Ask … to change the email") and the
+    // reference the host needs to find the booking.
+    venueName: text(view?.venue_name),
+    brandSlug: text(view?.brand_slug),
+    brandName: text(view?.brand_name),
+    publicReference: text(view?.public_reference),
+    resendable: view?.resendable === true,
+    requestId,
+  });
+}
+
 export async function handleStayReservations(
   req: Request,
   dependencies: StayReservationsDependencies = {},
@@ -948,6 +1053,31 @@ export async function handleStayReservations(
     return json(200, { kind: "success", data, requestId });
   }
 
+  // issue #4420 wave 2 (D-S7) — authorised exactly like get_group's
+  // other-contact answer: only a signed-in caller whose own read of this
+  // booking is refused as "forbidden" (not the booking's contact) may ask for
+  // the link to be re-sent, and it goes to the booking's own address.
+  if (body.action === "resend_guest_link") {
+    const own = await client.rpc("biz_manage_stay_reservation", {
+      p_action: "get_group",
+      p_payload: { groupId: payload.groupId },
+      p_expected_version: null,
+      p_request_id: requestId,
+    });
+    if (!own.error) {
+      return json(409, {
+        kind: "error",
+        code: "stay_group_already_yours",
+        message: "This booking is already on your account.",
+        requestId,
+      });
+    }
+    if (!(own.error.message ?? "").includes("forbidden")) {
+      return errorResponse(own.error, requestId);
+    }
+    return stayGroupResendLink(url, payload.groupId as string, requestId, dependencies);
+  }
+
   const { data, error } = await client.rpc("biz_manage_stay_reservation", {
     p_action: body.action,
     p_payload: body.payload,
@@ -962,6 +1092,18 @@ export async function handleStayReservations(
       requestId,
       dependencies,
     );
+    // issue #4420 wave 2 (D-S7) — a signed-in guest who is not this
+    // booking's contact gets told whose (masked) email it is under, so the
+    // page can offer "Sign in as …" instead of a dead "not found".
+    if (body.action === "get_group" && (error.message ?? "").includes("forbidden")) {
+      const other = await stayGroupOtherContact(
+        url,
+        payload.groupId,
+        requestId,
+        dependencies,
+      );
+      if (other !== null) return other;
+    }
     return errorResponse(error, requestId);
   }
 

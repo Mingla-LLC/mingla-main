@@ -82,11 +82,15 @@ export const StopSpine: React.FC<StopSpineProps> = ({
           type: m.type,
         }));
         const label = stopLabelForIndex(idx, stops.length);
+        // issue #4420 audit — the dot shows the stop's place in the list the
+        // guest sees, not the stored stop_order (which can start at 1 or skip
+        // after a stop is removed, so the first stop read "2").
+        const position = idx + 1;
         return (
           <View key={stop.id} style={styles.stop}>
             <View style={[styles.stopDot, accentFill(palette)]}>
               <Text style={[styles.stopDotText, { color: palette.accentText }]}>
-                {stop.stopOrder + 1}
+                {position}
               </Text>
             </View>
             <View style={[styles.stopCard, surface.card]}>
@@ -121,7 +125,7 @@ export const StopSpine: React.FC<StopSpineProps> = ({
                     items={media}
                     palette={palette}
                     variant={variant}
-                    accessibilityLabelPrefix={`Stop ${stop.stopOrder + 1} media`}
+                    accessibilityLabelPrefix={`Stop ${position} media`}
                   />
                 </View>
               ) : null}

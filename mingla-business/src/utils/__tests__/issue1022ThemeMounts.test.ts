@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 import { readFileSync } from "fs";
 import path from "path";
 
@@ -103,7 +104,7 @@ describe("C-1 — every mount resolves the theme with the BRAND in the first slo
   });
 });
 
-describe("A/F-12 — the review previews render the THEMED palette, not accent.warm", () => {
+describe("A/F-12 — the review previews render the THEMED palette, not color.accent", () => {
   test.each([
     ["Event preview", "src/components/event/CreatorStep7Preview.tsx"],
     ["RSVP preview", "src/components/rsvp/RsvpStep7Preview.tsx"],
@@ -119,14 +120,14 @@ describe("A/F-12 — the review previews render the THEMED palette, not accent.w
     // and "Not going" had kept the dark-chrome text token and were invisible on
     // a light theme. Contrast is pinned by themedPreviewCardColors.test.ts.
     expect(s).toContain("themedPreviewCardColors(themePalette)");
-    // the date line was the hardcoded accent.warm offender
+    // the date line was the hardcoded color.accent offender
     expect(s).toMatch(/color: card\.dateText/);
     expect(s).toMatch(/backgroundColor: card\.surface/);
     expect(s).toMatch(/color: card\.venueText/);
     // No dark-chrome colour inside the themed mini-card styles.
     const cardStyles = s.slice(s.indexOf("  miniCard: {"), s.indexOf("  statusCardWrap"));
     expect(cardStyles.length).toBeGreaterThan(0);
-    expect(cardStyles).not.toMatch(/textTokens\.|accent\.warm|accent\.tint|glass\./);
+    expect(cardStyles).not.toMatch(/textTokens\.|color\.accent|accent\.tint|glass\./);
   });
 });
 
@@ -165,15 +166,18 @@ describe("C-9 / C-10 — geometry: width-agnostic, self-capping", () => {
 
   test("Android uses the opaque composites with NO elevation", () => {
     const s = src(ROW);
-    expect(s).toContain("androidOpaque.rowFill");
-    expect(s).toContain("androidOpaque.rowBorder");
+    expect(s).toContain("materials.pane.solidFill");
+    expect(s).toContain("color.card2");
     expect(s).toMatch(/elevation:\s*0/);
   });
 
   test("androidOpaque ALIASES the existing constant — no third copy of the literal", () => {
     // B-27: #16181b already exists as ariThread.ariBubbleAndroid.
     const ds = src("src/constants/designSystem.ts");
-    expect(ds).toMatch(/rowFill:\s*ariThread\.ariBubbleAndroid/);
+    // [TEST-MOD-APPROVED #4420] wave 6 deleted both aliases; there is still
+    // exactly one solid pane literal, read through materials.pane.solidFill.
+    expect(ds).not.toMatch(/rowFill:|ariBubbleAndroid:/);
+    expect(ds).toMatch(/solidFill: palette\.graphite\[920\],/);
   });
 
   test("the chip shows the DERIVED palette, never the raw seed", () => {

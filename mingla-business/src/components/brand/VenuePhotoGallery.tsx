@@ -11,14 +11,9 @@ import {
   View,
 } from "react-native";
 
-import {
-  accent,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
 
+
+import { color, space, type, radius } from "../../constants/designSystem";
 export interface VenuePhotoGalleryProps {
   photoUrls: string[];
 }
@@ -51,23 +46,23 @@ export const VenuePhotoGallery: React.FC<VenuePhotoGalleryProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
+    gap: space[2],
     width: "100%",
   },
   title: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   row: {
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: space[2],
+    paddingVertical: space[1],
   },
   thumb: {
     width: 120,
     height: 120,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.tint,
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tabOn,
   },
 });
 

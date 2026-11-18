@@ -15,6 +15,7 @@ import { useSitePages } from "../../../../sites/contentApi";
 import { Chip, Hint, MiniButton, Segmented, Skeleton, WButton, ui } from "../ui";
 import { ScaledPreviewFrame } from "./ScaledPreviewFrame";
 
+import { color } from "../../../../constants/designSystem";
 const DEVICE_ICONS = { desktop: "monitor", tablet: "tablet", phone: "phone" } as const;
 
 /** Desktop / Tablet / Phone, rotate, and the size readout (DESIGN_SPEC §1.7). */
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
   pages: { marginBottom: 10 },
   unsavedRow: { flexDirection: "row", marginBottom: 8 },
   caption: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 6 },
-  errorStage: { minHeight: 200, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.02)" },
+  errorStage: { minHeight: 200, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: color.fill.tableHead },
   errorTitle: { fontSize: 14, fontWeight: "600", color: ui.t1 },
   fullBody: { flex: 1 },
   frameStage: { position: "relative" },

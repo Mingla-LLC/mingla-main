@@ -22,15 +22,6 @@ const ROUTES = [
     label: "overview",
   },
   {
-    file: "audiences/index.tsx",
-    mustInclude: [
-      'import { Redirect } from "expo-router"',
-      '<Redirect href="/(tabs)/marketing/people"',
-    ],
-    mustExclude: ["useAudienceList", "AudienceListScreen"],
-    label: "legacy-audiences-redirect",
-  },
-  {
     file: "mingla-business/src/components/people/PeoplePage.tsx",
     rootRelative: true,
     mustInclude: [
@@ -79,6 +70,12 @@ const ROUTES = [
   },
 ];
 
+// #4420 wave 6 — the 5-line Audiences → People redirect is retired. People
+// (below) owns the book; the old route must not come back as a second owner.
+const RETIRED = [
+  { file: "audiences/index.tsx", label: "retired-audiences-route" },
+];
+
 const REQUIRED_EXTERNAL = [
   "docs/evidence/grade-a-marketing.md",
   "docs/load-profile.md",
@@ -96,6 +93,12 @@ function fail(msg) {
 
 for (const rel of REQUIRED_EXTERNAL) {
   if (!existsSync(join(ROOT, rel))) fail(`missing ${rel}`);
+}
+
+for (const route of RETIRED) {
+  if (existsSync(join(MARKETING, route.file))) {
+    fail(`${route.label} (${route.file}) is back — People owns the book at marketing/people`);
+  }
 }
 
 for (const route of ROUTES) {
@@ -125,5 +128,5 @@ if (
   fail("grade-a-marketing.md must reference marketing-send.js and test:orch-432");
 }
 
-console.log("PASS: marketing Grade A contract (legacy redirect + 5 owned surfaces + evidence)");
+console.log("PASS: marketing Grade A contract (retired Audiences route + 5 owned surfaces + evidence)");
 process.exit(0);

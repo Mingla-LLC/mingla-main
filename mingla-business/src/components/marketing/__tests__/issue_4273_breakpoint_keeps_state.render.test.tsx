@@ -9,6 +9,10 @@ const mockLayout = { isWideDesktop: false };
 jest.mock("../../../hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => mockLayout,
 }));
+// [TEST-MOD-APPROVED #4420] DesktopCanvas reads the route (usePathname) to
+// pick its width template; expo-router is a boundary here, and the route is
+// stable across the width change, as it is in the app.
+jest.mock("expo-router", () => ({ usePathname: () => "/marketing/campaigns/compose" }));
 
 import { DesktopCanvas } from "../../ui/DesktopCanvas";
 

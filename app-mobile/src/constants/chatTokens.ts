@@ -56,6 +56,16 @@ export const chatTokens = {
  * Every text colour here passes WCAG AA (4.5:1) on `bubble`; the regression
  * test computes the ratios. Sent bubbles keep the orange design-system fill.
  */
+/** #4459: a brand's post in its Guest chat (design v2): warm bubble, orange hairline, HOST chip. */
+export const brandGuestChatTokens = {
+  brandBubble: "#2B1D15",
+  brandBubbleLine: "rgba(235,120,37,0.30)",
+  hostChipBg: "rgba(235,120,37,0.16)",
+  hostChipLabel: "#F6B27A",
+  noticeBg: "#111418",
+  noticeLine: "rgba(255,255,255,0.10)",
+} as const;
+
 export const receivedBubbleTokens = {
   bubble: "#1D2026",
   text: "#FFFFFF",

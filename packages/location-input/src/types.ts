@@ -42,6 +42,11 @@ export interface LocationInputTokens {
     paddingVertical: number;
     /** Focus border width (DESIGN §5 — 1.5 for the warm focus ring). */
     focusBorderWidth: number;
+    /**
+     * Optional field height floor so the field matches the host's own inputs
+     * (#4420: the Host input height). Omitted = height from padding only.
+     */
+    minHeight?: number;
   };
   text: {
     input: string;

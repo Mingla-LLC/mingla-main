@@ -52,10 +52,15 @@ export const BUYER_CLAIM_COPY = {
   scanExpired: "This code has expired.",
   scanRefresh: "Get a new code",
   scanPreparing: "Preparing your code…",
-  scanError:
-    "We couldn't prepare a code. Your ticket is safe: open Mingla on your phone and sign in with the email or mobile number you used.",
-  scanRateLimited:
-    "Too many codes for this ticket. Try again in a few minutes.",
+  // #4420 — the desktop QR that always works: it opens the right store for the
+  // phone that scans it (iPhone → App Store, Android → Google Play). It replaces
+  // the old "couldn't prepare a code" dead end, which contradicted the sign-in
+  // line printed right above it.
+  storeScanInstruction: "Scan with your phone camera to get the Mingla app.",
+  storeButton: {
+    ios: "Get Mingla on the App Store",
+    android: "Get Mingla on Google Play",
+  },
   receipt: {
     feesTax: "Fees & tax",
     paid: "Paid",

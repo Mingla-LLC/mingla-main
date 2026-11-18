@@ -273,6 +273,8 @@ export interface DoorGuest {
   tickets: DoorGuestTicket[];
   /** issue #3281 — extras still owed on this order; absent when none. */
   extras?: unknown;
+  /** issue #3281 — ISO start the guest booked; absent when none. */
+  bookedStartAt?: string;
 }
 
 export const searchDoorGuests = (input: {

@@ -535,8 +535,8 @@ describe("#679 R-8 · active button: surface wash fill, never accent fill", () =
 // R-9 — desktop panel composition + contact-data boundary
 // ---------------------------------------------------------------------------
 
-describe("#679 R-9 · desktop panel: Follow BETWEEN socials and Share; no contact data in that slice", () => {
-  test("ordering socials < Follow < Share holds in the emitted DOM", () => {
+describe("#679 R-9 · desktop flyer actions: Follow, then Share, then socials; no contact data in that slice", () => {
+  test("ordering Follow < Share < socials holds in the emitted DOM (#4420 wave 2)", () => {
     setViewport(DESKTOP_WIDTH);
     const html = markup({ onToggleFollow: () => undefined, isFollowing: false });
 
@@ -549,13 +549,13 @@ describe("#679 R-9 · desktop panel: Follow BETWEEN socials and Share; no contac
     expect(followIdx).toBeGreaterThan(-1);
     expect(shareIdx).toBeGreaterThan(-1);
 
-    // the spec'd insertion point: socials → Follow → Share
-    expect(followIdx).toBeGreaterThan(socialsIdx);
+    // issue #4420 wave 2 — under the flyer: Follow → Share → socials
     expect(shareIdx).toBeGreaterThan(followIdx);
+    expect(socialsIdx).toBeGreaterThan(shareIdx);
 
     // the panel slice around Follow carries NO contact data — following must
     // never surface an address/phone (Ring-2 boundary, #876)
-    const panelSlice = html.slice(socialsIdx, shareIdx);
+    const panelSlice = html.slice(followIdx, socialsIdx);
     expect(panelSlice).not.toContain(SECRET_EMAIL);
     expect(panelSlice).not.toContain(SECRET_PHONE);
     expect(panelSlice).not.toContain("mailto:");

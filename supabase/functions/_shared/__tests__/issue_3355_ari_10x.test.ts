@@ -1780,7 +1780,7 @@ Deno.test("#3355 terse continuation requests read the durable onboarding plan", 
 });
 
 Deno.test("#3355 onboarding stays on the selected brand and treats future materials as absent", () => {
-  assertEquals(PROMPT_VERSION, "v38"); // #4453 PR 2: booking lock website rules on top of the #3355 + #4389 prompt
+  assertEquals(PROMPT_VERSION, "v39"); // #4453 PR 2 booking lock website rules on top of #4238 W5 v38
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   for (
     const phrase of [

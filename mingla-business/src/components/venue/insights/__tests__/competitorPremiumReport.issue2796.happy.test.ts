@@ -1,12 +1,21 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { materials, color } from "../../../../constants/designSystem";
 
 describe("issue 2796 premium competition presentation", () => {
   const brief = readFileSync(resolve(__dirname, "../CompetitorBriefSheet.tsx"), "utf8");
   const add = readFileSync(resolve(__dirname, "../CompetitorAddSheet.tsx"), "utf8");
   const tokens = readFileSync(resolve(__dirname, "../../../../constants/designSystem.ts"), "utf8");
   it("owns responsive geometry and opaque cross-platform cards", () => {
-    for (const expected of ["contentInsetCompact: 16", "contentInsetRegular: 24", "contentInsetWide: 32", "readableCopyMaxWidth: 600", "surface: \"#16181b\"", "surfaceRaised: \"#191c21\""]) expect(tokens).toContain(expected);
+    for (const expected of ["contentInsetCompact: 16", "contentInsetRegular: 24", "contentInsetWide: 32", "readableCopyMaxWidth: 600"]) expect(tokens).toContain(expected);
+    // [TEST-MOD-APPROVED #4420] wave 6: the `competition` alias is gone; both sheets read the opaque Graphite solids directly.
+    for (const sheet of [brief, add]) {
+      expect(sheet).toContain("panelBackground={materials.pane.solidFill}");
+      expect(sheet).toContain('const competitionCardSurface = Platform.OS === "android" ? materials.pane.solidFill : color.card;');
+    }
+    // [TEST-MOD-APPROVED #4420] the competition surfaces alias the opaque Graphite solids; both still resolve to 6-digit hex.
+    expect(materials.pane.solidFill).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(color.card).toMatch(/^#[0-9a-f]{6}$/i);
     expect(brief).toContain("useWindowDimensions");
     expect(brief).toContain("elevation: 0");
   });

@@ -197,6 +197,7 @@ describe("#4238 T12 HostAdAudiencePicker", () => {
     const create = fs.readFileSync(path.join(__dirname, "../../../../../src/screens/hostAds/HostAdCreateScreen.tsx"), "utf8");
     expect(create).toContain("audience_keys: audienceKeys");
     expect(create).toContain("<HostAdAudiencePicker");
-    expect(create).toContain('testID="host-ad-review-audiences"');
+    // #4238 W6a: the brand's own audiences sit in Who sees it › Advanced.
+    expect(create).toContain('testID="host-ad-audience-advanced-panel"');
   });
 });

@@ -297,7 +297,11 @@ check(
 
 check(
   "T-668-01 [FAILS-ON-REVERT KEY] getConversations excludes linked_entity_type=support",
-  body !== null && /\.neq\(\s*['"]linked_entity_type['"]\s*,\s*['"]support['"]\s*\)/.test(body),
+  // #4459: the same exclusion now also drops the retired per-listing chats.
+  body !== null && (
+    /\.neq\(\s*['"]linked_entity_type['"]\s*,\s*['"]support['"]\s*\)/.test(body) ||
+    /\.not\(\s*['"]linked_entity_type['"]\s*,\s*['"]in['"]\s*,\s*['"]\(support,[^'"]*\)['"]\s*\)/.test(body)
+  ),
   "Support threads belong on the business support inbox only (#668). Mirror useNotifications business.% exclusion.",
 );
 

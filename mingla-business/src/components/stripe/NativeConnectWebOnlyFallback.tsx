@@ -3,12 +3,10 @@ import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import {
-  canvas,
-  glass,
+  color,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { SafeScreen } from "../ui/SafeScreen";
@@ -44,29 +42,29 @@ export const NativeConnectWebOnlyFallback: React.FC<
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.lg,
+    padding: space[6],
   },
   card: {
     width: "100%",
     maxWidth: 420,
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: glass.tint.profileBase,
+    gap: space[4],
+    padding: space[6],
+    borderRadius: radius.md,
+    backgroundColor: color.fill.inset,
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   body: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text2,
   },
 });
 

@@ -9,9 +9,9 @@ import {
 } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../../constants/designSystem";
 import {
   usePreviewBrandCurrencyReconciliation,
@@ -119,7 +119,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
   if (stateQuery.isLoading) {
     return (
       <View style={styles.host}>
-        <ActivityIndicator color={textTokens.primary} />
+        <ActivityIndicator color={color.text1} />
         <Text style={styles.helper}>Loading your brand currency…</Text>
       </View>
     );
@@ -455,7 +455,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
             onChangeText={(value) => patch({ discoveryPriceMinInput: value })}
             keyboardType="decimal-pad"
             placeholder="0"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             style={styles.input}
           />
         </View>
@@ -470,7 +470,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
             onChangeText={(value) => patch({ discoveryPriceMaxInput: value })}
             keyboardType="decimal-pad"
             placeholder="No upper limit"
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             style={styles.input}
           />
         </View>
@@ -483,31 +483,31 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
 
 const styles = StyleSheet.create({
   host: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[2],
+    paddingHorizontal: space[6],
+    paddingBottom: space[7],
   },
   labelCap: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text3,
   },
   helper: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
     lineHeight: 20,
   },
   warning: {
-    fontSize: typography.bodySm.fontSize,
-    color: "#F59E0B",
+    fontSize: type.small.fontSize,
+    color: color.accentText,
     lineHeight: 20,
   },
   currencyGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   currencyChip: {
     minHeight: 44,
@@ -516,21 +516,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    paddingHorizontal: spacing.md,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
+    paddingHorizontal: space[4],
   },
   currencyChipText: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   field: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   fieldLabel: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text2,
+    fontSize: type.small.fontSize,
   },
   inputRow: {
     minHeight: 48,
@@ -538,60 +538,60 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.inset,
   },
   currencyCode: {
-    color: textTokens.secondary,
-    paddingLeft: spacing.md,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text2,
+    paddingLeft: space[4],
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   input: {
     flex: 1,
-    color: textTokens.primary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    fontSize: typography.body.fontSize,
+    color: color.text1,
+    paddingHorizontal: space[2],
+    paddingVertical: space[2],
+    fontSize: type.body.fontSize,
   },
   err: {
-    fontSize: typography.caption.fontSize,
-    color: "#EF4444",
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
   },
   retry: {
     minHeight: 44,
     alignSelf: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
   },
   retryText: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
   },
   actionGroup: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   reviewPanel: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   rangeCard: {
-    gap: spacing.xs,
+    gap: space[1],
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    padding: spacing.md,
+    borderColor: color.lineStrong,
+    padding: space[4],
   },
   primaryAction: {
     minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 24,
-    backgroundColor: textTokens.primary,
-    paddingHorizontal: spacing.lg,
+    backgroundColor: color.text1,
+    paddingHorizontal: space[6],
   },
   primaryActionText: {
-    color: "#000000",
-    fontSize: typography.bodySm.fontSize,
+    color: color.ink,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   secondaryAction: {
@@ -600,21 +600,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    paddingHorizontal: spacing.lg,
+    borderColor: color.lineStrong,
+    paddingHorizontal: space[6],
   },
   secondaryActionText: {
-    color: textTokens.primary,
-    fontSize: typography.bodySm.fontSize,
+    color: color.text1,
+    fontSize: type.small.fontSize,
     fontWeight: "700",
   },
   reentryInput: {
     minHeight: 46,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    color: textTokens.primary,
-    paddingHorizontal: spacing.md,
+    borderColor: color.lineStrong,
+    color: color.text1,
+    paddingHorizontal: space[4],
   },
 });
 

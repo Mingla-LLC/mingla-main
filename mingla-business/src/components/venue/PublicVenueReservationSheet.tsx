@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { StyleSheet, Text, View, type View as ViewInstance } from "react-native";
 
-import { spacing, text, typography } from "../../constants/designSystem";
+import { space, type, color } from "../../constants/designSystem";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Sheet } from "../ui/Sheet";
 
@@ -110,11 +110,11 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
     minHeight: 0,
-    gap: spacing.sm,
+    gap: space[2],
   },
   heading: {
-    ...typography.h2,
-    color: text.primary,
+    ...type.h1,
+    color: color.text1,
   },
   scroll: {
     flex: 1,
@@ -122,6 +122,6 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   content: {
-    paddingBottom: spacing.xl,
+    paddingBottom: space[7],
   },
 });

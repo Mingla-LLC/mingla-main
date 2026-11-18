@@ -5,16 +5,16 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import {
-  accent,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+
 import type { VenueCategory } from "../../types/brand";
 import { GlassCard } from "../ui/GlassCard";
 
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 const OPTIONS: {
   id: VenueCategory;
   label: string;
@@ -77,7 +77,7 @@ export const VenueCategoryPicker: React.FC<VenueCategoryPickerProps> = ({
           >
             <GlassCard
               variant={selected ? "elevated" : "base"}
-              padding={spacing.md}
+              padding={space[4]}
             >
               <Text style={[styles.title, selected && styles.titleOn]}>
                 {opt.label}
@@ -97,10 +97,10 @@ const styles = StyleSheet.create({
     // the page section (and the full-width Continue button below them) instead
     // of being double-padded. The parent screen already applies section
     // padding, so the cards and the CTA line up to the same width.
-    gap: spacing.sm,
+    gap: space[2],
   },
   cardOuter: {
-    borderRadius: radiusTokens.lg,
+    borderRadius: radius.md,
   },
   pressed: {
     opacity: 0.88,
@@ -109,18 +109,18 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   title: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   titleOn: {
-    color: accent.warm,
+    color: color.text1,
   },
   desc: {
     marginTop: 4,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
 });
 

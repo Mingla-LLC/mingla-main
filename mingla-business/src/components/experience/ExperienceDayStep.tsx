@@ -17,6 +17,9 @@ import type { PublicExperienceDate } from "../../services/publicExperienceServic
 import { accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
+import {
+  color,
+} from "../../constants/designSystem";
 export interface ExperienceDayStepProps {
   mode: "slots" | "open-daily";
   dates: ReadonlyArray<PublicExperienceDate>;
@@ -105,13 +108,13 @@ export const ExperienceDayStep: React.FC<ExperienceDayStepProps> = ({
                       styles.chip,
                       soldOut
                         ? {
-                            color: "#f87171",
-                            backgroundColor: "rgba(248,113,113,0.14)",
+                            color: color.errorText,
+                            backgroundColor: color.errorTint,
                           }
                         : (d.ticketsRemaining ?? 99) <= 10
                           ? {
-                              color: "#fbbf24",
-                              backgroundColor: "rgba(251,191,36,0.14)",
+                              color: color.warningText,
+                              backgroundColor: color.warningTint,
                             }
                           : {
                               color: palette.accent,

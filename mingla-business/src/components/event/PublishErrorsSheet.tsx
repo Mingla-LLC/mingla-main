@@ -11,13 +11,10 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { ValidationError } from "../../utils/draftEventValidation";
 
@@ -66,7 +63,7 @@ export const PublishErrorsSheet: React.FC<PublishErrorsSheetProps> = ({
           {errors.map((err, i) => (
             <View key={`${err.fieldKey}-${i}`} style={styles.errorRow}>
               <View style={styles.errorIconWrap}>
-                <Icon name="flag" size={14} color={accent.warm} />
+                <Icon name="flag" size={14} color={color.text1} />
               </View>
               <View style={styles.errorTextCol}>
                 <Text style={styles.errorMessage}>{err.message}</Text>
@@ -98,43 +95,42 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   title: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
   },
   sub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
     marginTop: 4,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   list: {
-    gap: spacing.xs,
+    gap: space[1],
   },
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    gap: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   errorIconWrap: {
     width: 28,
     height: 28,
     borderRadius: 999,
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -142,24 +138,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   errorMessage: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    color: color.text1,
   },
   errorStep: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   fixButton: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 4,
   },
   fixLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
 });
 
-// suppress unused-import for semantic (kept for future error-tier styling)
-void semantic;

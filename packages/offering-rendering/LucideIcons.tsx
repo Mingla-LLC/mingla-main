@@ -237,3 +237,11 @@ export const Sparkles: React.FC<LucideIconProps> = (props) => (
     <Path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
   </LucideFrame>
 );
+
+/** lucide `tag` — the price tag (issue #4420 venue "Spend" fact). */
+export const Tag: React.FC<LucideIconProps> = (props) => (
+  <LucideFrame {...props}>
+    <Path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
+    <Circle cx={7.5} cy={7.5} r={0.5} />
+  </LucideFrame>
+);

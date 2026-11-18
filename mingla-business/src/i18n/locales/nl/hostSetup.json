@@ -171,6 +171,10 @@
       "readyBank": "Bankrekening in {{country}}",
       "readyBankAny": "Bankrekening in je land",
       "readyTax": "Fiscaal nummer (alleen geregistreerde bedrijven)"
+    },
+    "stepper": {
+      "saved": "Opgeslagen",
+      "steps": "Stappen"
     }
   },
   "doorMode": {

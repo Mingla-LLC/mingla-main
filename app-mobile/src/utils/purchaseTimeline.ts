@@ -1,4 +1,10 @@
-export type PurchaseKind = "order" | "rsvp" | "reservation" | "venue_order";
+export type PurchaseKind =
+  | "order"
+  | "rsvp"
+  | "reservation"
+  | "venue_order"
+  // #4473 — only shared stays are listed here; owned stays live on /stay.
+  | "stay";
 export type PurchaseCoverMediaType = "image" | "video" | "gif";
 
 export interface PurchaseOrderSource {
@@ -20,6 +26,8 @@ export interface PurchaseOrderSource {
   currency: string;
   buyerTotalCents: number;
   refundedAmountCents: number;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -37,6 +45,8 @@ export interface PurchaseRsvpSource {
   status: string;
   approvalStatus: string;
   guestCount: number;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -53,6 +63,8 @@ export interface PurchaseReservationSource {
   feeCents: number;
   currency: string;
   refundedAmountCents: number;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -68,6 +80,20 @@ export interface PurchaseVenueOrderSource {
   totalCents: number;
   refundedAmountCents: number;
   currency: string;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
+  raw: unknown;
+}
+
+/** #4473 — a shared stay: venue, reference, state and mode; no dates. */
+export interface PurchaseStaySource {
+  id: string;
+  title: string;
+  createdAt: string;
+  timezone: string;
+  venueLine: string | null;
+  state: string;
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -76,6 +102,7 @@ export interface PurchaseSources {
   rsvps: readonly PurchaseRsvpSource[];
   reservations: readonly PurchaseReservationSource[];
   venueOrders: readonly PurchaseVenueOrderSource[];
+  stays?: readonly PurchaseStaySource[];
 }
 
 export interface PurchaseTimelineItem {
@@ -96,6 +123,8 @@ export interface PurchaseTimelineItem {
   refundedAmountCents: number;
   currency: string | null;
   source: string | null;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -207,10 +236,11 @@ function orderItems(orders: readonly PurchaseOrderSource[]): PurchaseTimelineIte
       venueLine: order.venueLine,
       status: order.paymentStatus,
       count: order.ticketCount,
-      amountCents: order.buyerTotalCents,
+      amountCents: order.shared ? null : order.buyerTotalCents,
       refundedAmountCents: order.refundedAmountCents,
       currency: order.currency,
       source: order.source,
+      shared: order.shared === true,
       raw: order.raw,
     }];
   });
@@ -239,6 +269,7 @@ function rsvpItems(rsvps: readonly PurchaseRsvpSource[]): PurchaseTimelineItem[]
       refundedAmountCents: 0,
       currency: null,
       source: null,
+      shared: rsvp.shared === true,
       raw: rsvp.raw,
     }];
   });
@@ -264,10 +295,11 @@ function reservationItems(
       venueLine: reservation.venueLine,
       status: reservation.status,
       count: reservation.partySize,
-      amountCents: reservation.feeCents,
+      amountCents: reservation.shared ? null : reservation.feeCents,
       refundedAmountCents: reservation.refundedAmountCents,
       currency: reservation.currency,
       source: null,
+      shared: reservation.shared === true,
       raw: reservation.raw,
     }];
   });
@@ -293,17 +325,57 @@ function venueOrderItems(
       venueLine: order.venueLine,
       status: order.paymentStatus,
       count: 1,
-      amountCents: order.totalCents,
+      amountCents: order.shared ? null : order.totalCents,
       refundedAmountCents: order.refundedAmountCents,
       currency: order.currency,
       source: null,
+      shared: order.shared === true,
       raw: order.raw,
     }];
   });
 }
 
+function stayItems(stays: readonly PurchaseStaySource[]): PurchaseTimelineItem[] {
+  return stays.flatMap((stay) => {
+    const createdAt = validDate(stay.createdAt);
+    if (!createdAt) return [];
+    return [{
+      key: `stay:${stay.id}`,
+      id: stay.id,
+      kind: "stay" as const,
+      title: stay.title,
+      brandName: stay.title,
+      coverMediaUrl: null,
+      coverMediaType: null,
+      startsAt: createdAt.toISOString(),
+      endsAt: createdAt.toISOString(),
+      timezone: stay.timezone || "UTC",
+      venueLine: stay.venueLine,
+      status: stay.state,
+      count: 1,
+      amountCents: null,
+      refundedAmountCents: 0,
+      currency: null,
+      source: null,
+      shared: stay.shared === true,
+      raw: stay.raw,
+    }];
+  });
+}
+
+const FINISHED_STAY_STATES = new Set([
+  "cancelled",
+  "completed",
+  "checked_out",
+  "expired",
+  "declined",
+  "no_show",
+]);
+
 function isUpcoming(item: PurchaseTimelineItem, now: Date): boolean {
   if (item.kind === "venue_order") return false;
+  // A stay carries no dates here; its state says whether it is still ahead.
+  if (item.kind === "stay") return !FINISHED_STAY_STATES.has(item.status);
   if (item.kind === "order" && TERMINAL_ORDER_STATUSES.has(item.status)) return false;
   if (
     item.kind === "reservation" &&
@@ -326,6 +398,7 @@ export function buildPurchaseTimeline(
     ...rsvpItems(sources.rsvps),
     ...reservationItems(sources.reservations),
     ...venueOrderItems(sources.venueOrders),
+    ...stayItems(sources.stays ?? []),
   ];
   const upcoming = all
     .filter((item) => isUpcoming(item, now))

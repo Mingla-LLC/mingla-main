@@ -171,6 +171,10 @@
       "readyBank": "Àkáǹtì báǹkì ní {{country}}",
       "readyBankAny": "Àkáǹtì báǹkì ní orílẹ̀-èdè rẹ",
       "readyTax": "Nọ́mbà owó-orí (ilé-iṣẹ́ tí a forúkọ sílẹ̀ nìkan)"
+    },
+    "stepper": {
+      "saved": "Ti fipamọ",
+      "steps": "Àwọn ìgbésẹ̀"
     }
   },
   "doorMode": {

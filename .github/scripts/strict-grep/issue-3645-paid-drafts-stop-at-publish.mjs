@@ -358,7 +358,8 @@ const RULES = [
   //      issue_3645_organiser_terms_resumes_publish.implementor.test.tsx
   // -------------------------------------------------------------------------
   ordered("D1-review-card", F.experienceWizard, [
-    "<InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />",
+    // #4420 — the review card also takes the estimate / list failure props.
+    "<InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}",
     "inviteEnabled && step === 7 && experienceNeedsStripe",
     'title="Bank required for paid experiences"',
     'body="Connect a bank to publish this paid experience. You\'ll come straight back here."',

@@ -60,7 +60,24 @@ import {
   S6_PLATE_BOUNDARY,
 } from "@mingla/card-identity/s6";
 
+import { LinearGradient } from "expo-linear-gradient";
+
 import { EventCoverMedia } from "./EventCoverMedia";
+import { desktopBlur } from "./OfferingGlassBar";
+import { OFFERING_PREMIUM_HEADER_ROW } from "./offeringFrameMetrics";
+import {
+  OfferingGlassBackdrop,
+  glassBlurActive,
+  useOfferingGlass,
+} from "./OfferingGlassContext";
+import {
+  OfferingCoverIdentity,
+  coverTitleMayClamp,
+  type OfferingCoverIdentityData,
+} from "./OfferingCoverIdentity";
+import { boldFontFamily, hexToRgba, paletteAccentGradient } from "./themePalette";
+import { themeFontFace } from "./themeAccentStyle";
+import { useReduceMotionPreference } from "./useReduceMotionPreference";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { CoverGalleryRow } from "./CoverGalleryRow";
 import { type ResolvedTheme } from "./designTokens";
@@ -84,6 +101,12 @@ type WebViewStyle = Omit<ViewStyle, "position"> & {
   overflowX?: "auto" | "hidden" | "scroll" | "visible";
   scrollSnapType?: string;
   scrollSnapAlign?: string;
+  // issue #4420 — web-only paint props for the premium desktop frame.
+  backgroundImage?: string;
+  backgroundSize?: string;
+  backgroundPosition?: string;
+  filter?: string;
+  boxShadow?: string;
 };
 const webStyle = (style: WebViewStyle): StyleProp<ViewStyle> =>
   style as StyleProp<ViewStyle>;
@@ -91,6 +114,11 @@ const webStyle = (style: WebViewStyle): StyleProp<ViewStyle> =>
 const SHELL_MAX_WIDTH = 1200;
 const STICKY_PANEL_WIDTH = 360;
 const SEAM = 28;
+// issue #4420 — premium frame metrics (design file: public-pages-design.html).
+const PREMIUM_HEADER_ROW = OFFERING_PREMIUM_HEADER_ROW;
+const PREMIUM_DESKTOP_SOLID_AT = 40;
+const PREMIUM_FLYER_MAX = 420;
+const PREMIUM_GUTTER = 24;
 
 // Z-INDEX CONTRACT (the mockup's proven stacking, shared by web + native):
 //   cover/hero (lowest) < content (middle, opaque, slides over) < chrome (highest).
@@ -200,6 +228,25 @@ export interface ParallaxCoverShellProps {
    * signature anywhere in the graph — not only inside its own targets.
    */
   coverPlaceholderLabel?: string | null;
+  /**
+   * issue #4420 — the premium public-page frame (Seth-approved redesign).
+   * "premium": the eyebrow, title and "Presented by" sit on the cover's
+   * bottom over a dark scrim and the cover drifts slower than the scroll;
+   * a slim glass header fades in with the title once the cover has scrolled
+   * away, and close / share / pause become plain icons in it; on desktop
+   * (web >= 1024) the page is two columns, the whole portrait flyer sticky on
+   * the left with `desktopFlyerActions` under it and the content on the
+   * right, over a large blurred copy of the flyer that drifts slower than
+   * the scroll. ABSENT ⇒ "classic": byte-identical to before (the brand and
+   * venue pages keep it until wave B opts them in).
+   */
+  frame?: "classic" | "premium";
+  /** issue #4420 — premium only: the identity printed on the cover. */
+  coverIdentity?: OfferingCoverIdentityData | null;
+  /** issue #4420 — premium only: the glass header title (defaults to the identity title). */
+  headerTitle?: string | null;
+  /** issue #4420 — premium desktop only: the actions under the flyer. */
+  desktopFlyerActions?: React.ReactNode;
   testID?: string;
 }
 
@@ -232,9 +279,15 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   heroAccessibilitySubject = null,
   coverMediaAlt = null,
   coverPlaceholderLabel = null,
+  frame = "classic",
+  coverIdentity = null,
+  headerTitle = null,
+  desktopFlyerActions = null,
   testID,
 }: ParallaxCoverShellProps) => {
   const { isDesktop, isWeb } = useResponsiveLayout();
+  const premium = frame === "premium";
+  const reduceMotion = useReduceMotionPreference();
   const Scroll = ScrollComponent ?? ScrollView;
 
   // issue #868 [cover-gallery] — hero sequence = [cover] ++ gallery. The pager +
@@ -299,7 +352,35 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       ? {}
       : { label: placeholderLabel };
 
-  const coverMedia = (
+  // #4420 journey — a public offering with NO cover used to print the
+  // authoring placeholder ("COVER" on Mingla-orange stripes). A guest now sees
+  // the host's own colour: their gradient when they chose one, else their
+  // single colour. The premium frame's own scrim keeps the title readable on
+  // it. A caller that names its own placeholder word (the venue page)
+  // keeps it.
+  const hasCoverMedia =
+    typeof coverMediaUrl === "string" && coverMediaUrl.trim().length > 0;
+  const accentStops = paletteAccentGradient(palette);
+  const themedFallback =
+    !hasCoverMedia && placeholderLabel === null ? (
+      <View
+        style={StyleSheet.absoluteFill}
+        testID={testID !== undefined ? `${testID}-themed-cover` : "offering-themed-cover"}
+      >
+        <LinearGradient
+          colors={
+            accentStops !== null
+              ? [accentStops[0], accentStops[1]]
+              : [palette.accent, hexToRgba(palette.accent, 0.72)]
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+    ) : null;
+
+  const coverMedia = themedFallback ?? (
     <EventCoverMedia
       accessibleLabel={activeAccessibleLabel}
       mediaUrl={coverMediaUrl}
@@ -410,6 +491,65 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     },
     [onScroll, syncSheetTop],
   );
+  // issue #4420 — premium frame: one scroll value drives the cover drift, the
+  // identity fade, the header band and the desktop ambient drift. `solid`
+  // flips once (state) when the cover has scrolled away, so the icons can
+  // swap between frosted circles and plain ink.
+  const premiumScrollY = React.useRef(new Animated.Value(0)).current;
+  const [solidHeader, setSolidHeader] = React.useState(false);
+  const solidRef = React.useRef(false);
+  const [premiumCoverHeight, setPremiumCoverHeight] = React.useState(0);
+  const headerHeight = safeAreaTop + PREMIUM_HEADER_ROW;
+  const solidThreshold = isDesktop
+    ? PREMIUM_DESKTOP_SOLID_AT
+    : premiumCoverHeight > 0
+      ? Math.max(120, premiumCoverHeight - SEAM - headerHeight)
+      : 300;
+  const handlePremiumScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      const y = event.nativeEvent.contentOffset.y;
+      premiumScrollY.setValue(y);
+      const nextSolid = y > solidThreshold;
+      if (nextSolid !== solidRef.current) {
+        solidRef.current = nextSolid;
+        setSolidHeader(nextSolid);
+      }
+      handleScroll(event);
+    },
+    [handleScroll, premiumScrollY, solidThreshold],
+  );
+  const onPremiumSpacerLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      setPremiumCoverHeight(event.nativeEvent.layout.height);
+      onSpacerLayout(event);
+    },
+    [onSpacerLayout],
+  );
+  const bandOpacity = premiumScrollY.interpolate({
+    inputRange: [Math.max(0, solidThreshold - 60), solidThreshold],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+  const identityOpacity = premiumScrollY.interpolate({
+    inputRange: [0, 240],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+  const coverDrift = premiumScrollY.interpolate({
+    inputRange: [0, 1000],
+    outputRange: [0, reduceMotion ? 0 : -450],
+    extrapolateLeft: "clamp",
+  });
+  const ambientDrift = premiumScrollY.interpolate({
+    inputRange: [0, 1000],
+    outputRange: [0, reduceMotion ? 0 : -300],
+    extrapolateLeft: "clamp",
+  });
+  const identityData: OfferingCoverIdentityData | null = coverIdentity;
+  const premiumTitle = headerTitle ?? identityData?.title ?? null;
+  const glassMaterial = useOfferingGlass();
+  const headerBlurred = glassBlurActive(glassMaterial, palette.glassTint);
+
   const motionOverlay = (textZone: { ref?: React.RefObject<unknown>; top?: Animated.Value }) => (
     <View
       style={
@@ -445,6 +585,405 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       <ThemeEntranceAnimation theme={theme} sessionKey={entranceAnimationKey} part="pauseButton" />
     </View>
   );
+
+  // ===================== PREMIUM FRAME (issue #4420) =====================
+  // The slim glass header: a frosted page-colour band that fades in once the
+  // cover has scrolled away (it also stops section headings colliding with
+  // the status bar), over the one chrome row. The pause control lives in the
+  // row, so nothing floats over the tickets.
+  const premiumHeader = (
+    <View
+      style={
+        isWeb
+          ? webStyle({ position: "fixed", top: 0, left: 0, right: 0, zIndex: CHROME_Z })
+          : styles.premiumHeaderNative
+      }
+      pointerEvents="box-none"
+      testID={testID !== undefined ? `${testID}-header` : "offering-glass-header"}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          styles.premiumBand,
+          {
+            opacity: bandOpacity,
+            borderBottomColor: palette.panelBorder,
+            // No blur behind the band on native or mobile web, so it stays
+            // near-opaque there; desktop web blurs what scrolls under it.
+            // Phone web is fully opaque (issue #4420 audit): at 0.9 the
+            // section heading and steppers scrolling under it ghosted through
+            // beside the title (same rule as glassFillAlpha).
+            backgroundColor: palette.page.startsWith("#")
+              ? hexToRgba(
+                  palette.page,
+                  headerBlurred
+                    ? 0.72
+                    : Platform.OS === "web" ? (isDesktop ? 0.78 : 1) : Platform.OS === "android" ? 0.97 : 0.93,
+                )
+              : palette.page,
+          },
+          desktopBlur(isDesktop ? 1024 : 0),
+        ]}
+      >
+        {/* The host app's injected blur (iOS), when it has one. */}
+        <OfferingGlassBackdrop radius={0} tint={palette.glassTint} />
+      </Animated.View>
+      <View
+        style={[
+          styles.premiumHeaderRow,
+          { paddingTop: (isDesktop ? 0 : safeAreaTop) + 8 },
+          isDesktop ? styles.premiumHeaderRowDesktop : null,
+        ]}
+        pointerEvents="box-none"
+      >
+        <OfferingChrome
+          palette={palette}
+          showMute={showMute}
+          muted={muted}
+          onClose={onClose}
+          onShare={onShare}
+          onToggleMute={onToggleMute}
+          closeAccessibilityLabel={closeAccessibilityLabel}
+          hideCloseOnWeb={hideCloseOnWeb}
+          solid={solidHeader}
+          title={premiumTitle}
+          titleOpacity={bandOpacity}
+          titleFontFamily={boldFontFamily(theme)}
+          pauseSlot={
+            <ThemeEntranceAnimation
+              theme={theme}
+              sessionKey={entranceAnimationKey}
+              part="pauseButton"
+              pauseTone={solidHeader ? "plain" : "chrome"}
+              pauseGlyphColor={solidHeader ? palette.primaryText : "#FFFFFF"}
+            />
+          }
+          testID={testID !== undefined ? `${testID}-chrome` : undefined}
+        />
+      </View>
+    </View>
+  );
+
+  // The cover's dark scrim: a little at the top (under the icons), clear
+  // through the middle, deep at the bottom where the identity sits.
+  const premiumScrim = (
+    <LinearGradient
+      pointerEvents="none"
+      colors={["rgba(0,0,0,0.38)", "rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(0,0,0,0.66)"]}
+      locations={[0, 0.22, 0.45, 1]}
+      style={StyleSheet.absoluteFill}
+    />
+  );
+
+  const premiumIdentityOnCover =
+    identityData !== null ? (
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.premiumIdentity, { opacity: identityOpacity }]}
+      >
+        <OfferingCoverIdentity
+          {...identityData}
+          palette={palette}
+          theme={theme}
+          variant="cover"
+          testID={testID !== undefined ? `${testID}-identity` : undefined}
+        />
+      </Animated.View>
+    ) : null;
+
+  // issue #4420 audit — the phone cover clamps a long title to 3 lines, so
+  // the sheet prints the whole title first (the header shows one line).
+  const premiumFullTitle =
+    identityData !== null && coverTitleMayClamp(identityData.title) ? (
+      <Text
+        accessibilityRole="header"
+        style={[
+          styles.premiumFullTitle,
+          { color: palette.primaryText },
+          themeFontFace(boldFontFamily(theme)),
+        ]}
+        testID={testID !== undefined ? `${testID}-full-title` : "offering-full-title"}
+      >
+        {identityData.title}
+      </Text>
+    ) : null;
+
+  if (premium && isDesktop) {
+    // issue #4420 audit — a flyer with no cover shows the host's gradient
+    // with the identity on it (scrim, eyebrow, title, presenter), the same
+    // as the phone cover, never a plain colour block.
+    const flyerIdentity =
+      themedFallback !== null && identityData !== null ? (
+        <>
+          {premiumScrim}
+          <View
+            pointerEvents="none"
+            style={styles.premiumFlyerIdentity}
+            testID={testID !== undefined ? `${testID}-flyer-identity` : "offering-flyer-identity"}
+          >
+            <OfferingCoverIdentity
+              {...identityData}
+              palette={palette}
+              theme={theme}
+              variant="cover"
+              testID={testID !== undefined ? `${testID}-flyer-identity-block` : undefined}
+            />
+          </View>
+        </>
+      ) : null;
+    const ambientUri =
+      coverMediaType !== "video" && coverMediaUrl !== null && coverMediaUrl.length > 0
+        ? coverMediaUrl
+        : null;
+    return (
+      <View
+        style={[styles.desktopStage, { backgroundColor: palette.page }]}
+        testID={testID}
+      >
+        {/* the large blurred copy of the flyer, drifting slower than the page */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            webStyle({ position: "fixed", top: 0, left: 0, right: 0, height: 1000, zIndex: 0 }),
+            styles.premiumAmbient,
+            { transform: [{ translateY: ambientDrift }] },
+          ]}
+          testID={testID !== undefined ? `${testID}-ambient` : "offering-ambient"}
+        >
+          {ambientUri !== null ? (
+            <View
+              style={webStyle({
+                position: "absolute",
+                top: "-10%",
+                left: "-10%",
+                right: "-10%",
+                bottom: 0,
+                backgroundImage: `url("${ambientUri.replace(/"/g, "%22")}")`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                filter: "blur(80px) saturate(1.25)",
+                opacity: 0.5,
+                transform: [{ scale: 1.2 }],
+              })}
+            />
+          ) : (
+            <View
+              style={webStyle({
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundImage: `radial-gradient(60% 50% at 30% 20%, ${palette.accentWash}, transparent 70%)`,
+              })}
+            />
+          )}
+          <LinearGradient
+            pointerEvents="none"
+            colors={[
+              palette.page.startsWith("#") ? hexToRgba(palette.page, 0.2) : "transparent",
+              "rgba(0,0,0,0)",
+              palette.page,
+            ]}
+            locations={[0, 0.35, 0.92]}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+        <Scroll
+          style={webStyle({ position: "relative", zIndex: CONTENT_Z })}
+          contentContainerStyle={styles.premiumDeskScroll}
+          showsVerticalScrollIndicator={false}
+          onScroll={handlePremiumScroll}
+          scrollEventThrottle={16}
+          onLayout={onScrollViewLayout}
+        >
+          <View style={styles.premiumDeskPage}>
+            <View style={styles.premiumDeskCols}>
+              <View
+                style={webStyle({
+                  position: "sticky",
+                  top: 96,
+                  width: "40%",
+                  maxWidth: PREMIUM_FLYER_MAX,
+                  flexShrink: 0,
+                  gap: 12,
+                })}
+                testID={testID !== undefined ? `${testID}-flyer-col` : undefined}
+              >
+                <View
+                  style={[
+                    styles.premiumFlyer,
+                    { borderColor: palette.panelBorder },
+                    webStyle({ boxShadow: "0 34px 80px -28px rgba(0,0,0,0.85)" }),
+                  ]}
+                >
+                  {coverRender}
+                  {flyerIdentity}
+                </View>
+                {galleryRow}
+                {desktopFlyerActions}
+              </View>
+              <View style={styles.premiumDeskMain} ref={desktopTextRef}>
+                {identityData !== null ? (
+                  <View style={styles.premiumDeskIdentity}>
+                    <OfferingCoverIdentity
+                      {...identityData}
+                      palette={palette}
+                      theme={theme}
+                      variant="desktop"
+                      testID={testID !== undefined ? `${testID}-identity` : undefined}
+                    />
+                  </View>
+                ) : null}
+                {stateBanner != null ? (
+                  <View style={styles.phoneBannerWrap}>{stateBanner}</View>
+                ) : null}
+                {stickyPanel != null ? (
+                  <View style={styles.phoneBannerWrap}>{stickyPanel}</View>
+                ) : null}
+                {children}
+              </View>
+            </View>
+          </View>
+        </Scroll>
+        {motionOverlay({ ref: desktopTextRef })}
+        {premiumHeader}
+      </View>
+    );
+  }
+
+  if (premium && isWeb) {
+    const phoneChildren = React.Children.toArray(children);
+    const isWebPhoneAction = (child: React.ReactNode): boolean =>
+      React.isValidElement(child) &&
+      String(child.key ?? "").endsWith("issue-2729-web-phone-action");
+    const webPhoneActions = phoneChildren.filter(isWebPhoneAction);
+    const webPhoneBody = phoneChildren.filter(
+      (child: React.ReactNode) => !isWebPhoneAction(child),
+    );
+    return (
+      <View style={[styles.webPhoneHost, { backgroundColor: palette.page }]} testID={testID}>
+        <Animated.View
+          style={[
+            webStyle({
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              aspectRatio: coverAspectRatio,
+              zIndex: COVER_Z,
+              overflow: "hidden",
+              backgroundColor: "#000",
+            }),
+            { transform: [{ translateY: coverDrift }] },
+          ]}
+          pointerEvents={sequenceActive ? "auto" : "none"}
+        >
+          {coverRender}
+          {premiumScrim}
+        </Animated.View>
+        <Scroll
+          style={webStyle({ position: "relative", zIndex: CONTENT_Z })}
+          contentContainerStyle={[
+            styles.webPhoneScrollContent,
+            { paddingBottom: contentBottomInset },
+          ]}
+          showsVerticalScrollIndicator={false}
+          onScroll={handlePremiumScroll}
+          scrollEventThrottle={16}
+          onLayout={onScrollViewLayout}
+          {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
+        >
+          <View
+            style={[styles.webPhoneSpacer, { aspectRatio: coverAspectRatio }]}
+            pointerEvents={sequenceActive ? "none" : "box-none"}
+            onLayout={onPremiumSpacerLayout}
+          >
+            {premiumIdentityOnCover}
+          </View>
+          <View
+            ref={bodyRef}
+            style={webStyle({
+              position: "relative",
+              zIndex: CONTENT_Z,
+              marginTop: -SEAM,
+              borderTopLeftRadius: SEAM,
+              borderTopRightRadius: SEAM,
+              backgroundColor: palette.page,
+              paddingTop: 30,
+              paddingHorizontal: PREMIUM_GUTTER,
+            })}
+          >
+            <View style={[styles.premiumGrabber, { backgroundColor: palette.panelBorder }]} />
+            {premiumFullTitle}
+            {stateBanner != null ? (
+              <View style={styles.phoneBannerWrap}>{stateBanner}</View>
+            ) : null}
+            {galleryRow}
+            {webPhoneBody}
+          </View>
+          {webPhoneActions}
+        </Scroll>
+        {motionOverlay({ ref: bodyRef })}
+        {premiumHeader}
+      </View>
+    );
+  }
+
+  if (premium) {
+    return (
+      <View style={[styles.nativeHost, { backgroundColor: palette.page }]} testID={testID}>
+        <Animated.View
+          style={[
+            styles.nativeCover,
+            { aspectRatio: coverAspectRatio, transform: [{ translateY: coverDrift }] },
+          ]}
+          pointerEvents={sequenceActive ? "auto" : "none"}
+        >
+          {coverRender}
+          {premiumScrim}
+        </Animated.View>
+        <Scroll
+          style={styles.nativeScroll}
+          contentContainerStyle={[
+            styles.nativeScrollContent,
+            { paddingBottom: contentBottomInset },
+          ]}
+          showsVerticalScrollIndicator={false}
+          onScroll={handlePremiumScroll}
+          scrollEventThrottle={16}
+          onLayout={onScrollViewLayout}
+          {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
+        >
+          <View
+            style={[styles.nativeSpacer, { aspectRatio: coverAspectRatio }]}
+            pointerEvents={sequenceActive ? "none" : "box-none"}
+            onLayout={onPremiumSpacerLayout}
+          >
+            {premiumIdentityOnCover}
+          </View>
+          <View
+            style={[
+              styles.nativeBody,
+              styles.premiumNativeBody,
+              { backgroundColor: palette.page },
+            ]}
+          >
+            <View style={[styles.premiumGrabber, { backgroundColor: palette.panelBorder }]} />
+            {premiumFullTitle}
+            {stateBanner != null ? (
+              <View style={styles.phoneBannerWrap}>{stateBanner}</View>
+            ) : null}
+            {galleryRow}
+            {children}
+          </View>
+        </Scroll>
+        {motionOverlay({ top: sheetTop })}
+        {premiumHeader}
+      </View>
+    );
+  }
 
   // ===================== DESKTOP (web ≥1024px) =====================
   if (isDesktop) {
@@ -905,6 +1444,99 @@ const styles = StyleSheet.create({
   },
   phoneBannerWrap: {
     marginBottom: 12,
+  },
+  // ---- issue #4420 premium frame ----
+  premiumHeaderNative: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: CHROME_Z,
+  },
+  premiumBand: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  premiumHeaderRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    minHeight: PREMIUM_HEADER_ROW,
+  },
+  premiumHeaderRowDesktop: {
+    paddingTop: 12,
+    paddingHorizontal: 24,
+    width: "100%",
+    maxWidth: 1240,
+    alignSelf: "center",
+  },
+  premiumIdentity: {
+    position: "absolute",
+    left: PREMIUM_GUTTER,
+    right: PREMIUM_GUTTER,
+    bottom: SEAM + 26,
+  },
+  premiumNativeBody: {
+    borderWidth: 0,
+    paddingTop: 30,
+    paddingHorizontal: PREMIUM_GUTTER,
+  },
+  premiumGrabber: {
+    position: "absolute",
+    top: 10,
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+  },
+  premiumAmbient: {
+    overflow: "hidden",
+  },
+  premiumDeskScroll: {
+    flexGrow: 1,
+  },
+  premiumDeskPage: {
+    width: "100%",
+    maxWidth: 1160,
+    alignSelf: "center",
+    paddingTop: 84,
+    paddingHorizontal: 40,
+    paddingBottom: 140,
+  },
+  premiumDeskCols: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 56,
+  },
+  premiumFlyer: {
+    width: "100%",
+    aspectRatio: 4 / 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+  premiumDeskMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 0,
+  },
+  // issue #4420 audit — identity on a no-cover desktop flyer.
+  premiumFlyerIdentity: {
+    position: "absolute",
+    left: 28,
+    right: 28,
+    bottom: 28,
+  },
+  // issue #4420 audit — the whole title, when the cover clamps it.
+  premiumFullTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    marginBottom: 20,
+  },
+  premiumDeskIdentity: {
+    paddingTop: 8,
+    marginBottom: 20,
   },
   // issue #1023 — the full-screen motion overlay (native): above the cover and
   // the scrolling sheet (CONTENT_Z), below the chrome (CHROME_Z).

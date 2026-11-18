@@ -182,6 +182,9 @@ jest.mock("../../ui/GlassCard", () => ({
     React.createElement("MockGlassCard", props, props.children as React.ReactNode),
 }));
 
+// [TEST-MOD-APPROVED #4420] Modal now mounts the non-modal toast layer (B4)
+// inside its window; it is not under test here.
+jest.mock("../../ui/ToastHost", () => ({ ToastHost: () => null }));
 jest.mock("../../../wrappers/KeyboardRoot", () => ({
   KeyboardRoot: (props: Record<string, unknown>) =>
     React.createElement(

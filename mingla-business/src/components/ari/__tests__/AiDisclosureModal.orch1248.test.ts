@@ -41,7 +41,9 @@ describe("AiDisclosureModal escape routes (ORCH-1248 Apple 2.1a)", () => {
   test("blur/opaque surface is a pointerEvents=none background sibling (not in touch path)", () => {
     // The visual surface component renders pointerEvents="none".
     expect(SOURCE).toMatch(/SheetBackdropSurface/);
-    expect(SOURCE).toMatch(/pointerEvents="none"[\s\S]*?BlurView|BlurView[\s\S]*?pointerEvents="none"/);
+    // [TEST-MOD-APPROVED #4420] the surface is <Material kind="sheet"> now (the
+    // one glass owner); it must still stay out of the touch path.
+    expect(SOURCE).toMatch(/<Material[^>]*pointerEvents="none"/);
     // The old pattern (interactive content nested INSIDE <BlurView>...children) is gone.
     expect(SOURCE).not.toMatch(/BlurViewOrOpaque/);
   });

@@ -39,16 +39,15 @@ import { Button } from "../../src/components/ui/Button";
 // stacked a 56 pt emoji hero, a heading, two sentences of body copy and the
 // only route to bank connect inside a centred, non-scrolling `flex: 1` root.
 import { InviteScreenShell } from "../../src/components/invite/InviteScreenShell";
-import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../src/constants/designSystem";
+
 import { supabase } from "../../src/services/supabase";
 
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../src/constants/designSystem";
 export default function AcceptBrandInvitationSuccess(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -142,7 +141,7 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
           The next step is connecting your bank so customers can pay you.
         </Text>
         {loading ? (
-          <ActivityIndicator color={accent.warm} style={{ marginTop: 8 }} />
+          <ActivityIndicator color={color.text1} style={{ marginTop: 8 }} />
         ) : null}
       </View>
     </InviteScreenShell>
@@ -167,12 +166,12 @@ const styles = StyleSheet.create({
   card: {
     maxWidth: 480,
     width: "100%",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    borderRadius: radiusTokens.lg,
-    padding: spacing.xl,
-    gap: spacing.md,
+    borderColor: color.line,
+    borderRadius: radius.md,
+    padding: space[7],
+    gap: space[4],
   },
   hero: {
     fontSize: 56,
@@ -180,19 +179,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   title: {
-    ...typography.h1,
-    color: textTokens.primary,
+    ...type.title,
+    color: color.text1,
     textAlign: "center",
   },
   body: {
-    ...typography.body,
-    color: textTokens.secondary,
+    ...type.body,
+    color: color.text2,
     textAlign: "center",
   },
   footnote: {
-    ...typography.caption,
-    color: textTokens.tertiary,
+    ...type.caption,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });

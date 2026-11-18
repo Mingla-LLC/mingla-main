@@ -81,6 +81,8 @@ import {
 } from "@mingla/offering-rendering/ticketCheckoutContract";
 // ORCH-1246 (Apple 4.9) — Apple Pay sheet must show the product, not the company.
 import { buildApplePayCartItems } from "./applePayCartItems";
+import { activeCheckoutPalette } from "../components/checkout/checkoutTheme";
+import { paymentSheetAppearanceFor } from "./paymentSheetAppearance";
 
 /**
  * issue #3281 — one cart line. v1 (trip / experience) reads ticket and
@@ -933,9 +935,12 @@ export const useNativeCheckoutFlow = (): ((
         );
       }
 
+      // #4420 D-C2c — the sheet takes the host's colours (Graphite: Stripe's own).
+      const appearance = paymentSheetAppearanceFor(activeCheckoutPalette());
       const initResult = await initPaymentSheet({
         merchantDisplayName: MERCHANT_DISPLAY_NAME,
         paymentIntentClientSecret: data.clientSecret,
+        ...(appearance !== undefined ? { appearance } : {}),
         // returnURL required by Stripe for any payment method that
         // redirects (Apple Pay, 3DS, etc.). Scheme matches the business
         // app.json `scheme` and the Stripe plugin urlScheme.

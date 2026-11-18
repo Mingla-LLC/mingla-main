@@ -34,7 +34,7 @@
  * flush at the end → no black gap, no oversized bottom padding.
  *
  * WHY a bespoke bar (not the shared FloatingOfferingBar): the ORCH-1117
- * FloatingOfferingBar hardcodes `ACCENT = "#eb7825"` (warm orange) + a
+ * FloatingOfferingBar hardcodes `ACCENT = color.accent` (warm orange) + a
  * price-only / no-kicker layout and is consumed by the event + experience pages.
  * Re-theming it would change those callers; the §12 allowlist instead lets the
  * trip route render its OWN mockup-faithful bar around the SAME resolved
@@ -62,6 +62,7 @@ import type { ResolvedTheme } from "@mingla/offering-rendering";
 import { ThemeAccentGradientLayer } from "@mingla/offering-rendering/ThemeAccentFill";
 import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 
+import { color } from "../../constants/designSystem";
 /**
  * ORCH-1138 [trip-page-redesign] (Seth, 2026-06-15) — the SPLIT-CTA payload,
  * mirrors the consumer ConsumerTripReserveBar 1:1. When present, the bar renders
@@ -196,7 +197,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
     // also draws an accent-tinted hairline inset (segmentSecondaryBorder) — the white
     // half stays defined on both dark + light brand themes. The "Pay in full"
     // (primary) half is UNCHANGED: accent fill, white (accentText) text.
-    const SECONDARY_FILL = "#FFFFFF";
+    const SECONDARY_FILL = color.paper;
     const textColor = isPrimary ? palette.accentText : palette.accent;
     const kickerColor = isPrimary ? palette.accentText : palette.accent;
     return (
@@ -517,7 +518,7 @@ const styles = StyleSheet.create({
     ...Platform.select({
       android: { elevation: 0, shadowOpacity: 0 },
       default: {
-        shadowColor: "#000000",
+        shadowColor: color.mask,
         shadowOpacity: 0.28,
         shadowRadius: 20,
         shadowOffset: { width: 0, height: 8 },
@@ -560,7 +561,7 @@ const styles = StyleSheet.create({
     ...Platform.select({
       android: { elevation: 0, shadowOpacity: 0 },
       default: {
-        shadowColor: "#000000",
+        shadowColor: color.mask,
         shadowOpacity: 0.28,
         shadowRadius: 20,
         shadowOffset: { width: 0, height: 8 },
@@ -590,7 +591,7 @@ const styles = StyleSheet.create({
     ...Platform.select({
       android: { elevation: 0, shadowOpacity: 0 },
       default: {
-        shadowColor: "#000000",
+        shadowColor: color.mask,
         shadowOpacity: 0.24,
         shadowRadius: 22,
         shadowOffset: { width: 0, height: 10 },
@@ -609,7 +610,7 @@ const styles = StyleSheet.create({
     ...Platform.select({
       android: { elevation: 0, shadowOpacity: 0 },
       default: {
-        shadowColor: "#000000",
+        shadowColor: color.mask,
         shadowOpacity: 0.3,
         shadowRadius: 24,
         shadowOffset: { width: 0, height: 12 },
@@ -663,13 +664,13 @@ const styles = StyleSheet.create({
     width: 2,
     alignSelf: "stretch",
     flexDirection: "row",
-    backgroundColor: "rgba(0,0,0,0.22)",
+    backgroundColor: color.spinnerTrackOnPaper,
   },
   seamHighlight: {
     width: 1,
     marginLeft: 1,
     alignSelf: "stretch",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: color.fill.tabOn,
   },
   // The segment kicker ("Pay in full" / "Pay over time") — small top line; shrinks
   // first so it can never push the amount out (no bleed/wrap).

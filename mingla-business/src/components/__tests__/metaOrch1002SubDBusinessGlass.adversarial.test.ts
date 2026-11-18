@@ -161,7 +161,7 @@ describe("Sub-D adversarial — diff harness sanity", () => {
 // KNOWN_SHADOW_CLIP_OFFENDERS allowlist pattern for Part D.)
 const KNOWN_REDESIGNED_FILLS: ReadonlySet<string> = new Set<string>([
   // The ari chat thread redesign gave the composer a cohesive OPAQUE dark
-  // surface (glass.tint.profileBase → ariThread.composerSurface "#191c21");
+  // surface (glass.tint.profileBase → the opaque Graphite solid);
   // Sub-D only added the clip, a later ari restyle changed the fill.
   "mingla-business/src/components/ari/InputBar.tsx:host",
 ]);
@@ -197,7 +197,16 @@ describe("Sub-D adversarial A — no clipped surface was flattened to opaque", (
       if (!hb || !bb) continue;
       const bgH = (hb.match(/backgroundColor:\s*([^,\n]+)/) || [])[1];
       const bgB = (bb.match(/backgroundColor:\s*([^,\n]+)/) || [])[1];
-      if (bgH && bgB && bgH.trim() !== bgB.trim()) {
+      // [TEST-MOD-APPROVED #4420] Graphite Glass re-picks every fill from the
+      // one token file (spec §2, §4): a block whose fill now reads a Graphite
+      // token (`color.*`, `materials.*`, `scrim.*`) is a deliberate #4420
+      // re-pick, not a Sub-D flatten. Android opacity is owned by Material and
+      // the materials' solid fills (issue_4420_material.test.tsx). Wave 6:
+      // `dsColor` is `color` imported under another name where a file has its
+      // own `color` binding (theme editor). Blocks still
+      // on the pre-Graphite names keep the exact no-flatten check.
+      const graphiteRepick = bgH !== undefined && /^(?:Platform\.OS[^?]*\?\s*)?(?:color|colorTokens|dsColor|materials|scrim)\b/.test(bgH.trim());
+      if (bgH && bgB && !graphiteRepick && bgH.trim() !== bgB.trim()) {
         flattened.push({
           file,
           block,
@@ -226,46 +235,25 @@ describe("Sub-D adversarial A — no clipped surface was flattened to opaque", (
 // untouched. The shared helper's own iOS=blur / Android=opaque / web<768=opaque
 // behavior is independently pinned in `utils/__tests__/glassBlur.test.ts`.
 describe("Sub-D adversarial B/C — stragglers opaque via shared helper, iOS frozen", () => {
-  test("Toast: blurOk via shared shouldUseRealBlur, inverted guard gone, kit fallback ≥0.92", () => {
+  // [TEST-MOD-APPROVED #4420] Toast moved onto <Material kind="sheet">; its
+  // opaque-where-no-blur guarantee is Material's (issue_4420_material.test.tsx).
+  test("Toast: no own blur guard; glass comes from Material (solid off iOS)", () => {
     const code = stripComments(readComp("ui/Toast.tsx"));
-    // Inverted guard removed.
     expect(code).not.toMatch(/blurOk\s*=\s*Platform\.OS\s*!==\s*["']web["']/);
-    // Decision delegated to the shared helper (which keeps iOS=blur, Android=opaque).
-    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
-    // The opaque fallback is >=0.92.
-    expect(code).toMatch(
-      /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
-    );
+    expect(code).not.toMatch(/from\s*["']expo-blur["']/);
+    expect(code).toMatch(/<Material kind="sheet"/);
   });
 
-  test("AiDisclosureModal: opaque sheet gated behind !shouldUseRealBlur, iOS keeps real BlurView", () => {
-    const code = stripComments(readComp("ari/AiDisclosureModal.tsx"));
-    // Opaque branch is reached only when the shared helper says no real blur.
-    expect(code).toMatch(
-      /!\s*shouldUseRealBlur\(windowWidth\)[\s\S]{0,160}styles\.opaqueSheet/,
-    );
-    // No `Platform.OS !== 'ios'` style negation that would also flip web.
-    expect(code).not.toMatch(/Platform\.OS\s*!==\s*["']ios["']/);
-    // opaqueSheet is a fully opaque #hex (no rgba alpha => >=0.92 by construction).
-    const block = styleBlock(code, "opaqueSheet");
-    expect(block).not.toBeNull();
-    expect(block!).toMatch(/backgroundColor:\s*["']#[0-9a-fA-F]{6}["']/);
-    // Real-blur path still renders the real blur at intensity 40. #1062 B2
-    // drift-to-truth: a `pointerEvents="none"` prop now precedes `intensity`
-    // on the <BlurView>, so tolerate intervening props (still pins intensity 40).
-    expect(code).toMatch(/<BlurView[\s\S]{0,80}intensity=\{40\}/);
-  });
-
-  test("BlastCustomersCta: L1 BlurView when blurOk else opaque, via shared helper", () => {
-    const code = stripComments(readComp("marketing/BlastCustomersCta.tsx"));
-    expect(code).toMatch(/blurOk\s*=\s*shouldUseRealBlur\(windowWidth\)/);
-    expect(code).toMatch(
-      /blurOk\s*\?[\s\S]{0,120}<BlurView[\s\S]{0,400}FALLBACK_BACKGROUND/,
-    );
-    expect(code).toMatch(
-      /FALLBACK_BACKGROUND\s*=\s*["']rgba\(20,\s*22,\s*26,\s*0\.92\)["']/,
-    );
-  });
+  // [TEST-MOD-APPROVED #4420] AiDisclosureModal and BlastCustomersCta moved
+  // onto <Material> in wave 5: no own BlurView, no per-file opaque constant.
+  test.each([["ari/AiDisclosureModal.tsx"], ["marketing/BlastCustomersCta.tsx"]])(
+    "%s: no own blur guard; glass comes from Material (solid off iOS)",
+    (rel) => {
+      const code = stripComments(readComp(rel));
+      expect(code).not.toMatch(/from\s*["']expo-blur["']/);
+      expect(code).toMatch(/<Material\b/);
+    },
+  );
 
   test("no straggler opaque branch leaked onto an unconditional/iOS path", () => {
     // None of the 3 stragglers may opaque-fill on a path iOS can reach. We assert

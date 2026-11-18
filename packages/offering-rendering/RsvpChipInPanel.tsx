@@ -36,7 +36,7 @@ import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira chip-ins show "₦", not "NGN", whatever the engine or locale
 // (#3341 rule). The amount-field prefix below reads the same formatter.
 import { withCurrencyGlyph } from "./currencyGlyph";
-import { accentEdgeOnFill, accentFill, themeFontFace } from "./themeAccentStyle";
+import { accentFill, themeFontFace } from "./themeAccentStyle";
 
 const DANGER = "#ef4444";
 
@@ -221,11 +221,13 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
               accessibilityRole="button"
               accessibilityState={{ selected, disabled: submitting || preview }}
               accessibilityLabel={`Chip in ${fmtWhole(preset, currency)}`}
+              // issue #4420 — a chosen amount reads in ink (the shared chip
+              // look); the accent fill is kept for the one "Chip in" button.
               style={[
                 styles.presetChip,
                 {
-                  ...(selected ? accentFill(palette) : { backgroundColor: cardFill }),
-                  borderColor: selected ? accentEdgeOnFill(palette) : palette.panelBorder,
+                  backgroundColor: selected ? palette.primaryText : cardFill,
+                  borderColor: selected ? palette.primaryText : palette.panelBorder,
                   opacity: submitting ? 0.5 : 1,
                 },
               ]}
@@ -233,7 +235,7 @@ export const RsvpChipInPanel: React.FC<RsvpChipInPanelProps> = ({
               <Text
                 style={[
                   styles.presetLabel,
-                  { color: selected ? palette.accentText : palette.primaryText, ...boldFace },
+                  { color: selected ? palette.page : palette.primaryText, ...boldFace },
                 ]}
               >
                 {fmtWhole(preset, currency)}

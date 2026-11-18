@@ -43,6 +43,8 @@ export type AdCreditLedgerRow = {
   external_ref: string | null;
 };
 
+export type AdCreditTopUpLimits = { min_pay_cents: number; max_pay_cents: number };
+
 export type AdCreditWalletPayload = {
   wallet: null | {
     brand_id: string;
@@ -53,6 +55,8 @@ export type AdCreditWalletPayload = {
     updated_at: string | null;
   };
   history: AdCreditLedgerRow[];
+  /** #4238: least and most one top-up can pay, in pay cents (null or absent before this shipped). */
+  top_up_limits?: AdCreditTopUpLimits | null;
   currency_authority: {
     resolved: boolean;
     currency: string | null;
@@ -237,4 +241,67 @@ export async function applyAdCreditWithdraw(input: {
     credit_cents: input.creditCents,
     idempotency_key: input.idempotencyKey,
   });
+}
+
+/** #4238 W6b: one receipt, read from the ledger (no VAT line until decided). */
+export type AdCreditReceipt = {
+  ledger_id: string;
+  kind: string;
+  date: string;
+  reference: string;
+  currency: string;
+  you_paid_cents: number | null;
+  mingla_fee_cents: number | null;
+  mingla_fee_rate: number | null;
+  ad_credit_cents: number;
+  /** #4238 W6c: the ad this row belongs to, by name (null when none/unknown). */
+  ad_name?: string | null;
+  refunded_cents: number | null;
+  balance_after_cents: number;
+};
+
+/** #4238 W6b: a month of Ads credit, per ad, from the ledger. */
+export type AdCreditStatement = {
+  month: string;
+  currency: string | null;
+  opening_balance_cents: number;
+  top_ups_cents: number;
+  fees_cents: number;
+  spend_by_ad: {
+    ad_key: string;
+    /** #4238 W6c: the ad's name; null/absent when it cannot be found. */
+    ad_name?: string | null;
+    held_cents: number;
+    returned_cents: number;
+    net_cents: number;
+  }[];
+  returns_cents: number;
+  withdrawals_cents: number;
+  closing_balance_cents: number;
+  lines: AdCreditReceipt[];
+};
+
+export async function getAdCreditReceipt(
+  brandId: string,
+  ledgerId: string,
+): Promise<AdCreditReceipt> {
+  const res = await invokeAdCredit<{ receipt: AdCreditReceipt }>({
+    action: "get_receipt",
+    brand_id: brandId,
+    ledger_id: ledgerId,
+  });
+  return res.receipt;
+}
+
+/** `month` is "YYYY-MM" in the brand's records. */
+export async function getAdCreditStatement(
+  brandId: string,
+  month: string,
+): Promise<AdCreditStatement> {
+  const res = await invokeAdCredit<{ statement: AdCreditStatement }>({
+    action: "get_statement",
+    brand_id: brandId,
+    month,
+  });
+  return res.statement;
 }

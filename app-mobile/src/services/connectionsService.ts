@@ -4,6 +4,17 @@ import type { CardTagEntry, MentionEntry } from './messagingService';
 import type { BusinessEventCard } from '../types/mergedDiscover';
 import type { PlanQuoteSnapshot } from '../types/chatPlans';
 
+/** #4459: what a brand Guest chat thread shows about its brand. */
+export interface BrandGuestChatInfo {
+  brandId: string;
+  brandName: string;
+  brandSlug: string | null;
+  logoUrl: string | null;
+  brandAccountId: string | null;
+  /** The brand removed this person: the thread shows the removed card only. */
+  removed: boolean;
+}
+
 export interface Friend {
   id: string;
   name: string;
@@ -18,7 +29,7 @@ export interface Friend {
   conversationType?: 'direct' | 'group';
   sessionId?: string | null;
   eventId?: string | null;
-  linkedEntityType?: 'direct' | 'session' | 'trip' | 'event' | null;
+  linkedEntityType?: 'direct' | 'session' | 'trip' | 'event' | 'brand_guests' | null;
   /** #4187 official Mingla program team conversation. */
   programKind?: 'local' | 'creator' | null;
   sessionCreatorId?: string | null;
@@ -28,6 +39,8 @@ export interface Friend {
   eventPublicUrl?: string | null;
   eventPublicCard?: BusinessEventCard | null;
   isBroadcastOnly?: boolean;
+  /** #4459: the brand's one Guest chat (or, with removed, the one the brand removed you from). */
+  brandGuest?: BrandGuestChatInfo | null;
   isSessionAdmin?: boolean;
   /** Issue #4456: I created this plain friend group (its admin). */
   isPlainGroupCreator?: boolean;
@@ -46,8 +59,10 @@ export interface Message {
   id: string;
   /** Issue #4114: messages.client_id — the merge key (with id) for every write. */
   clientId?: string;
-  /** Issue #4114 Wave 6: messages.conversation_id (a brand channel merges several chats). */
+  /** Issue #4114: messages.conversation_id. */
   conversationId?: string;
+  /** #4459: 'brand' when the brand team posted in a Guest chat (shown as the brand). */
+  senderKind?: 'guest' | 'brand' | 'system' | null;
   senderId: string;
   senderName: string;
   content: string;
@@ -87,7 +102,7 @@ export interface Message {
    */
   unsent?: boolean;
   /** Issue #4456: unsent by its author or removed by a group admin: the thread shows the unsent line. */
-  tombstone?: { kind: 'sender' | 'admin'; byUserId: string | null };
+  tombstone?: { kind: 'sender' | 'admin' | 'host'; byUserId: string | null };
   /** Issue #4114 Wave 4: a photo or video each recipient may open once. */
   viewOnce?: boolean;
   /** Issue #4114 Wave 4: the view-once file was deleted from storage. */

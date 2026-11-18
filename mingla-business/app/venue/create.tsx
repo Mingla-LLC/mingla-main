@@ -29,11 +29,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  canvas,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import {
@@ -374,7 +373,7 @@ export default function VenueCreateRoute(): React.ReactElement {
       <View
         style={[
           styles.root,
-          { paddingTop: insets.top, paddingHorizontal: spacing.lg },
+          { paddingTop: insets.top, paddingHorizontal: space[6] },
         ]}
       >
         <View style={styles.successInner}>
@@ -588,14 +587,18 @@ export default function VenueCreateRoute(): React.ReactElement {
               accessibilityRole="button"
               accessibilityLabel="Back to venue name"
             >
-              <Icon name="chevL" size={18} color={textTokens.tertiary} />
+              <Icon name="chevL" size={18} color={color.text3} />
               <Text style={styles.backText}>Back</Text>
             </Pressable>
             <Text style={styles.h1}>What kind of place is it?</Text>
             <VenueCategoryPicker
               value={venueCategory}
               onChange={(v: VenueCategory) => patch({ venueCategory: v })}
-              includeStay={stayAuthoringEnabled}
+              // #4420 (round-3 item 11, decision 11-14) — Add a venue always
+              // lists Stay. The server-owned STAY_VENUE_AUTHORING switch still
+              // decides whether it can be picked (and the server refuses a
+              // gated submit); Seth turns it on with this release.
+              includeStay
               stayDisabled={!stayAuthoringEnabled}
               testID="venue-category-picker"
             />
@@ -623,74 +626,74 @@ export default function VenueCreateRoute(): React.ReactElement {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   chrome: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: space[4],
+    paddingVertical: space[2],
   },
   chromeTitle: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   scroll: {
     flex: 1,
   },
   section: {
     flexGrow: 1,
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    gap: space[4],
+    paddingHorizontal: space[6],
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   h1: {
-    fontSize: typography.h3.fontSize,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.h1.fontSize,
+    fontWeight: type.h1.fontWeight,
+    color: color.text1,
   },
   sub: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   hint: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   warn: {
-    fontSize: typography.caption.fontSize,
-    color: "#F59E0B",
+    fontSize: type.caption.fontSize,
+    color: color.accentText,
   },
   matchList: {
-    gap: spacing.md,
+    gap: space[4],
   },
   backRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+    gap: space[1],
+    marginBottom: space[2],
   },
   backText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   // ORCH-1263 — resume card (DESIGN §8.4; flat elevated tint — opaque-safe on
   // Android per the deckBlock family).
   resumeCard: {
-    gap: spacing.sm,
-    padding: spacing.md,
+    gap: space[2],
+    padding: space[4],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: color.lineStrong,
   },
   resumeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   resumePhoto: {
     width: 56,
@@ -700,50 +703,50 @@ const styles = StyleSheet.create({
   },
   resumeCol: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   resumeName: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   resumeStep: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text2,
   },
   resumeConfirm: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   resumeActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   successInner: {
     flex: 1,
     justifyContent: "center",
-    gap: spacing.lg,
-    paddingBottom: spacing.xl,
+    gap: space[6],
+    paddingBottom: space[7],
   },
   successTitle: {
-    fontSize: typography.h3.fontSize,
+    fontSize: type.h1.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   successBody: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    color: color.text2,
     lineHeight: 22,
   },
   successWarning: {
-    fontSize: typography.body.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.body.fontSize,
+    color: color.text2,
     lineHeight: 22,
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
 });

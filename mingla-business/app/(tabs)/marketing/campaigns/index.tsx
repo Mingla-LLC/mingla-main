@@ -14,11 +14,11 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
+import { showAlert } from "../../../../src/components/ui/showAlert";
 import { useRouter } from "expo-router";
 
 import { CampaignCard } from "../../../../src/components/marketing/CampaignCard";
@@ -27,10 +27,7 @@ import {
   type CampaignFilter,
 } from "../../../../src/components/marketing/CampaignFilterPills";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
-import {
-  spacing,
-  text as textTokens,
-} from "../../../../src/constants/designSystem";
+import { color, radius, space } from "../../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
@@ -76,7 +73,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
     } catch (err) {
       const message = (err as { message?: unknown } | null)?.message;
       // #4273 extra (a): a send that is due or has started is read-only.
-      Alert.alert(
+      showAlert(
         "Couldn't cancel",
         typeof message === "string" && message.includes("campaign_locked")
           ? "This send has already started, so it can't be cancelled now."
@@ -137,7 +134,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
           communicating a terminal state. Per I-DISABLED-QUERY-IS-LOADING. */}
       {!campaignsQuery.hasResolved && !campaignsQuery.isError ? (
         <View style={styles.centerHost} testID="campaigns-spinner">
-          <ActivityIndicator size="small" color={textTokens.secondary} />
+          <ActivityIndicator size="small" color={color.text2} />
         </View>
       ) : campaignsQuery.isError ? (
         <View style={styles.centerHost}>
@@ -161,17 +158,20 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
           keyboardShouldPersistTaps="handled"
         >
           <CampaignFilterPills active={filter} onChange={setFilter} />
-          <View style={[styles.campaignGrid, isWideDesktop && styles.campaignGridWide]}>
-            {groups.map((group) => (
-              <View key={group.groupId} style={isWideDesktop ? styles.campaignCellWide : styles.campaignCell}>
-                <CampaignCard
-                  group={group}
-                  onResume={handleResume}
-                  onCancel={handleCancel}
-                  onDelete={handleDelete}
-                  onOpenReport={handleOpenReport}
-                />
-              </View>
+          {/* #4420 kit (marketing-campaigns__list): one list card with a
+              row per blast and hairlines between, on phone and desktop. */}
+          <View style={[styles.campaignList, isWideDesktop && styles.campaignListWide]}>
+            {groups.map((group, index) => (
+              <CampaignCard
+                key={group.groupId}
+                group={group}
+                inList
+                divided={index > 0}
+                onResume={handleResume}
+                onCancel={handleCancel}
+                onDelete={handleDelete}
+                onOpenReport={handleOpenReport}
+              />
             ))}
           </View>
         </ScrollView>
@@ -210,15 +210,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     paddingBottom: 120,
-    gap: spacing.sm,
+    gap: space[3],
   },
-  campaignGrid: { gap: spacing.sm },
-  campaignGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
-  campaignCell: { width: "100%" },
-  campaignCellWide: { flexBasis: "48%", flexGrow: 1, minWidth: 360 },
+  campaignList: {
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    overflow: "hidden",
+  },
+  campaignListWide: { maxWidth: 1120 },
 });

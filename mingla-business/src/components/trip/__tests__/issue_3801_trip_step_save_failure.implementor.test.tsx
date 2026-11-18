@@ -194,6 +194,8 @@ const BOUNDARY: Record<string, () => unknown> = {
   businessEvents: () => ({ setEventGuestPrivacy: asyncNoop }),
   // issue #3827 going-box — the wizard's extras copy + error matcher (pure; real module).
   guestListPrivacy: () => jest.requireActual("../../../constants/guestListPrivacy"),
+  // #4420 — the wizards' invite publish gate (pure; real module).
+  wizardInvitePublishGate: () => jest.requireActual("../../invites/wizardInvitePublishGate"),
   offeringTheme: () => ({
     normalizeThemeOverrides: (value: unknown) => value ?? null,
     patchOfferingTheme: asyncNoop,

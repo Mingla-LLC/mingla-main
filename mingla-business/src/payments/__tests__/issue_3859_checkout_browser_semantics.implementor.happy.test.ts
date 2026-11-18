@@ -42,9 +42,22 @@ describe("#3859 buyer-web emitted accessibility state", () => {
     ).toHaveLength(1);
   });
 
+  // [TEST-MOD-APPROVED #4420] the shared public-page component's two tabs
+  // became two radio cards (OfferingRadioCard); the same selected state now
+  // reaches both trees through accessibilityState.checked + aria-checked.
+  test("shared Explorer and public-page component exposes the chosen plan on both cards to native and web accessibility trees", () => {
+    expect(sharedPaymentChoice.match(/<OfferingRadioCard/g)).toHaveLength(2);
+    expect(sharedPaymentChoice).toContain("selected={!isFull}");
+    expect(sharedPaymentChoice).toContain("selected={isFull}");
+    const card = read("packages/offering-rendering/OfferingDecideParts.tsx");
+    const radio = card.slice(card.indexOf("export const OfferingRadioCard"));
+    expect(radio).toContain('accessibilityRole="radio"');
+    expect(radio).toContain("accessibilityState={{ checked: selected, disabled }}");
+    expect(radio).toContain("aria-checked={selected}");
+  });
+
   test.each([
     ["business compatibility component", paymentChoice],
-    ["shared Explorer and public-page component", sharedPaymentChoice],
   ])(
     "%s exposes selected state on both payment tabs to native and web accessibility trees",
     (_label, source) => {

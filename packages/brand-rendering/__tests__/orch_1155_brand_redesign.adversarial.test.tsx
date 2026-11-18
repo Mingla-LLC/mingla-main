@@ -234,12 +234,15 @@ describe("ORCH-1155 brand page — adversarial data/parity contract", () => {
   // reservation actions stay banned in the panel.
   test("sticky panel carries the GATED FollowButton + Share + Next-up; no subscriber/reservation concepts", () => {
     // isolate the sticky-panel block and assert its composition.
-    const panelStart = brandPage.indexOf("const stickyPanel = isDesktop");
+    // issue #4420 wave 2 — the panel is now the premium flyer's actions;
+    // Follow mounts through `followControl` and Next up is the glass bar.
+    const panelStart = brandPage.indexOf("const flyerActions = isDesktop");
     expect(panelStart).toBeGreaterThan(-1);
-    const panel = brandPage.slice(panelStart, panelStart + 2000);
+    const panel = brandPage.slice(panelStart, panelStart + 900);
     expect(panel).toMatch(/Share/);
-    expect(panel).toMatch(/Next up/);
-    expect(panel).toContain("<BrandFollowControl");
+    expect(panel).toMatch(/nextUpBar/);
+    expect(panel).toContain("followControl(true)");
+    expect(brandPage).toContain("<BrandFollowControl");
     // the mounted button is the gated one — the gate must still exist in-file
     expect(brandPage).toContain(
       "if (onToggleFollow === undefined) return null;",

@@ -234,6 +234,7 @@ export const PUBLIC_BUYER_ROUTE_PREFIXES = [
   "/attendance/claim/", // fragment-only RSVP/ticket handoff into the consumer app
   "/m/", // /m/[token] — #4111 signed-out guest's enquiry thread (emailed token link)
   "/pay/", // /pay/[token] — #3645 anonymous instalment pay/approve link
+  "/stay/pay/", // /stay/pay/[token] — #4188/#4420 staff-made Stay secure payment link (token-authorized)
 ] as const;
 
 /**
@@ -277,6 +278,7 @@ export const isPublicBuyerRoute = (
  *   /booking/ (cancel from email)
  *   /m/       (signed-out enquiry thread)
  *   /pay/     (instalment pay / approve link)
+ *   /stay/pay/ (staff-made Stay payment link, #4420)
  * Everything else on host.usemingla.com (the dashboard, `/`, `/events`,
  * `/account`, `/team`, sign-in) is not a pixel route, so hosts and staff never
  * enter buyer audiences. Same segment-safe matching as isPublicBuyerRoute.
@@ -286,6 +288,7 @@ const NON_SHOPPING_BUYER_ROUTE_PREFIXES: readonly string[] = [
   "/booking/",
   "/m/",
   "/pay/",
+  "/stay/pay/",
 ];
 
 export const isAdPixelRoute = (

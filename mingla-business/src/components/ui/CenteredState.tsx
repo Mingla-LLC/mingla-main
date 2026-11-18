@@ -11,12 +11,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { AccessibilityRole, StyleProp, ViewStyle } from "react-native";
 
-import {
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 
 export interface CenteredStateProps {
   /** Optional icon node, shown above the title. */
@@ -78,37 +73,37 @@ const styles = StyleSheet.create({
     alignItems: CENTERED_STATE_LAYOUT.alignItems,
     justifyContent: CENTERED_STATE_LAYOUT.justifyContent,
     alignSelf: "stretch",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    gap: spacing.xs,
+    paddingHorizontal: space[6],
+    paddingVertical: space[6],
+    gap: space[1],
   },
   fill: { flexGrow: 1 },
-  icon: { marginBottom: spacing.sm },
+  icon: { marginBottom: space[2] },
   title: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: CENTERED_STATE_LAYOUT.textAlign,
   },
   titleCompact: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: CENTERED_STATE_LAYOUT.textAlign,
   },
-  titleError: { color: semantic.error },
+  titleError: { color: color.errorText },
   body: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     textAlign: CENTERED_STATE_LAYOUT.textAlign,
   },
   actions: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
     alignItems: CENTERED_STATE_LAYOUT.alignItems,
-    gap: spacing.sm,
+    gap: space[2],
   },
 });
 

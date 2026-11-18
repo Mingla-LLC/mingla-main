@@ -17,7 +17,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
-import { accent, semantic, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  color,
+  space,
+} from "../../constants/designSystem";
 import {
   useCancelDoorPayCode,
   useDoorPayCode,
@@ -169,13 +172,13 @@ export const DoorModePayCodeSheet = ({
       </CenteredState>
     ) : (
       <View style={styles.center}>
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   } else if (step === "settling") {
     body = (
       <View style={styles.center} testID="door-mode-code-settling" accessibilityLiveRegion="assertive">
-        <ActivityIndicator color={semantic.warning} />
+        <ActivityIndicator color={color.warning} />
         <Text style={styles.muted}>
           {status === "payment_landing" ? DOOR_MODE_COPY.codeLanding : DOOR_MODE_COPY.codeChecking}
         </Text>
@@ -252,10 +255,10 @@ export const DoorModePayCodeSheet = ({
 };
 
 const styles = StyleSheet.create({
-  center: { alignItems: "center", gap: spacing.md, paddingBottom: spacing.lg },
-  title: { fontSize: 22, lineHeight: 28, fontWeight: "700", color: textTokens.primary, textAlign: "center" },
-  muted: { fontSize: 14, lineHeight: 20, color: textTokens.secondary, textAlign: "center" },
-  code: { fontSize: 18, fontWeight: "700", letterSpacing: 2, color: textTokens.primary, fontVariant: ["tabular-nums"] },
+  center: { alignItems: "center", gap: space[4], paddingBottom: space[6] },
+  title: { fontSize: 22, lineHeight: 28, fontWeight: "700", color: color.text1, textAlign: "center" },
+  muted: { fontSize: 14, lineHeight: 20, color: color.text2, textAlign: "center" },
+  code: { fontSize: 18, fontWeight: "700", letterSpacing: 2, color: color.text1, fontVariant: ["tabular-nums"] },
   qrDimmed: { opacity: 0.35 },
-  error: { fontSize: 13, lineHeight: 18, color: semantic.errorText, textAlign: "center" },
+  error: { fontSize: 13, lineHeight: 18, color: color.errorText, textAlign: "center" },
 });

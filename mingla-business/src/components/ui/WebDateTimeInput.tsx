@@ -36,12 +36,7 @@
 
 import React from "react";
 
-import {
-  glass,
-  radius,
-  semantic,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, color } from "../../constants/designSystem";
 
 export type WebDateTimeInputType = "date" | "time" | "datetime-local";
 
@@ -85,9 +80,9 @@ const BASE_STYLE: React.CSSProperties = {
   borderRadius: radius.md,
   borderWidth: 1,
   borderStyle: "solid",
-  borderColor: glass.border.profileBase,
-  backgroundColor: glass.tint.profileBase,
-  color: textTokens.primary,
+  borderColor: color.line,
+  backgroundColor: color.fill.inset,
+  color: color.text1,
   fontSize: 16,
   colorScheme: "dark",
 };
@@ -104,7 +99,7 @@ export function WebDateTimeInput({
   testID,
 }: WebDateTimeInputProps): React.ReactElement {
   const style: React.CSSProperties = hasError
-    ? { ...BASE_STYLE, borderColor: semantic.error }
+    ? { ...BASE_STYLE, borderColor: color.danger }
     : BASE_STYLE;
 
   return (

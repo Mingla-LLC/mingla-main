@@ -25,14 +25,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  accent,
   durations,
-  glass,
   radius as radiusTokens,
-  shadows,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  shadow,
+  color,
+  type,
 } from "../../constants/designSystem";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 
@@ -114,23 +112,23 @@ export const ActionTile: React.FC<ActionTileProps> = ({
     <Animated.View style={animatedStyle}>
       <GlassCard
         variant={primary ? "elevated" : "base"}
-        padding={spacing.md}
-        style={[styles.card, primary ? shadows.glassChromeActive : null]}
+        padding={space[4]}
+        style={[styles.card, primary ? shadow.liquid : null]}
       >
         <View style={styles.row}>
           <View
             style={[
               styles.iconContainer,
               {
-                backgroundColor: primary ? accent.tint : glass.tint.profileElevated,
-                borderColor: primary ? accent.border : glass.border.profileElevated,
+                backgroundColor: primary ? color.accentLine : color.fill.tile,
+                borderColor: primary ? color.accentLine : color.lineStrong,
               },
             ]}
           >
             <Icon
               name={icon}
               size={ICON_SIZE}
-              color={primary ? accent.warm : textTokens.primary}
+              color={primary ? color.accent : color.text1}
             />
           </View>
           <View style={styles.textCol}>
@@ -172,7 +170,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: space[4],
   },
   iconContainer: {
     width: ICON_CONTAINER_SIZE,
@@ -184,19 +182,19 @@ const styles = StyleSheet.create({
   },
   textCol: {
     flex: 1,
-    gap: spacing.xxs,
+    gap: 2,
   },
   label: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   sub: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    fontWeight: type.small.fontWeight,
+    color: color.text2,
   },
 });
 

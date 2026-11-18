@@ -22,12 +22,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Spinner } from "../ui/Spinner";
 import { GlassCard } from "../ui/GlassCard";
 import {
-  spacing,
+  color,
   radius,
-  typography,
-  text as textTokens,
-  semantic,
-  accent,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   useBrandStripeBankVerification,
@@ -45,23 +43,23 @@ const STATE_PALETTE: Record<
   { color: string; tint: string; label: string }
 > = {
   verified: {
-    color: semantic.success,
-    tint: semantic.successTint,
+    color: color.success,
+    tint: color.successTint,
     label: "Verified",
   },
   pending: {
-    color: semantic.warning,
-    tint: semantic.warningTint,
+    color: color.warning,
+    tint: color.warningTint,
     label: "Verifying",
   },
   errored: {
-    color: semantic.error,
-    tint: semantic.errorTint,
+    color: color.errorText,
+    tint: color.errorTint,
     label: "Action needed",
   },
   missing: {
-    color: textTokens.tertiary,
-    tint: "rgba(255,255,255,0.06)",
+    color: color.text3,
+    tint: color.fill.tile,
     label: "Not added",
   },
 };
@@ -74,9 +72,9 @@ export function BrandStripeBankSection({
 
   if (verification.isLoading) {
     return (
-      <GlassCard variant="base" padding={spacing.md} style={styles.card}>
+      <GlassCard variant="base" padding={space[4]} style={styles.card}>
         <View style={styles.loadingRow}>
-          <Spinner size={24} color={accent.warm} />
+          <Spinner size={24} color={color.text1} />
           <Text style={styles.loadingText}>Loading bank verification…</Text>
         </View>
       </GlassCard>
@@ -96,7 +94,7 @@ export function BrandStripeBankSection({
   const ctaLabel = state === "missing" ? "Add bank account" : "Re-verify your bank";
 
   return (
-    <GlassCard variant="base" padding={spacing.md} style={styles.card}>
+    <GlassCard variant="base" padding={space[4]} style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.headerLabel}>{bankAccountLabel}</Text>
         <View style={[styles.badge, { backgroundColor: palette.tint }]}>
@@ -134,16 +132,16 @@ export function BrandStripeBankSection({
 
 const styles = StyleSheet.create({
   card: {
-    marginVertical: spacing.sm,
+    marginVertical: space[2],
   },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   loadingText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   headerRow: {
     flexDirection: "row",
@@ -151,16 +149,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   headerLabel: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   badge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    paddingHorizontal: space[2],
+    paddingVertical: space[1],
     borderRadius: radius.full,
   },
   badgeDot: {
@@ -169,26 +167,26 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   badgeText: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 0.6,
   },
   detail: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    marginTop: space[1],
   },
   errorReason: {
-    fontSize: typography.bodySm.fontSize,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    color: color.errorText,
+    marginTop: space[1],
   },
   cta: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: accent.tint,
+    marginTop: space[2],
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tabOn,
     alignSelf: "flex-start",
     minHeight: 44,
     justifyContent: "center",
@@ -197,9 +195,9 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   ctaText: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });
 

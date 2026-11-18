@@ -2,13 +2,7 @@ import React, { useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import {
-  accent,
-  glass,
-  radius,
-  spacing,
-  text as textTokens,
-} from "../../constants/designSystem";
+import { radius, space, color } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 import type { BrandPriceRow } from "../../services/discountService";
 import { Button } from "../ui/Button";
@@ -175,34 +169,34 @@ export const PricesWorkspace: React.FC<PricesWorkspaceProps> = ({
 };
 
 const styles = StyleSheet.create({
-  wrap: { gap: spacing.sm },
+  wrap: { gap: space[2] },
   notice: {
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radius.sm,
-    backgroundColor: glass.tint.profileBase,
-    color: textTokens.secondary,
+    backgroundColor: color.fill.inset,
+    color: color.text2,
     fontSize: 13,
     lineHeight: 19,
   },
   bulk: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileElevated,
-    gap: spacing.sm,
+    backgroundColor: color.fill.tile,
+    gap: space[2],
   },
-  bulkTitle: { fontWeight: "800", color: textTokens.primary },
-  bulkActions: { flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" },
-  help: { color: textTokens.secondary, fontSize: 12 },
+  bulkTitle: { fontWeight: "800", color: color.text1 },
+  bulkActions: { flexDirection: "row", gap: space[1], flexWrap: "wrap" },
+  help: { color: color.text2, fontSize: 12 },
   card: {
     minHeight: 78,
     flexDirection: "row",
     alignItems: "center",
-    padding: spacing.sm,
+    padding: space[2],
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    gap: spacing.sm,
+    borderColor: color.line,
+    gap: space[2],
   },
   check: {
     width: 28,
@@ -210,17 +204,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  checkText: { color: accent.warm, fontSize: 19 },
+  checkText: { color: color.accent, fontSize: 19 },
   copy: { flex: 1 },
-  name: { color: textTokens.primary, fontWeight: "700", fontSize: 14 },
-  sub: { color: textTokens.secondary, fontSize: 12, marginTop: 2 },
+  name: { color: color.text1, fontWeight: "700", fontSize: 14 },
+  sub: { color: color.text2, fontSize: 12, marginTop: 2 },
   price: {
-    color: textTokens.primary,
+    color: color.text1,
     fontWeight: "700",
     fontSize: 13,
     marginTop: 5,
   },
   allow: { alignItems: "flex-end", gap: 4 },
-  pill: { color: textTokens.tertiary, fontSize: 9, fontWeight: "800" },
-  empty: { padding: spacing.xl, alignItems: "center", gap: spacing.xs },
+  pill: { color: color.text3, fontSize: 9, fontWeight: "800" },
+  empty: { padding: space[7], alignItems: "center", gap: space[1] },
 });

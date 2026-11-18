@@ -2,24 +2,23 @@ import { useCallback, useEffect, useState } from "react";
 
 import { supabase } from "../services/supabase";
 import {
+  getBrandGuestChat,
   getEventGroupChat,
   listMessages,
   postPlannerMessage,
   type EventGroupConversation,
   type EventGroupMessage,
-  type PlannerImageAttachment,
 } from "../services/groupChatService";
 
-export function useEventGroupChat(eventId: string): {
+/** #4459: opened from a listing (its brand's Guest chat) or by brand id (Messages → Guests). */
+export function useEventGroupChat(eventId: string | null, brandId: string | null = null): {
   conversation: EventGroupConversation | null;
   messages: EventGroupMessage[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  postMessage: (
-    content: string,
-    attachment?: PlannerImageAttachment | null,
-  ) => Promise<{ messageId: string | null; error: string | null }>;
+  /** #4459: text only; the server stamps the post as the brand. */
+  postMessage: (content: string) => Promise<{ messageId: string | null; error: string | null }>;
 } {
   const [conversation, setConversation] = useState<EventGroupConversation | null>(null);
   const [messages, setMessages] = useState<EventGroupMessage[]>([]);
@@ -29,7 +28,11 @@ export function useEventGroupChat(eventId: string): {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const chatResult = await getEventGroupChat(eventId);
+      const chatResult = brandId !== null
+        ? await getBrandGuestChat(brandId)
+        : eventId !== null
+          ? await getEventGroupChat(eventId)
+          : { conversation: null, error: null };
       if (chatResult.error) throw new Error(chatResult.error);
       setConversation(chatResult.conversation);
       if (chatResult.conversation === null) {
@@ -46,7 +49,7 @@ export function useEventGroupChat(eventId: string): {
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [brandId, eventId]);
 
   useEffect(() => {
     void refresh();
@@ -76,9 +79,9 @@ export function useEventGroupChat(eventId: string): {
   }, [conversation?.id, refresh]);
 
   const postMessage = useCallback(
-    async (content: string, attachment?: PlannerImageAttachment | null) => {
+    async (content: string) => {
       if (conversation === null) return { messageId: null, error: "Conversation not loaded" };
-      const result = await postPlannerMessage(conversation.id, content, attachment);
+      const result = await postPlannerMessage(conversation.id, content);
       if (result.error === null) await refresh();
       return result;
     },

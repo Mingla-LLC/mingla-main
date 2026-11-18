@@ -77,18 +77,15 @@ import { videoPickRefusal } from "./coverPickerVideoPickGate";
 import { shouldRecheckCoverVideo } from "./coverPickerVideoRecheck";
 
 import {
-  accent,
-  androidOpaque,
-  ariThread,
   bpRegular,
-  canvas,
+  color,
   coverUpload,
-  glass,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  size,
+  space,
+  type,
+  materials,
 } from "../../constants/designSystem";
 import {
   EventCoverMediaError,
@@ -2314,7 +2311,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               <Icon
                 name={tab.icon}
                 size={16}
-                color={isActive ? accent.warm : textTokens.tertiary}
+                color={isActive ? color.accent : color.text3}
               />
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
                 {tab.label}
@@ -2327,7 +2324,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       {/* Search bar — GIF + Stock only. */}
       {(activeTab === "gif" || activeTab === "stock") ? (
         <View style={styles.searchRow}>
-          <Icon name="search" size={18} color={textTokens.tertiary} />
+          <Icon name="search" size={18} color={color.text3} />
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -2336,7 +2333,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
                 ? "Search GIFs (or just browse)"
                 : "Search photos (or just browse)"
             }
-            placeholderTextColor={textTokens.tertiary}
+            placeholderTextColor={color.text3}
             returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
@@ -2354,7 +2351,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               accessibilityRole="button"
               accessibilityLabel="Clear search"
             >
-              <Icon name="close" size={18} color={textTokens.tertiary} />
+              <Icon name="close" size={18} color={color.text3} />
             </Pressable>
           ) : null}
         </View>
@@ -2742,7 +2739,7 @@ const InlineConfirm: React.FC<{
           variant={copy.variant}
           size="md"
           onPress={onConfirm}
-          {...(copy.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel, iconColor: canvas.depth } : {})}
+          {...(copy.variant === "primary" ? { accentColor: color.accent, labelStyle: styles.darkInkLabel, iconColor: color.canvas } : {})}
         />
       </View>
     </View>
@@ -2761,7 +2758,7 @@ const CoverStatusRow: React.FC<{ row: StatusRowModel }> = ({ row }) => (
       <Icon
         name={row.tone === "ok" ? "check" : row.tone === "warning" ? "shield" : "plus"}
         size={16}
-        color={row.tone === "ok" ? canvas.depth : row.tone === "warning" ? semantic.warning : textTokens.secondary}
+        color={row.tone === "ok" ? color.canvas : row.tone === "warning" ? color.warning : color.text2}
       />
     </View>
     <View style={styles.statusText}>
@@ -2801,7 +2798,7 @@ const VideoUploadCard: React.FC<{
   const bytes = stage.phase === "uploading"
     ? { confirmed: stage.confirmedBytes ?? null, total: stage.totalBytes ?? null }
     : { confirmed: null, total: null };
-  const titleColor = model.tone === "warning" ? semantic.warning : model.tone === "error" ? semantic.errorText : textTokens.primary;
+  const titleColor = model.tone === "warning" ? color.warning : model.tone === "error" ? color.errorText : color.text1;
   return (
     <NudgeOnSignal signal={model.stateId === "H-10" ? nudgeSignal : 0}>
     <View
@@ -2819,7 +2816,7 @@ const VideoUploadCard: React.FC<{
           <Icon
             name={model.tone === "error" ? "x" : model.stateId === "H-12" ? "upload" : "play"}
             size={18}
-            color={model.tone === "error" ? semantic.errorText : textTokens.primary}
+            color={model.tone === "error" ? color.errorText : color.text1}
           />
         </View>
         {/* #3040 §11 — the polite region: the title (a phase change) plus a
@@ -2844,7 +2841,7 @@ const VideoUploadCard: React.FC<{
           // value that changes every second would re-announce it every second.
           <Text style={styles.uploadCardElapsed} accessibilityElementsHidden importantForAccessibility="no">{elapsed}</Text>
         ) : model.progress.kind === "indeterminate" ? (
-          <ActivityIndicator color={textTokens.secondary} accessibilityLabel={model.title} />
+          <ActivityIndicator color={color.text2} accessibilityLabel={model.title} />
         ) : null}
       </View>
       {determinate && copy.percent !== null ? (
@@ -2889,7 +2886,7 @@ const VideoUploadCard: React.FC<{
               variant={cardAction.variant}
               size="md"
               onPress={() => onAction(cardAction.id)}
-              {...(cardAction.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel, iconColor: canvas.depth } : {})}
+              {...(cardAction.variant === "primary" ? { accentColor: color.accent, labelStyle: styles.darkInkLabel, iconColor: color.canvas } : {})}
             />
           ))}
         </View>
@@ -3107,7 +3104,7 @@ const LibraryTab: React.FC<{
         ) : null}
         {renderError !== null ? (
           <View style={styles.previewErrorOverlay} pointerEvents="none">
-            <Icon name="swap" size={22} color={textTokens.primary} />
+            <Icon name="swap" size={22} color={color.text1} />
             <Text style={styles.previewEmptyText}>Preview didn&apos;t load</Text>
           </View>
         ) : null}
@@ -3116,7 +3113,7 @@ const LibraryTab: React.FC<{
         {hasCover && !activeVideoUpload ? (
           <PopOnSignal signal={coverSwapSignal} style={styles.selectedBadge}>
             <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              <Icon name="check" size={14} color={textTokens.inverse} />
+              <Icon name="check" size={14} color={color.textStrong} />
             </View>
           </PopOnSignal>
         ) : null}
@@ -3146,7 +3143,7 @@ const LibraryTab: React.FC<{
         </FadeOnChange>
       ) : renderError !== null ? (
         <View style={[styles.uploadCard, Platform.OS === "android" && styles.uploadCardAndroid, styles.uploadCardWarn]} accessibilityLiveRegion="polite">
-          <Text style={[styles.uploadCardTitle, { color: semantic.warning }]}>
+          <Text style={[styles.uploadCardTitle, { color: color.warning }]}>
             {resolveRenderErrorCopy(coverKind === "video" ? "video" : "photo", renderError.failures).title}
           </Text>
           <Text style={styles.uploadCardBody}>
@@ -3202,7 +3199,7 @@ const LibraryTab: React.FC<{
               accessibilityHint={coverAction.hint}
               style={wide ? styles.actionGridItem : undefined}
               // #3040 D3 (Seth, Q1) — dark ink on the flat orange: 6.87:1.
-              {...(coverAction.primary ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel, iconColor: canvas.depth } : {})}
+              {...(coverAction.primary ? { accentColor: color.accent, labelStyle: styles.darkInkLabel, iconColor: color.canvas } : {})}
             />
           ))}
         </View>
@@ -3290,7 +3287,7 @@ const ProviderGrid: React.FC<{
   if (status === "loading" || status === "idle") {
     return (
       <View style={styles.gridStateHost}>
-        <ActivityIndicator size="small" color={accent.warm} />
+        <ActivityIndicator size="small" color={color.accent} />
         <Text style={styles.providerFooter}>{attribution}</Text>
       </View>
     );
@@ -3303,7 +3300,7 @@ const ProviderGrid: React.FC<{
     const noRetry = errorCode === "not_configured";
     return (
       <View style={styles.gridStateHost}>
-        <Icon name="globe" size={36} color={semantic.error} />
+        <Icon name="globe" size={36} color={color.danger} />
         <Text style={styles.stateTitle}>{copy.title}</Text>
         <Text style={styles.stateBody}>{copy.body}</Text>
         {noRetry ? (
@@ -3319,7 +3316,7 @@ const ProviderGrid: React.FC<{
   if (status === "empty") {
     return (
       <View style={styles.gridStateHost}>
-        <Icon name="search" size={36} color={textTokens.tertiary} />
+        <Icon name="search" size={36} color={color.text3} />
         <Text style={styles.stateTitle}>
           {searchActive
             ? kind === "gif"
@@ -3437,7 +3434,7 @@ const GridTile: React.FC<{
     />
     {selected ? (
       <View style={styles.selectedBadge} pointerEvents="none">
-        <Icon name="check" size={14} color={textTokens.inverse} />
+        <Icon name="check" size={14} color={color.textStrong} />
       </View>
     ) : null}
     {credit !== undefined ? (
@@ -3522,7 +3519,7 @@ const AdditionalPhotosSection: React.FC<{
             accessibilityLabel="Uploading photo"
             testID="cover-gallery-uploading"
           >
-            <ActivityIndicator size="small" color={textTokens.secondary} />
+            <ActivityIndicator size="small" color={color.text2} />
             <Text style={styles.galleryBusyLabel}>Uploading photo…</Text>
           </View>
         ) : null}
@@ -3595,7 +3592,7 @@ const AdditionalPhotosSection: React.FC<{
                 accessibilityState={{ expanded: menuOpen, disabled }}
                 style={styles.galleryTileMenuButton}
               >
-                <Icon name="moreH" size={16} color={textTokens.inverse} />
+                <Icon name="moreH" size={16} color={color.textStrong} />
               </Pressable>
               {menuOpen ? (
                 <View style={styles.galleryMenu} accessibilityRole="menu">
@@ -3664,7 +3661,7 @@ const AdditionalPhotosSection: React.FC<{
                 accessibilityLabel={`Extra photo ${position}, uploading`}
               />
               <View style={styles.galleryTileOverlay} pointerEvents="none">
-                <ActivityIndicator color={textTokens.inverse} />
+                <ActivityIndicator color={color.textStrong} />
               </View>
             </View>
           ) : (
@@ -3681,7 +3678,7 @@ const AdditionalPhotosSection: React.FC<{
                 accessibilityLabel={`Extra photo ${position}, not added. ${tile.message ?? ""}`}
               />
               <View style={styles.galleryTileOverlay} pointerEvents="none">
-                <Icon name="close" size={16} color={textTokens.inverse} />
+                <Icon name="close" size={16} color={color.textStrong} />
                 <Text style={styles.galleryTileFailedLabel}>{"Couldn't upload"}</Text>
               </View>
               <View style={styles.galleryMenu}>
@@ -3730,7 +3727,7 @@ const AdditionalPhotosSection: React.FC<{
               pressed && styles.tilePressed,
             ]}
           >
-            <Icon name="plus" size={22} color={accent.warm} />
+            <Icon name="plus" size={22} color={color.accent} />
             <Text style={styles.galleryAddLabel}>Add photo</Text>
           </Pressable>
         ) : null}
@@ -3774,7 +3771,7 @@ const GalleryMenuItem: React.FC<{
     <Text
       style={[
         styles.galleryMenuItemLabel,
-        destructive && { color: semantic.error },
+        destructive && { color: color.danger },
         disabled && styles.galleryMenuItemDisabled,
       ]}
     >
@@ -3792,33 +3789,33 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     padding: 3,
-    marginBottom: spacing.md,
+    marginBottom: space[4],
   },
   tabSegment: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
     borderRadius: radiusTokens.sm,
   },
   tabSegmentActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   tabLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   tabLabelActive: {
-    color: accent.warm,
+    color: color.accent,
   },
   searchRow: {
     flexDirection: "row",
@@ -3826,38 +3823,38 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+    borderColor: color.line,
+    paddingHorizontal: space[4],
+    gap: space[2],
+    marginBottom: space[4],
   },
   searchInput: {
     flex: 1,
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
   },
   coverPreview: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   // META-ORCH-1059: accent ring on the Library preview when a cover is applied.
   coverPreviewSelected: {
     borderWidth: 2,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   creditText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginBottom: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginBottom: space[1],
   },
   // #3040 B-C15 — stacked below 600pt of sheet width, two-up at ≥600 (D8).
   actionColumn: {
-    gap: spacing.sm,
+    gap: space[2],
   },
   actionGrid: {
     flexDirection: "row",
@@ -3869,57 +3866,57 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     alignSelf: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   removeLabel: {
-    color: semantic.errorText,
+    color: color.errorText,
   },
   darkInkLabel: {
-    color: canvas.depth,
+    color: color.canvas,
   },
   limitsBlock: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
+    marginTop: space[4],
+    paddingTop: space[4],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
+    borderTopColor: color.line,
     alignItems: "center",
   },
   limitsSecondLine: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   helperText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[1],
   },
   uploadLimitText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
   },
   mediaErrorText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
+    marginTop: space[1],
   },
   videoErrorRow: {
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   // issue #1338 — in-sheet cover-video notice (info tone). Errors reuse
   // styles.mediaErrorText (semantic.error); info uses the warm accent.
   videoNoticeRow: {
-    gap: spacing.xs,
-    marginTop: spacing.xs,
+    gap: space[1],
+    marginTop: space[1],
   },
   videoNoticeInfoText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: accent.warm,
-    marginTop: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.accent,
+    marginTop: space[1],
     fontWeight: "600",
   },
   retryButton: {
@@ -3927,118 +3924,118 @@ const styles = StyleSheet.create({
   },
   videoProgressOverlay: {
     position: "absolute",
-    left: spacing.sm,
-    right: spacing.sm,
-    bottom: spacing.sm,
-    padding: spacing.sm,
+    left: space[2],
+    right: space[2],
+    bottom: space[2],
+    padding: space[2],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(12, 14, 18, 0.62)",
-    gap: spacing.xs,
+    backgroundColor: scrim.modal,
+    gap: space[1],
   },
   videoProgressText: {
-    color: "#FFFFFF",
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    color: color.textOnPhoto,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
   },
   // #3040 — upload card (Appendix A §2). Android is opaque
   // (ANDROID_GLASS_USES_OPAQUE_FALLBACK): no translucent fill, no elevation.
   uploadCard: {
-    padding: spacing.md,
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
+    padding: space[4],
+    marginTop: space[4],
+    marginBottom: space[4],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.lineStrong,
+    backgroundColor: color.fill.tile,
     overflow: "hidden",
   },
   uploadCardAndroid: {
-    backgroundColor: ariThread.ariBubbleAndroid,
-    borderColor: androidOpaque.rowBorder,
+    backgroundColor: materials.pane.solidFill,
+    borderColor: color.card2,
     elevation: 0,
   },
   uploadCardWarn: {
-    borderColor: coverUpload.warnBorder,
+    borderColor: color.warning,
   },
   uploadCardError: {
-    borderColor: coverUpload.errorBorder,
+    borderColor: color.errorLine,
   },
   uploadCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm + spacing.xs,
+    gap: space[2] + space[1],
   },
   uploadThumb: {
     width: coverUpload.thumb,
     height: coverUpload.thumb,
     borderRadius: coverUpload.thumbRadius,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     alignItems: "center",
     justifyContent: "center",
   },
   uploadThumbGone: {
-    backgroundColor: "#1b1e24",
+    backgroundColor: color.card,
   },
   uploadCardHeaderText: {
     flex: 1,
     minWidth: 0,
   },
   uploadCardTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   uploadCardSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   uploadCardPercent: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   uploadCardElapsed: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "500",
-    color: textTokens.tertiary,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   uploadCardMeta: {
-    marginTop: spacing.sm,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    marginTop: space[2],
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     fontVariant: ["tabular-nums"],
   },
   uploadCardBody: {
-    marginTop: spacing.sm + spacing.xs,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    marginTop: space[2] + space[1],
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   confirmBody: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   uploadCardActions: {
-    marginTop: spacing.md,
+    marginTop: space[4],
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: space[2],
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.sm + spacing.xs,
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
+    gap: space[2] + space[1],
+    marginTop: space[4],
+    marginBottom: space[4],
   },
   statusIcon: {
     width: coverUpload.statusIcon,
@@ -4048,15 +4045,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   statusIconOk: {
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   statusIconWarn: {
-    backgroundColor: semantic.warningTint,
+    backgroundColor: color.warningTint,
   },
   statusIconNeutral: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
   statusText: {
     flex: 1,
@@ -4065,11 +4062,11 @@ const styles = StyleSheet.create({
   stepper: {
     marginTop: 14,
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   stepperColumn: {
     flex: 1,
-    gap: spacing.xs,
+    gap: space[1],
   },
   stepperBar: {
     height: coverUpload.stepperBar,
@@ -4089,34 +4086,34 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     opacity: 0,
   },
-  stepperBarNow: { backgroundColor: accent.warm },
-  stepperBarDone: { backgroundColor: coverUpload.stepDone },
-  stepperBarTodo: { backgroundColor: coverUpload.stepTodo },
+  stepperBarNow: { backgroundColor: color.accent },
+  stepperBarDone: { backgroundColor: color.accentLine },
+  stepperBarTodo: { backgroundColor: color.lineStrong },
   stepperLabel: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
-    letterSpacing: typography.micro.letterSpacing,
+    letterSpacing: type.label.letterSpacing,
   },
-  stepperLabelNow: { color: textTokens.primary },
-  stepperLabelDone: { color: textTokens.tertiary },
-  stepperLabelTodo: { color: textTokens.quaternary },
+  stepperLabelNow: { color: color.text1 },
+  stepperLabelDone: { color: color.text3 },
+  stepperLabelTodo: { color: color.text4 },
   progressTrack: {
-    marginTop: spacing.sm + spacing.xs,
+    marginTop: space[2] + space[1],
     height: coverUpload.trackHeight,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: coverUpload.track,
+    backgroundColor: color.fill.pager,
   },
   progressFill: {
     width: "100%",
     height: "100%",
     transformOrigin: "left",
     borderRadius: 999,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   progressFillFrozen: {
-    backgroundColor: coverUpload.frozenFill,
+    backgroundColor: color.status.muted,
   },
   progressFillStatic: {
     opacity: 0.45,
@@ -4125,7 +4122,7 @@ const styles = StyleSheet.create({
     width: "32%",
     height: "100%",
     borderRadius: 999,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
   },
   coverPreviewDimmed: {
     opacity: 0.55,
@@ -4136,16 +4133,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   previewEmptyText: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.8)",
+    color: color.textOnPhoto2,
   },
   previewErrorOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   previewPill: {
     position: "absolute",
@@ -4157,12 +4154,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: glass.tint.badge.idle,
+    backgroundColor: materials.onPhoto.solidFill,
     borderWidth: 1,
-    borderColor: glass.border.badge,
+    borderColor: color.lineStrong,
   },
   previewPillAndroid: {
-    backgroundColor: ariThread.ariBubbleAndroid,
+    backgroundColor: materials.pane.solidFill,
     overflow: "hidden",
   },
   previewPillDot: {
@@ -4170,49 +4167,49 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
-  previewPillDotCurrent: { backgroundColor: semantic.success },
-  previewPillDotNew: { backgroundColor: accent.warm },
+  previewPillDotCurrent: { backgroundColor: color.success },
+  previewPillDotNew: { backgroundColor: color.accent },
   previewPillText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   gridStateHost: {
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xl,
+    gap: space[2],
+    paddingVertical: space[7],
   },
   stateTitle: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     textAlign: "center",
   },
   stateBody: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
     textAlign: "center",
   },
   masonryHost: {
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
+    paddingTop: space[1],
+    paddingBottom: space[2],
   },
   masonryColumns: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
   },
   masonryColumn: {
     flex: 1,
-    gap: spacing.sm,
+    gap: space[2],
   },
   tile: {
     borderRadius: radiusTokens.md,
     overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   tilePressed: {
     opacity: 0.82,
@@ -4220,142 +4217,142 @@ const styles = StyleSheet.create({
   // META-ORCH-1059: persistent SELECTED treatment on the active-cover tile.
   tileSelected: {
     borderWidth: 2,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
   },
   selectedBadge: {
     position: "absolute",
-    top: spacing.xs,
-    right: spacing.xs,
+    top: space[1],
+    right: space[1],
     width: 24,
     height: 24,
     borderRadius: 999,
-    backgroundColor: accent.warm,
+    backgroundColor: color.accent,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
-    borderColor: textTokens.inverse,
+    borderColor: color.textStrong,
   },
   tileImage: {
     width: "100%",
     borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   tileCredit: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "600",
-    color: textTokens.tertiary,
-    paddingHorizontal: spacing.xs,
+    color: color.text3,
+    paddingHorizontal: space[1],
     paddingVertical: 4,
   },
   providerFooter: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   // issue #868 [cover-gallery] M.3 — provider "Add to: Cover · Gallery" control.
   addTargetRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginBottom: spacing.md,
+    gap: space[1],
+    marginBottom: space[4],
   },
   addTargetLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginRight: spacing.xs,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginRight: space[1],
   },
   addTargetChip: {
     minHeight: 32,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     justifyContent: "center",
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   addTargetChipActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   addTargetChipLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   addTargetChipLabelActive: {
-    color: accent.warm,
+    color: color.accent,
   },
   // issue #868 [cover-gallery] — Additional-photos manager.
   gallerySection: {
-    marginTop: spacing.lg,
+    marginTop: space[6],
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
-    paddingTop: spacing.md,
+    borderTopColor: color.line,
+    paddingTop: space[4],
   },
   // issue #3318 — header row carrying the section's own busy state.
   galleryHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: space[2],
   },
   galleryBusy: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: space[1],
   },
   galleryBusyLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   galleryHeader: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
+    fontSize: type.row.fontSize,
+    lineHeight: type.row.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   gallerySub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
     marginTop: 2,
-    marginBottom: spacing.sm,
+    marginBottom: space[2],
   },
   confirmBanner: {
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
-    padding: spacing.md,
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
+    padding: space[4],
+    gap: space[2],
+    marginBottom: space[2],
   },
   confirmBannerText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   // issue #3280 — the reason line shown while the confirm's Replace is locked.
   confirmBannerReason: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text2,
   },
   confirmBannerActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.sm,
+    gap: space[2],
   },
   galleryStrip: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: space[2],
     paddingVertical: 2,
     alignItems: "flex-start",
   },
@@ -4366,7 +4363,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 72,
     borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
   },
   // issue #3318 — uploading / failed photo tiles.
   galleryTileOverlay: {
@@ -4379,57 +4376,57 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: scrim.modal,
   },
   galleryTileFailed: {
     opacity: 0.5,
   },
   galleryTileFailedLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
   galleryFailureText: {
-    marginTop: spacing.sm,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
+    marginTop: space[2],
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.danger,
   },
   galleryTileMenuButton: {
     position: "absolute",
-    top: spacing.xs,
-    right: spacing.xs,
+    top: space[1],
+    right: space[1],
     width: 28,
     height: 28,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
   },
   galleryMenu: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileElevated,
+    borderColor: color.line,
+    backgroundColor: color.fill.tile,
     overflow: "hidden",
   },
   galleryMenuItem: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   galleryMenuItemPressed: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
   },
   galleryMenuItemLabel: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text1,
   },
   galleryMenuItemDisabled: {
-    color: textTokens.tertiary,
+    color: color.text3,
     opacity: 0.5,
   },
   galleryAddTile: {
@@ -4437,12 +4434,12 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.accentLine,
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
-    backgroundColor: accent.tint,
+    backgroundColor: color.accentLine,
   },
   // issue #3280 — the disabled variant the tile never had. Without it the
   // control looked identical enabled and blocked, which is what made the
@@ -4451,9 +4448,9 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   galleryAddLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.accent,
   },
 });

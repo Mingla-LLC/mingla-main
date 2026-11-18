@@ -141,6 +141,9 @@ jest.mock("react-native-keyboard-controller", () => ({
   KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
   KeyboardToolbar: "KeyboardToolbar@library",
   KeyboardProvider: ({ children }: { children?: React.ReactNode }) => children,
+  // #4420 — mock-surface widening only: SmartScrollView reads the focused
+  // field's height from the library's focused-input value; nothing is focused.
+  useReanimatedFocusedInput: () => ({ input: null }),
 }));
 
 jest.mock("react-native-reanimated", () => {
@@ -435,9 +438,12 @@ function measure(
 
 describe("#3460 · the Ari composer clears the narrow-web BottomNav capsule", () => {
   /* eslint-disable @typescript-eslint/no-require-imports */
-  const { spacing } = require("../../../constants/designSystem") as {
-    spacing: Record<string, number>;
+  // [TEST-MOD-APPROVED #4420] the spacing aliases retired: spacing.sm is
+  // space[2] (8) and spacing.md is space[4] (16), same values.
+  const { space } = require("../../../constants/designSystem") as {
+    space: Record<number, number>;
   };
+  const spacing = { sm: space[2], md: space[4] };
   const { WIDE_DESKTOP_MIN_WIDTH } = require("../../../hooks/useResponsiveLayout") as {
     WIDE_DESKTOP_MIN_WIDTH: number;
   };
@@ -461,7 +467,15 @@ describe("#3460 · the Ari composer clears the narrow-web BottomNav capsule", ()
       path.resolve(__dirname, "../../../components/ui/BottomNav.web.tsx"),
       "utf8",
     );
-    const m = /const CAPSULE_HEIGHT\s*=\s*(\d+)/.exec(src);
+    // [TEST-MOD-APPROVED #4420] the web nav reads its capsule height from the
+    // shared bottomNavMetrics module; follow it there.
+    const viaMetrics = /const CAPSULE_HEIGHT\s*=\s*BOTTOM_NAV_CAPSULE_HEIGHT;/.test(src);
+    const metrics = viaMetrics
+      ? fs.readFileSync(path.resolve(__dirname, "../../../components/ui/bottomNavMetrics.ts"), "utf8")
+      : "";
+    const m = viaMetrics
+      ? /export const BOTTOM_NAV_CAPSULE_HEIGHT\s*=\s*(\d+)/.exec(metrics)
+      : /const CAPSULE_HEIGHT\s*=\s*(\d+)/.exec(src);
     if (m == null) {
       throw new Error(
         "[#3460] CAPSULE_HEIGHT is no longer declared in BottomNav.web.tsx. The nav band height " +

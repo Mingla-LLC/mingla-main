@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #4420] wave 6: retired designSystem aliases are now read by their Graphite names (same values).
 import { describe, expect, test } from "@jest/globals";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,7 +14,7 @@ import path from "node:path";
  *   2. The partner pages diverged from the rest of the business app (orange
  *      `MINGLA PARTNER` eyebrow, `canvas.profile` warmer canvas, hand-rolled
  *      orange Pressable buttons). The re-skin drops the eyebrow, moves to
- *      `canvas.discover`, and renders the shared `<Button>` primitive.
+ *      `color.canvas`, and renders the shared `<Button>` primitive.
  *
  * Source-contract test (readFileSync, no RN renderer).
  *
@@ -52,10 +53,10 @@ describe("ORCH-1333 partner-pages re-skin + close-glyph contract", () => {
     }
   });
 
-  test("D3 — both partner pages use canvas.discover (not the off-brand canvas.profile)", () => {
+  test("D3 — both partner pages use color.canvas (not the off-brand canvas.profile)", () => {
     for (const rel of PARTNER_PAGES) {
       const source = readBusinessFile(rel);
-      expect(source).toContain("canvas.discover");
+      expect(source).toContain("color.canvas");
       expect(source).not.toContain("canvas.profile");
     }
   });

@@ -14,12 +14,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import {
-  spacing,
   radius,
-  shadows,
-  colors,
   fontWeights,
-  backgroundWarmGlow,
+  color,
+  space,
+  shadow,
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
 // ISSUE-1001 — the official business lockup now imports from the canonical
@@ -76,7 +75,7 @@ export default function BusinessLandingScreen({ onGetStarted, onSignIn }: Busine
 
   return (
     <LinearGradient
-      colors={[colors.background.primary, backgroundWarmGlow]}
+      colors={[color.paper, color.paper]}
       style={styles.gradient}
     >
       <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
@@ -143,7 +142,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: {
     flex: 1,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: space[7],
     justifyContent: "center",
     alignItems: "center",
   },
@@ -156,7 +155,7 @@ const styles = StyleSheet.create({
   kicker: {
     fontSize: 13,
     fontWeight: fontWeights.semibold,
-    color: colors.accent,
+    color: color.accent,
     letterSpacing: 0.6,
     textTransform: "uppercase",
     marginBottom: vs(8),
@@ -165,7 +164,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 36,
     fontWeight: fontWeights.bold,
-    color: colors.text.primary,
+    color: color.ink,
     textAlign: "center",
     marginBottom: vs(12),
   },
@@ -173,25 +172,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     fontWeight: fontWeights.regular,
-    color: colors.text.secondary,
+    color: color.text4,
     textAlign: "center",
     maxWidth: s(340),
   },
   footer: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: space[6],
     gap: vs(12),
   },
   primaryCta: {
-    backgroundColor: colors.accent,
+    backgroundColor: color.accent,
     borderRadius: radius.lg,
     paddingVertical: vs(16),
     alignItems: "center",
     justifyContent: "center",
     minHeight: vs(56),
-    ...shadows.md,
+    ...shadow.pane,
   },
   primaryCtaText: {
-    color: colors.text.inverse,
+    color: color.paper,
     fontSize: 17,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
@@ -203,6 +202,6 @@ const styles = StyleSheet.create({
   secondaryCtaText: {
     fontSize: 16,
     fontWeight: fontWeights.semibold,
-    color: colors.primary[700],
+    color: color.accent,
   },
 });

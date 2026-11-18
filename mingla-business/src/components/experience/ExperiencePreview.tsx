@@ -41,11 +41,10 @@ type ParallaxScrollHandler = (
 type ParallaxLayoutHandler = (event: LayoutChangeEvent) => void;
 
 import {
-  accent,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import {
   boldFontFamily,
@@ -129,6 +128,8 @@ export interface ExperiencePreviewProps {
   onSeeWhosGoing?: () => void;
   /** The DOCKED Reserve CTA — LAST child of the PHONE body (route-owned). */
   dockedReserve?: React.ReactNode;
+  /** issue #4420 — the inline "Book a time" picker (route-owned state). */
+  reservePicker?: React.ReactNode;
   /** Scroll-awareness passthrough so the route hides its floating pill. */
   onScroll?: ParallaxScrollHandler;
   onScrollViewLayout?: ParallaxLayoutHandler;
@@ -198,7 +199,7 @@ function formatStopTime(iso: string | null, locale?: string): string | null {
 export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
   experience,
   brand,
-  contentPadding = spacing.lg,
+  contentPadding = space[6],
   testID,
   palette,
   theme,
@@ -218,6 +219,7 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
   socialProof = null,
   onSeeWhosGoing,
   dockedReserve,
+  reservePicker,
   onScroll,
   onScrollViewLayout,
 }) => {
@@ -251,6 +253,7 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
         socialProof={socialProof}
         onSeeWhosGoing={onSeeWhosGoing}
         dockedReserve={dockedReserve}
+        reservePicker={reservePicker}
         onScroll={onScroll}
         onScrollViewLayout={onScrollViewLayout}
         testID={testID}
@@ -296,6 +299,8 @@ const FoundationExperiencePreview: React.FC<{
   /** ORCH-1342 — web-only "See who's going" tap (absent ⇒ inert cluster). */
   onSeeWhosGoing?: () => void;
   dockedReserve?: React.ReactNode;
+  /** issue #4420 — the inline "Book a time" picker (route-owned state). */
+  reservePicker?: React.ReactNode;
   onScroll?: ParallaxScrollHandler;
   onScrollViewLayout?: ParallaxLayoutHandler;
   testID?: string;
@@ -320,6 +325,7 @@ const FoundationExperiencePreview: React.FC<{
   socialProof = null,
   onSeeWhosGoing,
   dockedReserve,
+  reservePicker,
   onScroll,
   onScrollViewLayout,
   testID,
@@ -388,8 +394,22 @@ const FoundationExperiencePreview: React.FC<{
     </View>
   ) : null;
 
+  // issue #4420 — the cover identity: stops · city eyebrow, the title in the
+  // host font, and "Presented by <brand>".
+  const coverIdentity = {
+    eyebrow: [
+      data.stops.length > 1 ? `${data.stops.length} stops` : "Experience",
+      data.cityCountry,
+    ],
+    title: experience.title,
+    presenter: brand.name.trim().length > 0 ? { name: brand.name, photo: null } : null,
+  };
+
   return (
     <ParallaxCoverShell
+      // issue #4420 — the Seth-approved premium public-page frame.
+      frame="premium"
+      coverIdentity={coverIdentity}
       palette={palette}
       theme={theme}
       coverMediaUrl={experience.coverMediaUrl}
@@ -430,6 +450,8 @@ const FoundationExperiencePreview: React.FC<{
         availabilityBlock={availabilityBlock}
         stateBanner={stateBanner}
         dockedReserve={!isDesktop ? dockedReserve : undefined}
+        reservePicker={reservePicker}
+        identityOnCover
         // ORCH-1339 — cross-entity social proof (route-fetched, props-only).
         socialProof={socialProof}
         // ORCH-1342 — web-only "See who's going" → install gate (route-wired).
@@ -480,7 +502,7 @@ const LegacyExperiencePreview: React.FC<{
 
         {/* Date-model block — one-time / recurring / multi-date. */}
         <View style={styles.whenCard}>
-          <Icon name="calendar" size={16} color={accent.warm} />
+          <Icon name="calendar" size={16} color={color.accent} />
           <Text style={styles.whenText} numberOfLines={2}>
             {dateSubline}
           </Text>
@@ -555,7 +577,7 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: "#1a1c20",
+    backgroundColor: color.canvas,
   },
   brandTextCol: { flexShrink: 1 },
   brandKicker: {
@@ -580,96 +602,96 @@ const styles = StyleSheet.create({
   },
   // ===================== LEGACY styles (unchanged) =====================
   host: { backgroundColor: "transparent" },
-  body: { padding: spacing.lg, gap: spacing.sm },
+  body: { padding: space[6], gap: space[2] },
   legacyTitle: {
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    color: textTokens.primary,
+    fontSize: type.title.fontSize,
+    lineHeight: type.title.lineHeight,
+    fontWeight: type.title.fontWeight,
+    color: color.text1,
   },
   brandByline: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   whenCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.md,
-    padding: spacing.md,
+    gap: space[1],
+    marginTop: space[4],
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.10)",
+    borderColor: color.lineStrong,
   },
   whenText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
     flex: 1,
   },
-  descriptionWrap: { marginTop: spacing.md },
-  legacySection: { marginTop: spacing.lg, gap: spacing.sm },
+  descriptionWrap: { marginTop: space[4] },
+  legacySection: { marginTop: space[6], gap: space[2] },
   sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: textTokens.secondary,
+    color: color.text2,
     textTransform: "uppercase",
   },
-  stopsList: { gap: spacing.sm },
+  stopsList: { gap: space[2] },
   legacyStopCard: {
-    padding: spacing.md,
+    padding: space[4],
     borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: color.fill.tableHead,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    gap: spacing.xs,
+    borderColor: color.line,
+    gap: space[1],
   },
   legacyStopOrder: {
-    fontSize: typography.caption.fontSize,
+    fontSize: type.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 0.6,
-    color: accent.warm,
+    color: color.accent,
   },
   legacyStopName: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   legacyStopAddress: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
   },
   legacyStopTime: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
   },
   legacyPricingCard: {
-    marginTop: spacing.lg,
-    padding: spacing.lg,
+    marginTop: space[6],
+    padding: space[6],
     borderRadius: radiusTokens.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: color.lineStrong,
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    gap: spacing.md,
+    gap: space[4],
   },
   pricingLabelLegacy: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   legacyPricingPrice: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
 });
 

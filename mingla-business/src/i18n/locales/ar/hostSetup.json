@@ -171,6 +171,10 @@
       "readyBank": "حساب مصرفي في {{country}}",
       "readyBankAny": "حساب مصرفي في بلدك",
       "readyTax": "الرقم الضريبي (للشركات المسجلة فقط)"
+    },
+    "stepper": {
+      "saved": "تم الحفظ",
+      "steps": "الخطوات"
     }
   },
   "doorMode": {

@@ -16,12 +16,9 @@ import React, { useEffect, useRef } from "react";
 import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
   durations,
-  glass,
   radius as radiusTokens,
-  semantic,
-  text as textTokens,
+  color,
 } from "../../constants/designSystem";
 import { useReduceMotion } from "../../hooks/useMotionPreferences";
 
@@ -86,7 +83,7 @@ export const DoorStatusPill = ({
         {/* The busy wash fades over the glass fill. */}
         <Animated.View pointerEvents="none" style={[styles.busyWash, { opacity: busy }]} />
         {variant === "busy" ? (
-          <ActivityIndicator size="small" color={accent.warm} style={styles.spinner} />
+          <ActivityIndicator size="small" color={color.text2} style={styles.spinner} />
         ) : (
           <View
             style={[styles.dot, urgent ? styles.dotUrgent : null]}
@@ -117,26 +114,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: color.lineStrong,
   },
   busyWash: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: accent.faint,
+    backgroundColor: color.fill.tabOn,
     borderRadius: radiusTokens.full,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   spinner: { transform: [{ scale: 0.7 }] },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: accent.warm },
-  dotUrgent: { backgroundColor: semantic.warning },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.text2 },
+  dotUrgent: { backgroundColor: color.warning },
   text: {
     flexShrink: 1,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     fontVariant: ["tabular-nums"],
   },
   srOnly: {

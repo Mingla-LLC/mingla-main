@@ -89,6 +89,11 @@ jest.mock(
 );
 jest.mock("../../../ui/PhoneField", () => ({ BUSINESS_SHEET_PHONE_THEME: {} }));
 jest.mock("../../../ui/Icon", () => ({ Icon: () => null }));
+// #4238 rework 3: the web country sheet (Sheet + Input + SheetScrollLayout)
+// is imported by the picker; this suite renders the native (ios) path.
+jest.mock("../../../ui/Sheet", () => ({ Sheet: () => null }));
+jest.mock("../../../ui/SheetScrollLayout", () => ({ SheetScrollLayout: () => null }));
+jest.mock("../../../ui/Input", () => ({ Input: () => null }));
 
 const mockInvoke = jest.fn();
 jest.mock("../../../../services/supabase", () => ({

@@ -7,12 +7,11 @@ import { resolveTheme } from "../../../../packages/offering-rendering/themeResol
 import { ThemeAccentFill } from "../../../../packages/offering-rendering/ThemeAccentFill";
 
 import {
-  androidOpaque,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  materials,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Icon } from "../ui/Icon";
@@ -157,7 +156,7 @@ export const ThemeControlRow: React.FC<ThemeControlRowProps> = ({
       {variant === "review" ? (
         <Text style={styles.editWord}>Edit</Text>
       ) : (
-        <Icon name="chevR" size={16} color={textTokens.quaternary} />
+        <Icon name="chevR" size={16} color={color.text4} />
       )}
     </Pressable>
   );
@@ -171,19 +170,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
     borderWidth: 1,
   },
   // iOS / Web — translucent glass.
   rowGlass: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
+    backgroundColor: color.fill.inset,
+    borderColor: color.line,
   },
   // Android — opaque composites, and NO elevation under a rounded fill
   // (ANDROID_GLASS_USES_OPAQUE_FALLBACK).
   rowAndroid: {
-    backgroundColor: androidOpaque.rowFill,
-    borderColor: androidOpaque.rowBorder,
+    backgroundColor: materials.pane.solidFill,
+    borderColor: color.card2,
     elevation: 0,
   },
   rowPressed: {
@@ -224,7 +223,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   valueRow: {
     flexDirection: "row",
@@ -236,7 +235,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "500",
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   warningDot: {
     width: 6,
@@ -245,7 +244,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f59e0b",
   },
   editWord: {
-    ...typography.labelCap,
-    color: textTokens.secondary,
+    ...type.label,
+    color: color.text2,
   },
 });

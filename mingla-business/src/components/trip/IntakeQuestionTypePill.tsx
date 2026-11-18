@@ -12,11 +12,9 @@ import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 
 export interface IntakeQuestionTypePillProps {
@@ -59,19 +57,19 @@ export const IntakeQuestionTypePill: React.FC<IntakeQuestionTypePillProps> = ({
 
 const styles = StyleSheet.create({
   chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: space[4],
+    paddingVertical: space[1],
     minHeight: 36,
     borderRadius: radius.full,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     justifyContent: "center",
   },
   chipActive: {
-    borderColor: accent.border,
-    backgroundColor: accent.tint,
+    borderColor: color.accentLine,
+    backgroundColor: color.accentLine,
   },
   chipDisabled: {
     opacity: 0.4,
@@ -85,10 +83,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   labelActive: {
-    color: textTokens.primary,
+    color: color.text1,
   },
 });
 

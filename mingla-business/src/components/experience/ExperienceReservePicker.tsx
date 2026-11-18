@@ -28,27 +28,30 @@
  * Anon-tolerant: no useAuth, no fetch — the route passes resolved occurrences.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
-  experienceBlockChoicesThatFit,
   experienceBlockLengthLabel,
-  experienceBookedEndIso,
-  experienceBookedStartIso,
   experiencePriceBasisLabel,
-  experienceTimeChoices,
   experienceZoneCityLabel,
   experienceZoneDiffersFromViewer,
   formatExperienceMinute,
   type ExperienceOfferingTicket,
   type ThemePalette,
 } from "@mingla/offering-rendering";
-import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+// issue #4420 — the reservation rules live in ONE shared hook, used by this
+// sheet and by the page's inline "Book a time" picker.
 import {
-  priceDecimals,
-  priceFallbackDecimals,
-} from "@mingla/offering-rendering/priceDecimals";
+  useExperienceReserveState,
+  type ExperienceSlotFetcher,
+} from "@mingla/offering-rendering/useExperienceReserveState";
+import {
+  EXPERIENCE_MAX_PARTY,
+  parseSlotAvailability,
+  type ExperienceReserveMode as SharedReserveMode,
+  type ExperienceReserveSelection as SharedReserveSelection,
+} from "@mingla/offering-rendering/experienceReserveModel";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
 import type { PublicExperienceDate } from "../../services/publicExperienceService";
@@ -58,41 +61,29 @@ import { experienceRemainingChipText } from "@mingla/offering-rendering/experien
 import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
-function wallMinuteInZone(iso: string, timeZone: string): number | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "numeric",
-      hourCycle: "h23",
-      timeZone: timeZone || "UTC",
-    }).formatToParts(d);
-    const h = Number(parts.find((p) => p.type === "hour")?.value);
-    const m = Number(parts.find((p) => p.type === "minute")?.value);
-    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-    return h * 60 + m;
-  } catch {
-    return null;
-  }
-}
+/**
+ * issue #4420 — the live per-start spots fetcher, shared by this sheet and
+ * the inline picker (`pg_experience_slot_availability`). Errors and malformed
+ * payloads resolve null: unknown spots stay unknown, never fabricated.
+ */
+export const fetchExperienceSlotAvailability: ExperienceSlotFetcher = async ({
+  eventId,
+  eventDateId,
+  ticketTypeId,
+}) => {
+  const { data, error } = await supabase.rpc("pg_experience_slot_availability", {
+    p_event_id: eventId,
+    p_event_date_id: eventDateId,
+    p_ticket_type_id: ticketTypeId,
+  });
+  if (error) return null;
+  return parseSlotAvailability(data);
+};
 
-export type ExperienceReserveMode = "slots" | "open-daily";
+export type ExperienceReserveMode = SharedReserveMode;
 
-export interface ExperienceReserveSelection {
-  /** The chosen occurrence's event_dates.id. */
-  eventDateId: string;
-  /** Party size (open-daily) → cart quantity. Always ≥1; 1 in slots mode. */
-  quantity: number;
-  /** issue #3281 — open-daily booked start instant (ISO), when a time was chosen. */
-  startAt?: string;
-  /** issue #3281 R2 — chosen price option (ticket_types.id). */
-  ticketTypeId?: string;
-  /** issue #3281 R2 — block hire end instant (ISO). */
-  bookedEndAt?: string;
-  /** issue #3281 R2 — party size for group options (may differ from quantity). */
-  partySize?: number;
-}
+/** The checkout hand-off (unchanged contract; owned by the shared model). */
+export type ExperienceReserveSelection = SharedReserveSelection;
 
 export interface ExperienceReservePickerProps {
   visible: boolean;
@@ -137,7 +128,7 @@ export interface ExperienceReservePickerProps {
 }
 
 const SHEET_SNAP = "full" as const;
-const MAX_PARTY = 12;
+const MAX_PARTY = EXPERIENCE_MAX_PARTY;
 
 function formatDateLabel(startAt: string, timezone: string): string {
   const d = new Date(startAt);
@@ -231,20 +222,50 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   initialParty = null,
 }) => {
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
-  const optionList = useMemo(
-    () => (Array.isArray(options) ? options : []),
-    [options],
-  );
-  const showOptionChoice = optionList.length > 1;
-  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
-  const [selectedDateId, setSelectedDateId] = useState<string | null>(null);
-  // Open-daily: chosen time-within-window (minutes from midnight) + party size.
-  const [selectedMinute, setSelectedMinute] = useState<number | null>(null);
-  const [selectedBlocks, setSelectedBlocks] = useState<number | null>(null);
-  const [party, setParty] = useState<number>(2);
-  // ORCH-1186 Fix 4 — open-daily is now a 3-step TAP-TO-ADVANCE wizard. Init
+  // ORCH-1186 Fix 4 — open-daily is a 3-step TAP-TO-ADVANCE wizard. Init
   // "day"; reset to "day" each open. (Slots mode ignores `step` — single list.)
   const [step, setStep] = useState<"day" | "time" | "party">("day");
+  const reserve = useExperienceReserveState({
+    mode,
+    dates,
+    timezone,
+    eventRemaining,
+    unitAllInCents,
+    currency,
+    options,
+    spacingMinutes: propsSpacingMinutes,
+    minNoticeMinutes: propsMinNoticeMinutes,
+    eventId,
+    capacityScope,
+    fetchSlotAvailability: fetchExperienceSlotAvailability,
+    // Keep the selected start's remaining through the party step; only the
+    // time and party steps hold live spots.
+    slotFetchEnabled: visible && (step === "time" || step === "party"),
+  });
+  const {
+    optionList,
+    selectedOption,
+    selectedDateId,
+    selectedDate,
+    selectedMinute,
+    selectedBlocks,
+    party,
+    timeChoices,
+    slotRemainingByMinute,
+    isBlockOption,
+    isGroupOption,
+    blockMinutes,
+    blockChoices,
+    partyMax,
+    canConfirm,
+  } = reserve;
+  const showOptionChoice = optionList.length > 1;
+  const resetReserve = reserve.reset;
+  const selectReserveDate = reserve.selectDate;
+  // setParty re-derives with partyMax; a ref keeps the open effect from
+  // re-running (and wiping the guest's pick) whenever that cap moves.
+  const setReservePartyRef = useRef(reserve.setParty);
+  setReservePartyRef.current = reserve.setParty;
 
   // ORCH-1153 BUG-4 (Seth device, /exp date picker "dead"): reset the selection
   // whenever the sheet opens so a re-open starts clean (a stale selectedDateId
@@ -253,286 +274,20 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   // consumer picker's expected fresh-open behavior.
   useEffect(() => {
     if (visible) {
-      setSelectedOptionId(optionList[0]?.ticketTypeId ?? null);
+      resetReserve();
       // #4453 milestone 5 — a website's pre-fill picks its date (only one in `dates`) and party.
       const seeded = initialDateId && dates.some((date) => date.id === initialDateId) ? initialDateId : null;
-      setSelectedDateId(seeded);
-      setSelectedMinute(null);
-      setSelectedBlocks(null);
-      setParty(initialParty ?? 2);
+      if (seeded) selectReserveDate(seeded);
+      if (typeof initialParty === "number") setReservePartyRef.current(initialParty);
       setStep(seeded && mode === "open-daily" ? "time" : "day");
     }
-  }, [visible, optionList, initialDateId, initialParty, dates, mode]);
-
-  const selectedOption = useMemo(() => {
-    if (optionList.length === 0) return null;
-    return (
-      optionList.find((o) => o.ticketTypeId === selectedOptionId) ??
-      optionList[0] ??
-      null
-    );
-  }, [optionList, selectedOptionId]);
-
-  const selectedDate = useMemo(
-    () => dates.find((d) => d.id === selectedDateId) ?? null,
-    [dates, selectedDateId],
-  );
-
-  // Open-daily: spacing grid (R3; default 30) BOUNDED by the occurrence window
-  // in the EXPERIENCE zone (issue #3281 — never Date#getHours()).
-  const spacingMinutes =
-    typeof propsSpacingMinutes === "number" && propsSpacingMinutes > 0
-      ? propsSpacingMinutes
-      : 30;
-  const noticeMinutes =
-    typeof propsMinNoticeMinutes === "number" && propsMinNoticeMinutes >= 0
-      ? propsMinNoticeMinutes
-      : 120;
-  const timeChoices = useMemo<number[]>(() => {
-    if (mode !== "open-daily" || selectedDate === null) return [];
-    const nowMs = Date.now() + noticeMinutes * 60_000;
-    return experienceTimeChoices(
-      selectedDate.startAt,
-      selectedDate.endAt,
-      timezone,
-      spacingMinutes,
-      nowMs,
-    );
-  }, [mode, selectedDate, timezone, spacingMinutes, noticeMinutes]);
-
-  // issue #3281 R3 — per-start (and per-day) remaining from slot RPC.
-  const [slotRemainingByMinute, setSlotRemainingByMinute] = useState<
-    Map<number, number | null>
-  >(() => new Map());
-  useEffect(() => {
-    if (
-      !visible ||
-      mode !== "open-daily" ||
-      selectedDate === null ||
-      typeof eventId !== "string" ||
-      eventId.length === 0 ||
-      (capacityScope !== "per_start" && capacityScope !== "per_day")
-    ) {
-      setSlotRemainingByMinute(new Map());
-      return;
-    }
-    // Keep the selected start's remaining through the party step; only the
-    // time step refetches (partyMax still reads this map).
-    if (step !== "time" && step !== "party") {
-      setSlotRemainingByMinute(new Map());
-      return;
-    }
-    if (step === "party") return;
-    let cancelled = false;
-    void (async () => {
-      const { data, error } = await supabase.rpc(
-        "pg_experience_slot_availability",
-        {
-          p_event_id: eventId,
-          p_event_date_id: selectedDate.id,
-          p_ticket_type_id: selectedOption?.ticketTypeId ?? null,
-        },
-      );
-      if (cancelled || error || data === null || typeof data !== "object") {
-        return;
-      }
-      const slots = (data as { slots?: unknown }).slots;
-      if (!Array.isArray(slots)) return;
-      const next = new Map<number, number | null>();
-      for (const raw of slots) {
-        if (raw === null || typeof raw !== "object") continue;
-        const startAt = (raw as { startAt?: unknown }).startAt;
-        const remaining = (raw as { remaining?: unknown }).remaining;
-        if (typeof startAt !== "string") continue;
-        const minute = wallMinuteInZone(startAt, timezone);
-        if (minute === null) continue;
-        next.set(
-          minute,
-          typeof remaining === "number" && Number.isFinite(remaining)
-            ? remaining
-            : null,
-        );
-      }
-      if (!cancelled) setSlotRemainingByMinute(next);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    visible,
-    mode,
-    step,
-    selectedDate,
-    eventId,
-    capacityScope,
-    selectedOption?.ticketTypeId,
-    timezone,
-  ]);
-
-  const isBlockOption = selectedOption?.priceBasis === "block";
-  const isGroupOption = selectedOption?.priceBasis === "group";
-  const blockMinutes =
-    typeof selectedOption?.blockMinutes === "number" &&
-    selectedOption.blockMinutes > 0
-      ? selectedOption.blockMinutes
-      : 60;
-  const minBlocks =
-    typeof selectedOption?.minBlocks === "number" && selectedOption.minBlocks > 0
-      ? selectedOption.minBlocks
-      : 1;
-  const maxBlocks =
-    typeof selectedOption?.maxBlocks === "number" &&
-    selectedOption.maxBlocks >= minBlocks
-      ? selectedOption.maxBlocks
-      : minBlocks;
-
-  const blockChoices = useMemo<number[]>(() => {
-    if (
-      !isBlockOption ||
-      mode !== "open-daily" ||
-      selectedDate === null ||
-      selectedMinute === null
-    ) {
-      return [];
-    }
-    return experienceBlockChoicesThatFit(
-      selectedDate.startAt,
-      selectedDate.endAt,
-      timezone,
-      selectedMinute,
-      blockMinutes,
-      minBlocks,
-      maxBlocks,
-      spacingMinutes,
-    );
-  }, [
-    isBlockOption,
-    mode,
-    selectedDate,
-    selectedMinute,
-    timezone,
-    blockMinutes,
-    minBlocks,
-    maxBlocks,
-    spacingMinutes,
-  ]);
-
-  useEffect(() => {
-    if (selectedMinute === null) {
-      setSelectedBlocks(null);
-      return;
-    }
-    if (!isBlockOption) {
-      setSelectedBlocks(null);
-      return;
-    }
-    if (blockChoices.length === 0) {
-      setSelectedBlocks(null);
-      return;
-    }
-    setSelectedBlocks((prev) =>
-      prev !== null && blockChoices.includes(prev) ? prev : blockChoices[0],
-    );
-  }, [selectedMinute, isBlockOption, blockChoices]);
-
-  const optionRemaining =
-    selectedOption?.ticketsRemaining !== undefined
-      ? selectedOption.ticketsRemaining
-      : eventRemaining;
-  const slotRemainingForSelection =
-    selectedMinute !== null && slotRemainingByMinute.has(selectedMinute)
-      ? slotRemainingByMinute.get(selectedMinute) ?? null
-      : null;
-  const remainingForParty =
-    typeof slotRemainingForSelection === "number"
-      ? slotRemainingForSelection
-      : optionRemaining;
-  const groupCap =
-    isGroupOption &&
-    typeof selectedOption?.groupMax === "number" &&
-    selectedOption.groupMax >= 2
-      ? selectedOption.groupMax
-      : MAX_PARTY;
-  const partyMax = Math.min(
-    groupCap,
-    remainingForParty === null ? groupCap : Math.max(1, remainingForParty),
-  );
-
-  useEffect(() => {
-    setParty((p) => Math.min(Math.max(1, p), partyMax));
-  }, [partyMax]);
-
-  const activeUnitCents = useMemo((): number | null => {
-    if (
-      selectedOption !== null &&
-      typeof selectedOption.priceAllInCents === "number" &&
-      selectedOption.priceAllInCents > 0
-    ) {
-      return selectedOption.priceAllInCents;
-    }
-    if (
-      selectedOption !== null &&
-      typeof selectedOption.priceCents === "number" &&
-      selectedOption.priceCents > 0
-    ) {
-      return selectedOption.priceCents;
-    }
-    return typeof unitAllInCents === "number" && unitAllInCents > 0
-      ? unitAllInCents
-      : null;
-  }, [selectedOption, unitAllInCents]);
-
-  const canConfirm =
-    mode === "slots"
-      ? selectedDate !== null &&
-        (selectedDate.ticketsRemaining === null ||
-          selectedDate.ticketsRemaining > 0)
-      : selectedDate !== null &&
-        selectedMinute !== null &&
-        (!isBlockOption || selectedBlocks !== null);
+  }, [visible, resetReserve, selectReserveDate, initialDateId, initialParty, dates, mode]);
 
   const handleConfirm = (): void => {
-    if (selectedDate === null) return;
-    const ticketTypeId = selectedOption?.ticketTypeId;
-    if (mode === "slots") {
-      onConfirm({
-        eventDateId: selectedDate.id,
-        quantity: 1,
-        ...(ticketTypeId !== undefined ? { ticketTypeId } : {}),
-      });
-      return;
-    }
-    if (selectedMinute === null) return;
-    const bookedIso = experienceBookedStartIso(
-      selectedDate.startAt,
-      selectedDate.endAt,
-      timezone,
-      selectedMinute,
-      spacingMinutes,
-    );
-    // issue #3281 — never confirm open-daily without a resolvable start
-    // (past / spring-forward gaps convert to null).
-    if (bookedIso === null) return;
-    let bookedEndAt: string | undefined;
-    if (isBlockOption && selectedBlocks !== null) {
-      const endIso = experienceBookedEndIso(
-        bookedIso,
-        blockMinutes,
-        selectedBlocks,
-      );
-      if (endIso === null) return;
-      bookedEndAt = endIso;
-    }
-    // person: quantity = party; group/block: one unit + partySize guests.
-    const quantity = isGroupOption || isBlockOption ? 1 : party;
-    onConfirm({
-      eventDateId: selectedDate.id,
-      quantity,
-      startAt: bookedIso,
-      partySize: party,
-      ...(ticketTypeId !== undefined ? { ticketTypeId } : {}),
-      ...(bookedEndAt !== undefined ? { bookedEndAt } : {}),
-    });
+    // issue #4420 — the shared model builds the byte-identical hand-off
+    // (slots → quantity 1; person → party; group / block → 1 + partySize).
+    if (reserve.selection === null) return;
+    onConfirm(reserve.selection);
   };
 
   const formatMinute = formatExperienceMinute;
@@ -540,48 +295,11 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   const zoneCity = experienceZoneCityLabel(timezone);
   const showZoneHint = experienceZoneDiffersFromViewer(timezone);
 
-  const confirmLabel = useMemo((): string => {
-    const blocks =
-      isBlockOption && selectedBlocks !== null ? selectedBlocks : 1;
-    const groupsOrPeople = isGroupOption || isBlockOption ? 1 : party;
-    const unit = activeUnitCents;
-    const code = (
-      selectedOption?.currency ??
-      currency ??
-      ""
-    )
-      .trim()
-      .toUpperCase();
-    if (unit === null || code.length !== 3) return "Reserve →";
-    const major = (unit * groupsOrPeople * blocks) / 100;
-    try {
-      const money = withCurrencyGlyph(
-        new Intl.NumberFormat(undefined, {
-          style: "currency",
-          currency: code,
-          ...priceDecimals(major),
-        }).format(major),
-        code,
-      );
-      return `Reserve · ${money}`;
-    } catch {
-      return `Reserve · ${major.toFixed(priceFallbackDecimals(major))} ${code}`;
-    }
-  }, [
-    isBlockOption,
-    isGroupOption,
-    selectedBlocks,
-    party,
-    activeUnitCents,
-    selectedOption,
-    currency,
-  ]);
+  const confirmLabel =
+    reserve.total === null ? "Reserve →" : `Reserve · ${reserve.total}`;
 
   const selectOption = (ticketTypeId: string): void => {
-    setSelectedOptionId(ticketTypeId);
-    setSelectedMinute(null);
-    setSelectedBlocks(null);
-    setParty(2);
+    reserve.selectOption(ticketTypeId);
   };
 
   // ORCH-1186 Fix 4 — wizard step machine (open-daily only). Slots mode shows
@@ -742,9 +460,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                 formatDateLabel={formatDateLabel}
                 remainingChip={remainingChip}
                 onSelectDate={(dateId) => {
-                  setSelectedDateId(dateId);
-                  setSelectedMinute(null);
-                  setSelectedBlocks(null);
+                  reserve.selectDate(dateId);
                   if (isWizard) setStep("time");
                 }}
               />
@@ -776,7 +492,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                         full
                           ? undefined
                           : () => {
-                              setSelectedMinute(min);
+                              reserve.selectMinute(min);
                               // Block options stay on time step for "How long"; else party.
                               if (!isBlockOption) setStep("party");
                             }
@@ -828,7 +544,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                         <Pressable
                           key={n}
                           onPress={() => {
-                            setSelectedBlocks(n);
+                            reserve.selectBlocks(n);
                             setStep("party");
                           }}
                           accessibilityRole="radio"
@@ -895,7 +611,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                 </View>
                 <View style={styles.partyCtrl}>
                   <Pressable
-                    onPress={() => setParty((p) => Math.max(1, p - 1))}
+                    onPress={() => reserve.setParty((p) => Math.max(1, p - 1))}
                     disabled={party <= 1}
                     accessibilityRole="button"
                     accessibilityLabel="Decrease party size"
@@ -911,7 +627,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                     {party}
                   </Text>
                   <Pressable
-                    onPress={() => setParty((p) => Math.min(partyMax, p + 1))}
+                    onPress={() => reserve.setParty((p) => Math.min(partyMax, p + 1))}
                     disabled={party >= partyMax}
                     accessibilityRole="button"
                     accessibilityLabel="Increase party size"

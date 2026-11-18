@@ -159,7 +159,7 @@ export function lintRedditDating(text) {
 
 // ── 3. Alcohol adjacency (warn) ───────────────────────────────────────────────
 const ALCOHOL_TERMS = [
-  /\b(drinks?|cocktails?|beer|wine|shots?|booze|alcohol|happy hour|open bar|byob|bottomless|prosecco|champagne|tequila|whisk(e)?y|vodka|gin|rum)\b/i,
+  /\b(drinks?|cocktails?|beers?|wines?|shots?|booze|alcohol|happy hours?|open bars?|byob|bottomless|proseccos?|champagnes?|tequilas?|whisk(e)?ys?|whiskies|vodkas?|gins?|rums?|pints?|ciders?|lagers?)\b/i,
 ];
 
 export const ALCOHOL_WARNING =

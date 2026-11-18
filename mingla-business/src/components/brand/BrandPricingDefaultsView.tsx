@@ -23,14 +23,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 
 import {
-  canvas,
-  glass,
+  color,
   radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  space,
+  type,
+  suiteFormMaxWidth,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { formatCurrencyRound, currencyCodeOrNull } from "../../utils/currency";
 import { useBrand, brandKeys } from "../../hooks/useBrands";
@@ -58,6 +58,7 @@ export const BrandPricingDefaultsView: React.FC<
   const brand = brandQuery.data ?? null;
   const rqClient = useQueryClient();
   const router = useRouter();
+  const { isWideDesktop } = useResponsiveLayout();
   const role = useCurrentBrandRole(brandId);
   const taxRegistration = useBrandTaxRegistration(brandId);
   const canEdit = !role.isLoading && !role.isError && canPerformAction(role.rank, "EDIT_TICKET_PRICE");
@@ -121,7 +122,7 @@ export const BrandPricingDefaultsView: React.FC<
   if (brand === null || defaults === null) {
     return (
       <View style={[styles.host, styles.center]}>
-        <ActivityIndicator color={textTokens.secondary} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   }
@@ -140,10 +141,10 @@ export const BrandPricingDefaultsView: React.FC<
   return (
     <ScrollView
       style={styles.host}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, isWideDesktop && styles.contentDesktop]}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.screenTitle}>Pricing defaults</Text>
+      {/* #4420 — the title lives in the route's top bar (no repeat). */}
       <Text style={styles.screenSubtitle}>
         Set once. Every new event, trip and experience starts from these — you
         can override per offering.
@@ -191,43 +192,50 @@ export const BrandPricingDefaultsView: React.FC<
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.profile,
+    backgroundColor: color.canvas,
   },
   center: {
     alignItems: "center",
     justifyContent: "center",
   },
   content: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
+    padding: space[4],
+    paddingBottom: space[7],
+    gap: space[4],
+  },
+  // #4420 — desktop (T4 form column): a readable 720 column, not full width.
+  contentDesktop: {
+    width: "100%",
+    maxWidth: suiteFormMaxWidth + space[6] * 2,
+    paddingHorizontal: space[6],
   },
   screenTitle: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   screenSubtitle: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+    paddingHorizontal: space[1],
   },
   regionChip: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: space[1],
+    paddingHorizontal: space[2],
     borderRadius: radiusTokens.full,
-    backgroundColor: glass.tint.backdrop,
+    backgroundColor: scrim.modal,
     alignSelf: "flex-start",
   },
   regionText: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.caption.fontSize,
+    color: color.text2,
   },
   error: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
-    marginTop: spacing.md,
+    fontSize: type.caption.fontSize,
+    color: color.errorText,
+    marginTop: space[4],
   },
 });
 

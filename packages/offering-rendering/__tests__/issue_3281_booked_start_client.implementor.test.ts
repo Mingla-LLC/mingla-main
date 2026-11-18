@@ -73,13 +73,19 @@ Deno.test("#3281 R1: past wall-clock slots are filtered from choices", () => {
 });
 
 Deno.test("#3281 R1 FAIL-ON-REVERT: Host picker open-daily confirm includes startAt", async () => {
-  const src = await read(
+  // [TEST-MOD-APPROVED #4420] the Host sheet's hand-off moved verbatim into the
+  // shared experienceReserveModel (used by the sheet AND the inline picker);
+  // the sheet now confirms with the model's selection.
+  const sheet = await read(
     "../../../mingla-business/src/components/experience/ExperienceReservePicker.tsx",
   );
+  assertStringIncludes(sheet, "useExperienceReserveState(");
+  assertStringIncludes(sheet, "onConfirm(reserve.selection)");
+  const src = await read("../experienceReserveModel.ts");
   assertStringIncludes(src, "startAt?: string");
   assertStringIncludes(src, "experienceBookedStartIso");
   assertStringIncludes(src, "startAt: bookedIso");
-  assertStringIncludes(src, "if (bookedIso === null) return;");
+  assertStringIncludes(src, "if (bookedIso === null) return null;");
 });
 
 Deno.test("#3281 R1 FAIL-ON-REVERT: Explorer picker open-daily confirm includes startAt", async () => {

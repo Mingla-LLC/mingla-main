@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-META-FLOOR-FOLLOWS-BILLING | issue #4238 | Meta's daily floor follows the billing event, not the optimisation goal: an ad billed on impressions needs the imp floor ($1 a day), one billed on link clicks needs high_freq ($5), and low-frequency billing needs low_freq.
 // ISSUE-864 WP4 [Full Rooms Ad Engine — Campaign Builder UI] — HAPPY-PATH
 // regression suite (node:test — the house admin pattern: pure-logic module
 // tests + fs source assertions, no DOM).
@@ -47,8 +48,12 @@ import {
   runPolicyPrecheck,
 } from "../lib/adBuilder/policyLinter.js";
 import {
+  ADMIN_META_BILLING_EVENT,
+  computeAdminMinimumCents,
+  metaBudgetCategoryForBillingEvent,
   metaFloorCents,
   channelFloorCents,
+  floorLabel,
   frequencyCapAllowed,
   learningLimitedWarning,
   launchConfirmCopy,
@@ -216,6 +221,9 @@ describe("payload contracts", () => {
     assert.equal(payload.creative.ai_generated, true);
     assert.deepEqual(payload.special_ad_categories, [], "NONE → empty array (validated, not hardcoded)");
     assert.equal(payload.optimization_goal, "LINK_CLICKS", "pixel epoch-0 ⇒ LINK_CLICKS (A4.0(5))");
+    // #4238: the floor helpers default to the billing event this payload sends.
+    assert.equal(payload.billing_event, ADMIN_META_BILLING_EVENT);
+    assert.equal(ADMIN_META_BILLING_EVENT, "IMPRESSIONS");
     const housing = buildCreatePayload("meta", { ...state, specialAdCategory: "HOUSING" });
     assert.deepEqual(housing.special_ad_categories, ["HOUSING"]);
     assert.deepEqual(housing.special_ad_category_country, ["US"]);
@@ -298,19 +306,70 @@ describe("A4.d policy pre-check", () => {
 describe("budget rules", () => {
   const metaConn = { currency: "USD", extra: { minimum_budgets: { imp: 100, video_views: 100, high_freq: 500, low_freq: 4000 } } };
 
-  it("Meta floor is per-CATEGORY from the connection row — $5/day for link clicks, $1 for reach", () => {
-    assert.equal(metaFloorCents(metaConn, "LINK_CLICKS"), 500, "LINK_CLICKS is high_freq — the $1 folklore is the imp floor");
-    assert.equal(metaFloorCents(metaConn, "REACH"), 100);
-    assert.equal(metaFloorCents({ extra: {} }, "LINK_CLICKS"), null, "no floors stored → null (server 424s, never a hardcoded table)");
+  // [TEST-MOD #4238 Fix 1] Meta's floor follows the BILLING EVENT, not the
+  // optimisation goal (I-4238-META-FLOOR-FOLLOWS-BILLING). Every Admin Meta
+  // create bills on IMPRESSIONS, so the link-clicks ad needs the imp floor.
+  it("Meta floor is per-CATEGORY by billing event — $1/day billed on impressions, $5 billed on clicks", () => {
+    assert.equal(metaFloorCents(metaConn, "IMPRESSIONS"), 100, "billed on impressions ⇒ imp ($1)");
+    assert.equal(metaFloorCents(metaConn), 100, "default is the billing event Admin sends");
+    assert.equal(metaFloorCents(metaConn, "LINK_CLICKS"), 500, "billed on link clicks ⇒ high_freq ($5)");
+    assert.equal(metaFloorCents(metaConn, "APP_INSTALLS"), 4000, "low-frequency billing ⇒ low_freq");
+    assert.equal(metaFloorCents(metaConn, "SOMETHING_NEW"), 4000, "unknown ⇒ low_freq, never cheaper");
+    assert.equal(metaFloorCents(metaConn, ""), 4000, "empty ⇒ low_freq");
+    assert.equal(metaFloorCents({ extra: {} }, "IMPRESSIONS"), null, "no floors stored → null (server 424s, never a hardcoded table)");
   });
 
-  // [TEST-MOD-APPROVED #3697] Wave 2 D1 (Ads Design Contract v1.3): TikTok $50,
-  // Reddit $5, Google $0 money floor (3-day total rule stays separate).
-  it("per-channel floors: TikTok $50/day; Reddit $5; Google $0", () => {
-    assert.equal(channelFloorCents("tiktok", {}), 5000);
+  it("the mirror's switch matches the server rule category by category", () => {
+    const expected = {
+      IMPRESSIONS: "imp",
+      THRUPLAY: "video_views",
+      VIDEO_VIEWS: "video_views",
+      TWO_SECOND_CONTINUOUS_VIDEO_VIEWS: "video_views",
+      LINK_CLICKS: "high_freq",
+      CLICKS: "high_freq",
+      PAGE_LIKES: "high_freq",
+      POST_ENGAGEMENT: "high_freq",
+      LISTING_INTERACTION: "high_freq",
+      APP_INSTALLS: "low_freq",
+      OFFER_CLAIMS: "low_freq",
+      PURCHASE: "low_freq",
+      "": "low_freq",
+    };
+    for (const [event, category] of Object.entries(expected)) {
+      assert.equal(metaBudgetCategoryForBillingEvent(event), category, event);
+    }
+    const server = fs.readFileSync(
+      path.resolve(__dirname, "../../../supabase/functions/_shared/adChannelCore.ts"),
+      "utf8",
+    );
+    const body = server.slice(server.indexOf("export function metaBudgetCategoryForBillingEvent"));
+    for (const event of Object.keys(expected).filter(Boolean)) {
+      if (expected[event] === "low_freq") continue;
+      assert.ok(body.includes(`case "${event}":`), `server switch lists ${event}`);
+    }
+  });
+
+  // [TEST-MOD #4238 D-1] Seth approved the real per-ad-set limits: TikTok
+  // $20/day per ad group, Snapchat $5/day per ad squad.
+  it("per-channel floors: TikTok $20/day; Snapchat $5; Reddit $5; Google $0", () => {
+    assert.equal(channelFloorCents("tiktok", {}), 2000);
+    assert.equal(channelFloorCents("snapchat", {}), 500);
     assert.equal(channelFloorCents("reddit", {}), 500);
     assert.equal(channelFloorCents("google", {}), 0);
-    assert.equal(channelFloorCents("meta", { connection: metaConn, metaGoal: "LINK_CLICKS" }), 500);
+    assert.equal(channelFloorCents("meta", { connection: metaConn }), 100);
+    assert.equal(channelFloorCents("meta", { connection: metaConn, metaBillingEvent: "LINK_CLICKS" }), 500);
+  });
+
+  it("lifetime Meta at 3 days billed on impressions needs $3", () => {
+    const r = computeAdminMinimumCents({
+      platforms: ["meta"],
+      mode: "lifetime",
+      startsAt: "2026-10-01T00:00:00Z",
+      endsAt: "2026-10-03T12:00:00Z",
+      connection: metaConn,
+    });
+    assert.equal(r.days, 3);
+    assert.equal(r.minBudgetCents, 300);
   });
 
   it("frequency-cap control is gated to REACH/THRUPLAY (absent otherwise — A4.g)", () => {
@@ -347,7 +406,6 @@ describe("channel plan", () => {
     countries: ["US"],
     totalDailyCents: 2000,
     connections: { meta: metaConn },
-    metaGoal: "LINK_CLICKS",
   };
 
   // [TEST-MOD ISSUE-927] This test pinned the WP4 endpoint truth (meta+google
@@ -399,11 +457,19 @@ describe("channel plan", () => {
     assert.deepEqual(MARKET_GAPS.tiktok.unavailable, ["GB"]);
   });
 
-  it("budget floor excludes with the exact leaving-out message", () => {
-    const rows = planChannels({ ...base, totalDailyCents: 300 });
+  // [TEST-MOD #4238 Fix 1] $3/day now clears Meta's $1 impressions floor
+  // (SC-6); the leaving-out message is pinned below the floor instead.
+  it("budget floor: Meta at $3/day is eligible with a $1.00/day label; below it is excluded", () => {
+    const usd = { ...base, connections: { meta: { ...metaConn, currency: "USD" } } };
+    const rows = planChannels({ ...usd, totalDailyCents: 300 });
     const meta = rows.find((r) => r.platform === "meta");
-    assert.equal(meta.eligible, false, "$3/day < the $5 high_freq floor");
-    assert.ok(meta.excludedReason.includes("minimum"));
+    assert.equal(meta.eligible, true, "$3/day clears the $1 imp floor");
+    assert.equal(meta.floorCents, 100);
+    assert.equal(meta.floorLabel, floorLabel("meta", 100, "USD"));
+    assert.ok(meta.floorLabel.includes("1.00") && meta.floorLabel.endsWith("/day"));
+    const under = planChannels({ ...usd, totalDailyCents: 99 }).find((r) => r.platform === "meta");
+    assert.equal(under.eligible, false, "$0.99/day < the $1 imp floor");
+    assert.ok(under.excludedReason.includes("minimum"));
   });
 
   it("allowlist narrows but the split conserves the total exactly", () => {

@@ -56,7 +56,7 @@ jest.mock("react-native-video-trim", () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { accent, colors } from "../../../constants/designSystem";
+import { color } from "../../../constants/designSystem";
 // eslint-disable-next-line import/first
 import { trimVideoWithDedicatedEditor } from "../coverPickerVideoTrimEditor";
 
@@ -83,7 +83,7 @@ describe("cover trim editor — window affordance + Mingla dialog copy (issue #2
     // is pushed off-screen and silently unread.
     expect((headerText as string).length).toBeLessThanOrEqual(48);
     expect(options.headerTextSize).toBe(14);
-    expect(options.headerTextColor).toBe(colors.text.inverse);
+    expect(options.headerTextColor).toBe(color.paper);
   });
 
   it("T-2968-02 the header states the cap and is DERIVED from maxDuration, not hardcoded", () => {
@@ -99,9 +99,9 @@ describe("cover trim editor — window affordance + Mingla dialog copy (issue #2
     // `trimmerColor` paints the WHOLE frame — leading + trailing + top + bottom
     // (iOS VideoTrimmerThumb.updateTrimmerColor), i.e. the press-and-hold
     // surface, not just the chevrons.
-    expect(options.trimmerColor).toBe(accent.warm);
+    expect(options.trimmerColor).toBe(color.accent);
     expect(options.trimmerColor).not.toBe("#f1d247"); // library default chrome
-    expect(options.handleIconColor).toBe(colors.text.primary);
+    expect(options.handleIconColor).toBe(color.ink);
   });
 
   it("T-2968-04 at-cap clamp feedback stays armed", () => {

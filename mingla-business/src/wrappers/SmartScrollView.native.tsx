@@ -11,13 +11,18 @@
 // node_modules/react-native-keyboard-controller/src/components/KeyboardAwareScrollView/index.tsx:101-300.
 // Invariants: I-PROPOSED-KEYBOARD-LIBRARY-ONLY + I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY.
 
-import React, { forwardRef } from "react";
+import React, { forwardRef, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
+  FocusedInputEvents,
   KeyboardAwareScrollView,
+  useReanimatedFocusedInput,
   type KeyboardAwareScrollViewProps,
 } from "react-native-keyboard-controller";
-import { Platform } from "react-native";
-import type { ScrollView as RNScrollView } from "react-native";
+import { Platform, useWindowDimensions } from "react-native";
+import type { LayoutChangeEvent, ScrollView as RNScrollView } from "react-native";
+
+import { focusedFieldTail, sheetScrollExtraOffset } from "../components/ui/overlayKeyboard";
+import { SheetKeyboardContext } from "../components/ui/sheetKeyboardContext";
 
 // #1890 [keyboard-clearance-overshoot] — the Done-bar terms moved to the shared
 // occluder budget so all FOUR keyboard-compensating mechanisms read one source
@@ -153,10 +158,118 @@ export const INPUT_CHROME_BELOW_TEXT_FRAME = CARET_LINE_TO_FIELD_BOTTOM;
 export const DEFAULT_BOTTOM_OFFSET =
   DONE_BAR_OCCUPIED + CARET_LINE_TO_FIELD_BOTTOM + MIN_VISIBLE_CLEARANCE;
 
+/**
+ * #4420 (round 3) — the spacer a full-screen scroll view (a creation wizard,
+ * a settings page) adds under its content while the keyboard is open, on top
+ * of the keyboard height the library already adds: the app-drawn Done bar plus
+ * the visible clearance. Without it the content's end (what a `scrollToEnd`
+ * reveal lands, e.g. the event Basics Description) sat flush on the keyboard
+ * top, i.e. BEHIND the Done bar. A sheet's body already pads for the keyboard,
+ * the bar and the clearance itself, so inside a sheet this is 0.
+ */
+export const SCREEN_KEYBOARD_EXTRA_SPACE = DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE;
+
+/**
+ * #4420 (device round 2) — inside a docked bottom Sheet the body is lifted
+ * above the keyboard + Done bar, so a footer pinned under this scroll view
+ * (Save / Cancel) sits between the field and the bar. The library only knows
+ * the keyboard, so the field would land behind that footer. The scroll view
+ * measures the gap between its own bottom edge and the body's content bottom
+ * (window bottom minus the sheet's current bottom padding) on every layout and
+ * whenever the sheet's padding changes, and adds it to `bottomOffset`; the
+ * library re-runs its scroll when `bottomOffset` changes, so the field settles
+ * above the footer once the lifted layout lands. Outside a sheet the context is
+ * null and the offset is exactly the caller's (or the default), as before.
+ */
+interface MeasurableNode {
+  measureInWindow?: (callback: (x: number, y: number, width: number, height: number) => void) => void;
+}
+
+/**
+ * The element the wrapper renders, as a pure function of its props: the
+ * library's KeyboardAwareScrollView with the caller's offset (or the default)
+ * plus the sheet's extra (0 outside a sheet). Hook-free, so a suite can
+ * execute the real element builder per platform branch (#1834 TA-2).
+ */
+export function smartScrollElement(
+  { bottomOffset = DEFAULT_BOTTOM_OFFSET, extraKeyboardSpace, ...rest }: ScrollViewProps,
+  ref: React.Ref<RNScrollView> | null,
+  sheetExtraOffset: number,
+  inSheet = false,
+): React.ReactElement {
+  return (
+    <KeyboardAwareScrollView
+      ref={ref as React.Ref<never>}
+      bottomOffset={bottomOffset + sheetExtraOffset}
+      extraKeyboardSpace={extraKeyboardSpace ?? (inSheet ? 0 : SCREEN_KEYBOARD_EXTRA_SPACE)}
+      {...rest}
+    />
+  );
+}
+
 export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
-  function SmartScrollView({ bottomOffset = DEFAULT_BOTTOM_OFFSET, ...rest }, ref) {
-    return (
-      <KeyboardAwareScrollView ref={ref} bottomOffset={bottomOffset} {...rest} />
+  function SmartScrollView({ onLayout, ...rest }, ref) {
+    const sheet = useContext(SheetKeyboardContext);
+    const { height: windowHeight } = useWindowDimensions();
+    const innerRef = useRef<RNScrollView | null>(null);
+    const [footerGap, setFooterGap] = useState(0);
+    const [fieldTail, setFieldTail] = useState(0);
+    const sheetBottomPad = sheet?.bottomPad;
+
+    // #4420 (device round 2): the focused field's height, read on the JS
+    // thread from the library's focused-input value when focus lands and when
+    // the sheet's keyboard layout changes (never on caret moves), so a tall
+    // field shows whole above a sheet's action row. No module-scope
+    // reanimated import: node-env suites load this wrapper.
+    const { input } = useReanimatedFocusedInput();
+    const readFieldTail = useCallback(() => {
+      setFieldTail(focusedFieldTail(input?.value?.layout.height ?? 0));
+    }, [input]);
+    // #4420 (round 3): every container, not only sheets — a multiline field
+    // on a full-screen wizard (event Description) has the same caret-on-the-
+    // first-line geometry, and its box bottom sat under the Done bar.
+    useEffect(() => {
+      const subscription = FocusedInputEvents?.addListener("focusDidSet", () => {
+        requestAnimationFrame(readFieldTail);
+      });
+      return (): void => subscription?.remove();
+    }, [readFieldTail]);
+
+    const setRefs = useCallback(
+      (node: RNScrollView | null) => {
+        innerRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref !== null) ref.current = node;
+      },
+      [ref],
     );
+
+    const measureFooterGap = useCallback(() => {
+      if (sheetBottomPad === undefined) return;
+      const node = innerRef.current as unknown as MeasurableNode | null;
+      node?.measureInWindow?.((_x, y, _w, h) => {
+        setFooterGap(Math.max(0, Math.round(windowHeight - sheetBottomPad - (y + h))));
+      });
+    }, [sheetBottomPad, windowHeight]);
+
+    useEffect(() => {
+      if (sheetBottomPad === undefined) return undefined;
+      const frame = requestAnimationFrame(() => {
+        measureFooterGap();
+        readFieldTail();
+      });
+      return (): void => cancelAnimationFrame(frame);
+    }, [measureFooterGap, readFieldTail, sheetBottomPad]);
+
+    const handleLayout = useCallback(
+      (event: LayoutChangeEvent) => {
+        onLayout?.(event);
+        measureFooterGap();
+      },
+      [measureFooterGap, onLayout],
+    );
+
+    const sheetExtra = (sheet === null ? 0 : sheetScrollExtraOffset(footerGap, sheet.topShift)) + fieldTail;
+    return smartScrollElement({ ...rest, onLayout: handleLayout }, setRefs, sheetExtra, sheet !== null);
   },
 );

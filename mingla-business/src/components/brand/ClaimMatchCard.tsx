@@ -17,11 +17,10 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  radius,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { PoolMatch } from "../../types/poolMatch";
 import { Button } from "../ui/Button";
@@ -95,7 +94,7 @@ const PhotoStrip: React.FC<{ match: PoolMatch }> = ({ match }) => {
         hue={25}
         mediaUrl={null}
         mediaType={null}
-        radius={radiusTokens.md}
+        radius={radius.sm}
         label={`Photo of ${match.name}`}
         height={72}
         width={72}
@@ -108,7 +107,7 @@ const PhotoStrip: React.FC<{ match: PoolMatch }> = ({ match }) => {
         hue={25}
         mediaUrl={urls[0]}
         mediaType="image"
-        radius={radiusTokens.md}
+        radius={radius.sm}
         label={`Photo of ${match.name}`}
         height={72}
         width={72}
@@ -164,7 +163,7 @@ export const ClaimMatchCard: React.FC<ClaimMatchCardProps> = ({
     return (
       <GlassCard
         variant="elevated"
-        padding={spacing.md}
+        padding={space[4]}
         testID={testID}
       >
         <View
@@ -188,7 +187,7 @@ export const ClaimMatchCard: React.FC<ClaimMatchCardProps> = ({
             <Icon
               name={isClaimed ? "shield" : "clock"}
               size={16}
-              color={textTokens.secondary}
+              color={color.text2}
             />
             <Text style={styles.bannerText}>{bannerText}</Text>
           </View>
@@ -219,7 +218,7 @@ export const ClaimMatchCard: React.FC<ClaimMatchCardProps> = ({
     ? ` Already on Mingla: ${facts.join(", ")}.`
     : "";
   return (
-    <GlassCard variant="elevated" padding={spacing.md} testID={testID}>
+    <GlassCard variant="elevated" padding={space[4]} testID={testID}>
       <View
         accessible
         accessibilityLabel={`${match.name}${addressLine.length > 0 ? `, ${addressLine}` : ""}.${a11yFacts} Is this your place?`}
@@ -294,99 +293,99 @@ export const ClaimMatchCard: React.FC<ClaimMatchCardProps> = ({
 
 const styles = StyleSheet.create({
   eyebrow: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text2,
+    marginBottom: space[2],
   },
   dimmed: {
     opacity: 0.85,
   },
   row: {
     flexDirection: "row",
-    gap: spacing.md,
-    marginBottom: spacing.sm,
+    gap: space[4],
+    marginBottom: space[2],
   },
   strip: {
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: space[1],
   },
   stripEdge: {
     width: 28,
     height: 72,
     flexDirection: "column",
-    gap: spacing.xs,
+    gap: space[1],
   },
   textCol: {
     flex: 1,
-    gap: spacing.xs,
+    gap: space[1],
   },
   name: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   address: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.secondary,
+    fontSize: type.small.fontSize,
+    color: color.text2,
   },
   factsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+    gap: space[1],
+    marginBottom: space[2],
   },
   factPill: {
-    borderRadius: radiusTokens.full,
+    borderRadius: radius.full,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: color.fill.pressed,
   },
   factText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
-    color: textTokens.secondary,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    color: color.text2,
   },
   reassurance: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.text3,
+    marginBottom: space[2],
   },
   fetchWarn: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: semantic.warning,
-    marginBottom: spacing.sm,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: type.caption.fontWeight,
+    letterSpacing: type.caption.letterSpacing,
+    color: color.warning,
+    marginBottom: space[2],
   },
   bannerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    gap: space[2],
+    marginBottom: space[2],
   },
   bannerText: {
     flex: 1,
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   blockedBody: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     lineHeight: 20,
-    color: textTokens.secondary,
-    marginBottom: spacing.sm,
+    color: color.text2,
+    marginBottom: space[2],
   },
   actions: {
-    gap: spacing.sm,
+    gap: space[2],
   },
 });
 

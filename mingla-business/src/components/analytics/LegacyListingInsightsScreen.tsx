@@ -9,12 +9,10 @@ import {
 } from "react-native";
 import type { UseQueryResult } from "@tanstack/react-query";
 import {
-  accent,
-  glass,
   radius,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  color,
+  type,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCount, formatCurrency } from "../../utils/currency";
@@ -290,7 +288,7 @@ export const LegacyListingInsightsScreen: React.FC<
         <View style={[styles.columns, isWideDesktop && styles.columnsWide]}>
           <GlassCard
             variant="elevated"
-            padding={spacing.lg}
+            padding={space[6]}
             style={styles.card}
           >
             <Text style={styles.sectionTitle} accessibilityRole="header">
@@ -314,7 +312,7 @@ export const LegacyListingInsightsScreen: React.FC<
           </GlassCard>
           <GlassCard
             variant="elevated"
-            padding={spacing.lg}
+            padding={space[6]}
             style={styles.card}
           >
             <Text style={styles.sectionTitle} accessibilityRole="header">
@@ -376,7 +374,7 @@ export const LegacyListingInsightsScreen: React.FC<
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={() => void refresh()}
-              tintColor={accent.warm}
+              tintColor={color.accent}
             />
           )
         }
@@ -389,157 +387,157 @@ export const LegacyListingInsightsScreen: React.FC<
 
 const styles = StyleSheet.create({
   host: { flex: 1, minWidth: 0 },
-  topBar: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  topBar: { paddingHorizontal: space[4], paddingTop: space[2] },
   scroll: { flex: 1, minWidth: 0 },
   scrollContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl * 4,
+    paddingHorizontal: space[4],
+    paddingTop: space[6],
+    paddingBottom: space[7] * 4,
   },
   content: {
     width: "100%",
     maxWidth: 1320,
     alignSelf: "center",
-    gap: spacing.lg,
+    gap: space[6],
   },
   headingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: space[4],
   },
   headingCopy: { flex: 1, minWidth: 0 },
   eyebrow: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
   },
   listingTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    marginTop: spacing.xs,
+    color: color.text1,
+    fontSize: type.title.fontSize,
+    lineHeight: type.title.lineHeight,
+    fontWeight: type.title.fontWeight,
+    marginTop: space[1],
   },
   intro: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text2,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    marginTop: space[1],
   },
   status: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[1],
   },
-  columns: { gap: spacing.md, minWidth: 0 },
+  columns: { gap: space[4], minWidth: 0 },
   columnsWide: { flexDirection: "row", alignItems: "flex-start" },
   card: { flex: 1, minWidth: 0 },
   sectionTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
   },
   helper: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    marginTop: space[1],
   },
   window: {
-    color: textTokens.tertiary,
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    marginTop: spacing.md,
+    color: color.text3,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
+    fontWeight: type.label.fontWeight,
+    letterSpacing: type.label.letterSpacing,
+    marginTop: space[4],
   },
   heroCount: {
-    color: textTokens.primary,
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    marginTop: spacing.xs,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    marginTop: space[1],
   },
   valueLine: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    marginTop: spacing.xs,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    marginTop: space[1],
   },
   empty: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
-  emptyBlock: { marginTop: spacing.sm },
-  sourceList: { gap: spacing.sm, marginTop: spacing.md },
+  emptyBlock: { marginTop: space[2] },
+  sourceList: { gap: space[2], marginTop: space[4] },
   sourceRow: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: glass.border.profileBase,
-    paddingTop: spacing.sm,
+    borderTopColor: color.line,
+    paddingTop: space[2],
   },
   sourceLabel: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text1,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     fontWeight: "600",
   },
   sourceCount: {
-    color: textTokens.secondary,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
+    color: color.text2,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
   },
   action: {
     minHeight: 44,
     minWidth: 44,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     borderRadius: radius.sm,
   },
   actionText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
+    color: color.accent,
+    fontSize: type.btnSm.fontSize,
+    lineHeight: type.btnSm.lineHeight,
+    fontWeight: type.btnSm.fontWeight,
   },
   refreshFailure: {
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     borderRadius: radius.md,
-    padding: spacing.md,
+    padding: space[4],
   },
   centerState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing.xl,
+    padding: space[7],
   },
   stateTitle: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+    color: color.text1,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
     textAlign: "center",
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   stateBody: {
-    color: textTokens.secondary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
+    color: color.text2,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
     textAlign: "center",
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   skeleton: {
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
   },
   skeletonTall: { height: 280 },
 });

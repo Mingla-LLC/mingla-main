@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { accent, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import {
   GROUP_CHAT_MEDIA_BUCKET,
@@ -80,7 +80,7 @@ export const GroupChatMessageMedia: React.FC<GroupChatMessageMediaProps> = ({ me
     const label = kind === "view_once_video" ? "View once video" : "View once photo";
     return (
       <View style={styles.notice} accessibilityRole="text" accessibilityLabel={label} testID="group-chat-view-once">
-        <Icon name="eye" size={14} color={mine ? textTokens.inverse : textTokens.secondary} />
+        <Icon name="eye" size={14} color={mine ? color.textStrong : color.text2} />
         <Text style={[styles.noticeText, mine && styles.noticeTextMine]}>{label}</Text>
       </View>
     );
@@ -98,7 +98,7 @@ export const GroupChatMessageMedia: React.FC<GroupChatMessageMediaProps> = ({ me
   if (!url) {
     return (
       <View style={styles.placeholder} accessibilityRole="progressbar" accessibilityLabel="Loading attachment">
-        <ActivityIndicator color={accent.warm} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   }
@@ -122,7 +122,7 @@ export const GroupChatMessageMedia: React.FC<GroupChatMessageMediaProps> = ({ me
         style={styles.notice}
         testID="group-chat-video"
       >
-        <Icon name="play" size={14} color={mine ? textTokens.inverse : textTokens.primary} />
+        <Icon name="play" size={14} color={mine ? color.textStrong : color.text1} />
         <Text style={[styles.noticeText, mine && styles.noticeTextMine]}>
           {openFailed ? "Couldn't open the video. Tap to try again." : "Video"}
         </Text>
@@ -145,28 +145,28 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 4 / 3,
     borderRadius: radius.sm,
-    backgroundColor: "rgba(0,0,0,0.2)",
+    backgroundColor: color.fill.tile,
   },
   placeholder: {
     width: "100%",
     aspectRatio: 4 / 3,
     borderRadius: radius.sm,
-    backgroundColor: "rgba(0,0,0,0.2)",
+    backgroundColor: color.fill.tile,
     alignItems: "center",
     justifyContent: "center",
   },
   notice: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
+    gap: space[1],
+    paddingVertical: space[1],
   },
   noticeText: {
     fontSize: 14,
     fontStyle: "italic",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   noticeTextMine: {
-    color: textTokens.inverse,
+    color: color.textStrong,
   },
 });

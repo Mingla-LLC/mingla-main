@@ -29,7 +29,11 @@ import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
 import { dayChooserCaptions } from "../../utils/dayChooserCaptions";
 import type { TicketStub } from "../../store/draftEventStore";
 import { accentFillWithBorder, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
-import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
+import {
+  offeringSurfaceStyles,
+  opaqueAccentWashColor,
+  opaqueSurfaceColor,
+} from "@mingla/offering-rendering/themePalette";
 
 export interface MultiDateDayChooserProps {
   /** The event's IANA zone, used only when an occurrence row carries none. */
@@ -68,6 +72,12 @@ export interface MultiDateDayChooserProps {
   state?: "ready" | "error" | "offline" | "stale";
   onRetry?: () => void;
   onToggle: (eventDateId: string) => void;
+  /**
+   * issue #4420 — true draws the chooser as its own offering card (the public
+   * ticket box renders its leading slot bare, so an absent chooser leaves no
+   * empty frame). False keeps the divider look the ticket-link page uses.
+   */
+  framed?: boolean;
 }
 
 const toScheduleOccurrences = (
@@ -149,6 +159,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   onRetry,
   onToggle,
   tickets,
+  framed = false,
 }) => {
   const reducedMotion = useReducedMotionOnWeb();
   const allDaysPass = allDaysPassProp === true || pricingMode === "all_days";
@@ -194,11 +205,21 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
 
   return (
     <View
-      style={[
-        styles.host,
-        { borderBottomColor: palette.panelBorder },
-        highlightUnchosen ? { borderBottomColor: palette.accent } : null,
-      ]}
+      style={
+        framed
+          ? [
+              styles.framed,
+              offeringSurfaceStyles(palette).card,
+              highlightUnchosen
+                ? accentOutline(palette, { opaqueBackground: opaqueSurfaceColor(palette) })
+                : null,
+            ]
+          : [
+              styles.host,
+              { borderBottomColor: palette.panelBorder },
+              highlightUnchosen ? { borderBottomColor: palette.accent } : null,
+            ]
+      }
       testID="issue-2135-day-chooser"
       nativeID="issue-2399-day-section"
       tabIndex={-1}
@@ -371,6 +392,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 10,
   },
+  // issue #4420 — matches the ticket tier cards beneath it (radius 18).
+  framed: { borderRadius: 18, padding: 14, gap: 10 },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",

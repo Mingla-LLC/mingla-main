@@ -7,14 +7,11 @@ import {
   View,
 } from "react-native";
 import {
-  accent,
-  androidOpaque,
-  glass,
   radius,
-  semantic,
-  spacing,
-  text,
-  typography,
+  color,
+  materials,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type {
   BrandPersonContact,
@@ -51,7 +48,7 @@ export function PrimaryContactAction({
   if (contact.isPrimary) {
     return (
       <View style={styles.primaryState} accessibilityLabel={`Primary ${contact.channel}`}>
-        <Icon name="star" size={16} color={accent.warm} />
+        <Icon name="star" size={16} color={color.accent} />
         <Text style={styles.primaryLabel}>Primary</Text>
       </View>
     );
@@ -102,7 +99,7 @@ function ChannelRows({
           <Icon
             name={channel === "email" ? "mail" : "phone"}
             size={20}
-            color={text.secondary}
+            color={color.text2}
           />
           <Text selectable style={styles.contactValue}>{contact.value}</Text>
           <PrimaryContactAction
@@ -201,7 +198,7 @@ export function MergeHistoryRow({
       <Icon
         name={reversed ? "branch" : "users"}
         size={20}
-        color={reversed ? semantic.success : semantic.warning}
+        color={reversed ? color.success : color.warning}
       />
       <View style={styles.historyCopy}>
         <Text style={styles.historyTitle}>
@@ -211,7 +208,7 @@ export function MergeHistoryRow({
       </View>
       <View style={styles.historyActions}>
         <View style={[styles.statusPill, reversed ? styles.splitPill : styles.mergePill]}>
-          <Text style={[styles.statusText, { color: reversed ? semantic.success : semantic.warning }]}>
+          <Text style={[styles.statusText, { color: reversed ? color.success : color.warning }]}>
             {reversed ? "Split" : "Merged"}
           </Text>
         </View>
@@ -302,70 +299,70 @@ export function MergeHistoryCard({
 }
 
 const rowSurface = Platform.OS === "android"
-  ? androidOpaque.rowFill
-  : glass.tint.profileBase;
+  ? materials.pane.solidFill
+  : color.fill.inset;
 const rowBorder = Platform.OS === "android"
-  ? androidOpaque.rowBorder
-  : glass.border.profileBase;
+  ? color.card2
+  : color.line;
 
 const styles = StyleSheet.create({
-  aliases: { alignItems: "center", gap: spacing.xs, maxWidth: 560 },
-  aliasLabel: { ...typography.caption, color: text.secondary },
-  aliasValues: { ...typography.bodySm, color: text.primary, textAlign: "center" },
-  card: { gap: spacing.md },
-  heading: { ...typography.h3, color: text.primary },
-  helper: { ...typography.caption, color: text.secondary },
-  error: { ...typography.bodySm, color: semantic.error },
-  channel: { gap: spacing.xs },
-  channelLabel: { ...typography.labelCap, color: text.secondary, textTransform: "uppercase" },
+  aliases: { alignItems: "center", gap: space[1], maxWidth: 560 },
+  aliasLabel: { ...type.caption, color: color.text2 },
+  aliasValues: { ...type.small, color: color.text1, textAlign: "center" },
+  card: { gap: space[4] },
+  heading: { ...type.h1, color: color.text1 },
+  helper: { ...type.caption, color: color.text2 },
+  error: { ...type.small, color: color.danger },
+  channel: { gap: space[1] },
+  channelLabel: { ...type.label, color: color.text2, textTransform: "uppercase" },
   dividedChannel: {
     borderTopWidth: 1,
-    borderTopColor: glass.border.profileBase,
-    paddingTop: spacing.md,
+    borderTopColor: color.line,
+    paddingTop: space[4],
   },
   contactRow: {
     minHeight: 56,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingVertical: space[2],
     borderRadius: radius.sm,
     backgroundColor: rowSurface,
     borderWidth: 1,
     borderColor: rowBorder,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   largeTextBlock: { width: "100%" },
   largeTextContactRow: { flexDirection: "column", alignItems: "stretch" },
   largeTextRow: { flexDirection: "column", alignItems: "stretch" },
   contactValue: {
-    ...typography.monoMd,
-    color: text.primary,
+    ...type.mono,
+    color: color.text1,
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 160,
   },
-  primaryState: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  primaryLabel: { ...typography.caption, color: accent.warm },
+  primaryState: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[1] },
+  primaryLabel: { ...type.caption, color: color.accent },
   primaryAction: { minWidth: 112 },
   historyCard: { gap: 0 },
-  historyDivider: { borderTopWidth: 1, borderTopColor: glass.border.profileBase },
+  historyDivider: { borderTopWidth: 1, borderTopColor: color.line },
   historyRow: {
     minHeight: 64,
     paddingVertical: 12,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   historyCopy: { flex: 1, minWidth: 160 },
-  historyTitle: { ...typography.bodySm, fontWeight: "600", color: text.primary },
-  timestamp: { ...typography.caption, color: text.secondary },
-  historyActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm },
-  historyState: { gap: spacing.sm, paddingTop: spacing.sm },
-  statusPill: { borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  mergePill: { backgroundColor: Platform.OS === "android" ? androidOpaque.warningFill : semantic.warningTint },
-  splitPill: { backgroundColor: Platform.OS === "android" ? androidOpaque.successFill : semantic.successTint },
-  statusText: { ...typography.caption },
+  historyTitle: { ...type.small, fontWeight: "600", color: color.text1 },
+  timestamp: { ...type.caption, color: color.text2 },
+  historyActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
+  historyState: { gap: space[2], paddingTop: space[2] },
+  statusPill: { borderRadius: radius.full, paddingHorizontal: space[2], paddingVertical: space[1] },
+  mergePill: { backgroundColor: Platform.OS === "android" ? color.solidTint.warning : color.warningTint },
+  splitPill: { backgroundColor: Platform.OS === "android" ? color.solidTint.success : color.successTint },
+  statusText: { ...type.caption },
 });

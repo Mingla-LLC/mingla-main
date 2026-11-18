@@ -83,6 +83,9 @@ jobs:
     if: ${{ (github.event.pull_request.draft != true) && (needs.route.outputs.selected == 'true') }}
     needs: [route]
     runs-on: ubuntu-latest
+    # #4420 reviewed heap raise: ts-jest type-checks business code past the ~2 GB default V8 heap.
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     timeout-minutes: 30
     defaults:
       run:

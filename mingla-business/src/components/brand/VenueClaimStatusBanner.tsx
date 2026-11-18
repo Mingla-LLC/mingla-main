@@ -19,11 +19,10 @@ import React, { useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
+  color,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 import type { BrandClaimStatus } from "../../types/brand";
@@ -122,7 +121,7 @@ export function VenueClaimStatusBanner({
           <Icon
             name={allFixed ? "check" : "flag"}
             size={18}
-            color={allFixed ? semantic.success : semantic.warning}
+            color={allFixed ? color.success : color.warning}
           />
           <Text style={[styles.title, styles.titleInline]}>{copy.title}</Text>
           {allFixed ? (
@@ -136,7 +135,7 @@ export function VenueClaimStatusBanner({
               </Text>
             </View>
           ) : null}
-          <Icon name="chevR" size={18} color={textTokens.tertiary} />
+          <Icon name="chevR" size={18} color={color.text3} />
         </View>
         <Text style={[styles.body, styles.bodyFollowUp]}>{body}</Text>
       </Pressable>
@@ -159,10 +158,10 @@ export function VenueClaimStatusBanner({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
+    marginHorizontal: space[4],
+    marginBottom: space[2],
+    padding: space[4],
+    borderRadius: radius.sm,
     borderWidth: 1,
   },
   pressed: {
@@ -171,60 +170,60 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: space[2],
   },
   title: {
-    ...typography.bodySm,
+    ...type.small,
     fontWeight: "600",
-    marginBottom: spacing.xs,
-    color: textTokens.primary,
+    marginBottom: space[1],
+    color: color.text1,
   },
   titleInline: {
     flex: 1,
     marginBottom: 0,
   },
   body: {
-    ...typography.caption,
+    ...type.caption,
     lineHeight: 18,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   bodyFollowUp: {
-    marginTop: spacing.xs,
+    marginTop: space[1],
   },
   badge: {
     borderRadius: radius.full,
     minWidth: 18,
     height: 22,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
   },
   badgeCount: {
-    backgroundColor: semantic.warning,
+    backgroundColor: color.warning,
   },
   badgeReady: {
-    backgroundColor: semantic.success,
+    backgroundColor: color.success,
   },
   badgeText: {
-    ...typography.micro,
+    ...type.label,
   },
   badgeTextCount: {
-    color: "#1a1206",
+    color: color.ink,
   },
   badgeTextReady: {
-    color: "#04210f",
+    color: color.ink,
   },
   toneError: {
-    backgroundColor: semantic.errorTint,
-    borderColor: semantic.error,
+    backgroundColor: color.errorTint,
+    borderColor: color.danger,
   },
   toneWarning: {
-    backgroundColor: semantic.warningTint,
-    borderColor: semantic.warning,
+    backgroundColor: color.warningTint,
+    borderColor: color.warning,
   },
   toneInfo: {
-    backgroundColor: semantic.infoTint,
-    borderColor: semantic.info,
+    backgroundColor: color.infoTint,
+    borderColor: color.info,
   },
 });

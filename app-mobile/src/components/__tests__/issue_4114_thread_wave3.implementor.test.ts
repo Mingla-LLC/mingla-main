@@ -109,7 +109,7 @@ Deno.test("W3 sender name only on the first bubble of a group block", async () =
   assert(/showSenderName: shouldShowSenderName\(\{\s*isGroupChat,/.test(chat), "rows decide with the shared rule");
   assert(/showSenderName=\{item\.showSenderName\}/.test(chat), "the bubble receives it");
   const bubble = strip(await read("components/chat/MessageBubble.tsx"));
-  assert(/\{showSenderName \? \(\s*<Text/.test(bubble), "the name renders only when asked");
+  assert(/\{showSenderName \? \(\s*<View style=\{styles\.senderRow\}>\s*<Text/.test(bubble), "the name renders only when asked (#4459: beside the brand's HOST chip)");
   assert(/showSenderName = false,/.test(bubble), "hidden by default (1:1 chats, your own)");
   assert(/export const MessageBubble = memo\(MessageBubbleImpl\)/.test(bubble), "MessageBubble is memoised");
   assert(/renderItem=\{renderThreadRow\}/.test(chat) && /const renderThreadRow = useCallback\(/.test(chat), "stable renderItem");

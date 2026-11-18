@@ -39,13 +39,16 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { Icon } from "../../../src/components/ui/Icon";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import {
-  accent,
-  canvas,
-  glass,
-  radius as radiusTokens,
-  spacing,
-  text as textTokens,
+  color,
+  radius,
+  space,
+  type,
 } from "../../../src/constants/designSystem";
+import { Button } from "../../../src/components/ui/Button";
+import { GlassCard } from "../../../src/components/ui/GlassCard";
+import { Table } from "../../../src/components/ui/Table";
+import { IconChrome } from "../../../src/components/ui/IconChrome";
+import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
@@ -189,6 +192,7 @@ export default function BrandTeamRoute(): React.ReactElement {
     brandIdResolved,
   );
 
+  const { isWideDesktop } = useResponsiveLayout();
   const [inviteVisible, setInviteVisible] = useState<boolean>(false);
   const [detailEntry, setDetailEntry] = useState<DisplayEntry | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -448,20 +452,28 @@ export default function BrandTeamRoute(): React.ReactElement {
         onBack={handleBack}
         rightSlot={
           canInvite ? (
-            <Pressable
-              onPress={handleOpenInvite}
-              accessibilityRole="button"
-              accessibilityLabel="Invite team member"
-              style={styles.headerInviteCta}
-            >
-              <Icon name="plus" size={22} color={textTokens.primary} />
-            </Pressable>
+            isWideDesktop ? (
+              // #4420 — desktop names the action (the mockup's Paper button).
+              <Button
+                label="Invite team member"
+                onPress={handleOpenInvite}
+                variant="primary"
+                size="sm"
+                accessibilityLabel="Invite team member"
+              />
+            ) : (
+              <IconChrome
+                icon="plus"
+                onPress={handleOpenInvite}
+                accessibilityLabel="Invite team member"
+              />
+            )
           ) : null
         }
       />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, isWideDesktop && styles.scrollContentDesktop]}
         showsVerticalScrollIndicator={false}
       >
         {showEmpty ? (
@@ -486,20 +498,29 @@ export default function BrandTeamRoute(): React.ReactElement {
             />
           </View>
         ) : (
+          isWideDesktop ? (
+            // #4420 — desktop (T2): one Member / Role / Status table, pending
+            // invitations first; rows open the same detail sheet.
+            <TeamTable
+              rows={[...pendingEntries, ...acceptedEntries]}
+              onRowTap={handleRowTap}
+            />
+          ) : (
           <>
             {pendingEntries.length > 0 ? (
               <SectionList
-                title="PENDING INVITATIONS"
+                title="Pending invitations"
                 rows={pendingEntries}
                 onRowTap={handleRowTap}
               />
             ) : null}
             <SectionList
-              title="ACTIVE MEMBERS"
+              title="Active members"
               rows={acceptedEntries}
               onRowTap={handleRowTap}
             />
           </>
+          )
         )}
 
         {!canInvite && !showEmpty ? (
@@ -577,10 +598,13 @@ const SectionList: React.FC<SectionListProps> = ({
   onRowTap,
 }) => {
   if (rows.length === 0) return null;
+  // #4420 — one grouped pane per section, hairline between rows (the
+  // mockup), instead of a separate boxed card per member.
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {rows.map((row) => (
+      <Text style={styles.sectionTitle} accessibilityRole="header">{title}</Text>
+      <GlassCard variant="base" padding={0}>
+      {rows.map((row, index) => (
         <Pressable
           key={row.id}
           onPress={() => onRowTap(row)}
@@ -589,7 +613,7 @@ const SectionList: React.FC<SectionListProps> = ({
           disabled={row.status === "self"}
           style={({ pressed }) => [
             styles.row,
-            row.status === "pending" && styles.rowPending,
+            index > 0 && styles.rowDivider,
             pressed && row.status !== "self" && styles.rowPressed,
           ]}
         >
@@ -605,7 +629,7 @@ const SectionList: React.FC<SectionListProps> = ({
           </View>
           <View style={styles.rowMetaCol}>
             <View style={styles.rolePill}>
-              <Text style={styles.rolePillText}>
+              <Text style={styles.rolePillText} numberOfLines={1}>
                 {roleDisplayName(row.role)}
               </Text>
             </View>
@@ -616,7 +640,7 @@ const SectionList: React.FC<SectionListProps> = ({
               // text.primary on accent.tint (10.66:1, DESIGN §4.3) —
               // deliberately NOT the role pill's warm-on-tint.
               <View style={styles.partnerBadge} testID="team-partner-badge">
-                <Icon name="award" size={10} color={accent.warm} />
+                <Icon name="award" size={10} color={color.text1} />
                 <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
               </View>
             ) : null}
@@ -628,9 +652,79 @@ const SectionList: React.FC<SectionListProps> = ({
           </View>
         </Pressable>
       ))}
+      </GlassCard>
     </View>
   );
 };
+
+const TeamTable: React.FC<{
+  rows: DisplayEntry[];
+  onRowTap: (entry: DisplayEntry) => void;
+}> = ({ rows, onRowTap }) => (
+  <View style={styles.tableWrap}>
+    <Table<DisplayEntry>
+      rows={rows}
+      rowKey={(row) => row.id}
+      onRowPress={(row) => {
+        if (row.status !== "self") onRowTap(row);
+      }}
+      columns={[
+        {
+          key: "member",
+          title: "Member",
+          flex: 3,
+          render: (row) => (
+            <View style={styles.tableMember}>
+              <Avatar name={row.name} size="row" />
+              <View style={styles.rowTextCol}>
+                <Text style={styles.rowName} numberOfLines={1}>
+                  {row.name}
+                  {row.status === "self" ? "  ·  You" : ""}
+                </Text>
+                <Text style={styles.rowEmail} numberOfLines={1}>
+                  {row.email}
+                </Text>
+              </View>
+            </View>
+          ),
+        },
+        {
+          key: "role",
+          title: "Role",
+          flex: 2,
+          render: (row) => (
+            <View style={styles.tableRole}>
+              <View style={styles.rolePill}>
+                <Text style={styles.rolePillText} numberOfLines={1}>
+                  {roleDisplayName(row.role)}
+                </Text>
+              </View>
+              {row.partnerLinkId !== null ? (
+                <View style={styles.partnerBadge} testID="team-partner-badge">
+                  <Icon name="award" size={10} color={color.text1} />
+                  <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
+                </View>
+              ) : null}
+            </View>
+          ),
+        },
+        {
+          key: "status",
+          title: "Status",
+          flex: 1,
+          align: "right",
+          render: (row) => (
+            <Text style={styles.tableStatus} numberOfLines={1}>
+              {row.status === "pending"
+                ? `Pending · ${formatRelativeTime(row.timestampIso)}`
+                : "Active"}
+            </Text>
+          ),
+        },
+      ]}
+    />
+  </View>
+);
 
 // ---- Adapters: server rows → BrandTeamEntry shape consumed by MemberDetailSheet
 function invitationRowToEntry(row: BrandInvitationRow): BrandTeamEntry {
@@ -674,38 +768,50 @@ function memberRowToEntry(
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: canvas.discover,
+    backgroundColor: color.canvas,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: space[4],
+    paddingBottom: space[7],
+  },
+  scrollContentDesktop: {
+    paddingHorizontal: space[6],
+  },
+  tableWrap: {
+    marginTop: space[4],
+  },
+  tableMember: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    alignSelf: "stretch",
+  },
+  tableRole: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: space[2],
+  },
+  tableStatus: {
+    ...type.caption,
+    color: color.text2,
   },
   banner: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-    padding: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: "rgba(59, 130, 246, 0.10)",
+    marginTop: space[2],
+    marginBottom: space[4],
+    padding: space[2] + 2,
+    borderRadius: radius.sm,
+    backgroundColor: color.infoTint,
     borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.24)",
+    borderColor: color.line,
   },
   bannerText: {
     fontSize: 12,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 18,
   },
-  headerInviteCta: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
   emptyHost: {
-    paddingTop: spacing.xl,
+    paddingTop: space[7],
     alignItems: "center",
   },
   // ORCH-1309 — cold-load resolving spinner host.
@@ -715,33 +821,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   section: {
-    marginTop: spacing.md,
+    marginTop: space[5],
+    gap: space[2],
   },
   sectionTitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: textTokens.tertiary,
+    ...type.label,
+    color: color.text3,
     textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: spacing.xs + 2,
+    paddingHorizontal: space[1],
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    marginBottom: spacing.xs + 2,
+    gap: space[3],
+    minHeight: 64,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
   },
-  rowPending: {
-    opacity: 0.85,
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
   },
   rowPressed: {
-    opacity: 0.7,
+    backgroundColor: color.fill.rowHover,
   },
   rowTextCol: {
     flex: 1,
@@ -750,29 +852,31 @@ const styles = StyleSheet.create({
   rowName: {
     fontSize: 15,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowEmail: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   rowMetaCol: {
     alignItems: "flex-end",
     gap: 4,
+    flexShrink: 0,
+    maxWidth: "45%",
   },
   rolePill: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
     borderRadius: 999,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: "rgba(235, 120, 37, 0.32)",
+    borderColor: color.lineStrong,
   },
   rolePillText: {
     fontSize: 11,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   // ORCH-1384 — "Mingla Partner" badge (DESIGN §2.4). accent.tint fill +
   // accent.border border are real tokens; text.primary text (10.66:1).
@@ -780,27 +884,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
     paddingVertical: 3,
-    borderRadius: radiusTokens.full,
-    backgroundColor: accent.tint,
+    borderRadius: radius.full,
+    backgroundColor: color.fill.tabOn,
     borderWidth: 1,
-    borderColor: accent.border,
+    borderColor: color.lineStrong,
   },
   partnerBadgeText: {
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 0.2,
-    color: textTokens.primary,
+    color: color.text1,
   },
   rowSubText: {
     fontSize: 11,
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   gateCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
+    color: color.text3,
+    marginTop: space[4],
     textAlign: "center",
   },
 });

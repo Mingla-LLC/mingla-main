@@ -13,8 +13,10 @@
 
 import React from "react";
 import {
+  Animated,
   Platform,
   Pressable,
+  Text,
   StyleSheet,
   View,
   type ViewStyle,
@@ -27,14 +29,14 @@ import { shouldRenderCloseButton } from "./closeButtonVisibility";
 
 const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 };
 
-const CloseGlyph: React.FC = () => (
+const CloseGlyph: React.FC<{ color?: string }> = ({ color = "#FFFFFF" }) => (
   <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
     <Line
       x1={6}
       y1={6}
       x2={18}
       y2={18}
-      stroke="#FFFFFF"
+      stroke={color}
       strokeWidth={2.2}
       strokeLinecap="round"
     />
@@ -43,7 +45,7 @@ const CloseGlyph: React.FC = () => (
       y1={6}
       x2={6}
       y2={18}
-      stroke="#FFFFFF"
+      stroke={color}
       strokeWidth={2.2}
       strokeLinecap="round"
     />
@@ -51,14 +53,14 @@ const CloseGlyph: React.FC = () => (
 );
 
 // Ported verbatim from mingla-business Icon.tsx `share`.
-const ShareGlyph: React.FC = () => (
+const ShareGlyph: React.FC<{ color?: string }> = ({ color = "#FFFFFF" }) => (
   <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
-    <Circle cx={6} cy={12} r={2.5} stroke="#FFFFFF" strokeWidth={2} />
-    <Circle cx={18} cy={6} r={2.5} stroke="#FFFFFF" strokeWidth={2} />
-    <Circle cx={18} cy={18} r={2.5} stroke="#FFFFFF" strokeWidth={2} />
+    <Circle cx={6} cy={12} r={2.5} stroke={color} strokeWidth={2} />
+    <Circle cx={18} cy={6} r={2.5} stroke={color} strokeWidth={2} />
+    <Circle cx={18} cy={18} r={2.5} stroke={color} strokeWidth={2} />
     <Path
       d="M8.2 10.8L15.8 7.2M8.2 13.2L15.8 16.8"
-      stroke="#FFFFFF"
+      stroke={color}
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -67,12 +69,15 @@ const ShareGlyph: React.FC = () => (
 );
 
 // Mirrors EventCoverMedia's VolumeGlyph (filled speaker body + slash↔waves).
-const VolumeGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
+const VolumeGlyph: React.FC<{ muted: boolean; color?: string }> = ({
+  muted,
+  color = "#FFFFFF",
+}) => (
   <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
     <Path
       d="M11 5 6 9H2v6h4l5 4V5z"
-      fill="#FFFFFF"
-      stroke="#FFFFFF"
+      fill={color}
+      stroke={color}
       strokeWidth={2}
       strokeLinejoin="round"
     />
@@ -83,7 +88,7 @@ const VolumeGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
           y1={9}
           x2={22}
           y2={15}
-          stroke="#FFFFFF"
+          stroke={color}
           strokeWidth={2}
           strokeLinecap="round"
         />
@@ -92,7 +97,7 @@ const VolumeGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
           y1={9}
           x2={16}
           y2={15}
-          stroke="#FFFFFF"
+          stroke={color}
           strokeWidth={2}
           strokeLinecap="round"
         />
@@ -100,7 +105,7 @@ const VolumeGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
     ) : (
       <Path
         d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"
-        stroke="#FFFFFF"
+        stroke={color}
         strokeWidth={2}
         strokeLinecap="round"
       />
@@ -126,6 +131,22 @@ export interface OfferingChromeProps {
    * surfaces (current behavior — the public brand page keeps its X on web).
    */
   hideCloseOnWeb?: boolean;
+  /**
+   * issue #4420 — the slim glass header state. false (the cover is on screen):
+   * the icons sit in frosted circles over the cover. true (the cover has
+   * scrolled away): the header has its own frosted page-colour band, so the
+   * icons turn plain, in the page's ink, and the title shows. Absent ⇒ false,
+   * so every caller that does not pass it renders exactly as before.
+   */
+  solid?: boolean;
+  /** issue #4420 — the title shown in the middle of the solid header. */
+  title?: string | null;
+  /** issue #4420 — the title's opacity (follows the scroll). */
+  titleOpacity?: Animated.Value | Animated.AnimatedInterpolation<number>;
+  /** issue #4420 — the theme-motion pause control, placed in the icon group. */
+  pauseSlot?: React.ReactNode;
+  /** issue #4420 — the host's bold face for the header title. */
+  titleFontFamily?: string;
   testID?: string;
 }
 
@@ -156,12 +177,21 @@ export const OfferingChrome: React.FC<OfferingChromeProps> = ({
   onToggleMute,
   closeAccessibilityLabel = "Close",
   hideCloseOnWeb = false,
+  solid = false,
+  title = null,
+  titleOpacity,
+  pauseSlot = null,
+  titleFontFamily,
   testID,
-}) => {
-  // accentWash tints the glass slightly toward the brand color over the dark
-  // scrim, keeping the buttons readable on any cover.
-  const tint: ViewStyle = { backgroundColor: "rgba(0,0,0,0.48)" };
-  void palette; // palette reserved for future accent-tinted chrome; scrim stays neutral for contrast.
+}: OfferingChromeProps) => {
+  // Over the cover: frosted circles on a neutral scrim, readable on any
+  // cover. issue #4420 — in the solid glass header the band itself is the
+  // glass, so the icons turn plain, in the page's ink.
+  const tint: ViewStyle = solid
+    ? styles.plain
+    : { backgroundColor: "rgba(0,0,0,0.48)" };
+  const glyph = solid ? palette.primaryText : "#FFFFFF";
+  const showTitle = title !== null && title.length > 0;
   // ORCH-1159 — hide ONLY the close button on web when the caller opts in
   // (public event / trip / experience pages). Share + Mute always render; native
   // is unaffected. When the close button is hidden, an empty placeholder keeps
@@ -177,20 +207,41 @@ export const OfferingChrome: React.FC<OfferingChromeProps> = ({
           testID={testID !== undefined ? `${testID}-close` : undefined}
         >
           <View style={[styles.glass, tint]}>
-            <CloseGlyph />
+            <CloseGlyph color={glyph} />
           </View>
         </ChromeButton>
       ) : (
-        <View pointerEvents="none" />
+        <View pointerEvents="none" style={showTitle ? styles.closeSpacer : null} />
       )}
+      {showTitle ? (
+        <Animated.View
+          style={[styles.titleWrap, titleOpacity !== undefined ? { opacity: titleOpacity } : null]}
+          pointerEvents="none"
+        >
+          <Text
+            style={[
+              styles.title,
+              { color: palette.primaryText },
+              titleFontFamily !== undefined ? { fontFamily: titleFontFamily } : null,
+            ]}
+            numberOfLines={1}
+            accessibilityElementsHidden={!solid}
+            importantForAccessibility={solid ? "auto" : "no-hide-descendants"}
+            testID={testID !== undefined ? `${testID}-title` : undefined}
+          >
+            {title}
+          </Text>
+        </Animated.View>
+      ) : null}
       <View style={styles.rightGroup}>
+        {pauseSlot}
         <ChromeButton
           onPress={onShare}
           accessibilityLabel="Share"
           testID={testID !== undefined ? `${testID}-share` : undefined}
         >
           <View style={[styles.glass, tint]}>
-            <ShareGlyph />
+            <ShareGlyph color={glyph} />
           </View>
         </ChromeButton>
         {showMute ? (
@@ -202,7 +253,7 @@ export const OfferingChrome: React.FC<OfferingChromeProps> = ({
             testID={testID !== undefined ? `${testID}-mute` : undefined}
           >
             <View style={[styles.glass, tint]}>
-              <VolumeGlyph muted={muted} />
+              <VolumeGlyph muted={muted} color={glyph} />
             </View>
           </ChromeButton>
         ) : null}
@@ -222,6 +273,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
+  // issue #4420 — the solid-header title and plain icons.
+  titleWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignSelf: "center",
+    paddingHorizontal: 10,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  closeSpacer: { width: 40 },
+  plain: { backgroundColor: "transparent" },
   button: {
     // 44pt min hit target via hitSlop; the visible glass is 40×40.
   },

@@ -25,12 +25,105 @@ export type SalesReadinessReason =
   | "not_supported"
   | "no_pixel"
   | "waiting_for_sales"
+  /** #4238 W4b §6: Google needs its purchase conversion action first. */
+  | "needs_setup"
   | "unknown";
 
 export type SalesReadiness = { ready: boolean; reason: SalesReadinessReason };
 
 /** Platforms with a website-sales optimisation path Host ads can use. */
-export const HOST_SALES_PLATFORMS = ["meta", "snapchat", "tiktok"] as const;
+export const HOST_SALES_PLATFORMS = [
+  "meta",
+  "snapchat",
+  "tiktok",
+  // #4238 W4b §6: reported so a sales plan can show "Needs setup"; it is
+  // "ready" only through googleSalesReadiness below.
+  "google",
+] as const;
+
+/**
+ * #4238 W4b §6 (Z-4): Google ticket-sales delivery (Demand Gen
+ * maximizeConversions on the purchase action) is not confirmed by the docs
+ * check yet. Until it is, Google is never "ready" for sales, even with the
+ * action, so a sales plan can never quietly run Google as page visits.
+ */
+export const GOOGLE_HOST_SALES_CONFIRMED = false;
+
+/**
+ * The Google purchase conversion action, in the same lookup order the
+ * conversion sender uses (adConversionFire.ts, #4452-owned, read-only here):
+ * extra.conversion_actions.purchase, then extra.conversion_action_resource,
+ * then extra.google.conversion_action_resource. Another kind (lead,
+ * rsvp_signup) never stands in for purchase.
+ */
+export function googlePurchaseActionResource(
+  conn: Pick<AdConnectionRow, "extra">,
+): string | null {
+  const extra = conn.extra && typeof conn.extra === "object"
+    ? conn.extra as Record<string, unknown>
+    : {};
+  const str = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+  const actions = extra.conversion_actions &&
+      typeof extra.conversion_actions === "object"
+    ? extra.conversion_actions as Record<string, unknown>
+    : {};
+  const google = extra.google && typeof extra.google === "object"
+    ? extra.google as Record<string, unknown>
+    : {};
+  return str(actions.purchase) ?? str(extra.conversion_action_resource) ??
+    str(google.conversion_action_resource);
+}
+
+/** #4238 W4b §6: Google is ready for sales only with the action AND Z-4. */
+export function googleSalesReadiness(
+  conn: Pick<AdConnectionRow, "extra">,
+  confirmed: boolean = GOOGLE_HOST_SALES_CONFIRMED,
+): SalesReadiness {
+  return googlePurchaseActionResource(conn) !== null && confirmed
+    ? { ready: true, reason: "ready" }
+    : { ready: false, reason: "needs_setup" };
+}
+
+/**
+ * #4238 W7: Google sign-ups delivery for a free event (a Google bid on the
+ * free_signup conversion action) shares Z-4: the Google create path is
+ * maximize-clicks only (targetSpend, GR-55) and the conversion bidding flip
+ * is not confirmed by the docs check. Until it is, Google is never "ready"
+ * for sign-ups, even with the action, so a sign-ups plan never runs Google
+ * as page visits.
+ */
+export const GOOGLE_HOST_SIGNUPS_CONFIRMED = false;
+
+/**
+ * #4238 W7 (I-4238-GOOGLE-ACTION-PER-KIND): the Google free sign-up action
+ * (free RSVPs and free ticket orders upload to it, adConversionFire
+ * googleKindFor). Per kind, no fallback: the purchase action or the
+ * conversion_action_resource alias never stands in for it.
+ */
+export function googleSignupActionResource(
+  conn: Pick<AdConnectionRow, "extra">,
+): string | null {
+  const extra = conn.extra && typeof conn.extra === "object"
+    ? conn.extra as Record<string, unknown>
+    : {};
+  const actions = extra.conversion_actions &&
+      typeof extra.conversion_actions === "object"
+    ? extra.conversion_actions as Record<string, unknown>
+    : {};
+  const value = actions.free_signup;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** #4238 W7: Google is ready for sign-ups only with the action AND Z-4. */
+export function googleSignupsReadiness(
+  conn: Pick<AdConnectionRow, "extra">,
+  confirmed: boolean = GOOGLE_HOST_SIGNUPS_CONFIRMED,
+): SalesReadiness {
+  return googleSignupActionResource(conn) !== null && confirmed
+    ? { ready: true, reason: "ready" }
+    : { ready: false, reason: "needs_setup" };
+}
 
 export type SalesSignalProbes = {
   metaHasSignal(conn: AdConnectionRow): Promise<boolean>;
@@ -109,6 +202,7 @@ export async function salesReadiness(
         ? { ready: true, reason: "ready" }
         : { ready: false, reason: "waiting_for_sales" };
     }
+    if (conn.platform === "google") return googleSalesReadiness(conn);
     return { ready: false, reason: "not_supported" };
   } catch (err) {
     // Fail closed: an unreadable signal is never "ready". The authoritative
@@ -157,6 +251,84 @@ export async function cachedSalesReadiness(
     if (now - hit.at < ttl) return value;
   }
   const value = salesReadiness(
+    conn,
+    options.probes ?? liveSalesSignalProbes,
+    options.timeoutMs ?? 4000,
+  );
+  readinessCache.set(key, { at: now, value });
+  return await value;
+}
+
+/** #4238 item 3: platforms with a sign-ups optimisation path (= adHostGoal). */
+export const HOST_SIGNUPS_PLATFORMS = [
+  "meta",
+  "snapchat",
+  // #4238 W7: reported so a sign-ups plan can show "Needs setup"; it is
+  // "ready" only through googleSignupsReadiness.
+  "google",
+] as const;
+
+/**
+ * #4238 item 3: whether an account can optimise a Host ad for sign-ups.
+ * Meta needs its dataset with a live signal (free bookings fire
+ * CompleteRegistration on it); Snapchat needs its pixel (create re-checks the
+ * live pixel signal for PIXEL_SIGNUP). Every other app is not supported.
+ * Read-only; fails closed like salesReadiness.
+ */
+export async function signupsReadiness(
+  conn: AdConnectionRow,
+  probes: SalesSignalProbes = liveSalesSignalProbes,
+  timeoutMs = 4000,
+): Promise<SalesReadiness> {
+  try {
+    if (conn.platform === "meta") {
+      if (!extraString(conn, "dataset_id")) {
+        return { ready: false, reason: "no_pixel" };
+      }
+      const hasSignal = await withTimeout(
+        probes.metaHasSignal(conn),
+        timeoutMs,
+      );
+      return hasSignal === true
+        ? { ready: true, reason: "ready" }
+        : { ready: false, reason: "waiting_for_sales" };
+    }
+    if (conn.platform === "snapchat") {
+      return extraString(conn, "pixel_id")
+        ? { ready: true, reason: "ready" }
+        : { ready: false, reason: "no_pixel" };
+    }
+    if (conn.platform === "google") return googleSignupsReadiness(conn);
+    return { ready: false, reason: "not_supported" };
+  } catch (err) {
+    console.warn("[ad-sales-readiness] sign-up signal unreadable", {
+      platform: conn.platform,
+      error: err instanceof Error ? err.name : "unknown",
+    });
+    return UNKNOWN;
+  }
+}
+
+/** signupsReadiness with the same in-isolate cache rules as sales. */
+export async function cachedSignupsReadiness(
+  conn: AdConnectionRow,
+  options: {
+    probes?: SalesSignalProbes;
+    now?: number;
+    timeoutMs?: number;
+  } = {},
+): Promise<SalesReadiness> {
+  const now = options.now ?? Date.now();
+  const key = `${conn.id}:${conn.platform}:signups`;
+  const hit = readinessCache.get(key);
+  if (hit) {
+    const value = await hit.value;
+    const ttl = value.reason === "unknown"
+      ? SALES_READINESS_UNKNOWN_TTL_MS
+      : SALES_READINESS_TTL_MS;
+    if (now - hit.at < ttl) return value;
+  }
+  const value = signupsReadiness(
     conn,
     options.probes ?? liveSalesSignalProbes,
     options.timeoutMs ?? 4000,

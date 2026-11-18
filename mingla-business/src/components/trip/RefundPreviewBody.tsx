@@ -23,11 +23,8 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  accent,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 import type { RefundPreview } from "../../services/cancelTripBookingService";
 import { GlassCard } from "../ui/GlassCard";
@@ -134,7 +131,7 @@ export const RefundPreviewBody: React.FC<RefundPreviewBodyProps> = ({
 
       {/* 0%-tier banner */}
       {isZeroRefund ? (
-        <GlassCard variant="elevated" padding={spacing.md} radius="lg">
+        <GlassCard variant="elevated" padding={space[4]} radius="lg">
           <View style={styles.zeroTierBanner}>
             <Text style={styles.zeroTierTitle}>ⓘ No refund applies</Text>
             <Text style={styles.zeroTierBody}>{explainer}</Text>
@@ -145,7 +142,7 @@ export const RefundPreviewBody: React.FC<RefundPreviewBodyProps> = ({
       )}
 
       {/* Payment breakdown */}
-      <GlassCard variant="base" padding={spacing.md} radius="lg">
+      <GlassCard variant="base" padding={space[4]} radius="lg">
         <Text style={styles.breakdownHeader}>PAYMENT BREAKDOWN</Text>
         {collectedRows.length === 0 ? (
           <Text style={styles.breakdownEmpty}>No collected payments.</Text>
@@ -223,97 +220,97 @@ export const RefundPreviewBody: React.FC<RefundPreviewBodyProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
+    paddingVertical: space[2],
+    gap: space[4],
   },
   tripHeader: {
-    paddingBottom: spacing.xs,
+    paddingBottom: space[1],
   },
   tripName: {
     fontSize: 16,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   tripDates: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   eyebrow: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: accent.warm,
+    color: color.accent,
   },
   heroLabel: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   heroAmount: {
     fontSize: 40,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.5,
   },
   heroAmountMuted: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   quotedCaption: {
     fontSize: 12,
-    color: textTokens.tertiary,
-    marginTop: -spacing.sm,
+    color: color.text3,
+    marginTop: -space[2],
   },
   explainer: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
   },
   zeroTierBanner: {
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   zeroTierTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: semantic.warning,
-    marginBottom: spacing.xs,
+    color: color.warning,
+    marginBottom: space[1],
   },
   zeroTierBody: {
     fontSize: 13,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 18,
   },
   breakdownHeader: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: textTokens.tertiary,
-    marginBottom: spacing.sm,
+    color: color.text3,
+    marginBottom: space[2],
   },
   breakdownEmpty: {
     fontSize: 13,
-    color: textTokens.tertiary,
+    color: color.text3,
     fontStyle: "italic",
   },
   breakdownRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingVertical: spacing.xs,
+    paddingVertical: space[1],
   },
   breakdownRowLeft: {
     flex: 1,
-    paddingRight: spacing.sm,
+    paddingRight: space[2],
   },
   breakdownLabel: {
     fontSize: 14,
-    color: textTokens.primary,
+    color: color.text1,
   },
   breakdownLabelMuted: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   breakdownSub: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     marginTop: 2,
   },
   breakdownAmount: {
@@ -321,29 +318,29 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   breakdownAmountSuccess: {
-    color: semantic.success,
+    color: color.success,
   },
   breakdownAmountMuted: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   breakdownDivider: {
     height: 1,
-    backgroundColor: glass.border.profileBase,
-    marginVertical: spacing.xs,
+    backgroundColor: color.line,
+    marginVertical: space[1],
   },
   breakdownTotalLabel: {
     fontSize: 14,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   breakdownTotal: {
     fontSize: 16,
     fontWeight: "700",
-    color: textTokens.primary,
+    color: color.text1,
   },
   disclaimer: {
     fontSize: 12,
-    color: textTokens.tertiary,
+    color: color.text3,
     lineHeight: 16,
   },
 });

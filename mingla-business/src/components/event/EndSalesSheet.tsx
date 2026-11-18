@@ -19,8 +19,8 @@ import React, { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  spacing,
-  text as textTokens,
+  color,
+  space,
 } from "../../constants/designSystem";
 
 import { Button } from "../ui/Button";
@@ -99,28 +99,28 @@ export const EndSalesSheet: React.FC<EndSalesSheetProps> = ({
 
 const styles = StyleSheet.create({
   body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    // #4420: the Sheet owns the 20 side padding.
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
     letterSpacing: -0.2,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
+    color: color.text1,
+    marginBottom: space[2],
   },
   copy: {
     fontSize: 14,
-    color: textTokens.secondary,
+    color: color.text2,
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    marginBottom: space[6],
   },
   actions: {
-    marginTop: spacing.sm,
+    marginTop: space[2],
   },
   actionSpacer: {
-    height: spacing.sm,
+    height: space[2],
   },
 });
 

@@ -1,15 +1,15 @@
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, jest, test } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const read = (relative: string): string => readFileSync(path.resolve(__dirname, relative), "utf8");
 
 describe("issue #1774 People page happy path", () => {
-  test("the primary route mounts the real People page and legacy Audiences only redirects", () => {
+  // [TEST-MOD-APPROVED #4420] — wave 6 retires the legacy Audiences redirect.
+  test("the primary route mounts the real People page and the legacy Audiences route is retired", () => {
     expect(read("../../../../app/(tabs)/marketing/people/index.tsx")).toContain("<PeoplePage");
-    const legacy = read("../../../../app/(tabs)/marketing/audiences/index.tsx");
-    expect(legacy).toContain('<Redirect href="/(tabs)/marketing/people"');
-    expect(legacy).not.toContain("AudienceListScreen");
+    const { existsSync } = jest.requireActual<typeof import("node:fs")>("node:fs");
+    expect(existsSync(path.resolve(__dirname, "../../../../app/(tabs)/marketing/audiences/index.tsx"))).toBe(false);
   });
 
   test("the page renders Circle only from its server authority and never fabricates reach", () => {

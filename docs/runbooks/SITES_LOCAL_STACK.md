@@ -183,6 +183,87 @@ preview's close/publish links go to `SITES_LOCAL_BUSINESS_ORIGIN` (written into
 `http://localhost:8190`, loopback only); a different Business web port needs
 `SITES_LOCAL_BUSINESS_WEB_PORT` set when the keys are generated.
 
+Business web needs the Core edge functions served (`run-local-sites.sh`, with
+`--frozen` while anyone else is previewing). Without them Kong answers 500
+("DNS resolution failed" for the edge runtime container) and stays hang on
+"Checking Stay readiness…", Ads shows "setup unavailable", maps stay blank and
+the Website section silently returns to the brand profile.
+`run-business-web.sh` warns at start when the functions do not answer.
+
+Some functions need keys the generated local env does not hold. Use only
+local or test values, never production secrets: `GOOGLE_MAPS_API_KEY` (address
+suggestions and map previews; otherwise `provider_key_missing`), and for
+checkout `MINGLA_STRIPE_MODE=test`, `STRIPE_PUBLISHABLE_KEY_TEST` (`pk_test_`),
+the `STRIPE_RAK_<ROLE>_TEST` restricted keys (`rk_test_`; at least
+`TICKET_CHECKOUT`, `ONBOARD`, `REFRESH_STATUS`, `WEBHOOK`) and
+`STRIPE_WEBHOOK_SECRET` from `stripe listen`; the app's
+`EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` must be the same real `pk_test_` key.
+If the colima VM's resolver stops answering for outside names, every Stripe
+and Google call from the functions fails ("connection to Stripe",
+`suggest_exception`). The `run-local-sites.sh` edge watcher detects this and
+adds public resolver fallbacks inside the edge container only.
+Extra seed data must use RFC 4122 ids (`randomUUID()` / `gen_random_uuid()`):
+ids such as `md5(...)::uuid` are refused by the Sites functions (400
+`VALIDATION_FAILED`), so the Website section returns to the brand profile.
+
+## Host ads stack (#4238)
+
+The Host ads fixture (`fixtures/host-ads-states.sql`: a funded test brand
+and one ad per state) disables two triggers for one transaction and writes
+fake ledger money, so it loads only into a Core-only stack of its own, never
+into the Sites stack above. On 2026-11-16 another chat's colima VM held
+127.0.0.1:55321/55322 on IPv4 while Docker Desktop took only IPv6, and a
+start on the defaults replayed migrations into that chat's database.
+
+| Piece | Where | Ports |
+|---|---|---|
+| Host ads Core (repo migrations, no CMS) | project id `mingla-host-ads-4238-local`, workdir `~/.mingla-sites-local/host-ads-<hash>/core` | API 56521, DB 56522, shadow 56520, inspector 56583, mail catcher 56524 |
+
+```bash
+cd ~/Desktop/mingla-orchs/4238-host-ads-excellent
+for p in 56521 56522 56520 56583 56524; do lsof -nP -iTCP:$p -sTCP:LISTEN; done   # must print nothing
+export DOCKER_HOST=unix://$HOME/.docker/run/docker.sock   # or the colima socket you own
+scripts/sites/local/start-host-ads-stack.sh               # start, prove identity, replay migrations
+node scripts/sites/local/seed-host-ads.mjs                # load the fixture (once per database)
+scripts/sites/local/start-host-ads-stack.sh --stop        # stop, keep data
+scripts/sites/local/start-host-ads-stack.sh --stop --wipe # also drop volumes and .state/host-ads-*
+```
+
+Ports are overridable with `HOST_ADS_STACK_API_PORT`, `HOST_ADS_STACK_DB_PORT`,
+`HOST_ADS_STACK_SHADOW_PORT`, `HOST_ADS_STACK_INSPECTOR_PORT`,
+`HOST_ADS_STACK_MAIL_PORT` and the project id with `HOST_ADS_STACK_PROJECT_ID`.
+The seed signs the brand to `host-ads-owner@local.invalid` (password in
+`.state/host-ads-owner.json`; web sign-in only).
+
+Native sign-in (the Host app offers Apple, Google or an email code; no
+password). This stack runs its own mail catcher (Mailpit, web UI
+`http://127.0.0.1:56524`); `common.sh` keeps it off for every other local stack.
+
+```bash
+# point a dev build at http://<this Mac's LAN IP>:56521 with the stack's anon key
+# (.state/host-ads.status.env ANON_KEY), tap "Continue with email", enter
+# host-ads-owner@local.invalid and "Send code", then:
+node scripts/sites/local/host-ads-sign-in-code.mjs --inbox   # the code the stack just mailed
+# or, without the app sending mail (asking in the app again replaces this code):
+node scripts/sites/local/host-ads-sign-in-code.mjs           # admin one-time code (generate_link)
+```
+
+Both print only the 6-digit code and refuse any API that is not this stack's
+loopback port.
+
+Safety rails (I-4238-HOST-ADS-SEED-ISOLATED, `lib/host-ads-stack.mjs`):
+
+- 55321/55322/55421/55422 are refused outright; any other port something
+  already listens on is refused before `supabase start`.
+- Every inherited `PG*` variable (`PGHOSTADDR`, `PGSERVICE`, `PGPORT`, ...) is
+  dropped; psql gets only the stack's own target.
+- The start writes a random token into `sites_local.stack_identity` INSIDE the
+  db container (`docker exec`), then reads it back through the host port; a
+  mismatch stops before any migration. The seed reads it back again and the
+  fixture checks it inside its transaction, before the triggers are touched.
+- `start-local-sites.sh` now also refuses a Core or CMS port that another
+  process already listens on while its own stack is not running.
+
 ## Tear-down
 
 ```bash

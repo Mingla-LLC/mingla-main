@@ -195,12 +195,19 @@ const unmount = async (tree: TestRendererInstance): Promise<void> => {
   });
 };
 
+// [TEST-MOD-APPROVED #4420] slot chips are radio choices (OfferingChoiceChip),
+// so their state is `checked`, the radio a11y state, instead of `selected`.
 const findByProp = (
   root: TestInstance,
   prop: string,
   value: unknown,
 ): TestInstance => {
-  const match = root.findAll((node) => node.props[prop] === value)[0];
+  // [TEST-MOD-APPROVED #4420] the slot chip is the shared OfferingChoiceChip,
+  // a composite that forwards accessibilityLabel to its Pressable; resolve
+  // to the Pressable itself so state, style and press are read off the
+  // control the guest actually touches.
+  const matches = root.findAll((node) => node.props[prop] === value);
+  const match = matches.find((node) => node.type === Pressable) ?? matches[0];
   if (match === undefined) throw new Error(`Missing ${prop}=${String(value)}`);
   return match;
 };
@@ -227,7 +234,10 @@ const pressCallback = (node: TestInstance): (() => void) => {
 };
 
 const flattenedViewStyle = (node: TestInstance): ViewStyle =>
-  StyleSheet.flatten(node.props.style as StyleProp<ViewStyle>) ?? {};
+  StyleSheet.flatten(
+    // [TEST-MOD-APPROVED #4420] Pressable style is a function of press state; read the resting style.
+    (typeof node.props.style === "function" ? node.props.style({ pressed: false }) : node.props.style) as StyleProp<ViewStyle>,
+  ) ?? {};
 
 const flattenedTextStyle = (node: TestInstance): TextStyle =>
   StyleSheet.flatten(node.props.style as StyleProp<TextStyle>) ?? {};
@@ -238,12 +248,15 @@ const assertFullSlotContract = (root: TestInstance, time: string): void => {
   expect(chip.props.disabled).toBe(true);
   expect(chip.props.accessibilityState).toEqual({
     disabled: true,
-    selected: false,
+    checked: false,
   });
   expect(chipStyle.opacity ?? 1).toBe(1);
-  expect(chipStyle.backgroundColor).toBeUndefined();
+  // [TEST-MOD-APPROVED #4420] the slot is the shared OfferingChoiceChip: the
+  // resting (never the selected ink) fill, its 42pt pill geometry.
+  expect(chipStyle.backgroundColor).toBe(PALETTE.card);
+  expect(chipStyle.backgroundColor).not.toBe(PALETTE.primaryText);
   expect(chipStyle.borderColor).toBe(PALETTE.panelBorder);
-  expect(chipStyle.minHeight).toBe(44);
+  expect(chipStyle.minHeight).toBe(42);
   expect(chipStyle.justifyContent).toBe("center");
   expect(chipStyle.borderWidth).toBe(1);
   expect(chipStyle.paddingHorizontal).toBe(16);
@@ -321,7 +334,7 @@ describe("issue #2734 sold-out reservation truth — implementor happy path", ()
     expect(open.props.disabled).toBe(false);
     expect(open.props.accessibilityState).toEqual({
       disabled: false,
-      selected: false,
+      checked: false,
     });
     const openLabel = tree.root.findAll(
       (node) =>
@@ -342,11 +355,13 @@ describe("issue #2734 sold-out reservation truth — implementor happy path", ()
     );
     expect(selected.props.accessibilityState).toEqual({
       disabled: false,
-      selected: true,
+      checked: true,
     });
     const selectedStyle = flattenedViewStyle(selected);
-    expect(selectedStyle.borderColor).toBe(PALETTE.accent);
-    expect(selectedStyle.backgroundColor).toBe(PALETTE.accentWash);
+    // [TEST-MOD-APPROVED #4420] the chosen chip is ink (the design's `.chip`
+    // selected state), not the accent wash; it still reads unlike a full slot.
+    expect(selectedStyle.borderColor).toBe(PALETTE.primaryText);
+    expect(selectedStyle.backgroundColor).toBe(PALETTE.primaryText);
     expect(findText(tree.root, "NAME · REQUIRED")).toHaveLength(1);
     await unmount(tree);
   });

@@ -1,7 +1,7 @@
 import React from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
-import { glass, spacing, text, typography } from "../../constants/designSystem";
+import { space, color, type } from "../../constants/designSystem";
 import { capturePeople } from "../../features/people/peopleAnalytics";
 import type { useBrandCircleReach } from "../../hooks/marketing/useBrandCircleReach";
 import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
@@ -49,4 +49,4 @@ function FollowerCircleReachBlock(props:CircleReachBlockProps):React.ReactElemen
 export function CircleReachBlock(props:CircleReachBlockProps):React.ReactElement{
   return props.ring==="follower"?<FollowerCircleReachBlock {...props}/>:<CircleReachBlockView {...props}/>;
 }
-const styles=StyleSheet.create({row:{minHeight:64,flexDirection:"row",alignItems:"center",gap:spacing.sm,paddingVertical:10},divider:{borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:glass.border.profileBase},copy:{flex:1,minWidth:0,gap:spacing.xs},name:{...typography.body,fontWeight:"600",color:text.primary},reason:{...typography.bodySm,color:text.secondary},status:{...typography.caption,fontWeight:"600",color:text.secondary},loading:{gap:spacing.xs},empty:{minHeight:96,justifyContent:"center",alignItems:"flex-start",gap:spacing.xs},centered:{alignItems:"center"}});
+const styles=StyleSheet.create({row:{minHeight:64,flexDirection:"row",alignItems:"center",gap:space[2],paddingVertical:10},divider:{borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:color.line},copy:{flex:1,minWidth:0,gap:space[1]},name:{...type.body,fontWeight:"600",color:color.text1},reason:{...type.small,color:color.text2},status:{...type.caption,fontWeight:"600",color:color.text2},loading:{gap:space[1]},empty:{minHeight:96,justifyContent:"center",alignItems:"flex-start",gap:space[1]},centered:{alignItems:"center"}});

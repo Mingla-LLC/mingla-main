@@ -17,7 +17,7 @@
 
 // #4389 A3 — create_brand shows where funds are collected.
 import { ARI_SETUP_COPY, payoutCountryLabel } from "./ariSetupCopy";
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -33,12 +33,12 @@ import { AlertTriangle, Pencil, Play, Plus, X } from "lucide-react-native";
 import {
   ariPalette,
   ariThread,
-  glass,
+  type as typeTokens,
+  color,
+  materials,
   radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
+  scrim,
+  space,
 } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
 import { isToolProposalEditable, ToolEditForm } from "./ToolEditForm";
@@ -76,6 +76,26 @@ import { BRAND_DELETE_SHARED_COPY } from "../brand/brandDeleteSharedCopy";
 import { SitePagePlanSheet } from "./LazySitePagePlanSheet";
 
 // Premium proposal-card metrics — tighter than the default kit values.
+// #4238 W6b — the Host ad lines (goal, visits-for-now apps, media count;
+// the apply_ad_suggestion money) load lazily with the Host Ads words.
+const AriAdCardExtras = React.lazy(async () => ({
+  default: (await import("../../screens/hostAds/HostAdScreens")).AriAdCardExtras,
+}));
+const AD_EXTRAS_TOOLS = new Set(["propose_ad_plan", "apply_ad_suggestion"]);
+
+/** #4238 W6b — Ari's refusal codes in the Host's words (lazy, same chunk). */
+async function plainAdRefusal(message: string): Promise<string> {
+  if (!/ad_suggestion_|host_ad_live_edit_once_a_day|ari_creative_ai_generated|ari_copy_unverified_name:/.test(message)) {
+    return message;
+  }
+  try {
+    const { hostAdAriRefusalIn } = await import("../../screens/hostAds/HostAdScreens");
+    return hostAdAriRefusalIn(message) ?? message;
+  } catch {
+    return message;
+  }
+}
+
 const CARD_PADDING = ariThread.cardPad; // 12
 const IDENTITY_FONT = ariThread.cardTitleFont; // 15
 const IDENTITY_LINE = ariThread.cardTitleLine; // 21
@@ -879,7 +899,7 @@ const CoverBand: React.FC<CoverBandProps> = ({
             : "Uploading cover, please wait."
         }
       >
-        <ActivityIndicator size="large" color={textTokens.inverse} />
+        <ActivityIndicator size="large" color={color.textStrong} />
         <Text style={styles.coverBusyLabel}>{busyLabel}</Text>
       </View>
     );
@@ -903,7 +923,7 @@ const CoverBand: React.FC<CoverBandProps> = ({
         ) : (
           <View style={styles.coverVideoFallback}>
             <View style={styles.playDisc}>
-              <Play size={20} color="#ffffff" />
+              <Play size={20} color={color.textStrong} />
             </View>
           </View>
         )}
@@ -923,7 +943,7 @@ const CoverBand: React.FC<CoverBandProps> = ({
             accessibilityRole="button"
             accessibilityLabel="Change cover"
           >
-            <Pencil size={14} color="#ffffff" />
+            <Pencil size={14} color={color.textStrong} />
           </Pressable>
           <Pressable
             onPress={onRemove}
@@ -933,7 +953,7 @@ const CoverBand: React.FC<CoverBandProps> = ({
             accessibilityRole="button"
             accessibilityLabel="Remove cover"
           >
-            <X size={14} color="#ffffff" />
+            <X size={14} color={color.textStrong} />
           </Pressable>
         </View>
       </View>
@@ -952,14 +972,14 @@ const CoverBand: React.FC<CoverBandProps> = ({
       accessibilityHint="Opens the cover picker"
     >
       <View style={styles.coverPill}>
-        <Plus size={16} color={textTokens.secondary} />
+        <Plus size={16} color={color.text2} />
         <Text style={styles.coverPillLabel}>
           {isError ? "Try again" : addLabel}
         </Text>
       </View>
       {isError ? (
         <View style={styles.coverErrorRow}>
-          <AlertTriangle size={14} color={semantic.error} />
+          <AlertTriangle size={14} color={color.danger} />
           <Text style={styles.coverSubLabel}>
             Couldn&apos;t upload that cover. Tap to try again.
           </Text>
@@ -1325,7 +1345,7 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
     try {
       const outcome = await onConfirm(nextArgs, keepPending);
       if (!outcome.ok && outcome.error && outcome.terminal !== "expired") {
-        setProposalError(outcome.error);
+        setProposalError(await plainAdRefusal(outcome.error));
       }
       return outcome;
     } catch {
@@ -1446,9 +1466,9 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
   return (
     <GlassChrome
       intensity="cardElevated"
-      tintColor={glass.tint.profileElevated}
+      tintColor={color.fill.tile}
       borderColor={
-        isTypeConfirm ? "rgba(239,68,68,0.32)" : ariPalette.proposalBorder
+        isTypeConfirm ? color.errorLine : ariPalette.proposalBorder
       }
       radius="lg"
       style={styles.card}
@@ -1458,7 +1478,7 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
         <View style={styles.headerRow}>
           <AriOrb size="xs" decorative />
           {isTypeConfirm ? (
-            <AlertTriangle size={12} color={semantic.error} />
+            <AlertTriangle size={12} color={color.danger} />
           ) : null}
           <Text
             style={[styles.verb, isTypeConfirm && styles.verbDanger]}
@@ -1546,7 +1566,7 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
               value={typedName}
               onChangeText={setTypedName}
               placeholder={deleteName}
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.confirmInput}
@@ -1569,7 +1589,7 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
               value={legalNameInput}
               onChangeText={setLegalNameInput}
               placeholder="Legal name"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               autoCapitalize="words"
               autoCorrect={false}
               style={styles.confirmInput}
@@ -1583,7 +1603,7 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
               value={typedName}
               onChangeText={setTypedName}
               placeholder="DELETE"
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               autoCapitalize="characters"
               autoCorrect={false}
               style={styles.confirmInput}
@@ -1624,7 +1644,7 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
               value={typedName}
               onChangeText={setTypedName}
               placeholder={moneyPhrase}
-              placeholderTextColor={textTokens.quaternary}
+              placeholderTextColor={color.text4}
               autoCapitalize="characters"
               autoCorrect={false}
               style={styles.confirmInput}
@@ -1705,6 +1725,12 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
               </Text>
             ) : null}
           </View>
+        ) : null}
+
+        {AD_EXTRAS_TOOLS.has(toolName) ? (
+          <Suspense fallback={null}>
+            <AriAdCardExtras toolName={toolName} args={liveArgs} />
+          </Suspense>
         ) : null}
 
         {editing && !isTypeConfirm ? (
@@ -2015,10 +2041,10 @@ const StandardToolProposalCard: React.FC<ToolProposalCardProps> = ({
 const styles = StyleSheet.create({
   // #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920."
   adFitText: {
-    marginTop: spacing.xs,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+    marginTop: space[1],
+    fontSize: typeTokens.caption.fontSize,
+    lineHeight: typeTokens.caption.lineHeight,
+    color: color.text2,
   },
   card: {
     marginVertical: 6,
@@ -2029,7 +2055,7 @@ const styles = StyleSheet.create({
     padding: CARD_PADDING,
   },
   reviewBoundary: {
-    color: textTokens.secondary,
+    color: color.text2,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
@@ -2045,18 +2071,18 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     fontWeight: "600",
     letterSpacing: VERB_LETTER_SPACING,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   verbDanger: {
     // Words stay legible-neutral (secondary); danger lives in the glyph.
-    color: textTokens.secondary,
+    color: color.text2,
   },
   identity: {
     marginTop: 8,
     fontSize: IDENTITY_FONT,
     lineHeight: IDENTITY_LINE,
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   fields: {
@@ -2071,14 +2097,14 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: FIELD_LABEL_FONT,
     lineHeight: 14,
-    color: textTokens.tertiary,
+    color: color.text3,
     letterSpacing: 0.1,
   },
   fieldValue: {
     fontSize: FIELD_VALUE_FONT,
     lineHeight: 17,
-    color: textTokens.primary,
-    marginLeft: spacing.sm,
+    color: color.text1,
+    marginLeft: space[2],
     flexShrink: 1,
   },
   // ----- cover band --------------------------------------------------------
@@ -2094,17 +2120,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   coverBandEmpty: {
-    backgroundColor: ariThread.ariBubbleAndroid, // opaque on every platform
+    backgroundColor: materials.pane.solidFill, // opaque on every platform
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     gap: 6,
   },
   coverBandFilled: {
-    backgroundColor: ariThread.ariBubbleAndroid,
+    backgroundColor: materials.pane.solidFill,
   },
   coverBandBusy: {
-    backgroundColor: ariThread.ariBubbleAndroid,
+    backgroundColor: materials.pane.solidFill,
     gap: 8,
   },
   coverImage: {
@@ -2119,7 +2145,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2130,20 +2156,20 @@ const styles = StyleSheet.create({
     height: ariThread.controlSize,
     paddingHorizontal: 14,
     borderRadius: radius.full,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   coverPillLabel: {
     fontSize: ariThread.chipFont,
     lineHeight: ariThread.chipLine,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   coverSubLabel: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: typeTokens.label.fontSize,
+    lineHeight: typeTokens.label.lineHeight,
+    color: color.text3,
   },
   coverErrorRow: {
     flexDirection: "row",
@@ -2152,9 +2178,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   coverBusyLabel: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: textTokens.secondary,
+    fontSize: typeTokens.label.fontSize,
+    lineHeight: typeTokens.label.lineHeight,
+    color: color.text2,
   },
   coverTypeChip: {
     position: "absolute",
@@ -2163,14 +2189,14 @@ const styles = StyleSheet.create({
     height: 22,
     paddingHorizontal: 8,
     borderRadius: radius.full,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
   coverTypeChipText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: "#ffffff",
+    fontSize: typeTokens.label.fontSize,
+    lineHeight: typeTokens.label.lineHeight,
+    color: color.textStrong,
     fontWeight: "600",
   },
   coverControls: {
@@ -2184,26 +2210,26 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: scrim.modal,
     alignItems: "center",
     justifyContent: "center",
   },
   // ----- Q7 create-time "Create & attach" inline confirm -------------------
   createAttachRow: {
     marginTop: 8,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderRadius: radius.md,
-    padding: spacing.md,
+    padding: space[4],
     gap: 8,
   },
   createAttachText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: textTokens.secondary,
+    fontSize: typeTokens.label.fontSize,
+    lineHeight: typeTokens.label.lineHeight,
+    color: color.text2,
   },
   createAttachName: {
     fontWeight: "600",
-    color: textTokens.primary,
+    color: color.text1,
   },
   createAttachActions: {
     flexDirection: "row",
@@ -2212,17 +2238,17 @@ const styles = StyleSheet.create({
   },
   createAttachCancel: {
     height: ariThread.controlSize,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   createAttachConfirm: {
     height: ariThread.controlSize,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: space[4],
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
@@ -2241,47 +2267,47 @@ const styles = StyleSheet.create({
   // ----- delete variant ----------------------------------------------------
   assuranceRow: {
     marginTop: 10,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderRadius: radius.md,
-    padding: spacing.md,
+    padding: space[4],
   },
   assuranceText: {
     fontSize: 13,
     lineHeight: 17,
-    color: textTokens.secondary,
+    color: color.text2,
   },
   skeletonRow: {
     height: 14,
     borderRadius: radius.sm,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     width: "90%",
   },
   confirmHelper: {
     marginTop: 10,
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    color: textTokens.tertiary,
+    fontSize: typeTokens.label.fontSize,
+    lineHeight: typeTokens.label.lineHeight,
+    color: color.text3,
   },
   confirmHelperName: {
     fontWeight: "600",
-    color: textTokens.secondary,
+    color: color.text2,
   },
   confirmInput: {
     marginTop: 4,
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
     paddingHorizontal: 12,
     fontSize: 13,
-    color: textTokens.primary,
+    color: color.text1,
   },
   proposalError: {
-    marginTop: spacing.sm,
-    color: semantic.error,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    marginTop: space[2],
+    color: color.danger,
+    fontSize: typeTokens.caption.fontSize,
+    lineHeight: typeTokens.caption.lineHeight,
   },
   // ----- actions -----------------------------------------------------------
   actions: {
@@ -2294,19 +2320,19 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: space[2],
   },
   cancelBtn: {
     flex: 1,
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: glass.border.chrome,
+    borderColor: color.lineStrong,
   },
   editBtn: {
     flex: 1,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: color.fill.inset,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: color.line,
   },
   confirmBtn: {
     flex: 1.6,
@@ -2325,39 +2351,39 @@ const styles = StyleSheet.create({
   // ORCH-1103 — destructive action wears red, the one departure from userBubble.
   deleteBtn: {
     flex: 1.6,
-    backgroundColor: semantic.error,
+    backgroundColor: color.danger,
     overflow: "hidden",
   },
   deleteBtnDisabled: {
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: color.fill.tile,
     opacity: 0.4,
   },
   cancelText: {
     fontSize: BUTTON_FONT,
     fontWeight: "500",
-    color: textTokens.secondary,
+    color: color.text2,
     letterSpacing: -0.1,
   },
   editText: {
     fontSize: BUTTON_FONT,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
     letterSpacing: -0.1,
   },
   confirmText: {
     fontSize: BUTTON_FONT,
     fontWeight: "600",
-    color: ariThread.onUserBubble,
+    color: color.ink,
     letterSpacing: -0.1,
   },
   deleteText: {
     fontSize: 14, // MUST stay >=14/600 to clear the 3:1 large-text bar (3.76:1)
     fontWeight: "600",
-    color: "#ffffff",
+    color: color.textStrong,
     letterSpacing: -0.1,
   },
   deleteTextDisabled: {
-    color: textTokens.tertiary,
+    color: color.text3,
   },
   btnPressed: {
     opacity: 0.85,

@@ -25,18 +25,24 @@ describe("Trip creator width parity with event creator", () => {
   const tripStep1 = read("components/trip/TripCreatorStep1Basics.tsx");
 
   it("keeps both wizard ScrollView bodies on the same horizontal gutter", () => {
-    expect(styleBlock(tripWizard, "body")).toContain(
-      "paddingHorizontal: spacing.md + 8",
-    );
-    expect(styleBlock(eventWizard, "body")).toContain(
-      "paddingHorizontal: spacing.md + 8",
-    );
+    // [TEST-MOD-APPROVED #4420] — the same 24 gutter, written any of the ways
+    // the wizards use while they move to the Graphite `space` scale.
+    const gutter = /paddingHorizontal: (?:(?:spacing\.md|space\[4\]) \+ 8|space\[6\])/;
+    expect(styleBlock(tripWizard, "body")).toMatch(gutter);
+    expect(styleBlock(eventWizard, "body")).toMatch(gutter);
+  });
+
+  // [TEST-MOD-APPROVED #4420] native run: the step title row sat on 16 while
+  // the fields sat on 24, so "Basics" hung left of its own form.
+  it("puts the phone step title row on the same 24 gutter as the body", () => {
+    expect(styleBlock(tripWizard, "subtitleRow")).toContain("paddingHorizontal: space[6]");
   });
 
   it("does not add a nested horizontal gutter inside trip Step 1", () => {
     const host = styleBlock(tripStep1, "host");
-    expect(host).toContain("gap: spacing.md");
-    expect(host).toContain("paddingTop: spacing.sm");
+    // [TEST-MOD-APPROVED #4420] the same values as space[4] / space[2].
+    expect(host).toContain("gap: space[4]");
+    expect(host).toContain("paddingTop: space[2]");
     expect(host).not.toContain("paddingHorizontal");
   });
 });

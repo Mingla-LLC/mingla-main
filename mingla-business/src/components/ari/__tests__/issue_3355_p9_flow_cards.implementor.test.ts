@@ -15,11 +15,17 @@ jest.mock("react-native", () => ({
   Text: "text",
   View: "view",
 }));
-jest.mock("../../../constants/designSystem", () => ({
+// [TEST-MOD-APPROVED #4420] the Graphite token names (color/space/type/…) join
+// the partial mock: the screens now read them instead of the retired names.
+jest.mock("../../../constants/designSystem", () => {
+  const token: object = new Proxy({}, { get: (_t, key) => (key === Symbol.toPrimitive ? () => 0 : token) });
+  return {
+    color: token, space: token, type: token, edge: token, materials: token, scrim: token, shadow: token, size: token, ariPalette: token,
   spacing: { sm: 8 },
   text: { secondary: "grey" },
   typography: { bodySm: { fontSize: 13 } },
-}));
+  };
+});
 jest.mock("@mingla/phone-input/phoneNumber", () => ({
   formatPhoneNational: (_c: string, v: string) => v,
   phoneDialCodeForCountry: () => null,

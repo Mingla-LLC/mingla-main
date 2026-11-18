@@ -1,6 +1,13 @@
-/** Issue #3697 v1.4 — Host Ads plan builder and resumable launch surface. */
+/**
+ * Issue #3697 v1.4 — Host Ads plan builder and resumable launch surface.
+ * #4238 W6a — rebuilt to design v9 on Graphite Glass: six steps (what to
+ * promote, who sees it, where it runs, budget, the ad, review and pay), each
+ * opening on "Let Mingla choose" with an Advanced layer; every amount is what
+ * the Host pays (credit is sent to the server); Launch waits for every app's
+ * check, the media rights and enough credit, with the reason pinned above it.
+ */
 
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
   useEffect,
@@ -11,6 +18,7 @@ import React, {
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -21,18 +29,12 @@ import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { DateField } from "../../components/ui/DateField";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { GlassCard } from "../../components/ui/GlassCard";
 import { Input } from "../../components/ui/Input";
 import {
   HOST_AD_OWNED_ERROR_COPY,
   HOST_AD_PLATFORM_NAMES,
-  hostAdCountingLines,
   hostAdErrorMessage,
-  hostAdReachLine,
   hostAdStatusLabel,
-  hostAdTargetingNote,
-  platformNames,
-  hostAdAudienceName,
 } from "../../components/marketing/ads/hostAdCopy";
 import {
   goBackToAds,
@@ -41,6 +43,9 @@ import {
   hostAdScheduleIsos,
   hostAdScheduleLimit,
   hostAdScrollBottomPadding,
+  hostAdErrorLineBottomOffset,
+  shouldHideHostAdDock,
+  hostAdAgeRangeValid,
   initialHostAdConnections,
 } from "../../components/marketing/ads/hostAdBuilderRules";
 import {
@@ -53,19 +58,65 @@ import { HostAdAudiencePicker } from "../../components/marketing/ads/HostAdAudie
 import { HostAdPagePicker } from "../../components/marketing/ads/HostAdPagePicker";
 import { HostAdPlacesEditor } from "../../components/marketing/ads/HostAdPlacesEditor";
 import { HostAdInterestsEditor } from "../../components/marketing/ads/HostAdInterestsEditor";
-import { HostAdBudgetPanel } from "../../components/marketing/ads/HostAdBudgetPanel";
-import {
-  HostAdCtaPicker,
-  HostAdPreview,
-  HostAdTextCounters,
-  HostAdUtmTags,
-} from "../../components/marketing/ads/HostAdCreativeExtras";
+import { HostAdPreview } from "../../components/marketing/ads/HostAdCreativeExtras";
 import {
   type HostAdBudgetMode,
   hostAdAllocations,
-  hostAdBudgetShortMessage,
   hostAdDaysInRun,
+  hostAdProportionalCents,
 } from "../../components/marketing/ads/hostAdBudget";
+import {
+  HOST_AD_BUILDER_APPS,
+  HOST_AD_BUILDER_STEPS,
+  type HostAdBuilderStep,
+  hostAdBuilderStepId,
+  hostAdCreativeProblem,
+  hostAdCreditFromPay,
+  hostAdPlanBudget,
+  hostAdLaunchBlocker,
+  hostAdMinimumCreditCents,
+  hostAdMinimumPayCents,
+  hostAdPayFromCredit,
+  hostAdSliderRange,
+  hostAdSnap,
+  hostAdTopUpNeededCents,
+  hostAdWeekRange,
+  type HostAdCheckRow,
+} from "../../components/marketing/ads/hostAdBuilderModel";
+import { hb, hostAdGoalName, hostAdGoalUnit, hostAdStepName } from "../../components/marketing/ads/hostAdBuilderCopy";
+import {
+  AddTile,
+  AdvancedRow,
+  Badge,
+  Blocker,
+  BudgetSlider,
+  BuilderCard,
+  BuilderLabel,
+  BuilderList,
+  builderStyles as bs,
+  CheckRow,
+  CheckState,
+  ChipRow,
+  CreativeTile,
+  InfoLine,
+  Note,
+  Segmented,
+  SwitchRow,
+  ValueRow,
+} from "../../components/marketing/ads/HostAdBuilderBits";
+import { HostAdTopUpSheet } from "../../components/marketing/ads/HostAdTopUpSheet";
+import { HostAdWordsSheet } from "../../components/marketing/ads/HostAdWordsSheet";
+import { hm } from "../../components/marketing/ads/hostAdManageCopy";
+import { Sheet } from "../../components/ui/Sheet";
+import { Icon } from "../../components/ui/Icon";
+import { Material } from "../../components/ui/Material";
+import { HapticFeedback } from "../../utils/hapticFeedback";
+import { useBusinessMediaTranslation } from "../../i18n";
+import { useNetInfoSafe } from "../../lib/netinfoSafe";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
+import { applyAdCreditTopUp, getAdCreditWallet, type AdCreditTopUpLimits } from "../../services/adCreditService";
+import { formatCurrency, formatCurrencyRound } from "../../utils/currency";
 import {
   HOST_AD_CTA_OPTIONS,
   type HostAdCtaId,
@@ -74,18 +125,12 @@ import {
   isHostAdCtaId,
 } from "../../components/marketing/ads/hostAdCreativeRules";
 import {
-  HostAdReachMeter,
-  type HostAdReachMeterRow,
-} from "../../components/marketing/ads/HostAdReachMeter";
-import {
   applyInterestLookup,
   applyPlaceLookup,
   type HostAdApp,
   HOST_AD_DEFAULT_RADIUS_KM,
   HOST_AD_EXCLUDE_APPS,
   hostAdAppAvailability,
-  hostAdAcceptedWiderLines,
-  hostAdAppReviewStatus,
   hostAdInterestKey,
   hostAdLookupKind,
   hostAdLookupQuery,
@@ -100,6 +145,7 @@ import {
   HOST_AD_LANGUAGE_NAMES,
 } from "../../components/marketing/ads/hostAdTargeting";
 import {
+  hostAdAudiencePlace,
   initialHostAdCountries,
 } from "../../components/marketing/ads/hostAdCountries";
 import {
@@ -110,30 +156,24 @@ import {
 import { CoverPickerSheet } from "../../components/ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../../components/ui/CoverPicker";
 import { adCreativeCoverTarget } from "../../components/ui/coverTarget";
-import {
-  accent,
-  canvas,
-  glass,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+import { color, edge, radius, space, type } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
 import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
+import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { ScrollView } from "../../wrappers/SmartScrollView";
-import {
-  HOST_AD_SALES_PLATFORMS,
-  hostAdPageSellsTickets,
-  hostOptimizationSummary,
-} from "../../components/marketing/ads/hostAdGoal";
+import { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
+import { hostAdPageGoal } from "../../components/marketing/ads/hostAdGoal";
 import type {
   HostAdConnection,
+  HostAdCopyWarning,
   HostAdCreative,
+  HostAdGuidance,
+  HostAdGuidanceBelowEvery,
   HostAdOptimization,
   HostAdPage,
   HostAdPlanAggregate,
+  HostAdSeriesDate,
   HostAdSetup,
   HostAdTargetingCity,
   HostAdTargetingInterest,
@@ -147,7 +187,6 @@ import { hostOptimizationByPlatform } from "../../services/hostAdPlanService";
 
 // #4238: platforms are named the way Hosts know them.
 const PLATFORM_LABELS = HOST_AD_PLATFORM_NAMES;
-const platformList = platformNames;
 
 
 const EMPTY_AD_VIDEO_PATCH: CoverPatch = {
@@ -171,21 +210,16 @@ const RESUMABLE_STATES = new Set([
   "changes_requested",
 ]);
 
-const HOST_AD_STEPS = [
-  { id: "promote", label: "What are you promoting?" },
-  { id: "audience", label: "Who should see it?" },
-  { id: "budget", label: "Budget and dates" },
-  { id: "creative", label: "Video and words" },
-  { id: "review", label: "Review and launch" },
-] as const;
+const HOST_AD_STEPS = HOST_AD_BUILDER_STEPS.map((id) => ({ id }));
 
-type HostAdStepId = (typeof HOST_AD_STEPS)[number]["id"];
+type HostAdStepId = HostAdBuilderStep;
 
-function hostAdStepId(value: string | null | undefined): HostAdStepId | null {
-  return HOST_AD_STEPS.some((step) => step.id === value)
-    ? (value as HostAdStepId)
-    : null;
-}
+const hostAdStepId = hostAdBuilderStepId;
+
+/** #4238 W6a design v9 desktop builder: step list 208, preview 360, form ≥ 534 at 1280. */
+const DESK_STEP_LIST = 208;
+const DESK_PREVIEW = 360;
+const DESK_FORM_MAX = 680;
 
 /**
  * #4238 D4: the builder keeps its place in the URL with setParams, never a
@@ -216,22 +250,6 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function parseMoney(value: string): number {
-  const major = Number(value.replace(/,/g, "").trim());
-  return Number.isFinite(major) && major > 0 ? Math.round(major * 100) : 0;
-}
-
-function formatMoney(currency: string, cents: number): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency,
-    }).format(cents / 100);
-  } catch {
-    return `${currency} ${(cents / 100).toFixed(2)}`;
-  }
-}
-
 function aggregateHasProviderObjectEvidence(
   aggregate: HostAdPlanAggregate,
 ): boolean {
@@ -247,69 +265,6 @@ function aggregateHasProviderObjectEvidence(
         Object.keys(externalIds).length > 0)
     );
   });
-}
-
-/** "Ticket sales: Meta, Snapchat · Page visits: Google". */
-function goalSummaryLine(summary: {
-  sales: readonly string[];
-  visits: readonly string[];
-}): string {
-  const names = (platforms: readonly string[]) =>
-    platforms.map((platform) => PLATFORM_LABELS[platform] ?? platform).join(", ");
-  return [
-    summary.sales.length > 0 ? `Ticket sales: ${names(summary.sales)}` : null,
-    summary.visits.length > 0 ? `Page visits: ${names(summary.visits)}` : null,
-  ]
-    .filter((part): part is string => part !== null)
-    .join(" · ");
-}
-
-function ChoiceCard(props: {
-  selected: boolean;
-  title: string;
-  subtitle?: string;
-  onPress: () => void;
-  testID: string;
-  multiple?: boolean;
-  disabled?: boolean;
-  children?: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <Pressable
-      style={[
-        styles.choice,
-        props.selected && styles.choiceSelected,
-        props.disabled && styles.choiceDisabled,
-      ]}
-      onPress={props.onPress}
-      disabled={props.disabled}
-      accessibilityRole={props.multiple ? "checkbox" : "radio"}
-      accessibilityState={
-        props.multiple
-          ? { checked: props.selected, disabled: props.disabled }
-          : { selected: props.selected, disabled: props.disabled }
-      }
-      // #4238: web screen readers read the tick state from aria-checked.
-      aria-checked={props.multiple ? props.selected : undefined}
-      accessibilityLabel={props.title}
-      testID={props.testID}
-    >
-      {props.children}
-      <View style={styles.choiceText}>
-        <Text style={styles.choiceTitle}>{props.title}</Text>
-        {props.subtitle ? (
-          <Text style={styles.choiceSubtitle}>{props.subtitle}</Text>
-        ) : null}
-      </View>
-      <View
-        style={[
-          styles.radio,
-          props.multiple && styles.checkboxShape,
-          props.selected && styles.radioSelected,
-        ]}
-      />
-    </Pressable>
-  );
 }
 
 export default function HostAdCreateRoute(): React.ReactElement {
@@ -340,6 +295,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
   // button sit over this screen on phones. Reserve both so the step buttons
   // stay reachable at full scroll (business web and native).
   const bottomChromeInset = useStickyFooterOffset();
+  // #4238 rework 6 (P1-1): on Android the window does not resize for the
+  // keyboard, so the pinned dock under the scroll view stayed behind the
+  // keyboard and the keyboard-aware scroll aligned the field to a viewport edge
+  // the Host cannot see. While the keyboard is open the dock steps aside so the
+  // scroll view runs to the keyboard, as it does in the sheets that already work.
+  const keyboardOpen = useKeyboardIsVisible();
+  const dockHiddenForKeyboard = shouldHideHostAdDock(Platform.OS, keyboardOpen);
   const scrollBottomStyle = useMemo(
     () => ({ paddingBottom: hostAdScrollBottomPadding(bottomChromeInset) }),
     [bottomChromeInset],
@@ -379,8 +341,6 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [interests, setInterests] = useState<HostAdTargetingInterest[]>([]);
   // #4238 P1: leave out people who already bought (on by default).
   const [excludePastBuyers, setExcludePastBuyers] = useState(true);
-  const [reachRows, setReachRows] = useState<HostAdReachMeterRow[]>([]);
-  const [reachLoading, setReachLoading] = useState(false);
   // #4238 wave 2: the brand's own audiences (keys only; the server resolves).
   const [audienceKeys, setAudienceKeys] = useState<string[]>([]);
   const [dailyAmount, setDailyAmount] = useState("30");
@@ -393,13 +353,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [activeStepId, setActiveStepId] = useState<HostAdStepId>(
-    requestedStepId ?? "promote",
+    requestedStepId ?? "pick",
   );
   const [maxVisitedStep, setMaxVisitedStep] = useState(
     Math.max(
       0,
       HOST_AD_STEPS.findIndex(
-        (step) => step.id === (requestedStepId ?? "promote"),
+        (step) => step.id === (requestedStepId ?? "pick"),
       ),
     ),
   );
@@ -407,9 +367,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [prepared, setPrepared] = useState<PreparedHostAdPlan | null>(null);
   const [activePlanState, setActivePlanState] = useState<string | null>(null);
   const [acceptBroader, setAcceptBroader] = useState(false);
-  const [launchPhrase, setLaunchPhrase] = useState("");
   const [providerObjectEvidence, setProviderObjectEvidence] = useState(false);
-  const [cancelDialogVisible, setCancelDialogVisible] = useState(false);
+  const [, setCancelDialogVisible] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const [draftSaveStatus, setDraftSaveStatus] = useState<
@@ -440,6 +399,38 @@ export default function HostAdCreateRoute(): React.ReactElement {
   // AD-05 — a creative that exists server-side but did not link here yet:
   // "Try linking again" re-links the SAME id, never re-uploads.
   const [unlinkedCreativeId, setUnlinkedCreativeId] = useState<string | null>(null);
+  // #4238 W6a: the v9 builder's own state.
+  useBusinessMediaTranslation();
+  const network = useNetInfoSafe();
+  const offline = network?.isConnected === false;
+  const { isWideDesktop } = useResponsiveLayout();
+  const reduceMotion = useReducedMotionNative();
+  const [audienceChoice, setAudienceChoice] = useState<"mingla" | "host">("mingla");
+  const [appChoice, setAppChoice] = useState<"mingla" | "host">("mingla");
+  const [dailyPayCents, setDailyPayCents] = useState(0);
+  const [creativeIds, setCreativeIds] = useState<string[]>([]);
+  const [occurrenceKey, setOccurrenceKey] = useState<string | null>(null);
+  const [seriesDates, setSeriesDates] = useState<HostAdSeriesDate[] | null>(null);
+  const [seriesError, setSeriesError] = useState(false);
+  const [acknowledgedFallback, setAcknowledgedFallback] = useState<string[]>([]);
+  const [goalQuestion, setGoalQuestion] = useState<string[]>([]);
+  const [googleNeedsSetup, setGoogleNeedsSetup] = useState(false);
+  const [checkState, setCheckState] = useState<"idle" | "checking" | "done" | "failed">("idle");
+  const [copyWarnings, setCopyWarnings] = useState<HostAdCopyWarning[]>([]);
+  const [guidance, setGuidance] = useState<HostAdGuidance | HostAdGuidanceBelowEvery | null>(null);
+  const [guidanceState, setGuidanceState] = useState<"idle" | "loading" | "error">("idle");
+  const [walletCreditCents, setWalletCreditCents] = useState<number | null>(null);
+  const [topUpLimits, setTopUpLimits] = useState<AdCreditTopUpLimits | null>(null);
+  const [advanced, setAdvanced] = useState<Record<string, boolean>>({});
+  const [sheet, setSheet] = useState<null | "words" | "rights" | "topUp" | "leave" | "launch" | "cancel">(null);
+  const [launched, setLaunched] = useState<null | "staff" | "apps">(null);
+  const scrollRef = useRef<{ scrollTo?: (options: { y: number; animated?: boolean }) => void } | null>(null);
+  const checksYRef = useRef(0);
+  // #4238 W7 (native P3-4): each step opens at its top, never at the scroll
+  // offset the previous step was left at.
+  useEffect(() => {
+    scrollRef.current?.scrollTo?.({ y: 0, animated: false });
+  }, [activeStepId]);
 
   useEffect(() => {
     if (requestedDraftId !== null || draftIdRef.current === null) return;
@@ -454,7 +445,24 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   // #4238 D5: after a refresh or a direct link there is no history, so a bare
   // router.back() did nothing. Go to the Ads list explicitly then.
-  const backToAds = useCallback(() => goBackToAds(router), [router]);
+  const navigation = useNavigation();
+  const sanctionedExitRef = useRef(false);
+  const backToAds = useCallback(() => {
+    sanctionedExitRef.current = true;
+    goBackToAds(router);
+  }, [router]);
+  // #4238 rework 6: Android hardware back and the iOS swipe both leave the
+  // builder through the same "Leave the builder? Your draft is kept" sheet as
+  // the close button. Once launched there is nothing to lose, so it just leaves.
+  useEffect(() => {
+    if (Platform.OS === "web") return undefined;
+    const unsubscribe = navigation.addListener("beforeRemove" as never, ((event: { preventDefault: () => void }) => {
+      if (sanctionedExitRef.current || launched) return;
+      event.preventDefault();
+      setSheet("leave");
+    }) as never);
+    return unsubscribe;
+  }, [navigation, launched]);
 
   const load = useCallback(async (force = false) => {
     if (!brandId || !permissions.canRead) return;
@@ -503,11 +511,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
         setUnlinkedCreativeId(null);
         setSetup(refreshed);
         setCreative(recorded);
+        setCreativeIds((current) =>
+          current.includes(recorded.id) ? current : [...current, recorded.id].slice(0, 5),
+        );
         setRightsConfirmed(false);
         setPrepared(null);
-        setNotice(
-          "Ad video saved to this ad. Nothing goes to ad platforms until you fund and confirm the plan.",
-        );
       } catch (cause) {
         setUnlinkedCreativeId(creativeId);
         setError(
@@ -599,10 +607,29 @@ export default function HostAdCreateRoute(): React.ReactElement {
       );
       const frozenGoal = recordValue(canonical.optimization_by_platform);
       setOptimization(
-        frozenGoal && Object.values(frozenGoal).includes("sales")
-          ? "sales"
-          : "visits",
+        canonical.optimization_goal === "signups"
+          ? "signups"
+          : frozenGoal && Object.values(frozenGoal).includes("sales")
+            ? "sales"
+            : hostAdPageGoal(matchedPage),
       );
+      if (Array.isArray(canonical.creative_library_ids)) {
+        setCreativeIds(
+          canonical.creative_library_ids
+            .filter((id): id is string => typeof id === "string")
+            .slice(0, 5),
+        );
+      } else if (typeof canonical.creative_library_id === "string") {
+        setCreativeIds([canonical.creative_library_id]);
+      }
+      if (typeof canonical.occurrence_key === "string") setOccurrenceKey(canonical.occurrence_key);
+      setAppChoice(canonical.app_choice === "host" ? "host" : "mingla");
+      setAudienceChoice(canonical.audience_choice === "host" ? "host" : "mingla");
+      if (Array.isArray(canonical.acknowledged_visits_fallback)) {
+        setAcknowledgedFallback(
+          canonical.acknowledged_visits_fallback.map((value) => String(value)),
+        );
+      }
       setAgeMin(String(audience?.ageMin ?? 21));
       setAgeMax(String(audience?.ageMax ?? 45));
       setGender(
@@ -629,8 +656,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
             )
           : [],
       );
-      setDailyAmount(
-        String(
+      // #4238 W6a: the plan keeps credit; the builder shows what was paid.
+      setDailyPayCents(
+        hostAdPayFromCredit(
           aggregate.provider_allocations.reduce(
             (sum, allocation) =>
               sum +
@@ -639,7 +667,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   ?.host_amount_cents ?? 0,
               ),
             0,
-          ) / 100,
+          ),
         ),
       );
       setCapAmount(
@@ -746,7 +774,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
           });
           setActivePlanState(aggregate.plan.state);
           setNotice(
-            "Your saved ad is back. Check it, then type LAUNCH to carry on.",
+            hb("saved"),
           );
         }
       } catch (cause) {
@@ -859,8 +887,37 @@ export default function HostAdCreateRoute(): React.ReactElement {
               : null,
           ),
         );
-        if (state.optimization === "sales" || state.optimization === "visits") {
+        if (
+          state.optimization === "sales" ||
+          state.optimization === "visits" ||
+          state.optimization === "signups"
+        ) {
           setOptimization(state.optimization);
+        }
+        if (typeof state.daily_pay_cents === "number" && state.daily_pay_cents > 0) {
+          setDailyPayCents(Math.round(state.daily_pay_cents));
+        } else if (typeof state.daily_amount === "string" && Number(state.daily_amount) > 0) {
+          // Drafts from before W6a kept a typed amount in major units.
+          setDailyPayCents(Math.round(Number(state.daily_amount) * 100));
+        }
+        if (Array.isArray(state.creative_ids)) {
+          setCreativeIds(
+            state.creative_ids
+              .filter((id): id is string => typeof id === "string")
+              .slice(0, 5),
+          );
+        } else if (typeof state.creative_id === "string") {
+          setCreativeIds([state.creative_id]);
+        }
+        if (typeof state.occurrence_key === "string") setOccurrenceKey(state.occurrence_key);
+        if (state.app_choice === "host" || state.app_choice === "mingla") setAppChoice(state.app_choice);
+        if (state.audience_choice === "host" || state.audience_choice === "mingla") {
+          setAudienceChoice(state.audience_choice);
+        }
+        if (Array.isArray(state.acknowledged_fallback)) {
+          setAcknowledgedFallback(
+            state.acknowledged_fallback.filter((value): value is string => typeof value === "string"),
+          );
         }
         if (typeof state.age_min === "string") setAgeMin(state.age_min);
         if (typeof state.age_max === "string") setAgeMax(state.age_max);
@@ -942,7 +999,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         draftPlanIdRef.current = draft.plan_id;
         draftRevisionRef.current = draft.revision;
         if (requestedStepId === null) {
-          const restoredStep = hostAdStepId(draft.current_step) ?? "promote";
+          const restoredStep = hostAdStepId(draft.current_step) ?? "pick";
           const restoredIndex = HOST_AD_STEPS.findIndex(
             (step) => step.id === restoredStep,
           );
@@ -1015,31 +1072,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availabilityKey, countries.join(","), setup]);
 
-  // #4238: "Ticket sales" applies only on a page that sells tickets, on the
-  // selected platforms whose sales signal is ready.
-  const pageSellsTickets = hostAdPageSellsTickets(page);
-  const salesReadyPlatforms = useMemo(
-    () =>
-      connections
-        .filter(
-          (connection) =>
-            connection.sales?.ready === true &&
-            HOST_AD_SALES_PLATFORMS.includes(connection.platform),
-        )
-        .map((connection) => connection.platform),
-    [connections],
-  );
-  useEffect(() => {
-    if (
-      optimization === "sales" &&
-      (!pageSellsTickets || salesReadyPlatforms.length === 0)
-    ) {
-      setOptimization("visits");
-    }
-  }, [optimization, pageSellsTickets, salesReadyPlatforms.length]);
-  const enteredDailyCents = parseMoney(dailyAmount);
-  const enteredCapCents = parseMoney(capAmount);
-  const totalCents = parseMoney(totalAmount);
+  // #4238 W6a: the goal follows the page (the Host never picks it). A free
+  // ticket page is moved to sign-ups when the server says so.
   const radiusKmNumber = Number(radiusKm);
   // #4238 r6: "today" and both date fields are the page's own calendar.
   const today = useMemo(
@@ -1057,10 +1091,57 @@ export default function HostAdCreateRoute(): React.ReactElement {
       hostAdScheduleLimit(page, (iso) => hostAdPageDate(iso, page?.timezone)),
     [page],
   );
-  const activeApps = useMemo(
-    () => connections.map((connection) => connection.platform as HostAdApp),
-    [connections],
+  // #4238 W6a: apps that can run here at all (country, goal), the ones the
+  // Host turned on, and the ones the plan really uses (under "Let Mingla
+  // choose", the apps the server funds at this budget).
+  const goal: HostAdOptimization = optimization;
+  const runnableConnections = useMemo(
+    () =>
+      (setup?.connections ?? []).filter(
+        (connection) =>
+          hostAdAppAvailability(connection.platform, countries, setup?.availability ?? []).works &&
+          !(goal !== "visits" && connection.platform === "google"),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [setup, countries.join(","), goal],
   );
+  const guidanceOk = guidance !== null && guidance.ok === true ? guidance : null;
+  const guidanceBelow = guidance !== null && guidance.ok === false ? guidance : null;
+  const fundedPlatforms = useMemo(
+    () =>
+      appChoice === "mingla"
+        ? (guidanceOk?.apps_plan?.funded ?? []).map((row) => row.platform)
+        : null,
+    [appChoice, guidanceOk],
+  );
+  const planConnections = useMemo(
+    () =>
+      appChoice === "mingla"
+        ? runnableConnections.filter((connection) =>
+            (fundedPlatforms ?? []).includes(connection.platform),
+          )
+        : connections.filter((connection) =>
+            runnableConnections.some((row) => row.id === connection.id),
+          ),
+    [appChoice, connections, fundedPlatforms, runnableConnections],
+  );
+  const lookupConnections = appChoice === "mingla" ? runnableConnections : connections;
+  const activeApps = useMemo(
+    () => lookupConnections.map((connection) => connection.platform as HostAdApp),
+    [lookupConnections],
+  );
+  const planApps = planConnections.map((connection) => connection.platform);
+  const goalByPlatform = useMemo(
+    () =>
+      page
+        ? hostOptimizationByPlatform(goal, page, runnableConnections)
+        : ({} as Record<string, HostAdOptimization>),
+    [goal, page, runnableConnections],
+  );
+  const minimumPay = (platform: string): number | null =>
+    hostAdMinimumPayCents(setup?.minimums, platform, goalByPlatform[platform] ?? "visits");
+  const minimumCredit = (platform: string): number | null =>
+    hostAdMinimumCreditCents(setup?.minimums, platform, goalByPlatform[platform] ?? "visits");
   // #4238: each app's own distance limits (Meta needs 17 km around a city).
   const radiusProblem = cities
     .flatMap((place) =>
@@ -1074,83 +1155,130 @@ export default function HostAdCreateRoute(): React.ReactElement {
     )
     .find((row) => row.status.state === "radius");
   const audienceError =
-    connections.length === 0
-      ? "Choose at least one app to show your ad on."
-      : countries.length === 0
-        ? "Choose at least one country."
-        : radiusProblem
-          ? `${PLATFORM_LABELS[radiusProblem.app] ?? radiusProblem.app}: ${radiusProblem.status.text}`
-          : !Number.isInteger(Number(ageMin)) ||
-              !Number.isInteger(Number(ageMax)) ||
-              Number(ageMin) < 13 ||
-              Number(ageMax) > 100 ||
-              Number(ageMin) > Number(ageMax)
-            ? "Use an age range between 13 and 100."
-            : null;
-  // #4238 P1: each app's minimum first, then the rest evenly.
+    countries.length === 0
+      ? hb("audience.noCountry")
+      : radiusProblem
+        ? hb("audience.radius", {
+            app: PLATFORM_LABELS[radiusProblem.app] ?? radiusProblem.app,
+            reason: radiusProblem.status.text,
+          })
+        : !hostAdAgeRangeValid(ageMin, ageMax)
+          ? hb("audience.ageError")
+          : null;
+  const ageErrorLine = !hostAdAgeRangeValid(ageMin, ageMax) ? hb("audience.ageError") : null;
+  // #4238 P3-1 (iOS and Android): room for the age error line above the keyboard Done bar.
+  const errorLineOffset = hostAdErrorLineBottomOffset(
+    Platform.OS,
+    DONE_BAR_OCCUPIED,
+    MIN_VISIBLE_CLEARANCE,
+    ageErrorLine !== null,
+  );
+  const scrollOffsetProps = (errorLineOffset === null ? {} : { bottomOffset: errorLineOffset }) as object;
+  const platformsError =
+    appChoice === "host" && planConnections.length === 0 ? hb("platforms.turnOnOne") : null;
+  // #4238 W6a: one money unit on screen (pay); credit goes to the server.
   const runDays =
     endDate !== "" ? hostAdDaysInRun(startDate || today, endDate) : null;
-  const appMinimums = useMemo(() => {
-    const goals = page
-      ? hostOptimizationByPlatform(optimization, page, connections)
-      : {};
-    return Object.fromEntries(
-      (setup?.minimums ?? []).map((row) => [
-        row.platform,
-        goals[row.platform] === "sales"
-          ? row.sales_daily_minimum_cents
-          : row.visits_daily_minimum_cents,
-      ]),
-    ) as Record<string, number | undefined>;
-  }, [connections, optimization, page, setup?.minimums]);
+  const venueLike = !scheduleLimit;
+  const { holdPayCents, dailyCreditCents, capCreditCents } = hostAdPlanBudget({
+    dailyPayCents,
+    runDays,
+  });
+  const appMinimums = useMemo(
+    () =>
+      Object.fromEntries(planApps.map((platform) => [platform, minimumCredit(platform) ?? undefined])) as Record<
+        string,
+        number | undefined
+      >,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [planApps.join(","), setup?.minimums, goalByPlatform],
+  );
   const allocation = hostAdAllocations({
-    mode: budgetMode,
-    totalCents: budgetMode === "total" ? totalCents : enteredCapCents,
-    dailyCents: enteredDailyCents,
+    mode: "daily",
+    totalCents: capCreditCents,
+    dailyCents: dailyCreditCents,
     days: runDays,
-    apps: activeApps,
+    apps: planApps,
     minimums: appMinimums,
   });
-  const dailyBudgetCents = allocation.dailyTotalCents;
-  const capCents = allocation.capTotalCents;
+  const fundedShares =
+    appChoice === "mingla" && guidanceOk?.apps_plan
+      ? planApps.map(
+          (platform) =>
+            guidanceOk.apps_plan?.funded.find((row) => row.platform === platform)?.daily_credit_cents ?? 0,
+        )
+      : null;
+  const dailyShares = fundedShares ?? allocation.split.rows.map((row) => row.dailyCents);
+  const capShares = hostAdProportionalCents(
+    capCreditCents,
+    dailyShares.map((value) => Math.max(1, value)),
+  );
+  const customMinimumPay = planApps.reduce((sum, platform) => sum + (minimumPay(platform) ?? 0), 0);
+  const smallestPay =
+    guidanceOk?.smallest_overall?.pay_cents ??
+    guidanceBelow?.apps_plan?.smallest_overall?.pay_cents ??
+    (appChoice === "mingla"
+      ? runnableConnections.reduce<number | null>((best, connection) => {
+          const value = minimumPay(connection.platform);
+          return value !== null && (best === null || value < best) ? value : best;
+        }, null)
+      : customMinimumPay || null);
+  const minimumMarkPay = appChoice === "host" ? customMinimumPay || smallestPay : smallestPay;
+  const recommendedPay = guidanceOk?.total.recommended_daily_cents ?? null;
+  const sliderRange = hostAdSliderRange({
+    minimumPayCents: minimumMarkPay,
+    recommendedPayCents: recommendedPay,
+  });
+  const belowEvery =
+    guidanceBelow !== null ||
+    (minimumMarkPay !== null && dailyPayCents > 0 && dailyPayCents < minimumMarkPay && appChoice === "mingla");
+  const appsShort = appChoice === "host" && planApps.length > 0 && !allocation.split.ok;
   const budgetError =
-    budgetMode === "total" && endDate === ""
-      ? "Pick an end date, or switch to a daily budget."
-      : budgetMode === "total" && totalCents <= 0
-        ? "Enter a total budget."
-        : dailyBudgetCents <= 0
-      ? "Enter a daily budget."
-      : capCents < dailyBudgetCents
-        ? "Your total budget must be at least one day of spend."
-        : !allocation.split.ok && allocation.split.short
-          ? hostAdBudgetShortMessage(allocation.split, (cents) => formatMoney(setup?.currency ?? "", cents))
-        : startDate !== "" && startDate < today
-          ? "The start date cannot be in the past."
-          : endDate !== "" && endDate < (startDate || today)
-            ? "The end date must be on or after the start date."
-            : hostAdScheduleError(startDate, endDate, scheduleLimit);
+    endDate === ""
+      ? hb("budget.pickEnd")
+      : dailyPayCents <= 0 || belowEvery || appsShort
+        ? hb("budget.raiseBlocker")
+        : appChoice === "mingla" && planConnections.length === 0
+          ? hb("budget.estimating")
+          : startDate !== "" && startDate < today
+            ? hb("budget.startPast")
+            : endDate < (startDate || today)
+              ? hb("budget.endBeforeStart")
+              : hostAdScheduleError(startDate, endDate, scheduleLimit);
+  const pickedCreatives = useMemo(
+    () =>
+      creativeIds
+        .map((id) => setup?.creatives.find((item) => item.id === id))
+        .filter((item): item is HostAdCreative => item !== undefined),
+    [creativeIds, setup?.creatives],
+  );
+  const creativeProblem = hostAdCreativeProblem({ picked: pickedCreatives, apps: planApps });
   const copyError = hostAdCopyError(activeApps, {
     primary: primaryText.trim(),
-    headline: (headline.trim() || name.trim()),
+    headline: (headline.trim() || name.trim() || page?.title || ""),
   });
-  const creativeError = !creative
-    ? "Choose a ready video."
-    : !rightsConfirmed
-      ? "Confirm your brand is allowed to use this video in paid ads."
-      : name.trim().length < 3
-        ? "Add a campaign name."
-        : primaryText.trim().length < 3
-          ? "Add the primary ad text."
-          : copyError;
+  const creativeError =
+    creativeProblem?.kind === "none"
+      ? hb("creative.pickOne")
+      : creativeProblem?.kind === "too_many"
+        ? hb("creative.pickFive")
+        : creativeProblem?.kind === "photo_app"
+          ? hb("creative.photoApp", { app: PLATFORM_LABELS[creativeProblem.platform] ?? creativeProblem.platform })
+          : primaryText.trim().length < 3
+            ? hb("creative.missingText")
+            : (name.trim() || page?.title || "").length < 3
+              ? hb("creative.missingName")
+              : copyError;
   const stepErrors: Record<HostAdStepId, string | null> = {
-    promote: promoteError,
+    pick: promoteError,
     audience: audienceError,
+    platforms: platformsError,
     budget: budgetError,
     creative: creativeError,
     review: null,
   };
   const formError =
-    promoteError ?? audienceError ?? budgetError ?? creativeError;
+    promoteError ?? audienceError ?? platformsError ?? budgetError ?? creativeError;
 
   const draftSnapshot = useMemo<Record<string, unknown>>(
     () => ({
@@ -1186,9 +1314,20 @@ export default function HostAdCreateRoute(): React.ReactElement {
       prepared,
       active_plan_state: activePlanState,
       provider_object_evidence: providerObjectEvidence,
-      // Typed LAUNCH is fresh authorization and is intentionally never saved.
+      daily_pay_cents: dailyPayCents,
+      creative_ids: creativeIds,
+      occurrence_key: occurrenceKey,
+      app_choice: appChoice,
+      audience_choice: audienceChoice,
+      acknowledged_fallback: acknowledgedFallback,
     }),
     [
+      dailyPayCents,
+      creativeIds,
+      occurrenceKey,
+      appChoice,
+      audienceChoice,
+      acknowledgedFallback,
       acceptBroader,
       activePlanState,
       audienceKeys,
@@ -1366,7 +1505,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         markChecking(flight, false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [brandId],
   );
 
@@ -1396,7 +1535,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         markChecking(flight, false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [brandId],
   );
 
@@ -1487,77 +1626,6 @@ export default function HostAdCreateRoute(): React.ReactElement {
     })();
   }, [brandId, languageSignature]);
 
-  // #4238 P1: reach per app, read 1.5 s after the audience settles, only
-  // for apps staff switched on.
-  const reachEnabled = setup?.reach_enabled ?? {};
-  const reachApps = activeApps.filter((app) => reachEnabled[app] === true);
-  const reachSignature = JSON.stringify([
-    reachApps,
-    countries,
-    cities.map((place) => [hostAdPlaceKey(place), place.radiusKm, place.refs]),
-    excludedPlaces.map((place) => [hostAdPlaceKey(place), place.refs]),
-    interests.map((interest) => [interest.name, interest.refs]),
-    ageMin,
-    ageMax,
-    gender,
-    languages,
-    languageIds,
-  ]);
-  useEffect(() => {
-    if (!brandId || activeStepId !== "audience" || countries.length === 0) {
-      return undefined;
-    }
-    if (reachApps.length === 0) {
-      setReachRows(
-        activeApps.map((app) => ({
-          platform: app,
-          state: "certification_required",
-          lower: null,
-          upper: null,
-          meter: null,
-        })),
-      );
-      return undefined;
-    }
-    let live = true;
-    const timer = setTimeout(() => {
-      setReachLoading(true);
-      void loadHostAdPlanService()
-        .then(({ estimateHostAdReach }) =>
-          estimateHostAdReach({
-            brandId,
-            connections,
-            countries,
-            cities,
-            radiusKm: radiusKmNumber,
-            interests,
-            ageMin: Number(ageMin),
-            ageMax: Number(ageMax),
-            gender,
-            excludedPlaces,
-            languages,
-            languageIds,
-          }),
-        )
-        .then((rows) => {
-          if (live) setReachRows(rows);
-        })
-        .catch(() => {
-          // No number is fine: the ad can still run. Each app says so.
-          if (live) setReachRows([]);
-        })
-        .finally(() => {
-          if (live) setReachLoading(false);
-        });
-    }, 1500);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-    // reachSignature captures every input by value.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStepId, brandId, reachSignature]);
-
   const prefixedChecking = (list: string): ReadonlySet<string> =>
     new Set(
       [...checking]
@@ -1602,24 +1670,17 @@ export default function HostAdCreateRoute(): React.ReactElement {
     return result.results.map((row) => ({ id: String(row.id), name: row.name }));
   };
 
-  const handlePrepare = async (forceAcceptance = false) => {
-    if (!permissions.canPlan) {
-      setError("Your role can review this plan but cannot change it.");
+  const handlePrepare = async (forceAcceptance = false): Promise<void> => {
+    if (!permissions.canPlan) return;
+    if (formError || !brandId || !page || planConnections.length === 0 || pickedCreatives.length === 0) {
       return;
     }
-    if (
-      formError ||
-      !brandId ||
-      !page ||
-      connections.length === 0 ||
-      !creative
-    ) {
-      setError(formError ?? "The plan is incomplete.");
-      return;
-    }
+    const first = pickedCreatives[0];
     setBusy(true);
     setError(null);
-    setNotice(null);
+    setCheckState("checking");
+    setGoalQuestion([]);
+    setGoogleNeedsSetup(false);
     try {
       await persistDraft(draftSnapshot, "review");
       const { prepareHostAdPlan } = await loadHostAdPlanService();
@@ -1627,15 +1688,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
         brandId,
         existingPlanId,
         page,
-        connections,
-        creative,
-        name: name.trim(),
+        connections: planConnections,
+        creative: first,
+        creativeIds: pickedCreatives.map((item) => item.id),
+        name: (name.trim() || page.title).slice(0, 120),
         primaryText: primaryText.trim(),
-        headline: headline.trim() || name.trim(),
+        headline: headline.trim() || name.trim() || page.title,
         countries,
-        cities,
-        radiusKm: cities.length > 0 ? radiusKmNumber : null,
-        interests,
+        cities: audienceChoice === "host" ? cities : [],
+        radiusKm: audienceChoice === "host" && cities.length > 0 ? radiusKmNumber : null,
+        interests: audienceChoice === "host" ? interests : [],
         excludedPlaces,
         languages,
         languageIds,
@@ -1643,138 +1705,113 @@ export default function HostAdCreateRoute(): React.ReactElement {
         ageMin: Number(ageMin),
         ageMax: Number(ageMax),
         gender,
-        dailyBudgetCents,
-        capCents,
-        budgetMode,
-        shares: {
-          dailyCents: allocation.split.rows.map((row) => row.dailyCents),
-          capCents: allocation.capShares,
-        },
-        cta: cta ?? hostAdDefaultCta(page?.page_type),
-        // #4238 r6: both in the page's own zone, like the fields.
+        // #4238 W1: the server keeps budgets in credit (what the apps spend).
+        dailyBudgetCents: dailyShares.reduce((sum, value) => sum + value, 0),
+        capCents: capCreditCents,
+        budgetMode: budgetMode as HostAdBudgetMode,
+        shares: { dailyCents: dailyShares, capCents: capShares },
+        cta: cta ?? hostAdDefaultCta(page.page_type),
         ...hostAdScheduleIsos(startDate, endDate, scheduleLimit, page?.timezone),
         acceptBroader: forceAcceptance || acceptBroader,
         rightsConfirmed,
         rightsBasis,
         aiGenerated,
-        optimization,
+        optimization: goal,
+        acknowledgedVisitsFallback: acknowledgedFallback,
         audienceKeys,
+        occurrenceKey,
+        appChoice,
+        audienceChoice,
       });
       setExistingPlanId(next.planId);
       draftPlanIdRef.current = next.planId;
       setPrepared(next);
+      setCopyWarnings(next.copyWarnings ?? []);
       setProviderObjectEvidence(false);
-      setActivePlanState(
-        next.status === "ready" ? "ready_for_funding" : "validating",
-      );
-      if (next.status === "blocked") {
-        setNotice(
-          "One of the apps can't run this audience yet. Change your places or interests, or turn that app off. No money was taken.",
-        );
-      } else if (next.status === "broader") {
-        setNotice(
-          "One of the apps can't target exactly who you picked, so it would show your ad to a wider group. Read the note below, then accept it or turn that app off.",
-        );
-      } else {
-        setNotice(
-          "Your ad is ready. Check the details below, then add the money.",
-        );
-      }
+      setActivePlanState(next.status === "ready" ? "ready_for_funding" : "validating");
+      setCheckState("done");
     } catch (cause) {
-      setError(
-        hostAdErrorMessage(cause, "The plan could not be prepared."),
-      );
+      const code =
+        cause !== null && typeof cause === "object" && "detail" in cause
+          ? String((cause as { detail: unknown }).detail)
+          : "";
+      const extra =
+        cause !== null && typeof cause === "object" && "extra" in cause
+          ? ((cause as { extra: Record<string, unknown> }).extra ?? {})
+          : {};
+      const platforms = Array.isArray(extra.platforms)
+        ? extra.platforms.map((value) => String(value))
+        : [];
+      if (code === "host_ad_goal_fallback_unacknowledged") {
+        setGoalQuestion(platforms);
+        setCheckState("done");
+      } else if (code === "host_ad_google_needs_setup") {
+        setGoogleNeedsSetup(true);
+        setCheckState("done");
+      } else if (code === "optimization_sales_free_event") {
+        setOptimization("signups");
+        setNotice(hb("errors.freeEvent"));
+        setCheckState("idle");
+      } else {
+        setCheckState("failed");
+        setError(hostAdErrorMessage(cause, hb("errors.generic")));
+      }
     } finally {
       setBusy(false);
     }
   };
 
-  const handleFund = async () => {
-    if (!permissions.canFund) {
-      setError(
-        "Only a finance manager, the owner or an approved ads spender can add money to an ad.",
-      );
+  // #4238 W6a: one confirm states the money, then hold and launch. The server
+  // still checks the typed constant (D-7); the service sends it.
+  const handleLaunchConfirmed = async (): Promise<void> => {
+    if (!prepared || prepared.status !== "ready" || !permissions.canFund || !permissions.canLaunch) {
       return;
     }
-    if (!prepared || prepared.status !== "ready") return;
     setBusy(true);
     setError(null);
     try {
-      const { fundHostAdPlan } = await loadHostAdPlanService();
-      const result = await fundHostAdPlan({
+      const { fundHostAdPlan, launchHostAdPlan } = await loadHostAdPlanService();
+      const funded = await fundHostAdPlan({
         planId: prepared.planId,
         versionId: prepared.versionId,
         planHash: prepared.planHash,
       });
-      setActivePlanState(result.state);
-      if (result.state === "staff_review_required") {
-        setNotice(
-          "Sent to Mingla to check. Your money is set aside and nothing is being spent yet.",
-        );
+      setActivePlanState(funded.state);
+      if (funded.state === "staff_review_required") {
+        setLaunched("staff");
       } else {
-        setNotice(
-          "Your money is set aside. Someone who can launch ads can now type LAUNCH to start your ad.",
-        );
+        await launchHostAdPlan({
+          planId: prepared.planId,
+          versionId: prepared.versionId,
+          planHash: prepared.planHash,
+        });
+        setLaunched("apps");
       }
-    } catch (cause) {
-      setError(
-        hostAdErrorMessage(cause, "The campaign budget could not be held."),
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleLaunch = async () => {
-    if (!permissions.canLaunch) {
-      setError("Your role can't start ads. Ask the brand owner.");
-      return;
-    }
-    if (!prepared || prepared.status !== "ready") return;
-    if (launchPhrase !== "LAUNCH") {
-      setError(
-        "Type LAUNCH in capital letters to start your ad.",
-      );
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const { launchHostAdPlan } = await loadHostAdPlanService();
-      await launchHostAdPlan({
-        planId: prepared.planId,
-        versionId: prepared.versionId,
-        planHash: prepared.planHash,
-      });
-      setNotice(
-        "Your ad has started. Each app checks new ads first, so it may take a little while before people see it.",
-      );
-      setTimeout(() => router.replace("/(tabs)/marketing/ads" as never), 900);
+      HapticFeedback.success();
+      setSheet(null);
     } catch (cause) {
       try {
         const { getHostAdPlan } = await loadHostAdPlanService();
         const aggregate = await getHostAdPlan(prepared.planId);
-        await hydrateAggregate(aggregate);
         setActivePlanState(aggregate.plan.state);
+        if (aggregate.plan.state === "staff_review_required") {
+          setLaunched("staff");
+          setSheet(null);
+          return;
+        }
       } catch {
-        // Preserve the provider failure as the primary error. A later reload
-        // restores the durable server state if this recovery read also fails.
+        // Keep the launch failure as the message; a reload restores the
+        // durable server state if this read fails too.
       }
-      setError(
-        hostAdErrorMessage(cause, "The campaign could not launch."),
-      );
+      setSheet(null);
+      setError(hostAdErrorMessage(cause, hb("errors.generic")));
     } finally {
       setBusy(false);
     }
   };
 
   const handleCancelBeforeCreate = async () => {
-    if (!permissions.canEnd) {
-      setError(
-        "Only the brand owner can cancel this ad and get the money back.",
-      );
-      return;
-    }
+    if (!permissions.canEnd) return;
     if (!prepared) return;
     setBusy(true);
     setCancelError(null);
@@ -1786,15 +1823,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
         planHash: prepared.planHash,
         reason: "Host cancelled the ad before it was set up on any app.",
       });
+      setSheet(null);
       setPrepared(null);
       setExistingPlanId(null);
       setActivePlanState("cancelled_before_create");
-      setLaunchPhrase("");
       setProviderObjectEvidence(false);
       setCancelDialogVisible(false);
-      setNotice(
-        "Ad cancelled. Any money you set aside is back in your Ads credit.",
-      );
+      setNotice(hb("review.cancelled"));
       await load(true);
     } catch (cause) {
       setCancelError(
@@ -1804,6 +1839,189 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setBusy(false);
     }
   };
+
+  // ---------------------------------------------------------------------
+  // #4238 W6a effects: wallet, guidance, series dates, default budget,
+  // the automatic "Check with each app", and the top-up return on web.
+  // ---------------------------------------------------------------------
+  const currency = setup?.currency ?? "";
+  const money = useCallback(
+    (cents: number): string =>
+      cents % 100 === 0
+        ? formatCurrencyRound(cents, currency, true)
+        : formatCurrency(cents, currency, true),
+    [currency],
+  );
+  const capabilities = setup?.capabilities ?? {};
+  const askName = capabilities.launch?.ask_name ?? capabilities.top_up?.ask_name ?? null;
+  const canTopUp = capabilities.top_up ? capabilities.top_up.allowed : permissions.canFund;
+
+  const loadWallet = useCallback(async (): Promise<void> => {
+    if (!brandId) return;
+    try {
+      const payload = await getAdCreditWallet(brandId);
+      setWalletCreditCents(payload.wallet?.balance_cents ?? 0);
+      setTopUpLimits(payload.top_up_limits ?? null);
+    } catch {
+      // Unknown credit: the review step says so and asks for no top-up.
+      setWalletCreditCents(null);
+    }
+  }, [brandId]);
+  useEffect(() => {
+    if (activeStepId === "budget" || activeStepId === "review") void loadWallet();
+  }, [activeStepId, loadWallet]);
+
+  // A first budget: three times the smallest working amount, on the step.
+  useEffect(() => {
+    if (dailyPayCents > 0 || minimumMarkPay === null || minimumMarkPay <= 0) return;
+    setDailyPayCents(hostAdSnap(minimumMarkPay * 3, sliderRange));
+  }, [dailyPayCents, minimumMarkPay, sliderRange]);
+
+  const guidanceKey = JSON.stringify([
+    brandId,
+    goal,
+    appChoice,
+    dailyPayCents,
+    appChoice === "mingla" ? runnableConnections.map((row) => row.platform) : planApps,
+    countries,
+    page?.id ?? null,
+    startDate,
+    endDate,
+    occurrenceKey,
+    pickedCreatives.length,
+  ]);
+  useEffect(() => {
+    if (!brandId || !page || dailyPayCents <= 0) return undefined;
+    if (!["platforms", "budget", "creative", "review"].includes(activeStepId)) return undefined;
+    const platforms = (appChoice === "mingla" ? runnableConnections : planConnections).map(
+      (row) => row.platform,
+    );
+    if (platforms.length === 0) return undefined;
+    let live = true;
+    // Guidance is rate-limited per brand: read it once the slider settles.
+    const timer = setTimeout(() => {
+      setGuidanceState("loading");
+      void loadHostAdPlanService()
+        .then(({ getHostAdBudgetGuidance }) =>
+          getHostAdBudgetGuidance({
+            brandId,
+            platforms,
+            goal,
+            dailyPayCents,
+            appChoice,
+            page,
+            countries,
+            ...hostAdScheduleIsos(startDate, endDate, scheduleLimit, page.timezone),
+            occurrenceKey,
+            creativeCount: pickedCreatives.length,
+          }),
+        )
+        .then((result) => {
+          if (!live) return;
+          setGuidance(result);
+          setGuidanceState("idle");
+        })
+        .catch(() => {
+          if (live) setGuidanceState("error");
+        });
+    }, 900);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+    // guidanceKey captures every input by value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guidanceKey, activeStepId]);
+
+  // #4238 5e: a series can promote all its dates or one.
+  const seriesEventId =
+    page && page.page_type === "event" && (page.dates_remaining ?? 0) > 1 ? page.id : null;
+  useEffect(() => {
+    if (!seriesEventId) {
+      setSeriesDates(null);
+      return undefined;
+    }
+    let live = true;
+    setSeriesError(false);
+    void loadHostAdPlanService()
+      .then(({ listHostAdSeriesDates }) => listHostAdSeriesDates(seriesEventId))
+      .then((rows) => {
+        if (live) setSeriesDates(rows);
+      })
+      .catch(() => {
+        if (live) setSeriesError(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [seriesEventId]);
+
+  // "Check with each app" runs on its own on Review; it spends nothing.
+  const canAutoCheck =
+    activeStepId === "review" &&
+    !launched &&
+    !offline &&
+    permissions.canPlan &&
+    formError === null &&
+    prepared === null &&
+    checkState !== "checking" &&
+    checkState !== "failed" &&
+    goalQuestion.length === 0 &&
+    !googleNeedsSetup;
+  useEffect(() => {
+    if (!canAutoCheck) return undefined;
+    const timer = setTimeout(() => {
+      void handlePrepare(false);
+    }, 600);
+    return () => clearTimeout(timer);
+    // handlePrepare reads the latest form; canAutoCheck gates it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAutoCheck, draftSnapshot]);
+
+  // Web top-up return (?ad_credit_top_up=1&session_id=… or ?reference=…).
+  const topUpParams = useLocalSearchParams<{
+    ad_credit_top_up?: string | string[];
+    session_id?: string | string[];
+    reference?: string | string[];
+    trxref?: string | string[];
+    payment?: string | string[];
+  }>();
+  const appliedReturnRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!brandId) return;
+    const flag = firstParam(topUpParams.ad_credit_top_up);
+    const sessionId = firstParam(topUpParams.session_id);
+    const reference = firstParam(topUpParams.reference) ?? firstParam(topUpParams.trxref);
+    if (flag === "0" || firstParam(topUpParams.payment) === "cancelled") {
+      setNotice(hb("topUp.cancelled"));
+      router.setParams({ ad_credit_top_up: undefined, payment: undefined } as never);
+      return;
+    }
+    const key = reference && reference.startsWith("mingla_adc_") ? reference : flag === "1" ? sessionId : null;
+    if (!key || appliedReturnRef.current === key) return;
+    appliedReturnRef.current = key;
+    void (async () => {
+      try {
+        await applyAdCreditTopUp(
+          reference && reference.startsWith("mingla_adc_")
+            ? { brandId, paystackReference: reference, idempotencyKey: `top_up:${reference}` }
+            : { brandId, checkoutSessionId: key },
+        );
+        setNotice(hb("topUp.paid"));
+        await loadWallet();
+      } catch {
+        appliedReturnRef.current = null;
+        setError(hb("topUp.returnFailed"));
+      } finally {
+        router.setParams({
+          ad_credit_top_up: undefined,
+          session_id: undefined,
+          reference: undefined,
+          trxref: undefined,
+        } as never);
+      }
+    })();
+  }, [brandId, loadWallet, router, topUpParams.ad_credit_top_up, topUpParams.payment, topUpParams.reference, topUpParams.session_id, topUpParams.trxref]);
 
   if (!brandId) {
     return (
@@ -1819,7 +2037,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   if (permissions.isLoading || loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={textTokens.secondary} />
+        <ActivityIndicator color={color.text2} />
       </View>
     );
   }
@@ -1839,14 +2057,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
       <View style={styles.center}>
         <EmptyState
           illustration="users"
-          title="Ads setup unavailable"
-          description={error ?? "Try again."}
-          cta={{ label: "Retry", onPress: () => void load(true) }}
+          title={hb("pick.loadFailed")}
+          description={error ?? hb("errors.generic")}
+          cta={{ label: hb("tryAgain"), onPress: () => void load(true) }}
         />
       </View>
     );
   }
-
   if (setup.available === false) {
     return (
       <View style={styles.center} testID="host-ad-unavailable">
@@ -1854,1167 +2071,1355 @@ export default function HostAdCreateRoute(): React.ReactElement {
           illustration="users"
           title={HOST_AD_UNAVAILABLE_TITLE}
           description={HOST_AD_UNAVAILABLE_BODY}
-          cta={{ label: "Back to Ads", onPress: backToAds }}
+          cta={{ label: hb("back"), onPress: backToAds }}
         />
       </View>
     );
   }
 
-  const resumable = setup.plans.filter((plan) =>
-    RESUMABLE_STATES.has(plan.state),
-  );
-  return (
-    <View style={styles.host}>
-      <ScrollView
-        contentContainerStyle={[styles.scroll, scrollBottomStyle]}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.topRow}>
-          <Pressable
-            onPress={backToAds}
-            accessibilityRole="button"
-            accessibilityLabel="Back to Ads"
-          >
-            <Text style={styles.back}>‹ Ads</Text>
-          </Pressable>
-          <Text style={styles.currency}>
-            Amounts in {setup.currency}
-          </Text>
-        </View>
-        <Text style={styles.title}>Create an ad</Text>
-        <Text style={styles.intro}>
-          Pick a public Mingla page, where it runs and one ready video. We lock
-          the plan before any money moves.
-        </Text>
+  const resumable = setup.plans.filter((plan) => RESUMABLE_STATES.has(plan.state));
+  const stepName = (index: number): string => hostAdStepName(HOST_AD_STEPS[index]?.id ?? "pick");
+  const goToStepId = (id: HostAdStepId): void => {
+    const index = HOST_AD_STEPS.findIndex((step) => step.id === id);
+    if (index >= 0) {
+      setError(null);
+      setActiveStepId(id);
+      setMaxVisitedStep((current) => Math.max(current, index));
+      if (draftIdRef.current) {
+        router.setParams(
+          hostAdBuilderParams({
+            draftId: draftIdRef.current,
+            planId: draftPlanIdRef.current ?? existingPlanId,
+            step: id,
+          }),
+        );
+      }
+    }
+  };
+  const touch = (): void => {
+    setPrepared(null);
+    setCheckState("idle");
+  };
+  const toggleAdvanced = (key: string): void =>
+    setAdvanced((current) => ({ ...current, [key]: !current[key] }));
+  const unit = hostAdGoalUnit(goal);
+  const place = hostAdAudiencePlace(page?.city, countries);
+  const firstPoster = pickedCreatives[0]?.poster_url ?? pickedCreatives[0]?.source_url ?? null;
+  const ctaId = cta ?? hostAdDefaultCta(page?.page_type);
+  const ctaLabel = HOST_AD_CTA_OPTIONS.find((option) => option.id === ctaId)?.label ?? "";
+  const endLabel = endDate ? hostAdPageDate(`${endDate}T12:00:00Z`, page?.timezone) ?? endDate : "";
+  const anyRetarget = (guidanceOk?.per_app ?? []).some((row) => row.retarget === true);
+  const metaFloorPay = minimumPay("meta");
+  const walletPay = walletCreditCents === null ? null : hostAdPayFromCredit(walletCreditCents);
+  const topUpNeeded =
+    walletCreditCents === null ? 0 : hostAdTopUpNeededCents(holdPayCents, walletCreditCents);
+  const appLabel = (platform: string): string => PLATFORM_LABELS[platform] ?? platform;
 
-        <Text
-          style={[
-            styles.draftStatus,
-            (draftSaveStatus === "error" ||
-              draftSaveStatus === "conflict") &&
-              styles.error,
-          ]}
-          accessibilityLiveRegion="polite"
-        >
-          {draftSaveStatus === "loading"
-            ? "Restoring saved draft…"
-            : draftSaveStatus === "saving"
-              ? "Saving…"
-              : draftSaveStatus === "saved"
-                ? "Saved to Mingla"
-                : draftSaveStatus === "conflict"
-                  ? "A newer draft exists. Reopen this ad before editing."
-                  : draftSaveStatus === "error"
-                    ? "Draft save failed. Your on-screen changes remain here."
-                    : "Changes not saved yet"}
-        </Text>
+  // ---- per-app check rows (Review) ----
+  const checkRows: (HostAdCheckRow & { note?: string })[] = planConnections
+    .map((connection): (HostAdCheckRow & { note?: string }) | null => {
+      const platform = connection.platform;
+      if (checkState === "checking") return { platform, state: "checking" };
+      if (goalQuestion.includes(platform) && !acknowledgedFallback.includes(platform)) {
+        return { platform, state: "question", note: "visits" };
+      }
+      if (platform === "google" && googleNeedsSetup) return { platform, state: "failed", note: "google" };
+      if (!prepared) return checkState === "failed" ? { platform, state: "failed" } : null;
+      const snapshot = prepared.targeting.find((row) => row.platform === platform);
+      if (!snapshot) return { platform, state: "ready" };
+      if (snapshot.verdict === "broader" && snapshot.broader_accepted !== true && !acceptBroader) {
+        return { platform, state: "question", note: "wider" };
+      }
+      if (snapshot.verdict === "unavailable" || snapshot.verdict === "check_required") {
+        return { platform, state: "failed" };
+      }
+      return { platform, state: "ready" };
+    })
+    .filter((row): row is HostAdCheckRow & { note?: string } => row !== null);
+  const blocker = hostAdLaunchBlocker({
+    offline,
+    canLaunch: permissions.canLaunch && capabilities.launch?.allowed !== false,
+    canFund: permissions.canFund,
+    askName,
+    checks: checkRows,
+    checked: prepared !== null && prepared.status === "ready",
+    rightsConfirmed,
+    topUpNeededCents: topUpNeeded,
+  });
+  const blockerText = (): string | null => {
+    if (!blocker) return null;
+    switch (blocker.kind) {
+      case "offline":
+        return hb("review.blockOffline");
+      case "no_launch_access":
+        return hb("review.blockLaunch", { name: blocker.askName ?? hb("review.theOwner") });
+      case "no_fund_access":
+        return hb("review.blockFund", { name: blocker.askName ?? hb("review.theOwner") });
+      case "checking":
+        return hb("review.blockChecking");
+      case "not_checked":
+        return formError ?? hb("review.blockNotChecked");
+      case "question":
+        return hb("review.blockQuestion", { app: appLabel(blocker.platform) });
+      case "failed":
+        return hb("review.blockFailed", { app: appLabel(blocker.platform) });
+      case "rights":
+        return hb("review.blockRights");
+      case "top_up":
+        return canTopUp
+          ? hb("review.blockTopUp", { amount: money(blocker.amountCents) })
+          : hb("topUp.noAccess", { name: askName ?? hb("review.theOwner") });
+      default: {
+        const never: never = blocker;
+        return String(never);
+      }
+    }
+  };
+  const showChecks = (): void => {
+    scrollRef.current?.scrollTo?.({ y: Math.max(0, checksYRef.current - 24), animated: !reduceMotion });
+  };
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-
-        <View style={styles.stepRail} accessibilityLabel="Ad builder steps">
-          {HOST_AD_STEPS.map((step, index) => {
-            const selected = step.id === activeStepId;
-            const disabled = index > maxVisitedStep;
-            return (
-              <Pressable
-                key={step.id}
-                style={[
-                  styles.stepPill,
-                  selected && styles.stepPillSelected,
-                  disabled && styles.stepPillDisabled,
-                ]}
-                disabled={disabled}
-                onPress={() => void goToStep(index)}
-                accessibilityRole="button"
-                accessibilityState={{ selected, disabled }}
-                accessibilityLabel={`Step ${index + 1}: ${step.label}`}
-                testID={`host-ad-step-${step.id}`}
-              >
-                <Text
-                  style={[
-                    styles.stepNumber,
-                    selected && styles.stepNumberSelected,
-                  ]}
-                >
-                  {index + 1}
-                </Text>
-                <Text
-                  numberOfLines={2}
-                  style={[
-                    styles.stepPillLabel,
-                    selected && styles.stepPillLabelSelected,
-                  ]}
-                >
-                  {step.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {activeStepId === "promote" && resumable.length > 0 ? (
-          <GlassCard
-            variant="base"
-            contentStyle={styles.cardContent}
-            testID="host-ad-resumable"
-          >
-            <Text style={styles.sectionTitle}>Carry on with a saved ad</Text>
-            {resumable.map((plan) => (
-              <Pressable
+  // ---------------- step 1: what to promote ----------------
+  const pickBody = (
+    <View style={bs.stackLg}>
+      <Text style={bs.h1} accessibilityRole="header">{hb("pick.h1")}</Text>
+      {resumable.length > 0 ? (
+        <View style={bs.stack} testID="host-ad-resumable">
+          <BuilderLabel>{hb("pick.resume")}</BuilderLabel>
+          <BuilderList>
+            {resumable.map((plan, index) => (
+              <ValueRow
                 key={plan.id}
-                style={styles.savedPlan}
-                onPress={() => void resumePlan(plan.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Continue saved ad, ${hostAdStatusLabel(plan.state)}`}
-              >
-                <View style={styles.choiceText}>
-                  <Text style={styles.choiceTitle}>
-                    {hostAdStatusLabel(plan.state)}
-                  </Text>
-                  <Text style={styles.choiceSubtitle}>
-                    {setup.pages.find(
-                      (item) =>
-                        [item.page_type, item.brand_slug, item.page_type === "brand" ? null : item.entity_slug]
-                          .filter(Boolean)
-                          .join(":") === plan.destination_key,
-                    )?.title ?? "Saved ad"}
-                  </Text>
-                </View>
-                <Text style={styles.resume}>Continue</Text>
-              </Pressable>
-            ))}
-          </GlassCard>
-        ) : null}
-
-        {activeStepId === "promote" ? (
-          <GlassCard variant="base" contentStyle={styles.cardContent}>
-          <Text style={styles.step}>1 · What are you promoting?</Text>
-          <Text style={styles.sectionTitle}>Choose the landing page</Text>
-          <HostAdPagePicker
-            pages={setup.pages}
-            selected={page}
-            onSelect={(item) => {
-              setPage(item);
-              if (!hostAdPageSellsTickets(item)) setOptimization("visits");
-              // #4238: default the end to the last day people can book.
-              const limit = hostAdScheduleLimit(item, (iso) =>
-                hostAdPageDate(iso, item.timezone),
-              );
-              if (limit && endDate === "") setEndDate(limit.lastDay);
-              setPrepared(null);
-            }}
-          />
-          </GlassCard>
-        ) : null}
-
-        {activeStepId === "audience" ? (
-          <GlassCard variant="base" contentStyle={styles.cardContent}>
-          <Text style={styles.step}>2 · Who should see it?</Text>
-          <Text style={styles.sectionTitle}>Who should see it?</Text>
-          {setup.connections.map((item) => {
-              // #4238 P0: "works here" — greyed out with the reason.
-              const where = hostAdAppAvailability(
-                item.platform,
-                countries,
-                setup.availability ?? [],
-              );
-              return (
-                <ChoiceCard
-                  key={item.id}
-                  selected={
-                    where.works &&
-                    connections.some((connection) => connection.id === item.id)
-                  }
-                  title={PLATFORM_LABELS[item.platform] ?? item.platform}
-                  subtitle={where.works ? "Ready" : where.reason ?? undefined}
-                  disabled={!where.works}
-                  onPress={() => {
-                    setConnections((current) =>
-                      current.some((connection) => connection.id === item.id)
-                        ? current.filter(
-                            (connection) => connection.id !== item.id,
-                          )
-                        : [...current, item],
-                    );
-                    setPrepared(null);
-                  }}
-                  testID={`host-ad-platform-${item.platform}`}
-                  multiple
-                />
-              );
-            })}
-          <HostAdAudiencePicker
-            audiences={setup.audiences ?? []}
-            unavailable={setup.audiences_error === "unavailable"}
-            selected={audienceKeys}
-            countries={countries}
-            connections={connections}
-            onChange={(next) => {
-              setAudienceKeys(next);
-              setPrepared(null);
-            }}
-          />
-          <HostAdCountryPicker
-            countries={countries}
-            onChange={(next) => {
-              setCountries(next);
-              setPrepared(null);
-            }}
-          />
-          <Text style={styles.label}>Places (optional)</Text>
-          <Text style={styles.helper}>
-            Add towns or cities to focus your ad. Each app finds the place in
-            its own way, and you&apos;ll see its answer before you pay.
-          </Text>
-          <HostAdPlacesEditor
-            places={cities}
-            apps={activeApps}
-            countries={countries}
-            availability={setup.availability ?? []}
-            checking={prefixedChecking("include")}
-            busy={busy}
-            onSearch={searchPlaces}
-            onAdd={(place) => {
-              setCities((current) =>
-                current.some((item) => hostAdPlaceKey(item) === hostAdPlaceKey(place))
-                  ? current
-                  : [...current, place],
-              );
-              setPrepared(null);
-            }}
-            onChange={(key, place) => {
-              setCities((current) =>
-                current.map((item) => (hostAdPlaceKey(item) === key ? place : item)),
-              );
-              setPrepared(null);
-            }}
-            onRemove={(key) => {
-              setCities((current) =>
-                current.filter((item) => hostAdPlaceKey(item) !== key),
-              );
-              setPrepared(null);
-            }}
-            onRetry={(key, app) => {
-              const place = cities.find((item) => hostAdPlaceKey(item) === key);
-              if (place) void lookupPlaceOnApp("include", place, app);
-            }}
-          />
-          <Text style={styles.label}>Leave out places (optional)</Text>
-          <Text style={styles.helper}>
-            Skip areas that never buy. Only Facebook &amp; Instagram and
-            Snapchat can leave places out; the other apps say so below.
-          </Text>
-          <HostAdPlacesEditor
-            mode="exclude"
-            testIDPrefix="host-ad-excluded"
-            places={excludedPlaces}
-            apps={activeApps}
-            countries={countries}
-            availability={setup.availability ?? []}
-            checking={prefixedChecking("exclude")}
-            busy={busy}
-            onSearch={searchPlaces}
-            onAdd={(place) => {
-              setExcludedPlaces((current) =>
-                current.some((item) => hostAdPlaceKey(item) === hostAdPlaceKey(place))
-                  ? current
-                  : [...current, place],
-              );
-              setPrepared(null);
-            }}
-            onChange={(key, place) => {
-              setExcludedPlaces((current) =>
-                current.map((item) => (hostAdPlaceKey(item) === key ? place : item)),
-              );
-              setPrepared(null);
-            }}
-            onRemove={(key) => {
-              setExcludedPlaces((current) =>
-                current.filter((item) => hostAdPlaceKey(item) !== key),
-              );
-              setPrepared(null);
-            }}
-            onRetry={(key, app) => {
-              const place = excludedPlaces.find(
-                (item) => hostAdPlaceKey(item) === key,
-              );
-              if (place && HOST_AD_EXCLUDE_APPS.includes(app)) {
-                void lookupPlaceOnApp("exclude", place, app);
-              }
-            }}
-          />
-          <Text style={styles.label}>Interests (optional)</Text>
-          <Text style={styles.helper}>
-            Add interests that fit your crowd. Each app has its own list, so
-            you&apos;ll see each app&apos;s own name for it.
-          </Text>
-          <HostAdInterestsEditor
-            interests={interests}
-            apps={activeApps}
-            checking={prefixedChecking("interest")}
-            busy={busy}
-            onSearch={searchInterests}
-            onAdd={(name) => {
-              setInterests((current) =>
-                current.some(
-                  (item) => hostAdInterestKey(item.name) === hostAdInterestKey(name),
-                )
-                  ? current
-                  : [...current, { name, refs: {} }],
-              );
-              setPrepared(null);
-            }}
-            onChange={(key, interest) => {
-              setInterests((current) =>
-                current.map((item) =>
-                  hostAdInterestKey(item.name) === key ? interest : item,
-                ),
-              );
-              setPrepared(null);
-            }}
-            onRemove={(key) => {
-              setInterests((current) =>
-                current.filter((item) => hostAdInterestKey(item.name) !== key),
-              );
-              setPrepared(null);
-            }}
-            onRetry={(key, app) => {
-              const interest = interests.find(
-                (item) => hostAdInterestKey(item.name) === key,
-              );
-              if (interest) void lookupInterestOnApp(interest, app);
-            }}
-          />
-          <Text style={styles.label}>Languages (optional)</Text>
-          <Text style={styles.helper}>
-            Leave this empty to reach people in every language.
-          </Text>
-          <View style={styles.chipRow}>
-            {Object.entries(HOST_AD_LANGUAGE_NAMES).map(([code, label]) => {
-              const on = languages.includes(code);
-              return (
-                <Pressable
-                  key={code}
-                  style={[styles.chip, on && styles.chipSelected]}
-                  onPress={() => {
-                    setLanguages((current) =>
-                      on
-                        ? current.filter((item) => item !== code)
-                        : [...current, code],
-                    );
-                    setPrepared(null);
-                  }}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: on }}
-                  accessibilityLabel={`Language: ${label}`}
-                  testID={`host-ad-language-${code}`}
-                >
-                  <Text style={styles.chipLabel}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Pressable
-            style={[styles.acceptRow, excludePastBuyers && styles.choiceSelected]}
-            onPress={() => {
-              setExcludePastBuyers((value) => !value);
-              setPrepared(null);
-            }}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: excludePastBuyers }}
-            accessibilityLabel="Leave out people who already bought"
-            testID="host-ad-exclude-buyers"
-          >
-            <View
-              style={[styles.checkbox, excludePastBuyers && styles.checkboxChecked]}
-            />
-            <View style={styles.choiceText}>
-              <Text style={styles.choiceTitle}>
-                Leave out people who already bought
-              </Text>
-              <Text style={styles.choiceSubtitle}>
-                Your past guests won&apos;t be shown this ad on Facebook &amp;
-                Instagram, TikTok and Snapchat.
-              </Text>
-            </View>
-          </Pressable>
-          <HostAdReachMeter
-            rows={reachRows}
-            enabled={reachEnabled}
-            loading={reachLoading}
-          />
-          <View style={styles.fieldRow}>
-            <View style={styles.fieldHalf}>
-              <Text style={styles.label}>Minimum age</Text>
-              <Input
-                value={ageMin}
-                onChangeText={(value) => {
-                  setAgeMin(value);
-                  setPrepared(null);
-                }}
-                variant="number"
-                accessibilityLabel="Minimum age"
-              />
-            </View>
-            <View style={styles.fieldHalf}>
-              <Text style={styles.label}>Maximum age</Text>
-              <Input
-                value={ageMax}
-                onChangeText={(value) => {
-                  setAgeMax(value);
-                  setPrepared(null);
-                }}
-                variant="number"
-                accessibilityLabel="Maximum age"
-              />
-            </View>
-          </View>
-          <Text style={styles.label}>Gender</Text>
-          <View style={styles.chipRow}>
-            {(["all", "women", "men"] as const).map((value) => (
-              <Pressable
-                key={value}
-                style={[styles.chip, gender === value && styles.chipSelected]}
-                onPress={() => {
-                  setGender(value);
-                  setPrepared(null);
-                }}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: gender === value }}
-                accessibilityLabel={`${value[0].toUpperCase()}${value.slice(1)}`}
-              >
-                <Text style={styles.chipLabel}>
-                  {value[0].toUpperCase() + value.slice(1)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          </GlassCard>
-        ) : null}
-
-        {activeStepId === "budget" ? (
-          <GlassCard variant="base" contentStyle={styles.cardContent}>
-          <Text style={styles.step}>3 · Budget and dates</Text>
-          {pageSellsTickets ? (
-            <View style={styles.goalBlock} testID="host-ad-goal">
-              <Text style={styles.sectionTitle}>What should this ad get?</Text>
-              <ChoiceCard
-                selected={optimization === "sales"}
-                title="Ticket sales"
-                subtitle={
-                  salesReadyPlatforms.length > 0
-                    ? `${platformList(salesReadyPlatforms)} ${
-                        salesReadyPlatforms.length === 1 ? "learns" : "learn"
-                      } from real ticket sales`
-                    : "Not enough ticket sales on these platforms yet."
+                divider={index > 0}
+                label={hostAdStatusLabel(plan.state)}
+                value={
+                  setup.pages.find(
+                    (item) =>
+                      [item.page_type, item.brand_slug, item.page_type === "brand" ? null : item.entity_slug]
+                        .filter(Boolean)
+                        .join(":") === plan.destination_key,
+                  )?.title ?? hb("pick.resume")
                 }
-                disabled={salesReadyPlatforms.length === 0}
-                onPress={() => {
-                  setOptimization("sales");
-                  setPrepared(null);
-                }}
-                testID="host-ad-goal-sales"
+                trailing={hb("pick.continue")}
+                onPress={() => void resumePlan(plan.id)}
               />
-              <ChoiceCard
-                selected={optimization === "visits"}
-                title="Visits to your page"
-                onPress={() => {
-                  setOptimization("visits");
-                  setPrepared(null);
-                }}
-                testID="host-ad-goal-visits"
-              />
-            </View>
-          ) : null}
-          <Text style={styles.sectionTitle}>How much?</Text>
-          <Text style={styles.helper}>
-            You pay and see every amount in {setup.currency}. The exchange rate
-            is fixed when you check your ad.
-          </Text>
-          {budgetMode === "total" ? (
-            <>
-              <Text style={styles.label}>Total for the whole run ({setup.currency})</Text>
-              <Input
-                value={totalAmount}
-                onChangeText={(value) => {
-                  setTotalAmount(value);
-                  setPrepared(null);
-                }}
-                variant="number"
-                accessibilityLabel="Total budget for the whole run"
-                testID="host-ad-total-budget"
-              />
-            </>
+            ))}
+          </BuilderList>
+        </View>
+      ) : null}
+      {setup.pages.length === 0 ? (
+        <EmptyState illustration="users" title={hb("pick.empty")} description={hb("pick.emptyBody")} />
+      ) : (
+        <HostAdPagePicker
+          pages={setup.pages}
+          selected={page}
+          onSelect={(item) => {
+            setPage(item);
+            setOptimization(hostAdPageGoal(item));
+            setOccurrenceKey(null);
+            setAcknowledgedFallback([]);
+            setCta(null);
+            const limit = hostAdScheduleLimit(item, (iso) => hostAdPageDate(iso, item.timezone));
+            setEndDate(limit ? limit.lastDay : "");
+            setBudgetMode(limit ? "total" : "daily");
+            touch();
+          }}
+        />
+      )}
+      {page ? (
+        <View style={styles.goalRow}>
+          <Badge label={hostAdGoalName(goal)} />
+        </View>
+      ) : null}
+      {seriesEventId ? (
+        <BuilderCard accessibilityLabel={hb("pick.whichDates")} testID="host-ad-series">
+          <BuilderLabel>{hb("pick.whichDates")}</BuilderLabel>
+          {seriesError ? (
+            <Text style={bs.small}>{hb("pick.datesFailed")}</Text>
+          ) : seriesDates === null ? (
+            <ActivityIndicator color={color.text2} />
           ) : (
+            <>
+              <Segmented
+                value={occurrenceKey === null ? "all" : "one"}
+                accessibilityLabel={hb("pick.whichDates")}
+                options={[
+                  { id: "all", label: hb("pick.allDates", { count: seriesDates.length }) },
+                  { id: "one", label: hb("pick.oneDate") },
+                ]}
+                onChange={(next) => {
+                  const firstDate = seriesDates[0];
+                  if (next === "one" && firstDate) {
+                    setOccurrenceKey(firstDate.occurrenceKey);
+                    setEndDate(hostAdDayOf(firstDate.endAt, page?.timezone));
+                  } else {
+                    setOccurrenceKey(null);
+                    if (scheduleLimit) setEndDate(scheduleLimit.lastDay);
+                  }
+                  touch();
+                }}
+                testID="host-ad-series-mode"
+              />
+              {occurrenceKey === null ? (
+                <Text style={bs.small}>
+                  {hb("pick.allDatesLine", { date: scheduleLimit?.label ?? "" })}
+                </Text>
+              ) : (
+                <ChipRow
+                  role="radio"
+                  accessibilityLabel={hb("pick.oneDate")}
+                  options={seriesDates.map((row) => ({
+                    id: row.occurrenceKey,
+                    label: hostAdPageDate(row.startAt, page?.timezone) ?? row.startAt.slice(0, 10),
+                  }))}
+                  selected={occurrenceKey ? [occurrenceKey] : []}
+                  onToggle={(id) => {
+                    const row = seriesDates.find((item) => item.occurrenceKey === id);
+                    setOccurrenceKey(id);
+                    if (row) setEndDate(hostAdDayOf(row.endAt, page?.timezone));
+                    touch();
+                  }}
+                  testIDPrefix="host-ad-series-date"
+                />
+              )}
+            </>
+          )}
+        </BuilderCard>
+      ) : null}
+    </View>
+  );
+
+  // ---------------- step 2: who sees it ----------------
+  const leaveOutLabel = goal === "sales" ? hb("audience.leaveOutBuyers") : hb("audience.leaveOutSignups");
+  const audienceBody = (
+    <View style={bs.stackLg}>
+      <Text style={bs.h1} accessibilityRole="header">{hb("audience.h1")}</Text>
+      <Segmented
+        value={audienceChoice}
+        accessibilityLabel={hb("steps.audience")}
+        options={[
+          { id: "mingla", label: hb("minglaChoose") },
+          { id: "host", label: hb("audience.chooseMyself") },
+        ]}
+        onChange={(next) => {
+          setAudienceChoice(next);
+          touch();
+        }}
+        testID="host-ad-audience-choice"
+      />
+      {audienceChoice === "mingla" ? (
+        <>
+          <BuilderCard testID="host-ad-audience-mingla">
+            <InfoLine icon="location" title={hb("audience.near", { place })} subtitle={hb("audience.nearSub")} />
+            {excludePastBuyers ? (
+              <InfoLine
+                icon="check"
+                title={goal === "sales" ? hb("audience.skipsBuyers") : hb("audience.skipsSignups")}
+              />
+            ) : null}
+            {planApps.includes("meta") || appChoice === "mingla" ? (
+              <InfoLine
+                icon="users"
+                title={hb("audience.remindOn")}
+                subtitle={
+                  anyRetarget || metaFloorPay === null
+                    ? hb("audience.remindOnSub")
+                    : hb("audience.remindOffSub", { amount: money(metaFloorPay * 2) })
+                }
+              />
+            ) : null}
+          </BuilderCard>
+          <BuilderCard>
+            <View style={bs.rowBetween}>
+              <View style={styles.grow}>
+                <Text style={styles.rowTitle}>{hb("audience.pastGuests")}</Text>
+                <Text style={bs.small}>{hb("audience.pastGuestsSub")}</Text>
+              </View>
+              <Badge label={hb("comingSoon")} />
+            </View>
+          </BuilderCard>
+        </>
+      ) : (
+        <View style={bs.stackLg} testID="host-ad-audience-custom">
+          <View style={bs.stack}>
+            <BuilderLabel>{hb("audience.country")}</BuilderLabel>
+            <HostAdCountryPicker
+              countries={countries}
+              onChange={(next) => {
+                setCountries(next);
+                touch();
+              }}
+            />
+          </View>
+          <View style={bs.stack}>
+            <BuilderLabel>{hb("audience.places")}</BuilderLabel>
+            <Text style={bs.small}>{hb("audience.placesHelp")}</Text>
+            <HostAdPlacesEditor
+              places={cities}
+              apps={activeApps}
+              countries={countries}
+              availability={setup.availability ?? []}
+              checking={prefixedChecking("include")}
+              busy={busy}
+              onSearch={searchPlaces}
+              onAdd={(item) => {
+                setCities((current) =>
+                  current.some((row) => hostAdPlaceKey(row) === hostAdPlaceKey(item)) ? current : [...current, item],
+                );
+                touch();
+              }}
+              onChange={(key, item) => {
+                setCities((current) => current.map((row) => (hostAdPlaceKey(row) === key ? item : row)));
+                touch();
+              }}
+              onRemove={(key) => {
+                setCities((current) => current.filter((row) => hostAdPlaceKey(row) !== key));
+                touch();
+              }}
+              onRetry={(key, app) => {
+                const found = cities.find((row) => hostAdPlaceKey(row) === key);
+                if (found) void lookupPlaceOnApp("include", found, app);
+              }}
+            />
+          </View>
+          <View style={bs.stack}>
+            <BuilderLabel>{hb("audience.interests")}</BuilderLabel>
+            <Text style={bs.small}>{hb("audience.interestsHelp")}</Text>
+            <HostAdInterestsEditor
+              interests={interests}
+              apps={activeApps}
+              checking={prefixedChecking("interest")}
+              busy={busy}
+              onSearch={searchInterests}
+              onAdd={(interestName) => {
+                setInterests((current) =>
+                  current.some((row) => hostAdInterestKey(row.name) === hostAdInterestKey(interestName))
+                    ? current
+                    : [...current, { name: interestName, refs: {} }],
+                );
+                touch();
+              }}
+              onChange={(key, interest) => {
+                setInterests((current) => current.map((row) => (hostAdInterestKey(row.name) === key ? interest : row)));
+                touch();
+              }}
+              onRemove={(key) => {
+                setInterests((current) => current.filter((row) => hostAdInterestKey(row.name) !== key));
+                touch();
+              }}
+              onRetry={(key, app) => {
+                const found = interests.find((row) => hostAdInterestKey(row.name) === key);
+                if (found) void lookupInterestOnApp(found, app);
+              }}
+            />
+          </View>
+        </View>
+      )}
+      <AdvancedRow
+        open={advanced.audience === true}
+        title={hb("advanced")}
+        subtitle={hb("audience.advancedSub")}
+        onToggle={() => toggleAdvanced("audience")}
+        reduceMotion={reduceMotion}
+        testID="host-ad-audience-advanced"
+      />
+      {advanced.audience ? (
+        <View style={bs.stackLg} testID="host-ad-audience-advanced-panel">
+          <View style={bs.stack}>
+            <BuilderLabel>{hb("audience.leaveOut")}</BuilderLabel>
+            <BuilderList>
+              <SwitchRow
+                title={leaveOutLabel}
+                subtitle={hb("audience.onByDefault")}
+                value={excludePastBuyers}
+                onChange={(next) => {
+                  setExcludePastBuyers(next);
+                  touch();
+                }}
+                testID="host-ad-exclude-buyers"
+              />
+            </BuilderList>
+            <Text style={bs.small}>{hb("audience.placesToLeaveOut")}</Text>
+            <HostAdPlacesEditor
+              mode="exclude"
+              testIDPrefix="host-ad-excluded"
+              places={excludedPlaces}
+              apps={activeApps}
+              countries={countries}
+              availability={setup.availability ?? []}
+              checking={prefixedChecking("exclude")}
+              busy={busy}
+              onSearch={searchPlaces}
+              onAdd={(item) => {
+                setExcludedPlaces((current) =>
+                  current.some((row) => hostAdPlaceKey(row) === hostAdPlaceKey(item)) ? current : [...current, item],
+                );
+                touch();
+              }}
+              onChange={(key, item) => {
+                setExcludedPlaces((current) => current.map((row) => (hostAdPlaceKey(row) === key ? item : row)));
+                touch();
+              }}
+              onRemove={(key) => {
+                setExcludedPlaces((current) => current.filter((row) => hostAdPlaceKey(row) !== key));
+                touch();
+              }}
+              onRetry={(key, app) => {
+                const found = excludedPlaces.find((row) => hostAdPlaceKey(row) === key);
+                if (found && HOST_AD_EXCLUDE_APPS.includes(app)) void lookupPlaceOnApp("exclude", found, app);
+              }}
+            />
+          </View>
+          <View style={bs.stack}>
+            <BuilderLabel>{hb("audience.reminders")}</BuilderLabel>
+            <BuilderList>
+              <ValueRow
+                label={hb("audience.remindOn")}
+                value={
+                  anyRetarget || metaFloorPay === null
+                    ? hb("audience.automatic")
+                    : hb("audience.remindOffSub", { amount: money(metaFloorPay * 2) })
+                }
+              />
+            </BuilderList>
+          </View>
+          <View style={bs.stack}>
+            <BuilderLabel>{hb("audience.people")}</BuilderLabel>
             <View style={styles.fieldRow}>
               <View style={styles.fieldHalf}>
-                <Text style={styles.label}>Daily budget ({setup.currency})</Text>
+                <Text style={bs.caption}>{hb("audience.ageMin")}</Text>
                 <Input
-                  value={dailyAmount}
+                  value={ageMin}
                   onChangeText={(value) => {
-                    setDailyAmount(value);
-                    setPrepared(null);
+                    setAgeMin(value);
+                    touch();
                   }}
-                  variant="number"
-                  accessibilityLabel="Daily budget"
+                  variant="integer"
+                  accessibilityLabel={hb("audience.ageMin")}
+                  testID="host-ad-age-min"
                 />
               </View>
               <View style={styles.fieldHalf}>
-                <Text style={styles.label}>Never more than ({setup.currency})</Text>
+                <Text style={bs.caption}>{hb("audience.ageMax")}</Text>
                 <Input
-                  value={capAmount}
+                  value={ageMax}
                   onChangeText={(value) => {
-                    setCapAmount(value);
-                    setPrepared(null);
+                    setAgeMax(value);
+                    touch();
                   }}
-                  variant="number"
-                  accessibilityLabel="Total budget for this ad"
+                  variant="integer"
+                  accessibilityLabel={hb("audience.ageMax")}
+                  testID="host-ad-age-max"
                 />
               </View>
             </View>
-          )}
-          <HostAdBudgetPanel
-            mode={budgetMode}
-            onMode={(mode) => {
-              setBudgetMode(mode);
-              setPrepared(null);
-            }}
-            currency={setup.currency}
-            days={runDays}
-            split={allocation.split}
-            dailyTotalCents={allocation.dailyTotalCents}
-            onUseRecommended={(dailyCents) => {
-              if (budgetMode === "total" && runDays) {
-                setTotalAmount(String((dailyCents * runDays) / 100));
-              } else {
-                setDailyAmount(String(dailyCents / 100));
-                if (enteredCapCents < dailyCents) {
-                  setCapAmount(String((dailyCents * 7) / 100));
-                }
-              }
-              setPrepared(null);
-            }}
-          />
-          <Text style={styles.helper}>
-            {dailyBudgetCents > 0 && capCents > 0
-              ? `${formatMoney(setup.currency, dailyBudgetCents)} per day · never more than ${formatMoney(setup.currency, capCents)} in total`
-              : "Enter valid positive amounts."}
-          </Text>
-          <View style={styles.fieldRow}>
-            <View style={styles.fieldHalf}>
-              <DateField
-                label="Start date (optional)"
-                value={startDate}
-                min={today}
-                max={scheduleLimit?.lastDay}
-                onChangeValue={(value) => {
-                  setStartDate(value);
-                  if (endDate && value && endDate < value) setEndDate(value);
-                  setPrepared(null);
-                }}
-                accessibilityLabel="Ad campaign start date"
-                testID="host-ad-start-date"
-              />
-            </View>
-            <View style={styles.fieldHalf}>
-              <DateField
-                label="End date (optional)"
-                value={endDate}
-                min={startDate || today}
-                max={scheduleLimit?.lastDay}
-                onChangeValue={(value) => {
-                  setEndDate(value);
-                  setPrepared(null);
-                }}
-                accessibilityLabel="Ad campaign end date"
-                testID="host-ad-end-date"
-              />
-            </View>
-          </View>
-          <Text style={styles.helper}>
-            {scheduleLimit
-              ? `Leave the start empty to begin after approval. Your ad runs until ${scheduleLimit.label} at the latest, the last day people can book.`
-              : "Leave the start empty to begin after approval. Leave the end empty to stop at the hard cap instead of a calendar date."}
-          </Text>
-          </GlassCard>
-        ) : null}
-
-        {activeStepId === "creative" ? (
-          <GlassCard variant="base" contentStyle={styles.cardContent}>
-          <Text style={styles.step}>4 · Video and words</Text>
-          <Text style={styles.sectionTitle}>Choose the ad</Text>
-          {setup.creatives.length === 0 ? (
-            <Text style={styles.helper}>
-              No ad video yet. Add one below — vertical 9:16 works on the most
-              platforms.
+            {ageErrorLine ? (
+              <Text style={[bs.caption, styles.errorText]} accessibilityLiveRegion="polite" testID="host-ad-age-error">
+                {ageErrorLine}
+              </Text>
+            ) : null}
+            <Text style={bs.caption}>{hb("audience.ageFloor")}</Text>
+            <Text style={bs.caption}>{hb("audience.gender")}</Text>
+            <ChipRow
+              role="radio"
+              accessibilityLabel={hb("audience.gender")}
+              options={[
+                { id: "all", label: hb("audience.genderAll") },
+                { id: "women", label: hb("audience.genderWomen") },
+                { id: "men", label: hb("audience.genderMen") },
+              ]}
+              selected={[gender]}
+              onToggle={(id) => {
+                setGender(id as "all" | "women" | "men");
+                touch();
+              }}
+              testIDPrefix="host-ad-gender"
+            />
+            <Text style={bs.caption}>
+              {hb("audience.languages")} · {languages.length === 0 ? hb("audience.languagesEmpty") : languages.map((code) => HOST_AD_LANGUAGE_NAMES[code] ?? code).join(", ")}
             </Text>
-          ) : (
-            setup.creatives.map((item) => (
-              <ChoiceCard
-                key={item.id}
-                selected={creative?.id === item.id}
-                title={item.name}
-                subtitle={`${Math.round(Number(item.duration_seconds ?? 0))} sec · Ready`}
+            <ChipRow
+              role="checkbox"
+              accessibilityLabel={hb("audience.languages")}
+              options={Object.entries(HOST_AD_LANGUAGE_NAMES).map(([code, label]) => ({ id: code, label }))}
+              selected={languages}
+              onToggle={(code) => {
+                setLanguages((current) =>
+                  current.includes(code) ? current.filter((item) => item !== code) : [...current, code],
+                );
+                touch();
+              }}
+              testIDPrefix="host-ad-language"
+            />
+          </View>
+          <View style={bs.stack}>
+            <BuilderLabel>{hb("audience.yourAudiences")}</BuilderLabel>
+            {(setup.audiences ?? []).length > 0 ? (
+              <HostAdAudiencePicker
+                audiences={setup.audiences ?? []}
+                unavailable={setup.audiences_error === "unavailable"}
+                selected={audienceKeys}
+                countries={countries}
+                connections={lookupConnections}
+                onChange={(next) => {
+                  setAudienceKeys(next);
+                  touch();
+                }}
+              />
+            ) : (
+              <BuilderList>
+                <SwitchRow title={hb("audience.pastGuests")} subtitle={hb("comingSoon")} value={false} onChange={() => undefined} disabled />
+                <SwitchRow divider title={hb("audience.contacts")} subtitle={hb("comingSoon")} value={false} onChange={() => undefined} disabled />
+                <SwitchRow divider title={hb("audience.lookalike")} subtitle={hb("comingSoon")} value={false} onChange={() => undefined} disabled />
+              </BuilderList>
+            )}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+
+  // ---------------- step 3: where it runs ----------------
+  const appState = (platform: string): { ok: boolean; sub: string; badge?: string } => {
+    const connection = setup.connections.find((row) => row.platform === platform);
+    const desc = hb(`platforms.desc.${platform}`);
+    if (platform === "google" && goal !== "visits") {
+      return { ok: false, sub: `${desc} ${hb("platforms.googleSetup", { goal: hostAdGoalName(goal) })}`, badge: hb("platforms.needsSetup") };
+    }
+    if (!connection) return { ok: false, sub: desc, badge: hb("platforms.notAvailable") };
+    if (!runnableConnections.some((row) => row.id === connection.id)) {
+      return { ok: false, sub: `${desc} ${hb("platforms.notInCountry")}` };
+    }
+    const pay = minimumPay(platform);
+    const visitsOnly = goal !== "visits" && goalByPlatform[platform] === "visits";
+    return {
+      ok: true,
+      sub: [
+        desc,
+        pay !== null ? hb("platforms.from", { amount: money(pay) }) : hb("platforms.noRate"),
+        visitsOnly ? hb("platforms.visitsOnly", { unit }) : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    };
+  };
+  const platformsBody = (
+    <View style={bs.stackLg}>
+      <Text style={bs.h1} accessibilityRole="header">{hb("platforms.h1")}</Text>
+      <Segmented
+        value={appChoice}
+        accessibilityLabel={hb("steps.platforms")}
+        options={[
+          { id: "mingla", label: hb("minglaChoose") },
+          { id: "host", label: hb("platforms.chooseApps") },
+        ]}
+        onChange={(next) => {
+          setAppChoice(next);
+          if (next === "host" && connections.length === 0) setConnections(runnableConnections);
+          touch();
+        }}
+        testID="host-ad-app-choice"
+      />
+      {appChoice === "mingla" ? (
+        <BuilderCard>
+          <BuilderLabel>{hb("platforms.howMinglaPicks")}</BuilderLabel>
+          <Text style={bs.body}>{hb("platforms.howMinglaPicksBody")}</Text>
+        </BuilderCard>
+      ) : null}
+      <BuilderList testID="host-ad-apps">
+        {HOST_AD_BUILDER_APPS.map((platform, index) => {
+          const state = appState(platform);
+          const connection = setup.connections.find((row) => row.platform === platform);
+          if (appChoice === "host" && state.ok && connection) {
+            const on = connections.some((row) => row.id === connection.id);
+            return (
+              <SwitchRow
+                key={platform}
+                divider={index > 0}
+                title={appLabel(platform)}
+                subtitle={state.sub}
+                value={on}
+                onChange={() => {
+                  setConnections((current) =>
+                    on ? current.filter((row) => row.id !== connection.id) : [...current, connection],
+                  );
+                  touch();
+                }}
+                testID={`host-ad-platform-${platform}`}
+              />
+            );
+          }
+          return (
+            <ValueRow
+              key={platform}
+              divider={index > 0}
+              label={appLabel(platform)}
+              value={state.sub}
+              badge={state.badge}
+              testID={`host-ad-platform-${platform}`}
+            />
+          );
+        })}
+      </BuilderList>
+      {appChoice === "host" ? <Text style={bs.small}>{hb("platforms.eachAmount")}</Text> : null}
+    </View>
+  );
+
+  // ---------------- step 4: budget ----------------
+  const dailyMode = budgetMode === "daily" || venueLike;
+  const fundedNames = planApps.map(appLabel).join(", ");
+  const nextTrimmed = guidanceOk?.apps_plan?.trimmed?.[0] ?? null;
+  const learningPay = Math.max(
+    0,
+    ...(guidanceOk?.per_app ?? []).map((row) => row.learning_pay_cents ?? 0),
+  );
+  const week = hostAdWeekRange(guidanceOk?.total.expected_week);
+  const shortNeedPay = planApps.reduce((sum, platform) => sum + (minimumPay(platform) ?? 0), 0);
+  const budgetBody = (
+    <View style={bs.stackLg}>
+      <Text style={bs.h1} accessibilityRole="header">{hb("budget.h1")}</Text>
+      {!venueLike ? (
+        <Segmented
+          value={budgetMode as HostAdBudgetMode}
+          accessibilityLabel={hb("steps.budget")}
+          options={[
+            { id: "total", label: hb("budget.totalTo", { date: endLabel }) },
+            { id: "daily", label: hb("budget.perDay") },
+          ]}
+          onChange={(next) => {
+            setBudgetMode(next);
+            touch();
+          }}
+          testID="host-ad-budget-mode"
+        />
+      ) : null}
+      <BuilderCard testID="host-ad-budget-card">
+        <BuilderLabel>{dailyMode ? hb("budget.payDay") : hb("budget.payTotal")}</BuilderLabel>
+        <Text style={bs.statXl} testID="host-ad-budget-big" accessibilityLiveRegion="polite">
+          {dailyMode ? `${money(dailyPayCents)} ${hb("budget.aDay")}` : money(holdPayCents)}
+        </Text>
+        <Text style={bs.small} testID="host-ad-budget-sub">
+          {runDays === null
+            ? hb("budget.noEnd")
+            : venueLike
+              ? hb("budget.subVenue", { ads: money(dailyCreditCents), date: endLabel })
+              : dailyMode
+                ? hb("budget.subDaily", { total: money(holdPayCents), date: endLabel, ads: money(dailyCreditCents) })
+                : hb("budget.subTotal", { daily: money(dailyPayCents), date: endLabel, ads: money(hostAdCreditFromPay(holdPayCents)) })}
+        </Text>
+        {!belowEvery ? (
+          <View style={bs.est} testID="host-ad-budget-estimate">
+            <Text style={bs.body}>
+              {guidanceState === "error"
+                ? hb("budget.estimateFailed")
+                : week
+                  ? hb("budget.estimate", { daily: money(dailyPayCents), low: week.low, high: week.high, unit })
+                  : hb("budget.estimating")}
+            </Text>
+            {recommendedPay !== null ? (
+              <Text style={bs.small} testID="host-ad-budget-learn">
+                {dailyPayCents >= recommendedPay
+                  ? hb("budget.learnOk")
+                  : hb("budget.learnLow", { amount: money(recommendedPay) })}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+        <BudgetSlider
+          value={dailyPayCents}
+          range={sliderRange}
+          label={hb("budget.sliderLabel")}
+          valueText={hb("budget.sliderValue", { amount: money(dailyPayCents) })}
+          marks={[
+            ...(minimumMarkPay !== null
+              ? [{ value: minimumMarkPay, label: `${hb("budget.minimum")}\n${money(minimumMarkPay)}` }]
+              : []),
+            ...(recommendedPay !== null && recommendedPay !== minimumMarkPay
+              ? [{ value: recommendedPay, label: `${hb("budget.recommended")}\n${money(recommendedPay)}`, accent: true }]
+              : []),
+          ]}
+          onChange={(next) => {
+            setDailyPayCents(next);
+            touch();
+          }}
+          testID="host-ad-budget-slider"
+        />
+      </BuilderCard>
+      {belowEvery && minimumMarkPay !== null ? (
+        <Note
+          tone="error"
+          testID="host-ad-budget-below"
+          text={hb("budget.belowMin", {
+            daily: money(dailyPayCents),
+            min: money(minimumMarkPay),
+            app: appLabel(guidanceBelow?.apps_plan?.smallest_overall?.platform ?? guidanceOk?.smallest_overall?.platform ?? "meta"),
+          })}
+          actions={
+            <Button
+              label={hb("budget.raiseTo", { amount: money(minimumMarkPay) })}
+              variant="secondary"
+              size="sm"
+              onPress={() => {
+                setDailyPayCents(minimumMarkPay);
+                touch();
+              }}
+              testID="host-ad-budget-raise-min"
+            />
+          }
+        />
+      ) : appsShort ? (
+        <Note
+          tone="warn"
+          testID="host-ad-budget-short"
+          text={hb("budget.appsShort", {
+            apps: fundedNames,
+            need: money(shortNeedPay),
+            daily: money(dailyPayCents),
+            fit: appLabel(planApps[0] ?? "meta"),
+          })}
+          actions={
+            <>
+              <Button
+                label={hb("budget.raiseTo", { amount: money(shortNeedPay) })}
+                variant="secondary"
+                size="sm"
                 onPress={() => {
-                  setCreative(item);
+                  setDailyPayCents(shortNeedPay);
+                  touch();
+                }}
+              />
+              <Button
+                label={hb("minglaChoose")}
+                variant="secondary"
+                size="sm"
+                onPress={() => {
+                  setAppChoice("mingla");
+                  touch();
+                }}
+              />
+            </>
+          }
+        />
+      ) : planApps.length > 0 ? (
+        <BuilderCard accessibilityLabel={hb("budget.runsOn")} testID="host-ad-budget-runs-on">
+          <BuilderLabel>{hb("budget.runsOn")}</BuilderLabel>
+          <Text style={bs.body}>{fundedNames}</Text>
+          {guidanceOk?.fit === "slow" && learningPay > 0 ? (
+            <>
+              <Text style={bs.small}>{hb("budget.slow", { amount: money(learningPay) })}</Text>
+              <View style={bs.actions}>
+                <Button
+                  label={hb("budget.raiseTo", { amount: money(learningPay) })}
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    setDailyPayCents(learningPay);
+                    touch();
+                  }}
+                />
+              </View>
+            </>
+          ) : nextTrimmed && appChoice === "mingla" ? (
+            <Text style={bs.small}>
+              {hb("budget.adds", {
+                app: appLabel(nextTrimmed.platform),
+                amount: money(dailyPayCents + nextTrimmed.needs_more_pay_cents),
+              })}
+            </Text>
+          ) : null}
+        </BuilderCard>
+      ) : guidanceState === "loading" ? (
+        <ActivityIndicator color={color.text2} />
+      ) : null}
+      {walletPay === null ? (
+        <Text style={bs.small}>{hb("budget.creditUnknown")}</Text>
+      ) : walletPay < holdPayCents ? (
+        <Note tone="warn" text={hb("budget.creditLow", { hold: money(holdPayCents), credit: money(walletPay) })} />
+      ) : (
+        <Text style={bs.small}>{hb("budget.credit", { hold: money(holdPayCents), credit: money(walletPay) })}</Text>
+      )}
+      {!venueLike ? (
+        <AdvancedRow
+          open={advanced.budget === true}
+          title={hb("advanced")}
+          subtitle={hb("budget.advancedSub")}
+          onToggle={() => toggleAdvanced("budget")}
+          reduceMotion={reduceMotion}
+          testID="host-ad-budget-advanced"
+        />
+      ) : null}
+      {advanced.budget || venueLike ? (
+        <View style={bs.stack} testID="host-ad-budget-dates">
+          <DateField
+            label={hb("budget.starts")}
+            value={startDate}
+            min={today}
+            max={scheduleLimit?.lastDay}
+            onChangeValue={(value) => {
+              setStartDate(value);
+              if (endDate && value && endDate < value) setEndDate(value);
+              touch();
+            }}
+            accessibilityLabel={hb("budget.starts")}
+            testID="host-ad-start-date"
+          />
+          <Text style={bs.caption}>{startDate === "" ? hb("budget.startsApproved") : ""}</Text>
+          <DateField
+            label={hb("budget.ends")}
+            value={endDate}
+            min={startDate || today}
+            max={scheduleLimit?.lastDay}
+            onChangeValue={(value) => {
+              setEndDate(value);
+              touch();
+            }}
+            accessibilityLabel={hb("budget.ends")}
+            testID="host-ad-end-date"
+          />
+          <Text style={bs.caption}>
+            {venueLike ? hb("budget.venueEnd") : scheduleLimit ? hb("budget.endsEvent", { date: scheduleLimit.label }) : ""}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+
+  // ---------------- step 5: the ad ----------------
+  const creativePreview = (
+    <HostAdPreview
+      apps={planApps.length > 0 ? planApps : activeApps}
+      posterUrl={firstPoster}
+      brandName={brand?.displayName ?? page?.brand_name ?? ""}
+      primary={primaryText.trim()}
+      headline={headline.trim() || name.trim() || page?.title || ""}
+      cta={ctaId}
+    />
+  );
+  const creativeBody = (
+    <View style={bs.stackLg}>
+      <Text style={bs.h1} accessibilityRole="header">{hb("creative.h1")}</Text>
+      {!isWideDesktop ? creativePreview : null}
+      {copyWarnings.length > 0 ? (
+        <Note
+          tone="warn"
+          testID="host-ad-copy-warning"
+          text={`“${copyWarnings[0].excerpt}”: ${copyWarnings[0].message} ${hb("creative.copyWarn")}`}
+          actions={<Button label={hb("creative.seeFix")} variant="secondary" size="sm" onPress={() => setSheet("words")} />}
+        />
+      ) : null}
+      <BuilderList>
+        <ValueRow
+          label={hb("creative.words")}
+          value={
+            copyWarnings.length > 0
+              ? hb("creative.suggestions", { count: copyWarnings.length })
+              : // #4238 rework 3 (P3-7): say what is missing, never a filled-in look.
+                primaryText.trim().length < 3
+                ? hb("creative.missingText")
+                : `${headline.trim() || name.trim() || page?.title || ""} · ${ctaLabel}`
+          }
+          onPress={() => setSheet("words")}
+          testID="host-ad-words-row"
+        />
+        {/* #4238 W6b: Ari writes the ad from the page only (no made-up people
+            or places); its plan comes back as a proposal card to confirm. */}
+        <ValueRow
+          divider
+          icon="sparkle"
+          label={hm("ari.draft")}
+          value={hm("ari.draftSub")}
+          onPress={() => router.push(`/(tabs)/ari?brandId=${encodeURIComponent(brandId ?? "")}` as never)}
+          testID="host-ad-draft-with-ari"
+        />
+      </BuilderList>
+      <View style={bs.stack}>
+        <View style={bs.rowBetween}>
+          <BuilderLabel>{hb("creative.media")}</BuilderLabel>
+          <Text style={bs.caption}>{hb("creative.picked", { count: pickedCreatives.length })}</Text>
+        </View>
+        <View style={bs.tiles} testID="host-ad-creative-tiles">
+          {setup.creatives.map((item) => {
+            const on = creativeIds.includes(item.id);
+            return (
+              <CreativeTile
+                key={item.id}
+                label={`${item.name}${item.duration_seconds ? ` · 0:${String(Math.round(Number(item.duration_seconds))).padStart(2, "0")}` : ""}`}
+                selected={on}
+                disabled={!on && creativeIds.length >= 5}
+                poster={
+                  item.poster_url || item.source_url ? (
+                    <Image source={{ uri: item.poster_url ?? item.source_url ?? "" }} style={styles.poster} />
+                  ) : null
+                }
+                onPress={() => {
+                  setCreativeIds((current) =>
+                    current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id].slice(0, 5),
+                  );
+                  if (!on) setCreative(item);
                   setRightsConfirmed(false);
-                  setPrepared(null);
+                  touch();
                 }}
                 testID={`host-ad-creative-${item.id}`}
-              >
-                {item.poster_url ? (
-                  <Image
-                    source={{ uri: item.poster_url }}
-                    style={styles.poster}
-                  />
-                ) : null}
-              </ChoiceCard>
-            ))
-          )}
-          {/* #3040 design §7 — the button reopens the sheet at any time: a
-              running job shows its own spinner here but never disables it. */}
-          <Button
-            label={setup.creatives.length === 0 ? "Add ad video" : "Add another video"}
-            variant="secondary"
+              />
+            );
+          })}
+          <AddTile
+            label={hb("creative.addShort")}
+            loading={adVideoProcessing || adVideoLinking}
             onPress={() => setAdVideoPickerVisible(true)}
-            loading={adVideoLinking}
-            leadingIcon={adVideoProcessing ? undefined : "play"}
-            fullWidth
             testID="host-ad-add-video"
           />
-          {adVideoProcessing ? (
-            <View style={styles.adVideoWorkingRow} accessibilityLiveRegion="polite">
-              <ActivityIndicator size="small" color={accent.warm} />
-              <Text style={styles.helper}>
-                Your ad video is being prepared. You can keep editing.
-              </Text>
+        </View>
+        {setup.creatives.some((item) => item.kind === "image") ? (
+          <Text style={bs.caption}>{hb("creative.photoNote")}</Text>
+        ) : null}
+        {guidanceOk?.creatives_hint && pickedCreatives.length > 0 ? (
+          <Text style={bs.caption}>{hb("creative.fewHint")}</Text>
+        ) : null}
+        {adVideoProcessing ? (
+          <View style={styles.inlineRow} accessibilityLiveRegion="polite">
+            <ActivityIndicator size="small" color={color.text2} />
+            <Text style={bs.small}>{hb("creative.preparing")}</Text>
+          </View>
+        ) : null}
+        {unlinkedCreativeId !== null ? (
+          <Button
+            label={hb("creative.relink")}
+            variant="secondary"
+            onPress={() => {
+              void linkAdCreative(unlinkedCreativeId);
+            }}
+            loading={adVideoLinking}
+            testID="host-ad-relink-video"
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+
+  // ---------------- step 6: review and pay ----------------
+  const rightsLabel =
+    rightsBasis === "licensed"
+      ? hb("rights.licensed")
+      : rightsBasis === "authorized_by_brand"
+        ? hb("rights.authorized")
+        : hb("rights.owned");
+  const reviewRow = (label: string, value: string, step: HostAdStepId, divider: boolean): React.ReactElement => (
+    <ValueRow
+      key={label}
+      divider={divider}
+      label={label}
+      value={value}
+      trailing={hb("review.editShort")}
+      accessibilityLabel={hb("review.edit", { row: label })}
+      onPress={() => goToStepId(step)}
+    />
+  );
+  const cancellable =
+    permissions.canEnd &&
+    !providerObjectEvidence &&
+    prepared !== null &&
+    ["funded_held", "staff_review_required", "staff_approved", "creating_paused_objects", "creation_failed_retryable"].includes(
+      activePlanState ?? "",
+    );
+  const reviewBody = launched ? (
+    <View style={styles.launched} testID="host-ad-launched">
+      <View style={styles.launchedArt}>
+        <Icon name="check" size={36} color={color.successText} />
+      </View>
+      <Text style={bs.h1} accessibilityRole="header">{hb("review.launchedTitle")}</Text>
+      <Text style={[bs.small, styles.centerText]}>
+        {launched === "staff" ? hb("review.launchedStaff") : hb("review.launchedApps")}
+      </Text>
+    </View>
+  ) : (
+    <View style={bs.stackLg}>
+      <Text style={bs.h1} accessibilityRole="header">{hb("review.h1")}</Text>
+      {offline ? <Note tone="info" text={hb("offline")} /> : null}
+      {activePlanState === "staff_review_required" ? <Note tone="info" text={hb("review.inReview")} /> : null}
+      <BuilderList testID="host-ad-review-rows">
+        {reviewRow(hb("review.promoting"), `${page?.title ?? ""} · ${hostAdGoalName(goal)}`, "pick", false)}
+        {reviewRow(
+          hb("review.who"),
+          audienceChoice === "mingla" ? hb("review.whoMingla", { place }) : hb("review.whoCustom", { place: cities.map((row) => row.name).join(", ") || place }),
+          "audience",
+          true,
+        )}
+        {reviewRow(hb("review.where"), fundedNames || hb("review.whereMingla"), "platforms", true)}
+        {reviewRow(hb("review.budgetRow"), hb("review.budgetValue", { total: money(holdPayCents), daily: money(dailyPayCents) }), "budget", true)}
+        {reviewRow(
+          hb("review.dates"),
+          occurrenceKey
+            ? hb("review.datesOne", { date: endLabel })
+            : startDate
+              ? hb("review.datesFrom", { start: hostAdPageDate(`${startDate}T12:00:00Z`, page?.timezone) ?? startDate, date: endLabel })
+              : hb("review.datesValue", { date: endLabel }),
+          "budget",
+          true,
+        )}
+        {reviewRow(hb("review.ad"), hb("review.adValue", { count: pickedCreatives.length, button: ctaLabel }), "creative", true)}
+      </BuilderList>
+      <View
+        style={bs.stack}
+        onLayout={(event) => {
+          checksYRef.current = event.nativeEvent.layout.y;
+        }}
+        testID="host-ad-checks"
+      >
+        <BuilderLabel>{hb("review.checks")}</BuilderLabel>
+        {checkRows.length === 0 ? (
+          <BuilderCard>
+            <Text style={bs.small}>{formError ?? hb("review.blockNotChecked")}</Text>
+            {formError === null ? (
+              <View style={bs.actions}>
+                <Button label={hb("review.checkNow")} variant="secondary" onPress={() => void handlePrepare(false)} loading={busy} testID="host-ad-prepare" />
+              </View>
+            ) : null}
+          </BuilderCard>
+        ) : (
+          <BuilderList>
+            {checkRows.map((row, index) => (
+              <View key={row.platform} style={[styles.checkRow, index > 0 && styles.divider]} testID={`host-ad-check-${row.platform}`}>
+                <View style={bs.rowBetween}>
+                  <Text style={styles.rowTitle}>{appLabel(row.platform)}</Text>
+                  <CheckState
+                    state={row.state}
+                    label={
+                      row.state === "checking"
+                        ? hb("review.checking")
+                        : row.state === "ready"
+                          ? hb("review.ready")
+                          : row.state === "question"
+                            ? hb("review.question")
+                            : hb("review.failed")
+                    }
+                  />
+                </View>
+                {row.state === "question" && row.note === "wider" ? (
+                  <>
+                    <Text style={bs.small}>{hb("review.wider")}</Text>
+                    <View style={bs.actions}>
+                      <Button
+                        label={hb("review.turnOff", { app: appLabel(row.platform) })}
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => {
+                          setAppChoice("host");
+                          setConnections(planConnections.filter((item) => item.platform !== row.platform));
+                          touch();
+                        }}
+                      />
+                      <Button
+                        label={hb("review.useWider")}
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => {
+                          setAcceptBroader(true);
+                          void handlePrepare(true);
+                        }}
+                        testID={`host-ad-accept-wider-${row.platform}`}
+                      />
+                    </View>
+                  </>
+                ) : null}
+                {row.state === "question" && row.note === "visits" ? (
+                  <>
+                    <Text style={bs.small}>{hb("review.visitsQuestion", { unit })}</Text>
+                    <View style={bs.actions}>
+                      <Button
+                        label={hb("review.turnOff", { app: appLabel(row.platform) })}
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => {
+                          setAppChoice("host");
+                          setConnections(planConnections.filter((item) => item.platform !== row.platform));
+                          setGoalQuestion([]);
+                          touch();
+                        }}
+                      />
+                      <Button
+                        label={hb("review.runAnyway")}
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => {
+                          setAcknowledgedFallback((current) => [...new Set([...current, ...goalQuestion])]);
+                          setGoalQuestion([]);
+                          touch();
+                        }}
+                        testID={`host-ad-accept-visits-${row.platform}`}
+                      />
+                    </View>
+                  </>
+                ) : null}
+                {row.state === "failed" ? (
+                  <>
+                    <Text style={[bs.small, styles.errorText]}>
+                      {row.note === "google" ? hb("review.googleSetup") : hb("review.checkFailed", { app: appLabel(row.platform) })}
+                    </Text>
+                    <View style={bs.actions}>
+                      <Button
+                        label={hb("tryAgain")}
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => {
+                          setGoogleNeedsSetup(false);
+                          setCheckState("idle");
+                          void handlePrepare(false);
+                        }}
+                      />
+                      <Button
+                        label={hb("getHelp")}
+                        variant="ghost"
+                        size="sm"
+                        onPress={() => router.push("/account/support" as never)}
+                      />
+                    </View>
+                  </>
+                ) : null}
+              </View>
+            ))}
+          </BuilderList>
+        )}
+      </View>
+      <BuilderCard accessibilityLabel={hb("review.creditRow")} testID="host-ad-review-money">
+        <View style={bs.kv}>
+          <View style={bs.kvRow}>
+            <Text style={bs.kvKey}>{hb("review.creditRow")}</Text>
+            <Text style={bs.kvVal} testID="host-ad-review-credit">{walletPay === null ? "—" : money(walletPay)}</Text>
+          </View>
+          <View style={bs.kvRow}>
+            <Text style={bs.kvKey}>{hb("review.held")}</Text>
+            <Text style={bs.kvVal} testID="host-ad-review-hold">{money(holdPayCents)}</Text>
+          </View>
+          <View style={bs.kvRow}>
+            <Text style={bs.kvKey}>{hb("review.chargedToday")}</Text>
+            <Text style={bs.kvVal}>{money(0)}</Text>
+          </View>
+          {topUpNeeded > 0 ? (
+            <View style={[bs.kvRow, bs.kvTotal]}>
+              <Text style={[bs.kvKey, styles.warnText]}>{hb("review.topUpNeeded")}</Text>
+              <Text style={[bs.kvVal, styles.warnText]} testID="host-ad-review-topup">{money(topUpNeeded)}</Text>
             </View>
           ) : null}
-          {unlinkedCreativeId !== null ? (
-            <Button
-              label="Try linking again"
-              variant="primary"
-              onPress={() => { void linkAdCreative(unlinkedCreativeId); }}
-              loading={adVideoLinking}
-              fullWidth
-              testID="host-ad-relink-video"
-            />
-          ) : null}
-          <Text style={styles.label}>Paid-ad rights basis</Text>
-          <View style={styles.chipRow}>
+        </View>
+        <Text style={bs.caption} testID="host-ad-review-fee">
+          {hb("review.feeLine", { ads: money(hostAdCreditFromPay(holdPayCents)) })}
+        </Text>
+      </BuilderCard>
+      <View style={bs.stack}>
+        <BuilderLabel>{hb("review.media")}</BuilderLabel>
+        <BuilderList>
+          <ValueRow
+            label={hb("review.rights")}
+            value={hb("review.rightsValue", { basis: rightsLabel })}
+            onPress={() => setSheet("rights")}
+            testID="host-ad-rights-row"
+          />
+        </BuilderList>
+        <CheckRow
+          checked={rightsConfirmed}
+          label={hb("review.rightsConfirm")}
+          onToggle={() => {
+            setRightsConfirmed((value) => !value);
+            touch();
+          }}
+          testID="host-ad-rights"
+        />
+        <CheckRow
+          checked={aiGenerated}
+          label={hb("review.ai")}
+          onToggle={() => {
+            setAiGenerated((value) => !value);
+            touch();
+          }}
+          testID="host-ad-ai"
+        />
+      </View>
+      {copyWarnings.length > 0 ? (
+        <View style={bs.stack} testID="host-ad-review-copy">
+          <BuilderLabel>{hb("review.copyWarnings")}</BuilderLabel>
+          {copyWarnings.map((warning) => (
+            <Note key={`${warning.excerpt}-${warning.message}`} tone="warn" text={`“${warning.excerpt}”: ${warning.message} ${hb("creative.copyWarn")}`} />
+          ))}
+        </View>
+      ) : null}
+      {cancellable ? (
+        <Button
+          label={hb("review.cancelAd")}
+          variant="destructiveOutline"
+          onPress={() => setSheet("cancel")}
+          testID="host-ad-cancel-before-create"
+        />
+      ) : null}
+      {providerObjectEvidence ? <Text style={bs.small}>{hb("review.alreadyBuilt")}</Text> : null}
+    </View>
+  );
+
+  const bodies: Record<HostAdStepId, React.ReactElement> = {
+    pick: pickBody,
+    audience: audienceBody,
+    platforms: platformsBody,
+    budget: budgetBody,
+    creative: creativeBody,
+    review: reviewBody,
+  };
+  const isReview = activeStepId === "review";
+  const stepError = stepErrors[activeStepId];
+  const reviewBlocker = isReview ? blockerText() : null;
+  const dockBlocker = launched ? null : isReview ? reviewBlocker : stepError;
+  const primary = launched ? (
+    <Button label={hb("review.seeAds")} fullWidth onPress={backToAds} testID="host-ad-see-ads" />
+  ) : isReview ? (
+    blocker?.kind === "top_up" && canTopUp ? (
+      <Button
+        label={hb("review.topUp", { amount: money(topUpNeeded) })}
+        fullWidth
+        onPress={() => setSheet("topUp")}
+        testID="host-ad-topup"
+      />
+    ) : (
+      <Button
+        label={hb("review.launch")}
+        fullWidth
+        disabled={blocker !== null}
+        loading={busy && checkState !== "checking"}
+        onPress={() => setSheet("launch")}
+        testID="host-ad-launch"
+      />
+    )
+  ) : (
+    <Button
+      label={hb("next")}
+      fullWidth
+      disabled={Boolean(stepError)}
+      onPress={() => void goToStep(activeStepIndex + 1)}
+      testID="host-ad-step-next"
+    />
+  );
+  const dockBlockerNode = dockBlocker ? (
+    <Blocker
+      text={dockBlocker}
+      testID="host-ad-blocker"
+      onShow={isReview && (blocker?.kind === "question" || blocker?.kind === "failed") ? showChecks : undefined}
+      showLabel={hb("show")}
+    />
+  ) : null;
+  const banners = (
+    <>
+      {error ? <Note tone="error" text={error} testID="host-ad-error" /> : null}
+      {notice ? <Note tone="info" text={notice} testID="host-ad-notice" /> : null}
+      {draftSaveStatus === "error" || draftSaveStatus === "conflict" ? (
+        <Text style={[bs.caption, styles.errorText]} accessibilityLiveRegion="polite">{hb("saveFailed")}</Text>
+      ) : null}
+    </>
+  );
+
+  const sheets = (
+    <>
+      <HostAdWordsSheet
+        visible={sheet === "words"}
+        apps={planApps.length > 0 ? planApps : activeApps}
+        name={name || page?.title || ""}
+        headline={headline}
+        primary={primaryText}
+        cta={ctaId}
+        warnings={copyWarnings}
+        onClose={() => setSheet(null)}
+        onSave={(next) => {
+          setName(next.name);
+          setHeadline(next.headline);
+          setPrimaryText(next.primary);
+          setCta(next.cta);
+          setSheet(null);
+          touch();
+        }}
+      />
+      <Sheet visible={sheet === "rights"} onClose={() => setSheet(null)} snapPoint="half" testID="host-ad-rights-sheet">
+        <View style={styles.sheetBody}>
+          <Text style={bs.h1} accessibilityRole="header">{hb("rights.title")}</Text>
+          <BuilderList>
             {(
               [
-                ["owned", "Owned"],
-                ["licensed", "Licensed"],
-                ["authorized_by_brand", "Brand authorized"],
+                ["owned", hb("rights.owned"), hb("rights.ownedSub")],
+                ["licensed", hb("rights.licensed"), hb("rights.licensedSub")],
+                ["authorized_by_brand", hb("rights.authorized"), hb("rights.authorizedSub")],
               ] as const
-            ).map(([value, label]) => (
-              <Pressable
+            ).map(([value, label, sub], index) => (
+              <ValueRow
                 key={value}
-                style={[
-                  styles.chip,
-                  rightsBasis === value && styles.chipSelected,
-                ]}
+                divider={index > 0}
+                label={sub}
+                value={label}
+                trailing={rightsBasis === value ? "✓" : " "}
+                accessibilityLabel={`${label}. ${sub}`}
                 onPress={() => {
                   setRightsBasis(value);
                   setRightsConfirmed(false);
-                  setPrepared(null);
+                  touch();
                 }}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: rightsBasis === value }}
-                accessibilityLabel={`Video rights: ${label}`}
-              >
-                <Text style={styles.chipLabel}>{label}</Text>
-              </Pressable>
+                testID={`host-ad-rights-${value}`}
+              />
             ))}
-          </View>
-          <Pressable
-            style={[styles.acceptRow, rightsConfirmed && styles.choiceSelected]}
-            onPress={() => {
-              setRightsConfirmed((value) => !value);
-              setPrepared(null);
-            }}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: rightsConfirmed }}
-            accessibilityLabel="Confirm paid advertising rights"
-          >
-            <View
-              style={[
-                styles.checkbox,
-                rightsConfirmed && styles.checkboxChecked,
-              ]}
-            />
-            <Text style={styles.choiceTitle}>
-              I confirm this video may be used in paid ads. A paid Creator
-              gig also licenses the approved video to Mingla for its own
-              marketing after the full Creator fee is released.
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.acceptRow, aiGenerated && styles.choiceSelected]}
-            onPress={() => {
-              setAiGenerated((value) => !value);
-              setPrepared(null);
-            }}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: aiGenerated }}
-            accessibilityLabel="Video is made with AI"
-          >
-            <View
-              style={[styles.checkbox, aiGenerated && styles.checkboxChecked]}
-            />
-            <Text style={styles.choiceTitle}>
-              This video was made or heavily edited with AI
-            </Text>
-          </Pressable>
-          <Text style={styles.label}>Campaign name</Text>
-          <Input
-            value={name}
-            onChangeText={(value) => {
-              setName(value);
-              setPrepared(null);
-            }}
-            placeholder="Deserted Island — October"
-            accessibilityLabel="Campaign name"
-          />
-          <Text style={styles.label}>Primary text</Text>
-          <Input
-            value={primaryText}
-            onChangeText={(value) => {
-              setPrimaryText(value);
-              setPrepared(null);
-            }}
-            placeholder="The weekend you will talk about all year."
-            accessibilityLabel="Primary ad text"
-          />
-          <Text style={styles.label}>Headline</Text>
-          <Input
-            value={headline}
-            onChangeText={(value) => {
-              setHeadline(value);
-              setPrepared(null);
-            }}
-            placeholder="Tickets are moving"
-            accessibilityLabel="Ad headline"
-          />
-          <HostAdTextCounters
-            apps={activeApps}
-            primary={primaryText.trim()}
-            headline={headline.trim() || name.trim()}
-          />
-          <HostAdCtaPicker
-            value={cta ?? hostAdDefaultCta(page?.page_type)}
-            onChange={(value) => {
-              setCta(value);
-              setPrepared(null);
-            }}
-            apps={activeApps}
-          />
-          {creative ? (
-            <Text style={styles.helper} testID="host-ad-video-fit">
-              {adVideoFitSummaryFor({
-                creatives: setup.creatives,
-                heldId: creative.id,
-                linked: creative,
-              }) ?? "This video fits the apps you picked."}
-            </Text>
-          ) : null}
-          <HostAdPreview
-            apps={activeApps}
-            posterUrl={creative?.poster_url ?? null}
-            brandName={brand?.displayName ?? page?.brand_name ?? "Your brand"}
-            primary={primaryText.trim()}
-            headline={headline.trim() || name.trim()}
-            cta={cta ?? hostAdDefaultCta(page?.page_type)}
-          />
-          <HostAdUtmTags apps={activeApps} adName={name.trim()} />
-          </GlassCard>
-        ) : null}
-
-        {activeStepId === "review" ? (
-          <GlassCard variant="elevated" contentStyle={styles.cardContent}>
-          <Text style={styles.step}>5 · Review and launch</Text>
-          <Text style={styles.sectionTitle}>Check your ad</Text>
-          <Text style={styles.helper}>
-            We check your ad with each app first. This doesn&apos;t take any
-            money or start your ad.
-          </Text>
-          <Button
-            label={prepared ? "Check my ad again" : "Check my ad"}
-            onPress={() => void handlePrepare(false)}
-            disabled={Boolean(formError) || !permissions.canPlan}
-            loading={busy}
-            fullWidth
-            testID="host-ad-prepare"
-          />
-          {!permissions.canPlan ? (
-            <Text style={styles.helper}>
-              Your role can look at this ad but not change it. You may still be
-              able to add money or start it below.
-            </Text>
-          ) : null}
-          {formError ? <Text style={styles.helper}>{formError}</Text> : null}
-
-          {prepared ? (
-            <View style={styles.planBox}>
-              {audienceKeys.length > 0 ? (
-                <View style={styles.targetingRow} testID="host-ad-review-audiences">
-                  <Text style={styles.choiceTitle}>People you chose</Text>
-                  <Text style={styles.choiceSubtitle}>
-                    {audienceKeys
-                      .map((key) => {
-                        const audience = (setup.audiences ?? []).find(
-                          (item) => item.audienceKey === key,
-                        );
-                        return audience ? hostAdAudienceName(audience) : null;
-                      })
-                      .filter((value): value is string => value !== null)
-                      .join(", ")}
-                  </Text>
-                </View>
-              ) : null}
-              {prepared.optimizationByPlatform ? (
-                <Text style={styles.choiceTitle} testID="host-ad-goal-summary">
-                  {goalSummaryLine(
-                    hostOptimizationSummary(
-                      prepared.optimizationByPlatform,
-                      prepared.targeting.length > 0
-                        ? prepared.targeting.map((row) => row.platform)
-                        : connections.map((connection) => connection.platform),
-                    ),
-                  )}
-                </Text>
-              ) : null}
-              <View style={styles.targetingRow} testID="host-ad-review-summary">
-                <Text style={styles.choiceTitle}>Your ad at a glance</Text>
-                {allocation.split.rows.map((row) => (
-                  <Text key={row.platform} style={styles.choiceSubtitle}>
-                    {PLATFORM_LABELS[row.platform] ?? row.platform}:{" "}
-                    {formatMoney(setup.currency, row.dailyCents)} a day
-                  </Text>
-                ))}
-                <Text style={styles.choiceSubtitle}>
-                  Button:{" "}
-                  {HOST_AD_CTA_OPTIONS.find(
-                    (option) =>
-                      option.id === (cta ?? hostAdDefaultCta(page?.page_type)),
-                  )?.label}
-                </Text>
-                {cities.length > 0 ? (
-                  <Text style={styles.choiceSubtitle}>
-                    Places:{" "}
-                    {cities
-                      .map((place) =>
-                        place.kind === "region"
-                          ? place.name
-                          : `${place.name} (${place.radiusKm ?? radiusKmNumber} km)`,
-                      )
-                      .join(", ")}
-                  </Text>
-                ) : null}
-              </View>
-              {prepared.measurement ? (
-                <View style={styles.targetingRow}>
-                  <Text style={styles.choiceTitle}>How we count results</Text>
-                  <Text style={styles.choiceSubtitle}>
-                    {
-                      hostAdCountingLines(
-                        Array.isArray(prepared.measurement.result_hierarchy)
-                          ? prepared.measurement.result_hierarchy
-                          : [],
-                      ).counts
-                    }
-                  </Text>
-                  <Text style={styles.choiceSubtitle}>
-                    {
-                      hostAdCountingLines(
-                        Array.isArray(prepared.measurement.result_hierarchy)
-                          ? prepared.measurement.result_hierarchy
-                          : [],
-                      ).sharing
-                    }
-                  </Text>
-                </View>
-              ) : null}
-              {prepared.mediaRights ? (
-                <View style={styles.targetingRow}>
-                  <Text style={styles.choiceTitle}>You confirmed the video rights</Text>
-                  <Text style={styles.choiceSubtitle}>
-                    {prepared.mediaRights.rights_basis === "licensed"
-                      ? "Licensed"
-                      : prepared.mediaRights.rights_basis === "authorized_by_brand"
-                        ? "Brand allowed"
-                        : "Owned"}{" "}
-                    ·{" "}
-                    {prepared.mediaRights.ai_generated === true
-                      ? "Made with AI"
-                      : "Not made with AI"}
-                  </Text>
-                  <Text style={styles.choiceSubtitle}>
-                    This video is used only for this paid ad.
-                  </Text>
-                </View>
-              ) : null}
-              {prepared.providerValidations.map(({ platform }) => (
-                <Text
-                  key={`validation-${platform}`}
-                  style={styles.validationOk}
-                >
-                  {PLATFORM_LABELS[platform] ?? platform} checked your ad · nothing
-                  is running yet
-                </Text>
-              ))}
-              {prepared.targeting.length > 0 ? (
-                <View style={styles.targetingRow}>
-                  <Text style={styles.choiceTitle}>
-                    Reach numbers overlap
-                  </Text>
-                  <Text style={styles.choiceSubtitle}>
-                    Read each app on its own. Don&apos;t add the numbers up,
-                    because the same person can use more than one app.
-                  </Text>
-                </View>
-              ) : null}
-              {prepared.targeting.map((row) => (
-                <View key={row.platform} style={styles.targetingRow}>
-                  <Text
-                    style={styles.choiceTitle}
-                    testID={`host-ad-review-status-${row.platform}`}
-                  >
-                    {PLATFORM_LABELS[row.platform] ?? row.platform} ·{" "}
-                    {/* #4238 P0: Ready, Needs a choice, Couldn't check, Can't run yet. */}
-                    {hostAdAppReviewStatus({
-                      app: row.platform as HostAdApp,
-                      verdict: row.verdict,
-                      places: cities,
-                      interests,
-                      checks: row.checks_required ?? [],
-                    })}
-                  </Text>
-                  {[
-                    ...new Set([
-                      // #4238 live check: each accepted wider area, plainly.
-                      ...hostAdAcceptedWiderLines(row.platform as HostAdApp, cities),
-                      ...[
-                        ...(row.widening_summary ?? []),
-                        ...(row.checks_required ?? []),
-                      ].map((line) =>
-                        hostAdTargetingNote(row.platform, row.verdict, line, countries),
-                      ),
-                    ]),
-                  ].map((line) => (
-                    <Text key={line} style={styles.choiceSubtitle}>
-                      {line}
-                    </Text>
-                  ))}
-                  {row.provider_estimate ? (
-                    <>
-                      <Text style={styles.choiceTitle}>
-                        {hostAdReachLine(row.platform, row.provider_estimate)}
-                      </Text>
-                      {row.estimate_observed_at ? (
-                        <Text style={styles.choiceSubtitle}>
-                          Checked{" "}
-                          {new Date(row.estimate_observed_at).toLocaleString()}
-                        </Text>
-                      ) : null}
-                    </>
-                  ) : null}
-                </View>
-              ))}
-              {prepared.status === "broader" ? (
-                <>
-                  <Pressable
-                    style={[
-                      styles.acceptRow,
-                      acceptBroader && styles.choiceSelected,
-                    ]}
-                    onPress={() => setAcceptBroader((value) => !value)}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: acceptBroader }}
-                    accessibilityLabel="I accept the wider audience shown above"
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        acceptBroader && styles.checkboxChecked,
-                      ]}
-                    />
-                    <Text style={styles.choiceTitle}>
-                      I accept the wider audience shown above
-                    </Text>
-                  </Pressable>
-                  <Button
-                    label="Accept and check my ad again"
-                    onPress={() => void handlePrepare(true)}
-                    disabled={!acceptBroader}
-                    loading={busy}
-                    fullWidth
-                  />
-                </>
-              ) : null}
-              {prepared.status === "ready" ? (
-                <>
-                  {activePlanState === "ready_for_funding" ? (
-                    permissions.canFund ? (
-                      <>
-                        <Text style={styles.helper}>
-                          We&apos;ll set aside{" "}
-                          {formatMoney(setup.currency, capCents)} from your Ads
-                          credit. Your first few ads, and any ad that needs a
-                          closer look, are checked by Mingla before they start.
-                          Nothing is spent until your ad runs.
-                        </Text>
-                        <Button
-                          label="Set aside the money"
-                          onPress={() => void handleFund()}
-                          loading={busy}
-                          fullWidth
-                          testID="host-ad-fund"
-                        />
-                      </>
-                    ) : (
-                      <Text style={styles.helper}>
-                        Your ad is ready. A finance manager, the owner or an
-                        approved ads spender needs to add the money next.
-                      </Text>
-                    )
-                  ) : null}
-                  {activePlanState === "staff_review_required" ? (
-                    <Text style={styles.helper}>
-                      Your money is set aside while Mingla checks your ad.
-                      Nothing is being spent yet.
-                    </Text>
-                  ) : null}
-                  {[
-                    "funded_held",
-                    "staff_approved",
-                    "creating_paused_objects",
-                    "creation_failed_retryable",
-                  ].includes(activePlanState ?? "") ? (
-                    permissions.canLaunch ? (
-                      <>
-                        <Text style={styles.helper}>
-                          Type LAUNCH to start your ad. We&apos;ll set it up on
-                          each app and it will start spending up to{" "}
-                          {formatMoney(setup.currency, capCents)} from the money
-                          you set aside.
-                        </Text>
-                        <Input
-                          value={launchPhrase}
-                          onChangeText={setLaunchPhrase}
-                          placeholder="LAUNCH"
-                          accessibilityLabel="Type LAUNCH to confirm"
-                        />
-                        <Button
-                          label={
-                            [
-                              "creating_paused_objects",
-                              "creation_failed_retryable",
-                            ].includes(activePlanState ?? "")
-                              ? "Try starting my ad again"
-                              : "Start my ad"
-                          }
-                          onPress={() => void handleLaunch()}
-                          disabled={launchPhrase !== "LAUNCH"}
-                          loading={busy}
-                          fullWidth
-                          testID="host-ad-launch"
-                        />
-                      </>
-                    ) : (
-                      <Text style={styles.helper}>
-                        Your money is set aside. The owner or someone who can
-                        launch ads needs to start it.
-                      </Text>
-                    )
-                  ) : null}
-                  {permissions.canEnd &&
-                  !providerObjectEvidence &&
-                  [
-                    "ready_for_funding",
-                    "funded_held",
-                    "staff_review_required",
-                    "staff_approved",
-                    "creating_paused_objects",
-                    "creation_failed_retryable",
-                    "creation_failed_terminal",
-                  ].includes(activePlanState ?? "") ? (
-                    <Button
-                      label={
-                        activePlanState === "ready_for_funding"
-                          ? "Delete this ad"
-                          : "Cancel ad and get my money back"
-                      }
-                      onPress={() => {
-                        setCancelError(null);
-                        setCancelDialogVisible(true);
-                      }}
-                      variant="destructiveOutline"
-                      loading={busy}
-                      fullWidth
-                      testID="host-ad-cancel-before-create"
-                    />
-                  ) : null}
-                  {providerObjectEvidence ? (
-                    <Text style={styles.helper}>
-                      This ad was already set up on at least one app. Your
-                      money stays set aside until Mingla checks it, so you
-                      can&apos;t delete it here. Contact Mingla support if you
-                      need help.
-                    </Text>
-                  ) : null}
-                </>
-              ) : null}
-            </View>
-          ) : null}
-          </GlassCard>
-        ) : null}
-
-        <View style={styles.stepFooter}>
-          {activeStepIndex > 0 ? (
-            <Button
-              label="Back"
-              variant="secondary"
-              onPress={() => void goToStep(activeStepIndex - 1)}
-              testID="host-ad-step-back"
-            />
-          ) : (
-            <View />
-          )}
-          {activeStepIndex < HOST_AD_STEPS.length - 1 ? (
-            <Button
-              label={
-                activeStepId === "creative" ? "Review plan" : "Continue"
-              }
-              variant="step"
-              trailingIcon="chevR"
-              disabled={Boolean(stepErrors[activeStepId])}
-              onPress={() => void goToStep(activeStepIndex + 1)}
-              testID="host-ad-step-next"
-            />
-          ) : null}
+          </BuilderList>
+          <Button label={hb("rights.done")} fullWidth onPress={() => setSheet(null)} />
         </View>
-        {activeStepIndex < HOST_AD_STEPS.length - 1 &&
-        stepErrors[activeStepId] ? (
-          <Text style={styles.stepHint}>{stepErrors[activeStepId]}</Text>
-        ) : null}
-      </ScrollView>
+      </Sheet>
+      <Sheet visible={sheet === "leave"} onClose={() => setSheet(null)} snapPoint="half" testID="host-ad-leave-sheet">
+        <View style={styles.sheetBody}>
+          <Text style={bs.h1} accessibilityRole="header">{hb("leave.title")}</Text>
+          <Text style={bs.small}>{hb("leave.body")}</Text>
+          <View style={styles.sheetActions}>
+            <View style={styles.grow}>
+              <Button label={hb("leave.leave")} variant="secondary" fullWidth onPress={() => { setSheet(null); backToAds(); }} testID="host-ad-leave" />
+            </View>
+            <View style={styles.grow}>
+              <Button label={hb("leave.keep")} fullWidth onPress={() => setSheet(null)} />
+            </View>
+          </View>
+        </View>
+      </Sheet>
+      {sheet === "topUp" ? (
+        <HostAdTopUpSheet
+          visible
+          brandId={brandId}
+          currency={currency}
+          neededCents={topUpNeeded}
+          limits={topUpLimits}
+          money={money}
+          returnPath={`/marketing/ads/create?draft_id=${encodeURIComponent(draftIdRef.current ?? "")}&step=review`}
+          onClose={() => setSheet(null)}
+          onApplied={() => {
+            setSheet(null);
+            setNotice(hb("topUp.paid"));
+            HapticFeedback.success();
+            void loadWallet();
+          }}
+        />
+      ) : null}
       <ConfirmDialog
-        visible={cancelDialogVisible}
+        visible={sheet === "launch"}
         onClose={() => {
-          if (busy) return;
-          setCancelDialogVisible(false);
-          setCancelError(null);
+          if (!busy) setSheet(null);
+        }}
+        onConfirm={handleLaunchConfirmed}
+        title={hb("review.confirmTitle")}
+        description={hb("review.confirmBody", { amount: money(holdPayCents) })}
+        confirmLabel={hb("review.launchShort")}
+        cancelLabel={hb("review.notYet")}
+        confirmLoading={busy}
+        closeDisabled={busy}
+        testID="host-ad-launch-dialog"
+      />
+      <ConfirmDialog
+        visible={sheet === "cancel"}
+        onClose={() => {
+          if (!busy) setSheet(null);
         }}
         onConfirm={handleCancelBeforeCreate}
-        title="Cancel this ad?"
-        description="Type CANCEL PLAN to cancel. Once Mingla confirms the ad was not set up on any app, the money you set aside goes back to your Ads credit. You can't bring this ad back."
-        variant="typeToConfirm"
-        confirmText="CANCEL PLAN"
-        confirmLabel="Cancel ad"
-        cancelLabel="Keep ad"
+        title={hb("review.cancelTitle")}
+        description={hb("review.cancelBody")}
+        confirmLabel={hb("review.cancelAd")}
+        cancelLabel={hb("review.keepAd")}
         destructive
         confirmLoading={busy}
         closeDisabled={busy}
@@ -3032,249 +3437,307 @@ export default function HostAdCreateRoute(): React.ReactElement {
         onShowToast={(message) => setNotice(message)}
         onCoverVideoProcessingChange={setAdVideoProcessing}
         mediaMode="video-only"
-        title="Ad video"
-        confirmLabel="Use this ad video"
+        title={hb("creative.add")}
+        confirmLabel={hb("creative.add")}
         // #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920."
         adFitSummary={adVideoFitSummary}
       />
+    </>
+  );
+
+  // ---------------- desktop (design v9): rail · steps 208 · form · preview 360 ----------------
+  if (isWideDesktop) {
+    return (
+      <View style={styles.host} testID="host-ad-builder-desktop">
+        <ScrollView
+          ref={scrollRef as never}
+          contentContainerStyle={styles.deskScroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.deskGrid}>
+            <View style={[styles.deskSteps, { width: DESK_STEP_LIST }]} accessibilityRole="tablist" accessibilityLabel={hb("title")}>
+              {HOST_AD_STEPS.map((step, index) => {
+                const current = index === activeStepIndex;
+                const done = index < activeStepIndex || index <= maxVisitedStep - (current ? 1 : 0);
+                const reachable = index <= maxVisitedStep && !launched;
+                return (
+                  <Pressable
+                    key={step.id}
+                    style={[styles.deskStep, current && styles.deskStepOn, !reachable && styles.deskStepLocked]}
+                    disabled={!reachable || current}
+                    onPress={() => goToStepId(step.id)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: current, disabled: !reachable }}
+                    accessibilityLabel={`${hb("stepOf", { n: index + 1 })}, ${stepName(index)}`}
+                    testID={`host-ad-step-${step.id}`}
+                  >
+                    <View style={[styles.deskStepNum, done && !current && styles.deskStepNumDone, current && styles.deskStepNumOn]}>
+                      {done && !current ? (
+                        <Icon name="check" size={14} color={color.ink} />
+                      ) : (
+                        <Text style={[styles.deskStepNumText, current && styles.accentText]}>{index + 1}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.deskStepText, current && styles.deskStepTextOn]} numberOfLines={2}>
+                      {stepName(index)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={[styles.deskForm, { maxWidth: DESK_FORM_MAX }]}>
+              <View style={bs.rowBetween}>
+                <Text style={styles.deskTitle} accessibilityRole="header">{hb("deskTitle")}</Text>
+                <Pressable
+                  style={styles.iconBtn}
+                  onPress={() => setSheet("leave")}
+                  accessibilityRole="button"
+                  accessibilityLabel={hb("close")}
+                  testID="host-ad-close"
+                >
+                  <Icon name="close" size={20} color={color.text1} />
+                </Pressable>
+              </View>
+              {banners}
+              {bodies[activeStepId]}
+              <View style={styles.deskFoot}>
+                {activeStepIndex > 0 && !launched ? (
+                  <Button label={hb("back")} variant="secondary" onPress={() => void goToStep(activeStepIndex - 1)} testID="host-ad-step-back" />
+                ) : (
+                  <View />
+                )}
+                <View style={styles.deskFootRight}>
+                  {dockBlockerNode}
+                  <View style={styles.deskPrimary}>{primary}</View>
+                </View>
+              </View>
+            </View>
+            <View style={[styles.deskAside, { width: DESK_PREVIEW }]}>
+              <BuilderCard accessibilityLabel={hb("creative.h1")}>
+                <BuilderLabel>{hb("creative.h1")}</BuilderLabel>
+                {creativePreview}
+              </BuilderCard>
+              <BuilderCard>
+                <View style={bs.kv}>
+                  <View style={bs.kvRow}>
+                    <Text style={bs.kvKey}>{hb("review.promoting")}</Text>
+                    <Text style={bs.kvVal} numberOfLines={2}>{page?.title ?? "—"}</Text>
+                  </View>
+                  <View style={bs.kvRow}>
+                    <Text style={bs.kvKey}>{hb("steps.pick")}</Text>
+                    <Text style={bs.kvVal}>{page ? hostAdGoalName(goal) : "—"}</Text>
+                  </View>
+                  <View style={bs.kvRow}>
+                    <Text style={bs.kvKey}>{hb("budget.ends")}</Text>
+                    <Text style={bs.kvVal}>{endLabel || "—"}</Text>
+                  </View>
+                  <View style={bs.kvRow}>
+                    <Text style={bs.kvKey}>{hb("budget.payDay")}</Text>
+                    <Text style={bs.kvVal}>{dailyPayCents > 0 ? money(dailyPayCents) : "—"}</Text>
+                  </View>
+                </View>
+              </BuilderCard>
+            </View>
+          </View>
+        </ScrollView>
+        {sheets}
+      </View>
+    );
+  }
+
+  // ---------------- phone (iOS / Android / narrow web) ----------------
+  return (
+    <View style={styles.host}>
+      <View style={styles.topBar}>
+        <Pressable
+          style={styles.iconBtn}
+          onPress={() => {
+            if (launched || activeStepIndex === 0) backToAds();
+            else void goToStep(activeStepIndex - 1);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={hb("back")}
+          testID="host-ad-step-back"
+        >
+          <Icon name="chevL" size={20} color={color.text1} />
+        </Pressable>
+        <Text style={styles.topTitle} numberOfLines={1}>{hb("title")}</Text>
+        {launched ? (
+          <View style={styles.iconSpacer} />
+        ) : (
+          <Pressable
+            style={styles.iconBtn}
+            onPress={() => setSheet("leave")}
+            accessibilityRole="button"
+            accessibilityLabel={hb("close")}
+            testID="host-ad-close"
+          >
+            <Icon name="close" size={20} color={color.text1} />
+          </Pressable>
+        )}
+      </View>
+      <ScrollView
+        ref={scrollRef as never}
+        contentContainerStyle={[styles.scroll, scrollBottomStyle]}
+        keyboardShouldPersistTaps="handled"
+        {...scrollOffsetProps}
+      >
+        {!launched ? (
+          <View style={styles.progressWrap}>
+            <View style={styles.progress} accessibilityRole="progressbar" accessibilityLabel={hb("stepOf", { n: activeStepIndex + 1 })}>
+              {HOST_AD_STEPS.map((step, index) =>
+                index < activeStepIndex ? (
+                  <Pressable
+                    key={step.id}
+                    style={styles.progressHit}
+                    onPress={() => goToStepId(step.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={hb("stepBack", { n: index + 1, name: stepName(index) })}
+                    testID={`host-ad-step-${step.id}`}
+                  >
+                    <View style={[styles.progressBar, styles.progressDone]} />
+                  </Pressable>
+                ) : (
+                  <View key={step.id} style={styles.progressHit}>
+                    <View style={[styles.progressBar, index === activeStepIndex && styles.progressCurrent]} />
+                  </View>
+                ),
+              )}
+            </View>
+            <View style={bs.rowBetween}>
+              <Text style={bs.caption}>{hb("stepOf", { n: activeStepIndex + 1 })}</Text>
+              <Text style={bs.caption}>{stepName(activeStepIndex)}</Text>
+            </View>
+          </View>
+        ) : null}
+        {banners}
+        {bodies[activeStepId]}
+      </ScrollView>
+      {dockHiddenForKeyboard ? null : (
+        <Material kind="chrome" style={[styles.dock, { paddingBottom: Math.max(space[6], bottomChromeInset) }]}>
+          {dockBlockerNode}
+          {primary}
+        </Material>
+      )}
+      {sheets}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: canvas.discover },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.lg,
-    backgroundColor: canvas.discover,
-  },
-  scroll: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
-  },
-  topRow: {
+  host: { flex: 1, backgroundColor: color.canvas },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[6] },
+  centerText: { textAlign: "center", maxWidth: 360 },
+  grow: { flex: 1, minWidth: 0 },
+  scroll: { paddingHorizontal: space[5], paddingTop: space[4], gap: space[6] },
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  back: { ...typography.body, color: textTokens.secondary },
-  currency: { ...typography.caption, color: textTokens.tertiary },
-  title: { ...typography.h1, color: textTokens.primary },
-  intro: { ...typography.bodySm, color: textTokens.secondary, lineHeight: 20 },
-  draftStatus: { ...typography.caption, color: textTokens.tertiary },
-  stepRail: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  stepPill: {
-    minHeight: 48,
-    minWidth: 112,
-    flexGrow: 1,
-    flexBasis: "30%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
-  },
-  stepPillSelected: {
-    borderColor: "#FF7A18",
-    backgroundColor: "rgba(255,122,24,.13)",
-  },
-  stepPillDisabled: { opacity: 0.42 },
-  stepNumber: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    fontWeight: "700",
-  },
-  stepNumberSelected: { color: "#FF7A18" },
-  stepPillLabel: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    flexShrink: 1,
-  },
-  stepPillLabelSelected: { color: textTokens.primary, fontWeight: "600" },
-  error: {
-    ...typography.bodySm,
-    color: semantic.errorText,
-    backgroundColor: "rgba(239,68,68,.12)",
-    padding: spacing.md,
-    borderRadius: 14,
-  },
-  notice: {
-    ...typography.bodySm,
-    color: textTokens.primary,
-    backgroundColor: "rgba(255,122,24,.13)",
-    padding: spacing.md,
-    borderRadius: 14,
-  },
-  cardContent: { gap: spacing.sm },
-  stepFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  stepHint: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    textAlign: "right",
-  },
-  step: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
-  },
-  sectionTitle: { ...typography.h3, color: textTokens.primary },
-  adVideoWorkingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  helper: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    lineHeight: 18,
-  },
-  label: {
-    ...typography.caption,
-    color: textTokens.secondary,
-    marginTop: spacing.xs,
-  },
-  choice: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
-  },
-  choiceSelected: {
-    borderColor: "#FF7A18",
-    backgroundColor: "rgba(255,122,24,.11)",
-  },
-  choiceDisabled: { opacity: 0.5 },
-  goalBlock: { gap: spacing.sm, marginBottom: spacing.sm },
-  choiceText: { flex: 1, gap: 2 },
-  choiceTitle: {
-    ...typography.bodySm,
-    color: textTokens.primary,
-    fontWeight: "600",
-  },
-  choiceSubtitle: { ...typography.caption, color: textTokens.secondary },
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
-  },
-  checkboxShape: { borderRadius: 5 },
-  radioSelected: { borderWidth: 5, borderColor: "#FF7A18" },
-  poster: {
-    width: 48,
-    height: 68,
-    borderRadius: 8,
-    backgroundColor: glass.tint.chrome.idle,
-  },
-  fieldRow: { flexDirection: "row", gap: spacing.sm },
-  fieldHalf: { flex: 1, gap: spacing.xs },
-  searchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  searchInput: { flex: 1 },
-  searchButton: {
-    minWidth: 78,
-    minHeight: 46,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.chrome.idle,
-  },
-  searchButtonLabel: {
-    ...typography.caption,
-    color: textTokens.primary,
-    fontWeight: "700",
-  },
-  searchResult: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-    backgroundColor: glass.tint.chrome.idle,
-  },
-  targetingChoice: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-  },
-  remove: { ...typography.caption, color: semantic.errorText },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-  },
-  chipSelected: {
-    borderColor: "#FF7A18",
-    backgroundColor: "rgba(255,122,24,.11)",
-  },
-  chipLabel: { ...typography.caption, color: textTokens.primary },
-  savedPlan: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: space[2],
+    paddingHorizontal: space[4],
+    paddingTop: space[3],
+    paddingBottom: space[2] + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.chrome,
+    borderBottomColor: color.line,
+    backgroundColor: color.canvas,
   },
-  resume: { ...typography.caption, color: "#FF7A18", fontWeight: "700" },
-  planBox: { gap: spacing.sm, marginTop: spacing.sm },
-  validationOk: { ...typography.caption, color: semantic.success },
-  targetingRow: {
-    gap: 3,
-    padding: spacing.sm,
-    borderRadius: 12,
-    backgroundColor: glass.tint.chrome.idle,
+  topTitle: { ...type.h2, color: color.text1, flex: 1, textAlign: "center" },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.card2,
+    ...edge.control,
   },
-  acceptRow: {
+  iconSpacer: { width: 44 },
+  progressWrap: { gap: space[2] + 2 },
+  progress: { flexDirection: "row", gap: 6 },
+  progressHit: { flex: 1, height: 20, justifyContent: "center" },
+  progressBar: { height: 4, borderRadius: 2, backgroundColor: color.fill.step },
+  progressDone: { backgroundColor: color.accent },
+  progressCurrent: { backgroundColor: color.accentLine },
+  dock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: space[4],
+    paddingHorizontal: space[6],
+    gap: space[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
+  goalRow: { flexDirection: "row" },
+  rowTitle: { ...type.row, color: color.text1 },
+  fieldRow: { flexDirection: "row", gap: space[3] },
+  fieldHalf: { flex: 1, gap: space[2] },
+  inlineRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  poster: { width: "100%", height: "100%" },
+  checkRow: { paddingVertical: space[4], paddingHorizontal: space[5], gap: space[3] },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  errorText: { color: color.errorText },
+  warnText: { color: color.warningText },
+  accentText: { color: color.accentText },
+  launched: { alignItems: "center", gap: space[3], paddingTop: space[10] },
+  launchedArt: {
+    width: 96,
+    height: 96,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.successTint,
+    marginBottom: space[3],
+  },
+  sheetBody: { paddingHorizontal: space[6], paddingTop: space[2], paddingBottom: space[8], gap: space[6] },
+  sheetActions: { flexDirection: "row", gap: space[3], marginTop: space[2] },
+  deskScroll: { padding: space[6], paddingBottom: space[10] },
+  deskGrid: { flexDirection: "row", alignItems: "flex-start", gap: space[6], justifyContent: "center" },
+  deskSteps: {
+    padding: space[3],
+    gap: space[1],
+    borderRadius: radius.xl,
+    backgroundColor: color.card,
+    ...edge.edge,
+    ...edge.rim,
+  },
+  deskStep: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
+    gap: space[2] + 2,
+    minHeight: 52,
+    paddingVertical: space[2] + 2,
+    paddingHorizontal: space[3],
+    borderRadius: radius.md,
   },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
+  deskStepOn: { backgroundColor: color.fill.railOn },
+  deskStepLocked: { opacity: 0.5 },
+  deskStepNum: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1.5,
-    borderColor: textTokens.tertiary,
+    borderColor: color.lineStrong,
   },
-  checkboxChecked: { backgroundColor: "#FF7A18", borderColor: "#FF7A18" },
+  deskStepNumDone: { backgroundColor: color.paper, borderColor: color.paper },
+  deskStepNumOn: { borderColor: color.accent },
+  deskStepNumText: { ...type.caption, color: color.text2 },
+  deskStepText: { ...type.chip, color: color.text2, flex: 1 },
+  deskStepTextOn: { color: color.text1 },
+  deskForm: { flex: 1, minWidth: 534, gap: space[6] },
+  deskTitle: { ...type.h2, color: color.text1 },
+  deskFoot: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[3],
+    paddingTop: space[4],
+    paddingBottom: space[6],
+  },
+  deskFootRight: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: space[3] },
+  deskPrimary: { minWidth: 160 },
+  deskAside: { gap: space[6] },
 });

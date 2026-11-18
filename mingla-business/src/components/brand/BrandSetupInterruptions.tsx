@@ -7,7 +7,12 @@
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
-import { accent, radius, semantic, spacing, text as textTokens, typography } from "../../constants/designSystem";
+import {
+  color,
+  radius,
+  space,
+  type,
+} from "../../constants/designSystem";
 import { isAuthNotReadyError } from "../../utils/authReadyGate";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -173,7 +178,7 @@ export const ForbiddenBanner: React.FC<{ message: string }> = ({ message }) => (
 
 export const OtherDeviceBanner: React.FC<{ refreshing: boolean; onRefresh: () => void }> = ({ refreshing, onRefresh }) => (
   <View style={[styles.banner, styles.bannerRow]} testID="brand-setup-other-device">
-    <ActivityIndicator color={accent.warm} />
+    <ActivityIndicator color={color.text1} />
     <Text style={[styles.bannerText, styles.flex]} accessibilityRole="alert">{C.f3.otherDevice}</Text>
     <Button testID="brand-setup-other-device-refresh" label={C.f3.refresh} onPress={onRefresh} variant="ghost" size="sm" loading={refreshing} />
   </View>
@@ -206,13 +211,13 @@ export const InlineWriteError: React.FC<{ writeError: WriteError | null; testID:
   );
 
 const styles = StyleSheet.create({
-  inlineError: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  errorText: { ...typography.bodySm, color: semantic.errorText },
-  h3: { ...typography.h3, color: textTokens.primary },
-  sub: { ...typography.body, color: textTokens.secondary },
-  banner: { padding: spacing.md, gap: spacing.sm, borderRadius: radius.md, backgroundColor: "rgba(255,255,255,0.06)" },
+  inlineError: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  errorText: { ...type.small, color: color.errorText },
+  h3: { ...type.h1, color: color.text1 },
+  sub: { ...type.body, color: color.text2 },
+  banner: { padding: space[4], gap: space[2], borderRadius: radius.sm, backgroundColor: color.fill.tile },
   bannerRow: { flexDirection: "row", alignItems: "center" },
-  bannerText: { ...typography.bodySm, color: textTokens.primary },
-  row: { flexDirection: "row", gap: spacing.sm },
+  bannerText: { ...type.small, color: color.text1 },
+  row: { flexDirection: "row", gap: space[2] },
   flex: { flex: 1 },
 });

@@ -68,7 +68,8 @@ describe("ORCH-0961 — PublicBrandPage close button", () => {
     expect(chrome).toContain('closeAccessibilityLabel = "Close"');
     expect(chrome).toContain("accessibilityLabel={closeAccessibilityLabel}");
     expect(chrome).toContain('accessibilityLabel="Share"');
-    expect(chrome).toContain("<CloseGlyph />");
+    // issue #4420 — the glyph takes a colour (plain ink in the solid header).
+    expect(chrome).toMatch(/<CloseGlyph color=\{glyph\} \/>/);
   });
 
   test("Close uses router.back() when possible and root fallback on deep-link entry", () => {

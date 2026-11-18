@@ -20,12 +20,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ScrollView as BodyScrollView } from "../../wrappers/SmartScrollView";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  spacing,
-  text as textTokens,
-  typography,
+  color,
+  space,
+  type,
 } from "../../constants/designSystem";
 import type {
   RecurrencePreset,
@@ -132,7 +130,7 @@ export const CreatorStep2WhenRepeatPickerSheet: React.FC<
                 <Text style={styles.sheetRowSub}>{opt.sub}</Text>
               </View>
               {active ? (
-                <Icon name="check" size={18} color={accent.warm} />
+                <Icon name="check" size={18} color={color.text1} />
               ) : null}
             </Pressable>
           );
@@ -261,119 +259,120 @@ const styles = StyleSheet.create({
   scrollFlex: {
     flex: 1,
   },
+  // #4420 (native run): no side padding here. Sheet's body already pads by
+  // SHEET_SIDE_GUTTER, so a second gutter pushed the content to 44pt.
   sheetContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingTop: space[4],
+    paddingBottom: space[7],
   },
   sheetTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    marginBottom: spacing.md,
+    fontSize: type.h1.fontSize,
+    lineHeight: type.h1.lineHeight,
+    fontWeight: type.h1.fontWeight,
+    letterSpacing: type.h1.letterSpacing,
+    color: color.text1,
+    marginBottom: space[4],
   },
   sheetSubsectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     fontWeight: "500",
-    color: textTokens.secondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
+    color: color.text2,
+    marginTop: space[4],
+    marginBottom: space[1],
   },
   sheetRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[4],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
-    marginBottom: spacing.xs,
+    marginBottom: space[1],
   },
   sheetRowActive: {
-    backgroundColor: accent.tint,
+    backgroundColor: color.fill.tabOn,
   },
   sheetRowTextCol: {
     flex: 1,
     minWidth: 0,
   },
   sheetRowLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
   },
   sheetRowLabelActive: {
     fontWeight: "600",
   },
   sheetRowSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
+    fontSize: type.caption.fontSize,
+    color: color.text3,
     marginTop: 2,
   },
   sheetDoneBtn: {
-    paddingVertical: spacing.md,
+    paddingVertical: space[4],
     alignItems: "center",
-    marginTop: spacing.md,
+    marginTop: space[4],
   },
   sheetDoneLabel: {
-    fontSize: typography.body.fontSize,
+    fontSize: type.body.fontSize,
     fontWeight: "600",
-    color: accent.warm,
+    color: color.text1,
   },
   weekdayGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+    gap: space[1],
+    marginBottom: space[2],
   },
   weekdayPill: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     minWidth: 56,
     alignItems: "center",
   },
   weekdayPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   weekdayPillLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   weekdayPillLabelActive: {
     fontWeight: "700",
   },
   domRow: {
     flexDirection: "row",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
+    gap: space[1],
+    paddingVertical: space[1],
   },
   domPill: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
     minWidth: 56,
     alignItems: "center",
   },
   domPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   domPillLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   domPillLabelActive: {
     fontWeight: "700",
@@ -381,26 +380,26 @@ const styles = StyleSheet.create({
   setPosRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
+    gap: space[1],
+    marginBottom: space[2],
   },
   setPosPill: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: space[2],
+    paddingHorizontal: space[4],
     borderRadius: radiusTokens.md,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
   },
   setPosPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
+    backgroundColor: color.fill.tabOn,
+    borderColor: color.lineStrong,
   },
   setPosPillLabel: {
-    fontSize: typography.bodySm.fontSize,
+    fontSize: type.small.fontSize,
     fontWeight: "500",
-    color: textTokens.primary,
+    color: color.text1,
   },
   setPosPillLabelActive: {
     fontWeight: "700",

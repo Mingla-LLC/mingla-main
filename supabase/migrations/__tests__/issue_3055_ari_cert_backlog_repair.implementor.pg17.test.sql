@@ -66,7 +66,9 @@ INSERT INTO issue_3055_input (name, body) VALUES
   -- capabilities, #2830's four post-census Website-completeness capabilities
   -- #4238's read-only list_ad_audiences, #4304's end_discount and
   -- resume_discount writes and #4389's two read-only setup handoffs
-  -- (payments onboarding, door sale), so project those rows out for this historical
+  -- (payments onboarding, door sale), and #4238 W5's get_ad_budget_guidance
+  -- read and apply_ad_suggestion money write, and #3281 bundle 3's get_experience
+  -- read, so project those rows out for this historical
   -- replay. Their runtime and authorization contracts are covered by their
   -- owning issue suites.
   ('ledger', jsonb_set(
@@ -81,6 +83,9 @@ INSERT INTO issue_3055_input (name, body) VALUES
          'ari.sites.save_plan_design',
          'ari.sites.record_context_finding',
          'ari.ads.list_ad_audiences',
+         'ari.ads.get_ad_budget_guidance',
+         'ari.ads.apply_ad_suggestion',
+         'ari.experience.get',
          'ari.discounts.end',
          'ari.discounts.resume',
          'ari.handoffs.payments_onboarding',

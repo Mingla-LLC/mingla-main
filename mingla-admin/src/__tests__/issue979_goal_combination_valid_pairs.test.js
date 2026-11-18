@@ -169,7 +169,12 @@ describe("ISSUE-979 Bug 1 — call site wired to the coherent resolver (fails-on
 
   it("CampaignBuilderPage resolves the goal coherently and drops the buggy mixing", () => {
     assert.ok(page.includes("resolveGoalForPayload"), "runCreate must build the goal via the coherent resolver");
-    assert.ok(page.includes("resolveMetaObjective"), "the Meta budget-floor goal must come from the resolver too");
+    // [TEST-MOD #4238 Fix 1] the Meta floor no longer comes from a goal at
+    // all: it follows the billing event the payload sends.
+    assert.ok(
+      page.includes("const metaBillingEvent = ADMIN_META_BILLING_EVENT;"),
+      "the Meta budget floor must follow the payload's billing event",
+    );
     assert.ok(!page.includes("goalById(goalIds[0])"), "the goalIds[0] collapse must be gone (the 422 bug)");
     // The old mixing derived metaOptimizationGoal from a separate whole-array
     // `metaGoal` string literal while metaObjective came from goalIds[0].

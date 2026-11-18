@@ -26,6 +26,7 @@ import {
   PURCHASE_SIGNAL_MIN_28D,
 } from "./goals.js";
 import {
+  ADMIN_META_BILLING_EVENT,
   channelFloorCents,
   floorLabel,
   formatBudgetMinor,
@@ -85,7 +86,7 @@ export const MARKET_GAPS = {
  * @param {number} input.totalDailyCents total daily budget in cents (0 = not yet entered)
  * @param {Array}  [input.allowlist]    Advanced channel allowlist (narrow-only)
  * @param {object} [input.connections]  platform → connection row (extra.minimum_budgets for Meta)
- * @param {string} [input.metaGoal]     Meta optimization_goal (drives the per-category floor)
+ * @param {string} [input.metaBillingEvent] Meta billing_event (drives the per-category floor, #4238)
  * @param {Array}  [input.createWired]  TEST-INJECTION ONLY (defaults to CREATE_WIRED) —
  *                                      lets the suite prove the downstream gates
  *                                      (market/floor) fire when a channel's create
@@ -100,7 +101,7 @@ export function planChannels(input) {
     totalDailyCents = 0,
     allowlist = null,
     connections = {},
-    metaGoal = "LINK_CLICKS",
+    metaBillingEvent = ADMIN_META_BILLING_EVENT,
     goalSignals = null,
     createWired = CREATE_WIRED,
   } = input;
@@ -112,7 +113,7 @@ export function planChannels(input) {
   return ALL_PLATFORMS.map((platform) => {
     const floorCents = channelFloorCents(platform, {
       connection: connections[platform] ?? null,
-      metaGoal,
+      metaBillingEvent,
     });
     const connectionCurrency =
       typeof connections[platform]?.currency === "string" &&
