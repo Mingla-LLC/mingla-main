@@ -316,7 +316,7 @@ describe("#2649 group chat T-3 — the empty and non-thread states", () => {
     chatState.conversation = null;
     const tree = await renderPanel();
     expect(findFirst(tree, "FlatList")).toBeNull();
-    expect(collectText(tree).join(" ")).toContain("No group chat exists for this event yet.");
+    expect(collectText(tree).join(" ")).toContain("Your brand's Guest chat isn't ready yet. Try again in a moment.");
   });
 });
 

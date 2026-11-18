@@ -373,6 +373,6 @@ describe("#2649 T-6 — the event group chat is a bottom-anchored virtualised li
     chatState.conversation = null;
     const json = await renderPanel();
     expect(findFirst(json, "FlatList")).toBeNull();
-    expect(collectText(json).join(" ")).toContain("No group chat exists for this event yet.");
+    expect(collectText(json).join(" ")).toContain("Your brand's Guest chat isn't ready yet. Try again in a moment.");
   });
 });

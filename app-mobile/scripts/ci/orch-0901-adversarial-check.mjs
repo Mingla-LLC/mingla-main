@@ -413,10 +413,11 @@ check(
 // ─── TA-12: Q1 has .is('last_message.deleted_at', null) — embedded soft-delete filter ─
 
 // #4456: the equivalent filter keeps live messages plus the unsent-line
-// placeholders only (unsent_kind sender/admin, whose content the server has
-// already wiped); every other soft-deleted message is still filtered out.
+// placeholders only (unsent_kind sender/admin, and #4459's host — a brand's
+// removal in its Guest chat — whose content the server has already wiped);
+// every other soft-deleted message is still filtered out.
 const tombstoneFilterExact =
-  /export const LIVE_OR_TOMBSTONE_FILTER = 'deleted_at\.is\.null,unsent_kind\.in\.\(sender,admin\)';/.test(svcSrc);
+  /export const LIVE_OR_TOMBSTONE_FILTER = 'deleted_at\.is\.null,unsent_kind\.in\.\(sender,admin,host\)';/.test(svcSrc);
 check(
   "TA-12 Q1 includes `.is('last_message.deleted_at', null)` embedded filter (or the #4456 equivalent that" +
     " admits only wiped unsent-line placeholders) — soft-deleted last_message is not shown as the latest message",

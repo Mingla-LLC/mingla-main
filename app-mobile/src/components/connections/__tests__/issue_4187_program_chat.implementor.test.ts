@@ -52,7 +52,7 @@ Deno.test("#4187 Explorer presents an official managed thread with durable photo
   assert(message.includes("chat:programTeamSubtitle"), "official subtitle is wired");
   equals(copy.programTeamSubtitle, "Official Mingla program team", "official subtitle is visible");
   assert(message.includes("managed={isProgramChat}"), "managed state reaches group info");
-  assert(info.includes("!managed ? members.map"), "member controls are hidden for managed chat");
+  assert(info.includes("!managed && !isBrandGuests ? members.map"), "member controls are hidden for managed chat (and #4459 Guest chats use their own list)");
   assert(info.includes("!managed ? <TouchableOpacity"), "leave control is hidden for managed chat");
   assert(service.includes("lastMessageRaw.sender_display_name_snapshot"), "chat list preserves official sender snapshot");
   assert(service.includes("message.sender_display_name_snapshot"), "opened messages preserve official sender snapshot");

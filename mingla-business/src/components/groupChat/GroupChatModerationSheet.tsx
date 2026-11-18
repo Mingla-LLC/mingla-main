@@ -27,11 +27,11 @@ export const GroupChatModerationSheet: React.FC<GroupChatModerationSheetProps> =
 }) => (
   <Sheet visible={visible} onClose={onClose} snapPoint="half">
     <View style={styles.host}>
-      <Text style={styles.title}>Group chat moderation</Text>
+      <Text style={styles.title}>Guest chat settings</Text>
       <View style={styles.toggleRow}>
         <View style={styles.toggleCopy}>
-          <Text style={styles.rowTitle}>Broadcast-only</Text>
-          <Text style={styles.rowSub}>Only your team can post. Buyers can still read.</Text>
+          <Text style={styles.rowTitle}>Announcements only</Text>
+          <Text style={styles.rowSub}>Only your brand can post. Guests can still read.</Text>
         </View>
         <Switch
           value={broadcastOnly}
@@ -41,7 +41,8 @@ export const GroupChatModerationSheet: React.FC<GroupChatModerationSheetProps> =
         />
       </View>
 
-      <Text style={styles.sectionLabel}>Members</Text>
+      <Text style={styles.rowSub}>Your posts notify every guest. A guest message notifies you only when it tags or replies to you.</Text>
+      <Text style={styles.sectionLabel}>All members · {participants.length}</Text>
       {loading ? <ActivityIndicator color={color.text2} /> : null}
       {participants.map((participant) => (
         <View key={participant.user_id} style={styles.memberRow}>
@@ -55,17 +56,22 @@ export const GroupChatModerationSheet: React.FC<GroupChatModerationSheetProps> =
               {participant.display_name}
             </Text>
             <Text style={styles.rowSub} numberOfLines={1}>
-              Joined {new Date(participant.joined_at).toLocaleDateString()}
+              {participant.is_team
+                ? "Your team"
+                : `${participant.shown_as_going ? "Shown as going · " : ""}Joined ${new Date(participant.joined_at).toLocaleDateString()}`}
             </Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${participant.display_name} from chat`}
-            onPress={() => onRemoveParticipant(participant.user_id)}
-            style={styles.removeButton}
-          >
-            <Icon name="trash" size={16} color={color.errorText} />
-          </Pressable>
+          {/* #4459: the brand team stays in its Guest chat; only guests can be removed. */}
+          {participant.is_team ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${participant.display_name} from the Guest chat`}
+              onPress={() => onRemoveParticipant(participant.user_id)}
+              style={styles.removeButton}
+            >
+              <Icon name="trash" size={16} color={color.errorText} />
+            </Pressable>
+          )}
         </View>
       ))}
     </View>

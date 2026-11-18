@@ -1,9 +1,17 @@
 import { supabase } from "./supabase";
 
+// #4459 — the event, trip and RSVP "Group chat" screens now run the brand's ONE
+// Guest chat (linked_entity_type 'brand_guests'), shared by every guest of the
+// brand. The per-listing chats are retired. Every write goes through the
+// issue_4459_* RPCs: team posts are stamped as the brand, removal is sticky
+// (restore lifts it), and the roster read is the server's member list.
+
 
 export interface EventGroupConversation {
   id: string;
   name: string;
+  /** #4459: the brand this Guest chat belongs to. */
+  brand_id: string;
   /**
    * Live event title fetched at read-time. Use THIS in the header — `name` is a
    * cached snapshot from when the auto-create trigger fired, which becomes stale
@@ -35,21 +43,13 @@ export interface EventGroupMessage {
   file_size: number | null;
   sender_display_name_snapshot: string | null;
   sender_role_snapshot: string | null;
+  /** #4459: 'brand' for team posts (shown as the brand), 'guest' for guests. */
+  sender_kind?: "guest" | "brand" | "system" | null;
+  /** #4459: who on the team wrote a brand post (team-only read). */
+  author_id?: string | null;
+  author_name?: string | null;
   reply_to_id: string | null;
   related_message_ids: string[];
-}
-
-/**
- * Local picked-asset shape for image uploads. Mirrors the consumer-side
- * pattern at ConnectionsPage.tsx:2210-2259. `uri` is the local file path
- * from expo-image-picker; `name` + `type` + `size` come from the picker
- * result.
- */
-export interface PlannerImageAttachment {
-  uri: string;
-  name: string;
-  type: string;
-  size: number;
 }
 
 export interface EventGroupParticipant {
@@ -57,33 +57,53 @@ export interface EventGroupParticipant {
   display_name: string;
   avatar_url: string | null;
   joined_at: string;
+  /** #4459: a brand team member (never removable from the Guest chat). */
+  is_team: boolean;
+  /** #4459: the guest chose "Show me as going" on a booking with the brand. */
+  shown_as_going: boolean;
 }
 
 export async function getEventGroupChat(eventId: string): Promise<{
   conversation: EventGroupConversation | null;
   error: string | null;
 }> {
-  // JOIN events so the header shows the live event title (auto-updates on rename)
-  // rather than the cached conversation.name snapshot from auto-create trigger time.
-  // Note: events table column is `title`, NOT `name` — verified against
-  // supabase/migrations/20260505000000_baseline_squash_orch_0729.sql:7796.
+  // #4459: the listing's brand, then that brand's Guest chat (the team is a
+  // member through the team mirror, so RLS lets it read the row).
+  // orch-strict-grep-allow events-type-filter — #4459 every listing type (event, trip, experience, RSVP) opens its brand's Guest chat
+  const { data: event, error: eventError } = await supabase
+    .from("events")
+    .select("brand_id")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (eventError) return { conversation: null, error: eventError.message };
+  const brandId = (event as { brand_id?: string | null } | null)?.brand_id ?? null;
+  if (brandId === null) return { conversation: null, error: null };
+  return getBrandGuestChat(brandId);
+}
+
+/** #4459: a brand's Guest chat by brand id. */
+export async function getBrandGuestChat(brandId: string): Promise<{
+  conversation: EventGroupConversation | null;
+  error: string | null;
+}> {
   const { data, error } = await supabase
     .from("conversations")
-    .select("id, name, is_broadcast_only, is_enabled, events!event_id(title)")
-    .eq("event_id", eventId)
-    .in("linked_entity_type", ["trip", "event"])
+    .select("id, name, brand_id, is_broadcast_only, is_enabled, brands!brand_id(name)")
+    .eq("brand_id", brandId)
+    .eq("linked_entity_type", "brand_guests")
     .maybeSingle();
   if (error) return { conversation: null, error: error.message };
   if (data === null) return { conversation: null, error: null };
-  const eventName =
-    (data as { events?: { title?: string | null } | null }).events?.title?.trim() ||
+  const brandName =
+    (data as { brands?: { name?: string | null } | null }).brands?.name?.trim() ||
     data.name?.trim() ||
-    "Group chat";
+    "Your brand";
   return {
     conversation: {
       id: data.id,
-      name: data.name ?? "Group chat",
-      event_name: eventName,
+      name: brandName,
+      brand_id: (data as { brand_id: string }).brand_id,
+      event_name: `${brandName} Guests`,
       is_broadcast_only: Boolean(data.is_broadcast_only),
       is_enabled: Boolean(data.is_enabled),
     },
@@ -94,70 +114,42 @@ export async function getEventGroupChat(eventId: string): Promise<{
 export async function postPlannerMessage(
   conversationId: string,
   content: string,
-  attachment?: PlannerImageAttachment | null,
 ): Promise<{ messageId: string | null; error: string | null }> {
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id ?? null;
   if (userId === null) return { messageId: null, error: "Not signed in" };
 
-  let fileUrl: string | null = null;
-  let fileName: string | null = null;
-  let fileSize: number | null = null;
-  let messageType: "text" | "image" = "text";
-
-  if (attachment) {
-    // Mirror consumer-side pattern at app-mobile/src/components/ConnectionsPage.tsx:2210-2259.
-    // Path format `<conversation_id>/<file>` is what the messages-bucket storage RLS
-    // expects — `is_message_conversation_participant((storage.foldername(name))[1], auth.uid())`.
-    const ext =
-      attachment.name.split(".").pop()?.toLowerCase() ||
-      (attachment.type.startsWith("image/") ? "jpg" : "bin");
-    const safeExt = ext.replace(/[^a-z0-9]/g, "") || "jpg";
-    const filePath = `${conversationId}/${userId}_${Date.now()}.${safeExt}`;
-    const contentType = attachment.type.startsWith("image/")
-      ? attachment.type
-      : "image/jpeg";
-
-    const formData = new FormData();
-    formData.append("file", {
-      uri: attachment.uri,
-      type: contentType,
-      name: attachment.name,
-    } as unknown as Blob);
-
-    const { error: uploadError } = await supabase.storage
-      .from("messages")
-      .upload(filePath, formData, { contentType, upsert: false });
-    if (uploadError) {
-      return { messageId: null, error: `Upload failed: ${uploadError.message}` };
-    }
-    const { data: urlData } = supabase.storage.from("messages").getPublicUrl(filePath);
-    fileUrl = urlData.publicUrl;
-    fileName = attachment.name;
-    fileSize = attachment.size || null;
-    messageType = "image";
-  }
+  // #4459: Guest chats are text only in v1 (photos follow on #4456's storage rule).
 
   const trimmed = content.trim();
-  if (messageType === "text" && trimmed.length === 0) {
-    return { messageId: null, error: "Message is empty." };
-  }
+  if (trimmed.length === 0) return { messageId: null, error: "Message is empty." };
 
-  const { data, error } = await supabase
-    .from("messages")
-    .insert({
-      conversation_id: conversationId,
-      sender_id: userId,
-      content: trimmed,
-      message_type: messageType,
-      file_url: fileUrl,
-      file_name: fileName,
-      file_size: fileSize,
+  const { data, error } = await supabase.rpc("issue_4459_send_brand_guest_message", {
+    p_conversation_id: conversationId,
+    p_content: trimmed,
+  });
+  if (error) return { messageId: null, error: brandGuestErrorCopy(error) };
+  const messageId = (data as { id?: string } | null)?.id ?? null;
+  if (messageId === null) return { messageId: null, error: "Message failed. Try again." };
+
+  // The server decides who is pushed (every unmuted guest for a brand post);
+  // the app only names the message.
+  supabase.functions
+    .invoke("notify-message", {
+      body: { type: "message", senderId: userId, conversationId, messageId },
     })
-    .select("id")
-    .single();
-  if (error) return { messageId: null, error: error.message };
-  return { messageId: data.id, error: null };
+    .catch((err: unknown) => console.warn("[groupChatService] guest chat notify failed", err));
+  return { messageId, error: null };
+}
+
+/** #4459: plain words for a refused Guest chat write. */
+export function brandGuestErrorCopy(error: { code?: string | null; message?: string | null; details?: string | null }): string {
+  const message = error.message ?? "";
+  if (message.includes("chat_disabled")) return "This Guest chat is switched off.";
+  if (error.code === "22023" && error.details === "user") return "That person is on your team, so they stay in the chat.";
+  if (error.code === "22023") return "Messages need 1 to 4000 characters.";
+  if (error.code === "42501") return "Only your brand team can do that.";
+  return "Something went wrong. Try again.";
 }
 
 export async function listMessages(
@@ -167,108 +159,102 @@ export async function listMessages(
   const { data, error } = await supabase
     .from("messages")
     .select(
-      "id, sender_id, content, created_at, marketing_campaign_id, message_type, file_url, file_name, file_size, sender_display_name_snapshot, sender_role_snapshot, reply_to_id, related_message_ids, view_once",
+      "id, sender_id, content, created_at, marketing_campaign_id, message_type, file_url, file_name, file_size, sender_display_name_snapshot, sender_role_snapshot, sender_kind, reply_to_id, related_message_ids, view_once",
     )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) return { messages: [], error: error.message };
-  return { messages: (data ?? []) as EventGroupMessage[], error: null };
+  const messages = (data ?? []) as EventGroupMessage[];
+  // #4459: a brand post stores no sender (guests never see which team member
+  // wrote it); the team reads the author from brand_guest_post_authors.
+  const brandIds = messages.filter((m) => m.sender_kind === "brand").map((m) => m.id);
+  if (brandIds.length === 0) return { messages, error: null };
+  const { data: authors, error: authorsError } = await supabase
+    .from("brand_guest_post_authors")
+    .select("message_id, author_id")
+    .in("message_id", brandIds);
+  if (authorsError) return { messages, error: null };
+  const authorIds = [...new Set(((authors ?? []) as Array<{ author_id: string | null }>).map((a) => a.author_id).filter((id): id is string => Boolean(id)))];
+  const { data: profiles } = authorIds.length > 0
+    ? await supabase.from("profiles").select("id, display_name, first_name, username").in("id", authorIds)
+    : { data: [] as Array<Record<string, unknown>> };
+  const names = new Map(((profiles ?? []) as Array<{ id: string; display_name?: string | null; first_name?: string | null; username?: string | null }>)
+    .map((p) => [p.id, p.display_name || p.first_name || p.username || "A teammate"]));
+  const byMessage = new Map(((authors ?? []) as Array<{ message_id: string; author_id: string | null }>).map((a) => [a.message_id, a.author_id]));
+  return {
+    messages: messages.map((m) => {
+      const author = byMessage.get(m.id) ?? null;
+      return author ? { ...m, author_id: author, author_name: names.get(author) ?? "A teammate" } : m;
+    }),
+    error: null,
+  };
 }
 
 export async function listParticipants(
   conversationId: string,
 ): Promise<{ participants: EventGroupParticipant[]; error: string | null }> {
-  const { data, error } = await supabase
-    .from("conversation_participants")
-    .select("user_id, joined_at")
-    .eq("conversation_id", conversationId)
-    .order("joined_at", { ascending: true });
-  if (error) return { participants: [], error: error.message };
-
-  const userIds = (data ?? []).map((row) => row.user_id).filter(Boolean);
-  const { data: profilesData, error: profilesError } = userIds.length > 0
-    ? await supabase
-        .from("profiles")
-        .select("id, display_name, first_name, last_name, username, avatar_url")
-        .in("id", userIds)
-    : { data: [], error: null };
-  if (profilesError) return { participants: [], error: profilesError.message };
-
-  const profiles = new Map((profilesData ?? []).map((profile: any) => [profile.id, profile]));
-  const participants = (data ?? []).map((row: any) => {
-    const profile = profiles.get(row.user_id) ?? {};
-    const displayName =
-      profile.display_name ||
-      [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
-      profile.username ||
-      "Buyer";
-    return {
-      user_id: row.user_id,
-      joined_at: row.joined_at,
-      display_name: displayName,
-      avatar_url: profile.avatar_url ?? null,
-    };
+  // #4459: the team reads the whole roster through the server's member list.
+  const { data, error } = await supabase.rpc("issue_4459_list_brand_guest_members", {
+    p_conversation_id: conversationId,
   });
-
-  return { participants, error: null };
+  if (error) return { participants: [], error: brandGuestErrorCopy(error) };
+  const members = Array.isArray((data as { members?: unknown } | null)?.members)
+    ? ((data as { members: Array<Record<string, unknown>> }).members)
+    : [];
+  return {
+    participants: members.map((member) => ({
+      user_id: String(member.userId ?? ""),
+      display_name: typeof member.displayName === "string" && member.displayName ? member.displayName : "Guest",
+      avatar_url: typeof member.avatarUrl === "string" ? member.avatarUrl : null,
+      joined_at: typeof member.joinedAt === "string" ? member.joinedAt : new Date(0).toISOString(),
+      is_team: member.isTeam === true,
+      shown_as_going: member.shownAsGoing === true,
+    })),
+    error: null,
+  };
 }
 
 export async function setBroadcastOnly(
   conversationId: string,
   isBroadcastOnly: boolean,
 ): Promise<{ error: string | null }> {
-  // I-PROPOSED-I: chain .select("id") so RLS-denied updates surface as 0-row, not silent success.
-  const { data, error } = await supabase
-    .from("conversations")
-    .update({
-      is_broadcast_only: isBroadcastOnly,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", conversationId)
-    .select("id");
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) {
-    return { error: "Not allowed to toggle broadcast-only on this conversation." };
-  }
-  return { error: null };
+  // #4459: announcements only, team only (the RPC refuses anyone else).
+  const { error } = await supabase.rpc("issue_4459_set_brand_guest_announcements_only", {
+    p_conversation_id: conversationId,
+    p_value: isBroadcastOnly,
+  });
+  return { error: error ? brandGuestErrorCopy(error) : null };
 }
 
 export async function removeParticipant(
   conversationId: string,
   userId: string,
 ): Promise<{ error: string | null }> {
-  // I-PROPOSED-I: chain .select("user_id") so RLS-denied deletes surface as 0-row, not silent success.
-  const { data, error } = await supabase
-    .from("conversation_participants")
-    .delete()
-    .eq("conversation_id", conversationId)
-    .eq("user_id", userId)
-    .select("user_id");
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) {
-    return { error: "Not allowed to remove this participant or participant already removed." };
-  }
-  return { error: null };
+  // #4459: sticky — new bookings never add them back; restoreParticipant lifts it.
+  const { error } = await supabase.rpc("issue_4459_remove_brand_guest", {
+    p_conversation_id: conversationId,
+    p_user_id: userId,
+  });
+  return { error: error ? brandGuestErrorCopy(error) : null };
+}
+
+export async function restoreParticipant(
+  conversationId: string,
+  userId: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc("issue_4459_restore_brand_guest", {
+    p_conversation_id: conversationId,
+    p_user_id: userId,
+  });
+  return { error: error ? brandGuestErrorCopy(error) : null };
 }
 
 export async function deleteMessage(
   messageId: string,
 ): Promise<{ error: string | null }> {
-  // I-PROPOSED-I: chain .select("id") so RLS-denied soft-deletes surface as 0-row, not silent success.
-  const { data, error } = await supabase
-    .from("messages")
-    .update({
-      deleted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", messageId)
-    .select("id");
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) {
-    return { error: "Not allowed to delete this message or message already deleted." };
-  }
-  return { error: null };
+  // #4459: the #4456 unsend path; guests see "Message removed by <Brand>".
+  const { error } = await supabase.rpc("unsend_messages", { p_message_ids: [messageId] });
+  return { error: error ? brandGuestErrorCopy(error) : null };
 }
-

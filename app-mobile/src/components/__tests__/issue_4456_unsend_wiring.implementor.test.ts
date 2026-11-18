@@ -33,7 +33,8 @@ Deno.test("#4456 service: unsend and delete-for-me go through the server", async
 
 Deno.test("#4456 service: reads keep the unsent line, counts skip it", async () => {
   const service = strip(await read("services/messagingService.ts"));
-  assert(/LIVE_OR_TOMBSTONE_FILTER = 'deleted_at\.is\.null,unsent_kind\.in\.\(sender,admin\)'/.test(service), "the filter");
+  // #4459: a message the brand removed in its Guest chat keeps its line too.
+  assert(/LIVE_OR_TOMBSTONE_FILTER = 'deleted_at\.is\.null,unsent_kind\.in\.\(sender,admin,host\)'/.test(service), "the filter");
   assert((service.match(/\.or\(LIVE_OR_TOMBSTONE_FILTER\)/g) ?? []).length === 3, "last message, thread pages and single reads");
   assert(/\.or\(LIVE_OR_TOMBSTONE_FILTER, \{ referencedTable: 'last_message' \}\)/.test(service), "the Chats list last message");
   assert(/deleted_at, unsent_at, unsent_by, unsent_kind,/.test(service), "the list reads the tombstone columns");

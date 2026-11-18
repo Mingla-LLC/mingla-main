@@ -84,3 +84,111 @@ export async function unsentBeforePush(messageId: unknown, lookup: MessageRowLoo
   if (row.error) return false;
   return row.found && row.deletedAt !== null;
 }
+
+// ── #4459: the brand Guest chat (linked_entity_type 'brand_guests') ─────────
+//
+// One chat per brand, possibly hundreds of guests, so pushes follow Seth's rule
+// (issue comment 6929280999):
+//   - a post from the brand (sender_kind 'brand') pushes every guest who has
+//     not muted the chat;
+//   - a guest's post pushes only the people it tags or replies to, and no one
+//     else (the brand team included, unless tagged or replied to).
+// Muted members, blocked pairs and people no longer in the chat never get a
+// push. Recipients come from the database only; a list sent by the app is
+// ignored.
+
+/** Dispatches per batch for a brand post. */
+export const BRAND_GUESTS_PUSH_CHUNK = 100;
+/** Mentions are capped at 10 when the message is written; never more here. */
+export const BRAND_GUESTS_MAX_MENTIONS = 10;
+
+export interface BrandGuestsMember {
+  userId: string;
+  muted: boolean;
+  isTeam: boolean;
+}
+
+export interface BrandGuestsRecipientInput {
+  senderId: string;
+  senderKind: string | null | undefined;
+  /** Author of the message this one replies to (from the database), if any. */
+  replyToAuthorId?: string | null;
+  /** User ids stored in messages.mentions (from the database). */
+  mentionedUserIds: readonly string[];
+  members: readonly BrandGuestsMember[];
+  /** People with a block either way with the sender. */
+  blockedWithSender: ReadonlySet<string>;
+}
+
+export function brandGuestsRecipients(input: BrandGuestsRecipientInput): string[] {
+  const reachable = (member: BrandGuestsMember): boolean =>
+    member.userId !== input.senderId && !member.muted && !input.blockedWithSender.has(member.userId);
+
+  if (input.senderKind === "brand") {
+    return input.members.filter((member) => !member.isTeam && reachable(member)).map((member) => member.userId);
+  }
+
+  const targets: string[] = [];
+  if (input.replyToAuthorId) targets.push(input.replyToAuthorId);
+  for (const id of input.mentionedUserIds.slice(0, BRAND_GUESTS_MAX_MENTIONS)) targets.push(id);
+  const byId = new Map(input.members.map((member) => [member.userId, member]));
+  const out: string[] = [];
+  for (const id of targets) {
+    const member = byId.get(id);
+    if (!member || !reachable(member) || out.includes(id)) continue;
+    out.push(id);
+  }
+  return out;
+}
+
+/** The user ids stored in a messages.mentions value (entries with a userId). */
+export function storedMentionUserIds(mentions: unknown): string[] {
+  if (!Array.isArray(mentions)) return [];
+  const ids: string[] = [];
+  for (const entry of mentions) {
+    const id = entry && typeof entry === "object" ? (entry as { userId?: unknown }).userId : null;
+    if (typeof id === "string" && UUID.test(id) && !ids.includes(id.toLowerCase())) ids.push(id.toLowerCase());
+  }
+  return ids;
+}
+
+export function chunked<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let index = 0; index < items.length; index += size) out.push(items.slice(index, index + size));
+  return out;
+}
+
+export function brandGuestsIdempotencyKey(messageId: string, recipientId: string): string {
+  return `brand_guests:${messageId}:${recipientId}`;
+}
+
+export interface BrandGuestsPushCopyInput {
+  brandName: string | null | undefined;
+  senderKind: string | null | undefined;
+  senderDisplayName: string | null | undefined;
+  preview: string;
+}
+
+/** Title "<Brand> Guests"; a brand post previews as the brand, a tag or reply as "<sender>: <preview>". */
+export function brandGuestsPushCopy(input: BrandGuestsPushCopyInput): { title: string; body: string } {
+  const brand = (input.brandName ?? "").trim();
+  const title = brand ? `${brand} Guests` : "Guests";
+  if (input.senderKind === "brand") return { title, body: input.preview };
+  const sender = (input.senderDisplayName ?? "").trim() || "A guest";
+  return { title, body: `${sender}: ${input.preview}` };
+}
+
+/**
+ * #4459 D2: who wrote the message being replied to. A brand post stores no
+ * sender (guests never learn which team member wrote it), so its author is
+ * looked up in brand_guest_post_authors with the service key.
+ */
+export async function resolveReplyAuthor(
+  repliedTo: { id?: string; sender_id?: string | null; sender_kind?: string | null } | null,
+  lookupBrandPostAuthor: (messageId: string) => Promise<string | null>,
+): Promise<string | null> {
+  if (!repliedTo) return null;
+  if (repliedTo.sender_id) return repliedTo.sender_id;
+  if (repliedTo.sender_kind !== "brand" || !repliedTo.id) return null;
+  return await lookupBrandPostAuthor(repliedTo.id);
+}
