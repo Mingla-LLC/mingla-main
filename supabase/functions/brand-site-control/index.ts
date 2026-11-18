@@ -17,6 +17,7 @@ import {
   resolveCoreToCmsSigner,
 } from "../_shared/sitesSecurity.ts";
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
+import { isDesignKey } from "../_shared/siteContracts/designs.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { handleSitePlanRoute, planFailureFromRpc } from "./sitePlan.ts";
 import { handleSiteContentRoute } from "./siteContent.ts";
@@ -653,7 +654,10 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       );
       if (setupError) return planFailureFromRpc(setupError.message, operationId);
       const designKey = (setup as { design_key?: unknown } | null)?.design_key;
-      if (designKey !== "atelier" && designKey !== "voyage") {
+      // #4453 — every registered design provisions (Core SQL, plan save,
+      // Studio and the renderer already accept all of them); a null or
+      // unknown key is still refused.
+      if (!isDesignKey(designKey)) {
         return sitesFailure("INVALID_STATE", 409, operationId);
       }
       // #2829 — an optional owner-confirmed label; otherwise Core derives it
