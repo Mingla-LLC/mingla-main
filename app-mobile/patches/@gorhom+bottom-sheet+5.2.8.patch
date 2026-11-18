@@ -1,3 +1,28 @@
+diff --git a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx
+index 6748c93..0ab0109 100644
+--- a/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx
++++ b/node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx
+@@ -54,6 +54,7 @@ import {
+   normalizeSnapPoint,
+   print,
+ } from '../../utilities';
++import { getKeyboardDetentIndex } from '../../utilities/keyboardDetentIndex';
+ import { BottomSheetBackgroundContainer } from '../bottomSheetBackground';
+ // import BottomSheetDebugView from '../bottomSheetDebugView';
+ import { BottomSheetFooterContainer } from '../bottomSheetFooter';
+@@ -659,7 +660,11 @@ const BottomSheetComponent = forwardRef<BottomSheet, BottomSheetProps>(
+           status === KEYBOARD_STATUS.SHOWN &&
+           position !== closedDetentPosition
+         ) {
+-          index = highestDetentPosition ?? DEFAULT_KEYBOARD_INDEX;
++          index = getKeyboardDetentIndex(
++            detents,
++            highestDetentPosition,
++            DEFAULT_KEYBOARD_INDEX
++          );
+         }
+ 
+         /**
 diff --git a/node_modules/@gorhom/bottom-sheet/src/hooks/useScrollEventsHandlersDefault.ts b/node_modules/@gorhom/bottom-sheet/src/hooks/useScrollEventsHandlersDefault.ts
 index c059449..7895453 100644
 --- a/node_modules/@gorhom/bottom-sheet/src/hooks/useScrollEventsHandlersDefault.ts
@@ -93,3 +118,28 @@ index c059449..7895453 100644
            scrollableContentOffsetY.value = 0;
            return;
          }
+diff --git a/node_modules/@gorhom/bottom-sheet/src/utilities/keyboardDetentIndex.ts b/node_modules/@gorhom/bottom-sheet/src/utilities/keyboardDetentIndex.ts
+new file mode 100644
+index 0000000..10f0238
+--- /dev/null
++++ b/node_modules/@gorhom/bottom-sheet/src/utilities/keyboardDetentIndex.ts
+@@ -0,0 +1,19 @@
++/**
++ * Mingla patch (#4473): the index a keyboard-lifted sheet reports and later
++ * restores to. Upstream assigned the highest detent's POSITION (e.g. 103.5)
++ * as the index, so `keyboardBlurBehavior="restore"` looked up
++ * `detents[103.5]` (undefined) and the sheet stayed lifted after the keyboard
++ * closed. Return the highest detent's index instead.
++ */
++export const getKeyboardDetentIndex = (
++  detents: number[] | undefined,
++  highestDetentPosition: number | undefined,
++  fallback: number
++): number => {
++  'worklet';
++  if (!detents || highestDetentPosition === undefined) {
++    return fallback;
++  }
++  const index = detents.indexOf(highestDetentPosition);
++  return index === -1 ? fallback : index;
++};

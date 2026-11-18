@@ -627,7 +627,17 @@ export type SitePageRow = {
   in_group: boolean;
   menu_index: number | null;
   revision: string;
+  /** #4453 milestone 11 — a page Ari added (owner-only: this route is the owner's). */
+  origin?: "ari";
+  /** The Draft-by-Ari marker: hidden from visitors and share links until "Publish this page". */
+  ari_draft?: boolean;
+  ari_request?: string | null;
+  owner_questions?: AriPageQuestionRow[];
+  review_count?: number;
 };
+
+/** #4453 milestone 11 — one of Ari's questions, shown only to the owner ("Ari needs this"). */
+export type AriPageQuestionRow = { key: string; question: string; block_index: number; field_path: string; placeholder?: string };
 
 export type SitePages = { revision: string; wordmark: string | null; pages: SitePageRow[]; footer_links: { label: string; href: string }[] };
 
@@ -648,6 +658,44 @@ export function useSetSiteMenu(siteId: string | null) {
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "pages") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
+    },
+  });
+}
+
+/*
+ * #4453 milestone 11 (spec v2.1 §3.2-§3.3) — the owner's Draft page from Ari:
+ * answer a question ("Ari needs this" -> Save), "Publish this page", "Remove".
+ * Core checks the member's rank (content minimum); answers need SITES_ARI_ADD_PAGE.
+ */
+export type AriPageActionInput =
+  | { kind: "answer"; pageId: string; questionKey: string; answer: string }
+  | { kind: "accept"; pageId: string }
+  | { kind: "remove"; pageId: string };
+
+export type AriPageActionResult = { page_id: string; remaining_questions?: number; unanswered?: number; enabled?: boolean; removed?: boolean; history_line?: string };
+
+export function useAriPageAction(siteId: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AriPageActionInput) => {
+      switch (input.kind) {
+        case "answer":
+          return contentCall<AriPageActionResult>(siteId!, "ari_page_answer", { page_id: input.pageId, question_key: input.questionKey, answer: input.answer });
+        case "accept":
+          return contentCall<AriPageActionResult>(siteId!, "ari_page_accept", { page_id: input.pageId });
+        case "remove":
+          return contentCall<AriPageActionResult>(siteId!, "ari_page_remove", { page_id: input.pageId });
+        default: {
+          const never: never = input;
+          throw new Error(`Unknown Ari page action ${String(never)}`);
+        }
+      }
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "pages") });
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "review") });
     },
   });
 }
@@ -675,6 +723,32 @@ export function useSetSiteCover(siteId: string | null) {
       }),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "cover") });
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
+    },
+  });
+}
+
+/* ── #4453 Draft review ("N sections to review", "Looks right") ─────────── */
+export type DraftBlock = { id: string; type: string; source: "ari" | "composer" | "person" };
+export type ReviewPageRow = { id: string; title: string; path: string | null; enabled: boolean; count: number; blocks: DraftBlock[] };
+export type ReviewStatus = { total: number; pages: ReviewPageRow[] };
+
+export function useReviewStatus(siteId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: brandSiteKeys.reviewStatus(siteId),
+    queryFn: () => contentCall<ReviewStatus>(siteId!, "review_status"),
+    enabled: siteId !== null && enabled,
+  });
+}
+
+export function useMarkReviewed(siteId: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { pageId: string; blockIds: string[] | "all" }) =>
+      contentCall<{ page_id: string; count: number }>(siteId!, "mark_reviewed", { page_id: input.pageId, block_ids: input.blockIds }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: brandSiteKeys.reviewStatus(siteId) });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
     },

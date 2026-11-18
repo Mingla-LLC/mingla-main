@@ -28,6 +28,12 @@ export interface BrandSetupFacts {
   market: boolean;
   terms: boolean;
   details: boolean;
+  /**
+   * #4389 P8 rework — a bank is actually attached (Paystack subaccount or
+   * active recipient). A hold-rail brand can sell (`details`) with no bank;
+   * only this fact may back a "Bank connected" claim.
+   */
+  bankConnected: boolean;
   stripeState: StripeSetupState;
   waitingFor: string | null;
   complete: boolean;

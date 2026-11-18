@@ -39,6 +39,8 @@ interface OTPInputProps {
    * the focused code field above the keyboard. Must forward its ref.
    */
   inputComponent?: React.ElementType;
+  /** #4473 — iOS: attach the host's own keyboard accessory (Done bar). */
+  inputAccessoryViewID?: string;
 }
 
 export const OTPInput: React.FC<OTPInputProps> = ({
@@ -50,6 +52,7 @@ export const OTPInput: React.FC<OTPInputProps> = ({
   disabled,
   tone = 'light',
   inputComponent,
+  inputAccessoryViewID,
 }) => {
   const InputHost = (inputComponent ?? TextInput) as React.ComponentType<
     TextInputProps & React.RefAttributes<TextInput>
@@ -105,6 +108,10 @@ export const OTPInput: React.FC<OTPInputProps> = ({
         ]).start();
       }).catch(() => undefined);
 
+      // #4473 — keep the field focused so the person can type the code again
+      // straight away (a host may have dismissed the keyboard to verify).
+      inputRef.current?.focus();
+
       // Haptic error feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
@@ -159,6 +166,7 @@ export const OTPInput: React.FC<OTPInputProps> = ({
           editable={!disabled}
           accessibilityLabel={t('otp.otp_accessibility')}
           textContentType="oneTimeCode"
+          inputAccessoryViewID={inputAccessoryViewID}
           autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
         />
 

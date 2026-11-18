@@ -85,7 +85,7 @@ import type { OfferingChooserProps } from "./OfferingChooser";
 import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import { LazyF4TapToPayCard } from "../door/LazyDoorSaleScreens";
 import { BrandPaystackOnboardView } from "./LazyBrandPaystackOnboardView";
-import { BRAND_SETUP_COPY as C } from "./brandSetupCopy";
+import { BRAND_SETUP_COPY as C, paystackDoneLine } from "./brandSetupCopy";
 import { PayoutCountryList, payoutCountryOption } from "./PayoutCountryList";
 import { trackBrandSetup } from "./brandSetupAnalytics";
 import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore";
@@ -446,7 +446,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           onConnected={advanceAfterWrite}
         />
       ) : step === "done" && brandId !== null && facts !== null ? (
-        <DoneStep brandId={brandId} provider={facts.provider} country={facts.payoutCountry} />
+        <DoneStep brandId={brandId} provider={facts.provider} country={facts.payoutCountry} bankConnected={facts.bankConnected} />
       ) : null}
       <NameDiscardSheet
         visible={discardOpen}
@@ -897,7 +897,7 @@ export function f4PayoutState(
   return "loading";
 }
 
-const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; country: string | null }> = ({ brandId, provider, country }) => {
+const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; country: string | null; bankConnected: boolean }> = ({ brandId, provider, country, bankConnected }) => {
   const router = useRouter();
   const [status, setStatus] = useState<StripeSetupStatus | null>(null);
   const [failed, setFailed] = useState(false);
@@ -928,7 +928,8 @@ const DoneStep: React.FC<{ brandId: string; provider: "stripe" | "paystack"; cou
       {provider === "paystack" ? (
         <>
           <Text style={styles.h1}>{C.f4.done}</Text>
-          <Text style={styles.sub}>{C.f4.ngDone}</Text>
+          {/* #4389 P8 rework — "Bank connected" only with a bank attached. */}
+          <Text style={styles.sub} testID="brand-setup-ng-done-line">{paystackDoneLine(bankConnected)}</Text>
         </>
       ) : status?.state === "action_needed" ? (
         <>

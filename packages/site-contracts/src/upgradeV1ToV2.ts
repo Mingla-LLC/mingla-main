@@ -113,6 +113,8 @@ export function upgradeV1ToV2(source: unknown, options: UpgradeOptions = {}): Ar
       ...(page.collection ? { collection: page.collection as PageNode["collection"] } : {}),
       blocks: ((page.blocks as Json[]) ?? []).map((block) => upgradeBlock(block, origin)),
       ...(page.seo ? { seo: page.seo as PageNode["seo"] } : {}),
+      // #4453 milestone 11 — a Draft-by-Ari page stays marked (and disabled) through the upgrade.
+      ...(page.draft_by_ari === true && page.enabled !== true ? { draft_by_ari: true as const } : {}),
     }));
     navigation = structuredClone(v1.navigation) as SiteNavigation;
     const siteRoutes = v1.site_routes as Json;

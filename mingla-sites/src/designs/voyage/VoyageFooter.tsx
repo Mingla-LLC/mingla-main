@@ -13,7 +13,7 @@ import { SiteLink } from "./parts";
  * credit would sit). A column the owner has not filled is not drawn.
  */
 
-const SOCIAL_LABELS: Readonly<Record<FooterSocialNetwork, string>> = {
+export const SOCIAL_LABELS: Readonly<Record<FooterSocialNetwork, string>> = {
   instagram: "Instagram",
   tiktok: "TikTok",
   facebook: "Facebook",
@@ -36,7 +36,7 @@ const SOCIAL_PATHS: Readonly<Record<FooterSocialNetwork, string>> = {
   whatsapp: "M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3Zm4.4 12.6c-.2.5-1 1-1.5 1-.4.1-.9.1-1.5-.1a12 12 0 0 1-4.5-3.9 5 5 0 0 1-1.1-2.7c0-1.3.7-1.9.9-2.1.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6a7.6 7.6 0 0 0 3.8 3.3c.3.1.4.1.6-.1l.8-1c.2-.2.4-.2.6-.1l1.9.9c.2.1.4.2.4.3.1.1.1.6-.1 1.1Z",
 };
 
-function SocialGlyph({ network }: { network: FooterSocialNetwork }) {
+export function SocialGlyph({ network }: { network: FooterSocialNetwork }) {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
       <path d={SOCIAL_PATHS[network]} />

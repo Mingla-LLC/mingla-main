@@ -763,7 +763,9 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                 {purchaseStatusLabel(item.status)}
               </Text>
             </View>
-            {ownPurchaseShared ? <PurchaseShareNote variant="owner" /> : null}
+            {ownPurchaseShared ? (
+              <PurchaseShareNote kind={item.kind} variant="owner" />
+            ) : null}
 
             {order?.isOnline ? (
               <View style={styles.venueBlock}>

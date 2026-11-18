@@ -30,14 +30,16 @@ import {
   workLogCitesProblem,
   type WorkLogCite,
 } from "../contracts/generated/ariToolSchemas.ts";
-import { BLOCK_CATALOG, isBlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
-import { buildClaimEvidence, claimSentence, unbackedClaims, type ClaimOffering } from "../contracts/generated/claims.ts";
-import { designFor, designFontSlots, DESIGNS, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
+import { BLOCK_CATALOG, blockActionLinks, isBlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
+import { BOOKING_THROUGH_ENQUIRY, bookingThroughEnquiryFields, buildClaimEvidence, claimSentence, ENQUIRY_LABEL_FIELDS, offersBooking, unbackedClaims, type ClaimOffering } from "../contracts/generated/claims.ts";
+import { actionHrefProblem, normalizeBrandPhone, type MinglaActionScope } from "../contracts/generated/safety.ts";
+import { ariDesignVariants, designFor, designFontSlots, DESIGNS, isAriDesignKey, isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { assertOwnerTokenOverrides, resolveTokens, type OwnerTokenOverrides } from "../contracts/generated/tokens.ts";
 import { nearestPassingShade, readabilityWarnings, warningSentence } from "../contracts/generated/readability.ts";
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
 import { MAX_BLOCKS_PER_PAGE, MAX_NAV_ITEMS, MAX_NAV_LABEL_LENGTH, MAX_PAGE_TITLE_LENGTH, MAX_SLUG_LENGTH } from "../contracts/generated/limits.ts";
 import { SLUG_PATTERN } from "../contracts/generated/routes.ts";
+import { ARI_PAGE_CODES } from "../contracts/generated/ariPage.ts";
 import { MAX_HERO_VIDEO_MS } from "../contracts/generated/video.ts";
 import { publicationDraftDigest } from "./artifactBuilder";
 import { findAllTenantPages } from "./tenantPages";
@@ -46,6 +48,9 @@ import { tenantPagePaths } from "./pageTree";
 import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { designCheckWarningCount, runDesignChecks, type DesignCheckResult } from "./designChecks";
 import { CONTENT_COLLECTIONS, runContentAction, scopedRequest, type ContentCollection } from "../endpoints/contentEndpoint";
+import { DESIGN_PASS_ACTIONS, runDesignPassAction } from "./designPass";
+import { ARI_PAGE_ACTIONS, runAriPageAction } from "./ariPage";
+import type { SignedDesignPass } from "./designPassInputs";
 
 type AnyDoc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,7 +67,19 @@ function refuse(code: string, extra: Record<string, unknown> = {}): never {
 
 /** The Mingla facts Core signed into the request (copy is checked against these). */
 export type AriEvidence = {
-  brand: { id: string; name: string | null; description: string | null; city: string | null };
+  brand: {
+    id: string;
+    name: string | null;
+    description: string | null;
+    city: string | null;
+    /** #4453 PR 2 — the brand's Mingla slug and own contact details (booking lock). */
+    slug?: string | null;
+    contact_email?: string | null;
+    contact_phone?: string | null;
+    social_handles?: string[];
+  };
+  /** #4453 PR 2 — Core advertises that its evidence carries the brand's identity (deploy-order handshake). */
+  booking_identity?: boolean;
   offerings: Array<ClaimOffering & { id: string; kind?: string | null }>;
 };
 
@@ -76,17 +93,38 @@ export type AriActionContext = {
   userId: string;
   rank: number;
   evidence: AriEvidence | null;
+  /** #4453 milestone 7 — Core's signed design-pass inputs (only while SITES_ARI_DESIGN_PASS covers the brand). */
+  designPass?: SignedDesignPass | null;
+  /** #4453 milestone 11 — Core signed SITES_ARI_ADD_PAGE on for this brand. */
+  addPage?: boolean;
 };
 
 /** Validates the Core-signed evidence's shape (anything else is treated as no evidence). */
 export function parseAriEvidence(value: unknown, brandId: string): AriEvidence | null {
+  const evidence = parseAriEvidenceBody(value, brandId);
+  if (evidence && (value as AnyDoc).booking_identity === 1) evidence.booking_identity = true;
+  return evidence;
+}
+
+function parseAriEvidenceBody(value: unknown, brandId: string): AriEvidence | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as AnyDoc;
   if (!raw.brand || raw.brand.id !== brandId || !Array.isArray(raw.offerings)) return null;
   const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : null);
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   return {
-    brand: { id: brandId, name: text(raw.brand.name, 200), description: text(raw.brand.description, 5000), city: text(raw.brand.city, 200) },
+    brand: {
+      id: brandId,
+      name: text(raw.brand.name, 200),
+      description: text(raw.brand.description, 5000),
+      city: text(raw.brand.city, 200),
+      slug: typeof raw.brand.slug === "string" && /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i.test(raw.brand.slug) ? raw.brand.slug : null,
+      contact_email: text(raw.brand.contact_email, 254),
+      contact_phone: text(raw.brand.contact_phone, 80),
+      social_handles: Array.isArray(raw.brand.social_handles)
+        ? raw.brand.social_handles.filter((handle: unknown): handle is string => typeof handle === "string" && /^[a-z0-9._-]{1,100}$/.test(handle)).slice(0, 20)
+        : [],
+    },
     offerings: raw.offerings.slice(0, 500).filter((row: AnyDoc) => row && typeof row.id === "string" && UUID.test(row.id)).map((row: AnyDoc) => ({
       id: row.id.toLowerCase(),
       kind: text(row.kind, 20),
@@ -164,7 +202,7 @@ export async function assertCites(ctx: AriActionContext, cites: unknown): Promis
   return list;
 }
 
-function ownerQuotes(cites: readonly WorkLogCite[]): string[] {
+export function ownerQuotes(cites: readonly WorkLogCite[]): string[] {
   return cites.filter((cite) => cite.kind === "owner_words" && typeof cite.quote === "string").map((cite) => cite.quote!);
 }
 
@@ -179,7 +217,7 @@ export function assertBacked(ctx: AriActionContext, texts: readonly string[], ow
   if (claims.length) refuse("CLAIM_NOT_BACKED", { claims: claims.slice(0, 12).map(claimSentence) });
 }
 
-function decisionOf(value: unknown): string {
+export function decisionOf(value: unknown): string {
   if (typeof value !== "string" || !value.trim() || value.length > MAX_WORK_LOG_DECISION || /<\s*\/?\s*[a-z!]/i.test(value)) {
     refuse("VALIDATION_FAILED", { problems: [`why must be plain text up to ${MAX_WORK_LOG_DECISION} characters`] });
   }
@@ -228,11 +266,11 @@ async function pageAt(ctx: AriActionContext, pagePath: unknown, req = ctx.scoped
   return { page, pages, paths };
 }
 
-function checkRevision(current: unknown, expected: unknown): void {
+export function checkRevision(current: unknown, expected: unknown): void {
   if (typeof expected !== "string" || String(current ?? "") !== expected) refuse("REVISION_CONFLICT", { latest_revision: String(current ?? "") });
 }
 
-function siteDesign(settings: AnyDoc | null | undefined): DesignKey {
+export function siteDesign(settings: AnyDoc | null | undefined): DesignKey {
   return isDesignKey(settings?.design) ? (settings!.design as DesignKey) : "atelier";
 }
 
@@ -338,7 +376,7 @@ function blockOfferingIds(block: AnyDoc): string[] {
 }
 
 /** Visitor-facing text in a block as Ari wrote it (for the truth check). */
-function blockTexts(block: AnyDoc): string[] {
+export function blockTexts(block: AnyDoc): string[] {
   const type = String(block.type);
   if (!isBlockType(type)) return [];
   const texts: string[] = [];
@@ -351,11 +389,55 @@ function blockTexts(block: AnyDoc): string[] {
   return texts;
 }
 
-async function assertBlocks(ctx: AriActionContext, blocks: unknown, design: DesignKey, path: string, ownerTexts: readonly string[]): Promise<AnyDoc[]> {
+/*
+ * #4453 PR 2 (booking lock) — Ari's blocks: every BOOKING button must go to
+ * this brand's Mingla pages, a page of this site, or its own mailto/tel, and
+ * no button may link a third-party booking site
+ * (VALIDATION_FAILED names each field), and no question form may offer a
+ * booking (BOOKING_THROUGH_ENQUIRY). Whether a same-site page exists is
+ * checked at publish, against the whole page tree.
+ */
+function ariActionScope(ctx: AriActionContext): MinglaActionScope {
+  const brand = ctx.evidence?.brand;
+  // When Core advertises identity (booking_identity) and the brand is
+  // missing, fail closed: links that need it (its Mingla pages,
+  // checkout, email, phone, WhatsApp) are refused (`brand_unknown`).
+  return {
+    brandSlug: brand?.slug ?? null,
+    sitePaths: null,
+    contactEmail: brand?.contact_email ?? null,
+    contactPhone: normalizeBrandPhone(brand?.contact_phone ?? null),
+    checkoutEventIds: new Set((ctx.evidence?.offerings ?? []).filter((row) => row.kind === "event").map((row) => row.id)),
+    socialHandles: brand?.social_handles?.length ? new Set(brand.social_handles) : null,
+    // An older Core sends no identity: identity checks are shape-only then.
+    identityUnchecked: ctx.evidence?.booking_identity !== true,
+  };
+}
+
+export function assertAriBookingLock(ctx: AriActionContext, blocks: readonly AnyDoc[], path: string): void {
+  const scope = ariActionScope(ctx);
+  const problems: string[] = [];
+  blocks.forEach((block, index) => {
+    for (const link of blockActionLinks(block)) {
+      const problem = actionHrefProblem(link.href, scope, link.intent);
+      if (problem) {
+        problems.push(link.intent === "booking"
+          ? `${path}[${index}].${link.field} is a booking button: it must link to this website or this brand's own Mingla page (${problem})`
+          : `${path}[${index}].${link.field} may link to this website, this brand's Mingla pages, a map, its social profiles, a site file or its own WhatsApp, email or phone, never a booking site (${problem})`);
+      }
+    }
+  });
+  if (problems.length) refuse("VALIDATION_FAILED", { problems: problems.slice(0, 20) });
+  const enquiry = blocks.flatMap((block, index) => bookingThroughEnquiryFields(block).map((field) => `${path}[${index}].${field}`));
+  if (enquiry.length) refuse(BOOKING_THROUGH_ENQUIRY, { problems: enquiry.slice(0, 20) });
+}
+
+export async function assertBlocks(ctx: AriActionContext, blocks: unknown, design: DesignKey, path: string, ownerTexts: readonly string[]): Promise<AnyDoc[]> {
   if (!Array.isArray(blocks) || blocks.length > MAX_BLOCKS_PER_PAGE) refuse("VALIDATION_FAILED", { problems: [`${path} must be a list of at most ${MAX_BLOCKS_PER_PAGE} blocks`] });
   const problems = blocks.flatMap((block, index) => ariBlockProblems(block, design, `${path}[${index}]`));
   if (problems.length) refuse("VALIDATION_FAILED", { problems: problems.slice(0, 20) });
   const typed = blocks as AnyDoc[];
+  assertAriBookingLock(ctx, typed, path);
   const images = typed.flatMap((block) => blockMedia(block).images);
   const videos = typed.flatMap((block) => blockMedia(block).videos);
   const heroVideos = typed.flatMap((block) => blockMedia(block).heroVideos);
@@ -386,7 +468,7 @@ async function updatePage(ctx: AriActionContext, page: AnyDoc, data: AnyDoc, req
 }
 
 /** Payload transactions when the adapter has them (all-or-nothing composition). */
-async function inTransaction<T>(ctx: AriActionContext, work: (req: PayloadRequest) => Promise<T>): Promise<T> {
+export async function inTransaction<T>(ctx: AriActionContext, work: (req: PayloadRequest) => Promise<T>): Promise<T> {
   const db = ctx.req.payload.db as unknown as {
     beginTransaction?: () => Promise<string | number | null>;
     commitTransaction?: (id: string | number) => Promise<void>;
@@ -514,9 +596,19 @@ export const ARI_DESIGNER_ACTIONS = new Set([
   "propose_site_imagery",
   "propose_site_collection_entry",
   "log_work",
+  // #4453 milestone 7 — Ari's design pass (designPass.ts; SITES_ARI_DESIGN_PASS, checked by Core).
+  "get_site_design_brief",
+  "propose_site_design_pass",
+  "propose_site_chrome",
+  // #4453 milestone 11 — "Add a page with Ari" (ariPage.ts; SITES_ARI_ADD_PAGE, checked by Core).
+  "propose_site_page",
+  "answer_site_page_question",
 ]);
 
 export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: AriActionContext): Promise<Record<string, unknown>> {
+  if (DESIGN_PASS_ACTIONS.has(action)) return runDesignPassAction(action, args, ctx, { currentSettings, writeWorkLog, assertCites, decisionOf });
+  // #4453 milestone 11 — "Add a page with Ari" (ariPage.ts; SITES_ARI_ADD_PAGE, checked by Core).
+  if (ARI_PAGE_ACTIONS.has(action)) return runAriPageAction(action, args, ctx);
   switch (action) {
     case "get_site_tokens":
       return tokensView(await currentSettings(ctx));
@@ -547,7 +639,8 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
       checkRevision(settings.updatedAt, args.expected_revision);
       const changes: AnyDoc = {};
       if (args.design !== undefined) {
-        if (!isDesignKey(args.design)) refuse("VALIDATION_FAILED", { problems: ["design is not one of the designs"] });
+        // #4453 6a — Ari's frozen #3355 tools name only ARI_DESIGN_KEYS (Studio, owners and PR 7's design pass may pick any design).
+        if (!isAriDesignKey(args.design)) refuse("VALIDATION_FAILED", { problems: ["design is not one of the designs"] });
         changes.design = args.design;
       }
       if (args.tokens !== undefined) {
@@ -599,8 +692,9 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
       if (!Number.isInteger(index) || !block) refuse("VALIDATION_FAILED", { problems: ["block_index is not a block on that page"] });
       const type = String(block.blockType);
       const design = siteDesign(await currentSettings(ctx));
-      if (!isBlockType(type) || !DESIGNS[design].variants[type].includes(String(args.variant))) {
-        refuse("VARIANT_NOT_IN_DESIGN", { variants: isBlockType(type) ? [...DESIGNS[design].variants[type]] : [] });
+      // #4453 — Ari's frozen #3355 tools offer only the layouts they may choose (PR 7's design pass offers the shared ones).
+      if (!isBlockType(type) || !ariDesignVariants(DESIGNS[design], type).includes(String(args.variant))) {
+        refuse("VARIANT_NOT_IN_DESIGN", { variants: isBlockType(type) ? ariDesignVariants(DESIGNS[design], type) : [] });
       }
       block.variant = String(args.variant);
       const previous = page.revision;
@@ -646,6 +740,10 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
           if (spec?.kind === "text" && value.length > spec.max) refuse("VALIDATION_FAILED", { problems: [`edits[${n}].value is longer than ${spec.max} characters`] });
           if (spec?.kind === "rich_text") block.content = plainTextToLexical(value);
           else block[field] = value;
+          // #4453 PR 2 — a question form's labels never offer a booking.
+          if (ENQUIRY_LABEL_FIELDS[type]?.includes(field) && offersBooking(value)) {
+            refuse(BOOKING_THROUGH_ENQUIRY, { problems: [`edits[${n}].value offers a booking on a question form`] });
+          }
         }
         texts.push(value);
       }
@@ -863,4 +961,12 @@ export const ARI_REFUSAL_CODES = new Set([
   "OWNER_SOURCE_REQUIRED", "REVIEW_SOURCE_MISMATCH", "PAGE_NOT_FOUND", "PATH_COLLISION", "OFFERING_NOT_FOUND",
   "NOT_FOUND", "FORBIDDEN", "QUOTE_REQUIRED", "TITLE_REQUIRED", "SLUG_TAKEN", "CONTENT_LIMIT_EXCEEDED",
   "REVIEW_NOT_CONFIRMED",
+  // #4453 PR 2 — a question form may not take bookings.
+  "BOOKING_THROUGH_ENQUIRY",
+  // #4453 milestone 7 — the design pass.
+  "STYLE_DOES_NOT_FIT", "DESIGN_PASS_OFF", "DESIGN_PASS_ALREADY_RUN",
+  // #4453 milestone 7c — the claim could not be made (not a duplicate): retryable, nothing written.
+  "DESIGN_PASS_TRY_AGAIN",
+  // #4453 milestone 11 — "Add a page with Ari" (one plain sentence each, ARI_PAGE_MESSAGES).
+  ...ARI_PAGE_CODES,
 ]);

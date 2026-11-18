@@ -59,8 +59,8 @@ describe("#2829 W9f preview frame-ancestors", () => {
     expect(read("../supabase/functions/_shared/businessWebOrigin.ts")).toContain(source);
   });
 
-  it("the proxy passes ?fa= only for /preview", () => {
+  it("the proxy passes ?fa= only for /preview (and, #4453 M10, the plan preview)", () => {
     const proxy = fs.readFileSync(path.resolve(process.cwd(), "src/proxy.ts"), "utf8");
-    expect(proxy).toMatch(/frameAncestor: request\.nextUrl\.pathname === "\/preview"\s*\?\s*request\.nextUrl\.searchParams\.get\("fa"\)/);
+    expect(proxy).toMatch(/frameAncestor: request\.nextUrl\.pathname === "\/preview" \|\| request\.nextUrl\.pathname === PLAN_PREVIEW_PATHNAME\s*\?\s*request\.nextUrl\.searchParams\.get\("fa"\)/);
   });
 });

@@ -54,6 +54,7 @@
       "checkingBody": "Wir prüfen sie. Das dauert meist ein paar Minuten. Du kannst weitermachen.",
       "actionNeeded": "Eine Sache fehlt noch, bevor du Zahlungen annehmen kannst:",
       "ngDone": "Bank verbunden. Du kannst jetzt verkaufen.",
+      "ngReadyNoBank": "Du kannst jetzt verkaufen. Füge unter Auszahlungen eine Bank hinzu, um dein Geld zu erhalten.",
       "done": "Alles bereit.",
       "refreshErrorTitle": "Gerade keine Prüfung möglich.",
       "refreshErrorBody": "Wir halten dich auf dem Laufenden.",

@@ -254,3 +254,43 @@ export function storyAnswerProblem(
   const list = quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
   return `Your website can't say ${list}: nothing in Mingla backs ${claims.length === 1 ? "it" : "them"}, so it couldn't be published. Say it another way, without numbers, prices, dates or words like "best". Nothing was saved.`;
 }
+
+/*
+ * #4453 PR 2 (booking lock) — a question form is never a booking form.
+ * Bookings, tickets, deposits and stays go through Mingla, so the words on a
+ * `contact_form` or a `contact_handoff` may not offer them: "Book a table",
+ * "Reserve your stay", "Check availability" there would take a booking by
+ * email that Mingla never sees. Refused with BOOKING_THROUGH_ENQUIRY.
+ *
+ * The labels checked are a block's heading and the fields that name its
+ * button or its message box. "Stay in touch" and "stay tuned" are ordinary
+ * contact phrases, not a stay, and pass.
+ */
+export const BOOKING_THROUGH_ENQUIRY = "BOOKING_THROUGH_ENQUIRY" as const;
+
+/** The enquiry blocks and the label fields on them that the check reads. */
+export const ENQUIRY_LABEL_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  contact_form: ["heading", "message_label", "submit_label"],
+  contact_handoff: ["heading", "label"],
+};
+
+const BOOKING_WORDS_RE =
+  /\b(?:book(?:s|ed|ing|ings)?|reserv(?:e|es|ed|ing|ation|ations)|tickets?|deposits?|stays?|check\s+availability)\b/i;
+const HARMLESS_STAY_RE = /\bstay\s+(?:in\s+touch|tuned)\b/gi;
+
+/** Does this text offer a booking (book, reserve, tickets, deposit, stay, check availability)? */
+export function offersBooking(text: string): boolean {
+  return BOOKING_WORDS_RE.test(text.replace(HARMLESS_STAY_RE, " "));
+}
+
+/**
+ * The label fields of an enquiry block that offer a booking (empty when none,
+ * or when the block is not an enquiry block). Reads `type` (v2) or
+ * `blockType` (Studio).
+ */
+export function bookingThroughEnquiryFields(block: Record<string, unknown>): string[] {
+  const type = String(block.type ?? block.blockType ?? "");
+  const fields = ENQUIRY_LABEL_FIELDS[type];
+  if (!fields) return [];
+  return fields.filter((field) => typeof block[field] === "string" && offersBooking(block[field] as string));
+}

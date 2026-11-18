@@ -201,6 +201,30 @@ export interface Page {
    */
   planned_offering?: ('trips' | 'events' | 'experiences') | null;
   enabled?: boolean | null;
+  /**
+   * "ari" when Ari added this page.
+   */
+  origin?: string | null;
+  /**
+   * Draft by Ari: hidden from visitors and share links until the owner publishes it.
+   */
+  ari_draft?: boolean | null;
+  /**
+   * What the owner asked Ari for, word for word.
+   */
+  ari_request?: string | null;
+  /**
+   * Ari's questions for the owner. Shown only to the owner; never published.
+   */
+  owner_questions?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   revision: number;
   blocks?:
     | (
@@ -224,6 +248,28 @@ export interface Page {
              * Shows the date-and-place search when your site has a trips page.
              */
             show_search?: boolean | null;
+            /**
+             * Blank date, time and guest fields that open your Mingla booking page pre-filled. Shown only by layouts that draw it (Full bleed, Editorial, Arch, Voyage's cover).
+             */
+            booking_bar?: ('none' | 'venue_table' | 'stay' | 'experience' | 'trip_search') | null;
+            /**
+             * The Mingla id of your venue, room or experience.
+             */
+            booking_target_id?: string | null;
+            /**
+             * Your score from approved Mingla reviews. Shown only with 20 or more reviews, by layouts that draw it.
+             */
+            show_rating?: boolean | null;
+            /**
+             * Up to three short facts in your words, for example 90° / sauna. Drawn by layouts that show badges.
+             */
+            fact_badges?:
+              | {
+                  big: string;
+                  small: string;
+                  id?: string | null;
+                }[]
+              | null;
             media: string | Media;
             /**
              * Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.
@@ -239,7 +285,31 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'cover-bottom-search') | null;
+            variant?:
+              | (
+                  | 'atelier'
+                  | 'cover-bottom-search'
+                  | 'fullbleed'
+                  | 'editorial'
+                  | 'arch'
+                  | 'maison-frame'
+                  | 'journal-front'
+                  | 'grid-index'
+                  | 'terra-pebble'
+                  | 'pop-stack'
+                  | 'sunset-sun'
+                  | 'pulse-stage'
+                )
+              | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hero';
@@ -269,7 +339,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'prose') | null;
+            variant?: ('atelier' | 'prose' | 'manifesto') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'rich_text';
@@ -315,7 +394,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'split-panel' | 'panel-caption') | null;
+            variant?: ('atelier' | 'split-panel' | 'panel-caption' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'media_feature';
@@ -332,7 +420,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'dark-panel-glow') | null;
+            variant?: ('atelier' | 'dark-panel-glow' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'cta';
@@ -380,7 +477,17 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'photo-card') | null;
+            variant?:
+              ('atelier' | 'photo-card' | 'poster' | 'list' | 'cards' | 'maison-rows' | 'journal-columns') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_grid';
@@ -396,6 +503,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'venue_reservation';
@@ -412,6 +528,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_link';
@@ -429,7 +554,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'neutral') | null;
+            variant?: ('atelier' | 'neutral' | 'columns') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_board';
@@ -474,6 +608,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'menu_preview';
@@ -499,7 +642,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'brand-film') | null;
+            variant?: ('atelier' | 'brand-film' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'video_feature';
@@ -538,7 +690,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'team';
@@ -555,12 +716,27 @@ export interface Page {
                * Describe meaningful images. Leave empty only when the image is decorative.
                */
               alt?: string | null;
+              /**
+               * Optional. Shown under the photograph in layouts that caption.
+               */
+              caption?: string | null;
+              sub?: string | null;
               id?: string | null;
             }[];
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?:
+              ('atelier' | 'voyage' | 'mosaic' | 'pinned' | 'stagger' | 'maison-plates' | 'journal-essay') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'gallery';
@@ -591,7 +767,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'neutral') | null;
+            variant?: ('atelier' | 'neutral' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'hours_location';
@@ -615,6 +800,10 @@ export interface Page {
               | null;
             limit?: number | null;
             /**
+             * Your score from approved Mingla reviews. Shown only with 20 or more reviews.
+             */
+            show_rating?: boolean | null;
+            /**
              * Optional. The words on the button under the reviews — for example “Read more reviews”. Leave both this and the link empty and no button is shown.
              */
             cta_label?: string | null;
@@ -629,7 +818,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'quote-wall') | null;
+            variant?: ('atelier' | 'quote-wall' | 'rail' | 'wall' | 'switcher' | 'journal-letters') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'testimonials';
@@ -650,7 +848,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'accordion-columns') | null;
+            variant?: ('atelier' | 'accordion-columns' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'faq';
@@ -668,6 +875,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('atelier' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'contact_handoff';
@@ -683,7 +899,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'neutral') | null;
+            variant?: ('atelier' | 'neutral' | 'ticker') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'marquee';
@@ -727,7 +952,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'stats';
@@ -744,7 +978,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'pull_quote';
@@ -775,7 +1018,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'map_embed';
@@ -804,7 +1056,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'badge-tile') | null;
+            variant?: ('neutral' | 'badge-tile' | 'tiles') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'destination_grid';
@@ -827,6 +1088,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'card') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'story_grid';
@@ -880,7 +1150,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'ledger') | null;
+            variant?: ('neutral' | 'ledger' | 'ledger-count' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'offering_history';
@@ -916,6 +1195,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'panel') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'contact_form';
@@ -933,7 +1221,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'card') | null;
+            variant?: ('neutral' | 'card' | 'photo' | 'journal-coupon') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'newsletter_signup';
@@ -952,6 +1249,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'cover-center') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'page_header';
@@ -968,10 +1274,156 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('neutral' | 'tile-bar' | 'statement') | null;
+            variant?: ('neutral' | 'tile-bar' | 'statement' | 'numbered' | 'tiles') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'feature_cards';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            source: 'venue_slots' | 'stay_nights' | 'experience_slots' | 'event_dates' | 'trip_departures';
+            offering_id?: string | null;
+            stay_offering_id?: string | null;
+            party_size?: number | null;
+            days?: number | null;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: 'strip' | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'availability';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            offering_id: string;
+            media?: (string | null) | Media;
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: 'split' | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'ticket_tiers';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            intro?: string | null;
+            items: {
+              title: string;
+              text?: string | null;
+              time?: string | null;
+              id?: string | null;
+            }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: 'band' | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'process_steps';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            mode: 'teaser' | 'next';
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'cards' | 'list') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'page_links';
+          }
+        | {
+            /**
+             * Optional. The small line printed above this section’s heading, in your words — for example “The place” above “Come as you are”. Leave it empty and no line is printed.
+             */
+            eyebrow?: string | null;
+            heading?: string | null;
+            items: {
+              label: string;
+              value: string;
+              id?: string | null;
+            }[];
+            /**
+             * How this section is laid out. Your design supplies the layouts.
+             */
+            variant?: ('neutral' | 'split') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
+            id?: string | null;
+            blockName?: string | null;
+            blockType: 'facts_table';
           }
         | {
             heading?: string | null;
@@ -982,6 +1434,15 @@ export interface Page {
              * How this section is laid out. Your design supplies the layouts.
              */
             variant?: ('neutral' | 'tiles') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'contact_details';
@@ -990,7 +1451,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'divider';
@@ -1000,7 +1470,16 @@ export interface Page {
             /**
              * How this section is laid out. Your design supplies the layouts.
              */
-            variant?: ('atelier' | 'voyage') | null;
+            variant?: ('atelier' | 'voyage' | 'neutral') | null;
+            review?:
+              | {
+                  [k: string]: unknown;
+                }
+              | unknown[]
+              | string
+              | number
+              | boolean
+              | null;
             id?: string | null;
             blockName?: string | null;
             blockType: 'spacer';
@@ -1119,6 +1598,7 @@ export interface Testimonial {
    * Ari drafted this from the owner's own words or material.
    */
   drafted_by?: 'ari' | null;
+  setup_ref?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1212,6 +1692,7 @@ export interface Destination {
    * Ari drafted this from the owner's own words or material.
    */
   drafted_by?: 'ari' | null;
+  setup_ref?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1248,6 +1729,10 @@ export interface Navigation {
         target_type: 'page' | 'url';
         page?: (string | null) | Page;
         url?: string | null;
+        /**
+         * Draft: added by Ari with a Draft page; hidden until the page is published.
+         */
+        draft?: boolean | null;
         children?:
           | {
               label: string;
@@ -1270,6 +1755,16 @@ export interface Navigation {
    * Text shown in the header when you have no logo.
    */
   wordmark?: string | null;
+  /**
+   * The header layout. Leave empty for the design's own header.
+   */
+  header_variant?: ('glass' | 'center' | 'pill' | 'journal-mast' | 'grid-bar') | null;
+  /**
+   * On phones, keeps one Book button at the bottom of the screen after the opening picture.
+   */
+  sticky_booking?: boolean | null;
+  sticky_title?: string | null;
+  sticky_note?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1292,6 +1787,10 @@ export interface Footer {
         id?: string | null;
       }[]
     | null;
+  /**
+   * The footer layout. Leave empty for the design's own footer.
+   */
+  footer_variant?: ('giant' | 'columns') | null;
   tagline_lines?:
     | {
         text: string;
@@ -1345,7 +1844,21 @@ export interface SiteSetting {
   /**
    * Switching design keeps all your content.
    */
-  design?: ('atelier' | 'voyage') | null;
+  design?:
+    | (
+        | 'atelier'
+        | 'voyage'
+        | 'nocturne'
+        | 'haven'
+        | 'maison'
+        | 'journal'
+        | 'grid'
+        | 'terra'
+        | 'pop'
+        | 'sunset'
+        | 'pulse'
+      )
+    | null;
   tokens?:
     | {
         [k: string]: unknown;
@@ -1410,6 +1923,10 @@ export interface SiteSetting {
      * Default "stories". Leave empty to put stories at the site root.
      */
     stories?: string | null;
+    /**
+     * Rooms and places. Default "rooms".
+     */
+    stays?: string | null;
   };
   language?: string | null;
   timezone?: string | null;
@@ -1476,6 +1993,7 @@ export interface Story {
    * Ari drafted this from the owner's own words or material.
    */
   drafted_by?: 'ari' | null;
+  setup_ref?: string | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -1760,6 +2278,10 @@ export interface PagesSelect<T extends boolean = true> {
   collection_kind?: T;
   planned_offering?: T;
   enabled?: T;
+  origin?: T;
+  ari_draft?: T;
+  ari_request?: T;
+  owner_questions?: T;
   revision?: T;
   blocks?:
     | T
@@ -1777,6 +2299,16 @@ export interface PagesSelect<T extends boolean = true> {
                   };
               subheading?: T;
               show_search?: T;
+              booking_bar?: T;
+              booking_target_id?: T;
+              show_rating?: T;
+              fact_badges?:
+                | T
+                | {
+                    big?: T;
+                    small?: T;
+                    id?: T;
+                  };
               media?: T;
               video?: T;
               ctas?:
@@ -1787,6 +2319,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1798,6 +2331,7 @@ export interface PagesSelect<T extends boolean = true> {
               content?: T;
               width?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1818,6 +2352,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1830,6 +2365,7 @@ export interface PagesSelect<T extends boolean = true> {
               label?: T;
               href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1855,6 +2391,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1865,6 +2402,7 @@ export interface PagesSelect<T extends boolean = true> {
               heading?: T;
               body?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1876,6 +2414,7 @@ export interface PagesSelect<T extends boolean = true> {
               label?: T;
               href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1886,6 +2425,7 @@ export interface PagesSelect<T extends boolean = true> {
               heading?: T;
               note?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1907,6 +2447,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1922,6 +2463,7 @@ export interface PagesSelect<T extends boolean = true> {
               video?: T;
               poster?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1944,6 +2486,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1957,9 +2500,12 @@ export interface PagesSelect<T extends boolean = true> {
                 | {
                     media?: T;
                     alt?: T;
+                    caption?: T;
+                    sub?: T;
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1980,6 +2526,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -1997,6 +2544,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               limit?: T;
+              show_rating?: T;
               cta_label?: T;
               cta_href?: T;
               items?:
@@ -2007,6 +2555,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2023,6 +2572,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2035,6 +2585,7 @@ export interface PagesSelect<T extends boolean = true> {
               label?: T;
               href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2048,6 +2599,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2068,6 +2620,7 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2077,6 +2630,7 @@ export interface PagesSelect<T extends boolean = true> {
               quote?: T;
               attribution?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2091,6 +2645,7 @@ export interface PagesSelect<T extends boolean = true> {
               place_label?: T;
               directions_url?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2109,6 +2664,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2123,6 +2679,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2160,6 +2717,7 @@ export interface PagesSelect<T extends boolean = true> {
               cta_label?: T;
               cta_href?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2178,6 +2736,7 @@ export interface PagesSelect<T extends boolean = true> {
               success_text?: T;
               fallback_email?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2191,6 +2750,7 @@ export interface PagesSelect<T extends boolean = true> {
               button_label?: T;
               small_print?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2201,6 +2761,7 @@ export interface PagesSelect<T extends boolean = true> {
               subheading?: T;
               media?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2218,6 +2779,83 @@ export interface PagesSelect<T extends boolean = true> {
                     id?: T;
                   };
               variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        availability?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              source?: T;
+              offering_id?: T;
+              stay_offering_id?: T;
+              party_size?: T;
+              days?: T;
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        ticket_tiers?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              offering_id?: T;
+              media?: T;
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        process_steps?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              intro?: T;
+              items?:
+                | T
+                | {
+                    title?: T;
+                    text?: T;
+                    time?: T;
+                    id?: T;
+                  };
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        page_links?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              mode?: T;
+              variant?: T;
+              review?: T;
+              id?: T;
+              blockName?: T;
+            };
+        facts_table?:
+          | T
+          | {
+              eyebrow?: T;
+              heading?: T;
+              items?:
+                | T
+                | {
+                    label?: T;
+                    value?: T;
+                    id?: T;
+                  };
+              variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2229,6 +2867,7 @@ export interface PagesSelect<T extends boolean = true> {
               email?: T;
               location?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2236,6 +2875,7 @@ export interface PagesSelect<T extends boolean = true> {
           | T
           | {
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2244,6 +2884,7 @@ export interface PagesSelect<T extends boolean = true> {
           | {
               size?: T;
               variant?: T;
+              review?: T;
               id?: T;
               blockName?: T;
             };
@@ -2313,6 +2954,7 @@ export interface NavigationSelect<T extends boolean = true> {
         target_type?: T;
         page?: T;
         url?: T;
+        draft?: T;
         children?:
           | T
           | {
@@ -2333,6 +2975,10 @@ export interface NavigationSelect<T extends boolean = true> {
         url?: T;
       };
   wordmark?: T;
+  header_variant?: T;
+  sticky_booking?: T;
+  sticky_title?: T;
+  sticky_note?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -2354,6 +3000,7 @@ export interface FooterSelect<T extends boolean = true> {
         href?: T;
         id?: T;
       };
+  footer_variant?: T;
   tagline_lines?:
     | T
     | {
@@ -2421,6 +3068,7 @@ export interface SiteSettingsSelect<T extends boolean = true> {
         experiences?: T;
         destinations?: T;
         stories?: T;
+        stays?: T;
       };
   language?: T;
   timezone?: T;
@@ -2504,6 +3152,7 @@ export interface DestinationsSelect<T extends boolean = true> {
   sort_order?: T;
   updated_by?: T;
   drafted_by?: T;
+  setup_ref?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -2546,6 +3195,7 @@ export interface StoriesSelect<T extends boolean = true> {
   sort_order?: T;
   updated_by?: T;
   drafted_by?: T;
+  setup_ref?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -2569,6 +3219,7 @@ export interface TestimonialsSelect<T extends boolean = true> {
   sort_order?: T;
   updated_by?: T;
   drafted_by?: T;
+  setup_ref?: T;
   updatedAt?: T;
   createdAt?: T;
   _status?: T;

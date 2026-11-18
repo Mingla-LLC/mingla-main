@@ -41,6 +41,9 @@ export function parseBrandSetupFacts(raw: unknown): BrandSetupFacts {
     market: s.market === true,
     terms: s.terms === true,
     details: s.details === true,
+    // #4389 P8 rework — server key `bank_connected`. A body from before
+    // 20280808004389 has no key; there Paystack `details` meant a bank.
+    bankConnected: typeof s.bank_connected === "boolean" ? s.bank_connected : s.details === true,
     stripeState:
       stripe === "started" || stripe === "submitted" || stripe === "action_needed" ? stripe : "none",
     waitingFor: optStr(s.waiting_for),

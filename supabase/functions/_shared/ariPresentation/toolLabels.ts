@@ -517,6 +517,26 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<Record<string, ToolOwnerCopy>> =
       "Website list item",
       "List item saved as a draft",
     ),
+    propose_site_design_pass: row(
+      "Design the website",
+      "Website design",
+      "Website designed as a draft to review",
+    ),
+    propose_site_chrome: row(
+      "Update Website header",
+      "Website header",
+      "Header saved as a draft",
+    ),
+    propose_site_page: row(
+      "Add as a Draft",
+      "Website page",
+      "Page added as a Draft to review",
+    ),
+    answer_site_page_question: row(
+      "Add your answer",
+      "Website page",
+      "Answer added to the Draft page",
+    ),
     confirm_site_review: row(
       "Approve Website review",
       "Website review",

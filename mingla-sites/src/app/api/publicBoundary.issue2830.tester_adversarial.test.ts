@@ -201,7 +201,8 @@ describe("#3164 a home page with nothing on it", () => {
     expect(builder).toContain(".filter(Boolean)");
     // #2829 W2 — home is the page with no slug (roles are gone).
     expect(builder).toMatch(
-      /isHome \? page\.enabled === true\s*:\s*page\.enabled === true && rendered\.length > 0/,
+      // #4453 m7c — a page whose only block is "Keep exploring" (page_links) is not content either.
+      /isHome \? page\.enabled === true\s*:\s*page\.enabled === true && rendered\.some\(\(block\) => block\?\.type !== "page_links"\)/,
     );
   });
 });

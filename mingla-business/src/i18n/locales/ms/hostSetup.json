@@ -54,6 +54,7 @@
       "checkingBody": "Kami sedang menyemaknya. Biasanya ambil beberapa minit. Anda boleh teruskan.",
       "actionNeeded": "Satu perkara lagi diperlukan sebelum anda boleh menerima bayaran:",
       "ngDone": "Bank disambungkan. Anda sedia untuk menjual.",
+      "ngReadyNoBank": "Anda sedia untuk menjual. Tambah bank dalam Pembayaran untuk menerima wang.",
       "done": "Semuanya sedia.",
       "refreshErrorTitle": "Tidak dapat menyemak sekarang.",
       "refreshErrorBody": "Kami akan memaklumkan anda.",

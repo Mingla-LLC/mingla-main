@@ -1,0 +1,175 @@
+/*
+ * #4453 6a — the "maison" design, version 1: quiet luxury. Bone page,
+ * near-black ink, champagne used only as a hairline and a few italic words;
+ * fine display capitals over a reading serif, with tracked labels in the
+ * label slot. Vast whitespace, one large framed picture at a time, and a
+ * frame that opens slowly from the centre (Maison's one signature moment).
+ * Light only by design.
+ *
+ * Drawn by the shared block library (public/designs/_shared/blocks-1.css,
+ * linked first) plus Maison's three signature layouts (`ms-*`:
+ * hero maison-frame, offering_grid maison-rows, gallery maison-plates).
+ * Every colour is a site token (var(--c-*)); type families are the font
+ * slots; radii scale with var(--radius-scale) and the button with
+ * var(--button-radius). Scoped under [data-design="maison"]. Immutable: a
+ * change is 2.css.
+ */
+@layer base, components;
+
+:root[data-design="maison"] {
+  color-scheme: light;
+  --display: var(--font-display);
+  --body: var(--font-body);
+  --italic: var(--font-accent, var(--font-body));
+  --label: var(--font-label, var(--font-body));
+  --mg-bg: var(--c-canvas);
+  --mg-bg-alt: var(--c-surface-sunken);
+  --mg-surface: var(--c-surface);
+  --mg-ink: var(--c-ink-strong);
+  --mg-heading: var(--c-ink-strong);
+  --mg-body: var(--c-ink-body);
+  --mg-muted: var(--c-ink-quiet);
+  --mg-line: color-mix(in srgb, var(--c-ink-strong) 14%, transparent);
+  --mg-accent: var(--c-accent-400);
+  --mg-accent-ink: var(--c-accent-ink);
+  --mg-label: var(--c-accent-700);
+  --mg-band: var(--c-surface-deep);
+  --mg-band-ink: var(--c-ink-on-dark-body);
+  --mg-band-muted: color-mix(in srgb, var(--c-ink-on-dark-body) 72%, var(--c-surface-deep));
+  --mg-band-label: var(--c-highlight-on-dark);
+  --mg-btn: var(--c-action);
+  --mg-btn-ink: var(--c-canvas);
+  --mg-btn-hover: var(--c-highlight-700);
+  --mg-hero-ink: var(--c-ink-on-photo-body);
+  --mg-hero-quiet: var(--c-ink-on-photo-quiet);
+  --mg-i: var(--c-highlight-600);
+  --mg-focus: var(--c-accent-700);
+  --mg-scrim: var(--c-scrim-rgb);
+  --mg-shadow: var(--c-shadow-rgb);
+  --mg-f-display: var(--display);
+  --mg-f-body: var(--body);
+  --mg-f-label: var(--label);
+  --mg-max: 1240px;
+  --mg-sec-pad: clamp(100px, 13vw, 200px);
+  --mg-d-weight: 400;
+  --mg-d-track: .03em;
+  --mg-d-lh: 1.04;
+  --mg-h2-size: clamp(34px, 4.4vw, 68px);
+  --mg-h1-size: clamp(42px, 7.2vw, 122px);
+  --mg-h1-track: .035em;
+  --mg-h1-lh: 1;
+  --mg-h3-track: .04em;
+  --mg-l-weight: 500;
+  --mg-l-track: .32em;
+  --mg-l-size: 11px;
+  --mg-man-weight: 300;
+  --mg-man-size: clamp(26px, 2.9vw, 44px);
+  --mg-man-track: -.01em;
+  --mg-r-card: calc(0px * var(--radius-scale, 1));
+  --mg-r-field: calc(0px * var(--radius-scale, 1));
+  --mg-r-btn: var(--button-radius, 0px);
+}
+
+@layer base {
+  [data-design="maison"] *, [data-design="maison"] *::before, [data-design="maison"] *::after { box-sizing: border-box; }
+  [data-design="maison"] body { margin: 0; background: var(--c-canvas); color: var(--c-ink-body); font: 300 17px/1.7 var(--body); -webkit-font-smoothing: antialiased; }
+  [data-design="maison"] img, [data-design="maison"] video { max-width: 100%; }
+  [data-design="maison"] a { color: inherit; }
+}
+
+/* type and quiet chrome */
+[data-design="maison"] .mg-page :is(.mg-blk, .mg-hero, .mg-pinned, .mg-nl-photo, .mg-mq) { font-weight: 300; }
+[data-design="maison"] .mg-page :is(.mg-blk, .mg-hero, .mg-foot, .mg-pmenu) h3 { font-weight: 400; text-transform: var(--display-case, uppercase); }
+[data-design="maison"] .mg-page .mg-sec-head { flex-direction: column; align-items: center; text-align: center; gap: 22px; }
+[data-design="maison"] .mg-page .mg-sec-head__main { max-width: 980px; }
+[data-design="maison"] .mg-page .mg-sec-intro { max-width: 520px; font-size: 16px; }
+[data-design="maison"] .mg-page .mg-btn { font: 500 11px/1 var(--label); letter-spacing: .26em; text-transform: uppercase; }
+[data-design="maison"] .mg-page .mg-btn--accent { background: var(--c-action); color: var(--c-canvas); }
+[data-design="maison"] .mg-page .mg-btn--accent:hover { background: var(--c-highlight-700); }
+[data-design="maison"] .mg-page .mg-btn--ghost { box-shadow: inset 0 0 0 1px currentColor; }
+[data-design="maison"] .mg-page .mg-price { font: 300 28px/1 var(--body); }
+[data-design="maison"] .mg-page .mg-price small { display: block; margin-bottom: 8px; font: 500 10px/1.3 var(--label); letter-spacing: .26em; text-transform: uppercase; color: var(--c-ink-quiet); }
+[data-design="maison"] .mg-page .mg-fn__n, [data-design="maison"] .mg-page .mg-big-num { font: italic 200 46px/1 var(--italic); color: var(--c-accent-700); }
+[data-design="maison"] .mg-page .mg-manifesto { text-align: center; }
+[data-design="maison"] .mg-page .mg-manifesto__big { margin: 0 auto; max-width: 960px; font-family: var(--body); line-height: 1.32; }
+[data-design="maison"] .mg-page .mg-manifesto__big :is(em, strong) { font-family: var(--italic); font-style: italic; font-weight: 200; color: var(--c-accent-700); }
+[data-design="maison"] .mg-page .mg-faq summary { font: 400 clamp(18px, 1.6vw, 22px)/1.2 var(--display); text-transform: uppercase; letter-spacing: .06em; }
+[data-design="maison"] .mg-page :is(.mg-bigq, .mg-voice) { font-family: var(--italic); font-style: italic; font-weight: 200; }
+[data-design="maison"] .mg-page .mg-giant { font: 400 clamp(44px, 10vw, 170px)/.95 var(--display); text-transform: uppercase; letter-spacing: .02em; }
+[data-design="maison"] .mg-page .mg-mark { font: 400 22px/1 var(--display); text-transform: uppercase; letter-spacing: .28em; }
+[data-design="maison"] .mg-page .mg-hd--center .mg-hd__cta { background: transparent; color: inherit; box-shadow: inset 0 0 0 1px currentColor; }
+[data-design="maison"] .mg-page .mg-hd--center[data-scrolled] { background: color-mix(in srgb, var(--c-canvas) 90%, transparent); }
+[data-design="maison"] .mg-page .mg-hd--center { color: var(--c-ink-strong); }
+[data-design="maison"] .mg-page .mg-ph img { filter: saturate(.84) contrast(.97) brightness(1.03); }
+
+/* hairline ticker on the page itself, champagne diamonds */
+[data-design="maison"] .mg-page .mg-mq { background: var(--c-canvas); color: var(--c-ink-strong); box-shadow: inset 0 1px 0 var(--mg-line), inset 0 -1px 0 var(--mg-line); }
+[data-design="maison"] .mg-page .mg-mq__it { font: 400 clamp(20px, 2.1vw, 28px)/1 var(--display); text-transform: uppercase; letter-spacing: .12em; gap: 44px; }
+[data-design="maison"] .mg-page .mg-mq__dot { width: 5px; height: 5px; border-radius: 0; transform: rotate(45deg); background: var(--c-accent-400); }
+
+/* open tiles: hairlines, centred, no fills */
+[data-design="maison"] .mg-page .mg-tiles { background: transparent; border: 0; gap: 0; box-shadow: inset 0 1px 0 var(--mg-line), inset 0 -1px 0 var(--mg-line); }
+[data-design="maison"] .mg-page .mg-tile { background: transparent; align-items: center; text-align: center; box-shadow: inset 1px 0 0 var(--mg-line); padding: 44px 30px; }
+[data-design="maison"] .mg-page .mg-tile:first-child { box-shadow: none; }
+[data-design="maison"] .mg-page .mg-tile svg { color: var(--c-accent-600); }
+
+/* ---------- hero: maison-frame ---------- */
+[data-design="maison"] .ms-hero { padding: clamp(128px, 12vw, 176px) 0 clamp(40px, 5vw, 70px); text-align: center; background: var(--c-canvas); color: var(--c-ink-strong); }
+[data-design="maison"] .ms-hero .mg-label { margin-bottom: clamp(24px, 3vw, 40px); }
+[data-design="maison"] .ms-hero .mg-h1 .mg-ln:last-child > span { font-family: var(--italic); font-style: italic; font-weight: 200; text-transform: none; letter-spacing: -.01em; color: var(--c-accent-700); }
+[data-design="maison"] .ms-frame { margin: clamp(48px, 6vw, 90px) auto 0; }
+[data-design="maison"] .ms-frame .mg-ph { position: relative; height: min(78vh, 780px); }
+[data-design="maison"] .ms-frame img, [data-design="maison"] .ms-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+[data-design="maison"] .ms-under { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(30px, 7vw, 120px); text-align: left; margin-top: clamp(40px, 5vw, 70px); align-items: start; padding-top: 22px; box-shadow: inset 0 1px 0 var(--c-accent-400); }
+[data-design="maison"] .ms-under .mg-hero__acts { justify-self: end; }
+[data-design="maison"] .ms-lede { margin: 0; font: 300 clamp(20px, 1.65vw, 24px)/1.55 var(--italic); max-width: 540px; color: var(--c-ink-body); text-wrap: pretty; }
+[data-design="maison"] .ms-bk { margin-top: clamp(40px, 5vw, 64px); text-align: left; }
+[data-design="maison"] .ms-bk .mg-bk { max-width: none; box-shadow: inset 0 0 0 1px var(--mg-line); }
+@media (prefers-reduced-motion: no-preference) {
+  [data-design="maison"] .mg-scope[data-motion="on"] .ms-frame .mg-ph { animation: ms-open 2800ms cubic-bezier(.65, 0, .35, 1) 350ms both; }
+}
+@keyframes ms-open { from { clip-path: inset(16% 22% 16% 22%); } to { clip-path: inset(0 0 0 0); } }
+
+/* ---------- offering_grid: maison-rows ---------- */
+[data-design="maison"] .ms-rows { display: grid; gap: clamp(80px, 10vw, 150px); }
+[data-design="maison"] .ms-row { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(36px, 7vw, 110px); align-items: center; }
+[data-design="maison"] .ms-row:nth-child(even) { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+[data-design="maison"] .ms-row:nth-child(even) .ms-row__img { order: 2; }
+[data-design="maison"] .ms-row__img { aspect-ratio: 5 / 4; }
+[data-design="maison"] .ms-row__img img { position: absolute; inset: 0; }
+[data-design="maison"] .ms-row__txt { min-width: 0; }
+[data-design="maison"] .ms-row__txt h3 { font-size: clamp(30px, 3.2vw, 48px); line-height: 1.04; }
+[data-design="maison"] .ms-row__blurb { margin: 20px 0 0; color: var(--c-ink-quiet); max-width: 440px; }
+[data-design="maison"] .ms-row__meta { margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font: 500 11px/1.4 var(--label); letter-spacing: .22em; text-transform: uppercase; color: var(--c-ink-quiet); }
+[data-design="maison"] .ms-row__meta .mg-avail { letter-spacing: .04em; text-transform: none; font-size: 13.5px; color: var(--c-ink-strong); }
+[data-design="maison"] .ms-row__buy { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-top: 30px; padding-top: 24px; box-shadow: inset 0 1px 0 var(--mg-line); max-width: 460px; }
+[data-design="maison"] .ms-offers .mg-offers-note { margin-top: 60px; text-align: center; color: var(--c-ink-quiet); }
+
+/* ---------- gallery: maison-plates ---------- */
+[data-design="maison"] .ms-plates { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: clamp(48px, 6vw, 96px) 24px; }
+[data-design="maison"] .ms-plate { margin: 0; min-width: 0; }
+[data-design="maison"] .ms-plate--0 { grid-column: 1 / -1; }
+[data-design="maison"] .ms-plate--0 .mg-ph { aspect-ratio: 21 / 9; }
+[data-design="maison"] .ms-plate--1 { grid-column: 1 / 8; }
+[data-design="maison"] .ms-plate--1 .mg-ph { aspect-ratio: 4 / 5; }
+[data-design="maison"] .ms-plate--2 { grid-column: 9 / 13; align-self: end; }
+[data-design="maison"] .ms-plate--2 .mg-ph { aspect-ratio: 3 / 4; }
+[data-design="maison"] .ms-plate .mg-ph img { position: absolute; inset: 0; }
+[data-design="maison"] .ms-plate figcaption { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-top: 16px; font-size: 14px; color: var(--c-ink-quiet); }
+[data-design="maison"] .ms-plate__n { font: italic 300 19px/1 var(--italic); color: var(--c-accent-700); }
+
+@media (max-width: 900px) {
+  [data-design="maison"] .ms-under { grid-template-columns: 1fr; }
+  [data-design="maison"] .ms-under .mg-hero__acts { justify-self: start; }
+  [data-design="maison"] .ms-row, [data-design="maison"] .ms-row:nth-child(even) { grid-template-columns: 1fr; gap: 30px; }
+  [data-design="maison"] .ms-row:nth-child(even) .ms-row__img { order: 0; }
+  [data-design="maison"] .ms-row__img { aspect-ratio: 4 / 3; }
+}
+@media (max-width: 720px) {
+  [data-design="maison"] .ms-hero { padding-top: 108px; }
+  [data-design="maison"] .ms-frame .mg-ph { height: auto; aspect-ratio: 4 / 5; }
+  [data-design="maison"] .ms-plates { gap: 48px 0; }
+  [data-design="maison"] .ms-plate { grid-column: 1 / -1; }
+  [data-design="maison"] .ms-plate--0 .mg-ph { aspect-ratio: 4 / 3; }
+  [data-design="maison"] .ms-plate--2 { width: 78%; margin-left: auto; }
+}

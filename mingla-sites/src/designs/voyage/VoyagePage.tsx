@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { showsDraftHints } from "../../lib/previewPublication";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";
 import { pickVariant } from "../../components/v2/Blocks";
@@ -9,12 +10,21 @@ import type { FormsContext } from "../../lib/siteForms";
 import type { CollectionEntry } from "../../lib/siteCollections";
 import { VOYAGE_HEAD_SCRIPT } from "./headScript";
 import { VoyageFooter } from "./VoyageFooter";
+import { PageBookingChrome } from "../shared/blocks/Booking";
+import type { SharedContext } from "../shared/parts";
 import { VoyageHeader, type VoyageNavItem } from "./VoyageHeader";
 import { VOYAGE_BLOCK_VARIANTS } from "./voyageBlocks";
 import { DestinationTemplate } from "./templates/DestinationTemplate";
 import { StoryTemplate } from "./templates/StoryTemplate";
 import { NotFoundTemplate } from "./templates/NotFoundTemplate";
 import type { VoyageBlock, VoyageContext } from "./parts";
+import { DESIGNS } from "../../contracts/generated/designs.ts";
+import { hrefForPage } from "../../lib/pageRouting";
+import { SharedFooter, SharedHeader } from "../shared/chrome/SharedChrome";
+import { motionAttributes } from "../shared/library";
+import { MotionRoot } from "../shared/MotionRoot";
+import { OfferingDetailTemplate } from "../shared/blocks/Detail";
+import type { OfferingDetailView } from "../../lib/offeringDetail";
 
 /*
  * #2829 W7 — one voyage page: the head script, the skip link, the header,
@@ -22,12 +32,13 @@ import type { VoyageBlock, VoyageContext } from "./parts";
  * footer. The stylesheet (public/designs/voyage/1.css) is scoped to
  * html[data-design="voyage"], set by the layout from the artifact.
  */
-export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce, notFound }: {
+export function VoyagePage({ artifact, page, live, forms, entry, detail, saveData, nonce, notFound }: {
   artifact: ArtifactV2;
   page?: ArtifactPage;
   live?: LiveOfferings;
   forms?: FormsContext;
   entry?: CollectionEntry;
+  detail?: OfferingDetailView;
   saveData?: boolean;
   nonce?: string;
   notFound?: boolean;
@@ -44,29 +55,56 @@ export function VoyagePage({ artifact, page, live, forms, entry, saveData, nonce
     : null;
   const siteName = headerWordmark(artifact) ?? artifact.brand.display_name;
   let content: React.ReactNode = null;
+  let booking: React.ReactNode = null;
   if (notFound || !current) {
     content = <NotFoundTemplate artifact={artifact} />;
+  } else if (detail) {
+    // #4453 milestone 9 — the shared detail template, in Voyage's tokens.
+    content = <OfferingDetailTemplate artifact={artifact} detail={detail} analytics={analytics} designKey="voyage" />;
   } else if (entry) {
     content = entry.collection === "destinations"
       ? <DestinationTemplate destination={entry.entry} artifact={artifact} live={live} analytics={analytics} />
       : <StoryTemplate story={entry.entry} artifact={artifact} />;
   } else {
-    const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData };
+    const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };
+    // #4453 milestone 5 — the hand-off sheet and the sticky phone bar (shared library).
+    booking = <PageBookingChrome ctx={ctx as SharedContext} />;
     content = current.blocks.map((raw, index) => {
       const block = raw as unknown as VoyageBlock;
       const Variant = pickVariant(VOYAGE_BLOCK_VARIANTS, raw);
       return Variant ? <Fragment key={`${block.type}-${index}`}><Variant block={block} index={index} ctx={ctx} /></Fragment> : null;
     });
   }
+  /*
+   * #4453 §3.3 — a site whose navigation names a shared header is a new
+   * composition: it gets the shared chrome and the gallery look. A stored
+   * site without one keeps voyage's own header and footer exactly.
+   */
+  const headerVariant = artifact.navigation.header_variant;
+  const footerVariant = artifact.footer.footer_variant;
+  const gallery = Boolean(headerVariant);
+  const motion = motionAttributes(DESIGNS.voyage, artifact.tokens.motion, saveData === true);
+  const path = current ? hrefForPage(current) : "/";
   return (
-    <div className="v-page">
+    <div
+      id="mg-scope"
+      className={`v-page mg-scope${gallery ? " mg-page" : ""}`}
+      data-mg-look={gallery ? "gallery" : undefined}
+      data-motion={motion["data-motion"]}
+      data-mg-profile={motion["data-mg-profile"]}
+      style={motion.style}
+    >
       {/* The 404 has no cover and no reveals, and may render on the client, where a script never runs. */}
       {notFound || !current ? null : <script nonce={nonce} dangerouslySetInnerHTML={{ __html: VOYAGE_HEAD_SCRIPT }} />}
       <SiteRuntimeClient context={analytics} />
       <a href="#main" className="skip-link">Skip to content</a>
-      <VoyageHeader items={items} logo={logo} siteName={siteName} cta={headerCta(artifact)} />
+      {headerVariant
+        ? <SharedHeader variant={headerVariant} items={items} path={path} logo={logo} siteName={siteName} cta={headerCta(artifact)} place={artifact.footer.location} />
+        : <VoyageHeader items={items} logo={logo} siteName={siteName} cta={headerCta(artifact)} />}
       <main id="main" className="v-main">{content}</main>
-      <VoyageFooter artifact={artifact} />
+      {footerVariant ? <SharedFooter variant={footerVariant} artifact={artifact} items={items} /> : <VoyageFooter artifact={artifact} />}
+      {booking}
+      {notFound || !current ? null : <MotionRoot rootId="mg-scope" />}
     </div>
   );
 }

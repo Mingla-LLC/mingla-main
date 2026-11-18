@@ -34,8 +34,8 @@ import {
 import { AGENT_TOOL_AUTHORIZATION, authorizeAgentTool } from "../agentToolAuthorization.ts";
 import { compileGeminiToolDeclarations } from "../agentGemini.ts";
 import { ToolError } from "../agentToolHelpers.ts";
-import { BLOCK_TYPES } from "../siteContracts/blocks.ts";
-import { DESIGN_KEYS, DESIGNS } from "../siteContracts/designs.ts";
+import { ARI_BLOCK_TYPES, BLOCK_TYPES, BOOKING_BLOCK_NEW_TYPES, PAGE_SET_BLOCK_TYPES } from "../siteContracts/blocks.ts";
+import { ARI_DESIGN_KEYS, ariDesignVariants, DESIGNS, SHARED_LAYOUTS } from "../siteContracts/designs.ts";
 import { ARI_EXCLUDED_FIELDS } from "../siteContracts/ariToolSchemas.ts";
 import { MAX_NAV_ITEMS } from "../siteContracts/limits.ts";
 import { RAMP_ROLES, SINGLE_COLOR_ROLES } from "../siteContracts/tokens.ts";
@@ -64,11 +64,38 @@ function props(name: string): Record<string, any> {
 
 Deno.test("#2829 W9b composition blocks are generated from the catalogue: every type, every design's layouts", () => {
   const branches = props("propose_site_composition").pages.items.properties.blocks.items.anyOf as Array<Record<string, any>>;
-  assertEquals(branches.map((branch) => branch.properties.type.enum[0]), [...BLOCK_TYPES]);
+  // #4453 milestone 5 — every catalogue type EXCEPT the live booking blocks,
+  // held from Ari until milestone 7 (the approved rule; #3355 declarations stay byte-identical).
+  assertEquals(branches.map((branch) => branch.properties.type.enum[0]), [...ARI_BLOCK_TYPES]);
+  assertEquals([...BOOKING_BLOCK_NEW_TYPES], ["availability", "ticket_tiers", "process_steps"]);
+  // #4453 milestone 7b — nor the page-set blocks (composer v2 places them; Ari's declarations never carry them).
+  assertEquals([...PAGE_SET_BLOCK_TYPES], ["page_links", "facts_table"]);
+  assertEquals([...ARI_BLOCK_TYPES], BLOCK_TYPES.filter((type) => !BOOKING_BLOCK_NEW_TYPES.includes(type) && !PAGE_SET_BLOCK_TYPES.includes(type)));
+  for (const held of PAGE_SET_BLOCK_TYPES) {
+    assert(!branches.some((branch) => branch.properties.type.enum[0] === held), `${held} is declared to Ari`);
+  }
+  for (const held of BOOKING_BLOCK_NEW_TYPES) {
+    assert(!branches.some((branch) => branch.properties.type.enum[0] === held), `${held} is offered to Ari before milestone 7`);
+  }
+  const declared = JSON.stringify(branches);
+  for (const field of ["booking_bar", "booking_target_id", "show_rating", "captions", "fact_badges"]) {
+    assert(!declared.includes(`"${field}"`), `${field} is offered to Ari before milestone 7`);
+  }
   for (const branch of branches) {
     const type = branch.properties.type.enum[0] as (typeof BLOCK_TYPES)[number];
-    const layouts = new Set(DESIGN_KEYS.flatMap((key) => DESIGNS[key].variants[type]));
+    // #4453 — Ari is offered every design's own layouts; the shared layouts
+    // (SHARED_LAYOUTS) stay held until Ari may choose them, which keeps the
+    // #3355 frozen tool declarations byte-identical.
+    // #4453 6a — and only the designs Ari may name (ARI_DESIGN_KEYS): the gallery designs
+    // (nocturne, haven, maison) reach Ari in PR 7, so maison's own layouts stay out too.
+    const layouts = new Set(ARI_DESIGN_KEYS.flatMap((key) => ariDesignVariants(DESIGNS[key], type)));
+    for (const own of ["maison-frame", "maison-rows", "maison-plates"]) {
+      assert(!branch.properties.variant.enum.includes(own), `${type} offers the gallery layout ${own} to Ari before PR 7`);
+    }
     assertEquals(new Set(branch.properties.variant.enum), layouts, `${type} layouts drifted`);
+    for (const held of SHARED_LAYOUTS[type] ?? []) {
+      assert(!branch.properties.variant.enum.includes(held), `${type} offers the held shared layout ${held} to Ari`);
+    }
   }
   // The retired hand-written union described 15 blocks with a hero that
   // demanded a photo id named `media`; the generated one names it media_id.
@@ -303,7 +330,8 @@ Deno.test("#2829 W9b create_site_draft provisions, then composes from the plan, 
 Deno.test("#2829 W9b Core's evidence is its own feed and brand row; unreadable → none (fail closed)", async () => {
   const feed = { offerings: [{ id: OP, kind: "trip", title: "Bali Escape", slug: "bali", min_price_minor: 120000, currency: "GBP", capacity: 12, spots_left: 4, public_url: "x", cover: { path: "secret" } }] };
   const evidence = await siteEvidence(async () => ({ data: feed, error: null }), async () => ({ id: BRAND, name: "Y&S", description: "Since 2019", city: "London" }), SITE, BRAND);
-  assertEquals(evidence?.brand, { id: BRAND, name: "Y&S", description: "Since 2019", city: "London" });
+  // #4453 PR 2 — the brand's slug and contact details ride along (booking lock); absent here, so null.
+  assertEquals(evidence?.brand, { id: BRAND, name: "Y&S", description: "Since 2019", city: "London", slug: null, contact_email: null, contact_phone: null, social_handles: [] });
   assertEquals(evidence?.offerings[0]?.title, "Bali Escape");
   assert(!("cover" in (evidence?.offerings[0] ?? {})) && !("public_url" in (evidence?.offerings[0] ?? {})), "evidence carries more than the truth check needs");
   assertEquals(await siteEvidence(async () => ({ data: null, error: { message: "down" } }), async () => ({ id: BRAND }), SITE, BRAND), null);

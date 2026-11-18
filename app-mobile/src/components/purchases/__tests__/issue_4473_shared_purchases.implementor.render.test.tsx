@@ -348,6 +348,8 @@ beforeEach(() => {
   for (const key of Object.keys(mockTables)) delete mockTables[key];
   jest.spyOn(RN.AccessibilityInfo, "announceForAccessibility").mockImplementation(() => undefined);
   jest.spyOn(RN.AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  // react-native-web's Keyboard.dismiss reads `document`, absent in this node lane.
+  jest.spyOn(RN.Keyboard, "dismiss").mockImplementation(() => undefined);
 });
 afterEach(() => {
   for (const renderer of mounted.splice(0)) {
@@ -581,7 +583,7 @@ describe("#4473 shared purchases: list and detail", () => {
   });
 
   test("the buyer's own flagged purchase gets the both-accounts note", () => {
-    const renderer = render(React.createElement(PurchaseShareNote, { variant: "owner" }));
+    const renderer = render(React.createElement(PurchaseShareNote, { kind: "order", variant: "owner" }));
     expect(text(renderer)).toBe("Shows on both accounts. One ticket, scans once.");
   });
 });

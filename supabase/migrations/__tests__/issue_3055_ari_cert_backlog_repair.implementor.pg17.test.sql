@@ -68,8 +68,13 @@ INSERT INTO issue_3055_input (name, body) VALUES
   -- resume_discount writes and #4389's two read-only setup handoffs
   -- (payments onboarding, door sale), and #4238 W5's get_ad_budget_guidance
   -- read and apply_ad_suggestion money write, and #3281 bundle 3's get_experience
-  -- read, so project those rows out for this historical
-  -- replay. Their runtime and authorization contracts are covered by their
+  -- read, and #4453's five Mingla Sites premium capabilities
+  -- (read_design_brief, propose_design_pass, propose_page, propose_chrome,
+  -- answer_page_question), so project those rows out for this historical
+  -- replay.
+  -- [TEST-MOD-APPROVED #4453] #4453 adds five ari.sites.* capabilities
+  -- (introduced_by issue_4453) that are not ari_cert requirements in the
+  -- 164-row historical census; they are projected out by id below. Their runtime and authorization contracts are covered by their
   -- owning issue suites.
   ('ledger', jsonb_set(
     :'issue_3055_ledger'::jsonb,
@@ -89,7 +94,12 @@ INSERT INTO issue_3055_input (name, body) VALUES
          'ari.discounts.end',
          'ari.discounts.resume',
          'ari.handoffs.payments_onboarding',
-         'ari.handoffs.door_sale'
+         'ari.handoffs.door_sale',
+         'ari.sites.read_design_brief',
+         'ari.sites.propose_design_pass',
+         'ari.sites.propose_page',
+         'ari.sites.propose_chrome',
+         'ari.sites.answer_page_question'
        ))
   )::text);
 
