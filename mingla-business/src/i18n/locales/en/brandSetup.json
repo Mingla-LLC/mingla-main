@@ -54,6 +54,7 @@
       "checkingBody": "We're checking them. This usually takes a few minutes. You can keep going.",
       "actionNeeded": "One more thing is needed before you can take payments:",
       "ngDone": "Bank connected. You're ready to sell.",
+      "ngReadyNoBank": "You're ready to sell. Add a bank in Payouts to get paid.",
       "done": "You're all set.",
       "refreshErrorTitle": "Couldn't check right now.",
       "refreshErrorBody": "We'll update you.",
