@@ -1368,6 +1368,8 @@
         "mingla-sites/src/designs/shared/blocks/PageSet.tsx",
         "mingla-site-cms/src/lib/designPass.ts",
         "mingla-site-cms/src/lib/heroPictureImport.ts",
+        "mingla-site-cms/src/lib/brandCoverImport.ts",
+        "mingla-site-cms/src/lib/designChecks.ts",
         "mingla-site-cms/src/lib/designPassInputs.ts",
         "mingla-site-cms/src/lib/designPassWrite.ts",
         "mingla-sites/src/contracts/generated/formats.ts",
