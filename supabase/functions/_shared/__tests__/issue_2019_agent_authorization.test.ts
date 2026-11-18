@@ -73,16 +73,17 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // #4238 wave 2: list_ad_audiences (Host Ads read); 182→183.
   // #4304: end_discount + resume_discount; 183→185.
   // #3355 Wave B: search_mingla_guide (Feature Guide read); #4389: start_payments_onboarding + start_door_sale; 185→188.
+  // #3281 bundle 3: get_experience (editable experience read); 190→191.
   assert(
-    AGENT_TOOLS.length === 190,
-    `expected 190 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 191,
+    `expected 191 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 190,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 191,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 190,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 191,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -152,7 +153,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // #4238 wave 2: list_ad_audiences; 182→183.
   // #4304: end_discount + resume_discount; 183→185.
   // #3355 Wave B: search_mingla_guide; #4389: start_payments_onboarding + start_door_sale; 185→188.
-  assert(rows.length === 190, `expected 190 ledger rows, got ${rows.length}`);
+  // #3281 bundle 3: get_experience; 190→191.
+  assert(rows.length === 191, `expected 191 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

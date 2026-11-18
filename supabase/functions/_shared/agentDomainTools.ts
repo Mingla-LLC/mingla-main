@@ -535,6 +535,119 @@ const publishExperience = writeTool(
   },
 );
 
+// issue #3281 bundle 3 — manage_experience_stops proposal canonicalization
+// (agentTools.ts canonicalizeAgentProposalArgs calls it before the receipt
+// binds the args).
+/** Every stop's stop_order is its array position. Idempotent; never refuses. */
+export function canonicalizeExperienceStopsArgs(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!Array.isArray(args.stops)) return args;
+  return {
+    ...args,
+    stops: args.stops.map((stop, index) =>
+      stop !== null && typeof stop === "object" && !Array.isArray(stop)
+        ? { ...(stop as Record<string, unknown>), stop_order: index }
+        : stop
+    ),
+  };
+}
+
+function stopSaysOffset(stop: unknown): boolean {
+  return stop !== null && typeof stop === "object" && !Array.isArray(stop) &&
+    ("start_offset_minutes" in stop || "startOffsetMinutes" in stop);
+}
+
+/**
+ * The model-facing repair note for a manage_experience_stops proposal whose
+ * stops do not each say start_offset_minutes (null when none). agent-chat's
+ * validateProposal returns it to the model, which reads get_experience and
+ * proposes again; the owner never sees it.
+ */
+export function experienceStopsOffsetIssue(
+  args: Record<string, unknown>,
+): string | null {
+  if (!Array.isArray(args.stops)) return null;
+  const missing = args.stops.findIndex((stop) => !stopSaysOffset(stop));
+  if (missing < 0) return null;
+  return `stops[${missing}].start_offset_minutes is missing. Read the experience with get_experience, then send every stop with its start_offset_minutes (null when it has none) and all its other fields.`;
+}
+
+/**
+ * The model-facing repair note for update_experience price options that do
+ * not each carry name, price_cents and price_basis (the server would re-price
+ * a partial option to 0 per person). null when every option is whole.
+ */
+export function experiencePriceOptionsIssue(
+  args: Record<string, unknown>,
+): string | null {
+  if (!Array.isArray(args.price_options)) return null;
+  const missing = args.price_options.findIndex((option) =>
+    option === null || typeof option !== "object" || Array.isArray(option) ||
+    ["name", "price_cents", "price_basis"].some((key) =>
+      (option as Record<string, unknown>)[key] == null
+    )
+  );
+  if (missing < 0) return null;
+  return `price_options[${missing}] must carry name, price_cents and price_basis. Read the experience with get_experience, then send every option with all its fields and its id.`;
+}
+
+/** Owner sentence when a price option edit would reset an option's price. */
+export const EXPERIENCE_PRICE_OPTION_REFUSAL =
+  "That change would reset a price option to free, so nothing was saved. Ask me again and I'll keep each option's price.";
+
+/** Owner sentence when a stop edit would drop a stop's saved start offset. */
+export const EXPERIENCE_STOP_OFFSET_REFUSAL =
+  "That change would clear when a stop starts, so nothing was saved. Ask me again and I'll keep each stop's start time.";
+
+// issue #3281 bundle 3 — the current editable experience, so Ari can edit
+// price options by id and stops without losing what it did not mean to change.
+// Read-only: it never writes and needs no confirmation.
+const getExperience = writeTool(
+  "get_experience",
+  "Read one experience's current editable graph: its status, the expected_revision every experience write needs, and the full stops (with start_offset_minutes) and price options (with their ids). Read it before update_experience or manage_experience_stops, and send back what you read for anything you are not changing.",
+  { event_id: UUID },
+  ["event_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.event_id)) {
+      throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+    }
+    // The caller's brand membership (one events read); the revision read
+    // below is the only other one.
+    await assertAgentReadEvent(client, userId, args.event_id);
+    const eventId = args.event_id;
+    // The revision is read BEFORE the graph: if an edit lands in between, the
+    // older revision makes Ari's next write fail stale instead of overwriting.
+    const { data: event, error } = await client.from("events")
+      .select("status, updated_at, event_type")
+      .eq("id", eventId).is("deleted_at", null).maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (
+      !event || (event as Record<string, unknown>).event_type !== "experience"
+    ) {
+      throw new ToolError(
+        "BRAND_ACCESS_DENIED",
+        "That experience is unavailable",
+      );
+    }
+    const experience = await callRpc(
+      client,
+      "issue_1973_current_experience_payload",
+      { p_event_id: eventId },
+    );
+    const row = event as Record<string, unknown>;
+    return {
+      event_id: eventId,
+      status: row.status,
+      // Verbatim: re-formatting the timestamp would make every write stale.
+      expected_revision: row.updated_at,
+      // Scheduled and live experiences need a 10-200 character edit_reason.
+      edit_reason_required: row.status === "scheduled" || row.status === "live",
+      experience,
+    };
+  },
+);
+
 const updateExperience = writeTool(
   "update_experience",
   "Compose a typed patch over the fresh canonical experience graph. Draft and scheduled/live lifecycles use their existing server owners. Live date/stop edits keep occurrence and stop ids; the server refuses destructive shifts when buyers exist — do not pre-refuse date edits merely because orders exist.",
@@ -579,10 +692,21 @@ const updateExperience = writeTool(
       type: "array",
       maxItems: 20,
       description:
-        "Optional price options. Each: name, price_cents, price_basis (person|group|block); group needs group_max 2–50; block needs block_minutes in 15/30/45/60 plus min_blocks/max_blocks. Non-person basis requires pricing_mode=whole. Options with sales may be hidden, never deleted.",
+        "The complete list of price options, replacing the stored list. Read them with get_experience first and send every option with all its fields. Keep each existing option's id; an option without an id is a new option, and a stored option left out is removed. Each: name, price_cents, price_basis (person|group|block); group needs group_max 2–50; block needs block_minutes in 15/30/45/60 plus min_blocks/max_blocks. Non-person basis requires pricing_mode=whole. Once the experience has bookings, existing options may be renamed, hidden or have their spots changed, but not re-priced or removed (price_change_with_sales).",
+      // Every option should carry name, price_cents and price_basis: the
+      // server re-prices a partial option to 0/person. Not a schema
+      // `required` (an approval bound before this rule could then never
+      // replay): agent-chat returns experiencePriceOptionsIssue to the model,
+      // and the executor refuses a partial option on a first attempt.
       items: {
         type: "object",
         properties: {
+          id: {
+            type: "string",
+            format: "uuid",
+            description:
+              "The stored option's id from get_experience. Omit only for a new option.",
+          },
           name: { type: "string" },
           price_cents: { type: "integer", minimum: 0 },
           price_basis: {
@@ -609,6 +733,12 @@ const updateExperience = writeTool(
   ["event_id", "expected_revision"],
   async (args, client, userId, context) => {
     await requireEvent(args, client, userId);
+    // #3281 bundle 3: a partial option would be re-priced to 0 by the server.
+    // A retry skips this: an earlier attempt may have committed, and the
+    // receipt RPC replays it with the bound args unchanged.
+    if (!context?.retry && experiencePriceOptionsIssue(args) !== null) {
+      throw new ToolError(DOMAIN_REFUSED_CODE, EXPERIENCE_PRICE_OPTION_REFUSAL);
+    }
     const patchKeys = Object.keys(args).filter((key) =>
       !["event_id", "expected_revision", "edit_reason"].includes(key)
     );
@@ -634,10 +764,60 @@ const manageExperienceStops = writeTool(
       type: "array",
       minItems: 0,
       maxItems: 5,
+      description:
+        "The complete ordered stop list, replacing the stored stops. Read them with get_experience first and send every stop with all its fields; a field left out may be cleared. stop_order is set from each stop's position.",
+      // issue #3281 bundle 3 — the stop fields the Host wizard sends
+      // (ExperienceCreatorWizard buildPayload stops[]), typed for Ari.
+      // Every stop should say start_offset_minutes (null allowed): a draft
+      // stop edit re-creates the stops, and a stop sent without it loses its
+      // offset. agent-chat returns experienceStopsOffsetIssue to the model;
+      // the executor refuses when a saved offset would be lost. (Nested
+      // `required` treats null as missing, so it is not listed here.)
       items: {
         type: "object",
-        description:
-          "Stop fields include start_offset_minutes (open-hours) or start_time (set-date).",
+        properties: {
+          stop_order: {
+            type: "integer",
+            minimum: 0,
+            maximum: 4,
+            description:
+              "Set from the stop's position; any value sent is replaced.",
+          },
+          place_id: { type: "string" },
+          place_name: { type: "string" },
+          address: { type: "string" },
+          city: { type: "string", nullable: true },
+          region: { type: "string", nullable: true },
+          country_code: { type: "string", nullable: true },
+          lat: { type: "number", nullable: true },
+          lng: { type: "number", nullable: true },
+          coordinate_precision: {
+            type: "string",
+            enum: ["exact", "approximate"],
+            nullable: true,
+          },
+          image_urls: {
+            type: "array",
+            maxItems: 5,
+            items: { type: "string" },
+            description: "Only image URLs this experience already has saved.",
+          },
+          start_time: {
+            type: "string",
+            nullable: true,
+            description: "Clock time for set-date experiences (HH:MM).",
+          },
+          start_offset_minutes: {
+            type: "integer",
+            minimum: 0,
+            maximum: 32767,
+            nullable: true,
+            description:
+              "Minutes after the guest's booked start (open-hours experiences); null when the stop has none. Use this or start_time, not both.",
+          },
+          price_cents: { type: "integer", minimum: 0 },
+          ai_description: { type: "string", maxLength: 280 },
+        },
       },
     },
     experience_intents: {
@@ -653,7 +833,28 @@ const manageExperienceStops = writeTool(
   },
   ["event_id", "expected_revision", "stops", "experience_intents"],
   async (args, client, userId, context) => {
-    await requireEvent(args, client, userId);
+    const { eventId } = await requireEvent(args, client, userId);
+    // #3281 bundle 3: a stop sent without start_offset_minutes loses its
+    // saved offset (a draft re-creates its stops). Refuse only when the
+    // experience has one to lose, so set-date stops and older proposals still
+    // go through. Never rewrites `args`: #1972 binds the exact payload.
+    // A retry of an approval already `executing` skips the check: an earlier
+    // attempt may have committed (the receipt RPC replays its answer), and
+    // refusing it would tell the owner "nothing was saved" for a saved edit.
+    if (!context?.retry && experienceStopsOffsetIssue(args) !== null) {
+      const { data: saved, error } = await client.from("experience_stops")
+        .select("start_offset_minutes")
+        .eq("event_id", eventId)
+        .not("start_offset_minutes", "is", null)
+        .limit(1);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if ((saved ?? []).length > 0) {
+        throw new ToolError(
+          DOMAIN_REFUSED_CODE,
+          EXPERIENCE_STOP_OFFSET_REFUSAL,
+        );
+      }
+    }
     return await executeExperienceWrite(
       "manage_experience_stops",
       args,
@@ -9912,6 +10113,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   setPricingSwitches,
   setBrandPricingDefaults,
   publishExperience,
+  getExperience,
   updateExperience,
   manageExperienceStops,
   unpublishExperience,
@@ -10052,6 +10254,8 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_growth_tool_report",
   "get_operator_snapshot",
   "get_event_order_reconciliation",
+  // issue #3281 bundle 3 — the editable experience graph (read before edits).
+  "get_experience",
   "draft_gig_script",
   // issue #1978 — venue discovery reads run inline; they never mutate.
   "list_venue_listings",

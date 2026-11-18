@@ -74,9 +74,13 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // this file's own sha256 over ariTurnToolDeclarations(ariTurnAgentTools(false),
 // false). The off path's prompt digests and per-message selections are
 // unchanged (checked above and below).
+// #3281 bundle 3: Ari experience parity adds get_experience (189→190) on both
+// paths and types the experience stop, price option and create stop schemas;
+// the digest is recomputed the same way. The off path's prompt digests and
+// per-message selections are unchanged.
 const MAIN_DECLARATIONS_DIGEST =
-  "49cda18584d2522cb17b962f6d2b2b82c62177ec4fda3e683187d4713385a0cd";
-const MAIN_DECLARATION_COUNT = 189;
+  "4b8e1dd5fff12858ba2d72f8b3f04eb7a7ad52a006257daa268bf62e7674b00f";
+const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {
   "Create a discount code FAVY10 for 10% off until 19 December": [

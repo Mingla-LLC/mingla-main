@@ -55,6 +55,7 @@ ari.event.guest_privacy
 ari.ticket.upsert_tier
 ari.ticket.pricing_switches
 ari.experience.publish
+ari.experience.get
 ari.experience.update
 ari.experience.delete
 ari.experience.unpublish

@@ -478,9 +478,11 @@ async function readExperienceRow(
       .select("place_name,ai_description,address,place_id,lat,lng,stop_order")
       .eq("event_id", id)
       .order("stop_order", { ascending: true }),
+    // Every live option, not only the first: a free first option beside a
+    // paid one is still a paid experience (#3281 bundle 3).
     userClient.from("ticket_types").select("is_free,price_cents,display_order")
       .eq("event_id", id).is("deleted_at", null)
-      .order("display_order", { ascending: true }).limit(1),
+      .order("display_order", { ascending: true }),
   ]);
   if (stops.error || tickets.error) return null;
   const theme = row.theme && typeof row.theme === "object"
@@ -495,7 +497,15 @@ async function readExperienceRow(
     : {};
   const text = (value: unknown) =>
     typeof value === "string" && value.trim() ? value : null;
-  const ticket = ((tickets.data ?? []) as Record<string, unknown>[])[0];
+  const ticketRows = (tickets.data ?? []) as Record<string, unknown>[];
+  const ticket = ticketRows[0];
+  const ticketPriceCents = ticketRows.reduce(
+    (max, t) =>
+      typeof t.price_cents === "number" && t.price_cents > max
+        ? t.price_cents
+        : max,
+    0,
+  );
   return {
     id: String(row.id),
     title: typeof row.title === "string" ? row.title : "",
@@ -521,6 +531,7 @@ async function readExperienceRow(
     whole_price_cents: typeof row.whole_price_cents === "number"
       ? row.whole_price_cents
       : null,
+    ticket_price_cents: ticketPriceCents,
     when: whenDraft.when && typeof whenDraft.when === "object"
       ? whenDraft.when as Record<string, unknown>
       : null,
