@@ -4628,6 +4628,7 @@
         "mingla-business/src/components/ui/CoverPicker.tsx",
         "mingla-business/src/components/ui/DateField.tsx",
         "mingla-business/src/components/ui/DesktopSidebar.tsx",
+        "mingla-business/src/components/ui/DesktopSidebarRail.tsx",
         "mingla-business/src/components/ui/EmptyState.tsx",
         "mingla-business/src/components/ui/ErrorBoundary.tsx",
         "mingla-business/src/components/ui/ExtraGuestsField.tsx",
