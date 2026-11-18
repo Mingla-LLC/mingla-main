@@ -33,11 +33,12 @@ const OPTIONS: {
   description: t.description,
 }));
 
-// #4490 D2 — the same shape as the other eight rows (no "· …" tail).
+// #4490 D2 — the same shape as the other eight rows (no "· …" tail); the
+// #1424 canonical wording is kept.
 const STAY_OPTION: (typeof OPTIONS)[number] = {
   id: "stay",
   label: "Stay",
-  description: "Hotels, resorts and short stays",
+  description: "Hotels, resorts & short stays",
 };
 
 /** "Starts with Menu and Events here" for a type (built features only). */

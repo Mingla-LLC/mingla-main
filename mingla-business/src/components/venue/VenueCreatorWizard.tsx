@@ -606,7 +606,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         return;
       }
       // #4490 D11 — plain words and a way to fix it; never a raw code.
-      const copy = venueSubmitErrorCopy(e);
+      const copy = venueSubmitErrorCopy(e, sanitizeAuthoringError(e, "Could not submit. Try again."));
       setSubmitErr(copy.message);
       setSubmitFix(copy.step !== null && copy.fixLabel !== null ? { step: copy.step, label: copy.fixLabel } : null);
     } finally {

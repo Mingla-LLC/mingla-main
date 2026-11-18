@@ -133,7 +133,7 @@ export function VenueIntelligenceModule({
   const reservationsQuery = useVenueReservationMetrics(
     brandId,
     venueId,
-    isAuthReady && showReservationMetrics,
+    isAuthReady,
   );
   const organicQuery = useVenueOrganicInsights(brandId, venueId, isAuthReady);
   const orderMetricsQuery = useVenueOrderMetrics(brandId, venueId, isAuthReady);

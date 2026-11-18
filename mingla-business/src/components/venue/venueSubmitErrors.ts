@@ -92,17 +92,21 @@ const RULES: readonly { test: RegExp; copy: VenueSubmitErrorCopy }[] = [
   },
 ];
 
-export function venueSubmitErrorCopy(error: unknown): VenueSubmitErrorCopy {
+/**
+ * `scrubbed` is the caller's `sanitizeAuthoringError` result (ORCH-1218: the
+ * wizard scrubs every pipeline error itself); used for codes no rule names.
+ */
+export function venueSubmitErrorCopy(error: unknown, scrubbed?: string): VenueSubmitErrorCopy {
   const raw = rawText(error);
   // The geocoding branch already speaks plain words.
   if (/Google location/.test(raw)) return { message: raw, step: "s0", fixLabel: "Go to Address" };
   for (const rule of RULES) {
     if (rule.test.test(raw)) return rule.copy;
   }
-  const scrubbed = sanitizeAuthoringError(error, RETRY);
+  const safe = scrubbed ?? sanitizeAuthoringError(error, RETRY);
   // A code-shaped string (no spaces, or snake_case) is never shown.
-  if (scrubbed.length === 0 || !/\s/.test(scrubbed.trim()) || /[a-z]+_[a-z_]+/.test(scrubbed)) {
+  if (safe.length === 0 || !/\s/.test(safe.trim()) || /[a-z]+_[a-z_]+/.test(safe)) {
     return { message: RETRY, step: null, fixLabel: null };
   }
-  return { message: scrubbed, step: null, fixLabel: null };
+  return { message: safe, step: null, fixLabel: null };
 }
