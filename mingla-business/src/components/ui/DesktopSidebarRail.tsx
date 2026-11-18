@@ -16,7 +16,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallb
 import { color, materials, radius, space, type } from "../../constants/designSystem";
 import { DESKTOP_RAIL_WIDTH } from "../../constants/desktopLayout";
 
-import type { SidebarGroup, SidebarItem } from "./DesktopSidebar";
+import type { SidebarGroup, SidebarItem } from "./desktopSidebarState";
 import { Icon } from "./Icon";
 
 const DesktopSidebarRail: React.FC<{

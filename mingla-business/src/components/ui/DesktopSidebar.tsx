@@ -53,19 +53,10 @@ export const SIDEBAR_SOURCE_TABS: readonly SidebarTab[] = [
 ];
 
 
-export interface SidebarItem {
-  key: string;
-  label: string;
-  icon: IconName;
-  path: string;
-}
-
-export interface SidebarGroup {
-  key: string;
-  /** null = the untitled top group. */
-  title: string | null;
-  items: SidebarItem[];
-}
+// SidebarItem / SidebarGroup live in desktopSidebarState so the lazy rail can
+// import them without a DesktopSidebar <-> DesktopSidebarRail require cycle (#4389).
+export type { SidebarItem, SidebarGroup } from "./desktopSidebarState";
+import type { SidebarItem, SidebarGroup } from "./desktopSidebarState";
 
 const MARKETING_ICONS: Record<string, IconName> = {
   overview: "megaphone",
