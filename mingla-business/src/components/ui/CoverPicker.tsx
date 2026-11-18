@@ -217,6 +217,7 @@ import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
 import { useAuth } from "../../context/AuthContext";
 import type { CoverTarget } from "./coverTarget";
+import { coverTargetHasUploadIdentity } from "./coverTarget";
 // issue #868 [cover-gallery] — the ADDITIONAL image/GIF gallery item type
 // (shared package is the single owner of the offering-render prop contract).
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
@@ -933,16 +934,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     return true;
   }, [showUploadError]);
 
+  // #4238 — the identity check is per target (see coverTargetHasUploadIdentity):
+  // an ad_creative target has no events row and passes on its owner key.
   const validateEventRowId = useCallback((): boolean => {
-    if (isBrand || isVenue) return true;
-    if (eventRowId.trim().length === 0) {
-      showUploadError(
-        new EventCoverMediaError("missing_server_event_id", "Missing server row id."),
-      );
-      return false;
-    }
-    return true;
-  }, [eventRowId, isBrand, isVenue, showUploadError]);
+    if (coverTargetHasUploadIdentity(target)) return true;
+    showUploadError(
+      new EventCoverMediaError("missing_server_event_id", "Missing server row id."),
+    );
+    return false;
+  }, [showUploadError, target]);
 
   // issue #868 — commit a gallery mutation: update state + ref, re-emit the
   // UNCHANGED cover fields plus the new gallery (the cover is never touched here).
@@ -981,7 +981,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     async (asset, onStage) => {
       let publicUrl: string;
       let mediaType: "image" | "gif";
-      if (isBrand || isVenue) {
+      // #4238 — ad_creative has no events row: brand-keyed storage, like venue.
+      if (isBrand || isVenue || isAdCreative) {
         const uploaded = await uploadBrandCover(
           target.brandId,
           {
@@ -1015,7 +1016,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       if (mediaType === "gif") {
         const extracted = await extractCoverGifPoster(asset);
         try {
-          if (isBrand || isVenue) {
+          if (isBrand || isVenue || isAdCreative) {
             const poster = await uploadBrandCover(target.brandId, extracted.asset, {
               previousPublicUrl: null,
               onStage,
@@ -1041,7 +1042,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       }
       return { url: publicUrl, posterUrl, type: mediaType, alt: null, credit: null };
     },
-    [eventRowId, isBrand, isVenue, target],
+    [eventRowId, isAdCreative, isBrand, isVenue, target],
   );
 
   useEffect(() => {
@@ -1097,7 +1098,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         );
         return;
       }
-      if (!isBrand && !isVenue && eventRowId.trim().length === 0) {
+      if (!coverTargetHasUploadIdentity(target)) {
         galleryAdd.failBeforeUpload(
           new EventCoverMediaError("missing_server_event_id", "Missing server row id."),
         );
@@ -1129,13 +1130,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // from this list; the gallery does not depend on video state.
   }, [
     disabled,
-    eventRowId,
     galleryAdd,
     galleryUploading,
     isAuthReady,
-    isBrand,
-    isVenue,
     onShowToast,
+    target,
   ]);
 
   // issue #3318 — Retry uploads a failed tile's SAME file; Remove drops it.
@@ -1282,7 +1281,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       pickedAssets = result.assets;
       const asset = result.assets[0];
 
-      if (target.kind === "venue") {
+      // #4238 — an ad_creative photo has no events row either: same brand-keyed
+      // storage and no row write; the ad builder keeps the emitted patch.
+      if (target.kind === "venue" || target.kind === "ad_creative") {
         // META-ORCH-1255(C) D-C: venue device upload → brand_covers bucket
         // (brand-keyed storage path) but NO brands-row patch — the emitted
         // patch is persisted by the host to venue_listings via syncHeroMedia.
