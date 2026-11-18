@@ -14,7 +14,7 @@ import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type Le
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
 import { selectCompactPreviewFacts, shareKindLabel, statusLabel, validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
 import type { ReactionSummary } from '../../utils/threadModel';
-import { chatTokens, receivedBubbleTokens } from '../../constants/chatTokens';
+import { brandGuestChatTokens, chatTokens, receivedBubbleTokens } from '../../constants/chatTokens';
 import { isChatStoragePath, type ViewOnceState } from '../../utils/chatMedia';
 import {
   ALBUM_TILE_GAP,
@@ -129,6 +129,8 @@ interface MessageBubbleProps {
    * (threadModel.shouldShowSenderName). Defaults to hidden.
    */
   showSenderName?: boolean;
+  /** #4459: a post by the brand in its Guest chat: warm bubble and a HOST chip by the name. */
+  hostChipLabel?: string;
   /** Issue #4114 Wave 3: reaction pills under the bubble (aggregated by emoji). */
   reactions?: readonly ReactionSummary[];
   onReactionPress?: (messageId: string, emoji: string) => void;
@@ -593,6 +595,7 @@ function MessageBubbleImpl({
   onSystemTokenPress,
   onRetry,
   showSenderName = false,
+  hostChipLabel,
   reactions,
   onReactionPress,
   onCancelUpload,
@@ -689,6 +692,7 @@ function MessageBubbleImpl({
           style={[
             styles.bubble,
             isMe ? styles.bubbleSent : styles.bubbleReceived,
+            hostChipLabel && !isMe ? styles.bubbleBrand : null,
             cardSize ? [styles.mediaCard, { width: cardSize.width }] : borderRadius,
             isFailed && styles.bubbleFailed,
             !isDelivered && !isFailed && styles.bubbleSending,
@@ -698,15 +702,22 @@ function MessageBubbleImpl({
           {showSenderName || replyTo || planQuote ? (
             <View style={cardSize ? styles.mediaCardHeader : null}>
               {showSenderName ? (
-                <Text
-                  style={[
-                    styles.senderName,
-                    isMe ? styles.senderNameSent : styles.senderNameReceived,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {message.senderName?.trim() || t('chat:unknownSender')}
-                </Text>
+                <View style={styles.senderRow}>
+                  <Text
+                    style={[
+                      styles.senderName,
+                      isMe ? styles.senderNameSent : styles.senderNameReceived,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {message.senderName?.trim() || t('chat:unknownSender')}
+                  </Text>
+                  {hostChipLabel ? (
+                    <View style={styles.hostChip} accessibilityLabel={hostChipLabel}>
+                      <Text style={styles.hostChipText}>{hostChipLabel}</Text>
+                    </View>
+                  ) : null}
+                </View>
               ) : null}
 
               {planQuote ? (
@@ -1217,6 +1228,31 @@ const styles = StyleSheet.create({
   },
   senderNameReceived: {
     color: receivedBubbleTokens.senderName,
+  },
+  // #4459: the brand's own posts in its Guest chat.
+  senderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hostChip: {
+    marginBottom: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    backgroundColor: brandGuestChatTokens.hostChipBg,
+  },
+  hostChipText: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: fontWeights.bold,
+    color: brandGuestChatTokens.hostChipLabel,
+    letterSpacing: 0.4,
+  },
+  bubbleBrand: {
+    backgroundColor: brandGuestChatTokens.brandBubble,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: brandGuestChatTokens.brandBubbleLine,
   },
   textSent: {
     color: colors.text.inverse,

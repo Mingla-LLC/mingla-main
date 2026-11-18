@@ -97,6 +97,17 @@ const messagingSource = read('src/services/messagingService.ts');
 const isSystemExprMatch = messagingSource.match(/isSystem:\s*([^\n]*?),\n/);
 assert.ok(isSystemExprMatch, 'isSystem expression must be extractable from messagingService');
 const isSystemExpr = isSystemExprMatch[1].trim();
+// #4459 moved the rule into the exported isSystemMessageRow(message) so brand
+// Guest chat posts (sender_id NULL, sender_kind 'brand') are not system rows.
+// Follow the call into that function's REAL body instead of a hand-copy.
+let isSystemBody = `return (${isSystemExpr});`;
+if (/^isSystemMessageRow\(message\)$/.test(isSystemExpr)) {
+  const fnMatch = messagingSource.match(
+    /export function isSystemMessageRow\(message: \{[^}]*\}\): boolean \{\n([\s\S]*?)\n\}\n/,
+  );
+  assert.ok(fnMatch, 'isSystemMessageRow body must be extractable from messagingService');
+  isSystemBody = fnMatch[1];
+}
 // Evaluate that expression with a STUBBED isCollabDeadEndBannerMessage that
 // always returns false (i.e. the allowlist EMPTIED) so the only thing that can
 // make a system row system is the intrinsic null-sender / message_type clause.
@@ -106,7 +117,7 @@ function isSystemWithEmptyAllowlist(message) {
   return Function(
     'message',
     'isCollabDeadEndBannerMessage',
-    `return (${isSystemExpr});`,
+    isSystemBody,
   )(message, isCollabDeadEndBannerMessage);
 }
 
@@ -285,6 +296,14 @@ check('T-01c message_type=system alone (defensive belt) → system', () => {
     isSystemWithEmptyAllowlist({ sender_id: UUID, message_type: 'system', content: 'x' }),
     true,
     'message_type=system must force system even with a non-null sender',
+  );
+});
+
+check('T-01d #4459 brand Guest chat post (null sender, sender_kind brand) → NOT system', () => {
+  assert.equal(
+    isSystemWithEmptyAllowlist({ sender_id: null, sender_kind: 'brand', message_type: 'text', content: 'Doors at 8' }),
+    false,
+    'a brand post has no sender by design and must render as a message, not a system banner',
   );
 });
 

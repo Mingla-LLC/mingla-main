@@ -69,8 +69,10 @@ const smartKavNative = read(
 
 check(
   "T-A01 getEventGroupChat JOINs events!event_id(title) — not events.name (which doesn't exist)",
+  // #4459: the screen now runs the brand Guest chat; its header reads the
+  // live BRAND name (brands!brand_id(name)), never a stale snapshot.
   groupChatService !== null &&
-    /events!event_id\(title\)/.test(groupChatService) &&
+    /brands!brand_id\(name\)/.test(groupChatService) &&
     !/events!event_id\(name\)/.test(groupChatService),
   "Service must JOIN by title; events.name is invented and triggers SQLSTATE 42703 (verified against baseline migration:7796).",
 );
@@ -138,11 +140,11 @@ check(
 
 check(
   "T-A06 postPlannerMessage accepts optional attachment + uploads to messages bucket",
+  // #4459: Guest chats are text only in v1 and RPC-only (no direct insert,
+  // no upload): the send goes through issue_4459_send_brand_guest_message.
   groupChatService !== null &&
-    /attachment\?:\s*PlannerImageAttachment\s*\|\s*null/.test(groupChatService) &&
-    /supabase\.storage\s*\n?\s*\.from\(["']messages["']\)\s*\n?\s*\.upload\(filePath,\s*formData/.test(groupChatService) &&
-    /\$\{conversationId\}\/\$\{userId\}_\$\{Date\.now\(\)\}/.test(groupChatService) &&
-    /message_type:\s*messageType/.test(groupChatService),
+    /supabase\.rpc\("issue_4459_send_brand_guest_message"/.test(groupChatService) &&
+    !/\.from\(["']messages["']\)\s*\n?\s*\.insert\(/.test(groupChatService),
   "Service must accept attachment + upload to messages bucket at <conv_id>/<userId>_<ts>.<ext> path (storage RLS path format).",
 );
 
@@ -165,8 +167,10 @@ check(
 
 check(
   "T-A08 Composer placeholder swaps to caption mode when attachment is set",
+  // #4459: no attachment in a Guest chat; the placeholder names the brand when
+  // one is known, else falls back to "Write a reply".
   groupChatPanel !== null &&
-    /placeholder=\{attachment \? "Add a caption \(optional\)" : "Write a reply"\}/.test(groupChatPanel),
+    /placeholder=\{postingAs \? `Message as \$\{postingAs\}` : "Write a reply"\}/.test(groupChatPanel),
   "Caption-with-image UX requires placeholder swap so the planner knows the field is optional.",
 );
 
@@ -189,9 +193,9 @@ check(
 
 check(
   "T-A11 useEventGroupChat hook passes attachment through to postPlannerMessage",
+  // #4459: text only — the hook passes the content straight to the RPC send.
   useEventGroupChat !== null &&
-    /attachment\?:\s*PlannerImageAttachment\s*\|\s*null/.test(useEventGroupChat) &&
-    /postPlannerMessage\(conversation\.id,\s*content,\s*attachment\)/.test(useEventGroupChat),
+    /postPlannerMessage\(conversation\.id,\s*content\)/.test(useEventGroupChat),
   "Hook must thread the attachment through to the service call.",
 );
 

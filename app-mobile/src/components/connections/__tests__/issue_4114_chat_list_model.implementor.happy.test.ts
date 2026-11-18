@@ -91,19 +91,21 @@ Deno.test("#4114 browse list: Invites section first, chats, and one Archived row
   assertEquals(CHAT_SEPARATOR_INSET, 78, "the hairline starts at the text edge (14 + 52 + 12)");
 });
 
-Deno.test("#4114 filters: All / Unread / Groups / Events", () => {
+Deno.test("#4114 / #4459 filters: All / Unread / Groups / Brands", () => {
   const group = chat("g", { type: "group", linked_entity_type: "session" });
   const event = chat("e", { type: "group", linked_entity_type: "event" });
   const trip = chat("t", { type: "group", linked_entity_type: "trip" });
+  const guests = chat("bg", { type: "group", linked_entity_type: "brand_guests", brand_id: "brand-1" });
   const unread = chat("u", { unread_count: 1 });
   const marked = chat("m", { marked_unread_at: "2026-10-25T10:00:00.000Z" });
   assertEquals(chatKind(group), "group", "session groups are collab groups");
   assertEquals(chatKind(trip), "event", "trip chats are event chats");
   assertEquals(chatKind(chat("d")), "direct", "direct chat");
-  const all = [group, event, trip, unread, marked, chat("plain")];
+  assertEquals(chatKind(guests), "brand_channel", "#4459: a brand Guest chat is the brand_channel row");
+  const all = [group, event, trip, guests, unread, marked, chat("plain")];
   assertEquals(all.filter((c) => matchesChatFilter(c, "unread")).map((c) => c.id), ["u", "m"], "unread includes marked unread");
   assertEquals(all.filter((c) => matchesChatFilter(c, "groups")).map((c) => c.id), ["g"], "groups");
-  assertEquals(all.filter((c) => matchesChatFilter(c, "events")).map((c) => c.id), ["e", "t"], "events and trips");
+  assertEquals(all.filter((c) => matchesChatFilter(c, "brands")).map((c) => c.id), ["bg"], "#4459: Brands holds only the brand Guest chats");
   const filtered = buildBrowseItems({ active: all, archivedCount: 3, filter: "groups" });
   assert(!filtered.some((i) => i.kind === "archived"), "the archived row belongs to All only");
 });
@@ -117,14 +119,14 @@ Deno.test("#4114 time label: 9:38, Yesterday, weekday, then date", () => {
   assertEquals(formatChatListTime(null, now, "en-GB", "Yesterday"), "", "no message, no time");
 });
 
-Deno.test("#4114 search: Chats, Friends not chatted yet, then event chats", () => {
+Deno.test("#4114 / #4459 search: Chats, Friends not chatted yet, then Brands", () => {
   const direct = chat("a", { participants: [{ id: ME }, { id: "ada" }] });
-  const event = chat("e", { type: "group", linked_entity_type: "event", participants: [{ id: ME }] });
+  const event = chat("e", { type: "group", linked_entity_type: "brand_guests", brand_id: "brand-1", participants: [{ id: ME }] });
   const friends = [
     { id: "f1", user_id: ME, friend_user_id: "ada", display_name: "Ada Okafor" },
     { id: "f2", user_id: "bisi", friend_user_id: ME, display_name: "Bisi Adeyemi" },
   ];
   const items = buildSearchItems({ matchedChats: [direct, event], friends, allConversations: [direct, event], currentUserId: ME, query: "a" });
-  assertEquals(items.map((i) => i.key), ["section:chats", "a", "section:friends", "friend:f2", "section:events", "e"],
-    "Ada already has a chat so only Bisi is offered under Friends; event chats get their own section");
+  assertEquals(items.map((i) => i.key), ["section:chats", "a", "section:friends", "friend:f2", "section:brands", "e"],
+    "Ada already has a chat so only Bisi is offered under Friends; brand Guest chats get their own section");
 });

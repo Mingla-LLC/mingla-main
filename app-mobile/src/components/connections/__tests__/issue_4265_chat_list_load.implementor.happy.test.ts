@@ -183,6 +183,9 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
       return [{ id: "s1", name: "Brunch", created_by: ME, status: "pending" }];
     },
     fetchEventMeta: async () => { log.push("events:start"); return new Map(); },
+    // #4459: the Guest chat brands and the Removed rows (not part of the wave order checks).
+    fetchBrandMeta: async () => new Map(),
+    fetchRemovedBrandGuestChats: async () => [],
     fetchProfiles: async (ids: string[]) => {
       log.push("profiles:start");
       profileReads.push([...ids].sort());

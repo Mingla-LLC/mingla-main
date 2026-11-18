@@ -78,6 +78,19 @@ module.exports = {
     // issue #4111 — tester adversarial: enquiry rows and read status under
     // hostile data (other people's receipts, system rows, cross-thread pages).
     "**/__tests__/issue_4111_explorer_enquiry_rows.tester.adversarial.test.ts",
+    // issue #4459 rework — the Chats page and an open Guest chat mount together
+    // (one enquiries channel); the Message <Brand> sheet closes on send.
+    "**/__tests__/issue_4459_guest_chat_enquiry.implementor.render.test.tsx",
+    // issue #4459 QA retest — the booking card opens the Guest chat in the
+    // existing home shell; a rejoin drops the cached thread; row parity.
+    "**/__tests__/issue_4459_booking_guest_chat.implementor.render.test.tsx",
+    // issue #4459 QA retest 2 — a deep link to a chat the list has not loaded
+    // yet (Rejoin / Open guest chat) opens the thread once it is found.
+    "**/__tests__/issue_4459_deep_link_pending_chat.implementor.render.test.tsx",
+    // issue #4459 tester retest — two Chats pages alive at once (the booking
+    // card's Open/Rejoin guest chat replaces to /) must not throw on the
+    // enquiries channel.
+    "**/__tests__/issue_4459_chats_remount.tester.adversarial.render.test.tsx",
     // issue #4275 — a restored `{}` error never reaches Sentry; a real Error does.
     "**/__tests__/issue_4275_your_circle_sentry.implementor.render.test.tsx",
     // issue #4275 — one read-status read per page, and a deliberate leave of a

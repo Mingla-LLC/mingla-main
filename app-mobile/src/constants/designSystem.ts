@@ -969,6 +969,11 @@ export const glass = {
     // components/connections/chatListModel.ts so the tab-switch skeleton
     // stays in lockstep with the real rows.
     chatList: {
+      /** #4459: the Guest chat row's tag and the Removed tag (design v2). */
+      guestTagBg: 'rgba(235,120,37,0.16)',
+      guestTagLabel: '#F6B27A',
+      removedTagBg: 'rgba(255,255,255,0.08)',
+      removedTagLabel: 'rgba(255,255,255,0.64)',
       ink: '#F8FAFC',
       dim: 'rgba(255, 255, 255, 0.56)',
       faint: 'rgba(255, 255, 255, 0.36)',

@@ -33,11 +33,6 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { glass } from "../../constants/designSystem";
 import { ChatAvatar } from "./ChatAvatar";
 import {
-  isBrandChannelRow,
-  nextUpEvent,
-  type BrandChannel,
-} from "./brandChannelModel";
-import {
   CHAT_ROW_GAP,
   CHAT_ROW_HEIGHT,
   CHAT_ROW_SIDE_PADDING,
@@ -51,6 +46,7 @@ import {
   type ChatPreviewLineMessage,
   formatChatListTime,
   formatUpcomingEventTag,
+  isRemovedBrandGuestsRow,
   isUnreadChat,
   unreadBadge,
 } from "./chatListModel";
@@ -68,11 +64,13 @@ export type ChatListItemConversation = Conversation & {
   name?: string | null;
   session_id?: string | null;
   event_id?: string | null;
-  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' | 'brand_enquiry';
+  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' | 'brand_enquiry' | 'brand_guests';
+  /** #4459: the brand of a brand Guest chat. */
+  brand_id?: string | null;
   program_kind?: 'local' | 'creator' | null;
   eventBrandName?: string | null;
   eventBrandAccountId?: string | null;
-  /** Issue #4114 Wave 6: the event's brand, for folding into a brand channel. */
+  /** #4459: the brand shown on a Guest chat row (or a retired event row's brand). */
   eventBrandId?: string | null;
   eventBrandSlug?: string | null;
   eventBrandLogoUrl?: string | null;
@@ -81,9 +79,8 @@ export type ChatListItemConversation = Conversation & {
   eventCoverMediaUrl?: string | null;
   eventPublicCard?: BusinessEventCard | null;
   is_broadcast_only?: boolean;
-  /** Issue #4114 Wave 6: set on a folded brand channel row (brandChannelModel). */
-  __brandChannel?: BrandChannel;
-  brandChannelLastEventTitle?: string | null;
+  /** #4459: the Guest chat the brand removed this person from (its own row). */
+  __removedBrandGuests?: unknown;
   pinned_at?: string | null;
   marked_unread_at?: string | null;
   /** Reserved for #4111 enquiry threads: renders the Enquiry tag. */
@@ -127,11 +124,13 @@ function ChatListItemImpl({
 
   const kind = chatKind(conversation);
   const isGroup = conversation.type === 'group';
-  // Issue #4114 Wave 6: a folded brand channel looks like an event row (square
-  // avatar, tag) but shows the brand and leads its preview with the event.
-  const brandChannel = isBrandChannelRow(conversation) ? conversation.__brandChannel : null;
-  const isBrandChannel = kind === 'brand_channel' && brandChannel !== null;
-  const isEvent = kind === 'event' || isBrandChannel;
+  // #4459: the brand's one Guest chat: the brand logo in the rounded square,
+  // "<Brand> Guests", a Guests tag, and posts credited to the brand. A Removed
+  // row (the brand removed you) is dimmed, tagged Removed, with no badge.
+  const isBrandChannel = kind === 'brand_channel';
+  const isRemoved = isRemovedBrandGuestsRow(conversation);
+  const brandName = conversation.eventBrandName?.trim() || conversation.name?.trim() || '';
+  const isEvent = kind === 'event';
   const isProgram = kind === 'program';
   const isPinned = Boolean(conversation.pinned_at);
   const unread = isUnreadChat(conversation);
@@ -140,13 +139,15 @@ function ChatListItemImpl({
   // with real unread messages is read by opening it.
   const markedUnread = Boolean(conversation.marked_unread_at);
   const canToggleUnread = Boolean(onToggleUnread) && (markedUnread || (conversation.unread_count ?? 0) === 0);
-  const badge = unreadBadge(conversation, isMuted);
+  const badge = isRemoved
+    ? { visible: false, tone: 'accent' as const, label: '' }
+    : unreadBadge(conversation, isMuted);
 
   const others = conversation.participants.filter((p) => p.id !== currentUserId);
   const otherParticipant = others[0];
 
   const rawName = isBrandChannel
-    ? brandChannel.brandName || conversation.name?.trim() || t('connections:group_fallback_name')
+    ? (brandName ? t('connections:brand_guests_row_name', { brand: brandName }) : t('connections:group_fallback_name'))
     : isGroup
     ? conversation.name?.trim() || t('connections:group_fallback_name')
     : getDisplayName(otherParticipant);
@@ -171,9 +172,11 @@ function ChatListItemImpl({
       return participant ? getDisplayName(participant) : null;
     },
     t,
-  }), [conversation.participants, currentUserId, lastMessage, t]);
+    brandName: isBrandChannel ? brandName : null,
+  }), [brandName, conversation.participants, currentUserId, isBrandChannel, lastMessage, t]);
 
   const preview = useMemo(() => {
+    if (isRemoved) return t('connections:brand_guests_removed_preview', { brand: brandName });
     if (tombstonePreview) return tombstonePreview;
     const text = chatPreviewText(lastMessage, t);
     if (text && lastMessage) {
@@ -185,26 +188,26 @@ function ChatListItemImpl({
         isEvent,
         isBrandChannel,
         currentUserId,
-        eventTitle: conversation.brandChannelLastEventTitle,
-        eventBrandName: conversation.eventBrandName,
+        eventBrandName: isBrandChannel ? brandName : conversation.eventBrandName,
         eventBrandAccountId: conversation.eventBrandAccountId,
         t,
       });
     }
     // Issue #4114 Wave 6: an event chat with nothing in it says so (it used to
     // read "Event chat ready", or "Event broadcast ready" in older builds).
-    if (isEvent) return t('connections:preview_no_messages');
+    if (isEvent || isBrandChannel) return t('connections:preview_no_messages');
     if (isGroup) {
       return conversation.participants.length > 1
         ? t('connections:preview_group_people', { count: conversation.participants.length })
         : t('connections:preview_collab_ready');
     }
     return t('connections:preview_start');
-  }, [conversation, currentUserId, isBrandChannel, isEvent, isGroup, lastMessage, t, tombstonePreview]);
+  }, [brandName, conversation, currentUserId, isBrandChannel, isEvent, isGroup, isRemoved, lastMessage, t, tombstonePreview]);
 
-  const tagLabel = isBrandChannel
-    ? formatUpcomingEventTag(nextUpEvent(brandChannel.events, Date.now())?.startAt, new Date(), i18n.language)
-      ?? t('connections:tag_event')
+  const tagLabel = isRemoved
+    ? t('connections:brand_guests_removed_tag')
+    : isBrandChannel
+    ? t('connections:tag_brand')
     : isEvent
     ? formatUpcomingEventTag(
         conversation.eventPublicCard?.nextStartAtUtc ??
@@ -212,7 +215,7 @@ function ChatListItemImpl({
         new Date(),
         i18n.language,
       )
-      ?? t('connections:tag_event')
+      ?? t('connections:tag_brand')
     : conversation.isEnquiry
       ? t('connections:tag_enquiry')
       : isProgram
@@ -230,7 +233,7 @@ function ChatListItemImpl({
       name: getDisplayName(p),
       avatarUrl: p.avatar_url ?? null,
     })),
-    brandLogoUrl: brandChannel?.logoUrl ?? null,
+    brandLogoUrl: isBrandChannel ? conversation.eventBrandLogoUrl ?? null : null,
     eventCoverUrl: conversation.eventCoverMediaUrl ?? null,
     eventCoverMediaType: conversation.eventPublicCard?.coverMediaType ?? null,
     eventBrandLogoUrl: conversation.eventBrandLogoUrl ?? null,
@@ -246,9 +249,8 @@ function ChatListItemImpl({
     else onArchive?.(conversation.id);
   }, [close, conversation, onArchive, onToggleMute, onTogglePin, onToggleUnread]);
 
-  // A brand channel row stands for several chats: it can be archived (all of
-  // them), and unpinned when one of them is pinned (its only left action);
-  // Pin and mark-unread stay per chat, so they are not offered on it.
+  // #4459: a Guest chat row is one real chat (every action). A Removed row has
+  // no chat: only Remove from chat list (long-press) is offered.
   const renderLeftActions = useCallback(() => (
     <View style={styles.swipeActions}>
       <SwipeAction
@@ -257,7 +259,7 @@ function ChatListItemImpl({
         color={tk.swipePin}
         onPress={() => runAction('pin')}
       />
-      {canToggleUnread && !isBrandChannel ? (
+      {canToggleUnread ? (
         <SwipeAction
           icon={markedUnread ? 'mail-open-outline' : 'mail-outline'}
           label={markedUnread ? t('connections:action_mark_read') : t('connections:action_mark_unread')}
@@ -266,7 +268,7 @@ function ChatListItemImpl({
         />
       ) : null}
     </View>
-  ), [canToggleUnread, isBrandChannel, isPinned, markedUnread, runAction, t]);
+  ), [canToggleUnread, isPinned, markedUnread, runAction, t]);
 
   const renderRightActions = useCallback(() => (
     <View style={styles.swipeActions}>
@@ -303,16 +305,16 @@ function ChatListItemImpl({
   ].filter(Boolean);
 
   const accessibilityActions = [
-    ...(isBrandChannel && !isPinned
+    ...(isRemoved
       ? []
       : [{ name: 'pin', label: isPinned ? t('connections:action_unpin') : t('connections:action_pin') }]),
-    ...(canToggleUnread && !isBrandChannel
+    ...(canToggleUnread && !isRemoved
       ? [{ name: 'unread', label: markedUnread ? t('connections:action_mark_read') : t('connections:action_mark_unread') }]
       : []),
     ...(!isGroup && onToggleMute
       ? [{ name: 'mute', label: isMuted ? t('connections:action_unmute') : t('connections:action_mute') }]
       : []),
-    { name: 'archive', label: isArchived ? t('connections:action_unarchive') : t('connections:action_archive') },
+    ...(isRemoved ? [] : [{ name: 'archive', label: isArchived ? t('connections:action_unarchive') : t('connections:action_archive') }]),
     { name: 'longpress', label: t('connections:actions_more') },
   ];
 
@@ -325,8 +327,8 @@ function ChatListItemImpl({
   return (
     <ReanimatedSwipeable
       ref={swipeRef}
-      renderLeftActions={isBrandChannel && !isPinned ? undefined : renderLeftActions}
-      renderRightActions={renderRightActions}
+      renderLeftActions={isRemoved ? undefined : renderLeftActions}
+      renderRightActions={isRemoved ? undefined : renderRightActions}
       overshootLeft={false}
       overshootRight={false}
       friction={2}
@@ -345,6 +347,7 @@ function ChatListItemImpl({
         testID={`chat-row-${conversation.id}`}
       >
         {showSeparator ? <View style={styles.separator} /> : null}
+        <View style={isRemoved ? styles.avatarDimmed : null}>
         <ChatAvatar
           people={avatar.people}
           shape={avatar.shape}
@@ -353,15 +356,24 @@ function ChatListItemImpl({
           extraCount={avatar.extraCount}
           deckBadge={kind === 'group' || kind === 'direct_collab'}
         />
+        </View>
         <View style={styles.body}>
           <View style={styles.line}>
             <Text style={[styles.name, unread ? styles.nameUnread : null]} numberOfLines={1}>
               {displayName}
             </Text>
             {tagLabel ? (
-              <View style={[styles.tag, conversation.isEnquiry && !isEvent ? styles.tagEnquiry : styles.tagEvent]}>
+              <View style={[
+                styles.tag,
+                isRemoved ? styles.tagRemoved : isBrandChannel ? styles.tagGuests
+                  : conversation.isEnquiry && !isEvent ? styles.tagEnquiry : styles.tagEvent,
+              ]}>
                 <Text
-                  style={[styles.tagText, conversation.isEnquiry && !isEvent ? styles.tagTextEnquiry : null]}
+                  style={[
+                    styles.tagText,
+                    isRemoved ? styles.tagTextRemoved : isBrandChannel ? styles.tagTextGuests
+                      : conversation.isEnquiry && !isEvent ? styles.tagTextEnquiry : null,
+                  ]}
                   numberOfLines={1}
                 >
                   {tagLabel}
@@ -534,6 +546,22 @@ const styles = StyleSheet.create({
   },
   tagEvent: {
     backgroundColor: tk.eventTagBg,
+  },
+  // #4459 design v2: the Guest chat tag and the neutral Removed tag.
+  tagGuests: {
+    backgroundColor: tk.guestTagBg,
+  },
+  tagTextGuests: {
+    color: tk.guestTagLabel,
+  },
+  tagRemoved: {
+    backgroundColor: tk.removedTagBg,
+  },
+  tagTextRemoved: {
+    color: tk.removedTagLabel,
+  },
+  avatarDimmed: {
+    opacity: 0.45,
   },
   tagEnquiry: {
     backgroundColor: tk.enquiryTagBg,

@@ -7,6 +7,8 @@ import type { PlanQuoteSnapshot } from '../types/chatPlans';
 import { conversationChannelKey, conversationRealtimeFilter } from '../utils/conversationSubscription';
 import type { ChatLiveChange } from '../utils/chatLiveModel';
 import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
+import { markConversationLeft, markConversationRejoined } from '../utils/presenceMembership';
+import { announceBrandGuestLeft } from '../utils/brandGuestLeave';
 import { UNREAD_MESSAGES_SELECT, applyUnreadFilters, countUnreadRows } from '../components/connections/chatListLoad';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
@@ -251,6 +253,8 @@ export interface DirectMessage {
   /** #4187 official team label captured when an Admin sends a program message. */
   sender_display_name_snapshot?: string | null;
   sender_role_snapshot?: string | null;
+  /** #4459: 'brand' when the brand team posted in a Guest chat ('guest' otherwise there). */
+  sender_kind?: 'guest' | 'brand' | 'system' | null;
   is_read?: boolean;
   isSystem?: boolean;
   /**
@@ -285,11 +289,11 @@ export interface DirectMessage {
 /** Issue #4456: who removed a message (see DirectMessage.unsent_kind). */
 export type UnsentKind = 'sender' | 'admin' | 'host' | 'server' | 'legacy';
 
-/** Issue #4456: the unsent kinds the thread shows as a placeholder line. */
-export const TOMBSTONE_KINDS: readonly UnsentKind[] = ['sender', 'admin'];
+/** Issue #4456: the unsent kinds the thread shows as a placeholder line (#4459: + 'host', the brand's removal). */
+export const TOMBSTONE_KINDS: readonly UnsentKind[] = ['sender', 'admin', 'host'];
 
 /** Issue #4456: reads keep live messages and placeholder tombstones; other removals stay hidden. */
-export const LIVE_OR_TOMBSTONE_FILTER = 'deleted_at.is.null,unsent_kind.in.(sender,admin)';
+export const LIVE_OR_TOMBSTONE_FILTER = 'deleted_at.is.null,unsent_kind.in.(sender,admin,host)';
 
 /** Issue #4456: why an unsend did not go through. */
 export type UnsendError = 'not_allowed' | 'offline' | 'failed';
@@ -311,6 +315,54 @@ export interface MessageReactionRow {
   id?: string;
   user_id: string;
   emoji: string;
+}
+
+/** #4459: why a brand Guest chat send was refused. */
+export type BrandGuestSendError = 'rate_limited' | 'announcements_only' | 'not_member' | 'invalid' | 'failed';
+
+export function brandGuestSendError(error: { code?: string | null; message?: string | null }): BrandGuestSendError {
+  const message = error.message ?? '';
+  if (error.code === 'PT409' || message.includes('rate_limited')) return 'rate_limited';
+  if (message.includes('announcements_only')) return 'announcements_only';
+  if (error.code === '42501') return 'not_member';
+  if (error.code === '22023') return 'invalid';
+  return 'failed';
+}
+
+export interface BrandGuestStatus {
+  status: 'member' | 'left' | 'removed' | 'not_eligible';
+  conversationId: string | null;
+  canRejoin: boolean;
+}
+
+export interface BrandGuestMember {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  isTeam: boolean;
+  shownAsGoing: boolean;
+}
+
+export interface BrandGuestMembers {
+  total: number;
+  members: BrandGuestMember[];
+}
+
+export interface RemovedBrandGuestChat {
+  brandId: string;
+  brandName: string;
+  brandSlug: string | null;
+  brandLogoUrl: string | null;
+  brandAccountId: string | null;
+  removedAt: string;
+}
+
+export interface BrandGuestChatBrand {
+  brandId: string;
+  name: string;
+  slug: string | null;
+  logoUrl: string | null;
+  accountId: string | null;
 }
 
 export interface MentionEntry {
@@ -563,7 +615,9 @@ export interface Conversation {
   name?: string | null;
   session_id?: string | null;
   event_id?: string | null;
-  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event';
+  /** #4459: 'brand_guests' is the brand's one Guest chat (brand_id set). */
+  linked_entity_type?: 'direct' | 'session' | 'trip' | 'event' | 'brand_guests';
+  brand_id?: string | null;
   /** #4187 managed Mingla program thread; absent on every ordinary chat. */
   program_kind?: 'local' | 'creator' | null;
   is_broadcast_only?: boolean;
@@ -586,6 +640,17 @@ export const MESSAGE_PAGE_SIZE = 50;
 
 /** Issue #4114: the partial unique index on (conversation_id, client_id) WHERE client_id IS NOT NULL. */
 export const MESSAGE_CLIENT_ID_UNIQUE_INDEX = 'messages_unique_client_id_per_conversation';
+
+/**
+ * ORCH-0908 / #4459: a row with no sender is a system line, except a brand
+ * post in a Guest chat (sender_kind 'brand'), which stores no sender on
+ * purpose so guests never learn which team member wrote it.
+ */
+export function isSystemMessageRow(message: { sender_id?: string | null; sender_kind?: string | null; message_type?: string | null; content?: string | null }): boolean {
+  if (message.message_type === 'system') return true;
+  if (message.sender_id == null) return message.sender_kind !== 'brand';
+  return isCollabDeadEndBannerMessage(message.content ?? '');
+}
 
 export class MessagingService {
   private channels: Map<string, RealtimeChannel> = new Map();
@@ -956,12 +1021,15 @@ export class MessagingService {
             id, conversation_id, sender_id, content, message_type,
             file_url, file_name, file_size, card_payload, reply_to_id,
             plan_id, plan_quote,
-            marketing_campaign_id, sender_display_name_snapshot, sender_role_snapshot,
+            marketing_campaign_id, sender_display_name_snapshot, sender_role_snapshot, sender_kind,
             created_at, updated_at, deleted_at, unsent_at, unsent_by, unsent_kind,
             read_status:message_reads(user_id)
           )
         `)
-        .neq('linked_entity_type', 'support')
+        // #668: support threads belong on the business support inbox only.
+        // #4459: the retired per-listing event and trip chats are never listed
+        // (the brand Guest chat replaced them; Explorer used to fold them).
+        .not('linked_entity_type', 'in', '(support,event,trip)')
         // Issue #4456: an unsent last message shows its unsent line (D5).
         .or(LIVE_OR_TOMBSTONE_FILTER, { referencedTable: 'last_message' })
         .order('last_message_at', { ascending: false, nullsFirst: false })
@@ -1074,6 +1142,7 @@ export class MessagingService {
           session_id: (conv as any).session_id ?? null,
           event_id: (conv as any).event_id ?? null,
           linked_entity_type: (conv as any).linked_entity_type ?? undefined,
+          brand_id: (conv as any).brand_id ?? null,
           program_kind: (conv as any).program_kind ?? null,
           is_broadcast_only: Boolean((conv as any).is_broadcast_only),
           created_by: (conv as any).created_by,
@@ -1634,24 +1703,37 @@ export class MessagingService {
    * ORCH-0897: returns the group conversation linked to a trip/event. The
    * database owns creation; this method is lookup-only.
    */
+  /**
+   * #4459: an event or trip link opens the brand's one Guest chat (the
+   * per-listing chats are retired). Null when the person is not a member.
+   */
   async getOrCreateGroupConversationForEvent(
     eventId: string,
   ): Promise<{ conversation: Conversation | null; error: string | null }> {
     try {
+      const { data: event, error: eventError } = await supabase
+        .from('events')
+        .select('brand_id')
+        .eq('id', eventId)
+        .maybeSingle();
+      if (eventError) throw eventError;
+      const brandId = (event as { brand_id?: string | null } | null)?.brand_id ?? null;
+      if (!brandId) return { conversation: null, error: 'Guest chat not found for this event' };
+
       const { data: conv, error } = await supabase
         .from('conversations')
         .select(`
-          id, type, name, event_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
+          id, type, name, brand_id, linked_entity_type, created_by, created_at, updated_at, last_message_at,
           is_broadcast_only,
           participants:conversation_participants(id, conversation_id, user_id, joined_at, last_read_at)
         `)
-        .eq('event_id', eventId)
-        .in('linked_entity_type', ['trip', 'event'])
+        .eq('brand_id', brandId)
+        .eq('linked_entity_type', 'brand_guests')
         .maybeSingle();
 
       if (error) throw error;
       if (!conv) {
-        return { conversation: null, error: 'Group conversation not found for this event' };
+        return { conversation: null, error: 'Guest chat not found for this event' };
       }
 
       return {
@@ -1659,8 +1741,9 @@ export class MessagingService {
           id: conv.id,
           type: conv.type as 'direct' | 'group',
           name: conv.name ?? null,
-          event_id: conv.event_id ?? null,
-          linked_entity_type: conv.linked_entity_type as 'direct' | 'session' | 'trip' | 'event' | undefined,
+          event_id: null,
+          brand_id: (conv as any).brand_id ?? brandId,
+          linked_entity_type: 'brand_guests',
           is_broadcast_only: Boolean((conv as any).is_broadcast_only),
           created_by: conv.created_by,
           created_at: conv.created_at,
@@ -1671,7 +1754,7 @@ export class MessagingService {
         error: null,
       };
     } catch (error: any) {
-      console.error('Error getting group conversation for event:', error);
+      console.error('Error getting the Guest chat for event:', error);
       return { conversation: null, error: error.message };
     }
   }
@@ -1717,6 +1800,147 @@ export class MessagingService {
         error: error.message ?? 'Failed to join trip chats',
       };
     }
+  }
+
+  // ── #4459: the brand Guest chat (one per brand, RPC-only writes) ─────────
+
+  /**
+   * Sends a text message to a brand Guest chat through the server RPC (direct
+   * inserts are refused there). The server decides who is pushed, so the
+   * notify call names only the message.
+   */
+  async sendBrandGuestMessage(
+    conversationId: string,
+    senderId: string,
+    content: string,
+    replyToId?: string,
+    mentions: MentionEntry[] = [],
+    clientId?: string,
+  ): Promise<{ message: DirectMessage | null; error: BrandGuestSendError | null }> {
+    try {
+      const validatedMentions = this.validateMentionEntries(mentions);
+      const { data, error } = await supabase.rpc('issue_4459_send_brand_guest_message', {
+        p_conversation_id: conversationId,
+        p_content: content,
+        p_reply_to_id: replyToId ?? null,
+        p_client_id: clientId ?? null,
+        p_mentions: validatedMentions,
+      });
+      if (error) return { message: null, error: brandGuestSendError(error) };
+      if (!data) return { message: null, error: 'failed' };
+      const enriched = await this.enrichMessage(data, senderId);
+      supabase.functions.invoke('notify-message', {
+        body: {
+          type: 'message',
+          senderId,
+          conversationId,
+          messageId: enriched.id,
+        },
+      }).catch((err) => console.warn('[messagingService] brand guest notify failed', err));
+      return { message: enriched, error: null };
+    } catch (error: any) {
+      console.error('Error sending brand guest message:', error);
+      return { message: null, error: 'failed' };
+    }
+  }
+
+  /** The caller's own state in a brand's Guest chat (member, left, removed or not_eligible). */
+  async getMyBrandGuestStatus(brandId: string): Promise<{ status: BrandGuestStatus | null; error: string | null }> {
+    const { data, error } = await supabase.rpc('issue_4459_my_brand_guest_status', { p_brand_id: brandId });
+    if (error) return { status: null, error: error.message };
+    const row = (data ?? {}) as { status?: string; conversationId?: string | null; canRejoin?: boolean };
+    const value = row.status === 'member' || row.status === 'left' || row.status === 'removed' ? row.status : 'not_eligible';
+    return {
+      status: { status: value, conversationId: row.conversationId ?? null, canRejoin: row.canRejoin === true },
+      error: null,
+    };
+  }
+
+  /** Leave a brand Guest chat (sticky: new bookings do not add you back). */
+  async leaveBrandGuestChat(conversationId: string): Promise<{ error: string | null }> {
+    const { error } = await supabase.rpc('issue_4459_leave_brand_guest_chat', { p_conversation_id: conversationId });
+    if (error) {
+      console.error('Error leaving brand guest chat:', error);
+      return { error: error.message };
+    }
+    // #4459: stop presence writes for the chat just left (they would 42501).
+    markConversationLeft(conversationId);
+    // #4459: the booking card's status for this brand is stale now.
+    announceBrandGuestLeft(conversationId);
+    return { error: null };
+  }
+
+  /** Rejoin a brand Guest chat from a booking (only after leaving, only while eligible). */
+  async rejoinBrandGuestChat(brandId: string): Promise<{ conversationId: string | null; error: string | null }> {
+    const { data, error } = await supabase.rpc('issue_4459_rejoin_brand_guest_chat', { p_brand_id: brandId });
+    if (error) return { conversationId: null, error: error.message };
+    const conversationId = ((data ?? {}) as { conversationId?: string | null }).conversationId ?? null;
+    if (conversationId) markConversationRejoined(conversationId);
+    return { conversationId, error: null };
+  }
+
+  /** The member sheet: the team sees everyone; a guest sees the team, opted-in guests and a count. */
+  async listBrandGuestMembers(conversationId: string): Promise<BrandGuestMembers> {
+    const { data, error } = await supabase.rpc('issue_4459_list_brand_guest_members', {
+      p_conversation_id: conversationId,
+    });
+    if (error) throw error;
+    const row = (data ?? {}) as { total?: number; members?: unknown[] };
+    const members = Array.isArray(row.members) ? row.members : [];
+    return {
+      total: typeof row.total === 'number' ? row.total : members.length,
+      members: members.map((member) => {
+        const m = member as Record<string, unknown>;
+        return {
+          userId: String(m.userId ?? ''),
+          displayName: typeof m.displayName === 'string' ? m.displayName : '',
+          avatarUrl: typeof m.avatarUrl === 'string' ? m.avatarUrl : null,
+          isTeam: m.isTeam === true,
+          shownAsGoing: m.shownAsGoing === true,
+        };
+      }),
+    };
+  }
+
+  /** Brand Guest chats the brand removed this person from (the "Removed" rows). */
+  async listRemovedBrandGuestChats(): Promise<RemovedBrandGuestChat[]> {
+    const { data, error } = await supabase.rpc('issue_4459_my_removed_brand_guest_chats');
+    if (error) throw error;
+    return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      brandId: String(row.brand_id),
+      brandName: typeof row.brand_name === 'string' ? row.brand_name : '',
+      brandSlug: typeof row.brand_slug === 'string' ? row.brand_slug : null,
+      brandLogoUrl: typeof row.brand_logo_url === 'string' ? row.brand_logo_url : null,
+      brandAccountId: typeof row.brand_account_id === 'string' ? row.brand_account_id : null,
+      removedAt: typeof row.removed_at === 'string' ? row.removed_at : new Date(0).toISOString(),
+    }));
+  }
+
+  /** "Remove from chat list" on a Removed row (the removal itself stays). */
+  async dismissRemovedBrandGuestChat(brandId: string): Promise<{ error: string | null }> {
+    const { error } = await supabase.rpc('issue_4459_dismiss_removed_brand_guest_chat', { p_brand_id: brandId });
+    return { error: error ? error.message : null };
+  }
+
+  /** Name, slug, logo and owner of brands (the Guest chat rows). */
+  async fetchBrandMeta(brandIds: string[]): Promise<Map<string, BrandGuestChatBrand>> {
+    const out = new Map<string, BrandGuestChatBrand>();
+    if (brandIds.length === 0) return out;
+    const { data, error } = await supabase
+      .from('brands')
+      .select('id, name, slug, profile_photo_url, account_id')
+      .in('id', brandIds);
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+      out.set(String(row.id), {
+        brandId: String(row.id),
+        name: typeof row.name === 'string' ? row.name : '',
+        slug: typeof row.slug === 'string' ? row.slug : null,
+        logoUrl: typeof row.profile_photo_url === 'string' ? row.profile_photo_url : null,
+        accountId: typeof row.account_id === 'string' ? row.account_id : null,
+      });
+    }
+    return out;
   }
 
   /**
@@ -2227,7 +2451,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: !!readData,
-      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
+      isSystem: isSystemMessageRow(message),
     };
   }
 
@@ -2245,7 +2469,7 @@ export class MessagingService {
       ...message,
       sender_name: senderName,
       is_read: false,
-      isSystem: message.sender_id === null || message.message_type === 'system' || isCollabDeadEndBannerMessage(message.content),
+      isSystem: isSystemMessageRow(message),
     };
   }
 
