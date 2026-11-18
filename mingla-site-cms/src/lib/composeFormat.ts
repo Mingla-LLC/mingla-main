@@ -226,6 +226,11 @@ function blockFor(ctx: Ctx, section: FormatSection, pageKey: string): ComposedBl
   const design = DESIGNS[input.design];
   const variant = isBlockType(section.type) ? compositionVariant(design, section.type) : undefined;
   const withVariant = (block: ComposedBlock): ComposedBlock => (variant ? { ...block, variant } : block);
+  // #4453 — a block the design does not draw is never composed. Atelier is
+  // frozen and offers no layout for the shared-only booking blocks
+  // (availability, ticket tiers, process steps); the artifact refuses one on
+  // an Atelier site, so composing it failed that site's preview and Build.
+  if (isBlockType(section.type) && (design.variants[section.type] ?? []).length === 0) return null;
   const name = clean(brand.name, 120) ?? "";
   const tagline = clean(brand.tagline, 120);
   const who = clean(plan.story?.who, 300);
