@@ -65,6 +65,7 @@ import type {
   MapsOpenTarget,
 } from "@mingla/offering-rendering/mapsDeepLink";
 import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
+import { venuePrefill } from "../../../../src/sites/bookingPrefill";
 import { recordShareDestination } from "../../../../src/analytics/shareDestination";
 import {
   captureOfferingCta,
@@ -206,7 +207,16 @@ function PublicVenueRouteBody(): React.ReactElement {
     tab?: string | string[];
     spot?: string | string[];
     src?: string | string[];
+    // #4453 milestone 5 — a Mingla website's pre-fill (re-validated; bad values ignored).
+    date?: string | string[];
+    time?: string | string[];
+    party?: string | string[];
+    checkin?: string | string[];
+    checkout?: string | string[];
+    guests?: string | string[];
+    room?: string | string[];
   }>();
+  const prefill = useMemo(() => venuePrefill(params), [params]);
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
     : params.brandSlug;
@@ -551,6 +561,11 @@ function PublicVenueRouteBody(): React.ReactElement {
           surface={context.surface}
           theme={context.theme}
           onQuoteChange={setStayQuote}
+          // #4453 — pre-fill props only when the site sent them, so a plain
+          // visit renders byte-identically to before (#1559 render parity).
+          {...(prefill.checkin && prefill.checkout ? { initialRange: { checkIn: prefill.checkin, checkOut: prefill.checkout } } : {})}
+          {...(prefill.guests != null ? { initialAdults: prefill.guests } : {})}
+          {...(prefill.room != null ? { initialRoomId: prefill.room } : {})}
         />
       ) : (
         <GuestVenueReservation
@@ -558,6 +573,9 @@ function PublicVenueRouteBody(): React.ReactElement {
           brandId={context.brandId}
           currency={context.currency}
           analyticsSurface={analyticsSurface}
+          {...(prefill.date != null ? { initialDate: prefill.date } : {})}
+          {...(prefill.time != null ? { initialTime: prefill.time } : {})}
+          {...(prefill.party != null ? { initialPartySize: prefill.party } : {})}
           // issue #1564 — the slot has always carried the resolved palette (the
           // Stay branch two lines up already used it); the table branch simply
           // never read it, and painted Mingla orange on every brand's page.
@@ -566,7 +584,7 @@ function PublicVenueRouteBody(): React.ReactElement {
           onReservationBarChange={context.onReservationBarChange}
         />
       ),
-    [],
+    [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room],
   );
 
   const renderReservationSheet = useCallback(
@@ -669,7 +687,7 @@ function PublicVenueRouteBody(): React.ReactElement {
       initialTab={
         requestedTab === "menu"
           ? "menu"
-          : requestedTab === "reservations"
+          : requestedTab === "reservations" || prefill.tab === "reservations"
             ? "reservations"
             : "overview"
       }

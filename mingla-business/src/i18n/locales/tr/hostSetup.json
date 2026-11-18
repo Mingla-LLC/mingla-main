@@ -54,6 +54,7 @@
       "checkingBody": "Kontrol ediyoruz. Bu genelde birkaç dakika sürer. Devam edebilirsin.",
       "actionNeeded": "Ödeme alabilmen için bir şey daha gerekiyor:",
       "ngDone": "Banka bağlandı. Satışa hazırsın.",
+      "ngReadyNoBank": "Satışa hazırsın. Ödemeni almak için Ödemeler bölümünden bir banka ekle.",
       "done": "Her şey hazır.",
       "refreshErrorTitle": "Şu anda kontrol edilemedi.",
       "refreshErrorBody": "Seni bilgilendireceğiz.",

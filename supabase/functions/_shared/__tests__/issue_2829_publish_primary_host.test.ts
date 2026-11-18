@@ -61,6 +61,10 @@ async function publishWith(primaryHosts: Array<{ hostname: string }>, extraInput
       case "/rest/v1/brand_site_hosts":
         hostQueries.push(url.search);
         return Response.json(primaryHosts[0] ?? null, { status: primaryHosts[0] ? 200 : 406 });
+      // #4453 PR 2 (booking lock): publish reads Core's own brand row for the
+      // action scope, and fails closed (503) when it cannot.
+      case "/rest/v1/brands":
+        return Response.json({ slug: "young-stamped", contact_email: null, contact_phone: null, social_links: null });
       case "/rest/v1/brand_site_service_config":
         return Response.json({ cms_origin: CMS_ORIGIN, environment: "production" });
       case "/rest/v1/rpc/brand_site_mark_operation_ambiguous":

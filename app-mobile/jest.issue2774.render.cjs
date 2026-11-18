@@ -199,5 +199,8 @@ module.exports = {
     // issue #4473 — purchases shared with a second proven account (list,
     // read-only detail, owner note, Calendar) and "Is this your ticket?".
     "**/__tests__/issue_4473_shared_purchases.implementor.render.test.tsx",
+    // issue #4473 device pass — one dark Done bar, in-sheet country picker,
+    // per-kind shared notes, channel hint, keyboard closed before results.
+    "**/__tests__/issue_4473_device_fixes.implementor.render.test.tsx",
   ],
 };

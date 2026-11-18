@@ -54,6 +54,7 @@
       "checkingBody": "我们正在核实，通常需要几分钟。你可以继续操作。",
       "actionNeeded": "在你开始收款之前，还需要完成一项：",
       "ngDone": "银行已连接，可以开始售卖了。",
+      "ngReadyNoBank": "可以开始售卖了。在打款中添加银行账户即可收款。",
       "done": "一切就绪。",
       "refreshErrorTitle": "暂时无法查看。",
       "refreshErrorBody": "我们会通知你。",

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { buildCsp } from "./lib/csp";
 import { PREVIEW_KEY_HEADER } from "./lib/previewArtifact";
+import { PLAN_PREVIEW_KEY_HEADER, PLAN_PREVIEW_PATHNAME } from "./lib/planPreviewArtifact";
 import { SHARE_TOKEN_HEADER, shareTokenFromPath } from "./lib/shareLinks";
 import { siteRedirectFor } from "./lib/siteRedirects";
 import { previewStreamVideoHosts, requestStreamVideoHosts } from "./lib/siteVideo";
@@ -29,12 +30,14 @@ function isLocalMode(): boolean {
  */
 /** `/preview` and everything under it (shared links) are private previews. */
 export function isPrivatePreviewPath(pathname: string): boolean {
-  return pathname === "/preview" || pathname.startsWith("/preview/");
+  // #4453 milestone 10 — the plan preview is private too (noindex, no-store, no-referrer).
+  return pathname === "/preview" || pathname.startsWith("/preview/") || pathname === PLAN_PREVIEW_PATHNAME;
 }
 
 /** #2830 — a preview's own asset: the address carries the key. */
 export function isPreviewKeyedAsset(pathname: string, search: URLSearchParams): boolean {
-  return search.has("k") && /^\/(media|om|map|fonts)\//.test(pathname);
+  // #4453 M11 — a share link's assets carry its token (`s`) instead; private all the same.
+  return (search.has("k") || search.has("s")) && /^\/(media|om|map|fonts)\//.test(pathname);
 }
 
 export async function proxy(request: NextRequest) {
@@ -61,7 +64,7 @@ export async function proxy(request: NextRequest) {
     localMode: isLocalMode(),
     // #2829 W9f — a Business Vercel preview deployment names itself (checked
     // against the one allowed pattern in frameAncestorsFor).
-    frameAncestor: request.nextUrl.pathname === "/preview"
+    frameAncestor: request.nextUrl.pathname === "/preview" || request.nextUrl.pathname === PLAN_PREVIEW_PATHNAME
       ? request.nextUrl.searchParams.get("fa")
       : null,
   });
@@ -72,6 +75,11 @@ export async function proxy(request: NextRequest) {
   // so the layout needs the preview key; it is shape-checked again there. A
   // visitor-supplied copy of this header is always dropped first.
   requestHeaders.delete(PREVIEW_KEY_HEADER);
+  requestHeaders.delete(PLAN_PREVIEW_KEY_HEADER);
+  if (request.nextUrl.pathname === PLAN_PREVIEW_PATHNAME) {
+    const key = request.nextUrl.searchParams.get("k");
+    if (key && key.length <= 256) requestHeaders.set(PLAN_PREVIEW_KEY_HEADER, key);
+  }
   if (request.nextUrl.pathname === "/preview") {
     const key = request.nextUrl.searchParams.get("k");
     if (key && key.length <= 256) requestHeaders.set(PREVIEW_KEY_HEADER, key);

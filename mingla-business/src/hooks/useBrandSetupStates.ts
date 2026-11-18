@@ -18,6 +18,10 @@ import { brandSetupKey } from "./useBrandSetupChecklist";
  * complete reads as unfinished in the switcher, free-only included. Only a
  * true draft (server `is_draft`) can be discarded; the one-draft rule reads
  * `draft` alone.
+ * #4389 P7 (Seth 2026-11-18) — and only `draft` is labelled "Draft" in the
+ * switcher; `free_only` and `incomplete` rows show their tag or count alone.
+ * `free_only` never appears for a brand that can take money: the server
+ * derives `free_only_at` as NULL once it can collect (P8).
  */
 export type BrandSetupRowState =
   | { kind: "draft"; doneCount: number }

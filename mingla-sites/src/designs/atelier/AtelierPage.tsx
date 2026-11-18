@@ -1,4 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- media is already sanitized, responsive, immutable, and integrity-checked by the controlled route. */
+import { OfferingDetailTemplate } from "../shared/blocks/Detail";
+import type { OfferingDetailView } from "../../lib/offeringDetail";
 import { SiteAnchor, SiteRouteLink as Link } from "../../components/PreviewLinks";
 import { Fragment } from "react";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
@@ -42,7 +44,7 @@ import { isLiveOfferingGrid } from "../../contracts/generated/blocks.ts";
 import { DestinationGrid, OfferingHistory, StoryGrid, TestimonialWall } from "../../components/v2/neutral/CollectionBlocks";
 import { CollectionEntryView } from "../../components/v2/neutral/CollectionTemplates";
 import { ContactFormBlock, NewsletterBlock } from "../../components/v2/neutral/FormBlocks";
-import { ContactDetailsNeutral, FeatureCardsNeutral, PageHeaderNeutral } from "../../components/v2/neutral/BasicBlocks";
+import { ContactDetailsNeutral, FactsTableNeutral, FeatureCardsNeutral, PageHeaderNeutral, PageLinksNeutral } from "../../components/v2/neutral/BasicBlocks";
 import type { FormsContext } from "../../lib/siteForms";
 import type { CollectionEntry } from "../../lib/siteCollections";
 import { siteHasVenueFacts } from "../../lib/venueFacts";
@@ -452,6 +454,8 @@ function NeutralBlock({ block, live, site }: AtelierBlockProps) {
     case "page_header": return <PageHeaderNeutral block={record} />;
     case "feature_cards": return <FeatureCardsNeutral block={record} />;
     case "contact_details": return <ContactDetailsNeutral block={record} />;
+    case "page_links": return <PageLinksNeutral block={record} />;
+    case "facts_table": return <FactsTableNeutral block={record} />;
     default: return null;
   }
 }
@@ -468,6 +472,10 @@ export const ATELIER_BLOCK_VARIANTS: BlockVariantMap<AtelierBlockProps> = {
   destination_grid: { neutral: NeutralBlock }, story_grid: { neutral: NeutralBlock }, offering_history: { neutral: NeutralBlock },
   contact_form: { neutral: NeutralBlock }, newsletter_signup: { neutral: NeutralBlock },
   page_header: { neutral: NeutralBlock }, feature_cards: { neutral: NeutralBlock }, contact_details: { neutral: NeutralBlock },
+  // #4453 milestone 5 — atelier (frozen) draws no live booking block: its layout list is empty, so none can be published on it.
+  availability: {}, ticket_tiers: {}, process_steps: {},
+  // #4453 milestone 7b — the page-set blocks, in atelier's neutral cards and facts list (its stylesheet already styles both).
+  page_links: { neutral: NeutralBlock }, facts_table: { neutral: NeutralBlock },
 };
 
 function renderBlock(block: RestaurantBlock, props: Omit<AtelierBlockProps, "block">): React.ReactNode {
@@ -612,6 +620,7 @@ export function AtelierPage({
   live,
   forms,
   entry,
+  detail,
   saveData,
 }: {
   artifact: RestaurantArtifact;
@@ -622,6 +631,8 @@ export function AtelierPage({
   forms?: FormsContext;
   /** #2829 W5 — a destination or story detail page. */
   entry?: CollectionEntry;
+  /** #4453 milestone 9 — an offering detail page (the shared detail template, in Atelier's tokens). */
+  detail?: OfferingDetailView;
   /** #2829 W6 — the request said `Save-Data: on` (hero videos show their poster). */
   saveData?: boolean;
 }) {
@@ -789,5 +800,5 @@ export function AtelierPage({
   // #2830 — a venue's strip only: a trips / events brand gets no Visit,
   // Hours and Contact placeholders over its hero.
   const factRail = !siteHasVenueFacts(artifact) ? undefined : <aside className="fact-rail" aria-label="Restaurant facts"><dl><div><dt>Visit</dt><dd>{address || "See restaurant details"}</dd></div><div><dt>Hours</dt><dd>{hours ? `${text(hours.day)} ${text(hours.value)}` : "See current opening hours"}</dd></div><div><dt>Contact</dt><dd>{contactLink && isSafeHref(contactLink.href) ? <SafeLink href={contactLink.href} context={context} ctaKind="contact">{contactLink.label}</SafeLink> : "Contact the restaurant"}</dd></div></dl></aside>;
-  return <CartScope siteId={artifact.site_id}><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand" aria-label={brandWordmark ? `${artifact.brand.display_name} home` : undefined}>{brandWordmark ?? headerWordmark(artifact) ?? artifact.brand.display_name}</Link><SiteNav links={navItems.map((item) => ({ label: String(item.label ?? ""), href: item.href, current: item.href === currentHref, ...(item.children ? { children: item.children.map((child) => ({ label: child.label, href: child.href, current: child.href === currentHref })) } : {}) }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.path === current.path} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div>{openPill}<h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{entry && v2Artifact ? <CollectionEntryView entry={entry} artifact={v2Artifact} live={live} /> : groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}<div className="reel-grid-films">{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={v2Artifact ? playableVideoUrl(v2Artifact, block.video_url) : null} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}</div>{reelGridCta(group.reels[0]!.block)}</section> : <Fragment key={`${group.block.type}-${group.index}`}>{renderBlock(group.block, { context, live, pageHref: currentHref, primaryHeading: group.index === primaryHeroIndex, facts: isHome && group.index === primaryHeroIndex ? factRail : undefined, pill: group.index === primaryHeroIndex ? openPill : undefined, site: { artifact: v2Artifact, forms, pagePath: current.path, blockIndex: group.index, saveData } })}</Fragment>)}</div></main><footer className="footer">{footerColumns}<div className="footer-bar"><p>{artifact.footer.legal_text}</p><a href={MINGLA_CREDIT_HREF} target="_blank" rel="noopener noreferrer" className="footer-credit">Powered by Mingla<span className="sr-only"> (opens in a new tab)</span></a></div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
+  return <CartScope siteId={artifact.site_id}><SiteRuntimeClient context={context} /><RevealOnScroll /><HeaderScrollState /><a className="skip" href="#main">Skip to content</a><header className="site-header"><Link href="/" className="brand" aria-label={brandWordmark ? `${artifact.brand.display_name} home` : undefined}>{brandWordmark ?? headerWordmark(artifact) ?? artifact.brand.display_name}</Link><SiteNav links={navItems.map((item) => ({ label: String(item.label ?? ""), href: item.href, current: item.href === currentHref, ...(item.children ? { children: item.children.map((child) => ({ label: child.label, href: child.href, current: child.href === currentHref })) } : {}) }))} />{orderablePage ? <HeaderCart menuHref={hrefForPage(orderablePage as ArtifactPage)} onMenuPage={orderablePage.path === current.path} /> : null}{headerAction ? <SafeLink href={headerAction.href} context={context} ctaKind={headerAction.kind} className="header-action accent">{headerAction.label}</SafeLink> : null}</header><main id="main" className={contentStartsUnderHeader ? "header-offset" : undefined}>{primaryHeroIndex < 0 && !detail ? <header className="page-header" style={isSafeHref(pageBackdrop) ? { backgroundImage: `url(${JSON.stringify(pageBackdrop).slice(1, -1)})` } : undefined}><div>{openPill}<h1>{current.title}</h1><nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><span aria-hidden="true">/</span><span aria-current="page">{current.title}</span></nav></div></header> : null}<div className="page-content">{detail && v2Artifact ? <div className="mg-scope mg-page mg-page--atelier"><OfferingDetailTemplate artifact={v2Artifact} detail={detail} analytics={context} designKey="atelier" /></div> : entry && v2Artifact ? <CollectionEntryView entry={entry} artifact={v2Artifact} live={live} /> : groupReels(current.blocks).map((group, groupIndex) => group.kind === "reels" ? <section className="reel-grid" key={`reels-${groupIndex}`}>{reelGridHeading(group.reels[0]!.block)}<div className="reel-grid-films">{group.reels.map(({ block, index }) => <figure className="reel-card" key={`${block.type}-${index}`}><ReelVideo src={v2Artifact ? playableVideoUrl(v2Artifact, block.video_url) : null} poster={text(block.poster_url)} label={text(block.heading, "Film")} /><figcaption>{text(block.heading)}</figcaption></figure>)}</div>{reelGridCta(group.reels[0]!.block)}</section> : <Fragment key={`${group.block.type}-${group.index}`}>{renderBlock(group.block, { context, live, pageHref: currentHref, primaryHeading: group.index === primaryHeroIndex, facts: isHome && group.index === primaryHeroIndex ? factRail : undefined, pill: group.index === primaryHeroIndex ? openPill : undefined, site: { artifact: v2Artifact, forms, pagePath: current.path, blockIndex: group.index, saveData } })}</Fragment>)}</div></main><footer className="footer">{footerColumns}<div className="footer-bar"><p>{artifact.footer.legal_text}</p><a href={MINGLA_CREDIT_HREF} target="_blank" rel="noopener noreferrer" className="footer-credit">Powered by Mingla<span className="sr-only"> (opens in a new tab)</span></a></div><ConsentControl siteId={artifact.site_id} brandId={artifact.brand_id} publicationId={artifact.publication_id} /></footer></CartScope>;
 }

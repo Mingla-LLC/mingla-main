@@ -1,3 +1,4 @@
+import { parseSignedDesignPass } from "../lib/designPassInputs";
 import { createStreamUploadIntent, refreshStreamVideo, streamVideoCapability } from "../lib/streamVideo";
 import type { Endpoint, PayloadRequest } from "payload";
 import { ARI_DESIGNER_ACTIONS, ARI_REFUSAL_CODES, AriRefusal, assertFirstPublishChecked, loadDraftState, parseAriEvidence, runAriDesignerAction } from "../lib/ariSiteActions";
@@ -67,6 +68,9 @@ import {
 import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
+import { actionScopeFromCore, coreSendsBookingIdentity, OutboundActionLinkError } from "../lib/bookingLock";
+import { BOOKING_LINK_UNVERIFIED_MESSAGE, OUTBOUND_ACTION_LINK_MESSAGE, UNREVIEWED_SECTIONS_MESSAGE } from "../contracts/generated/publishChecks.ts";
+import { UnreviewedSectionsError } from "../lib/reviewStamp";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return sitesJsonResponse(data, status, headers);
@@ -125,7 +129,14 @@ function safeFailure(error: unknown, returnUrl?: string) {
       "IDEMPOTENCY_CONFLICT",
       // #2829 — a named refusal, never a truncated site.
       "PAGE_LIMIT_EXCEEDED",
+      // #4453 PR 2 — a button points outside Mingla (the publish is blocked).
+      "OUTBOUND_ACTION_LINK",
+      "BOOKING_LINK_UNVERIFIED",
+      // #4453 — Draft sections must be reviewed first (the publish is blocked).
+      "UNREVIEWED_SECTIONS",
       "PATH_COLLISION",
+      // #4453 milestone 9 — a page sits at a live offering's detail address.
+      "ROUTE_COLLISION",
       // #2829 W9b — a first publish waits until the design checks have run.
       "DESIGN_CHECKS_REQUIRED",
       // #2829 W6 — stream video is off (Bunny not configured): use file video.
@@ -159,12 +170,36 @@ function safeFailure(error: unknown, returnUrl?: string) {
               ? "This is still used in your draft website. Take it off the page or entry that uses it, then remove it."
               : code === "MEDIA_IN_USE_LIVE"
                 ? "Your live website (or a version you can restore) still shows this. Publish a version without it, then remove it."
-                : "Website tools are temporarily unavailable.",
+                // #4453 PR 2 — the booking lock (D5).
+                : code === "OUTBOUND_ACTION_LINK"
+                  ? OUTBOUND_ACTION_LINK_MESSAGE
+                  : code === "BOOKING_LINK_UNVERIFIED"
+                    ? BOOKING_LINK_UNVERIFIED_MESSAGE
+                  : code === "UNREVIEWED_SECTIONS"
+                    ? UNREVIEWED_SECTIONS_MESSAGE
+                  : "Website tools are temporarily unavailable.",
         retryable: [
           "MEDIA_PROCESSING",
           "SERVICE_TEMPORARILY_UNAVAILABLE",
+          "BOOKING_LINK_UNVERIFIED",
         ].includes(code),
         ...(returnUrl ? { return_url: returnUrl } : {}),
+        // #4453 PR 2 — which buttons to change (page, block, field; never the link itself).
+        ...(error instanceof OutboundActionLinkError
+          ? {
+              links: error.links.slice(0, 20).map((link) => ({
+                page_path: link.pagePath,
+                block_index: link.blockIndex,
+                block_type: link.blockType,
+                field: link.field,
+                problem: link.problem,
+              })),
+            }
+          : {}),
+        // #4453 — which pages hold Draft sections (address, title, count).
+        ...(error instanceof UnreviewedSectionsError
+          ? { pages: error.pages.slice(0, 50).map((page) => ({ path: page.path, title: page.title, count: page.count })) }
+          : {}),
       },
     },
     code === "FORBIDDEN" || code === "SESSION_EXPIRED"
@@ -610,6 +645,11 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 sourceRevisionId: revisionId,
                 sourceDigest,
                 generatedAt,
+                // #4453 PR 2 — Core's signed brand; every button must resolve to it.
+                actionScope: actionScopeFromCore(body.action_scope),
+                enforceActionLinks: true,
+                enforceReview: true,
+                coreSendsIdentity: coreSendsBookingIdentity(body),
               });
           await req.payload.update({
             collection: "publication-jobs",
@@ -680,6 +720,10 @@ async function publish(req: PayloadRequest): Promise<Response> {
         "PAGE_LIMIT_EXCEEDED",
         "PATH_COLLISION",
         "DESIGN_CHECKS_REQUIRED",
+        "OUTBOUND_ACTION_LINK",
+        "BOOKING_LINK_UNVERIFIED",
+        "UNREVIEWED_SECTIONS",
+        "ROUTE_COLLISION",
       ].includes(error.message);
     let failureRecorded = false;
     if (definitiveFailure && callbackContext) {
@@ -695,6 +739,10 @@ async function publish(req: PayloadRequest): Promise<Response> {
             ...(error instanceof Error &&
               ["PATH_COLLISION", "PAGE_LIMIT_EXCEEDED", "DESIGN_CHECKS_REQUIRED"].includes(error.message)
               ? { failure_code: error.message }
+              // #4453 M9 — Core and the Business app know this refusal as the
+              // two-things-at-one-address one (it extends it); same owner copy.
+              : error instanceof Error && error.message === "ROUTE_COLLISION"
+              ? { failure_code: "PATH_COLLISION" }
               : {}),
           },
         );
@@ -743,6 +791,9 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 "PAGE_LIMIT_EXCEEDED",
                 "PATH_COLLISION",
                 "DESIGN_CHECKS_REQUIRED",
+                "OUTBOUND_ACTION_LINK",
+                "BOOKING_LINK_UNVERIFIED",
+                "UNREVIEWED_SECTIONS",
               ].includes(error.message)
                 ? error.message
                 : "SERVICE_TEMPORARILY_UNAVAILABLE",
@@ -1233,10 +1284,7 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
       });
       const docs = await findAllTenantPages(scopedPreview, tenant.id);
       const paths = tenantPagePaths(docs);
-      return docs
-        .filter((page) => page.enabled === true || isHomePage(page))
-        .map((page) => ({ path: paths.get(String(page.id)) ?? "", title: String(page.title ?? "") }))
-        .sort((left, right) => left.path.localeCompare(right.path));
+      return previewGrantPages(docs as AnyDocLike[], paths);
     })();
     await callCore(
       `/internal/v1/sites/${envelope.site_id}/preview-results`,
@@ -1372,6 +1420,14 @@ async function ari(req: PayloadRequest): Promise<Response> {
       "args",
       // #2829 W9b — the Mingla facts Core signed in (offerings, brand words).
       "evidence",
+      // #4453 — SITES_PROOF_PART on: the sections Ari writes start Draft.
+      "review_drafts",
+      // #4453 milestone 5 — SITES_BOOKING_BLOCKS on (signed in by Core).
+      "booking_blocks",
+      // #4453 milestone 7 — SITES_ARI_DESIGN_PASS on: the plan, facts and live looks (signed in by Core).
+      "design_pass",
+      // #4453 milestone 11 — SITES_ARI_ADD_PAGE on for the brand (signed in by Core).
+      "add_page",
     ]);
     if (Object.keys(body).some((key) => !allowedOuter.has(key))) {
       throw new Error("VALIDATION_FAILED");
@@ -1401,6 +1457,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
       userId,
       rank,
     });
+    if (body.review_drafts === true) scoped.context = { ...scoped.context, minglaReviewSource: "ari" };
+    if (body.booking_blocks === true) scoped.context = { ...scoped.context, minglaBookingBlocks: true };
     const tenantWhere = { tenant: { equals: tenant.id } };
 
     if (ARI_DESIGNER_ACTIONS.has(action)) {
@@ -1414,6 +1472,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
           userId,
           rank,
           evidence: parseAriEvidence(body.evidence, brandId),
+          designPass: parseSignedDesignPass(body.design_pass),
+          addPage: body.add_page === true,
         });
         return json({ ok: true, data });
       } catch (error) {
@@ -1728,6 +1788,8 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       sourceRevisionId: grant.source_revision,
       sourceDigest: grant.source_digest,
       generatedAt: new Date().toISOString(),
+      // #4453 milestone 11 — the owner's preview keeps Draft-by-Ari pages (disabled, marked); share links drop them (N10).
+      includeAriDrafts: true,
     });
     // #2829 W10 — this is now the site's newest preview (private share links show it).
     await reportPreviewBuilt(grant.site_id, built.artifactKey);
@@ -1761,6 +1823,28 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
   } catch (error) {
     return safeFailure(error);
   }
+}
+
+/**
+ * #2829 W2 — the pages the owner may pick in the editor preview ("" is home).
+ * #4453 m11 rework (spec v2.1 §3.3) — a Draft page from Ari is listed too,
+ * marked `draft_by_ari` so the editor's page menu tags it "Draft". Only this
+ * owner-only grant carries the mark; publish, export and share links still
+ * leave the page out (the builder and the share view).
+ */
+type AnyDocLike = { id?: unknown; enabled?: unknown; ari_draft?: unknown; title?: unknown; slug?: unknown; parent?: unknown };
+export function previewGrantPages(
+  docs: readonly AnyDocLike[],
+  paths: ReadonlyMap<string, string>,
+): Array<{ path: string; title: string; draft_by_ari?: true }> {
+  return docs
+    .filter((page) => page.enabled === true || isHomePage(page as never) || page.ari_draft === true)
+    .map((page) => ({
+      path: paths.get(String(page.id)) ?? "",
+      title: String(page.title ?? ""),
+      ...(page.ari_draft === true ? { draft_by_ari: true as const } : {}),
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
 }
 
 /**

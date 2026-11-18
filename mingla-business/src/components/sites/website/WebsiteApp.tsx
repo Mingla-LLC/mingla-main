@@ -58,6 +58,7 @@ import { WebsiteIcon } from "./WebsiteIcon";
 import { Banner, Chip, LoadingPane, WButton, Card, CardTitle, Body, ui } from "./ui";
 import { SiteStatusChip } from "./StatusChip";
 import { SitePreviewPanel, type PreviewGrantState } from "./preview/SitePreviewPanel";
+import { FullScreenPreviewBar } from "./preview/FullScreenPreviewBar";
 import { NoticeBanner } from "./NoticeBanner";
 import { LockBanner } from "./LockBanner";
 // #2829 W11 — every scroll area through the keyboard-aware wrapper (ORCH-0892).
@@ -76,6 +77,10 @@ import { AddressesSection } from "./sections/AddressesSection";
 import { SettingsSection } from "./sections/SettingsSection";
 import { WebsiteSetupScreen } from "../setup/WebsiteSetupScreen";
 import { isSetupReturn } from "../../../utils/brandEditReturn";
+
+// #4453 — Ari's page plan sheet (web) loads through this chunk; see
+// components/ari/LazySitePagePlanSheet.web.tsx.
+export { SitePagePlanSheet } from "../../ari/SitePagePlanSheet";
 
 const HEARTBEAT_MS = 120_000;
 const STUDIO_RESULTS = new Set<StudioReturnResult>(["exchange_expired", "session_expired", "preview_expired", "preview_publish"]);
@@ -509,12 +514,9 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
         ) : null}
         {stickyBar && route.kind !== "editor" ? <StickyBarView bar={stickyBar} phone /> : null}
         <Modal visible={previewSheet} animationType="slide" onRequestClose={() => setPreviewSheet(false)} presentationStyle="fullScreen">
-          <SafeScreen style={{ backgroundColor: color.canvas }}>
-            <View style={styles.phoneTopbar}>
-              <BackButton label="Close preview" icon="close" onPress={() => setPreviewSheet(false)} />
-              <Text style={styles.topTitle} role="heading" aria-level={1}>Draft preview</Text>
-            </View>
-            <ScrollView contentContainerStyle={styles.sheetBody}>
+          <SafeScreen style={{ backgroundColor: color.ink }}>
+            <FullScreenPreviewBar brandName={brandName} onClose={() => setPreviewSheet(false)} canShare={controller.capabilities.canPublish} shareReady={grantState.kind === "ready"} />
+            <View style={styles.fullBody}>
               <SitePreviewPanel
                 grant={grantState}
                 preference={preference}
@@ -523,9 +525,9 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
                 unsaved={section === "design" && designDirty}
                 tokenDeclarations={section === "design" ? tokenDeclarations : null}
                 onOpenFullScreen={openFullScreenPreview}
-                variant="sheet"
+                variant="full"
               />
-            </ScrollView>
+            </View>
           </SafeScreen>
         </Modal>
         {dialogs}
@@ -722,7 +724,7 @@ function PhoneStatusCard(): React.ReactElement {
 }
 
 function FullScreenPreview({ grant, search }: { grant: PreviewGrantState; search: Record<string, string | undefined> }): React.ReactElement {
-  const { previewPreference, setPreviewPreference, brandId } = useWebsite();
+  const { previewPreference, setPreviewPreference, brandId, brandName, controller } = useWebsite();
   const router = useRouter();
   const [applied, setApplied] = useState(false);
   useEffect(() => {
@@ -747,11 +749,8 @@ function FullScreenPreview({ grant, search }: { grant: PreviewGrantState; search
     router.replace(`/brand/${brandId}/website` as never);
   };
   return (
-    <SafeScreen style={{ backgroundColor: color.canvas }}>
-      <View style={styles.phoneTopbar}>
-        <BackButton label="Close full-screen preview" icon="close" onPress={close} />
-        <Text style={styles.topTitle} role="heading" aria-level={1}>Draft preview</Text>
-      </View>
+    <SafeScreen style={{ backgroundColor: color.ink }}>
+      <FullScreenPreviewBar brandName={brandName} onClose={close} canShare={controller.capabilities.canPublish} shareReady={grant.kind === "ready"} />
       <View style={styles.fullBody}>
         <SitePreviewPanel
           grant={grant}
@@ -814,7 +813,6 @@ const styles = StyleSheet.create({
   phoneRowLabel: { flex: 1, fontSize: 15, color: ui.t1 },
   phoneRowMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
   previewPill: { position: "absolute", right: 16, bottom: 32 },
-  sheetBody: { padding: 16 },
   fullBody: { flex: 1, padding: 16 },
   center: { alignItems: "center", paddingVertical: 40, paddingHorizontal: 24, gap: 10 },
   centerTitle: { textAlign: "center" },

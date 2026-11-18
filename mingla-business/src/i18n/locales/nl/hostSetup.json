@@ -54,6 +54,7 @@
       "checkingBody": "We controleren ze. Dit duurt meestal een paar minuten. Je kunt verdergaan.",
       "actionNeeded": "Er is nog één ding nodig voordat je betalingen kunt ontvangen:",
       "ngDone": "Bank gekoppeld. Je kunt verkopen.",
+      "ngReadyNoBank": "Je kunt verkopen. Voeg een bank toe bij Uitbetalingen om betaald te worden.",
       "done": "Alles is klaar.",
       "refreshErrorTitle": "Kan nu niet controleren.",
       "refreshErrorBody": "We houden je op de hoogte.",

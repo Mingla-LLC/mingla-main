@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4389-SWITCHER-UNFINISHED-ROW | issue #4389 | A brand whose setup checklist is not complete shows in the brand switcher as one row: line 1 the name only, line 2 the unfinished label with either "Free events only" (no count) or "{n} of 4 done", and a Continue pill INSIDE the row that opens /brand/{id}/setup; no separate Continue button under the row and no pill next to the name.
+// MINGLA-INVARIANT: I-4389-SWITCHER-UNFINISHED-ROW | issue #4389 | A brand whose setup checklist is not complete shows in the brand switcher as one row: line 1 the name only, line 2 either "Free events only" (no count) or "{n} of 4 done", with the accent prefix run ONLY when the server reports is_draft (#4389 P7), and a Continue pill INSIDE the row that opens /brand/{id}/setup; no separate Continue button under the row and no pill next to the name.
 /**
  * Seth (2026-11-11): "the continue should be in the brand and it should be
  * clear it is a draft", then "the draft is placed awkwardly" (no pill by the
@@ -9,6 +9,9 @@
  * #4389 P3a (tester): "Draft · 3 of 4 done · Free events only" contradicted
  * itself; a free-only row now reads "Draft · Free events only". Restoring the
  * count on free-only rows fails R1.
+ * #4389 P7 (Seth 2026-11-18): "Draft" leads line 2 only for a true draft.
+ * Restoring the unconditional "Draft" run fails R1 (free-only and incomplete
+ * rows would read "Draft · …").
  *
  *   cd mingla-business && npx jest \
  *     src/components/brand/__tests__/issue_4389_switcher_row_layout.implementor.test.tsx
@@ -27,6 +30,7 @@ const mockBrands = [
   { id: "b-draft", displayName: "Tester US Brand", accountId: USER_ID, role: "owner" },
   { id: "b-free", displayName: "Free Brand", accountId: USER_ID, role: "owner" },
   { id: "b-done", displayName: "Done Brand", accountId: USER_ID, role: "owner" },
+  { id: "b-inc", displayName: "Published Brand", accountId: USER_ID, role: "owner" },
 ];
 
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a) }) }));
@@ -95,18 +99,24 @@ describe("#4389 N3 — unfinished brand row", () => {
       "b-draft": { kind: "draft", doneCount: 1 },
       "b-free": { kind: "free_only", doneCount: 2 },
       "b-done": { kind: "none" },
+      "b-inc": { kind: "incomplete", doneCount: 3 },
     };
   });
 
-  test("R1: line 1 is the name; line 2 leads with Draft then progress; free-only adds its tag", () => {
+  test("R1: line 1 is the name; Draft leads line 2 only for a true draft (P7); free-only shows its tag", () => {
     const tree = render();
     const draftLine = hosts(tree, "brand-switcher-setup-line-b-draft");
     expect(draftLine).toHaveLength(1);
     expect(textOf(draftLine[0]!)).toBe("Draft · 1 of 4 done");
-    expect(textOf(hosts(tree, "brand-switcher-setup-line-b-free")[0]!)).toBe("Draft · Free events only");
+    // #4389 P7 — not a draft: no "Draft" anywhere on the line.
+    expect(textOf(hosts(tree, "brand-switcher-setup-line-b-free")[0]!)).toBe("Free events only");
+    expect(textOf(hosts(tree, "brand-switcher-setup-line-b-inc")[0]!)).toBe("3 of 4 done");
+    expect(hosts(tree, "brand-switcher-draft-b-draft")).toHaveLength(1);
+    expect(hosts(tree, "brand-switcher-draft-b-free")).toHaveLength(0);
+    expect(hosts(tree, "brand-switcher-draft-b-inc")).toHaveLength(0);
     // "Draft" is its own accent run at the start of line 2, not a pill by the name.
     const draftWord = (draftLine[0]!.children[0] as Node);
-    expect(textOf(draftWord)).toBe("Draft");
+    expect(textOf(draftWord)).toBe("Draft · ");
     const nameText = tree.root.findAll((n) => typeof n.type === "string" && textOf(n) === "Tester US Brand" && n.children.length === 1);
     expect(nameText.length).toBeGreaterThan(0);
     expect(hosts(tree, "brand-switcher-setup-line-b-done")).toHaveLength(0);

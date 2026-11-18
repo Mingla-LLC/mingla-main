@@ -323,6 +323,20 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
 // #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; the filtered #1931 and #2117 lanes skip it by exact filename; re-sealed.
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4453 6a: added the 6a design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
+// #4453 milestone 3 + 6a merge: both milestones' migrations and pg17 suites (proof part implementor + tester) registered; re-sealed.
+// #4453 6b: added the 6b design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
+// #4453 6c: added the 6c design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
+// #4453 milestone 5 (after the 6c merge): booking-reads (implementor + tester) and stay-feed-kind migrations and pg17 suites registered; re-sealed.
+// #4453 milestone 5 (after the 6c merge): booking-reads (implementor + tester) and stay-feed-kind migrations and pg17 suites registered; re-sealed.
+// #4453 milestone 7: ari-design-pass migration and its pg17 suite registered; re-sealed.
+// #4453 milestone 7 tester: adversarial design-pass pg17 suite registered; re-sealed.
+// #4453 milestone 9: offering-detail migration and pg17 suites (implementor + tester) registered; re-sealed.
+// #4453 milestone 7 merged with milestone 9 (0b096f08f0): union of both registrations; re-sealed.
+// #4453 milestone 10: plan-preview migration and pg17 suite registered; re-sealed.
+// #4453 milestone 11: ari-add-page flag migration and its pg17 suite registered; re-sealed after merging milestone 10.
+// #4453 milestone 11 tester: the ari_add_page tester pg17 suite registered; re-sealed.
+// #4453 final pass: renamed design_keys, website_proof_part and design_keys_6a to 20280807004453, 20280807014453 and 20280807024453 so they sort after main's 20280725004452; re-sealed.
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
@@ -332,7 +346,15 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
 // #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459 to sort after main's 20280803004238 and #4473's 20280804004473) after 20280803004238 in the #1857, #1931 and #2117 lanes and the #1931 exact-filename skip list, kept its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
-export const BOOTSTRAP_SHA256 = "638a67f780cd533b22ffd7ba747232a71c4ab571a572f4ad827a10ea2f7ac6af";
+// #4453 final rework: skipped the booking-reads migration (20280807044453) on the filtered #1931 and #2117 template replays by exact filename (it calls #3313 helpers and reads #3827 ticket_type_links, which those replays skip; #2492 closure); re-sealed.
+// #4453 final rework 2: the design_keys migration (20280807004453) skipped on the filtered #1931 template replay by exact filename (its CHECK reads brand_site_plans.design_key, added only by the skipped #2830 migrations); re-sealed.
+// #4453 merge of main after #4481: renumbered the eleven #4453 migrations to 20280807004453..20280807104453 so they sort after #4473's 20280806004473 (production head), listed after main's rows in the #1857, #1931 and #2117 lanes, and kept main's plus the #4453 filtered-replay skips; re-sealed.
+// #4389 implementor (764896f3c0): listed migration 20280808004389 (setup polish: brand terms record, hold rail, derived free-only) after 20280806004473 in the #1857, #1931 and #2117 lanes and registered its implementor pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed. Rework 2 changes the migration's contents only (no new files); seal unchanged.
+// #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
+// #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (it re-emits brand_readiness_internal, which needs brand_readiness_catalog from the skipped 20280307003355); re-sealed.
+// #4389 merge of main after #4453: kept main's eleven #4453 rows and skip lines, listed 20280808004389 after them and kept its #1931 skip line; re-sealed.
+// #4238 merge of main after #4453 and #4389: kept main's #4453 and #4389 rows, listed 20281118004238 and 20281118014238 after them; re-sealed.
+export const BOOTSTRAP_SHA256 = "fee54dfc83eca3ef13ae07c0ec46101bd541d230c24cea378d5f9321ab83b73a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

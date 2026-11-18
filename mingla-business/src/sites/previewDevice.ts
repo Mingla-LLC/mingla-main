@@ -67,6 +67,17 @@ export function previewScale(input: { paneWidth: number; maxHeight: number; widt
   return Math.min(input.paneWidth / input.width, input.maxHeight / input.height, 1);
 }
 
+/**
+ * #4453 M10 (spec v2.1 §2.1.5) — a frame that must be at least `minHeight` px
+ * tall on screen: when the width-limited scale would draw the device shorter,
+ * the device's CSS height is extended (more of the page shows) so the scaled
+ * render fills `minHeight`. Without `minHeight`, the device height is unchanged.
+ */
+export function previewViewportHeight(input: { height: number; scale: number; minHeight?: number }): number {
+  if (!input.minHeight || input.scale <= 0) return input.height;
+  return Math.max(input.height, Math.ceil(input.minHeight / input.scale));
+}
+
 export function withDevice(preference: PreviewDevicePreference, device: PreviewDevice): PreviewDevicePreference {
   return { ...preference, device };
 }

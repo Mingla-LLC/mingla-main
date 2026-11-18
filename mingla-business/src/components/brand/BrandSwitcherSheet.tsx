@@ -148,17 +148,21 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                       ? formatExactFollowers(followerTotal)
                       : null;
                   const setupState = setupStates.byId[brand.id] ?? { kind: "none" };
-                  // #4389 N3 — any unfinished brand: line 2 starts with
-                  // "Draft" (accent), then "Free events only" when the host
-                  // chose it (no count: skipping payments is a choice, so
-                  // "3 of 4 done" beside it contradicted it), else
-                  // "{n} of 4 done". Continue sits inside the row.
+                  // #4389 N3 — any unfinished brand: line 2 reads "Free
+                  // events only" when the host chose it (no count: skipping
+                  // payments is a choice, so "3 of 4 done" beside it
+                  // contradicted it), else "{n} of 4 done". Continue sits
+                  // inside the row.
+                  // #4389 P7 — "Draft · " (accent) leads the line ONLY for a
+                  // true draft (server `is_draft`), never for a published or
+                  // free-only brand that is still finishing setup.
                   const setupRest =
                     setupState.kind === "none"
                       ? null
                       : setupState.kind === "free_only"
-                        ? ` · ${BRAND_SWITCHER_COPY.n3.freeOnlyTag}`
-                        : ` · ${BRAND_SWITCHER_COPY.n3.progress(setupState.doneCount)}`;
+                        ? BRAND_SWITCHER_COPY.n3.freeOnlyTag
+                        : BRAND_SWITCHER_COPY.n3.progress(setupState.doneCount);
+                  const isDraftRow = setupState.kind === "draft";
                   const canDiscard =
                     setupState.kind === "draft" && canDeleteBrand(brand, user?.id ?? null);
                   // #4420 round-3 item 2 — the current brand is shown by the
@@ -211,7 +215,14 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                               numberOfLines={1}
                               testID={`brand-switcher-setup-line-${brand.id}`}
                             >
-                              <Text style={styles.brandSubDraft}>{BRAND_SWITCHER_COPY.n3.draftLabel}</Text>
+                              {isDraftRow ? (
+                                <Text
+                                  style={styles.brandSubDraft}
+                                  testID={`brand-switcher-draft-${brand.id}`}
+                                >
+                                  {`${BRAND_SWITCHER_COPY.n3.draftLabel} · `}
+                                </Text>
+                              ) : null}
                               {setupRest}
                             </Text>
                           ) : subline !== null ? (
@@ -329,7 +340,10 @@ const styles = StyleSheet.create({
     color: color.text1,
   },
   scrollArea: { flex: 1 },
-  scrollContent: { gap: space[1], paddingHorizontal: space[5], paddingBottom: space[4] },
+  // #4389 P9 — the web TopSheet's drag band overlays the last 28px of the
+  // panel (handle area + 28); this bottom padding keeps every row above it,
+  // so a click on the last row always reaches the row.
+  scrollContent: { gap: space[1], paddingHorizontal: space[5], paddingBottom: 28 + space[2] },
   loadingState: { flex: 1, justifyContent: "center", paddingHorizontal: space[5], paddingVertical: space[7] },
   emptyText: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, color: color.text2, textAlign: "center" },
   brandRowOuter: { position: "relative" },

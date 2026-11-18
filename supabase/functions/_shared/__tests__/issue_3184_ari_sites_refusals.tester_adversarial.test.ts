@@ -438,6 +438,44 @@ const TOOL_ARGS: Record<string, Json> = {
     source_digest: DIGEST,
     arguments_digest: DIGEST,
   },
+  // #4453 milestones 7 and 11 — the design-pass and add-a-page tools.
+  get_site_design_brief: { brand_id: BRAND_ID, site_id: SITE_ID },
+  propose_site_design_pass: {
+    brand_id: BRAND_ID,
+    site_id: SITE_ID,
+    design_key: "voyage",
+    why: "Fits the trips",
+    cites: CITES,
+  },
+  propose_site_chrome: {
+    brand_id: BRAND_ID,
+    site_id: SITE_ID,
+    header_variant: "glass",
+    footer_variant: "columns",
+    sticky_booking: true,
+    header_button: true,
+    why: "Header",
+    cites: CITES,
+  },
+  propose_site_page: {
+    brand_id: BRAND_ID,
+    site_id: SITE_ID,
+    expected_site_revision: DIGEST,
+    request: "We take small groups to Bali",
+    page: { title: "Private hire", menu_label: "Private hire", slug: "private-hire" },
+    blocks: [{ type: "page_header", variant: "neutral", heading: "Private hire" }],
+    why: "The owner asked",
+    cites: CITES,
+  },
+  answer_site_page_question: {
+    brand_id: BRAND_ID,
+    site_id: SITE_ID,
+    page_path: "private-hire",
+    question_key: "capacity",
+    answer: "Up to forty guests",
+    why: "Owner answered",
+    cites: CITES,
+  },
 };
 
 async function captureToolError(

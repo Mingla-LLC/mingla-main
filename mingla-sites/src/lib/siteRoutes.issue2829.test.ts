@@ -117,3 +117,12 @@ describe("#2829 PATH_COLLISION", () => {
     })).toEqual(["/about redirects away, but a page lives there"]);
   });
 });
+
+describe("#4453 milestone 7c — the default rooms base is checked too (tester P3-3)", () => {
+  it("another kind's base of rooms collides with the DEFAULT rooms base; a moved rooms base frees it", async () => {
+    const { findPathCollisions, DEFAULT_SITE_ROUTES } = await import("../contracts/generated/routes.ts");
+    expect(findPathCollisions({ pages: [], routes: { ...DEFAULT_SITE_ROUTES, experiences: "rooms" } }).join(" ")).toContain("stays");
+    expect(findPathCollisions({ pages: [], routes: { ...DEFAULT_SITE_ROUTES, experiences: "rooms", stays: "suites" } })).toEqual([]);
+    expect(findPathCollisions({ pages: [], routes: { ...DEFAULT_SITE_ROUTES } })).toEqual([]);
+  });
+});

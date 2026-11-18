@@ -7,8 +7,10 @@ import {
   type FontFallback,
   type FontSlot,
   type FontSlotKey,
+  slotFamilies,
   type FontSlots,
   type FontStyle,
+  fontStretch,
 } from "../contracts/generated/fontSlots.ts";
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
 import { fallbackFaceFor } from "./fontMetrics";
@@ -70,20 +72,52 @@ export type ResolvedSiteFonts = {
   warnings: FontWarning[];
 };
 
-/** The cache key for one family request (family, weights, italic, subsets). */
-export function fontRequestKey(slot: Pick<FontSlot, "family" | "weights" | "italic">, subsets: readonly string[]): string {
-  return [slot.family, [...slot.weights].sort((a, b) => a - b).join(","), slot.italic ? "i" : "", [...subsets].sort().join(","), CACHE_VERSION].join("|");
+type FontRequest = Pick<FontSlot, "family" | "weights" | "italic" | "axes">;
+
+/** css2's axis order: lowercase tags alphabetically (ital, opsz, wdth, wght), then uppercase (SOFT, WONK). */
+function axisOrder(a: string, b: string): number {
+  const upper = (tag: string) => tag === tag.toUpperCase();
+  return upper(a) === upper(b) ? (a < b ? -1 : a > b ? 1 : 0) : upper(a) ? 1 : -1;
 }
 
-/** css2 URL for a family and its weights (italic adds the ital axis). */
-export function googleCssUrl(slot: Pick<FontSlot, "family" | "weights" | "italic">): string {
+/** The slot's axes in css2 order, each "min..max" (or one pinned value). */
+function axisEntries(slot: FontRequest): Array<[string, string]> {
+  return Object.entries(slot.axes ?? {})
+    .filter((entry): entry is [string, readonly [number, number]] => Array.isArray(entry[1]))
+    .map(([tag, [min, max]]): [string, string] => [tag, min === max ? String(min) : `${min}..${max}`])
+    .sort(([a], [b]) => axisOrder(a, b));
+}
+
+/**
+ * The cache key for one family request (family, weights, italic, subsets;
+ * #4453 6b: plus the axes, so a variable-axis file is never mistaken for the
+ * default instance). A request without axes keeps its old key.
+ */
+export function fontRequestKey(slot: FontRequest, subsets: readonly string[]): string {
+  const parts = [slot.family, [...slot.weights].sort((a, b) => a - b).join(","), slot.italic ? "i" : "", [...subsets].sort().join(","), CACHE_VERSION];
+  const axes = axisEntries(slot);
+  if (axes.length) parts.push(axes.map(([tag, value]) => `${tag}${value.replace("..", "-")}`).join(","));
+  return parts.join("|");
+}
+
+/**
+ * css2 URL for a family and its weights (italic adds the ital axis; #4453 6b:
+ * each design axis is added in css2's order with its range or pinned value,
+ * e.g. `ital,opsz,wght,SOFT,WONK@0,9..144,400,100,1`, so Google returns the
+ * file that carries those axes).
+ */
+export function googleCssUrl(slot: FontRequest): string {
   if (!isFontFamilyName(slot.family)) throw new Error("FONT_FAMILY_INVALID");
   const weights = [...slot.weights].sort((a, b) => a - b);
   const family = slot.family.replace(/ /g, "+");
-  const axis = slot.italic
-    ? `ital,wght@${[...weights.map((w) => `0,${w}`), ...weights.map((w) => `1,${w}`)].join(";")}`
-    : `wght@${weights.join(";")}`;
-  return `${GOOGLE_FONTS_CSS_ORIGIN}/css2?family=${family}:${axis}&display=swap`;
+  const axes = axisEntries(slot);
+  const tags = [...(slot.italic ? ["ital"] : []), ...axes.map(([tag]) => tag), "wght"].sort(axisOrder);
+  const tuple = (ital: 0 | 1, weight: number) => tags.map((tag) =>
+    tag === "ital" ? String(ital) : tag === "wght" ? String(weight) : axes.find(([name]) => name === tag)![1]).join(",");
+  const tuples = slot.italic
+    ? [...weights.map((w) => tuple(0, w)), ...weights.map((w) => tuple(1, w))]
+    : weights.map((w) => tuple(0, w));
+  return `${GOOGLE_FONTS_CSS_ORIGIN}/css2?family=${family}:${tags.join(",")}@${tuples.join(";")}&display=swap`;
 }
 
 export type ParsedFace = {
@@ -160,12 +194,15 @@ export async function fetchFontFile(deps: FontPipelineDeps, raw: string): Promis
 /** The faces of one family request: from the cache, or fetched, validated and cached. */
 export async function facesForSlot(
   deps: FontPipelineDeps,
-  slot: Pick<FontSlot, "family" | "weights" | "italic">,
+  slot: FontRequest,
   subsets: readonly string[] = DEFAULT_FONT_SUBSETS,
 ): Promise<CachedFace[]> {
   const key = fontRequestKey(slot, subsets);
+  // #4453 6b — a width-axis face draws every width in its range (the store keeps no stretch column).
+  const stretch = fontStretch(slot.axes);
+  const stretched = (faces: CachedFace[]): CachedFace[] => (stretch ? faces.map((face) => ({ ...face, stretch })) : faces);
   const cached = await deps.cachedFaces(key);
-  if (cached && cached.length) return cached;
+  if (cached && cached.length) return stretched(cached);
   const cssUrl = exactUrl(googleCssUrl(slot), "fonts.googleapis.com");
   const css = await (await fetchStrict(deps, cssUrl)).text();
   const parsed = parseGoogleFontCss(css)
@@ -184,7 +221,7 @@ export async function facesForSlot(
     bytes: files.get(face.url)!.bytes,
   }));
   await deps.saveFaces(key, faces);
-  return faces;
+  return stretched(faces);
 }
 
 function systemSlotFor(base: FontSlot, category: string | null): FontSlot {
@@ -210,7 +247,7 @@ export async function resolveSiteFonts(
   const warnings: FontWarning[] = [];
   const assets: FontAsset[] = [];
   const digestBytes = new Map<string, number>();
-  const out: Record<FontSlotKey, FontSlot | null> = { display: null, body: null, accent: null };
+  const out: Record<FontSlotKey, FontSlot | null> = { display: null, body: null, accent: null, label: null };
   const usedBytes = () => [...digestBytes.values()].reduce((sum, bytes) => sum + bytes, 0);
   const tryFaces = async (slot: FontSlot): Promise<CachedFace[]> => {
     const faces = await facesForSlot(deps, slot, subsets);
@@ -229,8 +266,9 @@ export async function resolveSiteFonts(
     }
     return slot;
   };
-  for (const key of ["display", "body", "accent"] as const) {
-    const slot = input.slots[key];
+  // #4453 — the label slot (when the design has one) is downloaded like the others.
+  for (const key of ["display", "body", "accent", "label"] as const) {
+    const slot = input.slots[key] ?? null;
     if (!slot) continue;
     if (slot.source === "system") {
       out[key] = slot;
@@ -243,7 +281,7 @@ export async function resolveSiteFonts(
       const code: FontWarningCode = error instanceof Error && error.message === "FONT_TOO_LARGE"
         ? "FONT_TOO_LARGE"
         : "FONT_FETCH_FAILED";
-      const designSlot = input.designFonts[key];
+      const designSlot = input.designFonts[key] ?? null;
       let used: FontSlot | null = null;
       if (designSlot && designSlot.family !== slot.family) {
         try {
@@ -253,7 +291,7 @@ export async function resolveSiteFonts(
         }
       }
       if (!used) {
-        used = key === "accent" && !designSlot
+        used = (key === "accent" || key === "label") && !designSlot
           ? null
           : systemSlotFor(designSlot ?? slot, findCatalogFont((designSlot ?? slot).family)?.category ?? null);
       }
@@ -266,11 +304,8 @@ export async function resolveSiteFonts(
     body: out.body ?? systemSlotFor(input.designFonts.body, null),
     accent: out.accent,
   };
-  const families = new Set(
-    [slots.display, slots.body, slots.accent]
-      .filter((slot): slot is FontSlot => slot !== null && slot.source === "google")
-      .map((slot) => slot.family),
-  );
+  if (out.label) slots.label = out.label;
+  const families = slotFamilies(slots);
   const fallbacks = [...families]
     .map((family) => fallbackFaceFor(family))
     .filter((face): face is FontFallback => face !== null);

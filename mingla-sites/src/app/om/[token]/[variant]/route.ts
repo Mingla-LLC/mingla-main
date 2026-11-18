@@ -2,12 +2,13 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { runtimeConfig } from "../../../../lib/config";
 import { siteOfferings } from "../../../../lib/offeringsFeed";
+import { detailPhotoPaths } from "../../../../lib/offeringDetail";
 import { isOmRendition, OM_VARIANTS, pathForToken, variantPath } from "../../../../lib/offeringMedia";
 import { sha256 } from "../../../../lib/crypto";
 import { readPrivateObject } from "../../../../lib/storageReader";
 import { OFFERING_MEDIA_KEY_RE } from "../../../../contracts/generated/artifactV2.ts";
 import { loadPublication, requestHost } from "../../../../lib/publication";
-import { PREVIEW_ASSET_HEADERS, previewArtifactForAsset } from "../../../../lib/previewMedia";
+import { PREVIEW_ASSET_HEADERS, hasPrivateAssetCredential, previewArtifactForAsset, sharedArtifactForAsset } from "../../../../lib/previewMedia";
 import { isV2Artifact } from "../../../../lib/siteArtifact";
 
 /*
@@ -44,20 +45,33 @@ export async function GET(
     const { token, variant } = await context.params;
     if (!(OM_VARIANTS as readonly string[]).includes(variant)) return notFound();
     const host = requestHost(await headers());
-    const previewKey = new URL(request.url).searchParams.get("k");
-    const { artifact, siteBinding } = previewKey !== null
-      ? await (async () => {
-        const preview = await previewArtifactForAsset(previewKey, host);
-        return { artifact: preview, siteBinding: { site_id: preview.site_id } };
-      })()
+    // #4453 M11 — `?k=` the owner's preview, `?s=` a share link's own view.
+    const search = new URL(request.url).searchParams;
+    const isPrivate = hasPrivateAssetCredential(search);
+    const previewKey = search.get("k");
+    const shareToken = search.get("s");
+    const preview = previewKey !== null
+      ? await previewArtifactForAsset(previewKey, host)
+      : shareToken !== null
+      ? await sharedArtifactForAsset(shareToken, host)
+      : null;
+    const { artifact, siteBinding } = preview
+      ? { artifact: preview, siteBinding: { site_id: preview.site_id } }
       : await (async () => {
         const published = await loadPublication(host);
         return { artifact: published.artifact, siteBinding: published.resolution };
       })();
     if (!isV2Artifact(artifact)) return notFound();
     const view = await siteOfferings(siteBinding, artifact);
-    const path = await pathForToken(siteBinding.site_id, token, view.offerings);
-    const privateHeaders = previewKey !== null ? PREVIEW_ASSET_HEADERS : {};
+    // #4453 milestone 9 — a detail page's own photos (a room's pictures) are
+    // not feed covers; their URL names the offering (`?d=kind:slug`) so the
+    // candidate paths come from that offering's cached detail read.
+    const extraPaths = await detailPhotoPaths(siteBinding, view.offerings, view.detailPages, new URL(request.url).searchParams.get("d"));
+    const path = await pathForToken(siteBinding.site_id, token, [
+      ...view.offerings,
+      ...extraPaths.map((extra) => ({ cover: { path: extra, type: "image" as const } })),
+    ]);
+    const privateHeaders = isPrivate ? PREVIEW_ASSET_HEADERS : {};
     if (!path) return notFound();
     if (isOmRendition(variant)) {
       const rendition = (artifact.offering_media ?? []).find((row) => row.path === path)?.variants.find((row) => row.name === variant);

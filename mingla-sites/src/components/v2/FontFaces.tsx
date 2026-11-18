@@ -1,5 +1,6 @@
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import { isFontFamilyName, type FontAsset } from "../../contracts/generated/fontSlots.ts";
+import { assetQuery, type AssetCredential } from "../../lib/assetCredential";
 
 /*
  * #2829 AD-3 — the site's fonts, served by the site itself.
@@ -9,18 +10,21 @@ import { isFontFamilyName, type FontAsset } from "../../contracts/generated/font
  * a metric-matched "<Family> Fallback" face over a local system font so the
  * page does not jump when the real face arrives. A visitor's browser never
  * contacts Google. The display and body faces a first screen needs (regular
- * and bold, latin) are preloaded.
+ * latin, #4453: at most two files) are preloaded.
  *
  * Inside a private preview the font URLs carry the preview key, so a draft's
  * new font can load before it is ever published (the route checks the key).
+ * #4453 M11 — a share link's font URLs carry its share token, never the key.
  */
 
 const DIGEST = /^[0-9a-f]{64}$/;
 const RANGE = /^(?:U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)(?:, ?U\+[0-9A-F?]{1,6}(?:-[0-9A-F]{1,6})?)*$/i;
 const PERCENT = /^\d{1,3}(?:\.\d{1,4})?%$/;
+/** #4453 6b — a width-axis face's range ("62% 125%"), else nothing. */
+const STRETCH = /^\d{2,3}% \d{2,3}%$/;
 
-export function fontUrl(digest: string, previewKey?: string): string {
-  return previewKey ? `/fonts/${digest}?k=${encodeURIComponent(previewKey)}` : `/fonts/${digest}`;
+export function fontUrl(digest: string, previewKey?: AssetCredential): string {
+  return previewKey ? `/fonts/${digest}?${assetQuery(previewKey)}` : `/fonts/${digest}`;
 }
 
 function safeAsset(asset: FontAsset): boolean {
@@ -30,12 +34,13 @@ function safeAsset(asset: FontAsset): boolean {
     Number.isInteger(asset.weight);
 }
 
-export function fontFacesCss(artifact: ArtifactV2, previewKey?: string): string {
+export function fontFacesCss(artifact: ArtifactV2, previewKey?: AssetCredential): string {
   const rules: string[] = [];
   for (const asset of artifact.font_assets) {
     if (!safeAsset(asset)) continue;
     rules.push(
-      `@font-face{font-family:"${asset.family}";font-style:${asset.style};font-weight:${asset.weight};font-display:swap;` +
+      `@font-face{font-family:"${asset.family}";font-style:${asset.style};font-weight:${asset.weight};` +
+        `${asset.stretch && STRETCH.test(asset.stretch) ? `font-stretch:${asset.stretch};` : ""}font-display:swap;` +
         `src:url("${fontUrl(asset.digest, previewKey)}") format("woff2")` +
         `${asset.unicode_range ? `;unicode-range:${asset.unicode_range}` : ""}}`,
     );
@@ -53,12 +58,12 @@ export function fontFacesCss(artifact: ArtifactV2, previewKey?: string): string 
   return rules.join("\n");
 }
 
-/** The files worth preloading: display and body, regular and bold, latin. */
+/** The files worth preloading: display and body regular, latin (#4453 §3.6: at most 2 files). */
 export function preloadDigests(artifact: ArtifactV2): string[] {
   const out = new Set<string>();
   for (const slot of [artifact.fonts.display, artifact.fonts.body]) {
     if (slot.source !== "google") continue;
-    for (const wanted of [400, 700]) {
+    for (const wanted of [400]) {
       const faces = artifact.font_assets.filter((asset) =>
         asset.family === slot.family && asset.style === "normal" && asset.unicode_range.startsWith("U+0000")
       );
@@ -72,7 +77,7 @@ export function preloadDigests(artifact: ArtifactV2): string[] {
   return [...out];
 }
 
-export function FontFaces({ artifact, previewKey }: { artifact: ArtifactV2; previewKey?: string }) {
+export function FontFaces({ artifact, previewKey }: { artifact: ArtifactV2; previewKey?: AssetCredential }) {
   const css = fontFacesCss(artifact, previewKey);
   return (
     <>

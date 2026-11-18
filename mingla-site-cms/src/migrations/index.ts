@@ -17,6 +17,14 @@ import * as migration_20261025_160000_issue_2829_voyage_design from './20261025_
 import * as migration_20261025_170000_issue_2829_w7b_history_only_and_form_hints from './20261025_170000_issue_2829_w7b_history_only_and_form_hints';
 import * as migration_20261025_180000_issue_2829_w9r_content_order from './20261025_180000_issue_2829_w9r_content_order';
 import * as migration_20261025_190000_issue_2829_w9b_work_log from './20261025_190000_issue_2829_w9b_work_log';
+import * as migration_20261116_100000_issue_4453_design_platform from './20261116_100000_issue_4453_design_platform';
+import * as migration_20261116_103000_issue_4453_content_foundation from './20261116_103000_issue_4453_content_foundation';
+import * as migration_20261116_120000_issue_4453_designs_6a from './20261116_120000_issue_4453_designs_6a';
+import * as migration_20261116_140000_issue_4453_designs_6b from './20261116_140000_issue_4453_designs_6b';
+import * as migration_20261116_150000_issue_4453_booking_blocks from './20261116_150000_issue_4453_booking_blocks';
+import * as migration_20261116_160000_issue_4453_designs_6c from './20261116_160000_issue_4453_designs_6c';
+import * as migration_20261117_100000_issue_4453_page_set_blocks from './20261117_100000_issue_4453_page_set_blocks';
+import * as migration_20261118_100000_issue_4453_ari_pages from './20261118_100000_issue_4453_ari_pages';
 
 export const migrations = [
   {
@@ -113,5 +121,45 @@ export const migrations = [
     up: migration_20261025_190000_issue_2829_w9b_work_log.up,
     down: migration_20261025_190000_issue_2829_w9b_work_log.down,
     name: '20261025_190000_issue_2829_w9b_work_log',
+  },
+  {
+    up: migration_20261116_100000_issue_4453_design_platform.up,
+    down: migration_20261116_100000_issue_4453_design_platform.down,
+    name: '20261116_100000_issue_4453_design_platform',
+  },
+  {
+    up: migration_20261116_103000_issue_4453_content_foundation.up,
+    down: migration_20261116_103000_issue_4453_content_foundation.down,
+    name: '20261116_103000_issue_4453_content_foundation',
+  },
+  {
+    up: migration_20261116_120000_issue_4453_designs_6a.up,
+    down: migration_20261116_120000_issue_4453_designs_6a.down,
+    name: '20261116_120000_issue_4453_designs_6a',
+  },
+  {
+    up: migration_20261116_140000_issue_4453_designs_6b.up,
+    down: migration_20261116_140000_issue_4453_designs_6b.down,
+    name: '20261116_140000_issue_4453_designs_6b',
+  },
+  {
+    up: migration_20261116_150000_issue_4453_booking_blocks.up,
+    down: migration_20261116_150000_issue_4453_booking_blocks.down,
+    name: '20261116_150000_issue_4453_booking_blocks',
+  },
+  {
+    up: migration_20261116_160000_issue_4453_designs_6c.up,
+    down: migration_20261116_160000_issue_4453_designs_6c.down,
+    name: '20261116_160000_issue_4453_designs_6c',
+  },
+  {
+    up: migration_20261117_100000_issue_4453_page_set_blocks.up,
+    down: migration_20261117_100000_issue_4453_page_set_blocks.down,
+    name: '20261117_100000_issue_4453_page_set_blocks',
+  },
+  {
+    up: migration_20261118_100000_issue_4453_ari_pages.up,
+    down: migration_20261118_100000_issue_4453_ari_pages.down,
+    name: '20261118_100000_issue_4453_ari_pages',
   },
 ];

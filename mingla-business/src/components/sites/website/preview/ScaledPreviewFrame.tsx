@@ -5,6 +5,7 @@ import {
   previewCornerRadius,
   previewDimensions,
   previewScale,
+  previewViewportHeight,
   PREVIEW_DEVICE_LABELS,
   type PreviewDevicePreference,
 } from "../../../../sites/previewDevice";
@@ -21,14 +22,17 @@ export type ScaledPreviewFrameProps = {
   preference: PreviewDevicePreference;
   maxHeight?: number;
   fill?: boolean;
+  /** #4453 M10 — draw at least this tall (extends the device height, never shrinks the width). */
+  minHeight?: number;
   tokenDeclarations?: readonly string[] | null;
   onLoad?: () => void;
 };
 
-export function ScaledPreviewFrame({ url, preference, maxHeight = 560, fill = false, onLoad }: ScaledPreviewFrameProps): React.ReactElement {
+export function ScaledPreviewFrame({ url, preference, maxHeight = 560, fill = false, minHeight, onLoad }: ScaledPreviewFrameProps): React.ReactElement {
   const [box, setBox] = useState({ width: 0, height: 0 });
-  const { width, height } = previewDimensions(preference);
-  const scale = previewScale({ paneWidth: box.width, maxHeight: fill ? box.height : maxHeight, width, height });
+  const { width, height: deviceHeight } = previewDimensions(preference);
+  const scale = previewScale({ paneWidth: box.width, maxHeight: fill ? box.height : maxHeight, width, height: deviceHeight });
+  const height = previewViewportHeight({ height: deviceHeight, scale, minHeight: fill ? undefined : minHeight });
   const left = Math.max(0, (box.width - width * scale) / 2);
   const onLayout = (event: LayoutChangeEvent) => {
     const next = event.nativeEvent.layout;

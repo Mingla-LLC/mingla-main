@@ -2,6 +2,7 @@
 import { localDate, offeringTimeZone, selectGridOfferings, type OfferingGridConfig, type SiteOffering } from "../../../contracts/generated/offerings.ts";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
 import type { SiteEventContext } from "../../../lib/clientAnalytics";
+import { showsDraftHints } from "../../../lib/previewPublication";
 import type { OfferingCard } from "../../../lib/offeringCards";
 import { hrefForPage } from "../../../lib/pageRouting";
 import { TrackedLink } from "../../../components/TrackedLink";
@@ -66,6 +67,14 @@ function ClockIcon() {
  * #2829 W7c — `sizes` follows how many cards share the row (the count-aware
  * grid), so the browser picks the publish-time rendition that fits.
  */
+function CardLink({ card, analytics, children }: { card: OfferingCard; analytics: SiteEventContext; children: React.ReactNode }) {
+  // #4453 M10 — a plan preview's labelled sample is never a link (no Mingla page, no "#").
+  if (card.sample) return <div className="mg-sample-card" data-sample="1">{children}</div>;
+  return card.detailHref
+    ? <a href={card.detailHref} className="mg-to-detail-card">{children}</a>
+    : <TrackedLink href={card.href} context={analytics} ctaKind="offering" offeringId={card.id}>{children}</TrackedLink>;
+}
+
 export function PhotoCard({ card, offering, analytics, sizes }: { card: OfferingCard; offering: SiteOffering; analytics: SiteEventContext; sizes?: string }) {
   const length = tripLength(offering);
   const badge = card.state.badge;
@@ -73,7 +82,8 @@ export function PhotoCard({ card, offering, analytics, sizes }: { card: Offering
   const from = price?.startsWith("From ") ? price.slice(5) : null;
   return (
     <article className="card card--interactive card--padded v-card" data-offering-state={card.state.cancelled ? "cancelled" : card.state.phase} data-offering-kind={card.kind}>
-      <TrackedLink href={card.href} context={analytics} ctaKind="offering" offeringId={card.id}>
+      {/* #4453 milestone 9 — with detail pages on, the whole photo card opens the site's own page (its Book goes to Mingla from there). */}
+      <CardLink card={card} analytics={analytics}>
         <div className="v-card__media">
           <div className="media media--flush v-ratio-4-3">
             {card.coverUrl ? <img src={card.coverUrl} srcSet={card.coverSrcSet ?? undefined} sizes={card.coverSrcSet ? sizes ?? gridSizes(3) : undefined} alt="" loading="lazy" decoding="async" className="v-card__img" /> : null}
@@ -94,9 +104,9 @@ export function PhotoCard({ card, offering, analytics, sizes }: { card: Offering
                 : <p className="meta v-card__price">{price}</p>
             ) : null}
           </div>
-          <span className="sr-only">{`${card.cta}: ${card.title} on Mingla`}</span>
+          {card.sample ? null : <span className="sr-only">{card.detailHref ? `: details and booking` : `${card.cta}: ${card.title} on Mingla`}</span>}
         </div>
-      </TrackedLink>
+      </CardLink>
     </article>
   );
 }
@@ -134,6 +144,9 @@ export function OfferingGridPhotoCard({ block, index, ctx }: VoyageBlockProps) {
     />
   );
   const source = live?.source ?? "none";
+  // #4453 I-SITES-NO-PUBLIC-EMPTY-STATE — an empty upcoming list is left out
+  // of the public site; only a Draft preview keeps the owner's hint.
+  const preview = ctx.preview ?? showsDraftHints(ctx.analytics.publicationId);
 
   if (result.kind === "check_dates") {
     return (
@@ -165,6 +178,7 @@ export function OfferingGridPhotoCard({ block, index, ctx }: VoyageBlockProps) {
     );
   }
   if (config.mode === "upcoming") {
+    if (!entries.length && !preview) return null;
     return (
       <Section tinted labelledBy={id} source={source}>
           <HeadRow id={id} heading={heading} intro={intro} link={headLink} />
@@ -176,16 +190,21 @@ export function OfferingGridPhotoCard({ block, index, ctx }: VoyageBlockProps) {
   // "all": upcoming first (white, with the search), then what has already run (tinted).
   const upcoming = entries.filter(({ state }) => state.phase !== "ended");
   const past = entries.filter(({ state }) => state.phase === "ended");
+  if (!upcoming.length && !past.length && !preview) return null;
   return (
     <>
-      <Section labelledBy={`${id}-upcoming`} source={source}>
-        <HeadRow id={`${id}-upcoming`} heading={`Upcoming ${noun}`} intro={intro} link={headLink} />
-        {filterPanel}
-        {upcoming.length ? cards(upcoming) : noUpcoming}
-      </Section>
+      {upcoming.length || preview ? (
+        <Section labelledBy={`${id}-upcoming`} source={source}>
+          <HeadRow id={`${id}-upcoming`} heading={`Upcoming ${noun}`} intro={intro} link={headLink} />
+          {filterPanel}
+          {upcoming.length ? cards(upcoming) : noUpcoming}
+        </Section>
+      ) : null}
       {past.length ? (
         <Section tinted labelledBy={`${id}-past`}>
           <HeadRow id={`${id}-past`} heading={`Past ${noun}`} intro="Where we’ve already been." />
+          {/* With the upcoming list left out, the search stays with what is shown. */}
+          {upcoming.length || preview ? null : filterPanel}
           {cards(past)}
         </Section>
       ) : null}
