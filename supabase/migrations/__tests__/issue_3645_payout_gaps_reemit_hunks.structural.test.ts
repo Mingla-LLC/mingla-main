@@ -9,7 +9,11 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { applyHunks, definitions } from "./issue_3645_reemit_hunks.ts";
-import { PAYOUT_GAPS_REEMITS, TARGET } from "./issue_3645_payout_gaps_reemit_hunks.ts";
+import {
+  PAYOUT_GAPS_NEW_FUNCTIONS,
+  PAYOUT_GAPS_REEMITS,
+  TARGET,
+} from "./issue_3645_payout_gaps_reemit_hunks.ts";
 
 const DIR = "supabase/migrations";
 const TARGET_FILE = TARGET.slice(DIR.length + 1);
@@ -39,11 +43,17 @@ for (const reemit of PAYOUT_GAPS_REEMITS) {
   });
 }
 
-Deno.test("#3645 payout gaps: the target defines only its declared re-emits", () => {
-  const declared = new Set(PAYOUT_GAPS_REEMITS.map((r) => r.fn));
+Deno.test("#3645 payout gaps: the target defines only its declared re-emits and new functions", () => {
+  const declared = new Set([...PAYOUT_GAPS_REEMITS.map((r) => r.fn), ...PAYOUT_GAPS_NEW_FUNCTIONS]);
   const defined = [...definitions(Deno.readTextFileSync(TARGET)).keys()];
   for (const name of defined) assert(declared.has(name), `${TARGET} defines ${name} without declaring it`);
   assertEquals(defined.length, declared.size);
+  for (const file of files().filter((f) => f < TARGET_FILE)) {
+    const earlier = definitions(Deno.readTextFileSync(`${DIR}/${file}`));
+    for (const name of PAYOUT_GAPS_NEW_FUNCTIONS) {
+      assert(!earlier.has(name), `${file} already defines ${name}, so it is a re-emit`);
+    }
+  }
 });
 
 Deno.test("#3645 payout gaps: the target is still the latest definition of what it defines", () => {

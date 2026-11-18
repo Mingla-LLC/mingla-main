@@ -59,6 +59,9 @@ type SweepDeps = {
   env: (key: string) => string | undefined;
   createAdmin: typeof createClient;
   resolveProviderFee: (candidate: FeeCandidate) => Promise<FeeSnapshot>;
+  /** Issue #3645: clock and fee-capture budget, injectable in tests. */
+  now?: () => number;
+  feeCaptureBudgetMs?: number;
   createStripeReleaseClient?: () => StripeReleaseClient;
   notifyKycBlocked?: (
     admin: AdminClient,
@@ -1412,6 +1415,157 @@ export async function handlePayoutReleaseSweep(
   }
 }
 
+/**
+ * Issue #3645: fee capture runs before the ledger sweep and every payout, so
+ * it must never be able to hold them up. Each family is read in batches of
+ * FEE_CANDIDATES_PER_FAMILY, the families are taken in turn, and capture stops
+ * once FEE_CAPTURE_BUDGET_MS is spent (a provider call still running then is
+ * abandoned for this tick). What is left waits for the next tick.
+ */
+export const FEE_CANDIDATES_PER_FAMILY = 25;
+export const FEE_CAPTURE_BUDGET_MS = 45_000;
+
+/** Takes one candidate from each source family in turn. */
+export function interleaveFeeFamilies(candidates: FeeCandidate[]): FeeCandidate[] {
+  const families = new Map<string, FeeCandidate[]>();
+  for (const candidate of candidates) {
+    const family = families.get(candidate.source_type) ?? [];
+    family.push(candidate);
+    families.set(candidate.source_type, family);
+  }
+  const queues = [...families.values()];
+  const out: FeeCandidate[] = [];
+  for (let round = 0; out.length < candidates.length; round++) {
+    for (const queue of queues) {
+      if (round < queue.length) out.push(queue[round]);
+    }
+  }
+  return out;
+}
+
+export type FeeCaptureResult = {
+  captured: number;
+  failed: number;
+  /** Candidates not attempted because the time budget ran out. */
+  leftForNextTick: number;
+};
+
+async function recordFeeCapture(
+  admin: AdminClient,
+  candidate: FeeCandidate,
+  fee: FeeSnapshot,
+): Promise<void> {
+  if (candidate.source_type === "stay_reservation") {
+    const { error } = await admin.rpc("record_stay_provider_fee", {
+      p_payment_attempt_id: candidate.source_id,
+      p_provider_fee_minor: fee.provider_fee_cents,
+      p_provider_balance_transaction_id: fee.provider_balance_transaction_id,
+    });
+    if (error) throw error;
+    return;
+  }
+  if (
+    candidate.source_type === "order_installment" &&
+    candidate.provider === "paystack"
+  ) {
+    // A Paystack instalment whose charge answer carried no fee stays pending;
+    // the verified fee makes it ready (never a guessed 0).
+    const { data, error } = await admin.rpc(
+      "issue_3645_record_installment_paystack_fee",
+      {
+        p_installment_id: candidate.source_id,
+        p_provider_fee_cents: fee.provider_fee_cents,
+      },
+    );
+    if (error) throw error;
+    const result = (data ?? null) as { ok?: boolean; reason?: string } | null;
+    if (result?.ok !== true) {
+      throw new Error(
+        `installment_fee_not_recorded:${String(result?.reason ?? "unknown")}`,
+      );
+    }
+    return;
+  }
+  const { error } = await admin.from("payout_source_fee_snapshots")
+    .upsert({
+      source_type: candidate.source_type,
+      source_id: candidate.source_id,
+      ...fee,
+    }, { onConflict: "source_type,source_id", ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+export async function captureProviderFees(
+  admin: AdminClient,
+  candidates: FeeCandidate[],
+  deps: Pick<SweepDeps, "resolveProviderFee" | "now" | "feeCaptureBudgetMs">,
+): Promise<FeeCaptureResult> {
+  const now = deps.now ?? (() => Date.now());
+  const deadline = now() + (deps.feeCaptureBudgetMs ?? FEE_CAPTURE_BUDGET_MS);
+  const ordered = interleaveFeeFamilies(candidates);
+  const result: FeeCaptureResult = { captured: 0, failed: 0, leftForNextTick: 0 };
+  for (let i = 0; i < ordered.length; i++) {
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      result.leftForNextTick = ordered.length - i;
+      console.error(JSON.stringify({
+        event: "payout_fee_capture_budget_spent",
+        function_name: "payout-release-sweep",
+        captured: result.captured,
+        failed: result.failed,
+        left_for_next_tick: result.leftForNextTick,
+      }));
+      break;
+    }
+    const candidate = ordered[i];
+    let timer: number | undefined;
+    try {
+      const fee = await Promise.race([
+        deps.resolveProviderFee(candidate),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("fee_capture_budget_exhausted")),
+            remaining,
+          );
+        }),
+      ]);
+      await recordFeeCapture(admin, candidate, fee);
+      result.captured++;
+    } catch (error) {
+      result.failed++;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[payout-release-sweep] provider fee capture deferred", {
+        sourceType: candidate.source_type,
+        sourceId: candidate.source_id,
+        message,
+      });
+      // The failed source goes behind the others in its family next time.
+      try {
+        const { error: recordError } = await admin.rpc(
+          "record_payout_fee_capture_failure",
+          {
+            p_source_type: candidate.source_type,
+            p_source_id: candidate.source_id,
+            p_error: message,
+          },
+        );
+        if (recordError) throw recordError;
+      } catch (recordFailure) {
+        console.error("[payout-release-sweep] fee failure record failed", {
+          sourceType: candidate.source_type,
+          sourceId: candidate.source_id,
+          message: recordFailure instanceof Error
+            ? recordFailure.message
+            : String(recordFailure),
+        });
+      }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+  return result;
+}
+
 async function runPayoutReleaseSweepAuthenticated(
   admin: AdminClient,
   deps: SweepDeps,
@@ -1422,7 +1576,7 @@ async function runPayoutReleaseSweepAuthenticated(
   // aggregate provider balance.
   const { data: candidates, error: candidatesError } = await admin.rpc(
     "list_missing_payout_source_fees",
-    { p_limit: 100 },
+    { p_limit: FEE_CANDIDATES_PER_FAMILY },
   );
   if (candidatesError) {
     console.error("[payout-release-sweep] fee candidate read failed", {
@@ -1432,60 +1586,27 @@ async function runPayoutReleaseSweepAuthenticated(
     return json({ error: "fee_candidate_read_failed" }, 500);
   }
   // Issue #3645: paid stays are their own candidate family with their own
-  // 100-row batch, so a backlog in one family never starves the other. Their
-  // fee lands in stay_payout_line_snapshots (record_stay_provider_fee below),
-  // which run_stay_payout_release_dark_sweep needs before it attaches a stay.
-  // A failed stay read is audible but does not stop the other payouts.
+  // batch, so a backlog in one family never starves the other. Their fee
+  // lands in stay_payout_line_snapshots (record_stay_provider_fee), which
+  // run_stay_payout_release_dark_sweep needs before it attaches a stay. A
+  // failed stay read is audible but does not stop the other payouts.
   const { data: stayCandidates, error: stayCandidatesError } = await admin
-    .rpc("list_missing_stay_provider_fees", { p_limit: 100 });
+    .rpc("list_missing_stay_provider_fees", {
+      p_limit: FEE_CANDIDATES_PER_FAMILY,
+    });
   if (stayCandidatesError) {
     console.error("[payout-release-sweep] stay fee candidate read failed", {
       code: stayCandidatesError.code,
       message: stayCandidatesError.message,
     });
   }
-  const feeCandidates: FeeCandidate[] = [
+  const capture = await captureProviderFees(admin, [
     ...(Array.isArray(candidates) ? candidates as FeeCandidate[] : []),
     ...(Array.isArray(stayCandidates)
       ? stayCandidates as FeeCandidate[]
       : []),
-  ];
-  let capturedFees = 0;
-  for (const candidate of feeCandidates) {
-    try {
-      const fee = await deps.resolveProviderFee(candidate);
-      if (candidate.source_type === "stay_reservation") {
-        const { error: recordError } = await admin.rpc(
-          "record_stay_provider_fee",
-          {
-            p_payment_attempt_id: candidate.source_id,
-            p_provider_fee_minor: fee.provider_fee_cents,
-            p_provider_balance_transaction_id:
-              fee.provider_balance_transaction_id,
-          },
-        );
-        if (recordError) throw recordError;
-        capturedFees++;
-      } else {
-        const { error: feeError } = await admin.from(
-          "payout_source_fee_snapshots",
-        )
-          .upsert({
-            source_type: candidate.source_type,
-            source_id: candidate.source_id,
-            ...fee,
-          }, { onConflict: "source_type,source_id", ignoreDuplicates: true });
-        if (feeError) throw feeError;
-        capturedFees++;
-      }
-    } catch (error) {
-      console.error("[payout-release-sweep] provider fee capture deferred", {
-        sourceType: candidate.source_type,
-        sourceId: candidate.source_id,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  ], deps);
+  const capturedFees = capture.captured;
 
   const { data, error } = await admin.rpc("run_payout_release_dark_sweep", {
     p_now: new Date().toISOString(),

@@ -1,6 +1,6 @@
 // Issue #3645 — an instalment pay link whose brand payout-hold stamp cannot be
-// read refuses (payment_start_failed) before an attempt is begun or Paystack
-// is initialized. The old code ignored the read error and decided the split
+// read refuses with the shared retryable 503 payout_settings_unavailable before
+// an attempt is begun or Paystack is initialized. The old code ignored the read error and decided the split
 // from whatever came back.
 // Fails on revert: without the error check the handler begins an attempt and
 // initializes Paystack.
@@ -96,8 +96,8 @@ Deno.test("#3645 pay link: a stamp read error refuses before any attempt or Pays
       return Promise.resolve({ authorization_url: "https://checkout.paystack.com/x", reference: "r", access_code: "a" });
     },
   });
-  assertEquals(response.status, 502);
-  assertEquals(await response.json(), { error: "payment_start_failed" });
+  assertEquals(response.status, 503);
+  assertEquals(await response.json(), { error: "payout_settings_unavailable" });
   assertEquals(fake.rpcs.includes("issue_3645_begin_installment_attempt"), false);
   assertEquals(initialized, []);
 });

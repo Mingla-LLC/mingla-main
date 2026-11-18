@@ -15,6 +15,12 @@
 --      its fee lets run_stay_payout_release_dark_sweep attach it.
 --   T7 A replayed finalize back-fills a paid Stripe chip-in's missing charge
 --      reference once, never overwrites one, and leaves Paystack rows alone.
+--   T8 A Paystack instalment paid with no fee in Paystack's answer stays
+--      pending (never fee 0), is a fee candidate by its reference, and pays
+--      out with the verified fee once issue_3645_record_installment_paystack_fee
+--      records it; one paid with a fee is ready at once.
+--   T9 Inside a family a source whose fee read failed goes behind the others.
+--   T10 A Paystack stay without its transaction reference is not listed.
 --
 -- Fails on revert: with the gate false T2/T3 attach nothing; without the
 -- snapshot wait T3 attaches with provider fee 0; without the stay hunk T6 lists
@@ -50,6 +56,12 @@ DECLARE
   v_attempt uuid := '3645a000-0000-4000-8000-000000000015';
   v_c_cs uuid := '3645a000-0000-4000-8000-000000000016';
   v_c_ps uuid := '3645a000-0000-4000-8000-000000000017';
+  v_p3 uuid := '3645a000-0000-4000-8000-000000000018';
+  v_p4 uuid := '3645a000-0000-4000-8000-000000000019';
+  v_old uuid := '3645a000-0000-4000-8000-000000000020';
+  v_group2 uuid := '3645a000-0000-4000-8000-000000000021';
+  v_attempt2 uuid := '3645a000-0000-4000-8000-000000000022';
+  v_ref text;
   v_now timestamptz := timestamptz '2026-12-10 12:00:00+00';
   v_collected timestamptz := timestamptz '2026-12-08 12:00:00+00';
   v_rows record;
@@ -279,6 +291,103 @@ BEGIN
   PERFORM public.issue_1930_finalize_rsvp_contribution(v_c_ps, 'mingla_rsvp_3645_gaps', '4099260517', NULL);
   IF (SELECT stripe_charge_id FROM public.event_rsvp_contributions WHERE id = v_c_ps) IS NOT NULL THEN
     RAISE EXCEPTION 'T7 a Paystack chip-in was changed by the Stripe back-fill';
+  END IF;
+
+  -- T8 ----------------------------------------------------------------------
+  INSERT INTO public.order_installments(id, order_id, ordinal, amount_cents, currency, due_at, provider,
+    collection_method, buyer_total_cents, planned_application_fee_cents, plan_bound_at)
+  VALUES (v_p3, v_p, 3, 250000, 'NGN', v_collected, 'paystack', 'pay_link', 270625, 11250, now()),
+         (v_p4, v_p, 4, 250000, 'NGN', v_collected, 'paystack', 'pay_link', 270625, 11250, now());
+  -- No fee in Paystack's answer.
+  r := public.issue_3645_begin_installment_attempt(v_p3, 'pay_link', 11250);
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'T8 begin %', r; END IF;
+  v_ref := r->>'reference';
+  r := public.issue_3645_resolve_installment_attempt((r->>'attempt_id')::uuid, 'succeeded', '5550018',
+    'Approved', NULL, NULL, 270625);
+  IF r->>'outcome' <> 'collected' THEN RAISE EXCEPTION 'T8 resolve %', r; END IF;
+  SELECT status, payout_accounting_state, application_fee_amount_cents, provider_fee_cents INTO v_rows
+    FROM public.order_installments WHERE id = v_p3;
+  IF v_rows.status <> 'collected' OR v_rows.payout_accounting_state <> 'pending'
+     OR v_rows.application_fee_amount_cents IS NOT NULL THEN
+    RAISE EXCEPTION 'T8 a fee-less Paystack instalment must stay pending %', to_jsonb(v_rows);
+  END IF;
+  -- A replay that still has no fee changes nothing.
+  r := public.issue_3645_resolve_installment_attempt(
+    (SELECT id FROM public.order_installment_charge_attempts WHERE reference = v_ref), 'succeeded', '5550018',
+    'Approved', NULL, NULL, 270625);
+  IF (SELECT payout_accounting_state FROM public.order_installments WHERE id = v_p3) <> 'pending' THEN
+    RAISE EXCEPTION 'T8 a fee-less replay made the instalment ready';
+  END IF;
+  SELECT * INTO v_rows FROM public.list_missing_payout_source_fees(100) l
+   WHERE l.source_type = 'order_installment' AND l.source_id = v_p3;
+  IF NOT FOUND OR v_rows.provider <> 'paystack' OR v_rows.provider_reference <> v_ref THEN
+    RAISE EXCEPTION 'T8 fee-less Paystack instalment candidate %', to_jsonb(v_rows);
+  END IF;
+  PERFORM public.run_payout_release_dark_sweep(v_now);
+  IF EXISTS (SELECT 1 FROM public.payout_release_items WHERE source_type = 'order_installment' AND source_id = v_p3) THEN
+    RAISE EXCEPTION 'T8 a fee-less Paystack instalment attached';
+  END IF;
+  r := public.issue_3645_record_installment_paystack_fee(v_p3, 4100);
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'payout_accounting_state' <> 'ready' THEN
+    RAISE EXCEPTION 'T8 record fee %', r;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.list_missing_payout_source_fees(100) l
+              WHERE l.source_type = 'order_installment' AND l.source_id = v_p3) THEN
+    RAISE EXCEPTION 'T8 a Paystack instalment with its fee is still a candidate';
+  END IF;
+  PERFORM public.run_payout_release_dark_sweep(v_now);
+  SELECT i.provider_fee_cents, i.mingla_fee_cents INTO v_rows FROM public.payout_release_items i
+   WHERE i.source_type = 'order_installment' AND i.source_id = v_p3;
+  IF NOT FOUND OR v_rows.provider_fee_cents <> 4100 OR v_rows.mingla_fee_cents <> 11250 THEN
+    RAISE EXCEPTION 'T8 fee-less instalment after its fee %', to_jsonb(v_rows);
+  END IF;
+  -- With a fee in the answer the instalment is ready at once.
+  r := public.issue_3645_begin_installment_attempt(v_p4, 'pay_link', 11250);
+  r := public.issue_3645_resolve_installment_attempt((r->>'attempt_id')::uuid, 'succeeded', '5550019',
+    'Approved', NULL, 4060, 270625);
+  SELECT payout_accounting_state, provider_fee_cents INTO v_rows FROM public.order_installments WHERE id = v_p4;
+  IF v_rows.payout_accounting_state <> 'ready' OR v_rows.provider_fee_cents <> 4060 THEN
+    RAISE EXCEPTION 'T8 a Paystack instalment with its fee %', to_jsonb(v_rows);
+  END IF;
+
+  -- T9 ----------------------------------------------------------------------
+  INSERT INTO public.orders(id, event_id, total_cents, currency, payment_status, stripe_payment_intent_id,
+    stripe_charge_id, source, created_at)
+  VALUES (v_old, v_eus, 4000, 'USD', 'paid', 'pi_3645_gaps_old', 'ch_3645_gaps_old', 'legacy', now() - interval '2 days');
+  IF (SELECT l.source_id FROM public.list_missing_payout_source_fees(1) l WHERE l.source_type = 'order') <> v_old THEN
+    RAISE EXCEPTION 'T9 the oldest unfailed order must come first';
+  END IF;
+  PERFORM public.record_payout_fee_capture_failure('order', v_old, 'stripe_down');
+  IF (SELECT l.source_id FROM public.list_missing_payout_source_fees(1) l WHERE l.source_type = 'order') <> v_plain THEN
+    RAISE EXCEPTION 'T9 a failed order must go behind the others';
+  END IF;
+  PERFORM public.record_payout_fee_capture_failure('order', v_old, 'stripe_down_again');
+  IF (SELECT failure_count FROM public.payout_fee_capture_failures
+       WHERE source_type = 'order' AND source_id = v_old) <> 2 THEN
+    RAISE EXCEPTION 'T9 failure count';
+  END IF;
+
+  -- T10 ---------------------------------------------------------------------
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.stay_reservation_groups(
+    id, public_reference, quote_id, actor_key_hash, venue_id, brand_id,
+    currency_code, mode, state, guest_snapshot, source_subtotal_minor,
+    fee_total_minor, tax_total_minor, total_minor, idempotency_key, request_hash
+  ) VALUES (
+    v_group2, 'ST-3645A000000000000002', gen_random_uuid(), repeat('a', 64), v_venue, v_ng, 'NGN',
+    'instant', 'confirmed', '{}'::jsonb, 10000, 450, 0, 10450, 'issue-3645-gaps-group-2', repeat('b', 64)
+  );
+  INSERT INTO public.stay_payment_attempts(
+    id, group_id, provider, attempt_ordinal, amount_minor, currency_code,
+    application_fee_minor, provider_fee_minor, state, provider_payment_ref,
+    provider_charge_ref, idempotency_key, request_hash, succeeded_at
+  ) VALUES (
+    v_attempt2, v_group2, 'paystack', 1, 10450, 'NGN', 450, NULL, 'succeeded',
+    NULL, '4099260599', 'issue-3645-gaps-attempt-2', repeat('c', 64), v_now - interval '3 days'
+  );
+  SET LOCAL session_replication_role = origin;
+  IF EXISTS (SELECT 1 FROM public.list_missing_stay_provider_fees(100) l WHERE l.source_id = v_attempt2) THEN
+    RAISE EXCEPTION 'T10 a Paystack stay without its reference is listed (verify cannot read it)';
   END IF;
 
   RAISE NOTICE 'issue_3645_payout_gaps_pass';

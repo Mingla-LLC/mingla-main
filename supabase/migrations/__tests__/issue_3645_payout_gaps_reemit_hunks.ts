@@ -8,6 +8,12 @@ import type { Hunk, Reemit } from "./issue_3645_reemit_hunks.ts";
 
 export const TARGET = "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql";
 
+/** Functions this migration defines for the first time (not re-emits). */
+export const PAYOUT_GAPS_NEW_FUNCTIONS = [
+  "record_payout_fee_capture_failure",
+  "issue_3645_record_installment_paystack_fee",
+];
+
 /** The instalment arm is the same text in the sweep and in the forecast. */
 const INSTALMENT_ARM_HUNKS: Hunk[] = [
   {
@@ -84,8 +90,23 @@ export const PAYOUT_GAPS_REEMITS: Reemit[] = [
   SELECT ranked.source_type, ranked.source_id, ranked.provider,
     ranked.provider_reference, ranked.stripe_account_id
   FROM (
+  -- Inside a family, sources that never failed come first (oldest payment
+  -- first); a source whose fee read failed goes behind them, ordered by when
+  -- it last failed, so a row that keeps failing cannot hold the batch.
   SELECT q.*, row_number() OVER (
-      PARTITION BY q.source_type ORDER BY q.source_id
+      PARTITION BY q.source_type
+      ORDER BY f.last_failed_at ASC NULLS FIRST,
+        CASE q.source_type
+          WHEN 'order' THEN (SELECT x.created_at FROM public.orders x WHERE x.id = q.source_id)
+          WHEN 'rsvp_contribution' THEN (SELECT coalesce(x.paid_at, x.created_at)
+            FROM public.event_rsvp_contributions x WHERE x.id = q.source_id)
+          WHEN 'venue_reservation' THEN (SELECT x.created_at
+            FROM public.reservation_checkout_sessions x WHERE x.id = q.source_id)
+          WHEN 'venue_menu_order' THEN (SELECT x.created_at FROM public.venue_orders x WHERE x.id = q.source_id)
+          WHEN 'order_installment' THEN (SELECT x.collected_at
+            FROM public.order_installments x WHERE x.id = q.source_id)
+        END ASC NULLS LAST,
+        q.source_id
     ) AS family_rank
   FROM (
 `,
@@ -100,8 +121,7 @@ export const PAYOUT_GAPS_REEMITS: Reemit[] = [
       AND vo.created_at > b.payout_hold_cutover_at
     UNION ALL
     -- issue #3645: a collected Stripe instalment's fee comes from its charge
-    -- (the webhook records only Mingla's fee). Paystack instalments record the
-    -- verified transaction fee at sale, so they are not candidates.
+    -- (the webhook records only Mingla's fee).
     SELECT 'order_installment', oi.id, oi.provider,
       coalesce(oi.stripe_charge_id, oi.stripe_payment_intent_id),
       b.stripe_connect_id
@@ -115,7 +135,27 @@ export const PAYOUT_GAPS_REEMITS: Reemit[] = [
       AND oi.amount_cents > 0
       AND b.payout_hold_cutover_at IS NOT NULL
       AND oi.collected_at > b.payout_hold_cutover_at
+    UNION ALL
+    -- issue #3645: a Paystack instalment records the verified fee at sale.
+    -- When Paystack's answer carried no fee the instalment stays pending (it
+    -- cannot pay out) and is read here by its transaction reference.
+    SELECT 'order_installment', oi.id, oi.provider, a.reference, NULL::text
+    FROM public.order_installments oi
+    JOIN public.order_installment_charge_attempts a
+      ON a.installment_id = oi.id AND a.state = 'succeeded'
+    JOIN public.orders o ON o.id = oi.order_id
+    JOIN public.events e ON e.id = o.event_id
+    JOIN public.brands b ON b.id = e.brand_id
+    WHERE oi.provider = 'paystack'
+      AND oi.status = 'collected'
+      AND oi.payout_accounting_state = 'pending'
+      AND a.provider_fee_cents IS NULL
+      AND oi.amount_cents > 0
+      AND b.payout_hold_cutover_at IS NOT NULL
+      AND oi.collected_at > b.payout_hold_cutover_at
   ) q
+  LEFT JOIN public.payout_fee_capture_failures f
+    ON f.source_type = q.source_type AND f.source_id = q.source_id
 `,
       },
       {
@@ -158,7 +198,83 @@ export const PAYOUT_GAPS_REEMITS: Reemit[] = [
     END,
     CASE WHEN attempt.provider = 'stripe'
 `,
+    }, {
+      name: "join the fee-read failures",
+      old: `  JOIN public.brands brand ON brand.id = group_row.brand_id
+`,
+      new: `  JOIN public.brands brand ON brand.id = group_row.brand_id
+  LEFT JOIN public.payout_fee_capture_failures fail
+    ON fail.source_type = 'stay_reservation' AND fail.source_id = attempt.id
+`,
+    }, {
+      name: "a Paystack stay needs the reference verify can read",
+      old: `    AND COALESCE(attempt.provider_charge_ref, attempt.provider_payment_ref)
+      IS NOT NULL
+`,
+      new: `    AND COALESCE(attempt.provider_charge_ref, attempt.provider_payment_ref)
+      IS NOT NULL
+    -- issue #3645: without its reference a Paystack stay cannot be verified,
+    -- so it is not listed (a NULL reference failed every sweep, forever).
+    -- (Finalize always stores it, so such a row is not expected.)
+    AND (attempt.provider <> 'paystack' OR attempt.provider_payment_ref IS NOT NULL)
+`,
+    }, {
+      name: "failed fee reads rotate behind the others",
+      old: `  ORDER BY attempt.succeeded_at, attempt.id
+`,
+      new: `  ORDER BY fail.last_failed_at ASC NULLS FIRST, attempt.succeeded_at, attempt.id
+`,
     }],
+  },
+  {
+    fn: "issue_3645_resolve_installment_attempt",
+    source: "supabase/migrations/20280202003645_issue_3645_paystack_plan_rpcs.sql",
+    target: TARGET,
+    hunks: [
+      {
+        name: "declare the known fee",
+        old: "  v_reason text;\nBEGIN\n",
+        new: "  v_reason text;\n  v_fee bigint;\nBEGIN\n",
+      },
+      {
+        name: "a replay records the fee only when it is known",
+        old: `      IF v_inst.status = 'collected' AND v_inst.payout_accounting_state = 'pending' THEN
+        PERFORM public.record_order_installment_provider_sale(
+          v_inst.id, v_attempt.application_fee_cents::integer,
+          coalesce(v_attempt.provider_fee_cents, 0)::integer, p_now);
+      END IF;
+`,
+        new: `      -- issue #3645: an unknown Paystack fee is never recorded as 0 (that
+      -- overpays the host by the fee); the instalment stays pending until a
+      -- delivery or the payout sweep supplies it.
+      v_fee := coalesce(v_attempt.provider_fee_cents, p_provider_fee_cents);
+      IF v_inst.status = 'collected' AND v_inst.payout_accounting_state = 'pending'
+         AND v_fee IS NOT NULL THEN
+        UPDATE public.order_installment_charge_attempts
+           SET provider_fee_cents = v_fee
+         WHERE id = p_attempt_id AND provider_fee_cents IS NULL;
+        PERFORM public.record_order_installment_provider_sale(
+          v_inst.id, v_attempt.application_fee_cents::integer,
+          v_fee::integer, p_now);
+      END IF;
+`,
+      },
+      {
+        name: "a collected instalment with no fee stays pending",
+        old: `    PERFORM public.record_order_installment_provider_sale(
+      v_inst.id, v_attempt.application_fee_cents::integer,
+      coalesce(p_provider_fee_cents, 0)::integer, p_now);
+`,
+        new: `    -- issue #3645: with no fee in Paystack's answer the instalment stays
+    -- pending (it cannot pay out) until the payout sweep reads the fee.
+    IF p_provider_fee_cents IS NOT NULL THEN
+      PERFORM public.record_order_installment_provider_sale(
+        v_inst.id, v_attempt.application_fee_cents::integer,
+        p_provider_fee_cents::integer, p_now);
+    END IF;
+`,
+      },
+    ],
   },
   {
     fn: "issue_1930_finalize_rsvp_contribution",

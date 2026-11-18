@@ -12,6 +12,7 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "../audit.ts";
+import { paystackFeeOrNull } from "../paystack.ts";
 import {
   createPaystackRefund,
   isRetryablePaystackRefundError,
@@ -156,7 +157,8 @@ export async function handleInstallmentPaystackCharge(
     p_provider_transaction_id: txn.id === undefined || txn.id === null ? null : String(txn.id),
     p_gateway_response: typeof txn.gateway_response === "string" ? txn.gateway_response : null,
     p_approval_url: null,
-    p_provider_fee_cents: Number.isFinite(Number(txn.fees)) ? Math.max(0, Math.trunc(Number(txn.fees))) : 0,
+    // Issue #3645: a missing fee is null (the instalment waits for it), never 0.
+    p_provider_fee_cents: paystackFeeOrNull(txn.fees),
     p_verified_amount_cents: verifiedAmount,
   });
   if (error !== null) throw new Error(`issue_3645_resolve_installment_attempt failed: ${error.message}`);

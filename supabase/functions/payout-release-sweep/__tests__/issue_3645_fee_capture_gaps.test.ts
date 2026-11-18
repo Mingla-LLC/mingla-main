@@ -8,7 +8,12 @@
  *  (b) A hosted chip-in stored with only its Checkout Session id (cs_) gets its
  *      fee through the session's PaymentIntent. Before, cs_ threw
  *      unsupported_stripe_provider_reference on every sweep, forever.
- *  (c) Stripe instalment fee candidates land as order_installment snapshots.
+ *  (c) Stripe instalment fee candidates land as order_installment snapshots;
+ *      a Paystack instalment with an unknown fee is completed through
+ *      issue_3645_record_installment_paystack_fee (never a guessed 0).
+ *  (d) Fee capture can never hold up payouts: families are taken in turn,
+ *      a failed read is recorded so it rotates behind the others, and capture
+ *      stops when its time budget is spent.
  *
  * Fails on revert: drop the stay read and (a) records nothing; drop the cs_
  * route and (b) throws unsupported_stripe_provider_reference.
@@ -18,9 +23,12 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  captureProviderFees,
   checkoutSessionPaymentIntentId,
+  FEE_CANDIDATES_PER_FAMILY,
   type FeeCandidate,
   handlePayoutReleaseSweep,
+  interleaveFeeFamilies,
   type ProviderFeeClients,
   providerReferenceRoute,
   resolveProviderFeeWith,
@@ -154,6 +162,9 @@ async function runSweep(scenario: Scenario) {
           if (name === "record_stay_provider_fee") {
             return Promise.resolve({ data: 1, error: null });
           }
+          if (name === "issue_3645_record_installment_paystack_fee") {
+            return Promise.resolve({ data: { ok: true, payout_accounting_state: "ready" }, error: null });
+          }
           if (name === "run_payout_release_dark_sweep") {
             return Promise.resolve({ data: { dark: true, executed: 0 }, error: null });
           }
@@ -196,7 +207,7 @@ Deno.test("#3645 the sweep records a paid stay's fee through record_stay_provide
   const { response, rpcs, upserts } = await runSweep({ main: [], stays: [stay] });
   assertEquals(response.status, 200);
   const stayRead = rpcs.find((r) => r.name === "list_missing_stay_provider_fees");
-  assertEquals(stayRead?.args, { p_limit: 100 });
+  assertEquals(stayRead?.args, { p_limit: FEE_CANDIDATES_PER_FAMILY });
   const recorded = rpcs.filter((r) => r.name === "record_stay_provider_fee");
   assertEquals(recorded.map((r) => r.args), [{
     p_payment_attempt_id: "stay-attempt-1",
@@ -264,4 +275,142 @@ Deno.test("#3645 a Stripe instalment fee becomes an order_installment snapshot",
     provider_fee_cents: 77,
     provider_balance_transaction_id: "txn_inst-1",
   }]);
+});
+
+Deno.test("#3645 a Paystack instalment's verified fee completes it through its own RPC", async () => {
+  const { rpcs, upserts } = await runSweep({
+    main: [{
+      source_type: "order_installment",
+      source_id: "inst-ps",
+      provider: "paystack",
+      provider_reference: "mingla-inst-x-a1",
+      stripe_account_id: null,
+    }],
+    stays: [],
+  });
+  assertEquals(
+    rpcs.filter((r) => r.name === "issue_3645_record_installment_paystack_fee").map((r) => r.args),
+    [{ p_installment_id: "inst-ps", p_provider_fee_cents: 77 }],
+  );
+  assertEquals(upserts, []);
+});
+
+Deno.test("#3645 a failed fee read is recorded so it rotates behind the others", async () => {
+  const realError = console.error;
+  console.error = () => {};
+  try {
+    const { rpcs } = await runSweep({
+      main: [{
+        source_type: "order",
+        source_id: "order-bad",
+        provider: "stripe",
+        provider_reference: "ch_bad",
+        stripe_account_id: ACCOUNT,
+      }],
+      stays: [],
+      failFor: new Set(["order-bad"]),
+    });
+    const recorded = rpcs.filter((r) => r.name === "record_payout_fee_capture_failure");
+    assertEquals(recorded.map((r) => [r.args.p_source_type, r.args.p_source_id, r.args.p_error]), [
+      ["order", "order-bad", "provider_down"],
+    ]);
+  } finally {
+    console.error = realError;
+  }
+});
+
+function fakeAdmin(log: string[]) {
+  return {
+    rpc: (name: string) => {
+      log.push(name);
+      return Promise.resolve({ data: 1, error: null });
+    },
+    from: () => ({ upsert: () => Promise.resolve({ error: null }) }),
+  };
+}
+
+const many = (type: FeeCandidate["source_type"], n: number): FeeCandidate[] =>
+  Array.from({ length: n }, (_, i) => ({
+    source_type: type,
+    source_id: `${type}-${i}`,
+    provider: "stripe" as const,
+    provider_reference: `ch_${type}_${i}`,
+    stripe_account_id: ACCOUNT,
+  }));
+
+Deno.test("#3645 fee capture stops when its time budget is spent and leaves the rest for the next tick", async () => {
+  let clock = 0;
+  const seen: string[] = [];
+  const realError = console.error;
+  const logged: string[] = [];
+  console.error = (...args: unknown[]) => logged.push(args.map(String).join(" "));
+  try {
+    const result = await captureProviderFees(fakeAdmin([]), many("order", 50), {
+      now: () => clock,
+      feeCaptureBudgetMs: 10_000,
+      resolveProviderFee: (c) => {
+        seen.push(c.source_id);
+        clock += 1_000; // each provider read takes a second
+        return Promise.resolve({ provider_fee_cents: 1, provider_balance_transaction_id: "t" });
+      },
+    });
+    assertEquals(result.captured, 10);
+    assertEquals(result.leftForNextTick, 40);
+    assertEquals(seen.length, 10);
+    assertEquals(logged.some((l) => l.includes("payout_fee_capture_budget_spent")), true);
+  } finally {
+    console.error = realError;
+  }
+});
+
+Deno.test("#3645 a provider read that hangs is abandoned at the budget, and the sweep still reaches the ledger", async () => {
+  const realError = console.error;
+  console.error = () => {};
+  const rpcs: string[] = [];
+  try {
+    const started = Date.now();
+    const response = await handlePayoutReleaseSweep(
+      new Request("https://example.test", {
+        method: "POST",
+        headers: { authorization: "Bearer service-secret" },
+      }),
+      {
+        env: (key: string) =>
+          key === "SUPABASE_URL" ? "https://example.test"
+          : key === "SUPABASE_SERVICE_ROLE_KEY" ? "service-secret"
+          : undefined,
+        createAdmin: (() => ({
+          rpc: (name: string) => {
+            rpcs.push(name);
+            if (name === "list_missing_payout_source_fees") {
+              return Promise.resolve({ data: many("order", 3), error: null });
+            }
+            if (name === "run_payout_release_dark_sweep") {
+              return Promise.resolve({ data: { dark: true, executed: 0 }, error: null });
+            }
+            if (name === "issue_3645_raise_stale_stay_dispute_alerts") {
+              return Promise.resolve({ data: { raised: 0 }, error: null });
+            }
+            return Promise.resolve({ data: [], error: null });
+          },
+          from: () => ({ upsert: () => Promise.resolve({ error: null }) }),
+        })) as never,
+        feeCaptureBudgetMs: 50,
+        // Never settles: a provider call that hangs.
+        resolveProviderFee: () => new Promise(() => {}),
+      },
+    );
+    assertEquals(response.status, 200);
+    assertEquals(rpcs.includes("run_payout_release_dark_sweep"), true);
+    assertEquals(Date.now() - started < 5_000, true);
+  } finally {
+    console.error = realError;
+  }
+});
+
+Deno.test("#3645 families are taken in turn, so one family's backlog cannot use the whole budget", () => {
+  const order = interleaveFeeFamilies([...many("order", 3), ...many("rsvp_contribution", 1), ...many("stay_reservation", 2)]);
+  assertEquals(order.map((c) => c.source_id), [
+    "order-0", "rsvp_contribution-0", "stay_reservation-0", "order-1", "stay_reservation-1", "order-2",
+  ]);
 });
