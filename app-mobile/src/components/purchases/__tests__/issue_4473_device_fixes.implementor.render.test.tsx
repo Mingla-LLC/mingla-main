@@ -942,6 +942,51 @@ describe("#4473 D8 Android: a sheet in its own window lifts with the keyboard", 
   });
 });
 
+describe("#4473 D9 the sheet settles back after the keyboard closes", () => {
+  // Simulator-proven on iOS (SE and 17): after Done the keyboard closed but the
+  // sheet stayed lifted. gorhom stored the highest detent's POSITION (103.5) as
+  // the keyboard-lifted index, so keyboardBlurBehavior="restore" looked up
+  // detents[103.5] (undefined) and never moved. The patched helper returns an
+  // index whose detent is a real resting position.
+  // Jest does not transform node_modules here, so compile the patched module
+  // (the file the app's Metro bundle uses) to CommonJS and run it.
+  const loadPatchedHelper = (): ((
+    detents: number[] | undefined,
+    highest: number | undefined,
+    fallback: number,
+  ) => number) => {
+    const fs = jest.requireActual("fs") as typeof import("fs");
+    const ts = jest.requireActual("typescript") as typeof import("typescript");
+    const file = require.resolve("@gorhom/bottom-sheet/src/utilities/keyboardDetentIndex.ts");
+    const { outputText } = ts.transpileModule(fs.readFileSync(file, "utf8"), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2019 },
+    });
+    const moduleExports: Record<string, unknown> = {};
+    new Function("exports", outputText)(moduleExports);
+    return moduleExports.getKeyboardDetentIndex as ReturnType<typeof loadPatchedHelper>;
+  };
+  const getKeyboardDetentIndex = loadPatchedHelper();
+
+  test("a single-snap sheet lifted by the keyboard restores to its one resting position", () => {
+    const detents = [103.52];
+    const index = getKeyboardDetentIndex(detents, 103.52, -998);
+    expect(index).toBe(0);
+    expect(detents[index]).toBe(103.52);
+  });
+
+  test("a multi-snap sheet reports the highest detent's index, never its position", () => {
+    const detents = [480, 260, 90];
+    const index = getKeyboardDetentIndex(detents, 90, -998);
+    expect(index).toBe(2);
+    expect(detents[index]).toBe(90);
+  });
+
+  test("without measured detents it keeps gorhom's fallback", () => {
+    expect(getKeyboardDetentIndex(undefined, 90, -998)).toBe(-998);
+    expect(getKeyboardDetentIndex([480], undefined, -998)).toBe(-998);
+  });
+});
+
 describe("#4473 shared booking pass wording", () => {
   test("a shared booking says Your booking over its pass, never Your tickets", async () => {
     const booking = {
