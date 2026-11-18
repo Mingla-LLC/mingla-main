@@ -587,7 +587,8 @@ export function phase3dContractDigest(manifest) {
 // #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
 // #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459) after 20280803004238 and kept its pg17 suites and sidecars; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "6b511466c5cecd55f11e4423f1b13126061678216eb8d2c67a07c6edf4e542ad";
+// #4473 source changes suite: registered the shared source-changes pg17 suite and sidecar in the #1931 and #2117 inventories next to the other #4473 suites; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5969d97ef707e61aa5ceb0fda92bb9fc6b6b6d78711746e76bdf52042a8f2294";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
