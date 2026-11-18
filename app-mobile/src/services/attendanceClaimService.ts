@@ -70,6 +70,8 @@ export type ClaimedEntry = {
    * backend starts sending it later, and anything but `true` reads as false.
    */
   sharedWithAnotherAccount: boolean;
+  /** #4473 — "shared" when this account sees the purchase as a shared copy. */
+  role: "shared" | null;
 };
 
 const CLAIM_KINDS = new Set<ClaimedEntry["kind"]>([
@@ -152,6 +154,7 @@ export function parseClaimedEntries(value: unknown): ClaimedEntry[] {
         ? row.conversationId
         : null,
       sharedWithAnotherAccount: row.sharedWithAnotherAccount === true,
+      role: row.role === "shared" ? "shared" : null,
     }];
   });
 }

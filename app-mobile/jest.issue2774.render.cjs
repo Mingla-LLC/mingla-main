@@ -183,5 +183,8 @@ module.exports = {
     // dark add sheet (tabs, code, found / shared / nothing), ask-to-send and
     // the confirmation-link step; Send to a friend draws dark.
     "**/__tests__/issue_4473_missing_ticket.implementor.render.test.tsx",
+    // issue #4473 — purchases shared with a second proven account (list,
+    // read-only detail, owner note, Calendar) and "Is this your ticket?".
+    "**/__tests__/issue_4473_shared_purchases.implementor.render.test.tsx",
   ],
 };

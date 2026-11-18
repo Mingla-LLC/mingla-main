@@ -116,6 +116,9 @@
         "app-mobile/src/components/purchases/missingTicketModel.ts",
         "app-mobile/src/components/purchases/purchaseSheetTheme.ts",
         "app-mobile/src/components/onboarding/OTPInput.tsx",
+        "app-mobile/src/components/purchases/ClaimLinkLandedSheet.tsx",
+        "app-mobile/src/components/purchases/SharedPurchaseDetail.tsx",
+        "app-mobile/src/services/sharedPurchasesService.ts",
         "mingla-business/src/constants/buyerClaimCopy.ts"
       ]
     },

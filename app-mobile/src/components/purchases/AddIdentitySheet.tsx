@@ -50,11 +50,16 @@ import {
   ClaimContactError,
   displayClaimIdentifier,
   sendClaimContactCode,
+  sendClaimLinkContactCode,
   verifyClaimContactCode,
+  verifyClaimLinkContactCode,
   type ClaimContactChannel,
   type ClaimIdentifier,
 } from "../../services/claimContactService";
-import type { ClaimedEntry } from "../../services/attendanceClaimService";
+import type {
+  ClaimedEntry,
+  PendingClaim,
+} from "../../services/attendanceClaimService";
 import { runClaimSweep } from "../../services/claimSweep";
 import {
   claimedEntryMetaLine,
@@ -64,6 +69,7 @@ import {
   resendClock,
 } from "./missingTicketModel";
 import { AskSenderStep, ConfirmationLinkStep } from "./MissingTicketHelpSteps";
+import { formatStartsAtLabel } from "../../utils/zoneLabel";
 import {
   PURCHASE_SHEET_BACKGROUND,
   PURCHASE_SHEET_COLORS as C,
@@ -78,9 +84,10 @@ export type AddIdentityStep =
   | "found"
   | "none"
   | "link"
+  | "landed"
   | "ask";
 
-export type AddIdentityEntryStep = "add" | "link" | "ask";
+export type AddIdentityEntryStep = "add" | "link" | "ask" | "landed";
 
 type Props = {
   visible: boolean;
@@ -92,7 +99,26 @@ type Props = {
   onClose: () => void;
   /** Fires after a sweep ran from inside the sheet, so "Last checked" updates. */
   onChecked?: (checkedAt: number) => void;
+  /**
+   * #4473 — "Is this your ticket?": the /c link a signed-in person opened that
+   * the sweep did not attach. Required with initialStep "landed".
+   */
+  claimLink?: PendingClaim | null;
 };
+
+/** Which contact the link rail should prove, and how to show it masked. */
+export function claimLinkContact(
+  claim: PendingClaim | null | undefined,
+): { channel: ClaimContactChannel; display: string } | null {
+  if (!claim) return null;
+  const email = claim.emailMasked
+    ? { channel: "email" as const, display: claim.emailMasked }
+    : null;
+  const phone = claim.phoneLast4
+    ? { channel: "phone" as const, display: `•••• ${claim.phoneLast4}` }
+    : null;
+  return claim.preferredProof === "phone" ? phone ?? email : email ?? phone;
+}
 
 type Found = { count: number; entries: ClaimedEntry[] };
 
@@ -106,6 +132,7 @@ export function AddIdentitySheet({
   identifiers,
   onClose,
   onChecked,
+  claimLink = null,
 }: Props): React.ReactElement {
   const { t } = useTranslation("purchases");
   const router = useRouter();
@@ -124,6 +151,8 @@ export function AddIdentitySheet({
   const [resendIn, setResendIn] = useState(0);
   const [found, setFound] = useState<Found>({ count: 0, entries: [] });
   const fade = useRef(new Animated.Value(1)).current;
+  const linkFlow = initialStep === "landed";
+  const linkContact = claimLinkContact(claimLink);
   const runRef = useRef(0);
 
   const normalizedEmail = email.trim().toLowerCase();
@@ -148,7 +177,9 @@ export function AddIdentitySheet({
       ? phoneEntry.message
       : null;
   const contactLabel = sentTo ?? (
-    tab === "email"
+    linkFlow
+      ? linkContact?.display ?? ""
+      : tab === "email"
       ? normalizedEmail
       : phoneEntry.ok
       ? displayClaimIdentifier("phone", phoneEntry.e164)
@@ -164,6 +195,10 @@ export function AddIdentitySheet({
       case "locked": return t("missing.rateLimited");
       case "bad_code":
       case "expired": return t("missing.badCode");
+      case "no_contact": return t("missing.landed.noContact");
+      case "link_expired": return t("missing.landed.expired");
+      case "unsupported_phone": return t("missing.landed.unsupportedPhone");
+      case "send_failed": return t("missing.landed.sendFailed");
       default: return t("error.body");
     }
   }, [t]);
@@ -258,8 +293,41 @@ export function AddIdentitySheet({
     }
   }, [onChecked, t, userId]);
 
+  const sendForLink = useCallback(async (): Promise<void> => {
+    if (busy || !claimLink || !linkContact) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await sendClaimLinkContactCode({
+        code: claimLink.code,
+        channel: linkContact.channel,
+      });
+      if (result.alreadyConfirmed) {
+        setBusy(false);
+        await check({ foundCount: result.foundCount, claimed: result.claimed });
+        return;
+      }
+      if (!result.challengeId) throw new ClaimContactError("unavailable");
+      setChallengeId(result.challengeId);
+      setSentTo(result.sentTo ?? linkContact.display);
+      setCode("");
+      setResendIn(RESEND_SECONDS);
+      setStep("code");
+    } catch (reason) {
+      setError(errorCopy(
+        reason instanceof ClaimContactError ? reason.code : "unavailable",
+      ));
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, check, claimLink, errorCopy, linkContact]);
+
   const send = useCallback(async (): Promise<void> => {
     if (busy) return;
+    if (linkFlow) {
+      await sendForLink();
+      return;
+    }
     if (tab === "phone") setPhoneTouched(true);
     if (!shaped) {
       setError(
@@ -295,7 +363,18 @@ export function AddIdentitySheet({
     } finally {
       setBusy(false);
     }
-  }, [busy, check, errorCopy, normalizedEmail, phoneEntry, shaped, t, tab]);
+  }, [
+    busy,
+    check,
+    errorCopy,
+    linkFlow,
+    normalizedEmail,
+    phoneEntry,
+    sendForLink,
+    shaped,
+    t,
+    tab,
+  ]);
 
   const verify = useCallback(async (candidate: string): Promise<void> => {
     if (!challengeId || candidate.length !== 6 || busy) return;
@@ -303,7 +382,9 @@ export function AddIdentitySheet({
     setError(null);
     let result: { foundCount: number; claimed: ClaimedEntry[] };
     try {
-      result = await verifyClaimContactCode({ challengeId, code: candidate });
+      result = linkFlow
+        ? await verifyClaimLinkContactCode({ challengeId, code: candidate })
+        : await verifyClaimContactCode({ challengeId, code: candidate });
     } catch (reason) {
       setBusy(false);
       setError(errorCopy(
@@ -313,7 +394,7 @@ export function AddIdentitySheet({
     }
     setBusy(false);
     await check(result);
-  }, [busy, challengeId, check, errorCopy]);
+  }, [busy, challengeId, check, errorCopy, linkFlow]);
 
   const paste = useCallback(async (): Promise<void> => {
     let pasted = "";
@@ -344,7 +425,7 @@ export function AddIdentitySheet({
       setPhoneInput("");
       setPhoneTouched(false);
     }
-    setStep("add");
+    setStep(linkFlow ? "landed" : "add");
   };
 
   const stepLabel = {
@@ -354,6 +435,7 @@ export function AddIdentitySheet({
     found: t("missing.step.found"),
     none: t("missing.step.none"),
     link: t("missing.step.other"),
+    landed: t("missing.step.landed"),
     ask: t("missing.step.other"),
   }[step];
 
@@ -715,6 +797,91 @@ export function AddIdentitySheet({
             </View>
           ) : null}
 
+          {step === "landed" ? (
+            <View testID="add-identity-landed">
+              <Text accessibilityRole="header" style={styles.title}>
+                {t("missing.landed.title")}
+              </Text>
+              {claimLink ? (
+                <View style={[styles.card, styles.landedCard]}>
+                  <View
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                    style={styles.cardTile}
+                  >
+                    <Text style={styles.cardTileText}>
+                      {claimLink.title.trim().charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.cardTitle}>{claimLink.title}</Text>
+                    {[
+                      formatStartsAtLabel(claimLink.startsAt, claimLink.timezone),
+                      claimLink.orderLabel,
+                    ].filter(Boolean).length > 0 ? (
+                      <Text style={styles.cardMeta}>
+                        {[
+                          formatStartsAtLabel(claimLink.startsAt, claimLink.timezone),
+                          claimLink.orderLabel,
+                        ].filter(Boolean).join(" · ")}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+              {claimLink?.expired ? (
+                <Text style={styles.description}>{t("missing.landed.expired")}</Text>
+              ) : linkContact ? (
+                <Text style={styles.description}>
+                  {t(
+                    linkContact.channel === "email"
+                      ? "missing.landed.bodyEmail"
+                      : "missing.landed.bodyPhone",
+                    { contact: linkContact.display },
+                  )}
+                </Text>
+              ) : (
+                <Text style={styles.description}>{t("missing.landed.noContact")}</Text>
+              )}
+              {error ? (
+                <Text accessibilityRole="alert" style={styles.error} testID="add-identity-error">
+                  {error}
+                </Text>
+              ) : null}
+              {linkContact && !claimLink?.expired ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy, busy }}
+                  disabled={busy}
+                  onPress={() => { void send(); }}
+                  style={({ pressed }) => [
+                    styles.primary,
+                    busy && styles.disabled,
+                    pressed && styles.pressed,
+                  ]}
+                  testID="add-identity-landed-send"
+                >
+                  {busy ? <ActivityIndicator color="#fff" style={styles.spinner} /> : null}
+                  <Text style={styles.primaryText}>
+                    {t("missing.landed.send", { contact: linkContact.display })}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                disabled={busy}
+                onPress={() => setStep("ask")}
+                style={({ pressed }) => [styles.outline, styles.outlineTight, pressed && styles.pressed]}
+                testID="add-identity-landed-ask"
+              >
+                <Text style={styles.outlineText}>
+                  {linkContact?.channel === "phone"
+                    ? t("missing.landed.cantPhone")
+                    : t("missing.landed.cantInbox")}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
           {step === "link" ? <ConfirmationLinkStep onDone={onClose} /> : null}
           {step === "ask" ? <AskSenderStep identifiers={identifiers} /> : null}
         </Animated.View>
@@ -1010,6 +1177,8 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   outlineText: { color: C.text, fontSize: 16, fontWeight: "700" },
+  outlineTight: { marginTop: 10, minHeight: 50 },
+  landedCard: { marginTop: 14 },
   stack: { gap: 10, marginTop: 16 },
   option: {
     minHeight: 56,

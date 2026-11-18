@@ -140,7 +140,8 @@
       "checking": "Checking",
       "found": "All set",
       "none": "Confirmed",
-      "other": "Other ways"
+      "other": "Other ways",
+      "landed": "From your link"
     },
     "add": {
       "body": "Use the one you bought with. We'll send a 6-digit code to confirm it's yours.",
@@ -205,6 +206,18 @@
       "share": "Share request",
       "shareHint": "Opens your share sheet: WhatsApp, Messages, anything.",
       "shareFailed": "We couldn't open sharing. Try again."
+    },
+    "landed": {
+      "title": "Is this your ticket?",
+      "bodyEmail": "It was bought with {{contact}}. To add it to this account, confirm that email with a 6-digit code.",
+      "bodyPhone": "It was bought with {{contact}}. To add it to this account, confirm that number with a 6-digit code.",
+      "send": "Send code to {{contact}}",
+      "cantInbox": "I can't get into that inbox",
+      "cantPhone": "I can't get to that phone",
+      "expired": "This link has expired. Ask the buyer or the host to send the ticket to your current email or number.",
+      "noContact": "We can't send a code for this one. Ask the buyer or the host to send the ticket to your current email or number.",
+      "unsupportedPhone": "We can't text that number yet. Ask the buyer to send the ticket to you instead.",
+      "sendFailed": "We couldn't send the code. Try again."
     }
   },
   "ticket": {
@@ -378,5 +391,15 @@
     "errorInvalid": "Enter a valid email and mobile number.",
     "errorGeneric": "We couldn't send the ticket. Try again.",
     "errorTooLate": "{{name}} already opened this ticket."
+  },
+  "shared": {
+    "badge": "Shared",
+    "note": "Shared with you: this also shows on the buyer's Mingla account. It's one ticket, so the QR scans once at the door.",
+    "ownerNote": "Shows on both accounts. One ticket, scans once.",
+    "readOnly": "Only the buyer can send, cancel or change it.",
+    "pickupCode": "Pickup code",
+    "when": "When",
+    "where": "Where",
+    "party": "Party size"
   }
 }
