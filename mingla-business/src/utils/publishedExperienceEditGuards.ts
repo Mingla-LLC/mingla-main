@@ -104,11 +104,15 @@ const sameInstant = (a: string, b: string): boolean => {
  * of stop prices. Mirrors the RPC's I-1 one-ticket resolution.
  */
 const currentResolvedPriceCents = (exp: ExperienceDetail): number => {
-  if (exp.ticket?.isFree === true) return 0;
+  // #3645 bundle 2C — the host's choice, not the first option's price.
+  if ((exp.isFree ?? exp.ticket?.isFree) === true) return 0;
   if (exp.pricingMode === "per_stop") {
     return exp.stops.reduce((sum, s) => sum + (s.priceCents || 0), 0);
   }
-  return exp.ticket?.priceCents ?? exp.wholePriceCents ?? 0;
+  const first = exp.ticket?.priceCents ?? exp.wholePriceCents ?? 0;
+  // A paid experience whose first option is free (Kids 0 beside Adult) was
+  // sold at its whole price, as the server's sold-price lock now reads it.
+  return first === 0 ? exp.wholePriceCents ?? 0 : first;
 };
 
 /**
@@ -119,7 +123,7 @@ const patchResolvedPriceCents = (
   exp: ExperienceDetail,
   patch: LiveExperiencePatch,
 ): number => {
-  const isFree = patch.is_free ?? exp.ticket?.isFree ?? false;
+  const isFree = patch.is_free ?? exp.isFree ?? exp.ticket?.isFree ?? false;
   if (isFree) return 0;
   const mode = patch.pricing_mode ?? exp.pricingMode ?? "whole";
   if (mode === "per_stop") {

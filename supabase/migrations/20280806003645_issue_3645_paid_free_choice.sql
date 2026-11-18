@@ -132,9 +132,11 @@ $function$;
 -- biz_create_experience: a new experience stores the host's paid/free choice.
 SELECT pg_temp.issue_3645_2c_patch(
   'public.biz_create_experience(uuid,jsonb,boolean)',
-  $old$'tier_name', 'Standard',$old$,
+  $old$'tier_name', 'Standard',
+        'when_draft', v_when_draft$old$,
   $new$'tier_name', 'Standard',
-        'is_free', v_is_free,$new$,
+        'is_free', v_is_free,
+        'when_draft', v_when_draft$new$,
   1
 );
 
@@ -155,6 +157,25 @@ SELECT pg_temp.issue_3645_2c_patch(
                           '{experience_meta,venue_text}',$old$,
   $new$public.issue_3645_theme_with_is_free(theme, v_is_free),
                           '{experience_meta,venue_text}',$new$,
+  1
+);
+
+-- biz_update_live_experience: the sold-price lock compares a paid experience whose first option is free against its price, not 0.
+SELECT pg_temp.issue_3645_2c_patch(
+  'public.biz_update_live_experience(uuid,jsonb,text)',
+  $old$    v_old_resolved := COALESCE(v_old_resolved, 0);
+
+    IF v_resolved_total IS DISTINCT FROM v_old_resolved THEN$old$,
+  $new$    v_old_resolved := COALESCE(v_old_resolved, 0);
+    -- issue #3645 bundle 2C: a paid experience whose first option is free
+    -- (say, Kids 0 beside Adult) was sold at its whole price, not at 0; only
+    -- that case changes, so a re-priced ticket still locks its real price.
+    IF v_old_resolved = 0 AND NOT public.issue_3645_experience_is_free(p_event_id) THEN
+      SELECT COALESCE(e.whole_price_cents, 0) INTO v_old_resolved
+        FROM public.events e WHERE e.id = p_event_id;
+    END IF;
+
+    IF v_resolved_total IS DISTINCT FROM v_old_resolved THEN$new$,
   1
 );
 

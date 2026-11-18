@@ -315,6 +315,85 @@ BEGIN
   RAISE NOTICE 'ISSUE-3645-2C AU/CR PASS: Ari merges keep the choice; both create branches store it';
 END $au$;
 
+-- ─── FS  sold: a free first option beside a paid one still saves ───────────
+DO $fs$
+DECLARE
+  v_brand uuid := '3645c2c0-0000-4000-8000-0000000000f3';
+  v_event uuid;
+  v_order uuid := gen_random_uuid();
+  v_adult uuid;
+  v_res text;
+  v_paid jsonb := pg_temp.payload(false, 'whole', 500000, NULL, NULL)
+    || jsonb_build_object('price_options', jsonb_build_array(
+         jsonb_build_object('name', 'Kids', 'price_cents', 0),
+         jsonb_build_object('name', 'Adult', 'price_cents', 500000)));
+BEGIN
+  PERFORM pg_temp.brand(v_brand);
+  v_event := pg_temp.draft(v_brand, v_paid);
+  v_res := pg_temp.try_publish(v_event, v_paid);
+  IF v_res IS NOT NULL THEN RAISE EXCEPTION 'FS fixture FAIL: %', v_res; END IF;
+  SELECT id INTO v_adult FROM public.ticket_types
+   WHERE event_id = v_event AND deleted_at IS NULL AND price_cents > 0;
+  INSERT INTO public.orders(
+    id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
+    payment_method, payment_status, source
+  ) VALUES (
+    v_order, v_event, 'fs@example.test', 'Guest', '+2348012345678', 0,
+    'free', 'paid', 'online_checkout'
+  );
+  INSERT INTO public.order_line_items(order_id, ticket_type_id, quantity, unit_price_cents)
+    VALUES (v_order, v_adult, 1, 0);
+  INSERT INTO public.tickets(
+    id, order_id, ticket_type_id, event_id, qr_code, qr_token_hash, status, approval_status
+  ) VALUES (
+    gen_random_uuid(), v_order, v_adult, v_event,
+    'mingla:v1:ticket:' || gen_random_uuid()::text,
+    md5(gen_random_uuid()::text), 'valid', 'auto'
+  );
+  -- The read-back saves (the sold-price lock reads the whole price, not 0).
+  v_res := pg_temp.try_live(v_event, pg_temp.readback(v_event)
+    || '{"description": "Now with a longer walk between stops."}');
+  IF v_res IS NOT NULL THEN RAISE EXCEPTION 'FS FAIL: a description edit was refused: %', v_res; END IF;
+  -- A real price change with sales is still refused.
+  v_res := pg_temp.try_live(v_event, pg_temp.readback(v_event)
+    || '{"whole_price_cents": 600000}');
+  IF v_res IS NULL OR v_res NOT LIKE '%price_change_with_sales%' THEN
+    RAISE EXCEPTION 'FS FAIL: a price change with sales gave %', coalesce(v_res, 'saved');
+  END IF;
+  RAISE NOTICE 'ISSUE-3645-2C FS PASS: a sold free-first + paid experience saves; a real price change is still refused';
+END $fs$;
+
+-- ─── W0 / PX  no ticket at whole 0; the publish writer changes the choice ──
+DO $px$
+DECLARE
+  v_brand uuid := '3645c2c0-0000-4000-8000-0000000000d1';
+  v_event uuid;
+  v_res text;
+BEGIN
+  PERFORM pg_temp.brand(v_brand);
+  v_event := pg_temp.draft(v_brand, pg_temp.payload(false, 'whole', 500000, NULL, NULL));
+  v_res := pg_temp.try_publish(v_event, pg_temp.payload(true, 'whole', 0, NULL, NULL), false);
+  IF v_res IS NOT NULL OR pg_temp.meta_free(v_event) IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'PX FAIL: a paid draft saved free did not store free (%)', v_res;
+  END IF;
+  v_res := pg_temp.try_publish(v_event, pg_temp.payload(false, 'whole', 500000, NULL, NULL), false);
+  IF v_res IS NOT NULL OR pg_temp.meta_free(v_event) IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'PX FAIL: a free draft saved paid did not store paid (%)', v_res;
+  END IF;
+  -- No live ticket and no stored choice: the derived value, as before.
+  UPDATE public.ticket_types SET deleted_at = now() WHERE event_id = v_event;
+  UPDATE public.events SET theme = theme #- '{experience_meta,is_free}', whole_price_cents = 0
+   WHERE id = v_event;
+  IF public.issue_3645_experience_is_free(v_event) IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'W0 FAIL: no ticket at whole 0 does not read free';
+  END IF;
+  UPDATE public.events SET whole_price_cents = NULL WHERE id = v_event;
+  IF public.issue_3645_experience_is_free(v_event) IS NOT NULL THEN
+    RAISE EXCEPTION 'W0 FAIL: no ticket and no whole price must stay unknown (NULL), as before';
+  END IF;
+  RAISE NOTICE 'ISSUE-3645-2C W0/PX PASS: the publish writer changes the choice both ways; no ticket keeps the derived value';
+END $px$;
+
 -- ─── K1  the patches are live, once each, and #4420's line is kept ─────────
 DO $k1$
 DECLARE
@@ -325,6 +404,18 @@ BEGIN
   IF v_src NOT LIKE '%issue_3645_experience_is_free(p_event_id)%'
      OR v_src LIKE '%COALESCE(v_ticket.is_free,v_event.whole_price_cents=0)%' THEN
     RAISE EXCEPTION 'K1 FAIL: the read-back does not use the one rule';
+  END IF;
+  SELECT prosrc INTO v_src FROM pg_proc
+   WHERE oid = 'public.biz_create_experience(uuid,jsonb,boolean)'::regprocedure;
+  IF (length(v_src) - length(replace(v_src, '''is_free'', v_is_free,', '')))
+     / length('''is_free'', v_is_free,') <> 1 THEN
+    RAISE EXCEPTION 'K1 FAIL: create does not store the choice exactly once';
+  END IF;
+  SELECT prosrc INTO v_src FROM pg_proc
+   WHERE oid = 'public.biz_update_live_experience(uuid,jsonb,text)'::regprocedure;
+  IF (length(v_src) - length(replace(v_src, 'IF v_old_resolved = 0 AND NOT public.issue_3645_experience_is_free(p_event_id) THEN', '')))
+     / length('IF v_old_resolved = 0 AND NOT public.issue_3645_experience_is_free(p_event_id) THEN') <> 1 THEN
+    RAISE EXCEPTION 'K1 FAIL: the sold-price lock patch is not live exactly once';
   END IF;
   FOR v_src IN SELECT prosrc FROM pg_proc WHERE oid IN (
     'public.biz_publish_experience(uuid,jsonb,boolean)'::regprocedure,

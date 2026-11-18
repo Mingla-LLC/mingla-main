@@ -25,7 +25,9 @@ describe("issue #3645 2C — experienceIsFree", () => {
     ["legacy: no stored choice, free ticket", undefined, [free], 0, true],
     ["legacy: no stored choice, priced ticket", undefined, [paid], 500_000, false],
     ["legacy: no stored choice, no ticket, whole 0", undefined, [], 0, true],
-    ["a stored choice that is not a boolean is ignored", "true", [free], 0, true],
+    // A stored choice that is not a boolean is ignored (both directions).
+    ["a non-boolean \"false\" is ignored (free ticket reads free)", "false", [free], 0, true],
+    ["a non-boolean \"true\" is ignored (no ticket, whole priced)", "true", [], 500_000, false],
   ];
   test.each(cases)("%s", (_name, stored, tickets, whole, want) => {
     expect(experienceIsFree(stored, tickets, whole)).toBe(want);

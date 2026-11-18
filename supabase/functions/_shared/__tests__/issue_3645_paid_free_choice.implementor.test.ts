@@ -109,6 +109,8 @@ const CASES: Array<[string, Json, Json[], number | null, boolean]> = [
     false,
   ],
   ["legacy: no stored choice, no ticket, whole 0", {}, [], 0, true],
+  ["a non-boolean \"false\" is ignored", { experience_meta: { is_free: "false" } }, [freeTicket], 0, true],
+  ["a non-boolean \"true\" is ignored", { experience_meta: { is_free: "true" } }, [], 500_000, false],
 ];
 
 for (const [name, theme, tickets, whole, want] of CASES) {
@@ -141,6 +143,16 @@ Deno.test("#3645 2C the migration applies exactly the declared live patches", ()
     1,
     "only the patch helper executes SQL",
   );
+});
+
+Deno.test("#3645 2C every patch is a no-op on re-apply (its new text never contains its old)", () => {
+  // The helper treats "0 old, p_expected new" as applied. A `new` that
+  // contains its `old` keeps 1 old match after the first apply, so a re-apply
+  // would patch again (an earlier draft of the create patch did).
+  for (const p of PAID_FREE_CHOICE_PATCHES) {
+    assert(!p.new.includes(p.old), `${p.fn}: new contains old`);
+    assertEquals(count(p.new, p.old), 0, p.fn);
+  }
 });
 
 Deno.test("#3645 2C the migration re-creates no existing function and adds only its helpers", () => {
