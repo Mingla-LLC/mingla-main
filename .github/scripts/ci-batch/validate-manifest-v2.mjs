@@ -608,7 +608,8 @@ export function phase3dContractDigest(manifest) {
 // #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (needs brand_readiness_catalog from the skipped 20280307003355); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4389 merge of main after #4453: kept main's #4453 rows and skip lines beside the #4389 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7d1280853b2e55e16dea4508d7d87768af9fd26c15be9041e1ea76459ee503a4";
+// #4490 P1-1 implementor: listed migrations 20280809004490 (venue spaces + features) and 20280809054490 (#2099 pin owner) after 20280808004389 in the #1857, #1931 and #2117 lanes, registered the P1 features pg17 suite (with sidecar) in the #1931 and #2117 inventories, skipped the pin owner on the filtered #1931 template replay, and added both migrations to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "95327c23adb821ab99aa930dfcc066db9a6921f406572431e930ee358db1b85f";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

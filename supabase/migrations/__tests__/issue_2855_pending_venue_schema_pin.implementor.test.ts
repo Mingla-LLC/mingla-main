@@ -29,7 +29,7 @@ const ORIGINAL_PATH =
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
 const CURRENT_PIN_PATH =
-  "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql";
+  "supabase/migrations/20280809054490_issue_4490_p1_pending_venue_repin.sql";
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -53,8 +53,12 @@ const NEW_PIN =
 // group-chat plan venue dependencies, which stay disallowed and are advanced by
 // their later owners (now #4261's repin, which replaces #4188's and reads one
 // value on every runner that applies it).
+// [TEST-MOD-APPROVED #4490] #4490's repin now owns the pin: it advances it over
+// the venue feature lanes (spaces, combinations, features), which stay
+// disallowed, and reads one value on the Supabase CLI stack and the bare PG17
+// batch image.
 const CURRENT_HASHES = [
-  "957efbc24ad78cc3ae5e0d5bf79162c8caa6b36c39d215721dde27b47d07a47a",
+  "ab90b7977abd8b3f1132ebcf458ae9274e73d67905ca1e968f2203bcf4aa4f57",
 ] as const;
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
@@ -440,7 +444,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
-  const currentPinName = "20280403074261_issue_4261_pending_venue_repin.sql";
+  const currentPinName = "20280809054490_issue_4490_p1_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),
@@ -450,9 +454,9 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   assert.equal(
     count(d4, currentPinName),
     2,
-    "D4 must replay the current group-chat plan pin owner twice",
+    "D4 must replay the current venue-feature pin owner twice",
   );
-  const tokens = [...d4.matchAll(/202(?:7|8)\d+_issue_(?:2099|2855|4188|4261)[^\s"]+\.sql/g)]
+  const tokens = [...d4.matchAll(/202(?:7|8)\d+_issue_(?:2099|2855|4188|4261|4490)[^\s"]+\.sql/g)]
     .map((match) => match[0]);
   assert.deepEqual(tokens, [
     originalName,

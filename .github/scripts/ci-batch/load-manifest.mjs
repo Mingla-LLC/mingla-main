@@ -353,7 +353,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (it re-emits brand_readiness_internal, which needs brand_readiness_catalog from the skipped 20280307003355); re-sealed.
 // #4389 merge of main after #4453: kept main's eleven #4453 rows and skip lines, listed 20280808004389 after them and kept its #1931 skip line; re-sealed.
-export const BOOTSTRAP_SHA256 = "aa194fe9f562f4f535ffc3123e702b454dfc97a0a04a265f636ea07b12791da5";
+// #4490 P1-1 implementor: listed migrations 20280809004490 (venue spaces + features) and 20280809054490 (#2099 pin owner) after 20280808004389 in the #1857, #1931 and #2117 lanes, registered the P1 features pg17 suite (with sidecar) in the #1931 and #2117 inventories, skipped the pin owner on the filtered #1931 template replay, and added both migrations to the #2099 provider path scope; re-sealed.
+export const BOOTSTRAP_SHA256 = "fadd900106310a7d65e3a38d61663a04a636ce84d6cf6c6f04f517f5f2e59adb";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

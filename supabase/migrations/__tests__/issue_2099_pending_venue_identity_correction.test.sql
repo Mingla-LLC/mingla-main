@@ -83,7 +83,7 @@ BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
   IF p->>'ok'<>'true' OR NOT COALESCE(
     p->>'schema_fingerprint' IN (
-      '957efbc24ad78cc3ae5e0d5bf79162c8caa6b36c39d215721dde27b47d07a47a'
+      'ab90b7977abd8b3f1132ebcf458ae9274e73d67905ca1e968f2203bcf4aa4f57'
     ),
     false
   ) THEN
