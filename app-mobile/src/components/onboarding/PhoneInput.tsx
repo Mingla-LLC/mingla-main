@@ -42,9 +42,13 @@ interface PhoneInputProps {
   inputComponent?: PackagePhoneInputProps["inputComponent"];
   /** issue #3380 — format as typed, follow a pasted +code, phone autofill. */
   smartEntry?: boolean;
+  /** #4473 — an example number for the selected country (else the generic one). */
+  placeholder?: string;
+  /** #4473 — the host opens its own country picker (see @mingla/phone-input). */
+  onRequestCountryPicker?: () => void;
 }
 
-export const PhoneInput: React.FC<PhoneInputProps> = (props) => {
+export const PhoneInput: React.FC<PhoneInputProps> = ({ placeholder, ...props }) => {
   const { t } = useTranslation("onboarding");
 
   const iconRenderer = useCallback<IconRenderer>(
@@ -69,7 +73,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = (props) => {
   );
 
   const labels: PhoneInputLabels = {
-    phonePlaceholder: t("phone.placeholder_phone"),
+    phonePlaceholder: placeholder ?? t("phone.placeholder_phone"),
     countryButtonAccessibilityLabel: (name) =>
       t("phone.country_accessibility", { name }),
     phoneInputAccessibilityLabel: t("phone.headline"),

@@ -30,13 +30,27 @@ import {
   purchaseKindLabel,
   purchaseStatusLabel,
 } from "../../utils/purchasePresentation";
-import type { PurchaseTimelineItem } from "../../utils/purchaseTimeline";
+import type {
+  PurchaseKind,
+  PurchaseTimelineItem,
+} from "../../utils/purchaseTimeline";
 import { formatTicketTimeLine } from "../../utils/zoneLabel";
+
+/** The note's wording per kind: only tickets and RSVP passes claim a QR. */
+const NOTE_KIND: Record<PurchaseKind, string> = {
+  order: "ticket",
+  rsvp: "rsvp",
+  reservation: "reservation",
+  stay: "stay",
+  venue_order: "venue_order",
+};
 
 export function PurchaseShareNote({
   variant,
+  kind,
 }: {
   variant: "owner" | "shared";
+  kind: PurchaseKind;
 }): React.ReactElement {
   const { t } = useTranslation("purchases");
   return (
@@ -51,7 +65,9 @@ export function PurchaseShareNote({
       </Svg>
       <View style={styles.noteCopy}>
         <Text style={styles.noteText}>
-          {variant === "owner" ? t("shared.ownerNote") : t("shared.note")}
+          {variant === "owner"
+            ? t(`shared.ownerNote.${NOTE_KIND[kind]}`)
+            : t(`shared.note.${NOTE_KIND[kind]}`)}
         </Text>
         {variant === "shared" ? (
           <Text style={styles.noteSub}>{t("shared.readOnly")}</Text>
@@ -169,7 +185,10 @@ export function SharedPurchaseDetail({
     <View testID="shared-purchase-detail">
       <Text style={styles.eyebrow}>{purchaseKindLabel(item.kind)}</Text>
       <Text accessibilityRole="header" style={styles.title}>{item.title}</Text>
-      {item.brandName ? <Text style={styles.brand}>{item.brandName}</Text> : null}
+      {item.brandName &&
+      item.brandName.trim().toLowerCase() !== item.title.trim().toLowerCase() ? (
+        <Text style={styles.brand}>{item.brandName}</Text>
+      ) : null}
       <View style={styles.pills}>
         <View style={styles.statusPill}>
           <Text style={styles.statusText}>{purchaseStatusLabel(item.status)}</Text>
@@ -178,7 +197,7 @@ export function SharedPurchaseDetail({
           <Text style={styles.sharedPillText}>{t("shared.badge")}</Text>
         </View>
       </View>
-      <PurchaseShareNote variant="shared" />
+      <PurchaseShareNote kind={item.kind} variant="shared" />
 
       {passes.length > 0 ? (
         <View style={styles.section}>

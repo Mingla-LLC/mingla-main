@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Animated,
   Clipboard,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
@@ -36,6 +37,7 @@ import { parsePhoneEntry } from "@mingla/phone-input/phoneNumber";
 
 import {
   BaseBottomSheet,
+  BottomSheetScrollView,
   BottomSheetTextInput,
 } from "../ui/BaseBottomSheet";
 import { OTPInput } from "../onboarding/OTPInput";
@@ -69,6 +71,17 @@ import {
   resendClock,
 } from "./missingTicketModel";
 import { AskSenderStep, ConfirmationLinkStep } from "./MissingTicketHelpSteps";
+import {
+  CLAIM_PHONE_COUNTRIES,
+  claimPhonePlaceholder,
+  defaultClaimPhoneCountry,
+  isClaimPhoneCountry,
+} from "./missingTicketModel";
+import {
+  PURCHASE_SHEET_KEYBOARD_TOOLBAR,
+  SHEET_KEYBOARD_DONE_BAR_ID,
+  SheetKeyboardDoneBar,
+} from "./SheetKeyboardDoneBar";
 import { formatStartsAtLabel } from "../../utils/zoneLabel";
 import {
   PURCHASE_SHEET_BACKGROUND,
@@ -85,6 +98,7 @@ export type AddIdentityStep =
   | "none"
   | "link"
   | "landed"
+  | "country"
   | "ask";
 
 export type AddIdentityEntryStep = "add" | "link" | "ask" | "landed";
@@ -141,7 +155,9 @@ export function AddIdentitySheet({
   const [tab, setTab] = useState<ClaimContactChannel>("phone");
   const [email, setEmail] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
-  const [countryCode, setCountryCode] = useState(getDefaultCountryCode);
+  const [countryCode, setCountryCode] = useState<string>(
+    () => defaultClaimPhoneCountry(getDefaultCountryCode()),
+  );
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -154,6 +170,12 @@ export function AddIdentitySheet({
   const linkFlow = initialStep === "landed";
   const linkContact = claimLinkContact(claimLink);
   const runRef = useRef(0);
+  const scrollRef = useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
+  const focusScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The channel the code went to, so the code step's hint matches it.
+  const codeChannel: ClaimContactChannel = linkFlow
+    ? linkContact?.channel ?? "email"
+    : tab;
 
   const normalizedEmail = email.trim().toLowerCase();
   const selectedCountry = useMemo(
@@ -169,13 +191,19 @@ export function AddIdentitySheet({
       }),
     [countryCode, phoneInput, selectedCountry?.dialCode],
   );
+  // claim-contact texts only some countries; a pasted "+33 …" can move the
+  // field to one it cannot reach, so that is refused here, in words.
+  const phoneCountrySupported = isClaimPhoneCountry(
+    phoneEntry.ok ? phoneEntry.countryIso ?? countryCode : countryCode,
+  );
   const shaped = tab === "email"
     ? EMAIL_SHAPE.test(normalizedEmail)
-    : phoneEntry.ok;
-  const phoneProblem =
-    phoneTouched && !phoneEntry.ok && phoneInput.trim().length > 0
-      ? phoneEntry.message
-      : null;
+    : phoneEntry.ok && phoneCountrySupported;
+  const phoneProblem = !phoneCountrySupported && phoneInput.trim().length > 0
+    ? t("missing.add.unsupportedCountry")
+    : phoneTouched && !phoneEntry.ok && phoneInput.trim().length > 0
+    ? phoneEntry.message
+    : null;
   const contactLabel = sentTo ?? (
     linkFlow
       ? linkContact?.display ?? ""
@@ -185,6 +213,23 @@ export function AddIdentitySheet({
       ? displayClaimIdentifier("phone", phoneEntry.e164)
       : ""
   );
+
+  /**
+   * Keep the focused field AND the primary button above the keyboard: the
+   * sheet lifts with the keyboard (its Done bar is part of the keyboard), and
+   * the body scrolls to its end once the keyboard has settled. No keyboard
+   * listener: this runs on the field's own focus.
+   */
+  const revealPrimaryOnFocus = useCallback((): void => {
+    if (focusScrollTimer.current) clearTimeout(focusScrollTimer.current);
+    focusScrollTimer.current = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 280);
+  }, []);
+
+  useEffect(() => () => {
+    if (focusScrollTimer.current) clearTimeout(focusScrollTimer.current);
+  }, []);
 
   const errorCopy = useCallback((errorCode: ClaimContactError["code"]): string => {
     switch (errorCode) {
@@ -232,7 +277,7 @@ export function AddIdentitySheet({
     setTab("phone");
     setEmail("");
     setPhoneInput("");
-    setCountryCode(getDefaultCountryCode());
+    setCountryCode(defaultClaimPhoneCountry(getDefaultCountryCode()));
     setPhoneTouched(false);
     setChallengeId(null);
     setSentTo(null);
@@ -295,6 +340,7 @@ export function AddIdentitySheet({
 
   const sendForLink = useCallback(async (): Promise<void> => {
     if (busy || !claimLink || !linkContact) return;
+    Keyboard.dismiss();
     setBusy(true);
     setError(null);
     try {
@@ -340,6 +386,9 @@ export function AddIdentitySheet({
     const value = tab === "email"
       ? normalizedEmail
       : phoneEntry.ok ? phoneEntry.e164 : "";
+    // Close the keyboard while the field is still on screen, so the sheet
+    // settles back to its resting height before the next step renders.
+    Keyboard.dismiss();
     setBusy(true);
     setError(null);
     try {
@@ -378,6 +427,9 @@ export function AddIdentitySheet({
 
   const verify = useCallback(async (candidate: string): Promise<void> => {
     if (!challengeId || candidate.length !== 6 || busy) return;
+    // Same reason: the result steps must sit flush at the bottom, not at the
+    // height the keyboard lifted the sheet to.
+    Keyboard.dismiss();
     setBusy(true);
     setError(null);
     let result: { foundCount: number; claimed: ClaimedEntry[] };
@@ -436,6 +488,7 @@ export function AddIdentitySheet({
     none: t("missing.step.none"),
     link: t("missing.step.other"),
     landed: t("missing.step.landed"),
+    country: t("missing.step.add"),
     ask: t("missing.step.other"),
   }[step];
 
@@ -455,9 +508,11 @@ export function AddIdentitySheet({
       handleStyle={PURCHASE_SHEET_HANDLE}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
+      keyboardToolbar={PURCHASE_SHEET_KEYBOARD_TOOLBAR}
       onClose={closable ? onClose : () => undefined}
       scrollMode="scroll"
       scrollProps={{
+        ref: scrollRef,
         keyboardDismissMode: "interactive",
         keyboardShouldPersistTaps: "handled",
       }}
@@ -468,6 +523,7 @@ export function AddIdentitySheet({
       wrapInRNModal
     >
       <View style={styles.body} testID="add-identity-sheet">
+        <SheetKeyboardDoneBar />
         <View style={styles.topRow}>
           <Text style={styles.stepLabel}>{stepLabel}</Text>
           {closable ? (
@@ -491,6 +547,55 @@ export function AddIdentitySheet({
         </View>
 
         <Animated.View style={{ opacity: fade }}>
+          {step === "country" ? (
+            <View testID="add-identity-country">
+              <Text accessibilityRole="header" style={styles.title}>
+                {t("missing.country.title")}
+              </Text>
+              <Text style={styles.description}>{t("missing.country.body")}</Text>
+              <View accessibilityRole="radiogroup" style={styles.countryList}>
+                {CLAIM_PHONE_COUNTRIES.map((iso) => {
+                  const country = getCountryByCode(iso);
+                  if (!country) return null;
+                  const selected = countryCode === iso;
+                  return (
+                    <Pressable
+                      accessibilityLabel={`${country.name}, ${country.dialCode}`}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected, checked: selected }}
+                      key={iso}
+                      onPress={() => {
+                        setCountryCode(iso);
+                        setPhoneInput("");
+                        setPhoneTouched(false);
+                        setError(null);
+                        setStep("add");
+                      }}
+                      style={({ pressed }) => [
+                        styles.countryRow,
+                        selected && styles.countryRowSelected,
+                        pressed && styles.pressed,
+                      ]}
+                      testID={`add-identity-country-${iso}`}
+                    >
+                      <Text style={styles.countryFlag}>{country.flag}</Text>
+                      <Text style={styles.countryName}>{country.name}</Text>
+                      <Text style={styles.countryDial}>{country.dialCode}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setStep("add")}
+                style={({ pressed }) => [styles.outline, styles.outlineTight, pressed && styles.pressed]}
+                testID="add-identity-country-back"
+              >
+                <Text style={styles.outlineText}>{t("missing.country.back")}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           {step === "add" ? (
             <View>
               <Text accessibilityRole="header" style={styles.title}>
@@ -539,6 +644,9 @@ export function AddIdentitySheet({
                     inputComponent={BottomSheetTextInput}
                     onBlur={() => setPhoneTouched(true)}
                     onChangeCountry={setCountryCode}
+                    onFocus={revealPrimaryOnFocus}
+                    onRequestCountryPicker={() => setStep("country")}
+                    placeholder={claimPhonePlaceholder(countryCode)}
                     onChangePhone={(next) => {
                       setPhoneInput(next);
                       setError(null);
@@ -567,6 +675,8 @@ export function AddIdentitySheet({
                       setEmail(next);
                       setError(null);
                     }}
+                    inputAccessoryViewID={SHEET_KEYBOARD_DONE_BAR_ID}
+                    onFocus={revealPrimaryOnFocus}
                     onSubmitEditing={() => { void send(); }}
                     placeholder={t("missing.add.emailPlaceholder")}
                     placeholderTextColor={C.placeholder}
@@ -629,6 +739,7 @@ export function AddIdentitySheet({
                 <OTPInput
                   disabled={busy}
                   error={error !== null}
+                  inputAccessoryViewID={SHEET_KEYBOARD_DONE_BAR_ID}
                   inputComponent={BottomSheetTextInput}
                   length={6}
                   onChange={(next) => {
@@ -683,7 +794,9 @@ export function AddIdentitySheet({
                 </Pressable>
               </View>
               <Text style={styles.hint}>
-                {Platform.OS === "ios"
+                {codeChannel === "email"
+                  ? t("missing.code.hintEmail")
+                  : Platform.OS === "ios"
                   ? t("missing.code.hintIos")
                   : t("missing.code.hint")}
               </Text>
@@ -747,7 +860,10 @@ export function AddIdentitySheet({
                     <Path d="M12 11v6M12 7.5v.5" stroke={C.infoIcon} strokeLinecap="round" strokeWidth={2.2} />
                   </Svg>
                   <Text style={styles.infoText}>
-                    {t("missing.found.shared", { value: contactLabel })}
+                    {t(sharedNoteKey(found.entries), {
+                      value: contactLabel,
+                      count: found.entries.filter((entry) => entry.sharedWithAnotherAccount).length,
+                    })}
                   </Text>
                 </View>
               ) : null}
@@ -888,6 +1004,19 @@ export function AddIdentitySheet({
       </View>
     </BaseBottomSheet>
   );
+}
+
+/**
+ * The "also confirmed on another account" note, worded for what was found:
+ * a ticket or RSVP pass scans once at the door; a booking or a receipt makes
+ * no QR claim (a stay has none, and nothing is "a ticket").
+ */
+export function sharedNoteKey(entries: readonly ClaimedEntry[]): string {
+  const shared = entries.filter((entry) => entry.sharedWithAnotherAccount === true);
+  const nouns = new Set(shared.map((entry) => entry.noun));
+  if (shared.length > 1 && nouns.size > 1) return "missing.found.shared.mixed";
+  const noun = shared[0]?.noun ?? "ticket";
+  return `missing.found.shared.${noun}`;
 }
 
 function FoundCard({
@@ -1190,4 +1319,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   optionText: { color: C.text, fontSize: 15, fontWeight: "600" },
+  countryList: { gap: 8, marginTop: 16 },
+  countryRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.field,
+  },
+  countryRowSelected: { borderColor: C.accent },
+  countryFlag: { fontSize: 22 },
+  countryName: { flex: 1, color: C.text, fontSize: 15, fontWeight: "600" },
+  countryDial: { color: C.textSecondary, fontSize: 15 },
 });

@@ -15,6 +15,7 @@ import type {
 } from "../../utils/purchaseTimeline";
 import {
   formatPurchaseMoney,
+  joinDistinct,
   purchaseCountLabel,
   purchaseKindLabel,
   purchaseStatusLabel,
@@ -99,10 +100,14 @@ export function PurchaseCard({
     : formatTicketTimeLine(item.startsAt, item.timezone, null);
   const countLabel = purchaseCountLabel(item);
   const whenLine = dateLine ? `${dateLine} · ${countLabel}` : countLabel;
-  const whereLine = [item.brandName, item.venueLine]
-    .map((value) => value?.trim() ?? "")
-    .filter((value) => value.length > 0)
-    .join(" · ");
+  // #4473 — a shared stay's venue is its title, brand and place at once: the
+  // where line never repeats the title or itself.
+  const titleKey = item.title.trim().toLowerCase();
+  const whereLine = joinDistinct(
+    [item.brandName, item.venueLine].filter(
+      (value) => (value?.trim().toLowerCase() ?? "") !== titleKey,
+    ),
+  );
   const amount = formatPurchaseMoney(item.amountCents, item.currency);
   const refundState = isRefundStatus(item.status);
   const cancelled = isCancelledStatus(item.status);

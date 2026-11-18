@@ -151,7 +151,8 @@
       "emailLabel": "Email address",
       "emailPlaceholder": "name@example.com",
       "emailHint": "Check spam if it doesn't land in a minute.",
-      "invalidEmail": "Enter a full email address, like name@example.com."
+      "invalidEmail": "Enter a full email address, like name@example.com.",
+      "unsupportedCountry": "We can only text numbers in Canada, Ghana, Kenya, Nigeria, South Africa, the UK and the US. Use the Email tab for anything else."
     },
     "code": {
       "change": "Change",
@@ -159,7 +160,8 @@
       "paste": "Paste code",
       "resendIn": "Resend in {{time}}",
       "hintIos": "On iPhone the code from Messages appears above the keyboard. It checks itself once all 6 digits are in.",
-      "hint": "It checks itself once all 6 digits are in."
+      "hint": "It checks itself once all 6 digits are in.",
+      "hintEmail": "Check your inbox (and spam). It checks itself once all 6 digits are in."
     },
     "checking": {
       "title": "Confirmed. Looking for tickets",
@@ -175,7 +177,17 @@
       "open": "Open",
       "openLabel": "Open {{title}}",
       "done": "Done",
-      "shared": "{{value}} is also confirmed on another Mingla account, so this ticket shows on both. It's one ticket: the QR scans once at the door."
+      "shared": {
+        "ticket_one": "{{value}} is also confirmed on another Mingla account, so this ticket shows on both. It's one ticket: the QR scans once at the door.",
+        "ticket_other": "{{value}} is also confirmed on another Mingla account, so these tickets show on both. Each is one ticket: its QR scans once at the door.",
+        "pass_one": "{{value}} is also confirmed on another Mingla account, so this RSVP shows on both. It's one pass: the QR scans once at the door.",
+        "pass_other": "{{value}} is also confirmed on another Mingla account, so these RSVPs show on both. Each pass scans once at the door.",
+        "booking_one": "{{value}} is also confirmed on another Mingla account, so this booking shows on both. It's one booking, shared by both accounts.",
+        "booking_other": "{{value}} is also confirmed on another Mingla account, so these bookings show on both. Each is one booking, shared by both accounts.",
+        "receipt_one": "{{value}} is also confirmed on another Mingla account, so this order shows on both. It's one order, shared by both accounts.",
+        "receipt_other": "{{value}} is also confirmed on another Mingla account, so these orders show on both. Each is one order, shared by both accounts.",
+        "mixed": "{{value}} is also confirmed on another Mingla account, so these purchases show on both. Each is still just one, shared by both accounts."
+      }
     },
     "none": {
       "title": "No tickets on {{value}} yet",
@@ -216,6 +228,11 @@
       "noContact": "We can't send a code for this one. Ask the buyer or the host to send the ticket to your current email or number.",
       "unsupportedPhone": "We can't text that number yet. Ask the buyer to send the ticket to you instead.",
       "sendFailed": "We couldn't send the code. Try again."
+    },
+    "country": {
+      "title": "Choose a country",
+      "body": "We can text a code to numbers in these countries.",
+      "back": "Back"
     }
   },
   "ticket": {
@@ -388,12 +405,18 @@
     "errorSelf": "That's your own email or number.",
     "errorInvalid": "Enter a valid email and mobile number.",
     "errorGeneric": "We couldn't send the ticket. Try again.",
-    "errorTooLate": "{{name}} already opened this ticket."
+    "errorTooLate": "{{name}} already opened this ticket.",
+    "nameLabel": "First name"
   },
   "shared": {
     "badge": "Shared",
-    "note": "Shared with you: this also shows on the buyer's Mingla account. It's one ticket, so the QR scans once at the door.",
-    "ownerNote": "Shows on both accounts. One ticket, scans once.",
+    "ownerNote": {
+      "ticket": "Shows on both accounts. One ticket, scans once.",
+      "rsvp": "Shows on both accounts. One RSVP, scans once.",
+      "reservation": "Shows on both accounts. It's one booking.",
+      "stay": "Shows on both accounts. It's one booking.",
+      "venue_order": "Shows on both accounts. It's one order."
+    },
     "readOnly": "Only the buyer can send, cancel or change it.",
     "pickupCode": "Pickup code",
     "when": "When",
@@ -401,6 +424,14 @@
     "party": "Party size",
     "reference": "Reference",
     "state": "Status",
-    "mode": "Booking type"
-  }
+    "mode": "Booking type",
+    "note": {
+      "ticket": "Shared with you: this also shows on the buyer's Mingla account. It's one ticket, so the QR scans once at the door.",
+      "rsvp": "Shared with you: this also shows on the buyer's Mingla account. It's one RSVP, so the QR scans once at the door.",
+      "reservation": "Shared with you: this booking also shows on the buyer's Mingla account. It's one booking, shared by both accounts.",
+      "stay": "Shared with you: this booking also shows on the buyer's Mingla account. It's one booking, shared by both accounts.",
+      "venue_order": "Shared with you: this order also shows on the buyer's Mingla account. It's one order, so the pickup code works once."
+    }
+  },
+  "keyboardDone": "Done"
 }

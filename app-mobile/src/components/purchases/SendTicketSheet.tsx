@@ -32,6 +32,11 @@ import {
   PURCHASE_SHEET_HANDLE,
   PURCHASE_SHEET_PHONE_THEME,
 } from "./purchaseSheetTheme";
+import {
+  PURCHASE_SHEET_KEYBOARD_TOOLBAR,
+  SHEET_KEYBOARD_DONE_BAR_ID,
+  SheetKeyboardDoneBar,
+} from "./SheetKeyboardDoneBar";
 
 type Props = {
   ticket: PurchaseTicket | null;
@@ -179,6 +184,7 @@ export function SendTicketSheet({
       }}
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
+      keyboardToolbar={PURCHASE_SHEET_KEYBOARD_TOOLBAR}
       android_keyboardInputMode="adjustResize"
       snapPoints={["68%"]}
       theme="dark"
@@ -188,11 +194,14 @@ export function SendTicketSheet({
       wrapInRNModal
     >
       <View style={styles.body}>
+        <SheetKeyboardDoneBar />
         <Text style={styles.title}>
           {t("send.sheetTitle", { index: ticket?.ticketIndex ?? 1 })}
         </Text>
+        <Text style={styles.label}>{t("send.nameLabel")}</Text>
         <BottomSheetTextInput
-          accessibilityLabel={t("send.namePlaceholder")}
+          accessibilityLabel={t("send.nameLabel")}
+          inputAccessoryViewID={SHEET_KEYBOARD_DONE_BAR_ID}
           autoCapitalize="words"
           editable={!busy}
           maxLength={60}
@@ -213,6 +222,7 @@ export function SendTicketSheet({
           autoComplete="email"
           autoCorrect={false}
           editable={!busy}
+          inputAccessoryViewID={SHEET_KEYBOARD_DONE_BAR_ID}
           keyboardType="email-address"
           onChangeText={setEmail}
           onFocus={() => {

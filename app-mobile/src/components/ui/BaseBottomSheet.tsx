@@ -248,6 +248,15 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   keyboardBlurBehavior?: 'none' | 'restore';
   android_keyboardInputMode?: 'adjustPan' | 'adjustResize';
   showHandle?: boolean;
+  /**
+   * #4473 — the Done bar this sheet's RN-Modal window shows over the keyboard.
+   * 'system' (default): the shared KeyboardToolbar, light or dark by system
+   * appearance. 'dark': the same bar, always dark (dark sheets). 'none': no
+   * shared bar — for a host that attaches its own iOS InputAccessoryView to
+   * every field, so there is exactly one bar and it is part of the keyboard
+   * (the sheet then lifts above it). Only read when `wrapInRNModal` is set.
+   */
+  keyboardToolbar?: 'system' | 'dark' | 'none';
   /** Full per-consumer override of the handle indicator (parity floor, SPEC §6). */
   handleStyle?: ViewStyle;
   /** Full per-consumer override of the sheet background (parity floor, SPEC §6/§7). */
@@ -487,6 +496,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     keyboardBlurBehavior = 'restore',
     android_keyboardInputMode = 'adjustResize',
     showHandle = true,
+    keyboardToolbar = 'system',
     handleStyle,
     backgroundStyle,
     backdropOpacity,
@@ -1064,7 +1074,9 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
                   </View>
                 ) : null}
               </GestureHandlerRootView>
-              <KeyboardToolbarRoot />
+              {keyboardToolbar === 'none' ? null : (
+                <KeyboardToolbarRoot tone={keyboardToolbar === 'dark' ? 'dark' : 'system'} />
+              )}
             </KeyboardRoot>
           </RNModal>
         )}
