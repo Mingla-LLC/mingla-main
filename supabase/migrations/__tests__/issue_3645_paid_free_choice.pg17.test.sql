@@ -363,6 +363,47 @@ BEGIN
   RAISE NOTICE 'ISSUE-3645-2C FS PASS: a sold free-first + paid experience saves; a real price change is still refused';
 END $fs$;
 
+-- ─── RZ  a ticket re-priced to 0 keeps its lock at 0 (no stale whole price) ─
+DO $rz$
+DECLARE
+  v_brand uuid := '3645c2c0-0000-4000-8000-0000000000f4';
+  v_event uuid;
+  v_order uuid := gen_random_uuid();
+  v_tier uuid;
+  v_res text;
+BEGIN
+  PERFORM pg_temp.brand(v_brand);
+  v_event := pg_temp.draft(v_brand, pg_temp.payload(false, 'whole', 500000, NULL, NULL));
+  v_res := pg_temp.try_publish(v_event, pg_temp.payload(false, 'whole', 500000, NULL, NULL));
+  IF v_res IS NOT NULL THEN RAISE EXCEPTION 'RZ fixture FAIL: %', v_res; END IF;
+  -- Ari's tier tool re-prices the only ticket to 0 before any booking; the
+  -- stored choice (paid) and whole price (500000) are now stale.
+  SELECT id INTO v_tier FROM public.ticket_types WHERE event_id = v_event AND deleted_at IS NULL;
+  UPDATE public.ticket_types SET price_cents = 0, is_free = true WHERE id = v_tier;
+  INSERT INTO public.orders(
+    id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
+    payment_method, payment_status, source
+  ) VALUES (
+    v_order, v_event, 'rz@example.test', 'Guest', '+2348012345678', 0,
+    'free', 'paid', 'online_checkout'
+  );
+  INSERT INTO public.order_line_items(order_id, ticket_type_id, quantity, unit_price_cents)
+    VALUES (v_order, v_tier, 1, 0);
+  INSERT INTO public.tickets(
+    id, order_id, ticket_type_id, event_id, qr_code, qr_token_hash, status, approval_status
+  ) VALUES (
+    gen_random_uuid(), v_order, v_tier, v_event,
+    'mingla:v1:ticket:' || gen_random_uuid()::text,
+    md5(gen_random_uuid()::text), 'valid', 'auto'
+  );
+  -- Buyers paid 0. An edit at the stale whole price must not pass the lock.
+  v_res := pg_temp.try_live(v_event, pg_temp.payload(false, 'whole', 500000, NULL, NULL));
+  IF v_res IS NULL OR v_res NOT LIKE '%price_change_with_sales%' THEN
+    RAISE EXCEPTION 'RZ FAIL: a sold ticket re-priced to 0 was re-priced to 500000 (%)', coalesce(v_res, 'saved');
+  END IF;
+  RAISE NOTICE 'ISSUE-3645-2C RZ PASS: a ticket re-priced to 0 keeps its sold-price lock at 0';
+END $rz$;
+
 -- ─── W0 / PX  no ticket at whole 0; the publish writer changes the choice ──
 DO $px$
 DECLARE
@@ -413,8 +454,8 @@ BEGIN
   END IF;
   SELECT prosrc INTO v_src FROM pg_proc
    WHERE oid = 'public.biz_update_live_experience(uuid,jsonb,text)'::regprocedure;
-  IF (length(v_src) - length(replace(v_src, 'IF v_old_resolved = 0 AND NOT public.issue_3645_experience_is_free(p_event_id) THEN', '')))
-     / length('IF v_old_resolved = 0 AND NOT public.issue_3645_experience_is_free(p_event_id) THEN') <> 1 THEN
+  IF (length(v_src) - length(replace(v_src, 'IF v_old_resolved = 0 AND EXISTS (', '')))
+     / length('IF v_old_resolved = 0 AND EXISTS (') <> 1 THEN
     RAISE EXCEPTION 'K1 FAIL: the sold-price lock patch is not live exactly once';
   END IF;
   FOR v_src IN SELECT prosrc FROM pg_proc WHERE oid IN (

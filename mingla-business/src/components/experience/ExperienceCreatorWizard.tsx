@@ -561,7 +561,16 @@ export const ExperienceCreatorWizard: React.FC<
 
   // Keep the lead option's amount in sync with the whole-price / free toggle.
   // Do NOT reset priceBasis — the Pricing step owns the unit selector.
+  // #3645 bundle 2C — not on mount: the seed already pairs them, except a
+  // saved paid experience whose first option is free (Kids 0 beside Adult,
+  // made through Ari), which must keep its saved option prices until the
+  // host changes the price or the free switch.
+  const leadSyncMounted = useRef(false);
   useEffect(() => {
+    if (!leadSyncMounted.current) {
+      leadSyncMounted.current = true;
+      return;
+    }
     setPriceOptions((prev) => {
       if (prev.length === 0) return prev;
       const lead = prev[0];

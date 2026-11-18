@@ -112,7 +112,9 @@ const currentResolvedPriceCents = (exp: ExperienceDetail): number => {
   const first = exp.ticket?.priceCents ?? exp.wholePriceCents ?? 0;
   // A paid experience whose first option is free (Kids 0 beside Adult) was
   // sold at its whole price, as the server's sold-price lock now reads it.
-  return first === 0 ? exp.wholePriceCents ?? 0 : first;
+  // Only when an option is actually priced: a ticket re-priced to 0 keeps 0.
+  const priced = (exp.tickets ?? []).some((t) => t.priceCents > 0);
+  return first === 0 && priced ? exp.wholePriceCents ?? 0 : first;
 };
 
 /**

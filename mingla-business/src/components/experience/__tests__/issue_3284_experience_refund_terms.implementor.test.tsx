@@ -694,3 +694,36 @@ describe("XS — detail read, edit-route seed, reject copy", () => {
     );
   });
 });
+
+// [TEST-MOD-APPROVED #3645] bundle 2C adds this case to the mounted-wizard
+// harness above: a saved paid experience whose first option is free (Kids 0
+// beside Adult, as Ari can make) now loads as paid, and the wizard must keep
+// its saved option prices instead of copying the whole price into Kids.
+describe("#3645 2C — a paid experience whose first option is free keeps its option prices", () => {
+  test("on mount the whole price is not copied into the free first option", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { emptyPriceOption } = require("../experienceWizardTypes");
+    const draft = {
+      ...seed(),
+      isFree: false,
+      wholePriceMajor: "5000.00",
+      priceOptions: [
+        emptyPriceOption({ ticketTypeId: "t-kids", name: "Kids", priceMajor: "0.00" }),
+        emptyPriceOption({ ticketTypeId: "t-adult", name: "Adult", priceMajor: "5000.00" }),
+      ],
+    } as ExperienceWizardInitialDraft;
+    const tree = await mount(
+      <ExperienceCreatorWizard brandId="brand-3284" onComplete={jest.fn()} initialDraft={draft} />,
+    );
+    await toPricing(tree);
+    // The price fields by their labels (the lead one is the whole price).
+    const priceOf = (label: string): unknown =>
+      tree.root.findAll(
+        (n) => n.props.accessibilityLabel === label && n.props.value !== undefined,
+      )[0]?.props.value;
+    expect(textOf(tree)).toContain("Kids");
+    expect(priceOf("Whole experience price")).toBe("0.00");
+    expect(priceOf("Price for option 2")).toBe("5000.00");
+    await unmount(tree);
+  });
+});

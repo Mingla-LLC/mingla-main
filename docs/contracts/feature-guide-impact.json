@@ -3249,6 +3249,7 @@
         "mingla-business/src/components/experience/ActivitiesSnapInput.native.tsx",
         "mingla-business/src/components/experience/ActivitiesSnapInput.tsx",
         "mingla-business/src/components/experience/EditAfterPublishExperienceBanner.tsx",
+        "mingla-business/src/utils/publishedExperienceEditGuards.ts",
         "mingla-business/src/components/experience/ExperienceCheckoutFlow.tsx",
         "mingla-business/src/components/experience/ExperiencePricingStep.tsx",
         "mingla-business/src/components/experience/ExperienceStopPhotoSheet.tsx",

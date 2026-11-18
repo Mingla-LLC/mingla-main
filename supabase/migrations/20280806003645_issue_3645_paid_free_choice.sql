@@ -168,9 +168,13 @@ SELECT pg_temp.issue_3645_2c_patch(
     IF v_resolved_total IS DISTINCT FROM v_old_resolved THEN$old$,
   $new$    v_old_resolved := COALESCE(v_old_resolved, 0);
     -- issue #3645 bundle 2C: a paid experience whose first option is free
-    -- (say, Kids 0 beside Adult) was sold at its whole price, not at 0; only
-    -- that case changes, so a re-priced ticket still locks its real price.
-    IF v_old_resolved = 0 AND NOT public.issue_3645_experience_is_free(p_event_id) THEN
+    -- (say, Kids 0 beside Adult) was sold at its whole price, not at 0. Only
+    -- that case changes: it needs a live option actually priced above 0, so
+    -- a re-priced ticket (or one re-priced to 0) still locks its real price.
+    IF v_old_resolved = 0 AND EXISTS (
+      SELECT 1 FROM public.ticket_types t
+       WHERE t.event_id = p_event_id AND t.deleted_at IS NULL AND t.price_cents > 0
+    ) THEN
       SELECT COALESCE(e.whole_price_cents, 0) INTO v_old_resolved
         FROM public.events e WHERE e.id = p_event_id;
     END IF;

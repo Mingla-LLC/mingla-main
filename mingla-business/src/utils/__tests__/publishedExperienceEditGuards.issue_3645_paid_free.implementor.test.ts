@@ -116,4 +116,17 @@ describe("issue #3645 2C — sold-price lock with a free first option", () => {
     if (r.ok) throw new Error("unreachable");
     expect(r.reason).toBe("price_change_with_sales");
   });
+
+  test("a ticket re-priced to 0 keeps its lock at 0 (no stale whole price)", () => {
+    // Ari re-priced the only ticket to 0 before bookings; the whole price is stale.
+    const zeroed = experience({
+      isFree: false,
+      ticket: ticket("t1", "Standard", 0),
+      tickets: [ticket("t1", "Standard", 0)],
+    });
+    const r = validateLiveExperienceFieldUpdate(zeroed, unchanged(), 3, REASON);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.reason).toBe("price_change_with_sales");
+  });
 });

@@ -57,7 +57,7 @@ export const PAID_FREE_CHOICE_PATCHES: LivePatch[] = [
     old:
       "    v_old_resolved := COALESCE(v_old_resolved, 0);\n\n    IF v_resolved_total IS DISTINCT FROM v_old_resolved THEN",
     new:
-      "    v_old_resolved := COALESCE(v_old_resolved, 0);\n    -- issue #3645 bundle 2C: a paid experience whose first option is free\n    -- (say, Kids 0 beside Adult) was sold at its whole price, not at 0; only\n    -- that case changes, so a re-priced ticket still locks its real price.\n    IF v_old_resolved = 0 AND NOT public.issue_3645_experience_is_free(p_event_id) THEN\n      SELECT COALESCE(e.whole_price_cents, 0) INTO v_old_resolved\n        FROM public.events e WHERE e.id = p_event_id;\n    END IF;\n\n    IF v_resolved_total IS DISTINCT FROM v_old_resolved THEN",
+      "    v_old_resolved := COALESCE(v_old_resolved, 0);\n    -- issue #3645 bundle 2C: a paid experience whose first option is free\n    -- (say, Kids 0 beside Adult) was sold at its whole price, not at 0. Only\n    -- that case changes: it needs a live option actually priced above 0, so\n    -- a re-priced ticket (or one re-priced to 0) still locks its real price.\n    IF v_old_resolved = 0 AND EXISTS (\n      SELECT 1 FROM public.ticket_types t\n       WHERE t.event_id = p_event_id AND t.deleted_at IS NULL AND t.price_cents > 0\n    ) THEN\n      SELECT COALESCE(e.whole_price_cents, 0) INTO v_old_resolved\n        FROM public.events e WHERE e.id = p_event_id;\n    END IF;\n\n    IF v_resolved_total IS DISTINCT FROM v_old_resolved THEN",
   },
   {
     fn: "issue_1973_current_experience_payload",
