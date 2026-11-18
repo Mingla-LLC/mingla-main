@@ -7,8 +7,8 @@
 //     race guard (advisory lock + count that excludes the row being written,
 //     and an RPC whose ON CONFLICT always names pinned_at so the trigger runs);
 //   * the Archived row never appears with 0, and never under a filter chip;
-//   * a filter chip never leaks into search results, and brand channels and
-//     event chats land in the Events section while invites stay invites;
+//   * a filter chip never leaks into search results, and brand Guest chats
+//     (#4459) land in the Brands section while invites stay invites;
 //   * "marked unread" with real unread messages is not a double badge.
 //
 // FAILS-ON-REVERT: change `< MAX_PINNED_CHATS` to `<=` in canPinChat, drop the
@@ -85,7 +85,7 @@ Deno.test("#4114 W2a adversarial: no Archived row at 0, and none under a filter 
   assert(!negative.some((item) => item.kind === "archived"), "a bad negative count never renders a row");
   const some = buildBrowseItems({ active, archivedCount: 4, filter: "all" });
   assertEquals(some[some.length - 1], { kind: "archived", key: "archived", count: 4 }, "Archived N is the last row");
-  for (const filter of ["unread", "groups", "events"]) {
+  for (const filter of ["unread", "groups", "brands"]) {
     const filtered = buildBrowseItems({ active, archivedCount: 4, filter });
     assert(!filtered.some((item) => item.kind === "archived"), `no Archived row under the ${filter} chip`);
   }
@@ -102,21 +102,22 @@ Deno.test("#4114 W2a adversarial: an Invites header never shows without chats un
 });
 
 Deno.test("#4114 W2a adversarial: search ignores the chip and sorts every kind into its own section", () => {
-  const brandRow = conv("brand-channel:b1", { type: "group", linked_entity_type: "event", __brandChannel: { id: "brand-channel:b1" } });
+  const brandRow = conv("bg1", { type: "group", linked_entity_type: "brand_guests", brand_id: "b1" });
+  const removedRow = conv("removed-brand-guests:b2", { type: "group", linked_entity_type: "brand_guests", brand_id: "b2", __removedBrandGuests: { brandId: "b2" } });
   const eventChat = conv("ev", { type: "group", linked_entity_type: "trip" });
   const group = conv("grp", { type: "group", linked_entity_type: "session" });
   const invite = conv("inv", { __pendingInvite: { id: "x" } });
   const items = buildSearchItems({
-    matchedChats: [brandRow, eventChat, group, invite],
+    matchedChats: [brandRow, removedRow, eventChat, group, invite],
     friends: [],
-    allConversations: [brandRow, eventChat, group, invite],
+    allConversations: [brandRow, removedRow, eventChat, group, invite],
     currentUserId: ME,
     query: "x",
   });
   const sections = items.filter((item) => item.kind === "section").map((item) => item.section);
-  assertEquals(sections, ["chats", "events"], "chats then events, the empty Friends section left out");
-  const eventKeys = items.slice(items.findIndex((item) => item.kind === "section" && item.section === "events") + 1).map((item) => item.key);
-  assertEquals(eventKeys.sort(), ["brand-channel:b1", "ev"].sort(), "brand channels and event chats are Events");
+  assertEquals(sections, ["chats", "brands"], "chats then brands, the empty Friends section left out");
+  const brandKeys = items.slice(items.findIndex((item) => item.kind === "section" && item.section === "brands") + 1).map((item) => item.key);
+  assertEquals(brandKeys.sort(), ["bg1", "removed-brand-guests:b2"].sort(), "brand Guest chats (and a Removed one) are Brands; a retired event chat is not");
   assert(items.some((item) => item.kind === "invite" && item.key === "inv"), "an invite found by search stays an invite row");
 });
 

@@ -351,6 +351,16 @@
       "capability_keys": []
     },
     {
+      "pattern": "/brand/[id]/guest-chat",
+      "params": [
+        "id"
+      ],
+      "title": "Guest chat",
+      "title_source": "path",
+      "file": "mingla-business/app/brand/[id]/guest-chat.tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/brand/[id]/listing",
       "params": [
         "id"

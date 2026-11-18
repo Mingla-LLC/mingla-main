@@ -34,21 +34,6 @@ import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { TripCountdownBanner } from "./chat/TripCountdownBanner";
-import {
-  BrandChannelEventMarker,
-  BrandChannelSendChip,
-  BrandChannelSendSheet,
-  formatBrandEventDate,
-} from "./chat/BrandChannelParts";
-import {
-  eventMarkerMessageIds,
-  findBrandChannelEvent,
-  nextUpEvent,
-  resolveSendTarget,
-  showSendTargetChip,
-  type BrandChannel,
-  type BrandChannelEvent,
-} from "./connections/brandChannelModel";
 import { getDisplayName } from "../utils/getDisplayName";
 import {
   useCollabPlanCard,
@@ -56,7 +41,7 @@ import {
 } from "./chat/CollabSessionChatBanners";
 import { PlanMatchesSheet } from "./chat/PlanMatchesSheet";
 import { PlansSheet } from "./chat/PlansSheet";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatKeys, planKeys } from "../hooks/queryKeys";
 import { CollabDeckSheet } from "./connections/CollabDeckSheet";
 import { ChatHeader, type ChatHeaderStripLabels } from "./chat/ChatHeader";
@@ -159,6 +144,7 @@ import {
   holdPickerTempFiles,
   releasePickerTempFiles,
 } from "../services/chatPickerTempFiles";
+import type { BrandGuestChatInfo } from "../services/connectionsService";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { prepareContentShare } from "../services/contentShareAdapter";
@@ -189,7 +175,12 @@ import { useRouter } from 'expo-router';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
-import { chatTokens } from "../constants/chatTokens";
+import { brandGuestChatTokens, chatTokens } from "../constants/chatTokens";
+import { useMessageBrandFromGuestChat } from "./brandEnquiry/useMessageBrandFromGuestChat";
+import { formatRateCountdown, isRateLimited } from "./chat/brandGuestRateLimit";
+
+/** #4459 design v2: the rate-limit notice's amber (semantic warning). */
+const RATE_LIMIT_AMBER = "#F5B544";
 import { getFloatingBottomNavSheetInset } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -279,8 +270,9 @@ const BROADCAST_COMPOSER_NOTICE_CONTENT_GAP = 12;
 interface Message {
   id: string;
   clientId?: string;  // Issue #4114: stable key across optimistic → confirmed
-  /** Issue #4114 Wave 6: the event chat this message belongs to (brand channel). */
   conversationId?: string;
+  /** #4459: 'brand' when the brand team posted in its Guest chat. */
+  senderKind?: "guest" | "brand" | "system" | null;
   senderId: string;
   senderName: string;
   content: string;
@@ -314,7 +306,7 @@ interface Message {
   /** Issue #4114 Wave 3: hidden from the thread (Issue #4456: a hidden removal or Delete for me). */
   unsent?: boolean;
   /** Issue #4456: unsent by its author or removed by a group admin: shown as the unsent line. */
-  tombstone?: { kind: "sender" | "admin"; byUserId: string | null };
+  tombstone?: { kind: "sender" | "admin" | "host"; byUserId: string | null };
   /** Issue #4114 Wave 4: view once, who opened it, and the sender's local file while it uploads. */
   viewOnce?: boolean;
   viewOncePurged?: boolean;
@@ -357,8 +349,8 @@ interface ThreadRow {
   isRead: boolean;
   dayLabel: string | null;
   showNewDivider: boolean;
-  /** Issue #4114 Wave 6: brand channel — this message starts a run from this event. */
-  eventMarker: BrandChannelEvent | null;
+  /** #4459: a post by the brand in its Guest chat (HOST chip, warm bubble). */
+  fromBrand: boolean;
   /** Issue #4114 Wave 7: space under and above the row (media cards get 14pt). */
   bottomGap: number;
   topGap: number;
@@ -408,7 +400,7 @@ interface Friend {
   conversationType?: "direct" | "group";
   sessionId?: string | null;
   eventId?: string | null;
-  linkedEntityType?: "direct" | "session" | "trip" | "event" | null;
+  linkedEntityType?: "direct" | "session" | "trip" | "event" | "brand_guests" | null;
   /** #4187 managed official-team chat. */
   programKind?: "local" | "creator" | null;
   sessionCreatorId?: string | null;
@@ -418,6 +410,8 @@ interface Friend {
   eventPublicUrl?: string | null;
   eventPublicCard?: BusinessEventCard | null;
   isBroadcastOnly?: boolean;
+  /** #4459: the brand's one Guest chat (or, with removed, the one the brand removed you from). */
+  brandGuest?: BrandGuestChatInfo | null;
   isSessionAdmin?: boolean;
   /** Issue #4456: I created this plain friend group (its admin). */
   isPlainGroupCreator?: boolean;
@@ -524,14 +518,12 @@ interface MessageInterfaceProps {
   isUnfriended?: boolean;
   isDeletedAccount?: boolean;
   conversationId?: string | null;
-  /**
-   * Issue #4114 Wave 6: the open brand channel. `messages` then holds every
-   * event chat's messages (each tagged with its conversationId) and
-   * `conversationId` is the event chat a new message goes to.
-   */
-  brandChannel?: BrandChannel | null;
-  /** Wave 6 (D10): the "Sending to" picker chose another upcoming event. */
-  onSelectBrandChannelTarget?: (conversationId: string) => void;
+  /** #4459: "Remove from chat list" on the removed card (the brand removed you). */
+  onDismissRemovedBrandGuests?: () => void;
+  /** #4459: the Guest chat rate limit tripped; posting opens again at this time (ms). */
+  rateLimitedUntil?: number | null;
+  /** #4459: a refused send's words, put back in the composer (once per nonce). */
+  restoreDraft?: { text: string; nonce: number } | null;
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
@@ -611,8 +603,9 @@ function MessageInterfaceInner({
   isUnfriended = false,
   isDeletedAccount = false,
   conversationId = null,
-  brandChannel = null,
-  onSelectBrandChannelTarget,
+  onDismissRemovedBrandGuests,
+  rateLimitedUntil = null,
+  restoreDraft = null,
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
@@ -681,7 +674,7 @@ function MessageInterfaceInner({
     linkedEntityType: friend.linkedEntityType ?? null,
     sessionId: friend.sessionId ?? null,
     programKind: friend.programKind ?? null,
-    isBrandChannel: brandChannel !== null,
+    isBrandChannel: Boolean(friend.brandGuest),
     isBlocked,
     isUnfriended,
     isDeletedAccount,
@@ -717,35 +710,45 @@ function MessageInterfaceInner({
   const eventAudienceSubtitle = isTripChat
     ? t('chat:audienceTravellingCount', { count: headerParticipantCount })
     : t('chat:audienceAttendingCount', { count: headerParticipantCount });
-  // Issue #4114 Wave 6: the brand channel. Guest lists stay per event: the
-  // audience sheet shows ONE event's guests (the event marker or picker row
-  // you tapped, else the event you are sending to), never a merged roster.
-  const isBrandChannel = brandChannel !== null;
-  const brandSlug = brandChannel?.brandSlug ?? null;
-  const [audienceConversationId, setAudienceConversationId] = useState<string | null>(null);
-  const [eventOverlayConversationId, setEventOverlayConversationId] = useState<string | null>(null);
-  const [showSendTargetSheet, setShowSendTargetSheet] = useState(false);
-  const audienceEvent = brandChannel
-    ? findBrandChannelEvent(brandChannel, audienceConversationId ?? conversationId)
-    : null;
-  const audienceIsTrip = audienceEvent ? audienceEvent.linkedEntityType === "trip" : isTripChat;
-  const audienceCount = audienceEvent ? audienceEvent.participantCount : headerParticipantCount;
-  const audienceTitle = audienceIsTrip ? t('chat:audienceTravellers') : t('chat:audienceAttendees');
-  const audienceSubtitle = audienceIsTrip
-    ? t('chat:audienceTravellingCount', { count: audienceCount })
-    : t('chat:audienceAttendingCount', { count: audienceCount });
-  const audienceParticipants = useMemo(
-    () => audienceEvent
-      ? audienceEvent.people.map((person) => ({
-          id: person.id,
-          name: getDisplayName(person, person.username || 'User'),
-          username: person.username ?? undefined,
-          avatar_url: person.avatar_url ?? undefined,
-        }))
-      : headerParticipants,
-    [audienceEvent, headerParticipants],
-  );
+  // #4459: the brand's one Guest chat (null for every other chat).
+  const brandGuest = friend.brandGuest ?? null;
+  const isBrandChannel = brandGuest !== null;
+  const brandSlug = brandGuest?.brandSlug ?? null;
+  // #4459: "Message <Brand>" opens the #4111 enquiry thread (or starts one).
+  const brandMessage = useMessageBrandFromGuestChat({
+    brandId: brandGuest?.brandId ?? null,
+    brandSlug: brandGuest?.brandSlug ?? null,
+    brandName: brandGuest?.brandName ?? "",
+  });
+  // #4459 design v2: the rate-limit countdown ticks once a second while it runs.
+  const [rateNow, setRateNow] = useState(() => Date.now());
+  const rateLimited = isRateLimited(rateLimitedUntil, rateNow);
+  useEffect(() => {
+    if (!isRateLimited(rateLimitedUntil, Date.now())) return undefined;
+    setRateNow(Date.now());
+    const timer = setInterval(() => setRateNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitedUntil]);
+  // #4459 D5: a guest sees only the team and their own roster row, so the
+  // header counts the server's total from the member sheet RPC.
+  const brandGuestMembers = useQuery({
+    queryKey: chatKeys.brandGuestMembers(conversationId ?? null),
+    queryFn: () => messagingService.listBrandGuestMembers(conversationId as string),
+    enabled: Boolean(brandGuest) && !brandGuest?.removed && Boolean(conversationId),
+    staleTime: 60_000,
+  });
+  const brandGuestMemberTotal = brandGuestMembers.data?.total ?? null;
+  // #4459 D3: Guest chats are text only in v1.
+  const attachmentsAllowed = allowAttachments && !brandGuest;
+  const audienceIsTrip = isTripChat;
+  const audienceTitle = eventAudienceTitle;
+  const audienceSubtitle = eventAudienceSubtitle;
+  const audienceParticipants = headerParticipants;
   const getMessageSenderName = (msg: Message): string => {
+    // #4459: a brand post in its Guest chat reads as the brand.
+    if (brandGuest && msg.senderKind === 'brand' && brandGuest.brandName.trim()) {
+      return brandGuest.brandName.trim();
+    }
     const brandName = friend.eventBrandName?.trim();
     const brandAccountId = friend.eventBrandAccountId?.trim();
     if (
@@ -1393,8 +1396,20 @@ function MessageInterfaceInner({
     inputRef.current?.clear();
   };
 
+  // #4459: a send the rate limit refused comes back into an empty composer.
+  const restoredNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!restoreDraft || restoredNonceRef.current === restoreDraft.nonce) return;
+    restoredNonceRef.current = restoreDraft.nonce;
+    if (!chatController.readText().trim()) chatController.setDraftText(restoreDraft.text);
+    // chatController is stable per chat; the nonce is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreDraft?.nonce]);
+
   const handleSendMessage = () => {
     if (!chatController.readText().trim()) return;
+    // #4459: while the Guest chat rate limit runs, Send is held and the text stays.
+    if (isRateLimited(rateLimitedUntil, Date.now())) return;
     sendCoordinator.requestSend({
       read: chatController.readText,
       send: () => {
@@ -2313,7 +2328,9 @@ function MessageInterfaceInner({
     androidSafeAreaBottom: safeInsets.bottom,
     androidWindowShrinkAmount: windowShrinkAmount,
   });
-  const isBroadcastOnlyConsumerChannel = isTripEventGroupChat && friend.isBroadcastOnly === true;
+  // #4459: a brand Guest chat in announcements-only mode works the same way
+  // (only the brand posts; Explorer never opens its own brand's Guest chat).
+  const isBroadcastOnlyConsumerChannel = (isTripEventGroupChat || isBrandChannel) && friend.isBroadcastOnly === true;
   const broadcastComposerNoticeBottom =
     floatingNavBottom + (BROADCAST_COMPOSER_NOTICE_BOTTOM_GAP - 8);
   const broadcastComposerContentClearance =
@@ -2324,7 +2341,8 @@ function MessageInterfaceInner({
     !isBlocked &&
     !isUnfriended &&
     !isDeletedAccount &&
-    !isBroadcastOnlyConsumerChannel;
+    !isBroadcastOnlyConsumerChannel &&
+    !brandGuest?.removed;
   // Issue #4114 Wave 3: the composer's MEASURED height (it grows to 5 lines,
   // plus the reply bar), not the fixed 56pt capsule.
   const messageListBottomClearance = showComposer
@@ -2338,7 +2356,7 @@ function MessageInterfaceInner({
   // Issue #4114 Wave 6: translated, and no "broadcast" label on chats guests can post in.
   const channelBrand = friend.eventBrandName?.trim() || t('chat:theOrganiser');
   const channelLabel = isBrandChannel
-    ? brandChannel?.brandName || channelBrand
+    ? brandGuest?.brandName || channelBrand
     : friend.linkedEntityType === "trip" ? t('chat:tripChannel') : t('chat:eventChannel');
   const channelDetail = isBroadcastOnlyConsumerChannel
     ? t('chat:channelDetailHostOnly', { brand: channelBrand })
@@ -2360,8 +2378,6 @@ function MessageInterfaceInner({
   const handleHeaderMorePress = () => {
     if (isTripEventGroupChat) {
       setShowMoreOptionsMenu(false);
-      // In a brand channel: the guests of the event you are sending to.
-      setAudienceConversationId(null);
       setShowEventAudienceSheet(true);
       return;
     }
@@ -2414,9 +2430,7 @@ function MessageInterfaceInner({
   // chat is marked read).
   const [newDividerMessageId, setNewDividerMessageId] = useState<string | null>(null);
   const dividerCapturedForRef = useRef<string | null>(null);
-  // Issue #4114 Wave 6: a brand channel captures it once for the whole channel
-  // (switching the event you send to must not move it).
-  const dividerThreadKey = brandChannel?.id ?? conversationId;
+  const dividerThreadKey = conversationId;
   useEffect(() => {
     if (!dividerThreadKey || dividerCapturedForRef.current === dividerThreadKey || visibleMessages.length === 0) return;
     dividerCapturedForRef.current = dividerThreadKey;
@@ -2425,11 +2439,6 @@ function MessageInterfaceInner({
 
   // Issue #4114 Wave 6: an event marker above the first message of each run
   // from a different event (visibleMessages is oldest first).
-  const eventMarkerIds = useMemo(
-    () => (brandChannel ? eventMarkerMessageIds(visibleMessages) : null),
-    [brandChannel, visibleMessages],
-  );
-
   // Issue #4456: the unsent line ("You unsent a message", "Ana unsent a
   // message", "Sam removed a message", "Sam removed your message"), with
   // first names.
@@ -2452,11 +2461,12 @@ function MessageInterfaceInner({
       actorIsMe: !!actorId && actorId === currentUserId,
       authorName: firstName(getMessageSenderName(message)),
       actorName: firstName(actorName),
+      brandName: brandGuest?.brandName ?? null,
     });
     return t(line.key, line.params);
     // getMessageSenderName and getHeaderParticipantName read only the fields listed here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId, currentUserName, friend.name, headerParticipants, isGroupChat, t]);
+  }, [brandGuest?.brandName, currentUserId, currentUserName, friend.name, headerParticipants, isGroupChat, t]);
 
   // Rows are prepared once per change to the messages (not per keystroke), so
   // MessageBubble (memoised) gets the same props while you type.
@@ -2589,9 +2599,7 @@ function MessageInterfaceInner({
           : null,
         dayLabel,
         showNewDivider: message.id === newDividerMessageId,
-        eventMarker: brandChannel && eventMarkerIds?.has(message.id)
-          ? findBrandChannelEvent(brandChannel, message.conversationId)
-          : null,
+        fromBrand: Boolean(brandGuest) && message.senderKind === 'brand' && !message.isMe,
       };
     });
     // getMessageSenderName reads only the fields listed here.
@@ -2611,8 +2619,7 @@ function MessageInterfaceInner({
     t,
     uploadProgress,
     openedViewOnce,
-    brandChannel,
-    eventMarkerIds,
+    brandGuest,
     tombstoneTextFor,
   ]);
   const threadRowsRef = useRef(threadRows);
@@ -3061,23 +3068,8 @@ function MessageInterfaceInner({
 
   // The list's renderItem — stable (it changes only when a timestamp is
   // revealed or a handler's real inputs change), so typing never re-renders it.
-  // Issue #4114 Wave 6: one event's guest list (marker, picker row or ⋯).
-  const openAudienceFor = useCallback((eventConversationId: string | null) => {
-    setAudienceConversationId(eventConversationId);
-    setShowEventAudienceSheet(true);
-  }, []);
 
   const renderThreadRow = useCallback(({ item }: ListRenderItemInfo<ThreadRow>): React.ReactElement => {
-    // Inverted list: a marker rendered after the bubble shows above it.
-    const markerEvent = item.eventMarker;
-    const eventMarker = markerEvent ? (
-      <BrandChannelEventMarker
-        event={markerEvent}
-        now={Date.now()}
-        locale={i18n.language}
-        onPress={() => openAudienceFor(markerEvent.conversationId)}
-      />
-    ) : null;
     const daySeparator = item.dayLabel ? (
       <View style={styles.daySeparator}>
         <View style={styles.daySeparatorLine} />
@@ -3107,7 +3099,6 @@ function MessageInterfaceInner({
             bottomGap={item.bottomGap}
             topGap={item.topGap}
           />
-          {eventMarker}
           {newDivider}
           {daySeparator}
         </>
@@ -3137,7 +3128,6 @@ function MessageInterfaceInner({
             onLongPress={setPlanMenuFor}
             highlighted={highlightPlanId === cardPlanId}
           />
-          {eventMarker}
           {newDivider}
           {daySeparator}
         </>
@@ -3162,7 +3152,6 @@ function MessageInterfaceInner({
               groupName={headerTitle}
               fallbackText={item.message.content}
             />
-            {eventMarker}
             {newDivider}
             {daySeparator}
           </>
@@ -3186,7 +3175,6 @@ function MessageInterfaceInner({
               showTimestamp={false}
               isRead={false}
             />
-            {eventMarker}
             {newDivider}
             {daySeparator}
           </>
@@ -3212,7 +3200,6 @@ function MessageInterfaceInner({
                 void handleDeclineDmCollab(dmCollabPayload.session_id);
               }}
             />
-            {eventMarker}
             {newDivider}
             {daySeparator}
           </>
@@ -3233,7 +3220,6 @@ function MessageInterfaceInner({
             showTimestamp={false}
             isRead={false}
           />
-          {eventMarker}
           {newDivider}
           {daySeparator}
         </>
@@ -3280,6 +3266,7 @@ function MessageInterfaceInner({
                 if (quoted) setPlanCommentsFor(quoted);
               } : undefined}
               showSenderName={item.showSenderName}
+              hostChipLabel={item.fromBrand ? t('chat:brandGuestsHostChip') : undefined}
               reactions={item.reactions}
               onReactionPress={onToggleReaction ? toggleReaction : undefined}
               onCancelUpload={
@@ -3297,7 +3284,6 @@ function MessageInterfaceInner({
           </TouchableOpacity>
         </DoubleTapHeart>
       </SwipeableMessage>
-      {eventMarker}
       {newDivider}
       {daySeparator}
       </>
@@ -3325,7 +3311,6 @@ function MessageInterfaceInner({
     onRetryMessage,
     onToggleReaction,
     onViewProfile,
-    openAudienceFor,
     i18n.language,
     revealedTimestampId,
     startReply,
@@ -3360,7 +3345,6 @@ function MessageInterfaceInner({
       groupInfo: showGroupInfo,
       moreMenu: showMoreOptionsMenu,
       eventAudience: showEventAudienceSheet,
-      sendTarget: showSendTargetSheet,
       collabDeck: showCollabDeckSheet,
       collabMatches: showCollabMatchesSheet,
       collabPlans: showCollabPlansSheet,
@@ -3383,7 +3367,6 @@ function MessageInterfaceInner({
       groupInfo: () => setShowGroupInfo(false),
       moreMenu: () => setShowMoreOptionsMenu(false),
       eventAudience: () => setShowEventAudienceSheet(false),
-      sendTarget: () => setShowSendTargetSheet(false),
       collabDeck: () => setShowCollabDeckSheet(false),
       collabMatches: () => setShowCollabMatchesSheet(false),
       collabPlans: () => setShowCollabPlansSheet(false),
@@ -3397,7 +3380,7 @@ function MessageInterfaceInner({
     onViewProfile?.(participantId);
   };
 
-  // ── Issue #4114 Wave 6: brand channel navigation ─────────────
+  // ── #4459: the brand page from a Guest chat ─────────────────
   // The brand page is pushed on the app's stack (as ConsumerEventDetailScreen
   // does); its Back pops it and this chat, still mounted underneath, is where
   // it was.
@@ -3406,32 +3389,9 @@ function MessageInterfaceInner({
     HapticFeedback.light();
     router.push(`/b/${brandSlug}` as never);
   };
-  const openEventOverlay = (eventConversationId: string | null) => {
-    setEventOverlayConversationId(eventConversationId);
-    setShowGroupEventSheet(true);
-  };
-  const brandNow = Date.now();
-  const nextUp = brandChannel ? nextUpEvent(brandChannel.events, brandNow) : null;
-  const showSendChip = brandChannel ? showSendTargetChip(brandChannel.events, brandNow) : false;
-  // D10: the chip names where THIS message goes — the quoted message's event
-  // while replying (the picker is then locked), otherwise your choice.
-  const sendTargetEvent = brandChannel
-    ? findBrandChannelEvent(
-        brandChannel,
-        resolveSendTarget({
-          events: brandChannel.events,
-          chosenConversationId: conversationId,
-          replyToConversationId: replyingTo?.conversationId ?? null,
-          now: brandNow,
-        }),
-      )
-    : null;
-  const overlayEvent = brandChannel && eventOverlayConversationId
-    ? findBrandChannelEvent(brandChannel, eventOverlayConversationId)
-    : null;
-  const overlayCard: BusinessEventCard | null =
-    (overlayEvent?.publicCard as BusinessEventCard | null | undefined) ?? friend.eventPublicCard ?? null;
-  const overlayIsTrip = overlayEvent ? overlayEvent.linkedEntityType === "trip" : friend.linkedEntityType === "trip";
+  const openEventOverlay = () => setShowGroupEventSheet(true);
+  const overlayCard: BusinessEventCard | null = friend.eventPublicCard ?? null;
+  const overlayIsTrip = friend.linkedEntityType === "trip";
 
   return (
     <View style={styles.container}>
@@ -3439,10 +3399,10 @@ function MessageInterfaceInner({
           in the strip, 108pt with matches or plans (chatHeaderModel). */}
       <ChatHeader
         topInset={safeInsets.top}
-        title={brandChannel ? brandChannel.brandName || headerTitle : headerTitle}
+        title={brandGuest ? t('chat:brandGuestsTitle', { brand: brandGuest.brandName || headerTitle }) : headerTitle}
         subtitle={
-          brandChannel
-            ? t('chat:brandChannelSubtitle', { count: brandChannel.events.length })
+          brandGuest
+            ? (brandGuest.removed ? t('chat:brandGuestsRemovedSubtitle') : t('chat:brandGuestsSubtitle', { count: brandGuestMemberTotal ?? headerParticipantCount }))
             : isGroupChat ? headerSubtitle : isDmCollabActive ? (
             // Issue #4114 Wave 5 (D12): "Collaborating · Active now".
             <View style={styles.dmCollabSubtitle} testID="chat-header-collaborating">
@@ -3467,22 +3427,22 @@ function MessageInterfaceInner({
         onBack={onBack}
         backLabel={t('chat:a11yBack')}
         avatarKind={headerAvatarKind}
-        avatarUrl={brandChannel ? brandChannel.logoUrl : isGroupChat ? friend.eventCoverMediaUrl ?? null : friend.avatar ?? null}
+        avatarUrl={brandGuest ? brandGuest.logoUrl : isGroupChat ? friend.eventCoverMediaUrl ?? null : friend.avatar ?? null}
         participants={headerStack.participants}
         participantCount={headerStack.participantCount}
         isOnline={!isGroupChat && isOtherOnline}
         collaborating={isCollabChat}
-        onIdentityPress={brandChannel ? (brandSlug ? openBrandPage : undefined) : handleHeaderIdentityPress}
+        onIdentityPress={brandGuest ? (brandGuest.removed ? (brandSlug ? openBrandPage : undefined) : handleHeaderIdentityPress) : handleHeaderIdentityPress}
         identityA11yLabel={
-          brandChannel
-            ? t('chat:a11yOpenBrandPage', { name: brandChannel.brandName })
+          brandGuest
+            ? (brandGuest.removed ? t('chat:a11yOpenBrandPage', { name: brandGuest.brandName }) : t('chat:a11yOpenChatInfo', { name: brandGuest.brandName }))
             : isGroupChat
             ? t('chat:a11yOpenChatInfo', { name: headerTitle })
             : t('chat:a11yViewProfile', { name: headerTitle })
         }
         secondaryAction={
-          brandChannel && brandSlug
-            ? { icon: 'storefront', a11yLabel: t('chat:a11yOpenBrandPage', { name: brandChannel.brandName }), onPress: openBrandPage }
+          brandGuest && brandSlug
+            ? { icon: 'storefront', a11yLabel: t('chat:a11yOpenBrandPage', { name: brandGuest.brandName }), onPress: openBrandPage }
             : null
         }
         primaryAction={
@@ -3503,7 +3463,7 @@ function MessageInterfaceInner({
                 }
               : null
         }
-        onMorePress={isCollabSessionGroupChat ? undefined : handleHeaderMorePress}
+        onMorePress={isCollabSessionGroupChat || brandGuest?.removed ? undefined : handleHeaderMorePress}
         moreA11yLabel={
           isTripEventGroupChat
             ? t('chat:a11yViewAudience', { audience: eventAudienceTitle })
@@ -3520,29 +3480,12 @@ function MessageInterfaceInner({
         locale={i18n.language}
       />
 
-      {brandChannel ? (
-        // Issue #4114 Wave 6: "Next up" — today's countdown banner pointed at
-        // the soonest upcoming event of the brand. Tap opens that event's page;
-        // "+N more" opens the brand page. Nothing when no event is upcoming.
-        nextUp?.eventId ? (
-          <View style={styles.eventChannelHeaderStack}>
-            <TripCountdownBanner
-              eventId={nextUp.eventId}
-              onPress={nextUp.publicCard ? () => openEventOverlay(nextUp.conversationId) : undefined}
-              nextUp={{
-                dateLabel: formatBrandEventDate(nextUp.startAt, i18n.language),
-                moreCount: brandChannel.events.length - 1,
-                onMorePress: brandSlug ? openBrandPage : undefined,
-              }}
-            />
-          </View>
-        ) : null
-      ) : isTripEventGroupChat ? (
+      {isTripEventGroupChat ? (
         <View style={styles.eventChannelHeaderStack}>
           {friend.eventId ? (
             <TripCountdownBanner
               eventId={friend.eventId}
-              onPress={friend.eventPublicCard ? () => openEventOverlay(null) : undefined}
+              onPress={friend.eventPublicCard ? () => openEventOverlay() : undefined}
               stackedWithChannel
             />
           ) : null}
@@ -3581,7 +3524,53 @@ function MessageInterfaceInner({
       )}
 
       {/* Messages */}
-      {visibleMessages.length === 0 ? (
+      {brandGuest?.removed ? (
+        // #4459 design v2: the brand removed you. One calm card replaces the
+        // messages and the input; nothing here is red.
+        <View style={[styles.messagesContainer, styles.removedWrap]} testID="brand-guests-removed-card">
+          <View style={styles.removedCard} accessibilityRole="summary">
+            <Icon name="people-outline" size={28} color={chatTokens.textSoft} />
+            <Text style={styles.removedTitle}>
+              {t('chat:brandGuestsRemovedTitle', { brand: brandGuest.brandName })}
+            </Text>
+            <Text style={styles.removedBody}>
+              {t('chat:brandGuestsRemovedBody', { brand: brandGuest.brandName })}
+            </Text>
+            <View style={styles.removedActions}>
+              <TouchableOpacity
+                style={styles.removedButtonSecondary}
+                onPress={() => router.push('/purchases' as never)}
+                accessibilityRole="button"
+                accessibilityLabel={t('chat:brandGuestsViewBooking')}
+              >
+                <Text style={styles.removedButtonSecondaryText}>{t('chat:brandGuestsViewBooking')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.removedButtonPrimary}
+                onPress={brandMessage.messageBrand}
+                disabled={brandMessage.busy}
+                accessibilityRole="button"
+                accessibilityState={{ busy: brandMessage.busy }}
+                accessibilityLabel={t('chat:brandGuestsMessageBrand', { brand: brandGuest.brandName })}
+              >
+                <Text style={styles.removedButtonPrimaryText}>
+                  {t('chat:brandGuestsMessageBrand', { brand: brandGuest.brandName })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {onDismissRemovedBrandGuests ? (
+              <TouchableOpacity
+                onPress={onDismissRemovedBrandGuests}
+                accessibilityRole="button"
+                accessibilityLabel={t('connections:brand_guests_remove_from_list')}
+                style={styles.removedLink}
+              >
+                <Text style={styles.removedLinkText}>{t('connections:brand_guests_remove_from_list')}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      ) : visibleMessages.length === 0 ? (
         <View style={[styles.messagesContainer, { justifyContent: "center" }]}>
           {isLoadingMessages ? (
             // Issue #4114 Wave 3: a loader until the first read lands, so
@@ -3613,10 +3602,14 @@ function MessageInterfaceInner({
               />
             </View>
             <Text style={styles.emptyStateTitle}>
-              {isTripEventGroupChat ? channelLabel : t('chat:startConversation')}
+              {brandGuest
+                ? t('chat:brandGuestsWelcomeTitle', { brand: brandGuest.brandName })
+                : isTripEventGroupChat ? channelLabel : t('chat:startConversation')}
             </Text>
             <Text style={styles.emptyStateText}>
-              {isTripEventGroupChat ? channelDetail : t('chat:sendMessageTo', { name: cleanName(friend.name) })}
+              {brandGuest
+                ? t('chat:brandGuestsWelcomeBody', { brand: brandGuest.brandName })
+                : isTripEventGroupChat ? channelDetail : t('chat:sendMessageTo', { name: cleanName(friend.name) })}
             </Text>
           </View>
           )}
@@ -3935,15 +3928,14 @@ function MessageInterfaceInner({
             } : undefined}
           />
         )}
-        {/* Issue #4114 Wave 6 (D10): "Sending to {event}" — only with two or
-            more upcoming events; while replying it names the quoted
-            message's event and is locked. */}
-        {brandChannel && showSendChip && sendTargetEvent ? (
-          <BrandChannelSendChip
-            title={sendTargetEvent.title}
-            disabled={Boolean(replyingTo)}
-            onPress={() => setShowSendTargetSheet(true)}
-          />
+        {/* #4459 design v2: the Guest chat rate limit, amber, with a live countdown. */}
+        {rateLimited && typeof rateLimitedUntil === "number" ? (
+          <View style={styles.rateLimitNotice} accessibilityRole="alert" accessibilityLiveRegion="polite" testID="brand-guests-rate-limit">
+            <Icon name="time-outline" size={16} color={RATE_LIMIT_AMBER} />
+            <Text style={styles.rateLimitText}>
+              {t('chat:brandGuestsRateLimitCountdown', { time: formatRateCountdown(rateLimitedUntil, rateNow) })}
+            </Text>
+          </View>
         ) : null}
         {/* Reply Preview Bar — Issue #4114 Wave 3: dark */}
         {replyingTo && (
@@ -4009,7 +4001,7 @@ function MessageInterfaceInner({
           <View style={styles.inputContainer}>
           {/* Attachment Menu — official program chats use this same canonical
               media rail, with view-once and arbitrary files disabled. */}
-          {allowAttachments ? <View style={styles.attachmentContainer}>
+          {attachmentsAllowed ? <View style={styles.attachmentContainer}>
             <TouchableOpacity
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
@@ -4024,7 +4016,7 @@ function MessageInterfaceInner({
           </View> : null}
 
           {/* Separator — cutout between attach and text field */}
-          {allowAttachments ? <View style={styles.capsuleSeparator} /> : null}
+          {attachmentsAllowed ? <View style={styles.capsuleSeparator} /> : null}
 
           {/* Message Input */}
           <TouchableOpacity
@@ -4206,26 +4198,9 @@ function MessageInterfaceInner({
             <View style={styles.eventAudienceHeaderCopy}>
               <Text style={styles.eventAudienceTitle}>{audienceTitle}</Text>
               <Text style={styles.eventAudienceSubtitle} numberOfLines={1}>
-                {audienceEvent
-                  ? `${audienceSubtitle} · ${audienceEvent.title}`
-                  : `${audienceSubtitle} · ${audienceIsTrip ? t('chat:tripChannel') : t('chat:eventChannel')}`}
+                {`${audienceSubtitle} · ${audienceIsTrip ? t('chat:tripChannel') : t('chat:eventChannel')}`}
               </Text>
             </View>
-            {audienceEvent?.publicCard ? (
-              <TouchableOpacity
-                onPress={() => {
-                  setShowEventAudienceSheet(false);
-                  openEventOverlay(audienceEvent.conversationId);
-                }}
-                style={styles.eventAudienceViewEvent}
-                accessibilityRole="button"
-                accessibilityLabel={t('chat:audienceViewEventA11y', { title: audienceEvent.title })}
-              >
-                <Text style={styles.eventAudienceViewEventText}>
-                  {audienceIsTrip ? t('chat:audienceViewTrip') : t('chat:audienceViewEvent')}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
         }
         scrollProps={{ contentContainerStyle: styles.eventAudienceListContent }}
@@ -4284,27 +4259,7 @@ function MessageInterfaceInner({
         </View>
       </BaseBottomSheet>
 
-      {/* Issue #4114 Wave 6 (D10): where your message goes, when you hold
-          tickets to two or more upcoming events of this brand. */}
-      {brandChannel && showSendChip ? (
-        <BrandChannelSendSheet
-          visible={showSendTargetSheet}
-          onClose={() => setShowSendTargetSheet(false)}
-          events={brandChannel.events}
-          selectedConversationId={sendTargetEvent?.conversationId ?? conversationId}
-          now={brandNow}
-          locale={i18n.language}
-          onSelect={(eventConversationId) => {
-            HapticFeedback.light();
-            onSelectBrandChannelTarget?.(eventConversationId);
-            setShowSendTargetSheet(false);
-          }}
-          onOpenGuests={(eventConversationId) => {
-            setShowSendTargetSheet(false);
-            openAudienceFor(eventConversationId);
-          }}
-        />
-      ) : null}
+
 
       {/* [ORCH-0696 F-13 lock-in] Shape 2a Modal hack deleted post-bottom-sheet
           conversion verified by operator live-fire on iOS + Android (2026-04-29).
@@ -4441,7 +4396,13 @@ function MessageInterfaceInner({
         onClearChat={onClearChat && conversationId ? () => { setShowGroupInfo(false); setTimeout(handleClearChat, MENU_PRESENT_AFTER_DISMISS_MS); } : undefined}
         session={sessionGroupInfo}
         startWithAddPeople={groupInfoStartsOnAdd}
+        brandGuests={brandGuest && !brandGuest.removed ? {
+          brandName: brandGuest.brandName,
+          onOpenBrand: brandSlug ? () => { setShowGroupInfo(false); openBrandPage(); } : undefined,
+          onMessageBrand: () => { setShowGroupInfo(false); brandMessage.messageBrand(); },
+        } : null}
       />
+      {brandMessage.overlays}
 
       <ChatMediaSheet
         visible={showMediaSheet}
@@ -4744,7 +4705,90 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
+  },  rateLimitNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(245,181,68,0.14)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(245,181,68,0.45)",
   },
+  rateLimitText: {
+    flex: 1,
+    color: RATE_LIMIT_AMBER,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  // #4459 design v2: the removed state (neutral, calm, never red).
+  removedWrap: {
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  removedCard: {
+    alignItems: "center",
+    gap: 10,
+    padding: 20,
+    borderRadius: 20,
+    backgroundColor: brandGuestChatTokens.noticeBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: brandGuestChatTokens.noticeLine,
+  },
+  removedTitle: {
+    color: chatTokens.textPrimary,
+    fontSize: 17,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  removedBody: {
+    color: chatTokens.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  removedActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 6,
+  },
+  removedButtonSecondary: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    justifyContent: "center",
+    backgroundColor: chatTokens.surfaceRaised,
+  },
+  removedButtonSecondaryText: {
+    color: chatTokens.textPrimary,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  removedButtonPrimary: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  removedButtonPrimaryText: {
+    color: "#0B0D10",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  removedLink: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  removedLinkText: {
+    color: chatTokens.textSoft,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
   // ORCH-0600: Floating glass input capsule — blurred pill with inner separators
   // between attach / text / send, matching the home-chrome capsule language.
   inputCapsuleWrap: {

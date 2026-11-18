@@ -120,7 +120,7 @@ export type ChatListProfile = {
   avatar_url?: string | null;
 };
 
-export type ChatListLinkedEntity = "direct" | "session" | "trip" | "event";
+export type ChatListLinkedEntity = "direct" | "session" | "trip" | "event" | "brand_guests";
 
 export type RawChatLastMessage = {
   sender_id?: string | null;
@@ -136,6 +136,8 @@ export type RawChatConversation = {
   session_id?: string | null;
   event_id?: string | null;
   linked_entity_type?: ChatListLinkedEntity;
+  /** #4459: set on a brand Guest chat. */
+  brand_id?: string | null;
   program_kind?: "local" | "creator" | null;
   is_broadcast_only?: boolean;
   created_by?: string | null;
@@ -185,6 +187,25 @@ export type ChatEventMeta<TCard extends ChatEventPublicCard = ChatEventPublicCar
   publicCard: TCard | null;
 };
 
+/** #4459: the brand behind a Guest chat row. */
+export type ChatBrandMeta = {
+  brandId: string;
+  name: string;
+  slug: string | null;
+  logoUrl: string | null;
+  accountId: string | null;
+};
+
+/** #4459: a Guest chat the brand removed this person from (its own "Removed" row). */
+export type ChatRemovedBrandGuests = {
+  brandId: string;
+  brandName: string;
+  brandSlug: string | null;
+  brandLogoUrl: string | null;
+  brandAccountId: string | null;
+  removedAt: string;
+};
+
 export type ChatListPendingInvite = {
   sessionId: string;
   inviteId: string;
@@ -232,6 +253,10 @@ export type ChatListLoadDeps<TCard extends ChatEventPublicCard = ChatEventPublic
   fetchTeamBrandIds(userId: string): Promise<string[] | null>;
   fetchSessions(sessionIds: string[]): Promise<ChatSessionRow[]>;
   fetchEventMeta(eventIds: string[]): Promise<Map<string, ChatEventMeta<TCard>>>;
+  /** #4459: the brands of the Guest chat rows. A failure keeps the rows (named from the chat). */
+  fetchBrandMeta(brandIds: string[]): Promise<Map<string, ChatBrandMeta>>;
+  /** #4459: Guest chats the brand removed me from. A failure hides them (logged), never the list. */
+  fetchRemovedBrandGuestChats(userId: string): Promise<ChatRemovedBrandGuests[]>;
   fetchProfiles(userIds: string[]): Promise<ChatListProfile[]>;
   displayName(profile: ChatListProfile | undefined, fallback?: string): string;
   eventPublicUrl(meta: ChatEventMeta<TCard> | null | undefined, linkedEntityType: ChatListLinkedEntity | undefined): string | null;
@@ -278,6 +303,10 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
     deps.warn("[ConnectionsPage] Failed to fetch pending session invites:", error);
     return [] as RawPendingSessionInvite[];
   });
+  const removedPromise = deps.fetchRemovedBrandGuestChats(userId).catch((error: unknown) => {
+    deps.warn("[ConnectionsPage] removed Guest chats read failed:", error);
+    return [] as ChatRemovedBrandGuests[];
+  });
   const teamsPromise = deps.fetchTeamBrandIds(userId).catch((error: unknown) => {
     deps.warn("[ConnectionsPage] brand team read failed; keeping the last known teams", error);
     return null;
@@ -290,6 +319,7 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
   const firstProfileIds = new Set<string>();
   const groupSessionIds = new Set<string>();
   const groupEventIds = new Set<string>();
+  const guestChatBrandIds = new Set<string>();
   const senderIds = new Set<string>();
   for (const conv of raw) {
     conv.participants.forEach((participant) => firstProfileIds.add(participant.user_id));
@@ -305,6 +335,7 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
     ) {
       groupEventIds.add(conv.event_id);
     }
+    if (conv.linked_entity_type === "brand_guests" && conv.brand_id) guestChatBrandIds.add(conv.brand_id);
   }
 
   // Inviter profiles ride on the same profiles read. The invites read started
@@ -316,15 +347,20 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
 
   // ── Wave 2: everything that needs conversation ids, at once ──
   const sessionIdList = Array.from(groupSessionIds);
-  const [sessions, eventMetaMap, firstProfiles, teamRows] = await Promise.all([
+  const [sessions, eventMetaMap, firstProfiles, teamRows, brandMetaMap, removedChats] = await Promise.all([
     sessionIdList.length > 0 ? deps.fetchSessions(sessionIdList) : Promise.resolve([] as ChatSessionRow[]),
     deps.fetchEventMeta(Array.from(groupEventIds)).catch((error: unknown) => {
       deps.warn("[ConnectionsPage] Failed to batch-resolve group chat event metadata:", error);
       return new Map<string, ChatEventMeta<TCard>>();
     }),
     firstProfileIds.size > 0 ? deps.fetchProfiles(Array.from(firstProfileIds)) : Promise.resolve([] as ChatListProfile[]),
-    // With no event chats there is nothing to fold or hide: the team set is empty.
-    groupEventIds.size > 0 ? teamsPromise : teamsPromise.then(() => [] as string[]),
+    // With no brand Guest chats there is nothing to hide: the team set is empty.
+    groupEventIds.size > 0 || guestChatBrandIds.size > 0 ? teamsPromise : teamsPromise.then(() => [] as string[]),
+    deps.fetchBrandMeta(Array.from(guestChatBrandIds)).catch((error: unknown) => {
+      deps.warn("[ConnectionsPage] Failed to resolve Guest chat brands:", error);
+      return new Map<string, ChatBrandMeta>();
+    }),
+    removedPromise,
   ]);
 
   const profilesMap = new Map<string, ChatListProfile>(firstProfiles.map((profile) => [profile.id, profile]));
@@ -337,9 +373,14 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
   let teamBrandIds: string[] | null = null;
   if (teamRows !== null) {
     // The brand's owner is on its team too (owner trigger); account_id is a belt and braces.
-    const owned = Array.from(eventMetaMap.values())
-      .filter((meta) => meta.brandId && meta.brandAccountId === userId)
-      .map((meta) => meta.brandId as string);
+    const owned = [
+      ...Array.from(eventMetaMap.values())
+        .filter((meta) => meta.brandId && meta.brandAccountId === userId)
+        .map((meta) => meta.brandId as string),
+      ...Array.from(brandMetaMap.values())
+        .filter((meta) => meta.accountId === userId)
+        .map((meta) => meta.brandId),
+    ];
     teamBrandIds = Array.from(new Set([...teamRows, ...owned])).sort();
   }
 
@@ -383,6 +424,9 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
     const programKind = conv.program_kind ?? null;
     const sessionMeta = sessionId ? sessionMetaMap.get(sessionId) : null;
     const eventMeta = eventId ? eventMetaMap.get(eventId) : null;
+    // #4459: a brand Guest chat shows its brand (name, logo, page).
+    const brandId = linkedEntityType === "brand_guests" ? conv.brand_id ?? null : null;
+    const brandMeta = brandId ? brandMetaMap.get(brandId) ?? null : null;
     const eventPublicUrl = deps.eventPublicUrl(eventMeta, linkedEntityType);
     const eventPublicCard = eventMeta?.publicCard
       ? {
@@ -390,7 +434,8 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
           publicBuyerUrl: eventPublicUrl ?? eventMeta.publicCard.publicBuyerUrl,
         }
       : null;
-    const conversationName = eventMeta?.title?.trim()
+    const conversationName = brandMeta?.name?.trim()
+      || eventMeta?.title?.trim()
       || conv.name?.trim()
       || sessionMeta?.name?.trim()
       || null;
@@ -408,17 +453,17 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
       session_id: sessionId,
       event_id: eventId,
       linked_entity_type: linkedEntityType ?? undefined,
+      brand_id: brandId,
       program_kind: programKind,
       sessionCreatorId: sessionMeta?.created_by ?? null,
       sessionStatus: sessionMeta?.status ?? null,
       is_broadcast_only: Boolean(conv.is_broadcast_only),
-      eventBrandName: eventMeta?.brandName ?? null,
-      eventBrandAccountId: eventMeta?.brandAccountId ?? null,
-      // Issue #4114 Wave 6: what the brand channel fold reads.
-      eventBrandId: eventMeta?.brandId ?? null,
-      eventBrandSlug: eventMeta?.brandSlug ?? null,
-      eventBrandLogoUrl: eventMeta?.brandLogoUrl ?? null,
-      // Channel fold orders by next occurrence; publicCard keeps true master*.
+      eventBrandName: brandMeta?.name ?? (brandId ? conv.name ?? null : null) ?? eventMeta?.brandName ?? null,
+      eventBrandAccountId: brandMeta?.accountId ?? eventMeta?.brandAccountId ?? null,
+      // #4459: the brand of a Guest chat (or of a retired event row).
+      eventBrandId: brandId ?? eventMeta?.brandId ?? null,
+      eventBrandSlug: brandMeta?.slug ?? eventMeta?.brandSlug ?? null,
+      eventBrandLogoUrl: brandMeta?.logoUrl ?? eventMeta?.brandLogoUrl ?? null,
       eventStartAt:
         eventMeta?.publicCard?.nextStartAtUtc ??
         eventMeta?.publicCard?.masterDateUtc ??
@@ -463,7 +508,32 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
     };
   });
 
-  return { conversations: [...pendingInviteRows, ...transformed], teamBrandIds };
+  // #4459: the Guest chats the brand removed me from, each as its own row (no
+  // conversation is readable after a removal). A brand I am on the team of
+  // never shows one.
+  const teamSet = new Set(teamBrandIds ?? []);
+  const removedRows: ChatListConversation[] = removedChats
+    .filter((removed) => !teamSet.has(removed.brandId))
+    .map((removed) => ({
+      id: `removed-brand-guests:${removed.brandId}`,
+      created_by: "",
+      created_at: removed.removedAt,
+      participants: [],
+      unread_count: 0,
+      messages: [],
+      type: "group" as const,
+      name: removed.brandName,
+      linked_entity_type: "brand_guests" as const,
+      brand_id: removed.brandId,
+      eventBrandId: removed.brandId,
+      eventBrandName: removed.brandName,
+      eventBrandSlug: removed.brandSlug,
+      eventBrandLogoUrl: removed.brandLogoUrl,
+      eventBrandAccountId: removed.brandAccountId,
+      __removedBrandGuests: removed,
+    }));
+
+  return { conversations: [...pendingInviteRows, ...transformed, ...removedRows], teamBrandIds };
 }
 
 // ── Cache writes ─────────────────────────────────────────────────────────

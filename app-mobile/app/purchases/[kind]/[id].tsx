@@ -38,6 +38,7 @@ import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
 import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
+import { BrandGuestChatBookingAction } from "../../../src/components/purchases/BrandGuestChatBookingAction";
 import { Icon } from "../../../src/components/ui/Icon";
 import { toastManager } from "../../../src/components/ui/Toast";
 // #4261: the online event link opens in Mingla's in-app browser.
@@ -449,19 +450,6 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     if (router.canGoBack()) router.back();
     else router.replace("/purchases");
   };
-
-  const handleOpenChat = useCallback((): void => {
-    if (!order?.conversationId) return;
-    captureQuietAction("group_chat");
-    router.replace({
-      pathname: "/",
-      params: {
-        tab: "messages",
-        conversationId: order.conversationId,
-        eventId: order.eventId,
-      },
-    });
-  }, [captureQuietAction, order?.conversationId, order?.eventId, router]);
 
   const handleAddToCalendar = useCallback(async (): Promise<void> => {
     if (!item) return;
@@ -1228,11 +1216,13 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                   onPress={handleOpenEventPage}
                 />
               ) : null}
-              {order?.conversationId ? (
-                <QuietAction
-                  icon="chatbubbles-outline"
-                  label={t("ticket.groupChat")}
-                  onPress={handleOpenChat}
+              {/* #4459: the brand's one Guest chat (Open / Rejoin / Message <Brand>). */}
+              {followedBrandId && followedBrandName ? (
+                <BrandGuestChatBookingAction
+                  brandId={followedBrandId}
+                  brandSlug={followedBrandSlug}
+                  brandName={followedBrandName}
+                  onOpened={() => captureQuietAction("group_chat")}
                 />
               ) : null}
               <QuietAction
