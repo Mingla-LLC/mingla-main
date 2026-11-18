@@ -22,11 +22,27 @@ export interface PublicVenueReservationUiState {
 export interface PublicVenueReservationUiContext {
   hasMenu: boolean;
   canOpenReservationSheet: boolean;
+  /**
+   * #4490 — the tabs this venue's page actually has (from its features). When
+   * present, a tab missing from it can never stay active. Absent = today's rule
+   * (only the Menu tab can be hidden).
+   */
+  availableTabs?: readonly PublicVenueTab[];
 }
 
 export type PublicVenueReservationUiAction =
   | {
       type: "RESERVE_CTA_PRESSED";
+      context: PublicVenueReservationUiContext;
+    }
+  | {
+      /**
+       * #4490 — the bar's button. On the table tab it is exactly
+       * `RESERVE_CTA_PRESSED` (tab plus sheet); on any other tab it just
+       * selects the tab, with no sheet.
+       */
+      type: "PRIMARY_CTA_PRESSED";
+      tab: PublicVenueTab;
       context: PublicVenueReservationUiContext;
     }
   | {
@@ -51,7 +67,11 @@ export type PublicVenueReservationUiAction =
 export function safePublicVenueTab(
   tab: PublicVenueTab,
   hasMenu: boolean,
+  availableTabs?: readonly PublicVenueTab[],
 ): PublicVenueTab {
+  if (availableTabs !== undefined) {
+    return availableTabs.includes(tab) ? tab : "overview";
+  }
   return tab === "menu" && !hasMenu ? "overview" : tab;
 }
 
@@ -59,7 +79,11 @@ export function normalizePublicVenueReservationUiState(
   state: PublicVenueReservationUiState,
   context: PublicVenueReservationUiContext,
 ): PublicVenueReservationUiState {
-  const activeTab = safePublicVenueTab(state.activeTab, context.hasMenu);
+  const activeTab = safePublicVenueTab(
+    state.activeTab,
+    context.hasMenu,
+    context.availableTabs,
+  );
   return {
     activeTab,
     reservationSheetOpen:
@@ -75,7 +99,11 @@ export function createPublicVenueReservationUiState(
 ): PublicVenueReservationUiState {
   return normalizePublicVenueReservationUiState(
     {
-      activeTab: safePublicVenueTab(initialTab, context.hasMenu),
+      activeTab: safePublicVenueTab(
+        initialTab,
+        context.hasMenu,
+        context.availableTabs,
+      ),
       reservationSheetOpen: false,
     },
     context,
@@ -94,6 +122,15 @@ export function publicVenueReservationUiReducer(
           : state,
         action.context,
       );
+    case "PRIMARY_CTA_PRESSED":
+      return normalizePublicVenueReservationUiState(
+        action.tab === "reservations"
+          ? action.context.canOpenReservationSheet
+            ? { activeTab: "reservations", reservationSheetOpen: true }
+            : state
+          : { activeTab: action.tab, reservationSheetOpen: false },
+        action.context,
+      );
     case "RESERVATION_SHEET_CLOSED":
       return normalizePublicVenueReservationUiState(
         { activeTab: "reservations", reservationSheetOpen: false },
@@ -103,7 +140,11 @@ export function publicVenueReservationUiReducer(
     case "INITIAL_TAB_CHANGED":
       return normalizePublicVenueReservationUiState(
         {
-          activeTab: safePublicVenueTab(action.tab, action.context.hasMenu),
+          activeTab: safePublicVenueTab(
+            action.tab,
+            action.context.hasMenu,
+            action.context.availableTabs,
+          ),
           reservationSheetOpen: false,
         },
         action.context,

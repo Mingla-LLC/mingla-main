@@ -41,6 +41,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // lucide shim's module-scope icon requires into the EAGER __common boot chunk
 // (ORCH-1083 bundle-budget breach). Enforced by i-1047-biz-bundle-budget-deferral.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+// #4490 — pure and import-light: what the venue sells decides the page.
+import { venueTabFromParam } from "@mingla/brand-rendering/venueFeaturePage";
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import {
   classifyPublicVenueRouteState,
@@ -88,6 +90,7 @@ import {
   usePublicVenueDiscoveryPrice,
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
+import { usePublicVenueFeatures } from "../../../../src/hooks/usePublicVenueFeatures";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
@@ -300,6 +303,17 @@ function PublicVenueRouteBody(): React.ReactElement {
     venueQuery.errorUpdatedAt,
     venueSlug,
   ]);
+  // #4490 — what the venue sells (features, hours windows, events). Anon: no
+  // auth anywhere in this chain. A failed read is not an error page: the screen
+  // falls back to today's tabs, so the page is never worse than before.
+  const featuresQuery = usePublicVenueFeatures(
+    typeof brandSlug === "string" ? brandSlug : null,
+    typeof venueSlug === "string" ? venueSlug : null,
+  );
+  const features = featuresQuery.data ?? null;
+  // The page waits for its features: showing today's "Tables through Mingla"
+  // row for a moment on a venue that sells no tables would be a lie.
+  const featuresPending = venue !== null && featuresQuery.isLoading;
   const stayQuery = usePublicStayDetail(
     venue?.id ?? null,
     venue?.venueCategory === "stay",
@@ -587,6 +601,17 @@ function PublicVenueRouteBody(): React.ReactElement {
     [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room],
   );
 
+  // #4490 — "What's on": events held at the venue open their public page.
+  const handleOpenEvent = useCallback(
+    (href: string): void => {
+      if (engagementScope !== null) {
+        void captureOfferingCta(engagementScope, "view_offering");
+      }
+      router.push(href as never);
+    },
+    [engagementScope, router],
+  );
+
   const renderReservationSheet = useCallback(
     (context: PublicVenueReservationSheetContext): React.ReactNode => (
       <PublicVenueReservationSheet
@@ -601,7 +626,7 @@ function PublicVenueRouteBody(): React.ReactElement {
     [],
   );
 
-  if (routeState === "cold-loading") {
+  if (routeState === "cold-loading" || featuresPending) {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
@@ -685,12 +710,11 @@ function PublicVenueRouteBody(): React.ReactElement {
       // venue (`tabs.includes(initialTab)`), so a scan never lands on an empty
       // tab.
       initialTab={
-        requestedTab === "menu"
-          ? "menu"
-          : requestedTab === "reservations" || prefill.tab === "reservations"
-            ? "reservations"
-            : "overview"
+        venueTabFromParam(requestedTab) ??
+        (prefill.tab === "reservations" ? "reservations" : "overview")
       }
+      features={features}
+      onOpenEvent={handleOpenEvent}
       refreshState={
         routeState === "populated-error"
           ? "error"

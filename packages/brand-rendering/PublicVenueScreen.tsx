@@ -108,6 +108,12 @@ import {
 } from "@mingla/offering-rendering/OfferingFactRows";
 
 import { PublicMenuSections } from "./PublicMenuSections";
+import {
+  VenueSpecialDays,
+  VenueWaysToCome,
+  VenueWhatsOnCard,
+  VenueWhatsOnPane,
+} from "./VenueFeatureSections";
 // The package-local React bridge (see PublicVenueTabs.tsx). Files under
 // packages/ cannot discover the app's React peer, so importing "react"
 // directly here would add ~50 unresolved-peer diagnostics to every consuming
@@ -139,6 +145,20 @@ import {
   type VenueSectionId,
 } from "./venueCategoryProfile";
 import { formatSourceRange } from "./venueMoney";
+import {
+  deriveVenuePage,
+  groupVenueHours,
+  venueHoursDaysFromEntries,
+  venueHoursText,
+  venueLocalDay,
+  venueOpenStateRows,
+  venueSpecialDayRows,
+  type PublicVenueFeaturesView,
+  type VenueHoursDay,
+  type VenuePageModel,
+  type VenueSpecialDayRow,
+  type VenueTablesGate,
+} from "./venueFeaturePage";
 import {
   buildVenueAnswerBar,
   venueAddressLines,
@@ -372,8 +392,14 @@ export interface PublicVenueActionBarContext extends PublicVenueThemedContext {
   canReserve: boolean;
   /** Which booking rail this category uses ("table" or "stay"). */
   bookingKind: VenueBookingBody;
-  /** The category profile's one reserve verb. */
+  /** The page's one reserve verb (the lead's label, else the category's). */
   reserveAction: string;
+  /**
+   * #4490 — the bar's button label and the tab it opens, from the venue's
+   * features. `reserveAction` stays for the table/stay rails.
+   */
+  ctaLabel: string | null;
+  ctaTab: PublicVenueTab | null;
   /** Raises the reservation sheet through the page's own reducer. */
   openReservation: () => void;
 }
@@ -573,6 +599,20 @@ export interface PublicVenueScreenProps {
   actionBar?: (context: PublicVenueActionBarContext) => BrandRenderingReactNode;
   /** The host bar's height above the safe area, so the scroll clears it. */
   actionBarHeight?: number;
+  /**
+   * #4490 — what the venue sells, from `pg_public_venue_page`. Null/absent =
+   * today's page (category-decided tabs and button), so a failed read never
+   * makes the page worse. The page's tabs, lead info row and booking bar are
+   * derived from this and from nothing else.
+   */
+  features?: PublicVenueFeaturesView | null;
+  /** Opens an event's public page (`/e/…`). Absent = event rows are plain text. */
+  onOpenEvent?: (href: string) => void;
+  /**
+   * #4490 — a Host preview of a venue that is not public yet: every tab the
+   * venue will have, with the booking button and event buttons disabled.
+   */
+  preview?: { note: string } | null;
 }
 
 // #1562 — the week's labels have ONE owner now (`venueOpenState.ts`), because
@@ -715,6 +755,16 @@ export interface VenueSectionProps {
   /** issue #2468 — null ⇔ nothing openable ⇔ the address card is not rendered. */
   mapsTarget: MapsOpenTarget | null;
   onOpenMaps: () => void;
+  /** #4490 — what the venue sells; the legacy model on today's page. */
+  page: VenuePageModel;
+  /** #4490 — the week's hours, several windows a day. */
+  hoursDays: VenueHoursDay[];
+  /** #4490 — upcoming special days (closed, or their own windows). */
+  specialDays: VenueSpecialDayRow[];
+  selectTab: (tab: PublicVenueTab) => void;
+  onOpenEvent: ((href: string) => void) | undefined;
+  previewing: boolean;
+  boldFont: { fontFamily: string; fontWeight?: "normal" };
   /**
    * issue #2508 — the chooser + copy controller, built from the SAME
    * `mapsTarget` above. Null target ⇒ no choices and no copy text, so both
@@ -921,21 +971,30 @@ const VenueLocationSection: VenueSectionRenderer = ({
 // why a Stay can no longer publish "Mon–Sat 09:00–17:00" one tap away from its
 // own "Check-in 15:00".
 const VenueHoursSection: VenueSectionRenderer = ({
-  venue,
+  hoursDays,
+  specialDays,
+  themedFont,
   openState,
   palette,
   surface,
   todayWeekday: today,
 }) => {
-  const hours = venue.hours;
+  const hours = hoursDays;
   if (hours.length === 0) return null;
   // #1562 — the same resolved state the answer bar and the desktop panel draw,
   // repeated at the head of the week so a guest who has scrolled to the table
   // is not made to work out for themselves whether "Fri 09:00–17:00" means the
   // doors are open at this moment. Null (unknown zone) renders nothing.
+  const todayDay = hours.find((entry) => entry.weekday === today) ?? null;
   const stateLine = venueOpenStateLine(
     openState,
-    hours.find((entry) => entry.weekday === today) ?? null,
+    todayDay === null
+      ? null
+      : {
+          openTime: todayDay.windows[0]?.open ?? null,
+          closeTime: todayDay.windows[0]?.close ?? null,
+          isClosed: todayDay.isClosed,
+        },
   );
   return (
     <View
@@ -989,16 +1048,72 @@ const VenueHoursSection: VenueSectionRenderer = ({
                     : palette.primaryText,
                 },
                 isToday && styles.hoursToday,
+                // #4490 — several windows a day wrap instead of pushing the
+                // day label off the card. One window keeps today's exact style.
+                ...(entry.windows.length > 1 ? [styles.hoursTimesWrap] : []),
               ]}
             >
-              {hoursLineFor(entry)}
+              {venueHoursText(entry)}
             </Text>
           </View>
         );
       })}
+      <VenueSpecialDays
+        rows={specialDays}
+        palette={palette}
+        themedFont={themedFont}
+      />
     </View>
   );
 };
+
+// ── #4490 Ways to come — what the venue sells, each row opening its tab ───
+const VenueWaysToComeSection: VenueSectionRenderer = ({
+  page,
+  selectTab,
+  palette,
+  surface,
+  themedFont,
+  boldFont,
+}) =>
+  page.showWays ? (
+    <VenueWaysToCome
+      rows={page.ways}
+      onSelectTab={selectTab}
+      palette={palette}
+      surface={surface}
+      themedFont={themedFont}
+      boldFont={boldFont}
+    />
+  ) : null;
+
+// ── #4490 What's on — events held at the venue ────────────────────────────
+const VenueWhatsOnSection: VenueSectionRenderer = ({
+  page,
+  venue,
+  selectTab,
+  onOpenEvent,
+  previewing,
+  palette,
+  surface,
+  themedFont,
+  boldFont,
+}) =>
+  page.events.length === 0 || page.currency === null ? null : (
+    <VenueWhatsOnCard
+      events={page.events}
+      timeZone={venue.timezone}
+      currencyCode={page.currency.code}
+      exponent={page.currency.exponent}
+      onOpenEvent={onOpenEvent}
+      disabled={previewing}
+      onSeeAll={page.tabs.includes("whats_on") ? () => selectTab("whats_on") : null}
+      palette={palette}
+      surface={surface}
+      themedFont={themedFont}
+      boldFont={boldFont}
+    />
+  );
 
 // ── #1558 §6.5b check-in / check-out — what a Stay has INSTEAD of hours ───
 // The times are already on the wire: `PublicStayDetail.checkInTime` /
@@ -1082,6 +1197,8 @@ const VenueStayPolicySection: VenueSectionRenderer = ({
 const VENUE_SECTIONS: Record<VenueSectionId, VenueSectionRenderer> = {
   priceLede: VenuePriceLedeSection,
   about: VenueAboutSection,
+  waysToCome: VenueWaysToComeSection,
+  whatsOn: VenueWhatsOnSection,
   location: VenueLocationSection,
   hours: VenueHoursSection,
   stayPolicy: VenueStayPolicySection,
@@ -1143,6 +1260,9 @@ export const PublicVenueScreen = ({
   overviewSlot,
   actionBar,
   actionBarHeight = 0,
+  features = null,
+  onOpenEvent,
+  preview = null,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
   const { isDesktop, width: viewportWidth } = useResponsiveLayout();
@@ -1152,9 +1272,15 @@ export const PublicVenueScreen = ({
   // and a NULL category stop inheriting the restaurant's page by accident.
   const profile = venueCategoryProfile(venue.venueCategory);
   const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
-  // #1536 flips this by editing `tabs` in VENUE_CATEGORY_PROFILES — one array
-  // element, one file, all five surfaces.
-  const categoryHasMenu = venueMenuTabVisible(profile, 1);
+  // #4490 — with a features payload the MENU FEATURE decides (a venue type no
+  // longer does); without one it is today's category rule. Either way the tab
+  // still needs real menu items (below).
+  const featuresView = features ?? null;
+  const previewing = preview !== null;
+  const categoryHasMenu =
+    featuresView === null
+      ? venueMenuTabVisible(profile, 1)
+      : featuresView.features.includes("menu");
   // #2755: an unconfirmed request is not an empty menu. Only a successful
   // empty response may remove the tab.
   const menuPresentation = resolvePublicVenueMenuPresentation(
@@ -1164,14 +1290,51 @@ export const PublicVenueScreen = ({
     categoryHasMenu,
   );
   const hasMenu = menuPresentation.hasMenu;
-  const canOpenReservationSheet = RESERVATION_READY[profile.bookingBody]({
-    stayState,
-    reservabilityState,
-    reservable,
-  });
+  // #4490 — the table gate as the page model reads it: still checking (or the
+  // check failed: the tab stays, with its retry state), reservable, or checked
+  // and not reservable (no tab, no button).
+  const tablesGate: VenueTablesGate =
+    reservabilityState !== "ready"
+      ? "pending"
+      : reservable !== null &&
+          reservable.reservable === true &&
+          reservable.venueId !== null
+        ? "ready"
+        : "blocked";
+  const page = useMemo<VenuePageModel>(
+    () =>
+      deriveVenuePage(featuresView, {
+        menuTabVisible: hasMenu,
+        tablesGate,
+        preview: previewing,
+      }),
+    [featuresView, hasMenu, previewing, tablesGate],
+  );
+  // Which booking body the Reservations tab mounts. Today it is the category's;
+  // with features it is "stay" only for a venue whose one bookable tab is its
+  // rooms, and "table" otherwise.
+  const reservationsKind: VenueBookingBody = page.legacy
+    ? profile.bookingBody
+    : page.tabs.includes("rooms")
+      ? "table"
+      : page.has.stays
+        ? "stay"
+        : "table";
+  const canOpenReservationSheet = previewing
+    ? false
+    : RESERVATION_READY[reservationsKind]({
+        stayState,
+        reservabilityState,
+        reservable,
+      }) &&
+      (page.legacy || reservationsKind === "stay" || page.has.tables);
   const reservationUiContext = useMemo(
-    () => ({ hasMenu, canOpenReservationSheet }),
-    [canOpenReservationSheet, hasMenu],
+    () => ({
+      hasMenu,
+      canOpenReservationSheet,
+      ...(page.legacy ? {} : { availableTabs: page.tabs }),
+    }),
+    [canOpenReservationSheet, hasMenu, page],
   );
   const [reservationUiState, dispatchReservationUi] = React.useReducer(
     publicVenueReservationUiReducer,
@@ -1460,6 +1623,40 @@ export const PublicVenueScreen = ({
     venue.id,
   ]);
 
+  /**
+   * #4490 — the bar's button and the lead row's action. On the table tab it is
+   * today's Reserve exactly (tab plus sheet); on any other tab it selects the
+   * tab with no sheet and brings the tab strip into view. A preview does
+   * nothing (its button is disabled).
+   */
+  const handlePrimaryCta = React.useCallback((): void => {
+    if (previewing) return;
+    if (page.legacy || page.lead === null || page.lead.tab === "reservations") {
+      handleReserve();
+      return;
+    }
+    const tab = page.lead.tab;
+    if (normalizedReservationUiState.activeTab === tab) return;
+    dispatchReservationUi({
+      type: "PRIMARY_CTA_PRESSED",
+      tab,
+      context: reservationUiContext,
+    });
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      requestAnimationFrame(() => {
+        document
+          .querySelector('[data-testid="issue-4420-venue-tab-pill"]')
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [
+    handleReserve,
+    normalizedReservationUiState.activeTab,
+    page,
+    previewing,
+    reservationUiContext,
+  ]);
+
   const handleReservationSheetClose = React.useCallback((): void => {
     dispatchReservationUi({
       type: "RESERVATION_SHEET_CLOSED",
@@ -1499,9 +1696,32 @@ export const PublicVenueScreen = ({
   const orderingMenuBody = ordering?.menuBody?.(orderingSlotContext) ?? null;
 
   // ── §6.7 reserve display gate — fail closed. ─────────────────────────────
+  // #4490 — the bar sells the page's LEAD (what the venue's features sell) and
+  // opens the lead's tab. On today's page the lead is the table/stay rail.
+  const lead = page.legacy ? null : page.lead;
+  const leadTab: PublicVenueTab | null = page.legacy
+    ? "reservations"
+    : lead === null
+      ? null
+      : lead.tab;
+  const leadActionable = page.legacy
+    ? canOpenReservationSheet
+    : lead !== null &&
+      (previewing ||
+        (lead.tab === "reservations" || lead.tab === "rooms"
+          ? canOpenReservationSheet
+          : true));
   const showReserveCta =
-    canOpenReservationSheet &&
-    normalizedReservationUiState.activeTab !== "reservations";
+    leadActionable &&
+    leadTab !== null &&
+    normalizedReservationUiState.activeTab !== leadTab;
+  // Today the category names the one verb. With features the lead names it, and
+  // when there is no lead (nothing to sell, so no sheet will ever open) the
+  // flow's own name: a venue's type never leaks into a button it does not have.
+  const reserveVerb = page.legacy
+    ? profile.reserveAction
+    : lead?.ctaLabel ??
+      (page.has.stays ? page.verbs.stay : page.verbs.table);
   // #2331 — the buyer-web privacy bar no longer competes for this edge: the
   // app root ends above it (I-PRIVACY-BAR-NEVER-OCCLUDES), so the reserve bar
   // always shows.
@@ -1512,7 +1732,8 @@ export const PublicVenueScreen = ({
   // #4420 D-V3 — on the Reservations tab the bar stays, reading the guest's
   // live pick and walking Continue → Confirm & pay.
   const reservationTabBar =
-    normalizedReservationUiState.activeTab === "reservations" &&
+    (normalizedReservationUiState.activeTab === "reservations" ||
+      normalizedReservationUiState.activeTab === "rooms") &&
     !normalizedReservationUiState.reservationSheetOpen
       ? liveReservationBar
       : null;
@@ -1556,6 +1777,41 @@ export const PublicVenueScreen = ({
     if (typeof unrefable.unref === "function") unrefable.unref();
     return () => clearInterval(handle);
   }, [ticksForOpenNow]);
+  // #4490 — several windows a day and special days come from the features
+  // payload; without it (or with no weekly rows) it is the published row.
+  const weeklyWindows =
+    featuresView !== null && featuresView.hours.weekly.length > 0
+      ? featuresView.hours.weekly
+      : null;
+  const hoursDays = useMemo<VenueHoursDay[]>(
+    () =>
+      weeklyWindows !== null
+        ? groupVenueHours(weeklyWindows)
+        : venueHoursDaysFromEntries(venue.hours),
+    [weeklyWindows, venue.hours],
+  );
+  const specialDayRows = useMemo<VenueSpecialDayRow[]>(
+    () =>
+      featuresView === null
+        ? []
+        : venueSpecialDayRows(
+            featuresView.hours.specialDays,
+            venueLocalDay(new Date(nowTick), venue.timezone)?.date ?? null,
+          ),
+    [featuresView, nowTick, venue.timezone],
+  );
+  const openStateRows = useMemo(
+    () =>
+      weeklyWindows !== null && featuresView !== null
+        ? venueOpenStateRows(
+            weeklyWindows,
+            featuresView.hours.specialDays,
+            new Date(nowTick),
+            venue.timezone,
+          )
+        : venue.hours,
+    [weeklyWindows, featuresView, nowTick, venue.hours, venue.timezone],
+  );
   const openState = useMemo<VenueOpenState>(
     () =>
       // A Stay does not trade hours; asking whether a hotel is "open" is the
@@ -1563,14 +1819,25 @@ export const PublicVenueScreen = ({
       // empty week so the venue's weekday is available to anything that wants
       // it, and it returns `unknown`, which claims nothing.
       resolveVenueOpenState({
-        hours: venueShowsTradingHours(profile) ? venue.hours : [],
+        hours: venueShowsTradingHours(profile) ? openStateRows : [],
         timeZone: venue.timezone,
         now: new Date(nowTick),
       }),
-    [profile, venue.hours, venue.timezone, nowTick],
+    [profile, openStateRows, venue.timezone, nowTick],
   );
   const today = venueTodayWeekday(openState);
-  const todayEntry = venue.hours.find((h) => h.weekday === today) ?? null;
+  const todayDay = hoursDays.find((d) => d.weekday === today) ?? null;
+  const todayEntry: PublicVenueHourEntry | null =
+    weeklyWindows === null
+      ? venue.hours.find((h) => h.weekday === today) ?? null
+      : todayDay === null
+        ? null
+        : {
+            weekday: todayDay.weekday,
+            openTime: todayDay.windows[0]?.open ?? null,
+            closeTime: todayDay.windows[0]?.close ?? null,
+            isClosed: todayDay.isClosed,
+          };
   // #1558 gated this on the profile's timekeeping model (it was the SECOND
   // place a hotel advertised a closing time). #1562 replaces the string itself:
   // "Open today · 09:00–17:00" was a weekday match dressed as an open-now
@@ -1631,14 +1898,29 @@ export const PublicVenueScreen = ({
   // action: Hours (Overview's hours card), Map (the maps chooser), Reserve.
   const venueFactViews = venueFacts({
     cells: answerCells,
-    profile,
+    profile: page.legacy
+      ? profile
+      : { timekeeping: profile.timekeeping, bookingBody: reservationsKind },
     place: venueAddressLines(venue),
     todayHoursLine:
       todayEntry === null
         ? null
-        : `${VENUE_WEEKDAY_LABELS[todayEntry.weekday] ?? ""} · ${hoursLineFor(todayEntry)}`,
-    hasHoursCard:
-      profile.overview.includes("hours") && venue.hours.length > 0,
+        : weeklyWindows !== null && todayDay !== null
+          ? `${VENUE_WEEKDAY_LABELS[todayDay.weekday] ?? ""} · ${venueHoursText(todayDay)}`
+          : `${VENUE_WEEKDAY_LABELS[todayEntry.weekday] ?? ""} · ${hoursLineFor(todayEntry)}`,
+    hasHoursCard: profile.overview.includes("hours") && hoursDays.length > 0,
+    ...(page.legacy
+      ? {}
+      : {
+          featureLead:
+            page.lead === null
+              ? null
+              : {
+                  row: page.lead.row,
+                  tab: page.lead.tab,
+                  keepPriceRow: page.lead.keepPriceRow,
+                },
+        }),
     hasMap: mapsTarget !== null,
     roomTypeCount:
       // Explorer's adapter may hand a detail before its offerings load.
@@ -1665,6 +1947,9 @@ export const PublicVenueScreen = ({
       case "reserve":
         handleReserve();
         return;
+      case "lead":
+        handlePrimaryCta();
+        return;
       default: {
         const never: never = action;
         return never;
@@ -1672,11 +1957,15 @@ export const PublicVenueScreen = ({
     }
   };
   const venueFactRows: OfferingFact[] = venueFactViews.map((fact) => {
-    // On the Reservations tab the guest is already where Reserve leads, and
-    // `handleReserve` is a no-op there: no action rather than a dead tap.
+    // On the tab the lead row leads to, the guest is already there and the
+    // handler is a no-op: no action rather than a dead tap. A preview shows the
+    // row with no button (nothing can be bought yet).
+    const isLeadAction = fact.action === "reserve" || fact.action === "lead";
     const action =
-      fact.action === "reserve" &&
-      normalizedReservationUiState.activeTab === "reservations"
+      isLeadAction &&
+      (previewing ||
+        (fact.actionTab ?? "reservations") ===
+          normalizedReservationUiState.activeTab)
         ? null
         : fact.action;
     return {
@@ -1689,10 +1978,14 @@ export const PublicVenueScreen = ({
           ? null
           : {
               label:
-                action === "hours" ? "Hours" : action === "map" ? "Map" : "Reserve",
+                action === "hours"
+                  ? "Hours"
+                  : action === "map"
+                    ? "Map"
+                    : fact.actionLabel ?? "Reserve",
               accessibilityLabel:
-                action === "reserve"
-                  ? profile.reserveAction
+                action === "reserve" || action === "lead"
+                  ? reserveVerb
                   : action === "map"
                     ? `Open ${venue.name} in maps`
                     : `See ${venue.name}'s opening hours`,
@@ -1781,20 +2074,35 @@ export const PublicVenueScreen = ({
       mapsTarget,
       onOpenMaps: handleOpenMaps,
       mapsActions,
+      page,
+      hoursDays,
+      specialDays: specialDayRows,
+      selectTab: (tab: PublicVenueTab) => {
+        publicVenueTabsRef.current?.selectTab(tab);
+      },
+      onOpenEvent,
+      previewing,
+      boldFont: themedBoldFont,
     }),
     [
       discoveryPrice,
       handleOpenMaps,
+      hoursDays,
       isDesktop,
       mapsActions,
       mapsTarget,
+      onOpenEvent,
       openState,
+      page,
       palette,
+      previewing,
       profile,
       resolvedTheme,
+      specialDayRows,
       stayDetail,
       stayRate,
       surface,
+      themedBoldFont,
       themedFont,
       today,
       venue,
@@ -2005,7 +2313,7 @@ export const PublicVenueScreen = ({
   const bookingSlotBase = {
     ...themedSlotContext,
     openReservationSheet: handleOpenReservationSheetFromBody,
-    reserveAction: profile.reserveAction,
+    reserveAction: reserveVerb,
   };
   const reservationBodies: Record<
     VenueBookingBody,
@@ -2072,9 +2380,43 @@ export const PublicVenueScreen = ({
         </View>
       ),
   };
-  const reservationsBlock = reservationBodies[profile.bookingBody](true);
+  // #4490 — a preview has no booking to show: say so instead of a body that
+  // would try to read availability for a venue that is not public yet.
+  const previewBookingNote = previewing ? (
+    <View style={styles.reservationState} testID="issue-4490-preview-booking">
+      <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+        Guests can&apos;t book from this preview. Booking opens when{" "}
+        {venue.name} is live.
+      </Text>
+    </View>
+  ) : null;
+  const reservationsBlock = previewing
+    ? previewBookingNote
+    : reservationBodies[reservationsKind](true);
   // The sheet's copy never drives the page bar (it sits under the sheet).
-  const reservationsSheetBlock = reservationBodies[profile.bookingBody](false);
+  const reservationsSheetBlock = previewing
+    ? null
+    : reservationBodies[reservationsKind](false);
+  const roomsBlock = page.tabs.includes("rooms")
+    ? previewing
+      ? previewBookingNote
+      : reservationBodies.stay(true)
+    : null;
+  const whatsOnBlock =
+    page.events.length > 0 && page.currency !== null ? (
+      <VenueWhatsOnPane
+        events={page.events}
+        timeZone={venue.timezone}
+        currencyCode={page.currency.code}
+        exponent={page.currency.exponent}
+        onOpenEvent={onOpenEvent}
+        disabled={previewing}
+        palette={palette}
+        surface={surface}
+        themedFont={themedFont}
+        boldFont={themedBoldFont}
+      />
+    ) : null;
 
   // issue #4420 — the phone reserve bar is the shared glass bar (design
   // file → venueDef.bar): the venue on the left with what is true right now
@@ -2124,14 +2466,14 @@ export const PublicVenueScreen = ({
           subtitle={
             reservationTabBar !== null
               ? reservationTabBar.subtitle
-              : reserveBarSubtitle
+              : previewing
+                ? preview.note
+                : reserveBarSubtitle
           }
-          ctaLabel={reservationTabBar?.ctaLabel ?? profile.reserveAction}
-          onPress={reservationTabBar?.onPress ?? handleReserve}
-          enabled={reservationTabBar?.enabled ?? true}
-          ctaAccessibilityLabel={
-            reservationTabBar?.ctaLabel ?? profile.reserveAction
-          }
+          ctaLabel={reservationTabBar?.ctaLabel ?? reserveVerb}
+          onPress={reservationTabBar?.onPress ?? handlePrimaryCta}
+          enabled={previewing ? false : reservationTabBar?.enabled ?? true}
+          ctaAccessibilityLabel={reservationTabBar?.ctaLabel ?? reserveVerb}
           testID="issue-4420-venue-glass-bar"
           actionTestID="issue-2729-reserve-cta"
         />
@@ -2157,8 +2499,10 @@ export const PublicVenueScreen = ({
           // #4347 rework (A-4) — the same display rule as the shared bar: on
           // the Reservations tab the pane carries the reserve button.
           canReserve: showReserveCta,
-          bookingKind: profile.bookingBody,
-          reserveAction: profile.reserveAction,
+          bookingKind: reservationsKind,
+          reserveAction: reserveVerb,
+          ctaLabel: page.legacy ? null : lead?.ctaLabel ?? null,
+          ctaTab: page.legacy ? null : lead?.tab ?? null,
           openReservation: handleOpenReservationFromActionBar,
         });
   const hasHostActionBar = hostActionBar !== null;
@@ -2350,6 +2694,13 @@ export const PublicVenueScreen = ({
         initialTab={initialTab}
         activeTab={normalizedReservationUiState.activeTab}
         hasMenu={hasMenu}
+        {...(page.legacy
+          ? {}
+          : {
+              tabs: page.tabs,
+              labels: page.labels,
+              panes: { whats_on: whatsOnBlock, rooms: roomsBlock },
+            })}
         palette={palette}
         surface={surface}
         theme={resolvedTheme}
@@ -2475,13 +2826,14 @@ export const PublicVenueScreen = ({
           </React.Fragment>
         ) : null}
       </ParallaxCoverShell>
-      {Platform.OS !== "web" && tabsPinned ? (
+      {Platform.OS !== "web" && tabsPinned && (page.legacy || page.tabs.length > 1) ? (
         <View
           style={[styles.pinnedTabs, { top: pinnedTabsTop }]}
           pointerEvents="box-none"
         >
           <PublicVenueTabPill
             hasMenu={hasMenu}
+            {...(page.legacy ? {} : { tabs: page.tabs, labels: page.labels })}
             activeTab={normalizedReservationUiState.activeTab}
             palette={palette}
             theme={resolvedTheme}
@@ -2507,7 +2859,7 @@ export const PublicVenueScreen = ({
         // #1532 defect 1 / #1558 — the heading comes from the SAME profile
         // field as the CTA above, so a Stay guest can no longer tap "Reserve
         // this Stay" and land on a sheet headed "Reserve a table".
-        title: profile.reserveAction,
+        title: reserveVerb,
         children: reservationsSheetBlock,
       })}
       {overlays}
@@ -2724,6 +3076,11 @@ const styles = StyleSheet.create({
   },
   hoursToday: {
     fontWeight: "700",
+  },
+  // #4490 — several windows in one day.
+  hoursTimesWrap: {
+    flexShrink: 1,
+    textAlign: "right",
   },
   // ---- menu (§6.6) ----
   // #1561 deleted `galleryWrap` / `galleryContent` / `galleryTile` with the

@@ -271,9 +271,14 @@ describe("issue #1380 public venue Reserve CTA", () => {
     expect(page).toContain(
       'type: "RESERVE_CTA_PRESSED"',
     );
+    // [TEST-MOD-APPROVED #4490] The bar hides on the tab it leads to. On
+    // today's page (and for every venue that sells tables) that tab IS
+    // "reservations"; with features it is the lead's tab (`leadTab`), so the
+    // literal became the variable. The contract is the same.
     expect(page).toContain(
-      'normalizedReservationUiState.activeTab !== "reservations"',
+      "normalizedReservationUiState.activeTab !== leadTab",
     );
+    expect(page).toContain('"reservations"');
     // #4420 D-V3 — the bar also stays on Reservations as the live summary.
     expect(page).toContain("showReserveBar && !isDesktop");
     expect(page).toContain(

@@ -255,6 +255,13 @@ jest.mock("../../../hooks/usePublicEvents", () => ({
   }),
 }));
 
+// [TEST-MOD-APPROVED #4490] Harness registration only — ADDITION, no assertion
+// changed. The route now reads what the venue sells; a null payload is today's
+// page, which is what this suite was written against.
+jest.mock("../../../hooks/usePublicVenueFeatures", () => ({
+  __esModule: true,
+  usePublicVenueFeatures: () => ({ data: null, isLoading: false }),
+}));
 jest.mock("../../../hooks/useMenus", () => ({
   __esModule: true,
   usePublicMenus: () => ({

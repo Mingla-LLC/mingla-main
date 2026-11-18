@@ -40,6 +40,15 @@ export interface PublicVenueTabsProps {
   initialTab?: PublicVenueTab;
   activeTab?: PublicVenueTab;
   hasMenu: boolean;
+  /**
+   * #4490 — the tabs this venue has, in order, from its features. Absent =
+   * today's strip (Overview, Menu when there is one, Reservations).
+   */
+  tabs?: readonly PublicVenueTab[];
+  /** Label overrides ("Tables" for "Reservations", …). */
+  labels?: Partial<Record<PublicVenueTab, string>>;
+  /** Panes for the tabs beyond the three above (What's on, Rooms, …). */
+  panes?: Partial<Record<PublicVenueTab, React.ReactNode>>;
   overview: React.ReactNode;
   menu: React.ReactNode;
   reservations: React.ReactNode;
@@ -130,9 +139,22 @@ const isWebFocusVisible = (event: VenueTabFocusEvent): boolean => {
 
 const LABELS: Record<PublicVenueTab, string> = {
   overview: "Overview",
+  entry: "Entry",
+  groups: "Groups",
+  hire: "Private hire",
+  by_the_hour: "By the hour",
+  plans: "Plans",
+  rooms: "Rooms",
+  whats_on: "What's on",
+  guest_list: "Guest list",
   menu: "Menu",
   reservations: "Reservations",
 };
+
+const legacyTabs = (hasMenu: boolean): PublicVenueTab[] =>
+  hasMenu
+    ? ["overview", "menu", "reservations"]
+    : ["overview", "reservations"];
 
 const WEB_TABLIST_SELECTOR =
   '[role="tablist"][aria-label="Venue sections"]';
@@ -179,6 +201,9 @@ export const PublicVenueTabs = forwardRef<
     initialTab = "overview",
     activeTab: controlledActiveTab,
     hasMenu,
+    tabs: tabsProp,
+    labels,
+    panes,
     overview,
     menu,
     reservations,
@@ -190,9 +215,8 @@ export const PublicVenueTabs = forwardRef<
   },
   ref,
 ): React.ReactElement {
-  const tabs: PublicVenueTab[] = hasMenu
-    ? ["overview", "menu", "reservations"]
-    : ["overview", "reservations"];
+  const tabs: PublicVenueTab[] =
+    tabsProp === undefined ? legacyTabs(hasMenu) : [...tabsProp];
   const safeInitial = tabs.includes(initialTab) ? initialTab : "overview";
   const isControlled = controlledActiveTab !== undefined;
   const [uncontrolledActiveTab, setUncontrolledActiveTab] =
@@ -357,7 +381,8 @@ export const PublicVenueTabs = forwardRef<
     revealAndFocus(targetTab);
   };
 
-  const contentByTab: Record<PublicVenueTab, React.ReactNode> = {
+  const contentByTab: Partial<Record<PublicVenueTab, React.ReactNode>> = {
+    ...panes,
     overview,
     menu,
     reservations,
@@ -420,23 +445,32 @@ export const PublicVenueTabs = forwardRef<
           outlineWidth: 3,
         }
       : null;
+  // #4490 — a venue whose features give it a single tab (just Overview) has
+  // nothing to choose between: no strip, the content stands alone. Today's page
+  // (no `tabs` prop) always has two or more, so it is unchanged.
+  const showStrip = tabsProp === undefined || tabs.length > 1;
   return (
     <View>
-      <GlassTabs
-        items={tabs.map((tab: PublicVenueTab) => ({ key: tab, label: LABELS[tab] }))}
-        activeKey={activeTab}
-        onSelect={select}
-        palette={palette}
-        theme={theme}
-        stickyTop={72}
-        listLabel="Venue sections"
-        testID="issue-4420-venue-tab-pill"
-        tabProps={webTabPropsFor}
-        tabRef={(tab: PublicVenueTab, node: GlassTabNode | null) => {
-          tabRefs.current[tab] = (node as FocusableVenueTab | null) ?? undefined;
-        }}
-        tabStyle={focusOutlineFor}
-      />
+      {showStrip ? (
+        <GlassTabs
+          items={tabs.map((tab: PublicVenueTab) => ({
+            key: tab,
+            label: labels?.[tab] ?? LABELS[tab],
+          }))}
+          activeKey={activeTab}
+          onSelect={select}
+          palette={palette}
+          theme={theme}
+          stickyTop={72}
+          listLabel="Venue sections"
+          testID="issue-4420-venue-tab-pill"
+          tabProps={webTabPropsFor}
+          tabRef={(tab: PublicVenueTab, node: GlassTabNode | null) => {
+            tabRefs.current[tab] = (node as FocusableVenueTab | null) ?? undefined;
+          }}
+          tabStyle={focusOutlineFor}
+        />
+      ) : null}
       {Platform.OS === "web" ? (
         tabs.map((tab: PublicVenueTab) => {
           const active = tab === activeTab;
@@ -456,11 +490,7 @@ export const PublicVenueTabs = forwardRef<
         })
       ) : (
         <View style={styles.pane}>
-          {activeTab === "menu"
-            ? menu
-            : activeTab === "reservations"
-              ? reservations
-              : overview}
+          {contentByTab[activeTab] ?? overview}
         </View>
       )}
     </View>
@@ -475,6 +505,8 @@ export const PublicVenueTabs = forwardRef<
  */
 export interface PublicVenueTabPillProps {
   hasMenu: boolean;
+  tabs?: readonly PublicVenueTab[];
+  labels?: Partial<Record<PublicVenueTab, string>>;
   activeTab: PublicVenueTab;
   palette: ThemePalette;
   theme: ResolvedTheme;
@@ -483,18 +515,22 @@ export interface PublicVenueTabPillProps {
 }
 export const PublicVenueTabPill = ({
   hasMenu,
+  tabs: tabsProp,
+  labels,
   activeTab,
   palette,
   theme,
   onSelect,
   testID = "issue-4420-venue-tab-pill-pinned",
 }: PublicVenueTabPillProps) => {
-  const tabs: PublicVenueTab[] = hasMenu
-    ? ["overview", "menu", "reservations"]
-    : ["overview", "reservations"];
+  const tabs: PublicVenueTab[] =
+    tabsProp === undefined ? legacyTabs(hasMenu) : [...tabsProp];
   return (
     <GlassTabs
-      items={tabs.map((tab: PublicVenueTab) => ({ key: tab, label: LABELS[tab] }))}
+      items={tabs.map((tab: PublicVenueTab) => ({
+        key: tab,
+        label: labels?.[tab] ?? LABELS[tab],
+      }))}
       activeKey={activeTab}
       onSelect={onSelect}
       palette={palette}
