@@ -21316,6 +21316,8 @@
         "supabase/migrations/__tests__/issue_4389_retire_bgn.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4389_setup_polish.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4389_setup_polish.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4389_setup_polish.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4389_setup_polish.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4398_work_board_v3.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4398_work_board_v3.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4398_work_board_v3.tester.adversarial.pg17.test.sql",
@@ -26854,6 +26856,8 @@
         "supabase/migrations/__tests__/issue_4389_retire_bgn.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4389_setup_polish.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4389_setup_polish.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4389_setup_polish.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4389_setup_polish.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4398_work_board_v3.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4398_work_board_v3.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4398_work_board_v3.tester.adversarial.pg17.test.sql",
@@ -54321,5 +54325,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "3cc354db7521ce8a45be14c9c283a7299362b1e1e38e38dcd8bd41aba09724fb"
+  "phase3eContractSha256": "43cd7cd249b910cc518a9c9ff57f83e20c2cc5a5116f193278fa62b8ac982016"
 }
