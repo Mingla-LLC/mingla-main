@@ -91,7 +91,11 @@ jest.mock("@gorhom/bottom-sheet", () => {
   const h = ReactActual.createElement;
   const BottomSheet = ReactActual.forwardRef((props: Record<string, unknown>, ref: unknown) => {
     ReactActual.useImperativeHandle(ref, () => ({ snapToIndex: mockSnapToIndex, close: jest.fn() }));
-    return h("GorhomSheet", { index: props.index }, props.children as React.ReactNode);
+    return h(
+      "GorhomSheet",
+      { index: props.index, android_keyboardInputMode: props.android_keyboardInputMode },
+      props.children as React.ReactNode,
+    );
   });
   const passthrough = (name: string) => (props: Record<string, unknown>) =>
     h(name, props, props.children as React.ReactNode);
@@ -888,6 +892,53 @@ describe("#4473 D5 every result step sits flush", () => {
     act(() => renderer.update(sheet(false, "input")));
     act(() => renderer.update(sheet(true, "input")));
     expect(mockSnapToIndex).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#4473 D8 Android: a sheet in its own window lifts with the keyboard", () => {
+  // Device-proven on a Galaxy A72: the wrapInRNModal window never resizes for
+  // the keyboard, so gorhom's adjustResize mode left the sheet at rest with the
+  // focused field and Send code under the keyboard. Inside that window the
+  // sheet must lift itself (adjustPan); an inline sheet keeps the caller's mode.
+  // react-native-web's Modal portals into a DOM this renderer does not have;
+  // stand in the native Modal as a plain host that renders its children.
+  const realModal = Object.getOwnPropertyDescriptor(RN, "Modal");
+  beforeAll(() => {
+    Object.defineProperty(RN, "Modal", {
+      configurable: true,
+      enumerable: true,
+      get: () => (props: Record<string, unknown>) =>
+        props.visible ? React.createElement("NativeModal", null, props.children as React.ReactNode) : null,
+    });
+  });
+  afterAll(() => {
+    if (realModal) Object.defineProperty(RN, "Modal", realModal);
+  });
+  const renderReal = (wrapInRNModal: boolean) => {
+    const { BaseBottomSheet: RealSheet } = jest.requireActual("../../ui/BaseBottomSheet");
+    return render(
+      React.createElement(RealSheet, {
+        visible: true,
+        onClose: jest.fn(),
+        snapPoints: ["84%"],
+        wrapInRNModal,
+        keyboardBehavior: "interactive",
+        android_keyboardInputMode: "adjustResize",
+        keyboardToolbar: "none",
+        children: React.createElement(RN.Text, null, "body"),
+      }),
+    );
+  };
+  const gorhomMode = (renderer: ReturnType<typeof render>) =>
+    renderer.root.find((node: { type: unknown }) => node.type === "GorhomSheet").props
+      .android_keyboardInputMode;
+
+  test("a wrapInRNModal sheet asks gorhom to lift it by the keyboard height", () => {
+    expect(gorhomMode(renderReal(true))).toBe("adjustPan");
+  });
+
+  test("an inline sheet keeps the mode its caller asked for", () => {
+    expect(gorhomMode(renderReal(false))).toBe("adjustResize");
   });
 });
 

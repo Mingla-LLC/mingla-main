@@ -75,6 +75,7 @@ import {
 // KeyboardRoot in _layout.tsx does NOT reach into wrapInRNModal windows.
 import { KeyboardRoot } from '../../wrappers/KeyboardRoot';
 import { KeyboardToolbarRoot } from '../../wrappers/KeyboardToolbarRoot';
+import { useKeyboardIsVisible } from '../../wrappers/useKeyboardIsVisible';
 
 // META-ORCH-0991 Wave B — keyboard-aware text input re-export. Form sheets
 // (ReportUserModal, CustomHolidayModal, …) need gorhom's BottomSheetTextInput
@@ -246,6 +247,10 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   topInset?: number;
   keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
   keyboardBlurBehavior?: 'none' | 'restore';
+  /**
+   * Android only, inline sheets only. A `wrapInRNModal` sheet always uses
+   * 'adjustPan' (#4473): its RN-Modal window never resizes for the keyboard.
+   */
   android_keyboardInputMode?: 'adjustPan' | 'adjustResize';
   showHandle?: boolean;
   /**
@@ -467,6 +472,8 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const sheetRef = useRef<BottomSheet>(null);
+  // #4473 — the index gorhom last reported (see the Android keyboard restore).
+  const lastIndexRef = useRef(0);
 
   // ── center-dialog: NOT gorhom (SPEC §3.1 / §5.4). Wave A ships the typed
   // prop + a faithful RN-Modal centered card. Visual chrome from
@@ -558,6 +565,28 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     sheetRef.current?.snapToIndex(initialIndex);
   }, [restingKey, visible, initialIndex]);
 
+  // #4473 — Android, wrapInRNModal: the sheet lifts itself for the keyboard
+  // (adjustPan, below), but RN's keyboardDidHide reaches this window late or
+  // not at all, so gorhom's 'restore' never brought the sheet back down after
+  // Done (device: still lifted 15s+ later). The keyboard-controller state is
+  // reliable here; when the keyboard closes, snap back to the point the sheet
+  // rested at when it opened. iOS keeps gorhom's own restore.
+  const keyboardVisible = useKeyboardIsVisible();
+  const keyboardWasVisibleRef = useRef(keyboardVisible);
+  const restoreIndexRef = useRef(initialIndex);
+  useEffect(() => {
+    const wasVisible = keyboardWasVisibleRef.current;
+    keyboardWasVisibleRef.current = keyboardVisible;
+    if (Platform.OS !== 'android' || !wrapInRNModal || !visible) return;
+    if (keyboardVisible && !wasVisible) {
+      restoreIndexRef.current = lastIndexRef.current;
+      return;
+    }
+    if (!keyboardVisible && wasVisible && keyboardBlurBehavior === 'restore') {
+      sheetRef.current?.snapToIndex(restoreIndexRef.current);
+    }
+  }, [keyboardVisible, wrapInRNModal, visible, keyboardBlurBehavior]);
+
   // ORCH-1016 — hide the floating GlassBottomNav while a full detail/checkout sheet
   // is open, so its bottom content/CTA isn't painted over by the nav. Ref-counted
   // so overlapping sheets each hold it hidden until the last closes.
@@ -602,6 +631,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   const handleSheetChange = useCallback(
     (index: number) => {
       if (index >= 0) openedRef.current = true;
+      if (index >= 0) lastIndexRef.current = index;
       if (index === -1) onClose();
       onChange?.(index);
     },
@@ -996,6 +1026,20 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     bottomInset,
   ]);
 
+  // #4473 — Android, inside the wrapInRNModal window, the window NEVER
+  // resizes for the keyboard: the per-window KeyboardProvider plus
+  // statusBarTranslucent / navigationBarTranslucent draw it edge to edge, so
+  // the sheet's container keeps its full height (device-proven on a Galaxy
+  // A72: one layout pass at 853dp, none after keyboardDidShow). gorhom's
+  // 'adjustResize' mode ignores the keyboard and waits for that resize, so the
+  // sheet stayed at its resting snap with the focused field and primary button
+  // under the keyboard. 'adjustPan' makes gorhom lift the sheet by the
+  // keyboard height itself, as it does on iOS. Inline (non-modal) sheets keep
+  // the caller's mode. iOS ignores this prop.
+  const resolvedAndroidKeyboardInputMode = wrapInRNModal
+    ? 'adjustPan'
+    : android_keyboardInputMode;
+
   const sheet = (
     <BottomSheet
       ref={sheetRef}
@@ -1012,7 +1056,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
       handleComponent={showHandle ? undefined : null}
       keyboardBehavior={keyboardBehavior}
       keyboardBlurBehavior={keyboardBlurBehavior}
-      android_keyboardInputMode={android_keyboardInputMode}
+      android_keyboardInputMode={resolvedAndroidKeyboardInputMode}
       bottomInset={bottomSheetInset}
       topInset={topInset}
       accessible={false}
