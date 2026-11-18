@@ -137,6 +137,23 @@ export function hostAdTopUpTiles(
  * holds and the credit there is, both in pay terms, rounded up to a whole
  * unit. 0 when the credit covers it.
  */
+/**
+ * #4238: plan states whose launch budget is already held from Ads credit
+ * (funded, or approved by Mingla after the hold). Resuming one of these must
+ * launch the existing hold, never ask for a second top-up or a second hold.
+ * Mirrors the states launchHostAdPlan accepts with a held funding hold.
+ */
+export const HOST_AD_HOLD_PLACED_STATES = [
+  "funded_held",
+  "staff_approved",
+  "creating_paused_objects",
+  "creation_failed_retryable",
+] as const;
+
+export function hostAdPlanHoldPlaced(state: string | null | undefined): boolean {
+  return (HOST_AD_HOLD_PLACED_STATES as readonly string[]).includes(state ?? "");
+}
+
 export function hostAdTopUpNeededCents(holdPayCents: number, walletCreditCents: number): number {
   const have = hostAdPayFromCredit(Math.max(0, walletCreditCents));
   return hostAdCeilMajor(Math.max(0, holdPayCents - have));
