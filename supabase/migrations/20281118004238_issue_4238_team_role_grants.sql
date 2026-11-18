@@ -1,9 +1,8 @@
 -- Issue #4238 — who can grant brand team roles and extra permissions.
 --
 -- APPLIED MANUALLY BY SETH (reviewed migration gate). Never applied from a chat.
--- Idempotent: every object is CREATE OR REPLACE / DROP ... IF EXISTS, the
--- privilege statements are absolute, and the one data step only touches rows
--- that still match its predicate.
+-- Idempotent: every object is CREATE OR REPLACE / DROP ... IF EXISTS and the
+-- privilege statements are absolute. It changes no rows.
 --
 -- Rules (approved by Seth on #4238, 18 Nov 2026):
 --   1. Only the brand owner (brands.account_id) may grant `finance_manager` or
@@ -32,9 +31,7 @@
 --      on accept, so the invitation is where the grant is checked. It applies
 --      to client roles and to the service-role invite-brand-member edge
 --      function.
---   D. Pending finance_manager / brand_owner invitations whose inviter is not
---      the current brand owner are revoked, so accepting one cannot grant an
---      owner-only role (rule 1).
+--   D. No data step: invitations already pending are left as they are.
 --
 -- The trigger functions are SECURITY INVOKER on purpose: `current_user` must be
 -- the caller's role (authenticated / anon for direct client writes; service_role
@@ -241,17 +238,10 @@ REVOKE INSERT, UPDATE ON public.brand_team_members FROM anon, authenticated;
 GRANT UPDATE (accepted_at, removed_at, mingla_tos_accepted_at, mingla_tos_version_accepted)
   ON public.brand_team_members TO authenticated;
 
--- ── D. Pending owner-only invitations not sent by the current owner ────────
--- Read-only probe for Seth before apply (counts the rows this step revokes):
---   SELECT count(*) FROM public.brand_invitations i JOIN public.brands b ON b.id = i.brand_id
---    WHERE i.status = 'pending' AND i.role IN ('finance_manager','brand_owner')
---      AND public.issue_4238_team_grant_refusal(i.brand_id, i.invited_by, i.role, NULL) IS NOT NULL;
-UPDATE public.brand_invitations i
-   SET status = 'revoked',
-       revoked_at = coalesce(i.revoked_at, now())
- WHERE i.status = 'pending'
-   AND i.role IN ('finance_manager', 'brand_owner')
-   AND public.issue_4238_team_grant_refusal(i.brand_id, i.invited_by, i.role, NULL) IS NOT NULL;
+-- ── D. Pending invitations are left as they are ─────────────────────────
+-- Invitations already sent before this migration keep working: some are real
+-- hand-overs to hosts (Seth, 18 Nov 2026). The guard above applies to every
+-- invitation sent or changed from now on.
 
 -- ── Self-checks ────────────────────────────────────────────────────────────
 DO $check$
