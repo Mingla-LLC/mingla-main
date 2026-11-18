@@ -1453,7 +1453,9 @@ export const ExperienceCreatorWizard: React.FC<
               : !whenAdapter.isValid
                 ? "Set the date and time on the When step before publishing."
                 : !pricingValid
-                  ? "Set a valid price (or mark it free) before publishing."
+                  ? priceOptions.some((o) => o.name.trim().length === 0)
+                    ? "Give each price a name on the Pricing step before publishing."
+                    : "Set a valid price (or mark it free) before publishing."
                   : "Fix your refund policy tiers on the Pricing step before publishing.";
         setToast(reason);
         return;
@@ -2207,6 +2209,15 @@ export const ExperienceCreatorWizard: React.FC<
             })}
           />
         ) : null}
+        {step === 2 ? (
+          // #4490 — "Where: venue and space": link the experience to one of
+          // the brand's venues and a space there (lazy; saves on pick).
+          <React.Suspense fallback={null}>
+            <View style={styles.venueLink}>
+              <LazyEventVenueSpacePicker brandId={brandId} eventId={experienceId} noun="experience" />
+            </View>
+          </React.Suspense>
+        ) : null}
 
         {step === 3 ? (
           <View style={styles.stepBody}>
@@ -2551,7 +2562,16 @@ export const ExperienceCreatorWizard: React.FC<
   );
 };
 
+/** #4490 — the venue/space link (lazy: venue hooks and pickers stay out of the wizard chunk). */
+const LazyEventVenueSpacePicker = React.lazy(async () => {
+  const mod = await import("../venue/features/EventVenueSpacePicker");
+  return { default: mod.EventVenueSpacePicker };
+});
+
 const styles = StyleSheet.create({
+  venueLink: {
+    marginTop: space[4],
+  },
   host: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: "row",

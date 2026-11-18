@@ -30,6 +30,12 @@ const CAT_LABEL: Record<VenueCategory, string> = {
   play: "Play",
   creative_and_arts: "Creative & arts",
   stay: "Stay",
+  // #4490 — five more venue types.
+  bar_lounge: "Bar and lounge",
+  club: "Club",
+  cafe: "Cafe",
+  event_space: "Event space",
+  coworking: "Coworking",
 };
 
 export interface ClaimStepCategoryProps {
@@ -71,6 +77,8 @@ export const ClaimStepCategory: React.FC<ClaimStepCategoryProps> = ({
         // still decides whether it can be picked.
         includeStay
         stayDisabled={stayAuthoringFlag.data !== true}
+        // #4490 — show which features each of the nine types starts with.
+        showPreset
         testID="claim-category-picker"
       />
       {err !== null ? <Text style={styles.err}>{err}</Text> : null}

@@ -600,6 +600,8 @@ export default function VenueCreateRoute(): React.ReactElement {
               // gated submit); Seth turns it on with this release.
               includeStay
               stayDisabled={!stayAuthoringEnabled}
+              // #4490 — show which features each of the nine types starts with.
+              showPreset
               testID="venue-category-picker"
             />
             {/* B1: fullWidth makes Continue stretch to the same insets as the

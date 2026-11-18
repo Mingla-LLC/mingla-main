@@ -19,7 +19,9 @@ import {
   EXPERIENCE_BLOCK_MINUTES,
   emptyPriceOption,
   experienceBlockPillLabel,
+  PRICE_NAME_REQUIRED_COPY,
   priceOptionEntryIsValid,
+  priceOptionNameIssue,
   priceOptionToPayload,
   toExperienceBlockMinutes,
 } from "../experienceWizardTypes";
@@ -98,5 +100,19 @@ describe("#4490 block lengths", () => {
     expect(experienceBlockPillLabel(60)).toBe("1h");
     expect(experienceBlockPillLabel(90)).toBe("1h 30m");
     expect(experienceBlockPillLabel(480)).toBe("8h");
+  });
+});
+
+describe("#4490 carried from the backend review: a blank price name blocks Continue", () => {
+  it("a blank or spaces-only name is an issue on the field, with plain copy", () => {
+    expect(priceOptionNameIssue({ name: "" })).toBe(PRICE_NAME_REQUIRED_COPY);
+    expect(priceOptionNameIssue({ name: "   " })).toBe(PRICE_NAME_REQUIRED_COPY);
+    expect(priceOptionNameIssue({ name: "Walk-in" })).toBeNull();
+  });
+  it("an unnamed option is never valid for Continue, priced, free or hidden", () => {
+    expect(priceOptionEntryIsValid(emptyPriceOption({ name: "", priceMajor: "10" }), false)).toBe(false);
+    expect(priceOptionEntryIsValid(emptyPriceOption({ name: "", priceMajor: "" }), true)).toBe(false);
+    expect(priceOptionEntryIsValid(emptyPriceOption({ name: " ", isHidden: true }), false)).toBe(false);
+    expect(priceOptionEntryIsValid(emptyPriceOption({ name: "Walk-in", priceMajor: "10" }), false)).toBe(true);
   });
 });

@@ -293,11 +293,25 @@ export const priceOptionBasisLabel = (basis: ExperiencePriceBasis): string => {
   return "per person";
 };
 
-/** A price option is valid for Continue (paid or free amount; unit fields coherent). */
+/**
+ * #4490 — every price needs a name guests will recognise (the server refuses a
+ * blank one with experience_price_name_required). Shown under the Name field;
+ * blocks Continue and Publish.
+ */
+export const PRICE_NAME_REQUIRED_COPY = "Give this price a name guests will recognise.";
+
+export function priceOptionNameIssue(opt: Pick<ExperiencePriceOptionDraft, "name">): string | null {
+  return opt.name.trim().length === 0 ? PRICE_NAME_REQUIRED_COPY : null;
+}
+
+/** A price option is valid for Continue (named; paid or free amount; unit fields coherent). */
 export function priceOptionEntryIsValid(
   opt: ExperiencePriceOptionDraft,
   isFree: boolean,
 ): boolean {
+  // #4490 — a blank name blocks Continue for every option, hidden ones too
+  // (the server refuses a blank name at every index).
+  if (priceOptionNameIssue(opt) !== null) return false;
   if (opt.isHidden) return true;
   if (!isFree && !stopPriceEntryIsValid(opt.priceMajor)) return false;
   if (!isFree && priceMajorToCents(opt.priceMajor) <= 0 && opt.priceMajor.trim().length > 0) {

@@ -49,6 +49,12 @@ export const VENUE_CATEGORY_LABEL: Record<VenueCategory, string> = {
   play: "Play",
   creative_and_arts: "Creative & Arts",
   stay: "Stay",
+  // #4490 — five more venue types.
+  bar_lounge: "Bar and lounge",
+  club: "Club",
+  cafe: "Cafe",
+  event_space: "Event space",
+  coworking: "Coworking",
 };
 
 export interface VenueIdentityDraft {

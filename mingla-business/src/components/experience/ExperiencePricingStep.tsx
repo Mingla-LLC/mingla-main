@@ -45,6 +45,7 @@ import type {
 import {
   EXPERIENCE_BLOCK_MINUTES,
   emptyPriceOption,
+  priceOptionNameIssue,
   experienceBlockPillLabel,
   perStopTotalMinor,
 } from "./experienceWizardTypes";
@@ -209,7 +210,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
     setPriceOptions((prev) => [
       ...prev,
       emptyPriceOption({
-        name: `Option ${prev.length + 1}`,
+        // #4490 — the host names every price; no "Option N" stand-in.
+        name: "",
         priceMajor: "",
         priceBasis: "person",
         capacity: unlimited ? null : parseInt(capacity, 10) || null,
@@ -663,6 +665,8 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
         onChangeText={(v) => onPatch(cid, { name: v })}
         placeholder="e.g. Private hire"
         accessibilityLabel={`Price ${index + 1} name`}
+        error={showErrors ? priceOptionNameIssue(option) : null}
+        testID={`experience-price-option-${index}-name`}
       />
 
       <Text style={styles.fieldLabel}>Price</Text>

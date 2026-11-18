@@ -51,7 +51,14 @@ export type VenueCategory =
   | "restaurant"
   | "play"
   | "creative_and_arts"
-  | "stay";
+  | "stay"
+  // #4490 — five more venue types (a label and a starting preset only;
+  // features decide what a venue shows). Server CHECK: 20280809004490.
+  | "bar_lounge"
+  | "club"
+  | "cafe"
+  | "event_space"
+  | "coworking";
 
 /**
  * The profile key space. `uncategorised` is the NAMED arm for a venue whose
@@ -192,6 +199,39 @@ export const VENUE_CATEGORY_PROFILES: Record<
     // forks.
     tabs: ["overview", "reservations"],
     overview: ["priceLede", "about", "location", "stayPolicy"],
+  },
+  // #4490 — the five new types start on the neutral non-stay profile. What a
+  // venue offers (tabs, the booking bar) is derived from its features by the
+  // feature-driven public page, not from these rows.
+  bar_lounge: {
+    key: "bar_lounge",
+    noun: "venue",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  club: {
+    key: "club",
+    noun: "venue",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  cafe: {
+    key: "cafe",
+    noun: "cafe",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  event_space: {
+    key: "event_space",
+    noun: "venue",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  coworking: {
+    key: "coworking",
+    noun: "venue",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
   },
   /**
    * `venue_category IS NULL`. It gets a NAME rather than falling into the

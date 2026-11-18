@@ -9,6 +9,7 @@
  * card list and the hub gate refresh immediately).
  */
 
+import { venueFeatureKeys } from "./venueFeatureKeys";
 import {
   useMutation,
   useQuery,
@@ -84,7 +85,21 @@ export function useCreateVenueListing(): UseMutationResult<
       // The wizard surfaces the error inline (SlugCollisionError → name step,
       // duplicate-place / sanitized copy → submit error). Nothing swallowed.
     },
-    onSuccess: (_venueId, input) => {
+    onSuccess: (venueId, input) => {
+      // #4490 — a new venue starts with its type's preset (built features
+      // only; never switches anything off). Best effort: a refusal (e.g. a
+      // team member below admin) leaves every switch to Settings › Venue type
+      // and features, so it never blocks the create.
+      // Loaded on demand: the features service stays out of the eager bundle.
+      void import("../services/venueFeaturesService")
+        .then((mod) => mod.applyFeaturePreset(venueId, input.venueCategory))
+        .then((result) => {
+          queryClient.setQueryData(
+            venueFeatureKeys.features(input.brandId, venueId),
+            result.state,
+          );
+        })
+        .catch(() => undefined);
       void queryClient.invalidateQueries({
         queryKey: venueListingKeys.byBrand(input.brandId),
       });

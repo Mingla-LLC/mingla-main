@@ -51,7 +51,17 @@ import type { LocationSelectionState } from "@mingla/location-input";
 import { LazyAddressMapPreview } from "../location/LazyAddressMapPreview";
 
 import { errorForKey, type StepBodyProps } from "./types";
+
 import { whereStepAddressCopy } from "./whereStepCopy";
+
+/**
+ * #4490 — "Where: venue and space" (links the event to one of the brand's
+ * venues and a space there). Lazy: it pulls the venue hooks and pickers.
+ */
+const LazyEventVenueSpacePicker = React.lazy(async () => {
+  const mod = await import("../venue/features/EventVenueSpacePicker");
+  return { default: mod.EventVenueSpacePicker };
+});
 
 export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   draft,
@@ -343,6 +353,9 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
         </View>
       ) : null}
       <TurnoutForecastCard surface="where" />
+      <Suspense fallback={null}>
+        <LazyEventVenueSpacePicker brandId={draft.brandId} eventId={draft.id} noun="event" />
+      </Suspense>
     </View>
   );
 };

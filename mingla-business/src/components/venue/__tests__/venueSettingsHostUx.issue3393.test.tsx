@@ -17,6 +17,13 @@
 
 import React from "react";
 
+// #4490 — the shell reads venue features. These harnesses drive the nav from the
+// mocked reservation settings, so the features read "fails" here and the shell
+// falls back to the server's backfill rule (features follow the old switch).
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({ data: undefined, isError: true, isLoading: false }),
+  useSetVenueFeature: () => ({ mutate: jest.fn(), isPending: false }),
+}));
 jest.mock("../../../hooks/useMyVenueAccess", () => ({
   useMyVenueAccess: () => ({
     data: { scoped: false, capabilities: [] },
@@ -122,6 +129,12 @@ jest.mock("../../ui/Button", () => ({ __esModule: true, Button: mockHost("Button
 jest.mock("../../ui/BrandSwitch", () => ({ __esModule: true, BrandSwitch: mockHost("BrandSwitch") }));
 jest.mock("../../ui/GlassCard", () => ({ __esModule: true, GlassCard: mockHost("GlassCard") }));
 jest.mock("../../ui/Input", () => ({ __esModule: true, Input: mockHost("Input") }));
+// #4490 — Settings has tabs; the venue profile lives under "Details and photos".
+jest.mock("../../ui/Tabs", () => ({ __esModule: true, Tabs: mockHost("Tabs") }));
+jest.mock("../features/VenueTypeAndFeaturesPanel", () => ({
+  __esModule: true,
+  VenueTypeAndFeaturesPanel: () => null,
+}));
 jest.mock("../BrandHoursEditor", () => ({ __esModule: true, BrandHoursEditor: () => null }));
 // #3386 — the Venue details card renders the editor; its behaviour has its own suite.
 jest.mock("../VenueDetailsEditor", () => ({
@@ -185,6 +198,15 @@ async function mount(element: React.ReactElement): Promise<Tree> {
   return tree;
 }
 
+/** #4490 — open a Settings tab (the profile sits under "Details and photos"). */
+async function openSettingsTab(tree: Tree, key: string): Promise<void> {
+  const tabs = tree.root.findAll((n) => n.type === "Tabs")[0];
+  if (tabs === undefined) return;
+  await TestRenderer.act(async () => {
+    (tabs.props.onChange as (k: string) => void)(key);
+  });
+}
+
 function byTestId(root: TestInstance, testID: string): TestInstance {
   const node = root.findAll((n) => n.props.testID === testID)[0];
   if (node === undefined) throw new Error(`missing testID ${testID}`);
@@ -231,6 +253,7 @@ describe("#3386 — Edit venue details never opens the brand page", () => {
     const tree = await mount(
       <VenueSettingsModule brandId="brand-3393" venueId="venue-3393" />,
     );
+    await openSettingsTab(tree, "details");
     const editors = tree.root.findAll((n) => n.type === "VenueDetailsEditor");
     expect(editors).toHaveLength(1);
     expect(editors[0].props.venueId).toBe("venue-3393");
@@ -257,6 +280,7 @@ describe("#3385 — Edit photos & details says it came from the venue", () => {
     const tree = await mount(
       <VenueSettingsModule brandId="brand-3393" venueId="venue-3393" />,
     );
+    await openSettingsTab(tree, "details");
     await TestRenderer.act(async () => {
       (byTestId(tree.root, "venue-settings-edit-photos").props.onPress as () => void)();
     });
