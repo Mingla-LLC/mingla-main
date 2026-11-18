@@ -156,6 +156,8 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
           // Issue #1345: reservation slot-unavailable alert drain (was 6, now 7).
           if (
             name === "list_missing_payout_source_fees" ||
+            // Issue #3645: paid stays are their own fee-candidate family.
+            name === "list_missing_stay_provider_fees" ||
             name === "surface_payout_releases_waiting_for_bank" ||
             name === "claim_brand_payout_pause_notices" ||
             name === "claim_brand_payout_outcome_notices" ||
@@ -236,6 +238,8 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
   assertEquals(clientCreations, 1);
   assertEquals(rpcNames, [
     "list_missing_payout_source_fees",
+    // Issue #3645: the stay fee-candidate family is read after the others.
+    "list_missing_stay_provider_fees",
     "run_payout_release_dark_sweep",
     "surface_payout_releases_waiting_for_bank",
     "claim_brand_payout_pause_notices",

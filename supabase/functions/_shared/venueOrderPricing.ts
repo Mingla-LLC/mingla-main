@@ -192,6 +192,13 @@ export const VENUE_ORDER_ERRORS = {
     guest: "That's a lot of orders very quickly. Give it a moment.",
     staff: null,
   },
+  // Issue #3645 — the brand's payout settings could not be read, so the order
+  // is refused rather than guessing who is paid at charge time.
+  payout_settings_unavailable: {
+    status: 503,
+    guest: "We couldn't start your payment just now. Nothing has been charged. Try again in a moment.",
+    staff: "Couldn't start the payment just now. Nothing has been charged. Try again in a moment.",
+  },
   payment_intent_create_failed: {
     status: 502,
     guest: "Your card wasn't charged. Try again.",

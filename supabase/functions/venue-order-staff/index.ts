@@ -87,6 +87,7 @@ import {
   venueOrderErrorCopy,
   venueOrderErrorStatus,
 } from "../_shared/venueOrderPricing.ts";
+import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
 import {
   assertSessionAcceptsRound,
   findReplayableVenueOrder,
@@ -757,12 +758,16 @@ async function billToPhone(
     typeof pricing.paystack_subaccount_code === "string"
       ? pricing.paystack_subaccount_code
       : null;
-  const { data: cutoverRow } = await supabase
-    .from("brands").select("payout_hold_cutover_at").eq("id", input.brandId)
-    .maybeSingle();
-  const isCutover =
-    ((cutoverRow as { payout_hold_cutover_at?: string | null } | null)
-      ?.payout_hold_cutover_at ?? null) !== null;
+  // Issue #3645: a failed stamp read refuses (retryable). Reading it as
+  // "unstamped" split a stamped brand's order at charge time and the payout
+  // sweep then paid the venue again.
+  const cutoverStamp = await readBrandPayoutHoldStamp(
+    supabase,
+    input.brandId,
+    "venue-order-staff",
+  );
+  if (!cutoverStamp.ok) return fail("payout_settings_unavailable");
+  const isCutover = cutoverStamp.isCutover;
   if (routing.provider === "paystack") {
     if (!isCutover && !paystackSubaccount) {
       return fail("stripe_account_not_ready");

@@ -93,6 +93,11 @@ import {
 // page. Only the hash is stored; a missing key falls back to a random token.
 import { issueWebGuestManageToken } from "../_shared/venueReservationManageToken.ts";
 import { autoFollowReservationBestEffort } from "../_shared/autoFollowBrand.ts";
+import {
+  PAYOUT_HOLD_UNREADABLE_ERROR,
+  PAYOUT_HOLD_UNREADABLE_STATUS,
+  readBrandPayoutHoldStamp,
+} from "../_shared/payoutHoldStamp.ts";
 
 type ReserveSurface = "native" | "web";
 
@@ -887,22 +892,22 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     // brand (brands.payout_hold_cutover_at IS NOT NULL) settles the deposit 100%
     // to Mingla main for later event-anchored release (#1177) instead of
     // splitting to the organiser subaccount at charge time, and is charge-ready
-    // even without a subaccount. Read-only PK lookup; on ANY read error fail
-    // CLOSED to today's behaviour (isCutover=false).
-    const { data: cutoverRow, error: cutoverErr } = await supabase
-      .from("brands")
-      .select("payout_hold_cutover_at")
-      .eq("id", brandId)
-      .maybeSingle();
-    if (cutoverErr) {
-      console.error(
-        "[venue-reservation-create] payout_hold_cutover_at read failed; treating as unstamped",
-        cutoverErr,
+    // even without a subaccount. Read-only PK lookup. Issue #3645: a failed
+    // read refuses (retryable) instead of guessing "unstamped" — the guess
+    // split a stamped brand's deposit at charge time and the payout sweep then
+    // paid the organiser again.
+    const cutoverStamp = await readBrandPayoutHoldStamp(
+      supabase,
+      brandId,
+      "venue-reservation-create",
+    );
+    if (!cutoverStamp.ok) {
+      return jsonResponse(
+        { error: PAYOUT_HOLD_UNREADABLE_ERROR },
+        PAYOUT_HOLD_UNREADABLE_STATUS,
       );
     }
-    const isCutover =
-      ((cutoverRow as { payout_hold_cutover_at?: string | null } | null)
-        ?.payout_hold_cutover_at ?? null) !== null;
+    const isCutover = cutoverStamp.isCutover;
 
     // #1178 — a STAMPED brand needs no subaccount (settles to Mingla main); an
     // UNSTAMPED fee venue on Paystack still requires one (byte-identical 409).

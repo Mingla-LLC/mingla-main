@@ -60,6 +60,11 @@ import {
 } from "../_shared/paystack.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import {
+  PAYOUT_HOLD_UNREADABLE_ERROR,
+  PAYOUT_HOLD_UNREADABLE_STATUS,
+  readBrandPayoutHoldStamp,
+} from "../_shared/payoutHoldStamp.ts";
+import {
   cancelPaymentIntentIfClientAvailable,
   classifyStripeCheckoutSessionCreateFailure,
   classifyStripePaymentIntentCreateFailure,
@@ -345,22 +350,21 @@ serve(async (req: Request): Promise<Response> => {
   // settles chip-ins 100% to Mingla main for later event-anchored release
   // (#1177) instead of splitting to the organiser subaccount at charge time, and
   // is admitted through the readiness gates even without a subaccount. Read-only
-  // PK lookup; on ANY read error fail CLOSED to today's behaviour
-  // (isCutover=false) so a transient failure never changes an unstamped brand.
-  const { data: cutoverRow, error: cutoverErr } = await supabase
-    .from("brands")
-    .select("payout_hold_cutover_at")
-    .eq("id", brandId)
-    .maybeSingle();
-  if (cutoverErr) {
-    console.error(
-      "[rsvp-contribution-create] payout_hold_cutover_at read failed; treating as unstamped",
-      cutoverErr,
+  // PK lookup. Issue #3645: a failed read refuses (retryable) instead of
+  // guessing "unstamped" — the guess split a stamped brand's chip-in at charge
+  // time and the payout sweep then paid the organiser again.
+  const cutoverStamp = await readBrandPayoutHoldStamp(
+    supabase,
+    brandId,
+    "rsvp-contribution-create",
+  );
+  if (!cutoverStamp.ok) {
+    return jsonResponse(
+      { error: PAYOUT_HOLD_UNREADABLE_ERROR },
+      PAYOUT_HOLD_UNREADABLE_STATUS,
     );
   }
-  const isCutover =
-    ((cutoverRow as { payout_hold_cutover_at?: string | null } | null)
-      ?.payout_hold_cutover_at ?? null) !== null;
+  const isCutover = cutoverStamp.isCutover;
 
   // PROVIDER-AWARE readiness gate (fail-close). Reuses pg_brand_can_collect (the
   // same predicate the publish gate uses) — Stripe charges_enabled OR Paystack

@@ -3,6 +3,12 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { type RsvpLinkRow } from "./rsvpLink.ts";
+// Issue #3645 — the handler's payout-hold stamp reader runs for real.
+import {
+  PAYOUT_HOLD_UNREADABLE_ERROR,
+  PAYOUT_HOLD_UNREADABLE_STATUS,
+  readBrandPayoutHoldStamp,
+} from "../_shared/payoutHoldStamp.ts";
 
 // Run the actual serve callback. Only import boundaries are substituted; the
 // complete handler and production RSVP resolver execute unchanged. No credentials,
@@ -290,6 +296,9 @@ const boundary = {
     { amountTotalCents }: { amountTotalCents: number },
   ) => ({ buyer_total_cents: amountTotalCents }),
   MINGLA_SERVICE_FEE_BPS: 0,
+  readBrandPayoutHoldStamp,
+  PAYOUT_HOLD_UNREADABLE_ERROR,
+  PAYOUT_HOLD_UNREADABLE_STATUS,
 };
 const marker = Symbol.for("mingla.issue3436.handler.boundary");
 Reflect.set(globalThis, marker, boundary);

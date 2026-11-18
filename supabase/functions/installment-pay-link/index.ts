@@ -14,6 +14,11 @@ import {
 } from "../_shared/installments/installmentPayLinks.ts";
 import { paystackTicketSplitFields } from "../_shared/ngPaystackSplit.ts";
 import {
+  PAYOUT_HOLD_UNREADABLE_ERROR,
+  PAYOUT_HOLD_UNREADABLE_STATUS,
+  payoutHoldStampFromRead,
+} from "../_shared/payoutHoldStamp.ts";
+import {
   paystackInitializeTransaction,
   paystackVerifyTransaction,
 } from "../_shared/paystack.ts";
@@ -212,9 +217,20 @@ export async function handleInstallmentPayLink(
       unknown
     >;
   const brandId = String(event.brand_id);
-  const { data: brand } = await supabase.from("brands")
+  // Issue #3645: the stamp decides whether this payment splits to the
+  // organiser now or waits for the payout sweep. A failed read refuses before
+  // any attempt is begun; it never guesses "unstamped".
+  const brandRead = await supabase.from("brands")
     .select("paystack_subaccount_code,payout_hold_cutover_at")
     .eq("id", brandId).maybeSingle();
+  const cutoverStamp = payoutHoldStampFromRead(brandRead, "installment-pay-link");
+  if (!cutoverStamp.ok) {
+    return jsonResponse(
+      { error: PAYOUT_HOLD_UNREADABLE_ERROR },
+      PAYOUT_HOLD_UNREADABLE_STATUS,
+    );
+  }
+  const brand = brandRead.data;
   const { data: authorization } = await supabase.schema("private")
     .from("order_payment_authorizations")
     .select("authorization_email")
@@ -265,8 +281,7 @@ export async function handleInstallmentPayLink(
         mingla_installment_ordinal: Number(row.ordinal),
       },
       ...paystackTicketSplitFields(
-        (brand as { payout_hold_cutover_at?: string | null } | null)
-          ?.payout_hold_cutover_at != null,
+        cutoverStamp.isCutover,
         (brand as { paystack_subaccount_code?: string | null } | null)
           ?.paystack_subaccount_code,
         fee,

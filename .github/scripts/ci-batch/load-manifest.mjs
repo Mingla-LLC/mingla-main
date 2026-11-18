@@ -354,7 +354,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (it re-emits brand_readiness_internal, which needs brand_readiness_catalog from the skipped 20280307003355); re-sealed.
 // #4389 merge of main after #4453: kept main's eleven #4453 rows and skip lines, listed 20280808004389 after them and kept its #1931 skip line; re-sealed.
 // #4238 merge of main after #4453 and #4389: kept main's #4453 and #4389 rows, listed 20281118004238 and 20281118014238 after them; re-sealed.
-export const BOOTSTRAP_SHA256 = "fee54dfc83eca3ef13ae07c0ec46101bd541d230c24cea378d5f9321ab83b73a";
+// #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 lanes (after main's #4453 and #4389 rows), registered its pg17 suite and sidecars in the #1931 and #2117 inventories, and skipped it by exact filename on the #1931 and #2117 filtered template replays (#2492 closure); re-sealed.
+// #3645 merge of main after #4238: listed 20280809003645 before main's 20281118004238 and 20281118014238 rows (filename order); re-sealed.
+export const BOOTSTRAP_SHA256 = "418135f9a1ea843bb29f5f76102dec25cfc20f03d0cdfd0c228b4bcbdf90b59c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
