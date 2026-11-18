@@ -78,6 +78,45 @@ jest.mock("react-i18next", () => {
 
 const mockSheetProps: Array<Record<string, unknown>> = [];
 const mockScrollToEnd = jest.fn();
+// The send sheet schedules its scroll on the next frame; this node lane has none.
+if (typeof (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame !== "function") {
+  (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame =
+    (callback: () => void) => setTimeout(callback, 0);
+}
+const mockSnapToIndex = jest.fn();
+// Only the real-BaseBottomSheet test below reaches these: gorhom's sheet as a
+// host double exposing snapToIndex, and the native-only peers it imports.
+jest.mock("@gorhom/bottom-sheet", () => {
+  const ReactActual = jest.requireActual("react");
+  const h = ReactActual.createElement;
+  const BottomSheet = ReactActual.forwardRef((props: Record<string, unknown>, ref: unknown) => {
+    ReactActual.useImperativeHandle(ref, () => ({ snapToIndex: mockSnapToIndex, close: jest.fn() }));
+    return h("GorhomSheet", { index: props.index }, props.children as React.ReactNode);
+  });
+  const passthrough = (name: string) => (props: Record<string, unknown>) =>
+    h(name, props, props.children as React.ReactNode);
+  return {
+    __esModule: true,
+    default: BottomSheet,
+    BottomSheetBackdrop: passthrough("Backdrop"),
+    BottomSheetFlatList: passthrough("SheetFlatList"),
+    BottomSheetScrollView: passthrough("SheetScrollView"),
+    BottomSheetSectionList: passthrough("SheetSectionList"),
+    BottomSheetTextInput: passthrough("SheetTextInput"),
+    BottomSheetView: passthrough("SheetView"),
+    useBottomSheetTimingConfigs: () => ({}),
+  };
+});
+jest.mock("react-native-reanimated", () => ({
+  Easing: { out: (f: unknown) => f, cubic: (t: number) => t },
+}));
+jest.mock("react-native-gesture-handler", () => {
+  const ReactActual = jest.requireActual("react");
+  return {
+    GestureHandlerRootView: (props: Record<string, unknown>) =>
+      ReactActual.createElement("GHRoot", props, props.children as React.ReactNode),
+  };
+});
 jest.mock("../../ui/BaseBottomSheet", () => {
   const ReactActual = jest.requireActual("react");
   const h = ReactActual.createElement;
@@ -204,6 +243,63 @@ const { calendarPlanMessageControl } = require("../../brandEnquiry/calendarPlanM
 const { claimedEntryPath } = require("../missingTicketModel");
 const { SendTicketSheet } = require("../SendTicketSheet");
 const { SHEET_KEYBOARD_DONE_BAR_ID } = require("../SheetKeyboardDoneBar");
+
+/**
+ * Renders as iOS: the sheet's own Done bars are iOS InputAccessoryViews,
+ * which react-native-web does not ship, so a host double stands in for one.
+ */
+async function asIOSAsync(run: () => Promise<void>): Promise<void> {
+  const original = RN.Platform.OS;
+  const hadAccessory = Object.prototype.hasOwnProperty.call(RN, "InputAccessoryView");
+  const originalAccessory = RN.InputAccessoryView;
+  RN.Platform.OS = "ios";
+  RN.InputAccessoryView = (props: Record<string, unknown>) =>
+    React.createElement("InputAccessoryView", props, props.children as React.ReactNode);
+  try {
+    await run();
+  } finally {
+    RN.Platform.OS = original;
+    if (hadAccessory) RN.InputAccessoryView = originalAccessory;
+    else delete RN.InputAccessoryView;
+  }
+}
+
+function asIOS<T>(run: () => T): T {
+  const original = RN.Platform.OS;
+  const hadAccessory = Object.prototype.hasOwnProperty.call(RN, "InputAccessoryView");
+  const originalAccessory = RN.InputAccessoryView;
+  RN.Platform.OS = "ios";
+  RN.InputAccessoryView = (props: Record<string, unknown>) =>
+    React.createElement("InputAccessoryView", props, props.children as React.ReactNode);
+  try {
+    return run();
+  } finally {
+    RN.Platform.OS = original;
+    if (hadAccessory) RN.InputAccessoryView = originalAccessory;
+    else delete RN.InputAccessoryView;
+  }
+}
+
+/** Every text field with an accessory id has its own bar, mounted AFTER it. */
+function expectEachFieldLinked(renderer: Renderer, inputType: string): string[] {
+  const order: Array<{ kind: "input" | "bar"; id: string }> = [];
+  for (const node of renderer.root.findAll(() => true)) {
+    if (typeof node.type !== "string") continue;
+    if (node.type === inputType && typeof node.props.inputAccessoryViewID === "string") {
+      order.push({ kind: "input", id: node.props.inputAccessoryViewID });
+    }
+    if (node.type === "InputAccessoryView") order.push({ kind: "bar", id: node.props.nativeID });
+  }
+  const inputs = order.filter((entry) => entry.kind === "input").map((entry) => entry.id);
+  expect(new Set(inputs).size).toBe(inputs.length);
+  for (const id of inputs) {
+    expect(id.startsWith(SHEET_KEYBOARD_DONE_BAR_ID)).toBe(true);
+    const inputAt = order.findIndex((entry) => entry.kind === "input" && entry.id === id);
+    const barAt = order.findIndex((entry) => entry.kind === "bar" && entry.id === id);
+    expect(barAt).toBeGreaterThan(inputAt);
+  }
+  return inputs;
+}
 const { joinDistinct } = require("../../../utils/purchasePresentation");
 
 type Renderer = import("react-test-renderer").ReactTestRenderer;
@@ -419,8 +515,16 @@ describe("#4473 D1 one dark Done bar, primary always reachable", () => {
     const renderer = addSheet();
     expect(["none", "dark"]).toContain(mockSheetProps.at(-1)!.keyboardToolbar);
     expect(phone(renderer).props.showDoneAccessory).not.toBe(false);
-    await press(byId(renderer, "add-identity-tab-email"));
-    expect(byId(renderer, "add-identity-email").props.inputAccessoryViewID).toBe(SHEET_KEYBOARD_DONE_BAR_ID);
+  });
+
+  test("the Email field has its own dark bar, mounted right after it (device: none showed)", async () => {
+    await asIOSAsync(async () => {
+      const renderer = addSheet();
+      await press(byId(renderer, "add-identity-tab-email"));
+      const linked = expectEachFieldLinked(renderer, "BottomSheetTextInput");
+      expect(linked).toHaveLength(1);
+      expect(byId(renderer, "add-identity-email").props.inputAccessoryViewID).toBe(linked[0]);
+    });
   });
 
   test("on iOS the shared toolbar is off; elsewhere it is the dark one", () => {
@@ -475,12 +579,16 @@ describe("#4473 D1 one dark Done bar, primary always reachable", () => {
     await act(async () => {
       byId(renderer, "add-identity-email").props.onChangeText("g@example.com");
     });
-    await press(byId(renderer, "add-identity-send"));
-    expect(byId(renderer, "otp").props.inputAccessoryViewID).toBe(SHEET_KEYBOARD_DONE_BAR_ID);
+    await asIOSAsync(async () => {
+      await press(byId(renderer, "add-identity-send"));
+      expect(expectEachFieldLinked(renderer, "OTPInput")).toEqual([
+        byId(renderer, "otp").props.inputAccessoryViewID,
+      ]);
+    });
   });
 
-  test("Send to a friend: one dark bar, and First name has a label", () => {
-    const renderer = render(
+  test("Send to a friend: one dark bar per field, and First name has a label", () => {
+    const renderer = asIOS(() => render(
       React.createElement(SendTicketSheet, {
         ticket: { id: "t1", ticketIndex: 2 },
         total: 3,
@@ -488,15 +596,12 @@ describe("#4473 D1 one dark Done bar, primary always reachable", () => {
         onClose: jest.fn(),
         onSent: jest.fn(),
       }),
-    );
+    ));
     expect(["none", "dark"]).toContain(mockSheetProps.at(-1)!.keyboardToolbar);
+    expect(mockSheetProps.at(-1)!.keyboardBehavior).toBe("interactive");
     expect(text(renderer)).toContain("First name");
-    const inputs = renderer.root.findAll((node) => node.type === "BottomSheetTextInput");
-    expect(inputs.length).toBeGreaterThanOrEqual(2);
-    for (const input of inputs) {
-      expect(input.props.inputAccessoryViewID).toBe(SHEET_KEYBOARD_DONE_BAR_ID);
-    }
-    expect(inputs[0].props.accessibilityLabel).toBe("First name");
+    expect(expectEachFieldLinked(renderer, "BottomSheetTextInput")).toHaveLength(2);
+    expect(byId(renderer, "send-ticket-name").props.accessibilityLabel).toBe("First name");
   });
 });
 
@@ -646,5 +751,166 @@ describe("#4473 D5 the keyboard closes before a result step", () => {
     });
     await flush();
     expect(maybeId(renderer, "add-identity-none")).toBeTruthy();
+  });
+});
+
+describe("#4473 D7 Send to a friend reveals the mobile field on the SE", () => {
+  test("focusing Mobile scrolls the form to its end; name and email go back to the top", () => {
+    jest.useFakeTimers();
+    try {
+      const renderer = render(
+        React.createElement(SendTicketSheet, {
+          ticket: { id: "t1", ticketIndex: 2 },
+          total: 3,
+          visible: true,
+          onClose: jest.fn(),
+          onSent: jest.fn(),
+        }),
+      );
+      act(() => {
+        phone(renderer).props.onFocus();
+        jest.advanceTimersByTime(300);
+      });
+      expect(mockScrollToEnd).toHaveBeenCalledTimes(1);
+      act(() => {
+        byId(renderer, "send-ticket-email").props.onFocus();
+        jest.advanceTimersByTime(300);
+      });
+      expect(mockScrollToEnd).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("#4473 D6 the add sheet never reopens blank", () => {
+  test("after a result, closing and reopening shows the add step, fully visible", async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ data: { ok: true, challengeId: "ch1", sentTo: "g@example.com" }, error: null })
+      .mockResolvedValueOnce({ data: { ok: true, claimed: { count: 0, claimed: [] } }, error: null });
+    mockSweep.mockResolvedValue(NO_SWEEP);
+    const props = { userId: "user-1", identifiers: [], onClose: jest.fn() };
+    const renderer = render(React.createElement(AddIdentitySheet, { ...props, visible: true }));
+    await press(byId(renderer, "add-identity-tab-email"));
+    await act(async () => {
+      byId(renderer, "add-identity-email").props.onChangeText("g@example.com");
+    });
+    await press(byId(renderer, "add-identity-send"));
+    await act(async () => {
+      byId(renderer, "otp").props.onComplete("123456");
+    });
+    await flush();
+    expect(maybeId(renderer, "add-identity-none")).toBeTruthy();
+    const firstBody = byId(renderer, "add-identity-body");
+
+    // Close (the reset runs while the modal goes away), then reopen.
+    act(() => {
+      renderer.update(React.createElement(AddIdentitySheet, { ...props, visible: false }));
+    });
+    act(() => {
+      renderer.update(React.createElement(AddIdentitySheet, { ...props, visible: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    const body = byId(renderer, "add-identity-body");
+    expect(body).not.toBe(firstBody);
+    const opacity = (body.props.style as { opacity: { __getValue: () => number } }).opacity;
+    expect(opacity.__getValue()).toBe(1);
+    expect(text(renderer)).toContain("Add an email or number");
+    expect(maybeId(renderer, "add-identity-send")).toBeTruthy();
+  });
+
+  test("an interrupted fade ends fully visible", async () => {
+    const props = { userId: "user-1", identifiers: [], onClose: jest.fn() };
+    const renderer = render(React.createElement(AddIdentitySheet, { ...props, visible: true }));
+    // Interrupt the opening fade straight away.
+    act(() => {
+      renderer.update(React.createElement(AddIdentitySheet, { ...props, visible: false }));
+    });
+    act(() => {
+      renderer.update(React.createElement(AddIdentitySheet, { ...props, visible: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    const opacity = (byId(renderer, "add-identity-body").props.style as { opacity: { __getValue: () => number } }).opacity;
+    expect(opacity.__getValue()).toBe(1);
+  });
+});
+
+describe("#4473 D5 every result step sits flush", () => {
+  test("input steps share one resting key; Checking and each result change it", async () => {
+    mockInvoke
+      .mockResolvedValueOnce({ data: { ok: true, challengeId: "ch1", sentTo: "g@example.com" }, error: null })
+      .mockResolvedValueOnce({ data: { ok: true, claimed: { count: 0, claimed: [] } }, error: null });
+    let finishSweep: (value: unknown) => void = () => undefined;
+    mockSweep.mockReturnValue(new Promise((resolve) => { finishSweep = resolve; }));
+    const renderer = addSheet();
+    expect(mockSheetProps.at(-1)!.restingKey).toBe("input");
+    await press(byId(renderer, "add-identity-tab-email"));
+    await act(async () => {
+      byId(renderer, "add-identity-email").props.onChangeText("g@example.com");
+    });
+    await press(byId(renderer, "add-identity-send"));
+    expect(mockSheetProps.at(-1)!.restingKey).toBe("input");
+    await act(async () => {
+      byId(renderer, "otp").props.onComplete("123456");
+    });
+    await flush();
+    expect(mockSheetProps.at(-1)!.restingKey).toBe("checking");
+    await act(async () => {
+      finishSweep(NO_SWEEP);
+    });
+    await flush();
+    expect(mockSheetProps.at(-1)!.restingKey).toBe("none");
+  });
+
+  test("BaseBottomSheet settles to its resting snap when the key changes while open, never on open or close", () => {
+    const { BaseBottomSheet: RealSheet } = jest.requireActual("../../ui/BaseBottomSheet");
+    mockSnapToIndex.mockReset();
+    const sheet = (visible: boolean, restingKey: string) =>
+      React.createElement(RealSheet, {
+        visible,
+        onClose: jest.fn(),
+        snapPoints: ["84%"],
+        restingKey,
+        children: React.createElement(RN.Text, null, "body"),
+      });
+    const renderer = render(sheet(true, "input"));
+    expect(mockSnapToIndex).not.toHaveBeenCalled();
+    act(() => renderer.update(sheet(true, "input")));
+    expect(mockSnapToIndex).not.toHaveBeenCalled();
+    act(() => renderer.update(sheet(true, "none")));
+    expect(mockSnapToIndex).toHaveBeenCalledTimes(1);
+    expect(mockSnapToIndex).toHaveBeenCalledWith(0);
+    // A key change while closed only records the key; reopening does not snap.
+    act(() => renderer.update(sheet(false, "input")));
+    act(() => renderer.update(sheet(true, "input")));
+    expect(mockSnapToIndex).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#4473 shared booking pass wording", () => {
+  test("a shared booking says Your booking over its pass, never Your tickets", async () => {
+    const booking = {
+      kind: "reservation", sourceId: "res-s1", reservationId: "res-s1", role: "shared",
+      sharedWithAnotherAccount: true, title: "Harmattan", offeringType: "venue",
+      createdAt: "2026-11-10T10:00:00.000Z", venueId: "v1", venueName: "Harmattan",
+      startsAt: "2026-12-15T19:00:00.000Z", partySize: 4, status: "confirmed", timezone: "Africa/Lagos",
+    };
+    const renderer = render(
+      React.createElement(SharedPurchaseDetail, {
+        item: sharedTimelineItem(booking),
+        qrSize: 200,
+        onAddToCalendar: jest.fn(),
+        onOpenChat: jest.fn(),
+        onOpenEventPage: jest.fn(),
+      }),
+    );
+    await flush();
+    expect(byId(renderer, "shared-pass-title").props.children).toBe("Your booking");
+    expect(text(renderer)).not.toContain("Your tickets");
+    expect(text(renderer)).toContain("Show this code at the venue when you arrive.");
   });
 });

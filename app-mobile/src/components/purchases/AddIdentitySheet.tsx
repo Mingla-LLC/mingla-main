@@ -79,9 +79,12 @@ import {
 } from "./missingTicketModel";
 import {
   PURCHASE_SHEET_KEYBOARD_TOOLBAR,
-  SHEET_KEYBOARD_DONE_BAR_ID,
   SheetKeyboardDoneBar,
+  sheetDoneBarId,
 } from "./SheetKeyboardDoneBar";
+
+const EMAIL_DONE_BAR_ID = sheetDoneBarId("claim-email");
+const CODE_DONE_BAR_ID = sheetDoneBarId("claim-code");
 import { formatStartsAtLabel } from "../../utils/zoneLabel";
 import {
   PURCHASE_SHEET_BACKGROUND,
@@ -136,6 +139,14 @@ export function claimLinkContact(
 
 type Found = { count: number; entries: ClaimedEntry[] };
 
+/**
+ * Steps that hold a text field. Moving between them keeps the sheet where the
+ * keyboard put it; reaching any other step (Checking, a result, the other
+ * ways) settles the sheet back to its resting height (BaseBottomSheet
+ * `restingKey`), so it always sits flush at the bottom of the screen.
+ */
+const INPUT_STEPS: ReadonlySet<AddIdentityStep> = new Set(["add", "code"]);
+
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RESEND_SECONDS = 30;
 
@@ -167,6 +178,8 @@ export function AddIdentitySheet({
   const [resendIn, setResendIn] = useState(0);
   const [found, setFound] = useState<Found>({ count: 0, entries: [] });
   const fade = useRef(new Animated.Value(1)).current;
+  // Keys the step body per open, so every open mounts a fresh native view.
+  const [openCount, setOpenCount] = useState(0);
   const linkFlow = initialStep === "landed";
   const linkContact = claimLinkContact(claimLink);
   const runRef = useRef(0);
@@ -249,14 +262,28 @@ export function AddIdentitySheet({
   }, [t]);
 
   // Every step change cross-fades (also under reduced motion, per the spec).
+  //
+  // #4473 D6 — the sheet reopened blank: closing resets the step while the
+  // modal tears down, so a native fade started then never finished and the
+  // body stayed at opacity 0; reopening on the same step started no new fade.
+  // Now: no fade runs while closed (the body is set fully visible), every open
+  // starts a fresh fade on a freshly keyed body, and a fade that is
+  // interrupted for any reason ends fully visible.
   useEffect(() => {
+    if (!visible) {
+      fade.stopAnimation();
+      fade.setValue(1);
+      return;
+    }
     fade.setValue(0);
     Animated.timing(fade, {
       toValue: 1,
       duration: 180,
       useNativeDriver: true,
-    }).start();
-  }, [fade, step]);
+    }).start(({ finished }) => {
+      if (!finished) fade.setValue(1);
+    });
+  }, [fade, step, visible]);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -270,6 +297,7 @@ export function AddIdentitySheet({
   useEffect(() => {
     if (visible) {
       setStep(initialStep);
+      setOpenCount((count) => count + 1);
       return;
     }
     runRef.current += 1;
@@ -510,6 +538,7 @@ export function AddIdentitySheet({
       keyboardBlurBehavior="restore"
       keyboardToolbar={PURCHASE_SHEET_KEYBOARD_TOOLBAR}
       onClose={closable ? onClose : () => undefined}
+      restingKey={INPUT_STEPS.has(step) ? "input" : step}
       scrollMode="scroll"
       scrollProps={{
         ref: scrollRef,
@@ -523,7 +552,6 @@ export function AddIdentitySheet({
       wrapInRNModal
     >
       <View style={styles.body} testID="add-identity-sheet">
-        <SheetKeyboardDoneBar />
         <View style={styles.topRow}>
           <Text style={styles.stepLabel}>{stepLabel}</Text>
           {closable ? (
@@ -546,7 +574,7 @@ export function AddIdentitySheet({
           ) : <View style={styles.close} />}
         </View>
 
-        <Animated.View style={{ opacity: fade }}>
+        <Animated.View key={`body-${openCount}`} style={{ opacity: fade }} testID="add-identity-body">
           {step === "country" ? (
             <View testID="add-identity-country">
               <Text accessibilityRole="header" style={styles.title}>
@@ -675,7 +703,7 @@ export function AddIdentitySheet({
                       setEmail(next);
                       setError(null);
                     }}
-                    inputAccessoryViewID={SHEET_KEYBOARD_DONE_BAR_ID}
+                    inputAccessoryViewID={EMAIL_DONE_BAR_ID}
                     onFocus={revealPrimaryOnFocus}
                     onSubmitEditing={() => { void send(); }}
                     placeholder={t("missing.add.emailPlaceholder")}
@@ -686,6 +714,7 @@ export function AddIdentitySheet({
                     textContentType="emailAddress"
                     value={email}
                   />
+                  <SheetKeyboardDoneBar nativeID={EMAIL_DONE_BAR_ID} />
                   <Text style={styles.hint}>{t("missing.add.emailHint")}</Text>
                 </View>
               )}
@@ -739,7 +768,7 @@ export function AddIdentitySheet({
                 <OTPInput
                   disabled={busy}
                   error={error !== null}
-                  inputAccessoryViewID={SHEET_KEYBOARD_DONE_BAR_ID}
+                  inputAccessoryViewID={CODE_DONE_BAR_ID}
                   inputComponent={BottomSheetTextInput}
                   length={6}
                   onChange={(next) => {
@@ -750,6 +779,7 @@ export function AddIdentitySheet({
                   tone="dark"
                   value={code}
                 />
+                <SheetKeyboardDoneBar nativeID={CODE_DONE_BAR_ID} />
               </View>
               {busy ? (
                 <ActivityIndicator color={C.accent} style={styles.verifying} />

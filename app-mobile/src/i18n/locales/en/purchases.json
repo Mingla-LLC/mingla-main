@@ -431,6 +431,10 @@
       "reservation": "Shared with you: this booking also shows on the buyer's Mingla account. It's one booking, shared by both accounts.",
       "stay": "Shared with you: this booking also shows on the buyer's Mingla account. It's one booking, shared by both accounts.",
       "venue_order": "Shared with you: this order also shows on the buyer's Mingla account. It's one order, so the pickup code works once."
+    },
+    "passTitle": {
+      "reservation": "Your booking",
+      "rsvp": "Your RSVP"
     }
   },
   "keyboardDone": "Done"

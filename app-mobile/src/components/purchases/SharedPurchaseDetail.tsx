@@ -201,8 +201,18 @@ export function SharedPurchaseDetail({
 
       {passes.length > 0 ? (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("ticket.yourTickets")}</Text>
-          <Text style={styles.sectionBody}>{t("ticket.presentCode")}</Text>
+          <Text style={styles.sectionTitle} testID="shared-pass-title">
+            {item.kind === "reservation"
+              ? t("shared.passTitle.reservation")
+              : item.kind === "rsvp"
+              ? t("shared.passTitle.rsvp")
+              : t("ticket.yourTickets")}
+          </Text>
+          <Text style={styles.sectionBody}>
+            {item.kind === "reservation"
+              ? t("ticket.bookingPassHint")
+              : t("ticket.presentCode")}
+          </Text>
           {passes.map((ticket, index) => (
             <View key={ticket.id} style={styles.passCard} testID={`shared-pass-${ticket.id}`}>
               <Text style={styles.passNumber}>

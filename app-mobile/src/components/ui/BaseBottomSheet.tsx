@@ -257,6 +257,17 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
    * (the sheet then lifts above it). Only read when `wrapInRNModal` is set.
    */
   keyboardToolbar?: 'system' | 'dark' | 'none';
+  /**
+   * #4473 — when this value CHANGES while the sheet is open, the sheet settles
+   * back to `initialIndex`. gorhom keeps a sheet the keyboard lifted in its
+   * "temporary position" until a keyboard-hide it attributes to that input; a
+   * host whose input step is replaced (e.g. a code field giving way to a
+   * result) can be left lifted, short of the screen bottom. Hosts pass a key
+   * that is constant across their input steps and changes on the others.
+   * Never fires on open/close (that stays the declarative `index` drive) and
+   * does nothing while omitted.
+   */
+  restingKey?: string | number;
   /** Full per-consumer override of the handle indicator (parity floor, SPEC §6). */
   handleStyle?: ViewStyle;
   /** Full per-consumer override of the sheet background (parity floor, SPEC §6/§7). */
@@ -497,6 +508,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     android_keyboardInputMode = 'adjustResize',
     showHandle = true,
     keyboardToolbar = 'system',
+    restingKey,
     handleStyle,
     backgroundStyle,
     backdropOpacity,
@@ -534,6 +546,17 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
   // 6a970e63: "Tapped repeatedly on Modal view" 00:15→03:06 on a half-drawn
   // sheet). Removed: the single declarative drive opens/closes cleanly, no race.
   // DO NOT re-add an imperative snapToIndex/close keyed on `visible`.
+
+  // #4473 — settle to the resting snap point when the host's `restingKey`
+  // changes while open. Keyed on the host's content step, never on `visible`
+  // (see ORCH-1064 above): a key change at close time only records the key.
+  const lastRestingKeyRef = useRef(restingKey);
+  useEffect(() => {
+    if (restingKey === undefined || lastRestingKeyRef.current === restingKey) return;
+    lastRestingKeyRef.current = restingKey;
+    if (!visible) return;
+    sheetRef.current?.snapToIndex(initialIndex);
+  }, [restingKey, visible, initialIndex]);
 
   // ORCH-1016 — hide the floating GlassBottomNav while a full detail/checkout sheet
   // is open, so its bottom content/CTA isn't painted over by the nav. Ref-counted
