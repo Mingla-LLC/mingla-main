@@ -555,6 +555,18 @@ describe("#3214 the public document's CSP is the booted app's policy", () => {
     ]));
   });
 
+  it("#4238 admits the Reddit pixel's events origin under connect-src, and only that Reddit host", () => {
+    const policy = directives(doc.publicDocumentCsp());
+    const connect = policy.get("connect-src") ?? [];
+    // Production refused alb.reddit.com/rp?event=PageVisit and ViewContent (seen 2026-11-18).
+    expect(connect).toContain("https://alb.reddit.com");
+    expect(connect).toContain("https://pixel-config.reddit.com");
+    expect(connect.filter((source) => source.includes("reddit")).sort()).toEqual([
+      "https://alb.reddit.com", "https://pixel-config.reddit.com",
+    ]);
+    expect(doc.publicDocumentCsp()).not.toContain("*.reddit.com");
+  });
+
   it("derives Sentry from the DSN's ingest host only, never its key, and nothing else", () => {
     expect(withDsn("https://secretkey@o4511136062701568.ingest.us.sentry.io/1", () => doc.publicDocumentCsp())).not.toContain("secretkey");
     expect(withDsn(undefined, () => doc.publicDocumentCsp())).not.toContain("sentry");
