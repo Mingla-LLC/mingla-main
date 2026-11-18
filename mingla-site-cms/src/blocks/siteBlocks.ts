@@ -9,11 +9,12 @@ import {
   UnorderedListFeature,
   lexicalEditor,
 } from "@payloadcms/richtext-lexical";
-import { safeCityTimeZone, safeText, safeUrl } from "../lib/validation";
+import { buttonUrl, safeActionUrl, safeCityTimeZone, safeText, safeUrl } from "../lib/validation";
 import { statsIconOptions } from "../lib/statsIcons";
+import { reviewField } from "../lib/reviewStamp";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
 import { FEATURE_ICON_NAMES } from "../contracts/generated/icons.ts";
-import { ATELIER, DESIGNS, DESIGN_KEYS } from "../contracts/generated/designs.ts";
+import { ATELIER, DESIGNS, DESIGN_KEYS, HERO_LAYOUTS_WITH_BOOKING, HERO_LAYOUTS_WITH_FACTS } from "../contracts/generated/designs.ts";
 
 /*
  * #3149 — `description` is built HERE rather than spread onto the result.
@@ -39,14 +40,26 @@ const short = (
     value == null && !required ? true : safeText(value, max),
   admin: description ? { description } : undefined,
 });
-const link = (name = "href", label = "Link", required = true): Field => ({
+/*
+ * #4453 PR 2 — every block link here is a BUTTON (an action link) except the
+ * map and directions links, which say so with `safeUrl`. A button is checked
+ * by its label (`buttonUrl("label")`: booking words lock it to Mingla);
+ * hero buttons and the empty-offerings button always book (`safeActionUrl`).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Payload's validate signature varies by field type.
+const link = (name = "href", label = "Link", required = true, validate: (value: unknown, options?: any) => true | string = buttonUrl("label")): Field => ({
   name,
   label,
   type: "text",
   required,
   maxLength: 2048,
-  validate: safeUrl,
+  validate,
 });
+/* #4453 milestone 5 — a Mingla id (venue, room, event or experience); empty is "not set". */
+const uuidOrEmpty = (value: unknown): true | string =>
+  value == null || value === "" || (typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
+    ? true
+    : "Enter a Mingla id (36 characters).";
 const readyMedia = (name = "media", label = "Image"): Field => ({
   name,
   label,
@@ -92,6 +105,8 @@ const eyebrow = (): Field =>
   );
 
 const ctaFields: Field[] = [short("label", "Label", true, 80), link()];
+// #4453 PR 2 — the hero's buttons are the site's primary actions: always booking.
+const heroCtaFields: Field[] = [short("label", "Label", true, 80), link("href", "Link", true, safeActionUrl)];
 
 /*
  * #3149 wave 4 — an OPTIONAL button, offered on four blocks that had no way to
@@ -113,7 +128,7 @@ const optionalCta = (
     80,
     `Optional. The words on the button ${where} — for example \u201c${what}\u201d. Leave both this and the link empty and no button is shown.`,
   ),
-  link("cta_href", "Button link", false),
+  link("cta_href", "Button link", false, buttonUrl("cta_label")),
 ];
 
 const BLOCK_CONFIGS: Block[] = [
@@ -143,6 +158,59 @@ const BLOCK_CONFIGS: Block[] = [
         defaultValue: false,
         admin: { description: "Shows the date-and-place search when your site has a trips page." },
       },
+      /* #4453 milestone 5 (§5.5, §5.6) — the hero booking bar and the Mingla rating badge (offered while SITES_BOOKING_BLOCKS is on). */
+      {
+        name: "booking_bar",
+        label: "Booking bar",
+        type: "select",
+        required: false,
+        options: [
+          { value: "none", label: "None" },
+          { value: "venue_table", label: "Book a table or visit" },
+          { value: "stay", label: "Book a stay" },
+          { value: "experience", label: "Book an experience" },
+          { value: "trip_search", label: "Trip search" },
+        ],
+        admin: {
+          description: "Blank date, time and guest fields that open your Mingla booking page pre-filled. Shown only by layouts that draw it (Full bleed, Editorial, Arch, Voyage's cover).",
+          condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant)),
+        },
+      },
+      {
+        name: "booking_target_id",
+        label: "What the booking bar books",
+        type: "text",
+        required: false,
+        maxLength: 36,
+        validate: uuidOrEmpty,
+        admin: {
+          description: "The Mingla id of your venue, room or experience.",
+          condition: (_, sibling) => ["venue_table", "stay", "experience"].includes(String(sibling?.booking_bar)) && (!sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant))),
+        },
+      },
+      {
+        name: "show_rating",
+        label: "Show the Mingla rating",
+        type: "checkbox",
+        defaultValue: false,
+        admin: { description: "Your score from approved Mingla reviews. Shown only with 20 or more reviews, by layouts that draw it.", condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_BOOKING.includes(String(sibling.variant)) },
+      },
+      /*
+       * #4453 milestone 7b (spec v2 §5.6) — the fact badges: your own setup
+       * "Quick facts", word for word. Never a price, count, date or rating.
+       */
+      {
+        name: "fact_badges",
+        label: "Fact badges",
+        type: "array",
+        maxRows: 3,
+        required: false,
+        fields: [short("big", "Big", true, 12), short("small", "Small", true, 40)],
+        admin: {
+          description: "Up to three short facts in your words, for example 90° / sauna. Drawn by layouts that show badges.",
+          condition: (_, sibling) => !sibling?.variant || HERO_LAYOUTS_WITH_FACTS.includes(String(sibling.variant)),
+        },
+      },
       // The still image. REQUIRED even when a video is chosen: it is the
       // poster, and it is what a visitor sees on a slow connection, with data
       // saver on, or when they have asked for reduced motion.
@@ -168,7 +236,7 @@ const BLOCK_CONFIGS: Block[] = [
             "Optional. Plays silently behind the heading. The image above is still required — it shows first, and it is what people who ask for reduced motion see.",
         },
       },
-      { name: "ctas", type: "array", maxRows: 2, fields: ctaFields },
+      { name: "ctas", type: "array", maxRows: 2, fields: heroCtaFields },
     ],
   },
   {
@@ -353,7 +421,7 @@ const BLOCK_CONFIGS: Block[] = [
       short("intro", "Line under the heading", false, 500),
       ...optionalCta("See all trips", "beside the heading"),
       short("empty_cta_label", "Button when there is nothing to show", false, 80, "Optional, for example \u201cGet in touch\u201d."),
-      link("empty_cta_href", "Its link", false),
+      link("empty_cta_href", "Its link", false, safeActionUrl),
       {
         name: "offering_ids",
         label: "Mingla offering IDs",
@@ -546,7 +614,7 @@ const BLOCK_CONFIGS: Block[] = [
         80,
         "Optional, and only used on the FIRST of several videos in a row. The words on the button printed under the grid \u2014 for example \u201cFollow @yourhandle\u201d.",
       ),
-      link("group_cta_href", "Group button link", false),
+      link("group_cta_href", "Group button link", false, buttonUrl("group_cta_label")),
       short("heading", "Heading", false, 120),
       short("caption", "Caption", false, 600),
       {
@@ -643,7 +711,13 @@ const BLOCK_CONFIGS: Block[] = [
         minRows: 1,
         maxRows: 12,
         required: true,
-        fields: [readyMedia(), accessibleAlt()],
+        fields: [
+          readyMedia(),
+          accessibleAlt(),
+          // #4453 milestone 5 (§5.2) — the owner's caption under this photograph (offered while SITES_BOOKING_BLOCKS is on).
+          short("caption", "Caption", false, 120, "Optional. Shown under the photograph in layouts that caption."),
+          short("sub", "Small line under the caption", false, 80),
+        ],
       },
     ],
   },
@@ -654,7 +728,7 @@ const BLOCK_CONFIGS: Block[] = [
       eyebrow(),
       short("heading", "Heading", false, 120),
       short("address", "Address", true, 300),
-      link("map_url", "Map link", false),
+      link("map_url", "Map link", false, safeUrl),
       /*
        * #3149 wave 4 — THE TWO FIELDS BEHIND A LIVE "OPEN NOW".
        *
@@ -762,6 +836,13 @@ const BLOCK_CONFIGS: Block[] = [
         min: 1,
         max: 24,
         admin: { condition: (_, sibling) => sibling?.from_collection === true },
+      },
+      {
+        name: "show_rating",
+        label: "Show the Mingla rating",
+        type: "checkbox",
+        defaultValue: false,
+        admin: { description: "Your score from approved Mingla reviews. Shown only with 20 or more reviews." },
       },
       ...optionalCta("Read more reviews", "under the reviews"),
       {
@@ -984,7 +1065,7 @@ const BLOCK_CONFIGS: Block[] = [
         200,
         "Read out to anyone using a screen reader, and printed on the panel before the map loads. Say plainly what is being pointed at — the street, or the exact address if you are sure of it.",
       ),
-      link("directions_url", "Directions link", false),
+      link("directions_url", "Directions link", false, safeUrl),
     ],
   },
   /* #2829 W5 — collection, history and form blocks (fixed field sets). */
@@ -1230,6 +1311,140 @@ const BLOCK_CONFIGS: Block[] = [
       },
     ],
   },
+  /*
+   * #4453 milestone 5 (§5.1, §5.3, §5.4) — the live booking blocks. The
+   * block holds only WHICH venue, room or event; every slot, night, tier and
+   * price is read from Mingla when the page renders.
+   */
+  {
+    slug: "availability",
+    labels: { singular: "Live availability", plural: "Live availability" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short("intro", "Line under the heading", false, 300),
+      {
+        name: "source",
+        label: "What is shown",
+        type: "select",
+        required: true,
+        defaultValue: "venue_slots",
+        options: [
+          { value: "venue_slots", label: "Table or visit times" },
+          { value: "stay_nights", label: "Nights for a room" },
+          { value: "experience_slots", label: "Experience times" },
+          { value: "event_dates", label: "Event dates" },
+          { value: "trip_departures", label: "Trip departure" },
+        ],
+      },
+      {
+        name: "offering_id",
+        label: "Venue or offering (Mingla id)",
+        type: "text",
+        maxLength: 36,
+        validate: uuidOrEmpty,
+        admin: { condition: (_, sibling) => sibling?.source !== "stay_nights" },
+      },
+      {
+        name: "stay_offering_id",
+        label: "Room (Mingla id)",
+        type: "text",
+        maxLength: 36,
+        validate: uuidOrEmpty,
+        admin: { condition: (_, sibling) => sibling?.source === "stay_nights" },
+      },
+      {
+        name: "party_size",
+        label: "Party size",
+        type: "number",
+        min: 1,
+        max: 20,
+        admin: { condition: (_, sibling) => sibling?.source === "venue_slots" },
+      },
+      { name: "days", label: "Days shown", type: "number", min: 3, max: 14 },
+    ],
+  },
+  {
+    slug: "ticket_tiers",
+    labels: { singular: "Ticket tiers", plural: "Ticket tiers" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short("intro", "Line under the heading", false, 300),
+      { name: "offering_id", label: "Event (Mingla id)", type: "text", required: true, maxLength: 36, validate: uuidOrEmpty },
+      {
+        name: "media",
+        label: "Picture (optional)",
+        type: "relationship",
+        relationTo: "media",
+        required: false,
+        filterOptions: ({ req }) => {
+          const tenantId = (req.user as { tenantId?: string })?.tenantId;
+          return tenantId ? { tenant: { equals: tenantId }, state: { equals: "READY" } } : false;
+        },
+      },
+    ],
+  },
+  {
+    slug: "process_steps",
+    labels: { singular: "How it works", plural: "How it works" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      short("intro", "Line under the heading", false, 300),
+      {
+        name: "items",
+        label: "Steps",
+        type: "array",
+        minRows: 3,
+        maxRows: 5,
+        required: true,
+        fields: [short("title", "Step", true, 80), short("text", "What happens", false, 300), short("time", "How long", false, 24)],
+      },
+    ],
+  },
+  /*
+   * #4453 milestone 7b (spec v2.1 §1.1, §1.3) — "Keep exploring". Only the
+   * heading and which pages are set here; the pages themselves are picked
+   * from the menu when the site is published (never typed).
+   */
+  {
+    slug: "page_links",
+    labels: { singular: "Keep exploring", plural: "Keep exploring" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      {
+        name: "mode",
+        label: "Which pages",
+        type: "select",
+        required: true,
+        defaultValue: "next",
+        options: [
+          { value: "teaser", label: "Up to four pages from the menu" },
+          { value: "next", label: "The next three pages in the menu" },
+        ],
+      },
+    ],
+  },
+  /* #4453 milestone 7b (spec v2.1 §1.1) — the owner's facts, in their words. */
+  {
+    slug: "facts_table",
+    labels: { singular: "Facts", plural: "Facts" },
+    fields: [
+      eyebrow(),
+      short("heading", "Heading", false, 120),
+      {
+        name: "items",
+        label: "Facts",
+        type: "array",
+        minRows: 1,
+        maxRows: 8,
+        required: true,
+        fields: [short("label", "Fact", true, 40), short("value", "Detail", true, 200)],
+      },
+    ],
+  },
   {
     slug: "contact_details",
     labels: { singular: "Contact details", plural: "Contact details" },
@@ -1274,6 +1489,7 @@ function variantField(type: BlockType): Field {
     label: "Layout",
     type: "select",
     required: false,
+    // #4453 milestone 5 — Atelier draws no booking block (its list is empty).
     defaultValue: ATELIER.variants[type][0],
     options: options.map((value) => ({ value, label: value === "atelier" || value === "neutral" || value === "voyage" ? "Standard" : value.charAt(0).toUpperCase() + value.slice(1).replace(/-/g, " ") })),
     admin: { description: "How this section is laid out. Your design supplies the layouts." },
@@ -1283,7 +1499,8 @@ function variantField(type: BlockType): Field {
 /** #2829 — the Studio block configs: one per catalogue type, each with its layout. */
 export const siteBlocks: Block[] = BLOCK_CONFIGS.map((block) => ({
   ...block,
-  fields: [...block.fields, variantField(block.slug as BlockType)],
+  // #4453 — the Studio-only Draft stamp (set by Pages' stampBlockReview hook only).
+  fields: [...block.fields, variantField(block.slug as BlockType), reviewField()],
 }));
 
 /** Every catalogue type has exactly one Studio block (checked by a drift test). */

@@ -41,12 +41,15 @@ import {
   workLogCitesSchema,
 } from "./siteContracts/ariToolSchemas.ts";
 import {
-  DESIGN_KEYS,
+  ARI_DESIGN_KEYS,
   designFontSlots,
   type DesignKey,
   DESIGNS,
   designSwatches,
+  FOOTER_VARIANTS,
+  HEADER_VARIANTS,
 } from "./siteContracts/designs.ts";
+import { STYLE_KEYS } from "./siteContracts/formats.ts";
 import { PLAN_OFFERING_KEYS } from "./siteContracts/sitePlan.ts";
 import {
   ARI_THEME_FONT_PATTERN,
@@ -75,7 +78,8 @@ const PAGE_PATH = {
   description:
     'The page\'s address as list_site_pages returns it ("" is the home page, "about", "resources/faqs"). Always send it.',
 };
-const DESIGN = { type: "string", enum: [...DESIGN_KEYS] };
+// #4453 6a — these frozen declarations (#3355) name only ARI_DESIGN_KEYS; PR 7's design pass offers every style behind SITES_ARI_DESIGN_PASS.
+const DESIGN = { type: "string", enum: [...ARI_DESIGN_KEYS] };
 const WHY = {
   type: "string",
   minLength: 1,
@@ -211,6 +215,27 @@ const SITES_NAMED_CODES: Readonly<Record<string, string>> = {
   REVIEW_SOURCE_MISMATCH: "VALIDATION_FAILED",
   PAGE_NOT_FOUND: "VALIDATION_FAILED",
   PATH_COLLISION: "CONFLICT",
+  // #4453 PR 2 — a question form may not take bookings (siteAri.ts).
+  BOOKING_THROUGH_ENQUIRY: "VALIDATION_FAILED",
+  // #4453 milestone 7c (tester P1-2) — the design pass (siteAri.ts). Without
+  // these, Core's plain sentence reached the owner as "could not reach Website
+  // tools". TRY_AGAIN rides the retryable envelope Ari already retries.
+  STYLE_DOES_NOT_FIT: "VALIDATION_FAILED",
+  DESIGN_PASS_OFF: "DOMAIN_ACTION_REFUSED",
+  DESIGN_PASS_ALREADY_RUN: "CONFLICT",
+  DESIGN_PASS_TRY_AGAIN: "SERVICE_TEMPORARILY_UNAVAILABLE",
+  // #4453 milestone 11 — "Add a page with Ari" (siteAri.ts, ARI_PAGE_MESSAGES). Each carries
+  // Core's plain sentence (and the nearest page Ari may write) to the owner.
+  ARI_ADD_PAGE_OFF: "DOMAIN_ACTION_REFUSED",
+  ARI_PAGE_LIMIT: "DOMAIN_ACTION_REFUSED",
+  ARI_DRAFT_PAGES_OPEN: "DOMAIN_ACTION_REFUSED",
+  ARI_PAGE_RATE_LIMITED: "SERVICE_TEMPORARILY_UNAVAILABLE",
+  HAVE_WITHOUT_SOURCE: "VALIDATION_FAILED",
+  UNSELLABLE_OFFER: "VALIDATION_FAILED",
+  ARI_PAGE_NOT_ALLOWED: "DOMAIN_ACTION_REFUSED",
+  ARI_PAGE_DUPLICATE: "CONFLICT",
+  QUESTION_NOT_FOUND: "VALIDATION_FAILED",
+  PAGE_NOT_ARI_DRAFT: "VALIDATION_FAILED",
 };
 
 const SITE_SERVICE_UNAVAILABLE_MESSAGE =
@@ -794,7 +819,7 @@ const listSiteDesigns = tool(
       throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
     }
     await assertAgentReadBrand(client, userId, args.brand_id);
-    return DESIGN_KEYS.map((key) => {
+    return ARI_DESIGN_KEYS.map((key) => {
       const design = DESIGNS[key];
       return {
         key,
@@ -1870,6 +1895,124 @@ const listVersions = tool(
   },
 );
 
+/*
+ * #4453 milestone 7 — Ari's design pass (spec v2 §6.2-§6.6). On the "Ari
+ * understands first" path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS), and Core
+ * refuses all three unless SITES_ARI_DESIGN_PASS covers the brand, so the
+ * frozen off-path declarations stay origin/main's (#3355).
+ */
+const DESIGN_PASS_STYLE = { type: "string", enum: [...STYLE_KEYS] };
+
+const getSiteDesignBrief = tool(
+  "get_site_design_brief",
+  "Read the design brief for the brand's website: its business type (format), the ten styles with their fixed fit (pick, fits or avoid), the reason for each and whether a live Mingla site already looks like it, the sections and pages the format places (and which have content), every layout per block type and the Mingla booking actions that exist. Read this before propose_site_design_pass.",
+  { brand_id: UUID, site_id: UUID },
+  ["brand_id", "site_id"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    return await cmsTool("get_site_design_brief", args, client, crypto.randomUUID());
+  },
+);
+
+const proposeSiteDesignPass = tool(
+  "propose_site_design_pass",
+  "Propose Ari's one design pass for the draft: the style you picked from the brief (never one marked avoid). Mingla then composes every page of the brand's format in that style from Mingla's own data and the owner's answers; you write no section text, prices, counts, dates or reviews. Every section starts as a Draft the owner reviews. Runs once per draft. Say in one sentence why the style fits.",
+  { brand_id: UUID, site_id: UUID, design_key: DESIGN_PASS_STYLE, why: WHY, cites: CITES },
+  ["brand_id", "site_id", "design_key", "why", "cites"],
+  designerWrite("propose_site_design_pass"),
+);
+
+const proposeSiteChrome = tool(
+  "propose_site_chrome",
+  "Propose the website's header, footer and phone bar: a header layout and a footer layout the design offers (from the brief), whether the phone booking bar shows, and the header button (the format's own booking label, leading to its Mingla booking page). Draft only.",
+  {
+    brand_id: UUID,
+    site_id: UUID,
+    header_variant: { type: "string", enum: [...HEADER_VARIANTS] },
+    footer_variant: { type: "string", enum: [...FOOTER_VARIANTS] },
+    sticky_booking: { type: "boolean" },
+    header_button: { type: "boolean", description: "true: the header button books through Mingla with the format's own label" },
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "site_id", "why", "cites"],
+  designerWrite("propose_site_chrome"),
+);
+
+/*
+ * #4453 milestone 11 (spec v2.1 §3) — "Add a page with Ari". On the "Ari
+ * understands first" path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS), and Core
+ * refuses both unless SITES_ARI_ADD_PAGE covers the brand, so the frozen
+ * off-path declarations stay origin/main's (#3355). The plan IS the
+ * confirm card: nothing is written before the owner says "Add as a Draft".
+ */
+const ARI_PAGE_SLUG = { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", maxLength: 60 };
+
+const proposeSitePage = tool(
+  "propose_site_page",
+  "Propose a NEW page the owner asked for (for example private hire, our team, weddings and celebrations, group bookings), as a plan the owner confirms. The page is added hidden, as a Draft by Ari with a Draft menu entry, and goes live only after the owner reviews it and taps Publish this page. Quote the owner's request word for word in request and cite it as owner_words. Use only catalogue blocks in the site's layouts. List every piece of content you have with its source (have) and ask the owner, in questions, only for OPTIONAL text fields or list rows you don't know; never guess prices, people, dates, ratings, reviews or policies, and never propose a block whose required field you don't know (ask in chat first). Never propose gift cards, vouchers, memberships or passes, a page that takes bookings or payments off Mingla, legal text you write yourself, a copy of another site, or a page that already exists (offer to change that page instead). Up to 12 blocks.",
+  {
+    brand_id: UUID,
+    site_id: UUID,
+    expected_site_revision: {
+      ...DIGEST,
+      description: "The draft digest from validate_site_draft (the whole draft's revision)",
+    },
+    request: { type: "string", minLength: 1, maxLength: 500, description: "The owner's request, word for word" },
+    page: closedObject({
+      title: plainText(80),
+      menu_label: plainText(16),
+      slug: ARI_PAGE_SLUG,
+      parent_path: { ...PAGE_PATH, description: "Optional: an existing TOP-LEVEL page to sit under" },
+      menu_after: { ...PAGE_PATH, description: "Optional: the menu entry this page follows (default: before About)" },
+      seo: closedObject({ title: plainText(70), description: plainText(160) }, []),
+    }, ["title", "menu_label", "slug"]),
+    blocks: { type: "array", minItems: 1, maxItems: 12, items: blocksSchema() },
+    have: {
+      type: "array",
+      maxItems: 10,
+      description: "The content you already have, each with where it came from",
+      items: closedObject({
+        text: plainText(120),
+        source: { type: "string", enum: ["mingla_record", "owner_words", "owner_material"] },
+        ref: { type: "string", maxLength: 200, description: "The Mingla record id or media id (not needed for owner_words)" },
+      }, ["text", "source"]),
+    },
+    questions: {
+      type: "array",
+      maxItems: 6,
+      description: "What you still need from the owner; shown only to the owner, never to visitors",
+      items: closedObject({
+        key: { type: "string", pattern: "^[a-z][a-z0-9_]{0,31}$" },
+        question: plainText(160),
+        block_index: { type: "integer", minimum: 0, maximum: 11 },
+        field_path: { type: "string", maxLength: 90, description: "An optional text field (\"caption\") or a list row's text field (\"members.0.role\")" },
+        placeholder: plainText(80),
+      }, ["key", "question", "block_index", "field_path"]),
+    },
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "site_id", "expected_site_revision", "request", "page", "blocks", "why", "cites"],
+  designerWrite("propose_site_page"),
+);
+
+const answerSitePageQuestion = tool(
+  "answer_site_page_question",
+  "Put the owner's answer to one of your questions on a Draft page from Ari, word for word (cite it as owner_words). The page stays a Draft for the owner to review. Never answer for the owner.",
+  {
+    brand_id: UUID,
+    site_id: UUID,
+    page_path: PAGE_PATH,
+    question_key: { type: "string", pattern: "^[a-z][a-z0-9_]{0,31}$" },
+    answer: { type: "string", minLength: 1, maxLength: 500 },
+    why: WHY,
+    cites: CITES,
+  },
+  ["brand_id", "site_id", "page_path", "question_key", "answer", "why", "cites"],
+  designerWrite("answer_site_page_question"),
+);
+
 const createSitePreview = publicationTool("create_site_preview");
 const publishSite = publicationTool("publish_site");
 const rollbackSite = publicationTool("rollback_site");
@@ -1896,6 +2039,13 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   proposeSiteCopy,
   proposeSiteImagery,
   proposeSiteCollectionEntry,
+  // #4453 milestone 7 — on-path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS).
+  getSiteDesignBrief,
+  proposeSiteDesignPass,
+  proposeSiteChrome,
+  // #4453 milestone 11 — on-path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS).
+  proposeSitePage,
+  answerSitePageQuestion,
   confirmSiteReview,
   proposeTripGuideUpdate,
   createSitePreview,
@@ -1919,6 +2069,7 @@ export const SITE_AGENT_READ_ONLY = new Set([
   "validate_site_draft",
   "get_site_operation_status",
   "list_site_versions",
+  "get_site_design_brief",
 ]);
 
 /** The Sites tools that write (each one a confirmed proposal). */

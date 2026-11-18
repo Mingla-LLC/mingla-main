@@ -32,7 +32,7 @@ describe("#2829 siteOfferings", () => {
     let clock = 1_000_000;
     const fetcher = vi.fn<FeedFetcher>().mockResolvedValue([offering("Live")]);
     const first = await siteOfferings(SITE, artifact, { fetcher, now: () => clock });
-    expect(first).toEqual({ source: "live", offerings: [offering("Live")] });
+    expect(first).toEqual({ source: "live", offerings: [offering("Live")], detailPages: false }); // #4453 M9: the view carries SITES_DETAIL_PAGES (an array fetcher = off)
     clock += FEED_FRESH_MS - 1;
     await siteOfferings(SITE, artifact, { fetcher, now: () => clock });
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -55,7 +55,7 @@ describe("#2829 siteOfferings", () => {
   it("falls back to the publication snapshot when Core is unreachable, and says so in the logs", async () => {
     const fetcher = vi.fn<FeedFetcher>().mockRejectedValue(new Error("CORE_DOWN"));
     const view = await siteOfferings(SITE, artifact, { fetcher });
-    expect(view).toEqual({ source: "snapshot", offerings: artifact.offerings_snapshot });
+    expect(view).toEqual({ source: "snapshot", offerings: artifact.offerings_snapshot, detailPages: false }); // #4453 M9: the snapshot never turns detail pages on
     expect(observations).toContain("public.offerings.snapshot_served");
   });
 

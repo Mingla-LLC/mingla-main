@@ -16,14 +16,35 @@
  * exactly the values the original travel stylesheet used, so a site on
  * voyage with nothing changed renders that look pixel for pixel; every
  * colour is a token, so any brand can restyle it.
+ *
+ * #4453 §3.1 — a design also carries its motion profile, its image
+ * treatment, the chrome (header and footer) variants it offers, and the
+ * layouts it picks for NEW compositions (`picks`). `variants` keeps every
+ * stored layout's first entry first, so a stored block renders as before;
+ * `picks` is what Ari and the composer choose for a new page.
  */
 import type { DesignTokenDefaults, RampRole, SingleColorRole } from "./tokens.ts";
 import type { FontSlotKey, FontSlots } from "./fontSlots.ts";
 import type { RampStep } from "./colorRamp.ts";
 import { BLOCK_TYPES, type BlockType } from "./blocks.ts";
 
-export type DesignKey = "atelier" | "voyage";
-export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage"];
+export type DesignKey = "atelier" | "voyage" | "nocturne" | "haven" | "maison" | "journal" | "grid" | "terra" | "pop" | "sunset" | "pulse";
+export const DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage", "nocturne", "haven", "maison", "journal", "grid", "terra", "pop", "sunset", "pulse"];
+
+/**
+ * #4453 6a — the designs Ari may name (its declared tools, its design list
+ * and its setup cards). The gallery designs render, validate and can be
+ * chosen in Studio and by the owner from 6a; Ari offering them belongs to
+ * the Ari composition PR (flag SITES_ARI_DESIGN_PASS), so Ari's frozen tool
+ * declarations stay byte-identical (I-ARI-ROLLOUT-OFF-IS-MAIN, #3355).
+ * [TRANSITIONAL] gallery designs hidden from Ari's frozen tool declarations — PR 7 (merged) already offers every style through the design pass while SITES_ARI_DESIGN_PASS is on; exit: when the frozen pre-#4453 declarations (#3355 I-ARI-ROLLOUT-OFF-IS-MAIN) are retired, this list becomes DESIGN_KEYS.
+ */
+export const ARI_DESIGN_KEYS: readonly DesignKey[] = ["atelier", "voyage"];
+
+/** Whether Ari may name this design (see ARI_DESIGN_KEYS). */
+export function isAriDesignKey(value: unknown): value is DesignKey {
+  return typeof value === "string" && (ARI_DESIGN_KEYS as readonly string[]).includes(value);
+}
 
 /**
  * #2829 A8 — which colour roles and font slots a design actually draws. The
@@ -40,6 +61,144 @@ export type DesignUses = {
   font_slots: readonly FontSlotKey[];
 };
 
+/* ---------------- #4453 §3.5 — motion profiles ---------------- */
+export const MOTION_PROFILES = ["bold", "cinematic", "calm"] as const;
+export type MotionProfile = (typeof MOTION_PROFILES)[number];
+export type MotionNumbers = {
+  /** Delay between siblings rising in (ms, ≤ 110). */
+  stagger_ms: number;
+  /** At most this many staggered steps (≤ 6). */
+  stagger_cap: number;
+  /** How far a section rises (px). */
+  rise_px: number;
+  /** One rise (ms). */
+  duration_ms: number;
+  /** The hero picture settles from this scale to 1 (1.03 to 1.2). */
+  hero_scale: number;
+  /** Over this long (ms, ≤ 2,600). */
+  hero_settle_ms: number;
+  /** Scroll-driven drift of the hero picture (% of its height, ≤ 14). */
+  hero_drift_pct: number;
+};
+/** The binding numbers per profile (spec §3.5); `calm` caps every profile when the owner picks calm. */
+export const MOTION_PROFILE_NUMBERS: Readonly<Record<MotionProfile, MotionNumbers>> = {
+  bold: { stagger_ms: 60, stagger_cap: 6, rise_px: 28, duration_ms: 700, hero_scale: 1.08, hero_settle_ms: 1600, hero_drift_pct: 12 },
+  cinematic: { stagger_ms: 110, stagger_cap: 6, rise_px: 40, duration_ms: 1100, hero_scale: 1.2, hero_settle_ms: 2600, hero_drift_pct: 14 },
+  calm: { stagger_ms: 90, stagger_cap: 4, rise_px: 18, duration_ms: 900, hero_scale: 1.03, hero_settle_ms: 2000, hero_drift_pct: 6 },
+};
+/** The motion budget every page holds (spec §3.5); a test pins every profile to it. */
+export const MOTION_BUDGET = {
+  max_stagger_ms: 110,
+  max_stagger_steps: 6,
+  max_hero_settle_ms: 2600,
+  hero_scale_range: [1.03, 1.2] as const,
+  max_hero_drift_pct: 14,
+  max_pinned_sections: 1,
+  max_animating_at_once: 12,
+} as const;
+export type DesignMotion = {
+  profile: MotionProfile;
+  /** At most one signature moment per design (CSS only), or null. */
+  signature: string | null;
+};
+
+/** #4453 §3.1 — how a design treats photographs (filter, frame, scrim strength). */
+export type DesignImage = {
+  /** A CSS filter keyword set the stylesheet applies ("none" = full colour). */
+  filter: "none" | "warm" | "mono" | "soft";
+  /** One line for Studio. */
+  treatment: string;
+};
+
+/* ---------------- #4453 §3.3 + v2.1 §1.4 — chrome variants ---------------- */
+/**
+ * #4453 6b — `journal-mast` (Journal's masthead: a dateline strip, the
+ * nameplate on its own row, a ruled menu row that stays pinned) and
+ * `grid-bar` (Grid's ruled cells with numbered items and an accent CTA cell)
+ * are signature headers: only the design that lists them offers them.
+ */
+export const HEADER_VARIANTS = ["glass", "center", "pill", "journal-mast", "grid-bar"] as const;
+export type HeaderVariant = (typeof HEADER_VARIANTS)[number];
+export const FOOTER_VARIANTS = ["giant", "columns"] as const;
+export type FooterVariant = (typeof FOOTER_VARIANTS)[number];
+/**
+ * v2.1 §1.4 — how many menu items a header shows inline at ≥ 1280 px. Between
+ * 1100 and 1279 px it is one less; the rest sit under "More". Below 1100 px
+ * the inline menu hides and the menu button shows.
+ */
+export const HEADER_INLINE_CAPACITY: Readonly<Record<HeaderVariant, number>> = { glass: 6, center: 4, pill: 6, "journal-mast": 6, "grid-bar": 4 };
+/** The widths the header capacity rule switches at (px). */
+export const HEADER_BREAKPOINTS = { wide: 1280, inline: 1100 } as const;
+export type DesignChrome = {
+  /** Header layouts the design offers, default first. Empty: the design draws its own fixed header. */
+  header: readonly HeaderVariant[];
+  footer: readonly FooterVariant[];
+};
+
+/**
+ * #4453 §3.3 — the shared block library: every layout the runtime draws once
+ * (mingla-sites/src/designs/shared/blocks) for any design, from token
+ * variables only. A design offers a subset in its `variants`. The new block
+ * types' layouts (`availability:strip`, `ticket_tiers:split`,
+ * `process_steps:band`) join this list in the PRs that add those blocks.
+ */
+export const SHARED_LAYOUTS: Readonly<Partial<Record<BlockType, readonly string[]>>> = {
+  hero: ["fullbleed", "editorial", "arch"],
+  marquee: ["ticker"],
+  rich_text: ["manifesto"],
+  offering_grid: ["poster", "list", "cards"],
+  menu_board: ["columns"],
+  feature_cards: ["tiles", "numbered"],
+  gallery: ["pinned", "mosaic", "stagger"],
+  destination_grid: ["tiles"],
+  offering_history: ["ledger-count", "split"],
+  testimonials: ["rail", "wall", "switcher"],
+  hours_location: ["split"],
+  faq: ["split"],
+  newsletter_signup: ["photo"],
+  // #4453 milestone 5 — the live booking blocks (every gallery design gets them through galleryVariants).
+  availability: ["strip"],
+  ticket_tiers: ["split"],
+  process_steps: ["band"],
+  // #4453 milestone 7b — the page-set blocks (spec v2.1 §1.1, §1.3).
+  page_links: ["cards", "list"],
+  facts_table: ["split"],
+};
+
+/**
+ * #4453 milestone 5 — the booking blocks' layouts are drawn by the shared
+ * library only. Atelier (the original restaurant design, frozen) does not
+ * draw them: its layout list for them is empty, so Studio and the artifact
+ * validator refuse one on an Atelier site instead of publishing a block that
+ * would render nothing.
+ */
+/**
+ * #4453 milestone 5 (tester P2-1) — the hero layouts that draw the booking
+ * bar and the Mingla rating: the shared ones and Voyage's own cover. A
+ * design's signature hero that does not draw them is told so in Studio (the
+ * fields are hidden) and the fields are left out of its published hero, so a
+ * setting never silently does nothing.
+ */
+export const HERO_LAYOUTS_WITH_BOOKING: readonly string[] = ["fullbleed", "editorial", "arch", "cover-bottom-search"];
+
+/** #4453 milestone 7b — the hero layouts that draw the fact badges (the shared ones); elsewhere the field is left out of the published hero. */
+export const HERO_LAYOUTS_WITH_FACTS: readonly string[] = ["fullbleed", "editorial", "arch"];
+
+export const SHARED_ONLY_BLOCK_TYPES: readonly BlockType[] = ["availability", "ticket_tiers", "process_steps"];
+
+/**
+ * #4453 — the layouts ARI may choose for a block in a design. The shared
+ * library's layouts render and validate for stored and Studio content from
+ * PR 4, but Ari choosing them belongs to the Ari composition PR (flag
+ * SITES_ARI_DESIGN_PASS), so Ari's declared tools stay byte-identical to
+ * the pre-#4453 declarations (I-ARI-ROLLOUT-OFF-IS-MAIN, #3355).
+ * [TRANSITIONAL] shared layouts hidden from Ari's frozen tool declarations — PR 7 (merged) already offers them through the design pass while SITES_ARI_DESIGN_PASS is on; exit: when the frozen pre-#4453 declarations (#3355 I-ARI-ROLLOUT-OFF-IS-MAIN) are retired, this filter is removed.
+ */
+export function ariDesignVariants(design: DesignDefinition, type: BlockType): string[] {
+  const held = SHARED_LAYOUTS[type] ?? [];
+  return design.variants[type].filter((variant) => !held.includes(variant));
+}
+
 export type DesignDefinition = {
   key: DesignKey;
   version: number;
@@ -55,6 +214,14 @@ export type DesignDefinition = {
   templates: readonly string[];
   /** The colour roles and font slots this design draws (A8). */
   uses: DesignUses;
+  /** #4453 — motion profile and its one signature moment. */
+  motion: DesignMotion;
+  /** #4453 — image treatment. */
+  image: DesignImage;
+  /** #4453 — header and footer variants offered (default first). */
+  chrome: DesignChrome;
+  /** #4453 — the layout a NEW composition takes per block type (else `variants[type][0]`). */
+  picks: Readonly<Partial<Record<BlockType, string>>>;
 };
 
 /**
@@ -73,12 +240,17 @@ export const NEUTRAL_BLOCK_TYPES: readonly BlockType[] = [
   "page_header",
   "feature_cards",
   "contact_details",
+  // #4453 milestone 7b — atelier draws the page-set blocks with the neutral cards and facts list.
+  "page_links",
+  "facts_table",
 ];
 
 /** Every block type drawn by atelier, in one layout each (AD-4). */
 const ATELIER_VARIANTS: Record<BlockType, readonly string[]> = (() => {
   const variants = {} as Record<BlockType, readonly string[]>;
-  for (const type of BLOCK_TYPES) variants[type] = NEUTRAL_BLOCK_TYPES.includes(type) ? ["neutral"] : ["atelier"];
+  for (const type of BLOCK_TYPES) {
+    variants[type] = SHARED_ONLY_BLOCK_TYPES.includes(type) ? [] : NEUTRAL_BLOCK_TYPES.includes(type) ? ["neutral"] : ["atelier"];
+  }
   return variants;
 })();
 
@@ -88,36 +260,43 @@ const ATELIER_VARIANTS: Record<BlockType, readonly string[]> = (() => {
  * design-neutral layout drawn from voyage's tokens.
  */
 export const VOYAGE_VARIANTS: Readonly<Record<BlockType, readonly string[]>> = {
-  hero: ["cover-bottom-search"],
+  hero: ["cover-bottom-search", "fullbleed"],
   page_header: ["cover-center"],
   feature_cards: ["tile-bar", "statement"],
-  offering_grid: ["photo-card"],
-  offering_history: ["ledger"],
-  testimonials: ["quote-wall"],
+  offering_grid: ["photo-card", "poster"],
+  offering_history: ["ledger", "ledger-count"],
+  testimonials: ["quote-wall", "rail"],
   destination_grid: ["badge-tile"],
   story_grid: ["card"],
   media_feature: ["split-panel", "panel-caption"],
-  rich_text: ["prose"],
-  faq: ["accordion-columns"],
+  rich_text: ["prose", "manifesto"],
+  faq: ["accordion-columns", "split"],
   cta: ["dark-panel-glow"],
-  newsletter_signup: ["card"],
+  newsletter_signup: ["card", "photo"],
   video_feature: ["brand-film"],
   contact_form: ["panel"],
   contact_details: ["tiles"],
-  gallery: ["voyage"],
+  gallery: ["voyage", "mosaic"],
   divider: ["voyage"],
   spacer: ["voyage"],
   stats: ["voyage"],
   team: ["voyage"],
   pull_quote: ["voyage"],
   map_embed: ["voyage"],
-  menu_board: ["neutral"],
+  menu_board: ["neutral", "columns"],
   menu_preview: ["neutral"],
   menu_link: ["neutral"],
   venue_reservation: ["neutral"],
-  hours_location: ["neutral"],
-  marquee: ["neutral"],
+  hours_location: ["neutral", "split"],
+  marquee: ["neutral", "ticker"],
   contact_handoff: ["neutral"],
+  // #4453 milestone 5 — the shared library's booking layouts.
+  availability: ["strip"],
+  ticket_tiers: ["split"],
+  process_steps: ["band"],
+  // #4453 milestone 7b — the shared library's page-set layouts.
+  page_links: ["cards", "list"],
+  facts_table: ["split"],
 };
 
 export const ATELIER: DesignDefinition = {
@@ -206,84 +385,95 @@ export const ATELIER: DesignDefinition = {
     },
     font_slots: ["display", "body"],
   },
+  // Atelier is kept as it is for gögi (#4453 non-goal): its own header and footer, no new layouts.
+  motion: { profile: "calm", signature: null },
+  image: { filter: "none", treatment: "Full colour under a warm scrim" },
+  chrome: { header: [], footer: [] },
+  picks: {},
 };
 
-const VOYAGE_FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
-
+/*
+ * #4453 §3.4 (D3) — voyage's defaults are the gallery look: Bricolage
+ * Grotesque, DM Sans and JetBrains Mono (labels) on a cool paper canvas with
+ * sky-blue and navy. The accent label role (accent 700) is darkened from the
+ * gallery's #2a7fb0 (4.14:1 on the canvas, 3.92:1 on tinted bands) to
+ * #2674a1 so it passes AA on every surface it is drawn on (§3.8, SC-D3).
+ * Stored sites keep their frozen tokens until they are republished.
+ */
 export const VOYAGE: DesignDefinition = {
   key: "voyage",
   version: 1,
   label: "Voyage",
-  description: "Bright and photographic: full-screen covers, padded cards, pill buttons and a handwritten accent.",
+  description: "Bright, adventurous, sociable: full-bleed photographs, oversized grotesk, sky-blue ink and poster cards.",
   tokens: {
     colors: {
-      canvas: "#ffffff",
+      canvas: "#f6f8fa",
       surface: "#ffffff",
-      surface_sunken: "#eef6fb",
-      surface_deep: "#141c26",
-      surface_inverse: "#131c26",
-      ink_strong: "#131c26",
-      ink_body: "#4f5e71",
-      ink_prose: "#3f4d5d",
-      ink_quiet: "#5d6b7b",
-      ink_on_dark_body: "#c3ccd5",
-      ink_on_photo_body: "#e9edf1",
-      ink_on_photo_quiet: "#dde4ea",
-      accent_ink: "#0b1219",
-      highlight_on_dark: "#ffe4c6",
-      // Voyage draws links from the accent ramp (accent 900), not `action`.
-      action: "#124e70",
+      surface_sunken: "#e9f3f9",
+      surface_deep: "#0b1b2b",
+      surface_inverse: "#0b1b2b",
+      ink_strong: "#0b1b2b",
+      ink_body: "#1c2e40",
+      ink_prose: "#22364a",
+      ink_quiet: "#5b6b7a",
+      ink_on_dark_body: "#ffffff",
+      ink_on_photo_body: "#ffffff",
+      ink_on_photo_quiet: "#e9edf1",
+      accent_ink: "#0b1b2b",
+      highlight_on_dark: "#89cff0",
+      action: "#0b1b2b",
       accent: {
         seed: "#89cff0",
         ramp: {
-          50: "#eaf6fd",
+          50: "#eef8fd",
           100: "#e2f3fc",
           200: "#c6e8fa",
           300: "#aadcf6",
           400: "#89cff0",
           500: "#59b8e6",
           600: "#2f93c9",
-          700: "#1d6f9c",
-          800: "#175f88",
-          900: "#124e70",
-          950: "#0d3a53",
+          700: "#2674a1",
+          800: "#1d5f86",
+          900: "#164a69",
+          950: "#0f354b",
         },
       },
       neutral: {
-        seed: "#4f5e71",
+        seed: "#5b6b7a",
         ramp: {
-          50: "#f2f6f8",
-          100: "#e8eef2",
-          200: "#c3ccd5",
-          300: "#8794a3",
-          400: "#5d6b7b",
-          500: "#4f5e71",
-          600: "#3f4d5d",
-          700: "#2f3a47",
-          800: "#1f2b38",
-          900: "#131c26",
-          950: "#0b1219",
+          50: "#f6f8fa",
+          100: "#e8edf1",
+          200: "#cfd7de",
+          300: "#9aa7b3",
+          400: "#76838f",
+          500: "#5b6b7a",
+          600: "#475663",
+          700: "#34424f",
+          800: "#22303d",
+          900: "#0b1b2b",
+          950: "#06111c",
         },
       },
       highlight: {
-        seed: "#ad5207",
-        ramp: { 50: "#fdf4ec", 200: "#f2d9c0", 600: "#ad5207", 700: "#8c4206" },
+        seed: "#2674a1",
+        ramp: { 50: "#eaf4fa", 200: "#c3deee", 600: "#2674a1", 700: "#1d5f86" },
       },
       paper: {
-        seed: "#eef6fb",
-        ramp: { 50: "#eef6fb", 100: "#dee8ed", 200: "#c6d5dd", 400: "#69818c" },
+        seed: "#e9f3f9",
+        ramp: { 50: "#f6f8fa", 100: "#dfe6ec", 200: "#c9d4dd", 400: "#66798a" },
       },
       danger: { seed: "#b3261e", ramp: { 50: "#fdeceb", 600: "#b3261e" } },
       success: { seed: "#146c43", ramp: { 50: "#e9f4ee", 600: "#146c43" } },
-      scrim_rgb: "11 18 25",
+      scrim_rgb: "11 27 43",
       shadow_rgb: "0 0 0",
     },
     heading_case: "none",
   },
   fonts: {
-    display: { family: "Plus Jakarta Sans", source: "google", weights: [...VOYAGE_FONT_WEIGHTS], italic: false },
-    body: { family: "Plus Jakarta Sans", source: "google", weights: [...VOYAGE_FONT_WEIGHTS], italic: false },
-    accent: { family: "Just Another Hand", source: "google", weights: [400], italic: false },
+    display: { family: "Bricolage Grotesque", source: "google", weights: [500, 700, 800], italic: false },
+    body: { family: "DM Sans", source: "google", weights: [400, 500, 700], italic: false },
+    accent: null,
+    label: { family: "JetBrains Mono", source: "google", weights: [500, 700], italic: false },
   },
   variants: VOYAGE_VARIANTS,
   templates: ["page", "not_found", "destination_detail", "story_detail"],
@@ -293,10 +483,10 @@ export const VOYAGE: DesignDefinition = {
       single: [
         "canvas", "surface", "surface_sunken", "surface_deep", "surface_inverse",
         "ink_strong", "ink_body", "ink_prose", "ink_quiet", "ink_on_dark_body",
-        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
       ],
       ramps: {
-        accent: [50, 100, 200, 300, 400, 500, 600, 800, 900, 950],
+        accent: [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950],
         neutral: [200, 400, 600, 700, 800, 900, 950],
         highlight: [50, 200, 600, 700],
         paper: [50, 100, 200, 400],
@@ -304,8 +494,1087 @@ export const VOYAGE: DesignDefinition = {
         success: [50, 600],
       },
     },
+    font_slots: ["display", "body", "accent", "label"],
+  },
+  motion: { profile: "bold", signature: null },
+  image: { filter: "none", treatment: "Full colour, full bleed, deep navy gradient for text" },
+  chrome: { header: ["glass"], footer: ["giant"] },
+  picks: {
+    hero: "fullbleed",
+    marquee: "ticker",
+    rich_text: "manifesto",
+    offering_grid: "poster",
+    menu_board: "columns",
+    feature_cards: "tile-bar",
+    gallery: "mosaic",
+    destination_grid: "badge-tile",
+    offering_history: "ledger-count",
+    testimonials: "rail",
+    hours_location: "split",
+    faq: "split",
+    newsletter_signup: "photo",
+  },
+};
+
+/* ---------------- #4453 6a — Nocturne, Haven and Maison ---------------- */
+
+/**
+ * #4453 §3.3 — a gallery design's layouts: for each block type the shared
+ * library draws, the design's pick first (its signature layout before it when
+ * it has one), then the other shared layouts; every other type keeps the
+ * design-neutral layout, drawn by the shared library from the design's tokens.
+ */
+function galleryVariants(
+  picks: Readonly<Partial<Record<BlockType, string>>>,
+  signature: Readonly<Partial<Record<BlockType, string>>> = {},
+): Record<BlockType, readonly string[]> {
+  const variants = {} as Record<BlockType, readonly string[]>;
+  for (const type of BLOCK_TYPES) {
+    const shared = SHARED_LAYOUTS[type] ?? [];
+    const own = signature[type];
+    const pick = picks[type];
+    const ordered = [...(own ? [own] : []), ...(pick ? [pick] : []), ...shared].filter((variant, i, all) => all.indexOf(variant) === i);
+    variants[type] = ordered.length ? ordered : ["neutral"];
+  }
+  return variants;
+}
+
+/** The shared-layout picks the three 6a designs share (their gallery maps differ on the rest). */
+const GALLERY_COMMON_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  marquee: "ticker",
+  rich_text: "manifesto",
+  menu_board: "columns",
+  destination_grid: "tiles",
+  offering_history: "split",
+  hours_location: "split",
+  faq: "split",
+  newsletter_signup: "photo",
+};
+
+const NOCTURNE_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "editorial",
+  offering_grid: "list",
+  feature_cards: "numbered",
+  gallery: "pinned",
+  testimonials: "wall",
+};
+
+/*
+ * #4453 6a — Nocturne: black page, candle gold and oxblood, a huge Bodoni
+ * italic headline over compressed Archivo capitals, a pinned gallery and
+ * words that light up on scroll. Dark only by design. Every default pair
+ * passes AA on the gallery's own hex values (§3.8); the gallery's
+ * translucent muted ink (62% over the page) is baked to #99928a.
+ */
+export const NOCTURNE: DesignDefinition = {
+  key: "nocturne",
+  version: 1,
+  label: "Nocturne",
+  description: "Dark, editorial, after-hours: a huge italic serif over compressed capitals, candle gold on black.",
+  tokens: {
+    colors: {
+      canvas: "#0c0a09",
+      surface: "#120e0c",
+      surface_sunken: "#16110f",
+      surface_deep: "#16110f",
+      surface_inverse: "#efe6d8",
+      ink_strong: "#efe6d8",
+      ink_body: "#efe6d8",
+      ink_prose: "#efe6d8",
+      ink_quiet: "#99928a",
+      ink_on_dark_body: "#efe6d8",
+      ink_on_photo_body: "#efe6d8",
+      ink_on_photo_quiet: "#d8cfc2",
+      accent_ink: "#0c0a09",
+      highlight_on_dark: "#d9a55b",
+      action: "#efe6d8",
+      accent: {
+        seed: "#d9a55b",
+        ramp: {
+          50: "#fbf8f3",
+          100: "#f7efe3",
+          200: "#f0dfc6",
+          300: "#e7c89d",
+          400: "#d9a55b",
+          500: "#d49945",
+          600: "#bc822e",
+          700: "#996b29",
+          800: "#765423",
+          900: "#553d1b",
+          950: "#352713",
+        },
+      },
+      neutral: {
+        seed: "#8c8378",
+        ramp: {
+          50: "#f8f7f7",
+          100: "#eeedec",
+          200: "#dedcd9",
+          300: "#c7c2bd",
+          400: "#ada69f",
+          500: "#958d83",
+          600: "#7e766c",
+          700: "#68625a",
+          800: "#524d47",
+          900: "#3c3834",
+          950: "#262422",
+        },
+      },
+      highlight: {
+        seed: "#d9a55b",
+        ramp: { 50: "#1c1410", 200: "#f0dfc6", 600: "#d9a55b", 700: "#8c2a22" },
+      },
+      paper: {
+        seed: "#efe6d8",
+        ramp: { 50: "#f7f2ea", 100: "#efe6d8", 200: "#ddd0bc", 400: "#a8987f" },
+      },
+      danger: { seed: "#ff9d8a", ramp: { 50: "#2a1210", 600: "#ff9d8a" } },
+      success: { seed: "#7fa07a", ramp: { 50: "#121f12", 600: "#7fa07a" } },
+      scrim_rgb: "12 10 9",
+      shadow_rgb: "0 0 0",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Bodoni Moda", source: "google", weights: [400, 500, 800], italic: true },
+    // #4453 6b — Archivo's width axis: compressed capitals (62%) and wide labels (125%), as designed.
+    body: { family: "Archivo", source: "google", weights: [400, 600, 800], italic: false, axes: { wdth: [62, 125] } },
+    accent: { family: "Bodoni Moda", source: "google", weights: [400, 500], italic: true },
+    label: null,
+  },
+  variants: galleryVariants(NOCTURNE_PICKS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/nocturne/1.css reads.
+  uses: {
+    colors: {
+      single: [
+        "canvas", "surface", "surface_sunken", "surface_deep",
+        "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+      ],
+      ramps: { accent: [400], highlight: [600, 700], paper: [100, 200] },
+    },
     font_slots: ["display", "body", "accent"],
   },
+  motion: { profile: "cinematic", signature: null },
+  image: { filter: "warm", treatment: "Slightly desaturated, high contrast, radial vignette, film grain" },
+  chrome: { header: ["center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: NOCTURNE_PICKS,
+};
+
+const HAVEN_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "arch",
+  offering_grid: "cards",
+  feature_cards: "tiles",
+  gallery: "stagger",
+  testimonials: "switcher",
+};
+
+/*
+ * #4453 6a — Haven: sea-mist page, tide-green ink, cedar accent, light
+ * Cormorant display, an arched hero with a clip reveal, a floating pill
+ * header and slow parallax. Light only by design. §3.8 contrast fixes
+ * (pinned on the platform milestone): accent label #a2622f → #955a2b
+ * (accent 700), the accent fill under its ink #b06e3c → #a16537 (accent 400),
+ * muted #587170 → #546c6b.
+ */
+export const HAVEN: DesignDefinition = {
+  key: "haven",
+  version: 1,
+  label: "Haven",
+  description: "Calm, airy, restorative: sea-mist and tide green, light serif capitals and an arched photograph.",
+  tokens: {
+    colors: {
+      canvas: "#eef2f0",
+      surface: "#f8faf9",
+      surface_sunken: "#e2e9e6",
+      surface_deep: "#1d3b3c",
+      surface_inverse: "#1d3b3c",
+      ink_strong: "#1d3b3c",
+      ink_body: "#1d3b3c",
+      ink_prose: "#1d3b3c",
+      ink_quiet: "#546c6b",
+      ink_on_dark_body: "#f8faf9",
+      ink_on_photo_body: "#f8faf9",
+      ink_on_photo_quiet: "#f8faf9",
+      accent_ink: "#f8faf9",
+      highlight_on_dark: "#dcd2c2",
+      action: "#1d3b3c",
+      accent: {
+        seed: "#a16537",
+        ramp: {
+          50: "#fbf7f4",
+          100: "#f5ece5",
+          200: "#ecd9cb",
+          300: "#dfbea5",
+          400: "#a16537",
+          500: "#c58554",
+          600: "#ad6e3d",
+          700: "#955a2b",
+          800: "#6e482b",
+          900: "#4f3522",
+          950: "#312216",
+        },
+      },
+      neutral: {
+        seed: "#587170",
+        ramp: {
+          50: "#f7f8f8",
+          100: "#ebefef",
+          200: "#d7dfdf",
+          300: "#bac9c9",
+          400: "#9bb1b0",
+          500: "#7e9b99",
+          600: "#678382",
+          700: "#546c6b",
+          800: "#445554",
+          900: "#323e3d",
+          950: "#202727",
+        },
+      },
+      highlight: {
+        seed: "#2f5a5a",
+        ramp: { 50: "#eaf1f0", 200: "#c5d6d4", 600: "#2f5a5a", 700: "#234545" },
+      },
+      paper: {
+        seed: "#e2e9e6",
+        ramp: { 50: "#f8faf9", 100: "#e2e9e6", 200: "#cfdad5", 400: "#7f9893" },
+      },
+      danger: { seed: "#b3261e", ramp: { 50: "#fdeceb", 600: "#b3261e" } },
+      success: { seed: "#2f6b55", ramp: { 50: "#e8f2ee", 600: "#2f6b55" } },
+      scrim_rgb: "29 59 60",
+      shadow_rgb: "29 59 60",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    display: { family: "Cormorant", source: "google", weights: [400, 500, 600], italic: true },
+    body: { family: "Manrope", source: "google", weights: [400, 500, 600, 700], italic: false },
+    accent: { family: "Cormorant", source: "google", weights: [400, 500], italic: true },
+    label: null,
+  },
+  variants: galleryVariants(HAVEN_PICKS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/haven/1.css reads.
+  uses: {
+    colors: {
+      single: [
+        "canvas", "surface", "surface_sunken", "surface_deep",
+        "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+      ],
+      ramps: { accent: [400, 700], highlight: [600] },
+    },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "calm", signature: "arch-clip" },
+  image: { filter: "none", treatment: "Natural colour, rounded and arched frames, slow parallax" },
+  chrome: { header: ["pill", "glass", "center"], footer: ["columns", "giant"] },
+  picks: HAVEN_PICKS,
+};
+
+const MAISON_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "maison-frame",
+  offering_grid: "maison-rows",
+  feature_cards: "tiles",
+  gallery: "maison-plates",
+  testimonials: "wall",
+};
+
+/** Maison's own layouts (designs/maison/blocks), each first in its type. */
+export const MAISON_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "maison-frame",
+  offering_grid: "maison-rows",
+  gallery: "maison-plates",
+};
+
+/*
+ * #4453 6a — Maison: quiet luxury. Bone page, near-black ink, champagne only
+ * as a hairline and a few italic words; Italiana capitals over Newsreader
+ * with tracked Jost labels (the label slot); vast whitespace, one large
+ * framed picture at a time, slow clip reveals. Light only by design. Every
+ * default pair passes AA on the gallery's own hex values (§3.8).
+ */
+export const MAISON: DesignDefinition = {
+  key: "maison",
+  version: 1,
+  label: "Maison",
+  description: "Quiet luxury, unhurried and exact: bone and near-black, fine capitals, one large framed picture at a time.",
+  tokens: {
+    colors: {
+      canvas: "#f4f0e8",
+      surface: "#f9f7f2",
+      surface_sunken: "#ebe5d9",
+      surface_deep: "#1a1916",
+      surface_inverse: "#1a1916",
+      ink_strong: "#1a1916",
+      ink_body: "#1a1916",
+      ink_prose: "#1a1916",
+      ink_quiet: "#686257",
+      ink_on_dark_body: "#f4f0e8",
+      ink_on_photo_body: "#f4f0e8",
+      ink_on_photo_quiet: "#e8e1d3",
+      accent_ink: "#1a1916",
+      highlight_on_dark: "#cdb385",
+      action: "#1a1916",
+      accent: {
+        seed: "#b39561",
+        ramp: {
+          50: "#faf8f5",
+          100: "#f3efe8",
+          200: "#e7ded0",
+          300: "#d7c7ad",
+          400: "#b39561",
+          500: "#b49764",
+          600: "#9a7d4b",
+          700: "#755d33",
+          800: "#645335",
+          900: "#483c28",
+          950: "#2d261a",
+        },
+      },
+      neutral: {
+        seed: "#686257",
+        ramp: {
+          50: "#f8f8f7",
+          100: "#efeeec",
+          200: "#dedcd8",
+          300: "#c7c3bd",
+          400: "#aea89e",
+          500: "#968f82",
+          600: "#7f786b",
+          700: "#686257",
+          800: "#524e47",
+          900: "#3c3934",
+          950: "#262421",
+        },
+      },
+      highlight: {
+        seed: "#755d33",
+        ramp: { 50: "#f6f1e8", 200: "#e8d6b0", 600: "#755d33", 700: "#4a4337" },
+      },
+      paper: {
+        seed: "#ebe5d9",
+        ramp: { 50: "#f9f7f2", 100: "#ebe5d9", 200: "#ddd4c3", 400: "#9c927f" },
+      },
+      danger: { seed: "#9a2c1f", ramp: { 50: "#f9ece9", 600: "#9a2c1f" } },
+      success: { seed: "#4d6a4a", ramp: { 50: "#ecf1eb", 600: "#4d6a4a" } },
+      scrim_rgb: "26 25 22",
+      shadow_rgb: "26 25 22",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Italiana", source: "google", weights: [400], italic: false },
+    body: { family: "Newsreader", source: "google", weights: [300, 400], italic: false },
+    accent: { family: "Newsreader", source: "google", weights: [200, 300], italic: true },
+    label: { family: "Jost", source: "google", weights: [400, 500], italic: false },
+  },
+  variants: galleryVariants(MAISON_PICKS, MAISON_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/maison/1.css reads.
+  uses: {
+    colors: {
+      single: [
+        "canvas", "surface", "surface_sunken", "surface_deep",
+        "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+        "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+      ],
+      ramps: { accent: [400, 600, 700], highlight: [600, 700] },
+    },
+    font_slots: ["display", "body", "accent", "label"],
+  },
+  motion: { profile: "calm", signature: "frame-open" },
+  image: { filter: "soft", treatment: "Soft, slightly desaturated natural light; large square-cut frames that open slowly from the centre" },
+  chrome: { header: ["center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: MAISON_PICKS,
+};
+
+/* ---------------- #4453 6b — Journal, Grid, Terra ---------------- */
+
+const SINGLE_ROLES_DRAWN = [
+  "canvas", "surface", "surface_sunken", "surface_deep",
+  "ink_strong", "ink_body", "ink_quiet", "ink_on_dark_body",
+  "ink_on_photo_body", "ink_on_photo_quiet", "accent_ink", "highlight_on_dark", "action",
+] as const;
+
+const JOURNAL_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "journal-front",
+  offering_grid: "journal-columns",
+  feature_cards: "numbered",
+  gallery: "journal-essay",
+  offering_history: "ledger-count",
+  testimonials: "journal-letters",
+  newsletter_signup: "journal-coupon",
+};
+
+/** Journal's own layouts (designs/journal/blocks), each first in its type. */
+export const JOURNAL_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "journal-front",
+  offering_grid: "journal-columns",
+  gallery: "journal-essay",
+  testimonials: "journal-letters",
+  newsletter_signup: "journal-coupon",
+};
+
+/*
+ * #4453 6b — Journal: an editorial front page. Cream newsprint, ink black and
+ * one oxblood accent; high-contrast Fraunces headlines over Libre Franklin
+ * (labels too: no label slot), double rules, datelines, numbered plates and
+ * letters, warm faded photographs. A masthead header (signature). Light only
+ * by design. Every default pair passes AA on the gallery's own hex values.
+ */
+export const JOURNAL: DesignDefinition = {
+  key: "journal",
+  version: 1,
+  label: "Journal",
+  description: "Editorial, literate, front-page confident: cream newsprint, ink black, one oxblood accent and double rules.",
+  tokens: {
+    colors: {
+      canvas: "#f1eadb",
+      surface: "#f7f2e6",
+      surface_sunken: "#e8dfcb",
+      surface_deep: "#17140f",
+      surface_inverse: "#17140f",
+      ink_strong: "#17140f",
+      ink_body: "#17140f",
+      ink_prose: "#17140f",
+      ink_quiet: "#5a5247",
+      ink_on_dark_body: "#f1eadb",
+      ink_on_photo_body: "#f7f2e6",
+      ink_on_photo_quiet: "#e8dfcb",
+      accent_ink: "#f7f2e6",
+      highlight_on_dark: "#dcb48e",
+      action: "#17140f",
+      accent: {
+        seed: "#7b1e1a",
+        ramp: {
+          50: "#fcf3f3",
+          100: "#f8e4e3",
+          200: "#f1c7c5",
+          300: "#e89e9b",
+          400: "#7b1e1a",
+          500: "#d74842",
+          600: "#bf312b",
+          700: "#9c2b26",
+          800: "#782421",
+          900: "#561d1a",
+          950: "#351312",
+        },
+      },
+      neutral: {
+        seed: "#8a8172",
+        ramp: {
+          50: "#f8f8f7",
+          100: "#efeeec",
+          200: "#dedcd8",
+          300: "#c7c3bc",
+          400: "#aea89d",
+          500: "#978f81",
+          600: "#80786a",
+          700: "#696358",
+          800: "#534e46",
+          900: "#3c3934",
+          950: "#262421",
+        },
+      },
+      highlight: {
+        seed: "#7b1e1a",
+        ramp: { 50: "#fcf3f3", 200: "#f1c7c5", 600: "#7b1e1a", 700: "#561d1a" },
+      },
+      paper: {
+        seed: "#e8dfcb",
+        ramp: { 50: "#f7f2e6", 100: "#e8dfcb", 200: "#dcd0b6", 400: "#958a72" },
+      },
+      danger: { seed: "#a8432f", ramp: { 50: "#f9ece9", 600: "#a8432f" } },
+      success: { seed: "#4d6b3c", ramp: { 50: "#ecf1e9", 600: "#4d6b3c" } },
+      scrim_rgb: "23 20 15",
+      shadow_rgb: "23 20 15",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    // Italics come from the accent slot (the same family): every weight is one more @font-face per subset (MAX_FONT_ASSETS).
+    // #4453 6b — Fraunces' optical-size axis: the high-contrast display cut at headline sizes, as in the gallery.
+    display: { family: "Fraunces", source: "google", weights: [400, 700, 800], italic: false, axes: { opsz: [9, 144] } },
+    body: { family: "Libre Franklin", source: "google", weights: [400, 600, 700], italic: false },
+    accent: { family: "Fraunces", source: "google", weights: [300, 400], italic: true, axes: { opsz: [9, 144] } },
+    label: null,
+  },
+  variants: galleryVariants(JOURNAL_PICKS, JOURNAL_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/journal/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [400], highlight: [600] } },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "cinematic", signature: "rule-draw" },
+  image: { filter: "warm", treatment: "Warm, slightly faded newsprint tone (sepia lift, low saturation), square-cut plates with captions" },
+  chrome: { header: ["journal-mast", "center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: JOURNAL_PICKS,
+};
+
+const GRID_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "grid-index",
+  offering_grid: "list",
+  feature_cards: "tiles",
+  gallery: "mosaic",
+  offering_history: "ledger-count",
+  testimonials: "wall",
+};
+
+/** Grid's own layouts (designs/grid/blocks), each first in its type. */
+export const GRID_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "grid-index",
+};
+
+/*
+ * #4453 6b — Grid: Swiss and exact. Off-white paper, black ink and one signal
+ * red; heavy Hanken Grotesk capitals over IBM Plex Mono labels (the label
+ * slot), a visible 12-column grid, radius 0, numbered sections, monochrome
+ * photographs that return to colour on hover, fast precise motion. Ruled-cell
+ * header and an index-sheet hero (signature). Light only by design.
+ */
+export const GRID: DesignDefinition = {
+  key: "grid",
+  version: 1,
+  label: "Grid",
+  description: "Swiss, exact, loud in one colour: black on paper, signal red, heavy capitals and a visible grid.",
+  tokens: {
+    colors: {
+      canvas: "#f1efe9",
+      surface: "#f7f6f2",
+      surface_sunken: "#e7e4dc",
+      surface_deep: "#0b0b0b",
+      surface_inverse: "#0b0b0b",
+      ink_strong: "#0b0b0b",
+      ink_body: "#0b0b0b",
+      ink_prose: "#0b0b0b",
+      ink_quiet: "#4d4b46",
+      ink_on_dark_body: "#f1efe9",
+      ink_on_photo_body: "#f1efe9",
+      ink_on_photo_quiet: "#e7e4dc",
+      accent_ink: "#0b0b0b",
+      highlight_on_dark: "#ff5a3d",
+      action: "#0b0b0b",
+      accent: {
+        seed: "#ff3b1d",
+        ramp: {
+          50: "#fef3f1",
+          100: "#fde1dd",
+          200: "#fdc3ba",
+          300: "#fd9686",
+          400: "#ff3b1d",
+          500: "#ff381a",
+          600: "#e72204",
+          700: "#c42200",
+          800: "#901b09",
+          900: "#66160a",
+          950: "#3f1009",
+        },
+      },
+      neutral: {
+        seed: "#7a776f",
+        ramp: {
+          50: "#f8f7f7",
+          100: "#eeedec",
+          200: "#dddcda",
+          300: "#c5c3bf",
+          400: "#aaa8a2",
+          500: "#928f87",
+          600: "#7b7870",
+          700: "#65635d",
+          800: "#504e49",
+          900: "#3a3936",
+          950: "#252422",
+        },
+      },
+      highlight: {
+        seed: "#e62a0c",
+        ramp: { 50: "#fef3f1", 200: "#fdc3ba", 600: "#e62a0c", 700: "#bb1f07" },
+      },
+      paper: {
+        seed: "#e7e4dc",
+        ramp: { 50: "#f7f6f2", 100: "#e7e4dc", 200: "#d9d5cb", 400: "#8f8a7f" },
+      },
+      danger: { seed: "#c42200", ramp: { 50: "#fef3f1", 600: "#c42200" } },
+      success: { seed: "#2f6b45", ramp: { 50: "#e9f2ec", 600: "#2f6b45" } },
+      scrim_rgb: "11 11 11",
+      shadow_rgb: "11 11 11",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Hanken Grotesk", source: "google", weights: [400, 700, 800, 900], italic: false },
+    body: { family: "Hanken Grotesk", source: "google", weights: [400, 700, 800, 900], italic: false },
+    accent: null,
+    label: { family: "IBM Plex Mono", source: "google", weights: [500, 700], italic: false },
+  },
+  variants: galleryVariants(GRID_PICKS, GRID_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/grid/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [400, 700], highlight: [600] } },
+    font_slots: ["display", "body", "label"],
+  },
+  motion: { profile: "bold", signature: "colour-return" },
+  image: { filter: "mono", treatment: "Monochrome, high contrast, hard square crops; colour returns on hover" },
+  chrome: { header: ["grid-bar", "glass", "center", "pill"], footer: ["giant", "columns"] },
+  picks: GRID_PICKS,
+};
+
+const TERRA_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "terra-pebble",
+  offering_grid: "cards",
+  feature_cards: "tiles",
+  gallery: "mosaic",
+  offering_history: "ledger-count",
+  testimonials: "rail",
+};
+
+/** Terra's own layout (designs/terra/blocks), first in its type. */
+export const TERRA_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "terra-pebble",
+};
+
+/*
+ * #4453 6b — Terra: organic, earthy and handmade. A sand page, deep olive ink,
+ * terracotta and sage; soft Fraunces over a warm Figtree; pebble-shaped
+ * photographs, a slowly turning sage blob behind the hero (its one signature
+ * moment), hand-drawn squiggles and wavy edges. Light only by design.
+ */
+export const TERRA: DesignDefinition = {
+  key: "terra",
+  version: 1,
+  label: "Terra",
+  description: "Organic, earthy, handmade: sand and olive, terracotta and sage, soft serif headlines and pebble-shaped photographs.",
+  tokens: {
+    colors: {
+      canvas: "#f1e7d6",
+      surface: "#f9f2e6",
+      surface_sunken: "#e8d8bf",
+      surface_deep: "#2f3a21",
+      surface_inverse: "#2f3a21",
+      ink_strong: "#2f3a21",
+      ink_body: "#2f3a21",
+      ink_prose: "#2f3a21",
+      ink_quiet: "#5f5a42",
+      ink_on_dark_body: "#f6ecdb",
+      ink_on_photo_body: "#f9f2e6",
+      ink_on_photo_quiet: "#f1e7d6",
+      accent_ink: "#fff8ee",
+      highlight_on_dark: "#e9b48c",
+      action: "#2f3a21",
+      accent: {
+        seed: "#a94e2c",
+        ramp: {
+          50: "#fbf6f4",
+          100: "#f7e9e4",
+          200: "#efd2c8",
+          300: "#dc9a6f",
+          400: "#a94e2c",
+          500: "#d06e49",
+          600: "#b85733",
+          700: "#9a4526",
+          800: "#743a25",
+          900: "#532c1d",
+          950: "#341c14",
+        },
+      },
+      neutral: {
+        seed: "#7d7458",
+        ramp: {
+          50: "#f8f8f6",
+          100: "#f0efea",
+          200: "#e1ded5",
+          300: "#ccc7b7",
+          400: "#b5ae96",
+          500: "#a09678",
+          600: "#897f62",
+          700: "#716951",
+          800: "#585341",
+          900: "#403c30",
+          950: "#28261f",
+        },
+      },
+      highlight: {
+        seed: "#5f7352",
+        ramp: { 50: "#eef1e8", 200: "#b5c19c", 600: "#5f7352", 700: "#4a5a40" },
+      },
+      paper: {
+        seed: "#e8d8bf",
+        ramp: { 50: "#f9f2e6", 100: "#e8d8bf", 200: "#dcc8a8", 400: "#9b8a6c" },
+      },
+      danger: { seed: "#9a3a24", ramp: { 50: "#f9ece9", 600: "#9a3a24" } },
+      success: { seed: "#4f6b40", ramp: { 50: "#edf2ea", 600: "#4f6b40" } },
+      // The olive scrim darkened from the gallery's 47 58 33 so photo text passes AA at the copy zone's lightest (§3.8).
+      scrim_rgb: "30 37 21",
+      shadow_rgb: "47 58 33",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    // #4453 6b — Fraunces' optical size, with its soft, "wonky" instance pinned (SOFT 100, WONK 1), as in the gallery.
+    display: { family: "Fraunces", source: "google", weights: [400, 500], italic: true, axes: { opsz: [9, 144], SOFT: [100, 100], WONK: [1, 1] } },
+    body: { family: "Figtree", source: "google", weights: [400, 500, 600, 700], italic: false },
+    accent: { family: "Fraunces", source: "google", weights: [400], italic: true, axes: { opsz: [9, 144], SOFT: [100, 100], WONK: [1, 1] } },
+    label: null,
+  },
+  variants: galleryVariants(TERRA_PICKS, TERRA_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/terra/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [300, 400, 700], highlight: [200, 600] } },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "calm", signature: "blob-turn" },
+  image: { filter: "warm", treatment: "Warm film tone (light sepia, softened contrast), pebble and rounded frames, paper grain" },
+  chrome: { header: ["center", "glass", "pill"], footer: ["giant", "columns"] },
+  picks: TERRA_PICKS,
+};
+
+/* ---------------- #4453 6c — Pop, Sunset, Pulse ---------------- */
+
+const POP_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "pop-stack",
+  offering_grid: "cards",
+  feature_cards: "tiles",
+  gallery: "mosaic",
+  offering_history: "ledger-count",
+  testimonials: "rail",
+};
+
+/** Pop's own layout (designs/pop/blocks), first in its type. */
+export const POP_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "pop-stack",
+};
+
+/*
+ * #4453 6c — Pop: playful maximalist. Cream page, grape ink, tangerine,
+ * bubblegum and lime; chunky wide Unbounded over Figtree, Fraunces italic
+ * for the accent words, pill buttons with hard offset shadows, tilted photo
+ * stickers and a tilted ticker tape. Light only by design. Every default pair
+ * passes AA on the gallery's own hex values.
+ */
+export const POP: DesignDefinition = {
+  key: "pop",
+  version: 1,
+  label: "Pop",
+  description: "Playful, loud, generous: cream and grape, tangerine and lime, chunky wide capitals and tilted photo stickers.",
+  tokens: {
+    colors: {
+      canvas: "#fff4e4",
+      surface: "#ffffff",
+      surface_sunken: "#ffe6f1",
+      surface_deep: "#1d1240",
+      surface_inverse: "#1d1240",
+      ink_strong: "#1d1240",
+      ink_body: "#1d1240",
+      ink_prose: "#1d1240",
+      ink_quiet: "#594d6c",
+      ink_on_dark_body: "#fff4e4",
+      ink_on_photo_body: "#fff4e4",
+      ink_on_photo_quiet: "#ffe6f1",
+      accent_ink: "#1d1240",
+      highlight_on_dark: "#c8f53c",
+      action: "#1d1240",
+      accent: {
+        seed: "#ff6a1f",
+        ramp: {
+          50: "#fef5f1",
+          100: "#fde8dd",
+          200: "#fdd0ba",
+          300: "#fdae86",
+          400: "#ff6a1f",
+          500: "#ff661a",
+          600: "#e75004",
+          700: "#b83a00",
+          800: "#903609",
+          900: "#66290a",
+          950: "#3f1b09",
+        },
+      },
+      neutral: {
+        seed: "#6f6585",
+        ramp: {
+          50: "#f7f6f8",
+          100: "#ecebef",
+          200: "#dad7e0",
+          300: "#bfbaca",
+          400: "#a19ab2",
+          500: "#867d9c",
+          600: "#6f6685",
+          700: "#5c556d",
+          800: "#494356",
+          900: "#36323e",
+          950: "#222027",
+        },
+      },
+      // The sticker colours: lime (the highlighter and band label), bubblegum, sun yellow and lavender.
+      highlight: {
+        seed: "#c8f53c",
+        ramp: { 50: "#f6fde2", 200: "#ffb3d9", 600: "#c8f53c", 700: "#ffd23f" },
+      },
+      paper: {
+        seed: "#ffe6f1",
+        ramp: { 50: "#ffffff", 100: "#ffe6f1", 200: "#c9b8ff", 400: "#ff8a4c" },
+      },
+      danger: { seed: "#b3261e", ramp: { 50: "#fdeceb", 600: "#b3261e" } },
+      success: { seed: "#2f7a3a", ramp: { 50: "#e9f5ea", 600: "#2f7a3a" } },
+      scrim_rgb: "29 18 64",
+      shadow_rgb: "29 18 64",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    display: { family: "Unbounded", source: "google", weights: [700, 800, 900], italic: false },
+    body: { family: "Figtree", source: "google", weights: [400, 600, 800], italic: false },
+    accent: { family: "Fraunces", source: "google", weights: [600, 700], italic: true },
+    label: null,
+  },
+  variants: galleryVariants(POP_PICKS, POP_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/pop/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [400, 700], highlight: [200, 600, 700], paper: [50, 200, 400] } },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "bold", signature: "sticker-wobble" },
+  image: { filter: "none", treatment: "Punchy full colour inside white sticker frames, tilted, hard offset shadows" },
+  chrome: { header: ["pill", "glass", "center"], footer: ["giant", "columns"] },
+  picks: POP_PICKS,
+};
+
+const SUNSET_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "sunset-sun",
+  offering_grid: "cards",
+  feature_cards: "tiles",
+  gallery: "mosaic",
+  offering_history: "ledger-count",
+  testimonials: "wall",
+};
+
+/** Sunset's own layout (designs/sunset/blocks), first in its type. */
+export const SUNSET_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "sunset-sun",
+};
+
+/*
+ * #4453 6c — Sunset: warm retro 70s. Cream paper, chocolate ink, a burnt
+ * orange / tomato / mustard sunset; Fraunces at its sharp cut (SOFT 0 pinned, as the gallery's headline draws) over a
+ * rounded Nunito, Shrikhand for the accent words; chunky sticker shadows, a
+ * striped retro sun hero drawn in CSS whose rays turn slowly (its one
+ * signature moment). Light only by design.
+ */
+export const SUNSET: DesignDefinition = {
+  key: "sunset",
+  version: 1,
+  label: "Sunset",
+  description: "Warm, retro, golden-hour friendly: cream and chocolate, a striped sun, soft serif headlines and groovy accent words.",
+  tokens: {
+    colors: {
+      canvas: "#f7ecd9",
+      surface: "#fff8ec",
+      surface_sunken: "#f0dcbc",
+      surface_deep: "#3a2216",
+      surface_inverse: "#3a2216",
+      ink_strong: "#3a2216",
+      ink_body: "#3a2216",
+      ink_prose: "#3a2216",
+      ink_quiet: "#73533d",
+      ink_on_dark_body: "#fbefdc",
+      ink_on_photo_body: "#fff8ec",
+      ink_on_photo_quiet: "#fbefdc",
+      accent_ink: "#fff8ec",
+      highlight_on_dark: "#efb03c",
+      action: "#c2361f",
+      accent: {
+        seed: "#b8471b",
+        ramp: {
+          50: "#fcf5f3",
+          100: "#f9e8e1",
+          200: "#f4d0c2",
+          300: "#eeae96",
+          400: "#b8471b",
+          500: "#e26737",
+          600: "#ca5021",
+          700: "#a63f17",
+          800: "#7f361a",
+          900: "#5a2916",
+          950: "#381b10",
+        },
+      },
+      neutral: {
+        seed: "#8a6e5a",
+        ramp: {
+          50: "#f9f7f6",
+          100: "#f1edea",
+          200: "#e2dad4",
+          300: "#cec0b5",
+          400: "#b9a393",
+          500: "#a48874",
+          600: "#8d715d",
+          700: "#745e4e",
+          800: "#5b4a3e",
+          900: "#42362e",
+          950: "#29231e",
+        },
+      },
+      // The sunset: tomato (the accent words, large), mustard and orange (the rings and stripes).
+      highlight: {
+        seed: "#c2361f",
+        ramp: { 50: "#fdf0ec", 200: "#efb03c", 600: "#c2361f", 700: "#e0702a" },
+      },
+      paper: {
+        seed: "#f0dcbc",
+        ramp: { 50: "#fff8ec", 100: "#fbe0b0", 200: "#f7cfae", 400: "#f3d6a3" },
+      },
+      danger: { seed: "#a12a17", ramp: { 50: "#fbecea", 600: "#a12a17" } },
+      success: { seed: "#5d6a23", ramp: { 50: "#f1f3e6", 600: "#5d6a23" } },
+      scrim_rgb: "58 34 22",
+      shadow_rgb: "58 34 22",
+    },
+    heading_case: "none",
+  },
+  fonts: {
+    // #4453 final pass (designer call, comment 6935515341): SOFT 0 for the display slot, the gallery's sharp, high-contrast headline cut.
+    display: { family: "Fraunces", source: "google", weights: [600, 700, 800], italic: false, axes: { opsz: [9, 144], SOFT: [0, 0] } },
+    body: { family: "Nunito", source: "google", weights: [400, 600, 700, 800], italic: false },
+    accent: { family: "Shrikhand", source: "google", weights: [400], italic: false },
+    label: null,
+  },
+  variants: galleryVariants(SUNSET_PICKS, SUNSET_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/sunset/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [400, 700], highlight: [200, 600, 700], paper: [100, 200, 400] } },
+    font_slots: ["display", "body", "accent"],
+  },
+  motion: { profile: "calm", signature: "sun-rays" },
+  image: { filter: "warm", treatment: "Film-warm: light sepia, lifted saturation, rounded and sun-disc frames, soft grain" },
+  chrome: { header: ["pill", "glass", "center"], footer: ["giant", "columns"] },
+  picks: SUNSET_PICKS,
+};
+
+const PULSE_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
+  ...GALLERY_COMMON_PICKS,
+  hero: "pulse-stage",
+  offering_grid: "poster",
+  feature_cards: "numbered",
+  gallery: "pinned",
+  offering_history: "split",
+  testimonials: "rail",
+};
+
+/** Pulse's own layout (designs/pulse/blocks), first in its type. */
+export const PULSE_SIGNATURE_LAYOUTS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "pulse-stage",
+};
+
+/*
+ * #4453 6c — Pulse: neon nightlife. A near-black page, a magenta > violet >
+ * cyan gradient, glow and blurred glass; wide Unbounded capitals over Space
+ * Grotesk with Space Mono labels (the label slot); a duotone stage hero with
+ * two drifting light orbs (its one signature moment, transform only, off
+ * under reduced motion and Save-Data) and headline lines that slide apart as
+ * the page scrolls. Dark only by design. The gallery's translucent muted ink
+ * (68% over the page) is baked to #a8a6b1.
+ */
+export const PULSE: DesignDefinition = {
+  key: "pulse",
+  version: 1,
+  label: "Pulse",
+  description: "Neon, kinetic, after-dark: near-black with a magenta-to-cyan glow, wide capitals and a duotone stage.",
+  tokens: {
+    colors: {
+      canvas: "#07060b",
+      surface: "#13101f",
+      surface_sunken: "#0e0b17",
+      surface_deep: "#110c22",
+      surface_inverse: "#f4f1ff",
+      ink_strong: "#f4f1ff",
+      ink_body: "#f4f1ff",
+      ink_prose: "#f4f1ff",
+      ink_quiet: "#a8a6b1",
+      ink_on_dark_body: "#f4f1ff",
+      ink_on_photo_body: "#f4f1ff",
+      ink_on_photo_quiet: "#d6d2e6",
+      accent_ink: "#07060b",
+      highlight_on_dark: "#22e4ff",
+      action: "#f4f1ff",
+      accent: {
+        seed: "#ff2fb3",
+        ramp: {
+          50: "#fef1f9",
+          100: "#fdddf1",
+          200: "#fdbae4",
+          300: "#fd86d2",
+          400: "#ff2fb3",
+          500: "#ff1aab",
+          600: "#e70494",
+          700: "#bb0779",
+          800: "#90095f",
+          900: "#660a44",
+          950: "#3f092b",
+        },
+      },
+      neutral: {
+        seed: "#7d7a8f",
+        ramp: {
+          50: "#f7f7f8",
+          100: "#ececef",
+          200: "#d9d8de",
+          300: "#bebdc7",
+          400: "#a09ead",
+          500: "#858296",
+          600: "#6e6c7f",
+          700: "#5b5969",
+          800: "#484752",
+          900: "#35343c",
+          950: "#222126",
+        },
+      },
+      // The electric gradient's violet (600) and the pink accent words (200).
+      highlight: {
+        seed: "#a26bff",
+        ramp: { 50: "#1a1430", 200: "#ff5cc6", 600: "#a26bff", 700: "#6f3fd9" },
+      },
+      paper: {
+        seed: "#f4f1ff",
+        ramp: { 50: "#ffffff", 100: "#f4f1ff", 200: "#d6d2e6", 400: "#8f8aa3" },
+      },
+      danger: { seed: "#ff6b8b", ramp: { 50: "#2a0f17", 600: "#ff6b8b" } },
+      success: { seed: "#3cffb0", ramp: { 50: "#0b2219", 600: "#3cffb0" } },
+      scrim_rgb: "7 6 11",
+      shadow_rgb: "0 0 0",
+    },
+    heading_case: "uppercase",
+  },
+  fonts: {
+    display: { family: "Unbounded", source: "google", weights: [700, 800, 900], italic: false },
+    body: { family: "Space Grotesk", source: "google", weights: [400, 500, 600, 700], italic: false },
+    accent: null,
+    label: { family: "Space Mono", source: "google", weights: [400, 700], italic: false },
+  },
+  variants: galleryVariants(PULSE_PICKS, PULSE_SIGNATURE_LAYOUTS),
+  templates: ["page", "not_found", "destination_detail", "story_detail"],
+  // Exactly the var(--c-*) / var(--font-*) properties public/designs/pulse/1.css reads.
+  uses: {
+    colors: { single: SINGLE_ROLES_DRAWN, ramps: { accent: [400], highlight: [200, 600] } },
+    font_slots: ["display", "body", "label"],
+  },
+  motion: { profile: "bold", signature: "orb-drift" },
+  image: { filter: "mono", treatment: "Hero duotone through the neon gradient; elsewhere punchy colour, glow-edged glass frames" },
+  chrome: { header: ["glass", "center", "pill"], footer: ["giant", "columns"] },
+  picks: PULSE_PICKS,
 };
 
 /** One of the primary swatches the look editors show (spec §W3), in order. */
@@ -347,7 +1616,10 @@ export function designFontSlots(design: DesignDefinition): FontSlotKey[] {
   return (["display", "body", "accent"] as const).filter((slot) => design.uses.font_slots.includes(slot));
 }
 
-export const DESIGNS: Readonly<Record<DesignKey, DesignDefinition>> = { atelier: ATELIER, voyage: VOYAGE };
+export const DESIGNS: Readonly<Record<DesignKey, DesignDefinition>> = {
+  atelier: ATELIER, voyage: VOYAGE, nocturne: NOCTURNE, haven: HAVEN, maison: MAISON, journal: JOURNAL, grid: GRID, terra: TERRA,
+  pop: POP, sunset: SUNSET, pulse: PULSE,
+};
 
 export function isDesignKey(value: unknown): value is DesignKey {
   return typeof value === "string" && (DESIGN_KEYS as readonly string[]).includes(value);
@@ -355,6 +1627,25 @@ export function isDesignKey(value: unknown): value is DesignKey {
 
 export function designFor(key: unknown): DesignDefinition | null {
   return isDesignKey(key) ? DESIGNS[key] : null;
+}
+
+/**
+ * #4453 — the layout a NEW composition takes for a block type: the design's
+ * pick when it has one, else its default. Stored blocks keep their variant.
+ */
+export function compositionVariant(design: DesignDefinition, type: BlockType): string {
+  const pick = design.picks[type];
+  return pick && design.variants[type].includes(pick) ? pick : defaultVariant(design, type);
+}
+
+/** The header layout a new composition takes, or null when the design draws its own header. */
+export function compositionHeader(design: DesignDefinition): HeaderVariant | null {
+  return design.chrome.header[0] ?? null;
+}
+
+/** The footer layout a new composition takes, or null when the design draws its own footer. */
+export function compositionFooter(design: DesignDefinition): FooterVariant | null {
+  return design.chrome.footer[0] ?? null;
 }
 
 /** The design's default variant for a block type (its first). */

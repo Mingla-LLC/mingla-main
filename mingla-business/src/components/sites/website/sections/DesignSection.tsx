@@ -12,6 +12,7 @@ import { useFontSearch, useSetSiteCover, useSiteCover } from "../../../../sites/
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 import { useQueryClient } from "@tanstack/react-query";
+import { lookPickerKeys, planFormatOf, styleFitLabel } from "../../../../sites/styleLibrary";
 import {
   DESIGN_KEYS,
   DESIGNS,
@@ -37,6 +38,9 @@ import {
   swatchHex,
   swatchWarnings,
   type LookFontSlot,
+  type OwnerFontSlot,
+  designSlotFamily,
+  isOwnerFontSlot,
   type LookSwatch,
 } from "../../../../sites/siteLook";
 
@@ -69,11 +73,12 @@ const GROUPS: readonly { name: string; items: readonly { role: string; label: st
   ] },
 ];
 
-const SLOT_LABEL: Record<LookFontSlot, string> = { display: "Headings", body: "Body text", accent: "Accent lettering" };
+const SLOT_LABEL: Record<LookFontSlot, string> = { display: "Headings", body: "Body text", accent: "Accent lettering", label: "Labels" };
 const SPECIMEN: Record<LookFontSlot, string> = {
   display: "Leave with your people",
   body: "Every word on your website, set in this font.",
   accent: "Arrive alone.",
+  label: "Sat 14 June · From £45",
 };
 const STYLE_FILTERS = [
   { value: "all", label: "All" },
@@ -233,13 +238,19 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
   const ctx = useWebsite();
   // Each tile's headline is drawn in that design's own heading font (web).
   const drawable = useFontSpecimens(ctx.controller.siteId, DESIGN_KEYS.map((key) => DESIGNS[key].fonts.display.family));
+  // #4453 — SITES_STYLE_LIBRARY (Core's value): the ten styles with their fit, else Atelier and Voyage.
+  const styleLibrary = ctx.plan?.styleLibrary === true;
+  const keys = lookPickerKeys(styleLibrary, design.key);
+  const format = styleLibrary ? planFormatOf(ctx.plan?.plan) : null;
+  const currentFit = styleFitLabel(format, design.key);
   return (
     <Card testID="design-designs">
       <CardTitle>Design</CardTitle>
       <Hint style={styles.cardHint}>Switching keeps all your words, photos and pages. Colours and fonts reset to the new design&apos;s, and you can undo before saving.</Hint>
       <View style={styles.tiles} role="radiogroup" accessibilityLabel="Design">
-        {DESIGN_KEYS.map((key) => {
+        {keys.map((key) => {
           const option = DESIGNS[key];
+          const fit = styleFitLabel(format, key);
           const checked = option.key === design.key;
           const colors = option.tokens.colors as unknown as Record<string, unknown>;
           const ramp = colors.accent as { seed?: string; ramp?: Record<number, string> } | undefined;
@@ -276,11 +287,18 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
                   {checked ? <Chip label="In use" tone="accent" /> : null}
                 </View>
                 <Text style={styles.tileDesc}>{option.description}</Text>
+                {fit ? (
+                  <View style={styles.fitRow} testID={`design-fit-${key}`}>
+                    <Chip label={fit.label} tone={fit.fit === "avoid" ? "warn" : fit.fit === "pick" ? "accent" : "neutral"} />
+                    <Text style={styles.tileDesc}>{fit.reason}</Text>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
           );
         })}
       </View>
+      {currentFit?.warning ? <View testID="design-avoid-warning"><Hint>{currentFit.warning}</Hint></View> : null}
     </Card>
   );
 }
@@ -502,8 +520,8 @@ function FontsCard({ design, fonts, disabled, onFonts }: {
   onFonts: (next: OwnerFontOverrides) => void;
 }): React.ReactElement {
   const ctx = useWebsite();
-  const slots = designFontSlots(design) as LookFontSlot[];
-  const [open, setOpen] = useState<LookFontSlot | null>(null);
+  const slots: LookFontSlot[] = designFontSlots(design);
+  const [open, setOpen] = useState<OwnerFontSlot | null>(null);
   const families = slots.map((slot) => slotFamily(design, fonts, slot));
   const drawable = useFontSpecimens(ctx.controller.siteId, families);
   return (
@@ -512,7 +530,9 @@ function FontsCard({ design, fonts, disabled, onFonts }: {
       <Hint>Any Google font. Your website serves fonts itself, so visitors never contact Google.</Hint>
       {slots.map((slot) => {
         const family = slotFamily(design, fonts, slot);
-        const isDefault = family === (slot === "accent" ? design.fonts.accent?.family ?? "" : design.fonts[slot].family);
+        const isDefault = family === designSlotFamily(design, slot);
+        // #4453 — the label face follows the design (or the body font); it has no picker.
+        const editable = isOwnerFontSlot(slot);
         const alias = drawable(family);
         return (
           <View key={slot} style={styles.fontSlot} testID={`font-slot-${slot}`}>
@@ -520,18 +540,18 @@ function FontsCard({ design, fonts, disabled, onFonts }: {
               <View style={styles.grow}>
                 <Text style={styles.fontSlotLabel}>{SLOT_LABEL[slot]}</Text>
                 <Text style={[styles.specimen, alias ? { fontFamily: alias } : null]} numberOfLines={1}>{SPECIMEN[slot]}</Text>
-                <Hint>{isDefault ? `${family} · ${design.label}'s font` : family}</Hint>
+                <Hint>{editable ? (isDefault ? `${family} · ${design.label}'s font` : family) : `${family} · set by ${design.label}, follows your body font`}</Hint>
               </View>
-              <WButton
+              {editable ? <WButton
                 label={open === slot ? "Close" : "Change"}
                 size="sm"
-                onPress={() => setOpen(open === slot ? null : slot)}
+                onPress={() => { if (isOwnerFontSlot(slot)) setOpen(open === slot ? null : slot); }}
                 disabled={disabled}
                 accessibilityLabel={`${open === slot ? "Close" : "Change"} the ${SLOT_LABEL[slot].toLowerCase()} font`}
                 testID={`font-change-${slot}`}
-              />
+              /> : null}
             </View>
-            {open === slot ? (
+            {isOwnerFontSlot(slot) && open === slot ? (
               <FontPicker
                 slot={slot}
                 current={family}
@@ -549,7 +569,7 @@ function FontsCard({ design, fonts, disabled, onFonts }: {
   );
 }
 
-function FontPicker({ slot, current, onPick }: { slot: LookFontSlot; current: string; onPick: (family: string) => void }): React.ReactElement {
+function FontPicker({ slot, current, onPick }: { slot: OwnerFontSlot; current: string; onPick: (family: string) => void }): React.ReactElement {
   const ctx = useWebsite();
   const [query, setQuery] = useState("");
   const [style, setStyle] = useState<(typeof STYLE_FILTERS)[number]["value"]>("all");
@@ -636,7 +656,7 @@ function MinglaPageCard({ design, fonts, value, onChange, disabled }: {
   onChange: (next: boolean) => void;
   disabled: boolean;
 }): React.ReactElement {
-  const families = (designFontSlots(design) as LookFontSlot[]).map((slot) => slotFamily(design, fonts, slot)).filter(Boolean);
+  const families = designFontSlots(design).map((slot) => slotFamily(design, fonts, slot)).filter(Boolean);
   const notOnPage = families.filter((family) => themeSlugFor(family) === null);
   const copy = notOnPage.length === 0
     ? "Copies your accent colour and fonts to your Mingla brand page, trip pages and checkout, so they match your website."
@@ -655,6 +675,7 @@ function MinglaPageCard({ design, fonts, value, onChange, disabled }: {
 }
 
 const styles = StyleSheet.create({
+  fitRow: { gap: 6, marginTop: 8, alignItems: "flex-start" },
   grow: { flex: 1, minWidth: 0 },
   cardHint: { marginBottom: 12 },
   cardTitleRow: { flexDirection: "row", alignItems: "center", gap: 12 },

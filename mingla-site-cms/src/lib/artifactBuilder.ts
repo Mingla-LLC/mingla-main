@@ -1,4 +1,6 @@
 import type { PayloadRequest } from "payload";
+import { findOfferingRouteCollisions } from "../contracts/generated/offeringDetail.ts";
+import { assertNoUnreviewedSections } from "./reviewStamp";
 import { cmsConfig } from "./config";
 import { emitCmsObservation } from "./observability";
 import { hmac, sha256 } from "./crypto";
@@ -16,7 +18,7 @@ import {
 import type { ArtifactV2 } from "../contracts/generated/artifactV2.ts";
 import { upgradeV1ToV2 } from "../contracts/generated/upgradeV1ToV2.ts";
 import { parseOfferingsFeed, type SiteOffering } from "../contracts/generated/offerings.ts";
-import { ATELIER, designFor, variantAfterDesignSwitch, type DesignDefinition } from "../contracts/generated/designs.ts";
+import { ATELIER, designFor, HERO_LAYOUTS_WITH_BOOKING, HERO_LAYOUTS_WITH_FACTS, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
 import { isBlockType } from "../contracts/generated/blocks.ts";
 import { resolveTokens } from "../contracts/generated/tokens.ts";
 import { resolveFontSlots } from "../contracts/generated/fontSlots.ts";
@@ -27,6 +29,8 @@ import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { fileVideoIntegrity, fitsHero, isFileVideoRecord, isStreamVideoRecord, streamVideoRef } from "./siteVideoRefs";
 import type { FileVideoIntegrity, StreamVideoRef } from "../contracts/generated/video.ts";
 import { offeringCoverRenditions, MAX_COVER_SOURCE_BYTES, type CoverRenditionDeps } from "./offeringCoverRenditions";
+import type { ArtifactActionScope } from "../contracts/generated/artifactV2.ts";
+import { assertNoOutboundActionLinks } from "./bookingLock";
 
 /*
  * #3149 wave 4 — where Mingla's own guest-facing flows live. Named once so a
@@ -233,6 +237,43 @@ export async function buildPublicationArtifact(
     fontPipeline?: FontPipelineDeps;
     /** #2829 W7c — where offering covers are read and their renditions kept (tests pass fakes). */
     coverRenditions?: CoverRenditionDeps;
+    /**
+     * #4453 PR 2 (booking lock) — the brand Core signed into this publish
+     * (slug, contact email, phone). Frozen into the artifact as
+     * `action_scope`, so every button is checked against THIS brand here and
+     * again by the runtime's validator.
+     */
+    actionScope?: ArtifactActionScope | null;
+    /**
+     * #4453 PR 2 — refuse the build with OUTBOUND_ACTION_LINK when a button
+     * points outside Mingla. Set by publish; a private preview still renders.
+     */
+    enforceActionLinks?: boolean;
+    /**
+     * #4453 (spec v1 §4.3) — refuse the build with UNREVIEWED_SECTIONS while
+     * an enabled page holds a Draft section. Set by publish; a private
+     * preview still renders the draft.
+     */
+    enforceReview?: boolean;
+    /**
+     * #4453 PR 2 — the Core advertised `booking_identity` (it signs the
+     * brand's identity in). Without it the identity checks are shape-only,
+     * so Studio and Core may deploy in either order.
+     */
+    coreSendsIdentity?: boolean;
+    /**
+     * #4453 milestone 11 (spec v2.1 §3.3, decision N10) — keep a Draft-by-Ari
+     * page (always disabled, marked `draft_by_ari`) in the artifact. Set only
+     * by the private preview; every other build (publish, export) leaves the
+     * page and everything under it out.
+     */
+    includeAriDrafts?: boolean;
+    /**
+     * #4453 milestone 10 — a plan preview (dry run): Core's projection is
+     * given (the brand's feed by brand; there may be no site), and nothing is
+     * written — the caller stores the bytes under `plan-previews/`.
+     */
+    planMode?: { projection: Record<string, unknown> };
   },
 ): Promise<BuiltPublication> {
   const scopedReq = await tenantRequest(req, input.tenant);
@@ -377,7 +418,7 @@ export async function buildPublicationArtifact(
   let brandSlug: string | null = null;
   let offeringsSnapshot: SiteOffering[] = [];
   if (offeringIds.size || wantsMenu || wantsVenue || wantsFeed) {
-    const projection = await readCoreProjection(
+    const projection = input.planMode ? input.planMode.projection : await readCoreProjection(
       `/internal/v1/sites/${input.tenant.core_site_id}/projection`,
       input.tenant.core_site_id,
       input.operationId,
@@ -596,9 +637,20 @@ export async function buildPublicationArtifact(
   const blocks = (source: AnyDoc[]) =>
     source.map((raw) => {
       const shaped = shapeBlock(raw);
-      return shaped && isBlockType(raw.blockType)
-        ? { ...shaped, variant: variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null) }
-        : shaped;
+      if (!shaped || !isBlockType(raw.blockType)) return shaped;
+      const variant = variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null);
+      // #4453 milestone 5 (tester P2-1) — a hero layout that does not draw the
+      // booking bar or the rating never publishes them (Studio hides them too).
+      if (raw.blockType === "hero" && !HERO_LAYOUTS_WITH_BOOKING.includes(variant)) {
+        const { booking_bar: _bar, booking_target_id: _target, show_rating: _rating, fact_badges: _facts, ...rest } = shaped as Record<string, unknown>;
+        return { ...rest, variant };
+      }
+      // #4453 milestone 7b — likewise the fact badges, drawn by the shared hero layouts only.
+      if (raw.blockType === "hero" && !HERO_LAYOUTS_WITH_FACTS.includes(variant)) {
+        const { fact_badges: _facts, ...rest } = shaped as Record<string, unknown>;
+        return { ...rest, variant };
+      }
+      return { ...shaped, variant };
     });
   const shapeBlock = (raw: AnyDoc) => {
       const eyebrow = optionalText(raw.eyebrow, "eyebrow");
@@ -613,6 +665,18 @@ export async function buildPublicationArtifact(
               ? { heading_lines: (raw.heading_lines || []).filter((row: AnyDoc) => typeof row.text === "string" && row.text.trim()).map((row: AnyDoc) => ({ text: row.text })) }
               : {}),
             ...optionalFlag(raw.show_search, "show_search"),
+            // #4453 milestone 5 — the booking bar (with its target) and the Mingla rating.
+            ...(typeof raw.booking_bar === "string" && raw.booking_bar !== "" && raw.booking_bar !== "none"
+              ? { booking_bar: raw.booking_bar, ...optionalText(raw.booking_target_id, "booking_target_id") }
+              : {}),
+            ...optionalFlag(raw.show_rating, "show_rating"),
+            // #4453 milestone 7b — the owner's own Quick facts (Q8), verbatim; absent means absent.
+            ...((raw.fact_badges || []).some((row: AnyDoc) => typeof row.big === "string" && row.big.trim() && typeof row.small === "string" && row.small.trim())
+              ? { fact_badges: (raw.fact_badges || [])
+                .filter((row: AnyDoc) => typeof row.big === "string" && row.big.trim() && typeof row.small === "string" && row.small.trim())
+                .slice(0, 3)
+                .map((row: AnyDoc) => ({ big: row.big.trim(), small: row.small.trim() })) }
+              : {}),
             subheading: raw.subheading,
             media_url: renderMedia(raw.media, "").url,
             // Optional, and never a replacement for the still above. A hero
@@ -844,6 +908,18 @@ export async function buildPublicationArtifact(
             images: (raw.images || []).map((row: AnyDoc) =>
               renderMedia(row.media, String(row.alt || ""))
             ),
+            // #4453 milestone 5 (§5.2) — captions, each naming its own photograph (absent when none).
+            ...(() => {
+              const captions = (raw.images || [])
+                .map((row: AnyDoc) => ({ row, media: renderMedia(row.media, String(row.alt || "")) }))
+                .filter(({ row }: { row: AnyDoc }) => typeof row.caption === "string" && row.caption.trim())
+                .map(({ row, media }: { row: AnyDoc; media: { id: string } }) => ({
+                  media_id: media.id,
+                  caption: String(row.caption).trim(),
+                  ...optionalText(row.sub, "sub"),
+                }));
+              return captions.length ? { captions } : {};
+            })(),
           };
         case "hours_location":
           return {
@@ -880,6 +956,7 @@ export async function buildPublicationArtifact(
               from_collection: true,
               ...(picked.length ? { testimonial_ids: picked.map((testimonialId: string) => ({ id: testimonialId })) } : {}),
               ...optionalNumber(raw.limit, "limit"),
+              ...optionalFlag(raw.show_rating, "show_rating"),
               ...optionalCta(raw),
             };
           }
@@ -1071,6 +1148,58 @@ export async function buildPublicationArtifact(
               ...optionalText(row.icon, "icon"),
             })),
           };
+        // #4453 milestone 5 — the live booking blocks carry only their target; Mingla fills them at render.
+        case "availability": {
+          const nights = raw.source === "stay_nights";
+          return {
+            type: "availability",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            source: raw.source,
+            ...(nights ? optionalText(raw.stay_offering_id, "stay_offering_id") : optionalText(raw.offering_id, "offering_id")),
+            ...(raw.source === "venue_slots" ? optionalNumber(raw.party_size, "party_size") : {}),
+            ...optionalNumber(raw.days, "days"),
+          };
+        }
+        case "ticket_tiers":
+          return {
+            type: "ticket_tiers",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            offering_id: raw.offering_id,
+            ...(raw.media ? { media_url: renderMedia(raw.media, "").url } : {}),
+          };
+        case "process_steps":
+          return {
+            type: "process_steps",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            ...optionalText(raw.intro, "intro"),
+            items: (raw.items || []).map((row: AnyDoc) => ({
+              title: row.title,
+              ...optionalText(row.text, "text"),
+              ...optionalText(row.time, "time"),
+            })),
+          };
+        // #4453 milestone 7b — "Keep exploring": the items are computed below, once every page's address is known.
+        case "page_links":
+          return {
+            type: "page_links",
+            ...eyebrow,
+            ...optionalText(raw.heading, "heading"),
+            mode: raw.mode === "teaser" ? "teaser" : "next",
+          };
+        case "facts_table": {
+          // A row with no value is never drawn, so it is never published.
+          const items = (raw.items || [])
+            .filter((row: AnyDoc) => typeof row.label === "string" && row.label.trim() && typeof row.value === "string" && row.value.trim())
+            .map((row: AnyDoc) => ({ label: row.label.trim(), value: row.value.trim() }));
+          return items.length
+            ? { type: "facts_table", ...eyebrow, ...optionalText(raw.heading, "heading"), items }
+            : null;
+        }
         case "contact_details":
           return {
             type: "contact_details",
@@ -1101,17 +1230,34 @@ export async function buildPublicationArtifact(
    * #2829 W2 — pages are ordered by address (home first) so the bytes do not
    * depend on the order pages were created in.
    */
+  /*
+   * #4453 milestone 11 (SC-N3, SC-AP2, N10) — a Draft-by-Ari page (and any page
+   * under it) is never enabled in any artifact, so no menu, footer, header
+   * button or page_links entry can point at it. Outside the private preview
+   * it is left out altogether. Its owner-only fields (origin, ari_request,
+   * owner_questions) are never copied: the page object below is an allowlist.
+   */
+  const ariDraftPaths = (pagesResult.docs as AnyDoc[])
+    .filter((page) => page.ari_draft === true)
+    .map((page) => pagePaths.get(String(page.id)) ?? "")
+    .filter((path) => path !== "");
+  const underAriDraft = (path: string): boolean => ariDraftPaths.some((draft) => path === draft || path.startsWith(`${draft}/`));
   const renderedPages = (pagesResult.docs as AnyDoc[])
+    .filter((page) => input.includeAriDrafts === true || !underAriDraft(pagePaths.get(String(page.id)) ?? ""))
     .map((page) => {
-      const rendered = blocks(page.blocks || []).filter(Boolean);
+      const rendered: AnyDoc[] = blocks(page.blocks || []).filter(Boolean) as AnyDoc[];
       const isHome = isHomePage(page);
       return {
         page,
         path: pagePaths.get(String(page.id)) ?? "",
         rendered,
-        enabled: isHome ? page.enabled === true : page.enabled === true && rendered.length > 0,
+        // #4453 milestone 7c (tester P3-2) — "Keep exploring" alone is not content: a page with nothing else never publishes enabled.
+        enabled: isHome ? page.enabled === true : page.enabled === true && rendered.some((block) => block?.type !== "page_links"),
+        ariDraft: page.ari_draft === true,
       };
     })
+    // #4453 milestone 11 — a Draft-by-Ari page and everything under it is never enabled (only the preview keeps it).
+    .map((entry) => (underAriDraft(entry.path) ? { ...entry, enabled: false } : entry))
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
   const livePaths = new Map(
     renderedPages.filter((entry) => entry.enabled).map((entry) => [String(entry.page.id), entry.path]),
@@ -1123,6 +1269,18 @@ export async function buildPublicationArtifact(
    * stays live.
    */
   assertNoPathCollision(pagesResult.docs, settings, new Set(livePaths.keys()));
+  /*
+   * #4453 milestone 9 (SC-DP3) — ROUTE_COLLISION. A live page at a live
+   * offering's detail address (`/{base}/{slug}`) would hide that offering's
+   * detail page; the publish is refused before anything is written. Ended
+   * and cancelled offerings claim no address.
+   */
+  if (findOfferingRouteCollisions({
+    paths: [...livePaths.values()],
+    routes: routing.routes,
+    offerings: offeringsSnapshot,
+    now: new Date(),
+  }).length) throw new Error("ROUTE_COLLISION");
   const pageSeo = (seo: unknown) => {
     const record = (seo ?? {}) as AnyDoc;
     const out = {
@@ -1158,6 +1316,8 @@ export async function buildPublicationArtifact(
   };
   const navigationOf = (doc: AnyDoc | undefined) => {
     const items = ((doc?.items as AnyDoc[] | undefined) ?? [])
+      // #4453 milestone 11 — a menu entry Ari added for its Draft page is never published.
+      .filter((item) => item?.draft !== true)
       .map((item) => {
         const link = navLink(item);
         if (!link) return null;
@@ -1172,8 +1332,51 @@ export async function buildPublicationArtifact(
       items,
       ...(cta ? { header_cta: cta } : {}),
       ...optionalText(doc?.wordmark, "wordmark"),
+      // #4453 milestone 5 — the sticky phone booking bar.
+      ...optionalFlag(doc?.sticky_booking, "sticky_booking"),
+      ...(doc?.sticky_booking === true ? { ...optionalText(doc?.sticky_title, "sticky_title"), ...optionalText(doc?.sticky_note, "sticky_note") } : {}),
     };
   };
+  /*
+   * #4453 milestone 7b (spec v2.1 §1.3) — "Keep exploring" items, computed
+   * here (never stored): the menu's pages in menu order (children included),
+   * only pages that publish (a disabled, emptied or Draft page is never
+   * linked), never the page itself or Home. `teaser` takes up to 4; `next`
+   * the 3 after this page, wrapping. Each card carries the page's menu label,
+   * its description (cut to 120) and its page-header picture. Fewer than 2
+   * pages: the block is left out.
+   */
+  const menuPages: Array<{ id: string; label: string; href: string }> = [];
+  for (const item of ((navigationResult.docs[0] as AnyDoc | undefined)?.items as AnyDoc[] | undefined) ?? []) {
+    for (const row of [item, ...(((item.children as AnyDoc[] | undefined) ?? []))]) {
+      if (row?.target_type === "url") continue;
+      const pageId = id(row?.page);
+      const path = livePaths.get(pageId);
+      const label = typeof row?.label === "string" ? row.label.trim().slice(0, 40) : "";
+      if (!path || !label || menuPages.some((entry) => entry.id === pageId)) continue;
+      menuPages.push({ id: pageId, label, href: `/${path}` });
+    }
+  }
+  const pageCard = (entry: { id: string; label: string; href: string }) => {
+    const target = renderedPages.find((candidate) => String(candidate.page.id) === entry.id);
+    const description = typeof target?.page.seo?.description === "string" ? target.page.seo.description.trim().slice(0, 120) : "";
+    const header = (target?.rendered as AnyDoc[] | undefined)?.find((block) => block?.type === "page_header" && typeof block.media_url === "string");
+    return { label: entry.label, href: entry.href, ...(description ? { description } : {}), ...(header ? { media_url: header.media_url } : {}) };
+  };
+  for (const entry of renderedPages) {
+    entry.rendered = entry.rendered.flatMap((block): AnyDoc[] => {
+      if (block?.type !== "page_links") return [block];
+      const others = menuPages.filter((candidate) => candidate.id !== String(entry.page.id));
+      let picked = others.slice(0, 4);
+      if (block.mode === "next") {
+        const at = menuPages.findIndex((candidate) => candidate.id === String(entry.page.id));
+        const ring = at < 0 ? others : [...menuPages.slice(at + 1), ...menuPages.slice(0, at)];
+        picked = ring.slice(0, 3);
+      }
+      return picked.length >= 2 ? [{ ...block, items: picked.map(pageCard) }] : [];
+    });
+  }
+
   // #2829 — no address, no build: a site publishes only under the primary
   // host Core named for it (fails before anything is written).
   if (!tenantCanonicalUrl(input.tenant)) throw new Error("INVALID_STATE");
@@ -1187,10 +1390,11 @@ export async function buildPublicationArtifact(
     source_revision_id: input.sourceRevisionId,
     source_digest: input.sourceDigest,
     generated_at: input.generatedAt,
-    pages: renderedPages.map(({ page, path, rendered, enabled }) => ({
+    pages: renderedPages.map(({ page, path, rendered, enabled, ariDraft }) => ({
       path,
       title: page.title,
       enabled,
+      ...(ariDraft ? { draft_by_ari: true as const } : {}),
       kind: page.kind === "collection_index" ? "collection_index" : "standard",
       ...(page.kind === "collection_index" && typeof page.collection_kind === "string"
         ? { collection: page.collection_kind }
@@ -1313,10 +1517,41 @@ export async function buildPublicationArtifact(
   const display = siteDisplayOf(settings, content);
   if (display) artifact.site_display = display;
   artifact.design = { key: design.key, version: design.version };
+  // #4453 §3.3 — the shared header and footer layouts, only when the site's
+  // design offers them (a switched design never fails a republish).
+  const headerVariant = (navigationResult.docs[0] as AnyDoc | undefined)?.header_variant;
+  if ((design.chrome.header as readonly unknown[]).includes(headerVariant)) {
+    artifact.navigation.header_variant = headerVariant as HeaderVariant;
+  } else delete artifact.navigation.header_variant;
+  const footerVariant = (footerResult.docs[0] as AnyDoc | undefined)?.footer_variant;
+  if ((design.chrome.footer as readonly unknown[]).includes(footerVariant)) {
+    artifact.footer.footer_variant = footerVariant as FooterVariant;
+  } else delete artifact.footer.footer_variant;
   artifact.tokens = resolveTokens(design.tokens, ownerTokensOf(settings));
   artifact.fonts = fonts.slots;
   artifact.font_assets = fonts.assets;
   artifact.font_fallbacks = fonts.fallbacks;
+  if (input.actionScope) artifact.action_scope = input.actionScope;
+  /*
+   * #4453 PR 2 (booking lock, D5) — a booking button outside Mingla, or any
+   * button to a booking site or redirector, blocks the publish before
+   * anything is written. The brand-identity part runs only when Core
+   * advertised `booking_identity` (see bookingLock.ts), failing closed then.
+   */
+  if (input.enforceActionLinks) assertNoOutboundActionLinks(artifact, { coreSendsIdentity: input.coreSendsIdentity === true });
+  /*
+   * #4453 I-SITES-DRAFT-NEVER-PUBLISHED — no Draft section goes live. The
+   * stamp itself never reaches the artifact: shapeBlock copies named fields
+   * only (pinned by reviewStamp.issue4453.test.ts).
+   */
+  if (input.enforceReview) {
+    assertNoUnreviewedSections(renderedPages.map(({ page, path, enabled }) => ({
+      path,
+      title: typeof page.title === "string" ? page.title : "Page",
+      enabled,
+      blocks: Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : [],
+    })));
+  }
   const serialized = stable(artifact);
   // The public contract (assertArtifactV2) is enforced where it always was:
   // the runtime's candidate probe validates these exact bytes before Core
@@ -1324,6 +1559,17 @@ export async function buildPublicationArtifact(
   // last good site stays.
   const digest = await sha256(serialized);
   const key = `publications/${input.tenant.core_site_id}/${input.publicationId}/${digest}.json`;
+  // #4453 milestone 10 — a plan preview writes nothing here (the caller stores it under plan-previews/).
+  if (input.planMode) {
+    return {
+      artifact,
+      serialized,
+      artifactKey: "",
+      artifactDigest: digest,
+      generation: { artifact_schema_version: 2, renderer_key: "sites-v2", design_key: design.key, design_version: design.version },
+      fontWarnings: fonts.warnings,
+    };
+  }
   await writeObject(
     cmsConfig().artifactBucket,
     key,

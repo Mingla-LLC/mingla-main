@@ -58,7 +58,7 @@ import {
   websiteSetupUploadRoute,
 } from "../agentWebsiteSetup.ts";
 import {
-  DESIGN_KEYS,
+  ARI_DESIGN_KEYS,
   type DesignKey,
   DESIGNS,
 } from "../siteContracts/designs.ts";
@@ -173,8 +173,18 @@ function fieldNeeded(field: Json): boolean {
 
 const skipKey = (fieldKey: string) => `website:${fieldKey}`;
 
-function partNumber(key: PlanPartKey): number {
-  return PLAN_PARTS.findIndex((part) => part.key === key) + 1;
+/**
+ * #4453 — the parts the host actually sees. `proof` counts only while Core
+ * lists it in the plan status (SITES_PROOF_PART on), so with the flag off the
+ * eyebrow stays "Part n of 8", byte for byte as before #4453.
+ */
+export function visiblePlanParts(plan: Json): readonly (typeof PLAN_PARTS)[number][] {
+  const listed = parts(plan).some((part) => part.key === "proof");
+  return PLAN_PARTS.filter((part) => part.key !== "proof" || listed);
+}
+
+function partNumber(plan: Json, key: PlanPartKey): number {
+  return visiblePlanParts(plan).findIndex((part) => part.key === key) + 1;
 }
 
 function partLabel(key: PlanPartKey): string {
@@ -341,7 +351,8 @@ function choiceOptions(fieldKey: string): { id: string; label: string }[] {
         label: option.label,
       }));
     case "design_key":
-      return DESIGN_KEYS.map((key) => ({ id: key, label: DESIGNS[key].label }));
+      // #4453 6a — setup offers only ARI_DESIGN_KEYS (frozen #3355 path); PR 7's design pass offers every style behind SITES_ARI_DESIGN_PASS.
+      return ARI_DESIGN_KEYS.map((key) => ({ id: key, label: DESIGNS[key].label }));
     case "theme":
       return WEBSITE_SETUP_THEME_PRESETS.map((preset) => ({
         id: preset.id,
@@ -683,8 +694,8 @@ function formAsk(args: {
       field,
       completeness: completeness(args.plan),
       brandId: args.ctx.run.brand_id,
-      partNumber: partNumber(args.part),
-      partTotal: PLAN_PARTS.length,
+      partNumber: partNumber(args.plan, args.part),
+      partTotal: visiblePlanParts(args.plan).length,
       partLabel: partLabel(args.part),
       problem: args.problem,
       draft: args.problem ? args.draft ?? null : null,

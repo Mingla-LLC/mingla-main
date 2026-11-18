@@ -124,5 +124,11 @@ describe("ORCH-1153 reserve-UX fix pass", () => {
       "utf8",
     );
     expect(hook).toMatch(/const reset = useCallback\(\(\): void => \{[\s\S]{0,80}setSelectedDateId\(null\)/);
+    // #4453 milestone 5: after the reset, the website's pre-filled date is
+    // re-applied only when one was passed and is in `dates`, so the
+    // no-prefill behaviour this pins is unchanged.
+    expect(src).toMatch(/const seeded = initialDateId && dates\.some\(.*\) \? initialDateId : null;/);
+    expect(src).toMatch(/if \(seeded\) selectReserveDate\(seeded\)/);
+    expect(src).toMatch(/initialDateId = null,/);
   });
 });

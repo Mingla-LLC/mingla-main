@@ -11,6 +11,7 @@ import {
 } from "../../../../hooks/useBrandSite";
 import { BrandSitesError, type BrandSiteShareLink, type BrandSiteShareLinkCreated } from "../../../../services/brandSitesService";
 import { copyAddressText } from "../../../../utils/copyAddressText";
+import { shareLinkAddress } from "../../../../utils/shareLinkAddress";
 import { formatWebsiteDateTime } from "../../../../sites/websiteCopy";
 
 type Ttl = "1" | "7" | "14";
@@ -46,8 +47,30 @@ export function shareLinkLine(link: BrandSiteShareLink, format: (iso: string) =>
  * Settings (Manage) in the same card language (W10 deviation, reported).
  */
 export function SharePreviewCard(): React.ReactElement {
+  const { controller } = useWebsite();
+  const canManage = controller.capabilities.canPublish;
+  return (
+    <Card testID="settings-share">
+      <View style={styles.row}>
+        <View style={styles.grow}>
+          <CardTitle>Share a private preview</CardTitle>
+          <Hint>Send your draft to someone outside your team, like a client. They don&apos;t need to sign in. The link shows your latest draft, stays out of search engines and stops working when it ends or you turn it off.</Hint>
+        </View>
+        {!canManage ? <WebsiteIcon name="lock" color={ui.t3} /> : null}
+      </View>
+      <ShareLinksPanel />
+    </Card>
+  );
+}
+
+/**
+ * The create / copy / share / list / turn-off controls, used by Settings and by
+ * the full-screen preview's share sheet (#4453 M8). Every state: no permission,
+ * loading, error with retry, no links yet, working, expired, turned off.
+ */
+export function ShareLinksPanel(): React.ReactElement {
   const ctx = useWebsite();
-  const { controller, toast, brandId } = ctx;
+  const { controller, toast, brandId, brandName } = ctx;
   const siteId = controller.siteId;
   const canManage = controller.capabilities.canPublish;
   const links = useBrandSiteShareLinks(siteId, canManage);
@@ -70,54 +93,57 @@ export function SharePreviewCard(): React.ReactElement {
       .then(() => toast("Link copied", "success"))
       .catch(() => toast("Couldn’t copy. Select the link and copy it instead.", "error"));
   };
+  const send = (value: string) => {
+    shareLinkAddress(value, brandName)
+      .catch(() => toast("Couldn’t open the share sheet. Copy the link instead.", "error"));
+  };
   const active = (links.data ?? []).filter((link) => link.state === "active");
   const ended = (links.data ?? []).filter((link) => link.state !== "active");
 
+  if (!canManage) {
+    return <Text style={styles.help} testID="share-no-permission">Only brand admins and owners can share a private preview.</Text>;
+  }
   return (
-    <Card testID="settings-share">
-      <View style={styles.row}>
-        <View style={styles.grow}>
-          <CardTitle>Share a private preview</CardTitle>
-          <Hint>Send your draft to someone outside your team, like a client. They don&apos;t need to sign in. The link shows your latest draft, stays out of search engines and stops working when it ends or you turn it off.</Hint>
-        </View>
-        {!canManage ? <WebsiteIcon name="lock" color={ui.t3} /> : null}
+    <View testID="share-panel">
+      <Text style={styles.label}>Link works for</Text>
+      <View style={styles.controls}>
+        <Segmented<Ttl> label="Link works for" options={TTL_OPTIONS} value={ttl} onChange={setTtl} disabled={create.isPending} compact testIDPrefix="share-ttl" />
+        <WButton label={create.isPending ? "Making your link…" : "Make a link"} icon="ext" variant="primary" size="sm" onPress={makeLink} loading={create.isPending} testID="share-create" />
       </View>
-      {!canManage ? (
-        <Text style={styles.help}>Only brand admins and owners can share a private preview.</Text>
-      ) : (
-        <>
-          <Text style={styles.label}>Link works for</Text>
-          <View style={styles.controls}>
-            <Segmented<Ttl> label="Link works for" options={TTL_OPTIONS} value={ttl} onChange={setTtl} disabled={create.isPending} compact testIDPrefix="share-ttl" />
-            <WButton label={create.isPending ? "Making your link…" : "Make a link"} icon="ext" variant="primary" size="sm" onPress={makeLink} loading={create.isPending} testID="share-create" />
+      {made ? (
+        <View style={styles.made} testID="share-made" accessibilityLiveRegion="polite">
+          <Text style={styles.url} selectable testID="share-url">{made.url}</Text>
+          <View style={styles.madeActions}>
+            <MiniButton icon="copy" label="Copy link" onPress={() => copy(made.url)} testID="share-copy" />
+            <WButton label="Share…" icon="ext" variant="secondary" size="sm" onPress={() => send(made.url)} testID="share-send" />
           </View>
-          {made ? (
-            <View style={styles.made} testID="share-made" accessibilityLiveRegion="polite">
-              <Text style={styles.url} selectable testID="share-url">{made.url}</Text>
-              <View style={styles.madeActions}>
-                <MiniButton icon="copy" label="Copy link" onPress={() => copy(made.url)} testID="share-copy" />
-              </View>
-              <Text style={styles.help}>{`Copy it now: Mingla shows this link only once. It works until ${formatWebsiteDateTime(made.expires_at)}.`}</Text>
-              {!made.preview_ready ? (
-                <Text style={styles.warn} role="alert">Your draft preview isn&apos;t ready yet. The link will show it as soon as it is; try opening it in a minute.</Text>
-              ) : null}
-            </View>
+          <Text style={styles.help}>{`Copy it now: Mingla shows this link only once. It works until ${formatWebsiteDateTime(made.expires_at)}.`}</Text>
+          {!made.preview_ready ? (
+            <Text style={styles.warn} role="alert">Your draft preview isn&apos;t ready yet. The link will show it as soon as it is; try opening it in a minute.</Text>
           ) : null}
-          <View style={styles.list} testID="share-links">
-            {links.isLoading ? <Spinner label="Loading your preview links" /> : null}
-            {links.isError ? <Text style={styles.error} role="alert">Your preview links couldn&apos;t be loaded. Try again in a moment.</Text> : null}
-            {active.map((link) => (
-              <View key={link.id} style={styles.linkRow} testID={`share-link-${link.id}`}>
-                <Text style={styles.linkText}>{shareLinkLine(link)}</Text>
-                <WButton label="Turn off" variant="ghost" size="sm" onPress={() => setTurningOff(link)} loading={revoke.isPending && revoke.variables === link.id} testID={`share-revoke-${link.id}`} />
-              </View>
-            ))}
-            {ended.length ? (
-              <Text style={styles.help}>{`${ended.length} earlier ${ended.length === 1 ? "link no longer works" : "links no longer work"}.`}</Text>
-            ) : null}
+        </View>
+      ) : null}
+      <View style={styles.list} testID="share-links">
+        {links.isLoading ? <Spinner label="Loading your preview links" /> : null}
+        {links.isError ? (
+          <View style={styles.errorRow} role="alert">
+            <Text style={styles.error}>Your preview links couldn&apos;t be loaded.</Text>
+            <WButton label="Try again" variant="ghost" size="sm" onPress={() => { void links.refetch(); }} testID="share-links-retry" />
           </View>
-        </>
-      )}
+        ) : null}
+        {!links.isLoading && !links.isError && (links.data ?? []).length === 0 ? (
+          <Text style={styles.help} testID="share-links-empty">No links yet. Make one and send it to your client.</Text>
+        ) : null}
+        {active.map((link) => (
+          <View key={link.id} style={styles.linkRow} testID={`share-link-${link.id}`}>
+            <Text style={styles.linkText}>{shareLinkLine(link)}</Text>
+            <WButton label="Turn off" variant="ghost" size="sm" onPress={() => setTurningOff(link)} loading={revoke.isPending && revoke.variables === link.id} testID={`share-revoke-${link.id}`} />
+          </View>
+        ))}
+        {ended.map((link) => (
+          <Text key={link.id} style={styles.endedLine} testID={`share-ended-${link.id}`}>{shareLinkLine(link)}</Text>
+        ))}
+      </View>
       <ConfirmDialog
         visible={turningOff !== null}
         onClose={() => setTurningOff(null)}
@@ -137,7 +163,7 @@ export function SharePreviewCard(): React.ReactElement {
         destructive
         testID="share-revoke-confirm"
       />
-    </Card>
+    </View>
   );
 }
 
@@ -147,7 +173,9 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ui.t2, marginTop: 12 },
   controls: { flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 6 },
   made: { marginTop: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: ui.cardBorder, gap: 6 },
-  madeActions: { flexDirection: "row" },
+  madeActions: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  errorRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  endedLine: { fontSize: 12, lineHeight: 16, color: ui.t3, paddingVertical: 6, borderTopWidth: 1, borderTopColor: ui.cardBorder },
   url: { fontFamily: "monospace", fontSize: 13, color: ui.t1 },
   list: { marginTop: 12, gap: 4 },
   linkRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44, borderTopWidth: 1, borderTopColor: ui.cardBorder },

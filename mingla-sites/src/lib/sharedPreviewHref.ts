@@ -5,11 +5,11 @@
  * share link). Null for anything that isn't one of the site's pages (other
  * sites, runtime routes, media, in-page anchors), which then behaves as usual.
  */
-const RUNTIME_PREFIXES = ["/api/", "/media/", "/om/", "/fonts/", "/map/", "/preview", "/_next/", "/.well-known/"];
+const RUNTIME_PREFIXES = ["/api/", "/media/", "/om/", "/fonts/", "/map/", "/preview", "/plan-preview", "/_next/", "/.well-known/"];
 
 /** Which preview a link stays inside. `frameAncestor` is the team preview's validated `fa`. */
 export type PreviewLinkTarget =
-  | { key: string; frameAncestor?: string | null; token?: undefined }
+  | { key: string; frameAncestor?: string | null; token?: undefined; plan?: boolean }
   | { token: string; key?: undefined; frameAncestor?: undefined };
 
 /** A link's page is judged against this while rendering on the server, where no real origin is known. */
@@ -18,7 +18,8 @@ const RENDER_ORIGIN = "https://preview.invalid";
 function previewBase(target: PreviewLinkTarget): { pathname: string; params: [string, string][] } {
   if (target.token !== undefined) return { pathname: `/preview/share/${target.token}`, params: [] };
   return {
-    pathname: "/preview",
+    // #4453 milestone 10 — a plan preview stays on /plan-preview (its own route and host).
+    pathname: target.plan ? "/plan-preview" : "/preview",
     params: [["k", target.key], ...(target.frameAncestor ? [["fa", target.frameAncestor] as [string, string]] : [])],
   };
 }

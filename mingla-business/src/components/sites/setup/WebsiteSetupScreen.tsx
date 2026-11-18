@@ -28,7 +28,9 @@ import { SitePreviewPanel, type PreviewGrantState } from "../website/preview/Sit
 import { PublishSection } from "../website/sections/PublishSection";
 import { OfferingsPart } from "../plan/OfferingsPart";
 import { PlanDesignPart } from "../plan/PlanDesignPart";
+import { PlanPreviewChooser } from "../plan/PlanPreviewChooser";
 import { StoryPart } from "../plan/StoryPart";
+import { ProofPart } from "../plan/ProofPart";
 import { SetupBrandStep } from "./SetupBrandStep";
 import { SetupDraftStep } from "./SetupDraftStep";
 import { SetupLive } from "./SetupLive";
@@ -126,6 +128,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   // #2830 — "Add it myself" in the panel: the field, on this screen.
   const [focusRequest, setFocusRequest] = useState<{ key: string; at: number } | null>(null);
   const [showSteps, setShowSteps] = useState(false);
+  // #4453 M10 — "See all 10 styles" opens the look picker under the three-style preview.
+  const [allStyles, setAllStyles] = useState(false);
 
   // ── Presence ───────────────────────────────────────────────────────────
   const [watching, setWatching] = useState(false);
@@ -309,9 +313,22 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
               <WButton label="Open Website design" onPress={() => router.push(`/brand/${brandId}/website/design?returnTo=${encodeURIComponent(`/brand/${brandId}/website/setup?step=look`)}` as never)} testID="setup-open-design" />
             </View>
           </View>
+        ) : plan.planPreview && !allStyles ? (
+          // #4453 M10 — SITES_PLAN_PREVIEW: real renders in Ari's three picks (flag off: unchanged).
+          <PlanPreviewChooser
+            brandId={brandId}
+            planState={plan}
+            readOnly={readOnly}
+            onDone={() => goStep(nextOpenStep(status.steps, "look"))}
+            onSeeAll={() => setAllStyles(true)}
+            onChangeDetails={() => goStep("story")}
+          />
         ) : <PlanDesignPart brandId={brandId} planState={plan} readOnly={readOnly} onDone={() => goStep(nextOpenStep(status.steps, "look"))} />;
       case "story":
-        return <StoryPart brandId={brandId} step="questions" readOnly={readOnly} onDone={(next) => goStep(next)} />;
+        // #4453 — "What guests say" comes between the story and approval while Core lists it.
+        return <StoryPart brandId={brandId} step="questions" readOnly={readOnly} onDone={(next) => goStep(next === "approve" && status.steps.some((entry) => entry.key === "proof") ? "proof" : next)} />;
+      case "proof":
+        return <ProofPart brandId={brandId} readOnly={readOnly} onDone={(next) => goStep(next)} />;
       case "approve":
         return <StoryPart brandId={brandId} step="approve" readOnly={readOnly} onDone={(next) => goStep(next)} />;
       case "build":

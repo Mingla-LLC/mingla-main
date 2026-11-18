@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { DraftReviewCard } from "./DraftReviewCard";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useWebsite } from "../WebsiteContext";
@@ -127,6 +128,8 @@ export function PublishSection({ variant, onFix }: {
             <WButton label="Try again" size="sm" onPress={controller.actions.onResetFailedPublication} testID="publish-reset" />
           </Banner>
         ) : null}
+        {/* #4453 — Draft sections block publishing until reviewed (UNREVIEWED_SECTIONS). */}
+        <DraftReviewCard siteId={site.id} proofEnabled={ctx.plan?.proofEnabled === true} readOnly={ctx.lock.heldByOther} mode="publish" toast={toast} />
         {validation.isLoading || validation.isFetching || designChecks.isFetching ? <Hint>{"Checking your pages\u2026"}</Hint> : null}
         {validation.data && !blocker ? (
           <View style={styles.setupRow} testID="setup-check-pages"><CheckCircle state="on" /><Text style={styles.setupRowText}>Every page has content</Text></View>
@@ -181,6 +184,7 @@ export function PublishSection({ variant, onFix }: {
     <View testID="website-publish">
       <OfflineBanner />
       <SectionHead ref={headingRef} phone={phone} title="Publish & history" subtitle="Changes you make are saved to your draft. Publishing makes them visible." />
+      <DraftReviewCard siteId={site.id} proofEnabled={ctx.plan?.proofEnabled === true} readOnly={ctx.lock.heldByOther} mode="publish" toast={toast} />
       {tracking ? (
         <Card testID="publish-progress">
           <View role="status" accessibilityLiveRegion="polite">

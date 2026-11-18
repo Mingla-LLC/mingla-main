@@ -1,0 +1,117 @@
+/*
+ * #4453 6a — the "haven" design, version 1: sea-mist page, tide-green ink,
+ * cedar accent, a light serif display, an arched hero photograph that opens
+ * with a clip reveal (Haven's one signature moment), a floating pill header
+ * and slow parallax. Light only by design.
+ *
+ * Drawn by the shared block library (public/designs/_shared/blocks-1.css,
+ * linked first): this file maps the library's role variables onto Haven's
+ * tokens, sets Haven's type, and adds its signature rules. §3.8 contrast
+ * fixes live in the tokens (accent label = accent 700, the accent fill =
+ * accent 400, muted = ink_quiet). Every colour is a site token (var(--c-*));
+ * type families are the font slots; radii scale with var(--radius-scale) and
+ * the button with var(--button-radius). Scoped under [data-design="haven"].
+ * Immutable: a change is 2.css.
+ */
+@layer base, components;
+
+:root[data-design="haven"] {
+  color-scheme: light;
+  --display: var(--font-display);
+  --body: var(--font-body);
+  --italic: var(--font-accent, var(--font-display));
+  --mg-bg: var(--c-canvas);
+  --mg-bg-alt: var(--c-surface-sunken);
+  --mg-surface: var(--c-surface);
+  --mg-ink: var(--c-ink-strong);
+  --mg-heading: var(--c-ink-strong);
+  --mg-body: var(--c-ink-body);
+  --mg-muted: var(--c-ink-quiet);
+  --mg-line: color-mix(in srgb, var(--c-ink-strong) 14%, transparent);
+  --mg-accent: var(--c-accent-400);
+  --mg-accent-ink: var(--c-accent-ink);
+  --mg-label: var(--c-accent-700);
+  --mg-band: var(--c-surface-deep);
+  --mg-band-ink: var(--c-ink-on-dark-body);
+  --mg-band-muted: color-mix(in srgb, var(--c-ink-on-dark-body) 76%, var(--c-surface-deep));
+  --mg-band-label: var(--c-highlight-on-dark);
+  --mg-btn: var(--c-action);
+  --mg-btn-ink: var(--c-surface);
+  --mg-btn-hover: var(--c-highlight-600);
+  --mg-hero-ink: var(--c-ink-on-photo-body);
+  --mg-hero-quiet: var(--c-ink-on-photo-quiet);
+  --mg-i: var(--c-highlight-600);
+  --mg-focus: var(--c-highlight-600);
+  --mg-scrim: var(--c-scrim-rgb);
+  --mg-shadow: var(--c-shadow-rgb);
+  --mg-f-display: var(--display);
+  --mg-f-body: var(--body);
+  --mg-f-label: var(--body);
+  --mg-d-weight: 400;
+  --mg-d-track: -.02em;
+  --mg-d-lh: .98;
+  --mg-h2-size: clamp(46px, 6.2vw, 96px);
+  --mg-h1-size: clamp(64px, 11vw, 184px);
+  --mg-h1-track: -.035em;
+  --mg-h1-lh: .88;
+  --mg-h3-track: -.01em;
+  --mg-l-weight: 600;
+  --mg-l-track: .2em;
+  --mg-l-size: 12px;
+  --mg-man-weight: 400;
+  --mg-man-size: clamp(28px, 3.4vw, 50px);
+  --mg-man-track: -.01em;
+  --mg-r-card: calc(28px * var(--radius-scale, 1));
+  --mg-r-field: calc(999px * var(--radius-scale, 1));
+  --mg-r-btn: var(--button-radius, 999px);
+}
+
+@layer base {
+  [data-design="haven"] *, [data-design="haven"] *::before, [data-design="haven"] *::after { box-sizing: border-box; }
+  [data-design="haven"] body { margin: 0; background: var(--c-canvas); color: var(--c-ink-body); font: 400 16px/1.65 var(--body); -webkit-font-smoothing: antialiased; }
+  [data-design="haven"] img, [data-design="haven"] video { max-width: 100%; }
+  [data-design="haven"] a { color: inherit; }
+}
+
+/* type */
+[data-design="haven"] .mg-page :is(.mg-blk, .mg-hero, .mg-foot, .mg-pmenu) h3 { font-weight: 500; }
+/* the tight headline leading would clip descenders inside each line's reveal mask: give the mask room */
+[data-design="haven"] .mg-page .mg-h1 .mg-ln { padding-bottom: .14em; margin-bottom: -.14em; }
+[data-design="haven"] .mg-page .mg-h1 .mg-ln:last-child > span { font-family: var(--italic); font-style: italic; color: var(--c-highlight-600); }
+[data-design="haven"] .mg-page .mg-manifesto__big :is(em, strong) { font-family: var(--italic); font-style: italic; color: var(--c-accent-700); }
+[data-design="haven"] .mg-page .mg-btn { font: 600 15px/1 var(--body); }
+[data-design="haven"] .mg-page .mg-price { font: 500 28px/1 var(--display); }
+[data-design="haven"] .mg-page .mg-fn__n, [data-design="haven"] .mg-page .mg-big-num { font: italic 400 56px/1 var(--italic); color: var(--c-accent-700); }
+[data-design="haven"] .mg-page .mg-faq summary { font-weight: 500; font-size: clamp(22px, 2vw, 28px); }
+[data-design="haven"] .mg-page .mg-bigq, [data-design="haven"] .mg-page .mg-voice { font-family: var(--display); font-weight: 400; }
+[data-design="haven"] .mg-page .mg-giant { font-family: var(--display); font-weight: 400; letter-spacing: -.03em; }
+[data-design="haven"] .mg-page .mg-mark { font: 500 26px/1 var(--display); letter-spacing: -.01em; }
+
+/* soft surfaces: rounded tiles and pictures */
+[data-design="haven"] .mg-page .mg-tiles { gap: 22px; background: transparent; border: 0; border-radius: 0; overflow: visible; }
+[data-design="haven"] .mg-page .mg-tile { border-radius: var(--mg-r-card); background: var(--c-surface); }
+[data-design="haven"] .mg-page .mg-tile svg { color: var(--c-accent-700); }
+[data-design="haven"] .mg-page :is(.mg-mosaic figure, .mg-dest, .mg-stg .mg-ph, .mg-ocard, .mg-rcard) { border-radius: var(--mg-r-card); overflow: hidden; }
+[data-design="haven"] .mg-page .mg-rv-wall .mg-qrow { border-radius: var(--mg-r-card); overflow: hidden; }
+
+/* ticker: the tide band, light serif phrases, cedar dots */
+[data-design="haven"] .mg-page .mg-mq { background: var(--c-surface-deep); color: var(--c-ink-on-dark-body); }
+[data-design="haven"] .mg-page .mg-mq__it { font: 400 clamp(26px, 3.2vw, 44px)/1 var(--display); letter-spacing: -.01em; }
+[data-design="haven"] .mg-page .mg-mq__dot { background: var(--c-accent-400); }
+
+/* the newsletter sits in a rounded band with breathing room */
+[data-design="haven"] .mg-page .mg-nl-photo { margin: 0 max(12px, env(safe-area-inset-left, 0px)) clamp(60px, 8vw, 110px); border-radius: calc(48px * var(--radius-scale, 1)); overflow: hidden; }
+[data-design="haven"] .mg-page .mg-fcols { padding-top: 60px; box-shadow: inset 0 1px 0 var(--mg-line); }
+
+/* pill header: ink call to action */
+[data-design="haven"] .mg-page .mg-hd--pill .mg-hd__cta { background: var(--c-action); color: var(--c-surface); }
+
+/* the arch opens from a slot (the signature moment), only once the motion module runs */
+@media (prefers-reduced-motion: no-preference) {
+  [data-design="haven"] .mg-scope[data-motion="on"] .mg-hero-arch__arch .mg-ph { animation: hv-arch 1800ms cubic-bezier(.65, 0, .35, 1) 200ms both; }
+}
+@keyframes hv-arch { from { clip-path: inset(18% 30% 0 30% round 240px 240px 0 0); } to { clip-path: inset(0 0 0 0 round 0); } }
+
+@media (max-width: 720px) {
+  [data-design="haven"] .mg-page .mg-h1 { font-size: clamp(56px, 16vw, 96px); }
+}

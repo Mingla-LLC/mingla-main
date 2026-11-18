@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 191,
-    "capability_count": 203,
+    "registered_tool_count": 196,
+    "capability_count": 208,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 190,
+      "registered_unverified": 195,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -8477,6 +8477,236 @@
       ],
       "confidence": "high",
       "verified_at": "2026-10-26"
+    },
+    {
+      "id": "ari.sites.read_design_brief",
+      "domain": "sites",
+      "outcome": "Read the website design brief: format, style fit and eligible sections",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getSiteDesignBrief"
+          }
+        ]
+      },
+      "ari_tool": "get_site_design_brief",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "f9a551adeca967fba30d055dce67e8147d896b25",
+          "reference": "mingla-site-cms/src/lib/designPass.issue4453.test.ts: get_site_design_brief",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "Behind SITES_ARI_DESIGN_PASS (brand allowlist); no runtime evidence on Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-16"
+    },
+    {
+      "id": "ari.sites.propose_design_pass",
+      "domain": "sites",
+      "outcome": "Propose Ari's one design pass in a fitting style, composed from Mingla data",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeSiteDesignPass"
+          }
+        ]
+      },
+      "ari_tool": "propose_site_design_pass",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "f9a551adeca967fba30d055dce67e8147d896b25",
+          "reference": "mingla-site-cms/src/lib/designPass.issue4453.test.ts: propose_site_design_pass",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "Behind SITES_ARI_DESIGN_PASS (brand allowlist); no runtime evidence on Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-16"
+    },
+    {
+      "id": "ari.sites.propose_chrome",
+      "domain": "sites",
+      "outcome": "Propose the website header layout, phone booking bar and header button",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/brand/[id]/website.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeSiteChrome"
+          }
+        ]
+      },
+      "ari_tool": "propose_site_chrome",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "f9a551adeca967fba30d055dce67e8147d896b25",
+          "reference": "mingla-site-cms/src/lib/designPass.issue4453.test.ts: propose_site_chrome",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "Behind SITES_ARI_DESIGN_PASS (brand allowlist); no runtime evidence on Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-16"
+    },
+    {
+      "id": "ari.sites.propose_page",
+      "domain": "sites",
+      "outcome": "Propose a new website page as a plan; added hidden as a Draft by Ari for the owner to review",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/src/components/sites/website/sections/PagesSection.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeSitePage"
+          }
+        ]
+      },
+      "ari_tool": "propose_site_page",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "23db91b06fae6bdc332d5a33d6c81c85b42bc244",
+          "reference": "mingla-site-cms/src/lib/ariPage.issue4453.m11.implementor.test.ts: propose_site_page",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "Behind SITES_ARI_ADD_PAGE (brand allowlist, none seeded); no runtime evidence on Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-17"
+    },
+    {
+      "id": "ari.sites.answer_page_question",
+      "domain": "sites",
+      "outcome": "Put the owner's answer to Ari's question on a Draft page from Ari, word for word",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/src/components/sites/website/sections/PagesSection.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const answerSitePageQuestion"
+          }
+        ]
+      },
+      "ari_tool": "answer_site_page_question",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "23db91b06fae6bdc332d5a33d6c81c85b42bc244",
+          "reference": "mingla-site-cms/src/lib/ariPage.issue4453.m11.implementor.test.ts: answer_site_page_question",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "Behind SITES_ARI_ADD_PAGE (brand allowlist, none seeded); no runtime evidence on Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-17"
     },
     {
       "id": "ari.sites.confirm_review",

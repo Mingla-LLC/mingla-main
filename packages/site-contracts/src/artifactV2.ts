@@ -11,8 +11,9 @@
  * unsafe link, a block variant its design does not draw, and anything over the
  * limits below. A refused artifact never goes live; the last good one stays.
  */
+import { assertNoSampleContent } from "./planPreview.ts";
 import { assertSiteBlock, BLOCK_CATALOG, type SiteBlock } from "./blocks.ts";
-import { designFor, type DesignKey } from "./designs.ts";
+import { designFor, FOOTER_VARIANTS, HEADER_VARIANTS, type DesignKey, type FooterVariant, type HeaderVariant } from "./designs.ts";
 import {
   assertFontAssets,
   assertFontFallbacks,
@@ -48,7 +49,9 @@ import {
   hasOnlyKeys,
   isCanonicalMinglaHref,
   isIanaTimeZone,
+  isMinglaActionHref,
   isSafeHref,
+  type MinglaActionScope,
   plainObject,
   UUID_RE,
 } from "./safety.ts";
@@ -164,6 +167,20 @@ export type SiteNavigation = {
   items: Array<NavLink & { children?: NavLink[] }>;
   header_cta?: NavLink;
   wordmark?: string;
+  /**
+   * #4453 §3.3 — the shared header layout. Absent: the design draws its own
+   * header (every site published before #4453). Must be one the design offers.
+   */
+  header_variant?: HeaderVariant;
+  /*
+   * #4453 milestone 5 (§5.7) — the sticky phone booking bar: below 721 px,
+   * after the hero, one Mingla action (the page's hero booking target, else
+   * the header button). The title and note are Ari or owner text checked by
+   * the claim check; a "from" price only ever comes from the live feed.
+   */
+  sticky_booking?: boolean;
+  sticky_title?: string;
+  sticky_note?: string;
 };
 
 /** #2829 W7 — the social networks a footer may link (drawn by the runtime, never uploaded). */
@@ -188,11 +205,13 @@ export type SiteFooter = {
   columns?: Array<{ heading: string; links: NavLink[] }>;
   socials?: Array<{ network: FooterSocialNetwork; url: string }>;
   copyright?: string;
+  /** #4453 §3.3 — the shared footer layout. Absent: the design's own footer. */
+  footer_variant?: FooterVariant;
 };
 
 const FOOTER_KEYS = [
   "address", "hours_summary", "legal_text", "links",
-  "tagline_lines", "location", "email", "columns", "socials", "copyright",
+  "tagline_lines", "location", "email", "columns", "socials", "copyright", "footer_variant",
 ] as const;
 
 function navLinkShape(link: unknown): boolean {
@@ -216,6 +235,7 @@ export function footerAccepted(footer: unknown): boolean {
     plainObject(social) && hasOnlyKeys(social, ["network", "url"]) &&
     (FOOTER_SOCIAL_NETWORKS as readonly unknown[]).includes(social.network) &&
     isSafeHref(social.url) && String(social.url).startsWith("https://")))) return false;
+  if (f.footer_variant !== undefined && !(FOOTER_VARIANTS as readonly unknown[]).includes(f.footer_variant)) return false;
   return true;
 }
 
@@ -227,6 +247,13 @@ export type PageNode = {
   collection?: CollectionKind;
   blocks: SiteBlock[];
   seo?: { title?: string; description?: string; noindex?: true };
+  /**
+   * #4453 milestone 11 (decision N10) — a page Ari added that the owner has not
+   * accepted yet. Only a PREVIEW artifact carries it (the publish leaves the
+   * page out), it is always disabled, and the share view drops it with every
+   * link to it.
+   */
+  draft_by_ari?: true;
 };
 
 export type CommercialReference = { kind: "offering" | "reservation" | "checkout"; id: string; url: string };
@@ -276,8 +303,99 @@ export type ArtifactV2 = {
    * collections the owner put in their own order (else newest first).
    */
   site_display?: SiteDisplay;
+  /**
+   * #4453 PR 2 (booking lock) — the brand every button on this site must
+   * resolve to, frozen at publish from Core's signed values: its Mingla slug
+   * and its own contact email and phone. Present on every artifact built
+   * after the booking lock; with it, every action field must pass
+   * isMinglaActionHref. Absent on earlier artifacts, which keep serving
+   * unchanged until their next publish.
+   */
+  action_scope?: ArtifactActionScope;
   commercial: { references: CommercialReference[] };
 };
+
+/**
+ * The brand every button must resolve to. `contact_phone` is normalised
+ * (normalizeBrandPhone: "+" and digits); `social_handles` are the brand's own
+ * profiles (lowercase, no "@"), so a social link must be one of them.
+ */
+export type ArtifactActionScope = { brand_slug: string; contact_email?: string; contact_phone?: string; social_handles?: string[] };
+
+const ACTION_SCOPE_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i;
+
+/** Throws ARTIFACT_ACTION_SCOPE_MISMATCH unless `value` is a valid action scope. */
+export function assertArtifactActionScope(value: unknown): asserts value is ArtifactActionScope {
+  if (
+    !plainObject(value) || !hasOnlyKeys(value, ["brand_slug", "contact_email", "contact_phone", "social_handles"]) ||
+    typeof value.brand_slug !== "string" || !ACTION_SCOPE_SLUG_RE.test(value.brand_slug) ||
+    (value.contact_email !== undefined &&
+      !(typeof value.contact_email === "string" && value.contact_email.length <= 254 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value.contact_email))) ||
+    (value.contact_phone !== undefined &&
+      !(typeof value.contact_phone === "string" && /^\+?\d{5,20}$/.test(value.contact_phone))) ||
+    (value.social_handles !== undefined &&
+      !(Array.isArray(value.social_handles) && value.social_handles.length <= 20 &&
+        value.social_handles.every((handle) => typeof handle === "string" && /^[a-z0-9._-]{1,100}$/.test(handle))))
+  ) fail("ARTIFACT_ACTION_SCOPE_MISMATCH");
+}
+
+/**
+ * #4453 PR 2 — every address this site answers ("" is Home): its enabled
+ * pages and its destination and story pages. A same-site action link must
+ * name one of them.
+ */
+export function siteAnswerPaths(input: {
+  pages: ReadonlyArray<{ path: string; enabled: boolean }>;
+  routes: SiteRoutes;
+  collections: SiteCollections;
+}): Set<string> {
+  const paths = new Set(input.pages.filter((page) => page.enabled).map((page) => page.path));
+  const details = collectionDetailSlugs(input.collections);
+  for (const [kind, slugs] of [["destinations", details.destinations], ["stories", details.stories]] as const) {
+    const base = input.routes[kind];
+    for (const slug of slugs) paths.add(base ? `${base}/${slug}` : slug);
+  }
+  return paths;
+}
+
+/** The scope an artifact's action links are checked against (null when it carries none). */
+export function artifactActionScope(
+  artifact: Pick<ArtifactV2, "action_scope" | "pages" | "routes" | "collections" | "offerings_snapshot" | "commercial"> &
+    Partial<Pick<ArtifactV2, "media" | "seo">>,
+  /**
+   * Fail closed: with no `action_scope`, return a scope with NO brand, so
+   * every link that needs the brand is refused (`brand_unknown`). Used at
+   * publish when Core couldn't name the brand; never by the runtime, which
+   * keeps serving earlier artifacts unchanged.
+   */
+  options: { failClosed?: boolean; identityUnchecked?: boolean } = {},
+): MinglaActionScope | null {
+  const scope = artifact.action_scope;
+  if (!scope && !options.failClosed) return null;
+  const events = new Set<string>();
+  for (const offering of artifact.offerings_snapshot) if (offering.kind === "event") events.add(offering.id.toLowerCase());
+  for (const reference of artifact.commercial.references) {
+    if (reference.kind === "checkout" || reference.kind === "offering") events.add(reference.id.toLowerCase());
+  }
+  let siteHost: string | null = null;
+  try {
+    siteHost = artifact.seo?.canonical_url ? new URL(artifact.seo.canonical_url).hostname : null;
+  } catch {
+    siteHost = null;
+  }
+  return {
+    brandSlug: scope?.brand_slug ?? null,
+    sitePaths: siteAnswerPaths(artifact),
+    contactEmail: scope?.contact_email ?? null,
+    contactPhone: scope?.contact_phone ?? null,
+    checkoutEventIds: events,
+    socialHandles: scope?.social_handles?.length ? new Set(scope.social_handles) : null,
+    mediaIds: new Set((artifact.media ?? []).map((item) => item.id.toLowerCase())),
+    siteHosts: siteHost ? new Set([siteHost]) : new Set(),
+    // Only meaningful with no brand: an older Core that sends no identity.
+    identityUnchecked: !scope && options.identityUnchecked === true,
+  };
+}
 
 export const MANUAL_ORDER_COLLECTIONS = ["stories", "testimonials"] as const;
 export type ManualOrderCollection = (typeof MANUAL_ORDER_COLLECTIONS)[number];
@@ -329,10 +447,11 @@ const TOP_KEYS = [
   "publication_id", "source_revision_id", "source_digest", "generated_at", "brand", "design",
   "tokens", "fonts", "font_assets", "font_fallbacks", "routes", "language", "timezone", "pages",
   "navigation", "footer", "redirects", "collections", "offerings_snapshot", "seo",
-  "media", "stream_videos", "offering_media", "site_display", "commercial",
+  "media", "stream_videos", "offering_media", "site_display", "action_scope", "commercial",
 ] as const;
 const REQUIRED_TOP = TOP_KEYS.filter((key) =>
-  key !== "timezone" && key !== "stream_videos" && key !== "offering_media" && key !== "site_display"
+  key !== "timezone" && key !== "stream_videos" && key !== "offering_media" && key !== "site_display" &&
+  key !== "action_scope"
 );
 
 function fail(code: string): never {
@@ -402,17 +521,23 @@ function navLinkAccepted(link: unknown, livePaths: ReadonlySet<string>): boolean
   return link.href.startsWith("https://");
 }
 
-function assertNavigation(navigation: unknown, pages: PageNode[]): void {
+function assertNavigation(navigation: unknown, pages: PageNode[], action: MinglaActionScope | null = null): void {
   const live = new Set(pages.filter((page) => page.enabled).map((page) => page.path));
   if (
     !plainObject(navigation) ||
-    !hasOnlyKeys(navigation, ["items", "header_cta", "wordmark"]) ||
+    !hasOnlyKeys(navigation, ["items", "header_cta", "wordmark", "header_variant", "sticky_booking", "sticky_title", "sticky_note"]) ||
+    (navigation.sticky_booking !== undefined && typeof navigation.sticky_booking !== "boolean") ||
+    !boundedText(navigation.sticky_title, 40) ||
+    !boundedText(navigation.sticky_note, 60) ||
+    (navigation.header_variant !== undefined && !(HEADER_VARIANTS as readonly unknown[]).includes(navigation.header_variant)) ||
     !Array.isArray(navigation.items) ||
     navigation.items.length > MAX_NAV_ITEMS ||
     !boundedText(navigation.wordmark, 60) ||
     (navigation.header_cta !== undefined &&
       !(plainObject(navigation.header_cta) && hasOnlyKeys(navigation.header_cta, ["label", "href"]) &&
-        navLinkAccepted(navigation.header_cta, live)))
+        navLinkAccepted(navigation.header_cta, live) &&
+        // #4453 PR 2 — the header button is an action link.
+        (action === null || isMinglaActionHref(navigation.header_cta.href, action))))
   ) fail("ARTIFACT_NAVIGATION_MISMATCH");
   for (const item of navigation.items as unknown[]) {
     if (
@@ -432,6 +557,9 @@ function assertNavigation(navigation: unknown, pages: PageNode[]): void {
  */
 export function assertArtifactV2(value: unknown, serializedBytes?: number): asserts value is ArtifactV2 {
   if (serializedBytes !== undefined && serializedBytes > MAX_ARTIFACT_BYTES) fail("ARTIFACT_TOO_LARGE");
+  // #4453 milestone 10 (I-SITES-SAMPLE-NEVER-PUBLISHED) — a published, previewed
+  // or shared artifact never carries sample content or the plan marker.
+  assertNoSampleContent(value);
   if (!plainObject(value) || !hasOnlyKeys(value, TOP_KEYS) || REQUIRED_TOP.some((key) => !(key in value))) {
     fail("ARTIFACT_SCHEMA_MISMATCH");
   }
@@ -499,11 +627,38 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
 
   // Pages and blocks.
   if (!Array.isArray(a.pages) || a.pages.length < 1 || a.pages.length > MAX_PAGES_PER_SITE) fail("ARTIFACT_PAGES_MISMATCH");
+  /*
+   * #4453 PR 2 (booking lock) — with an action scope every button must
+   * resolve to Mingla. The scope reads the routes, snapshot and references,
+   * so those are checked first (they are checked again below, unchanged).
+   */
+  let action: MinglaActionScope | null = null;
+  if (a.action_scope !== undefined) {
+    assertArtifactActionScope(a.action_scope);
+    if (!isSiteRoutes(a.routes)) fail("ARTIFACT_ROUTES_MISMATCH");
+    assertOfferingsSnapshot(a.offerings_snapshot);
+    if (!plainObject(a.commercial) || !Array.isArray(a.commercial.references)) fail("ARTIFACT_COMMERCE_MISMATCH");
+    const references = (a.commercial.references as unknown[]).filter((reference): reference is CommercialReference =>
+      plainObject(reference) && typeof reference.id === "string" && typeof reference.kind === "string");
+    action = artifactActionScope({
+      action_scope: a.action_scope,
+      pages: (a.pages as unknown[]).filter((page): page is PageNode =>
+        plainObject(page) && typeof page.path === "string" && page.enabled === true) as PageNode[],
+      routes: a.routes as SiteRoutes,
+      collections,
+      offerings_snapshot: a.offerings_snapshot as SiteOffering[],
+      commercial: { references },
+      media: a.media as MediaRef[],
+      seo: plainObject(a.seo) && typeof a.seo.canonical_url === "string" ? a.seo as ArtifactV2["seo"] : undefined,
+    });
+  }
   const paths = new Set<string>();
   for (const entry of a.pages as unknown[]) {
     if (
       !plainObject(entry) ||
-      !hasOnlyKeys(entry, ["path", "title", "enabled", "kind", "collection", "blocks", "seo"]) ||
+      !hasOnlyKeys(entry, ["path", "title", "enabled", "kind", "collection", "blocks", "seo", "draft_by_ari"]) ||
+      // #4453 milestone 11 — a Draft-by-Ari page is never enabled in any artifact.
+      (entry.draft_by_ari !== undefined && (entry.draft_by_ari !== true || entry.enabled !== false)) ||
       !isPagePath(entry.path) || paths.has(entry.path as string) ||
       !boundedText(entry.title, 120, true) || typeof entry.enabled !== "boolean" ||
       !(PAGE_KINDS as readonly unknown[]).includes(entry.kind) ||
@@ -513,7 +668,7 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
     if (!Array.isArray(entry.blocks) || entry.blocks.length > MAX_BLOCKS_PER_PAGE) fail("ARTIFACT_BLOCKS_MISMATCH");
     if (entry.path === "" && (entry.blocks.length === 0 || entry.enabled !== true)) fail("ARTIFACT_HOME_EMPTY");
     for (const block of entry.blocks as unknown[]) {
-      assertSiteBlock(block, { mediaUrls, videoUrls, assertMedia: assertOwnedMedia });
+      assertSiteBlock(block, { mediaUrls, videoUrls, assertMedia: assertOwnedMedia, ...(action ? { action } : {}) });
       const spec = BLOCK_CATALOG[block.type];
       if (!(spec.pageKinds as readonly string[]).includes(entry.kind as string)) fail("ARTIFACT_BLOCK_TYPE_MISMATCH");
       if (!design.variants[block.type].includes(block.variant)) fail("ARTIFACT_VARIANT_MISMATCH");
@@ -530,7 +685,7 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
   const pages = a.pages as PageNode[];
 
   // Navigation, routes, redirects, language.
-  assertNavigation(a.navigation, pages);
+  assertNavigation(a.navigation, pages, action);
   if (!isSiteRoutes(a.routes) || !isRedirectRules(a.redirects) || (a.redirects as unknown[]).length > MAX_REDIRECTS) {
     fail("ARTIFACT_ROUTES_MISMATCH");
   }
@@ -548,6 +703,11 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
 
   // Footer.
   if (!footerAccepted(a.footer)) fail("ARTIFACT_FOOTER_MISMATCH");
+  // #4453 — a chrome layout must be one this design offers.
+  const headerVariant = (a.navigation as SiteNavigation).header_variant;
+  const footerVariant = (a.footer as SiteFooter).footer_variant;
+  if (headerVariant !== undefined && !design!.chrome.header.includes(headerVariant)) fail("ARTIFACT_NAVIGATION_MISMATCH");
+  if (footerVariant !== undefined && !design!.chrome.footer.includes(footerVariant)) fail("ARTIFACT_FOOTER_MISMATCH");
 
   // Offerings snapshot (W4).
   assertOfferingsSnapshot(a.offerings_snapshot);

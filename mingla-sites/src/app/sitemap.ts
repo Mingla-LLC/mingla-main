@@ -6,6 +6,7 @@ import { hrefForPath } from "../contracts/generated/routes.ts";
 import { collectionEntryPaths } from "../lib/siteCollections";
 import { isV2Artifact } from "../lib/siteArtifact";
 import { hiddenWhileEmpty } from "../lib/plannedPageIndexing";
+import { detailSitemapPaths } from "../lib/offeringDetail";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.5,
       }))
       : [];
-    return [...pages, ...entries];
+    const details = isV2Artifact(artifact)
+      ? (await detailSitemapPaths(resolution, artifact).catch(() => [])).map((path) => ({
+        url: new URL(hrefForPath(path), origin).toString(),
+        changeFrequency: "daily" as const,
+        priority: 0.6,
+      }))
+      : [];
+    return [...pages, ...entries, ...details];
   } catch {
     // Never invent URLs: an unresolvable host gets an empty sitemap, not a
     // guessed one.

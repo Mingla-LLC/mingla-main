@@ -268,6 +268,13 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   propose_site_copy: role("marketing_manager", "brand"),
   propose_site_imagery: role("marketing_manager", "brand"),
   propose_site_collection_entry: role("marketing_manager", "brand"),
+  // #4453 milestone 7 — Ari's design pass (on-path only; Core checks SITES_ARI_DESIGN_PASS).
+  get_site_design_brief: role("marketing_manager", "brand"),
+  propose_site_design_pass: role("marketing_manager", "brand"),
+  propose_site_chrome: role("marketing_manager", "brand"),
+  // #4453 milestone 11 — "Add a page with Ari" (on-path only; Core checks SITES_ARI_ADD_PAGE).
+  propose_site_page: role("marketing_manager", "brand"),
+  answer_site_page_question: role("marketing_manager", "brand"),
   confirm_site_review: role("brand_admin", "brand"),
   propose_trip_guide_update: role("event_manager", "brand"),
   create_site_preview: role("marketing_manager", "brand"),

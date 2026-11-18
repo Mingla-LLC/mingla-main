@@ -563,7 +563,8 @@ describe("#3149 wave 4 a reservation points at Mingla, and is derived", () => {
     const names = block.fields
       .map((field) => (field as { name?: string }).name)
       .filter(Boolean) as string[];
-    // #2829 W3 — plus `variant`, a closed list of layouts (not a link).
-    expect(names.sort()).toEqual(["body", "eyebrow", "heading", "variant"]);
+    // #2829 W3 — plus `variant`, a closed list of layouts (not a link);
+    // #4453 — plus `review`, the hidden Draft stamp only Studio's hook sets.
+    expect(names.sort()).toEqual(["body", "eyebrow", "heading", "review", "variant"]);
   });
 });

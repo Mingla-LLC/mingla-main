@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { sha256 } from "../../../../lib/crypto";
 import { runtimeConfig } from "../../../../lib/config";
 import { loadPublication, requestHost } from "../../../../lib/publication";
-import { PREVIEW_ASSET_HEADERS, previewArtifactForAsset } from "../../../../lib/previewMedia";
+import { PREVIEW_ASSET_HEADERS, hasPrivateAssetCredential, previewArtifactForAsset, sharedArtifactForAsset } from "../../../../lib/previewMedia";
 import { readPrivateObject, readPrivateObjectRange } from "../../../../lib/storageReader";
 import { emitPublicObservation } from "../../../../lib/observability";
 import {
@@ -31,9 +31,15 @@ async function resolveReference(request: Request, context: Params): Promise<{ re
   if (!/^[0-9a-f-]{36}$/i.test(mediaId) || (!isVideo && !variantName && !/^(320|640|960|1440|1920)\.webp$/.test(width))) return null;
   const host = requestHost(await headers());
   // #2830 — a key never falls back to the publication: a bad key is a 404.
-  const previewKey = new URL(request.url).searchParams.get("k");
+  // #4453 M11 — `?s=` (a share link) answers from that share's own view only.
+  const search = new URL(request.url).searchParams;
+  const preview = hasPrivateAssetCredential(search);
+  const previewKey = search.get("k");
+  const shareToken = search.get("s");
   const artifact = previewKey !== null
     ? await previewArtifactForAsset(previewKey, host)
+    : shareToken !== null
+    ? await sharedArtifactForAsset(shareToken, host)
     : (await loadPublication(host)).artifact;
   const media = artifact.media as MediaReference[];
   // #2829 W7b — a picture's extra rendition is served from ITS OWN record
@@ -52,7 +58,7 @@ async function resolveReference(request: Request, context: Params): Promise<{ re
     !reference.object_key.startsWith(`approved/${artifact.site_id}/${mediaId}/`) ||
     !reference.object_key.endsWith(isVideo ? ".mp4" : ".webp")
   ) return null;
-  return { reference, isVideo, siteId: artifact.site_id, preview: previewKey !== null };
+  return { reference, isVideo, siteId: artifact.site_id, preview };
 }
 
 function videoIntegrity(reference: MediaReference): VideoIntegrity | null {

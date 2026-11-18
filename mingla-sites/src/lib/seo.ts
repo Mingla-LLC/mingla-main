@@ -122,12 +122,21 @@ export function buildPageMetadata(input: {
   /** `https://<current main address>` */
   origin: string;
   noindex: boolean;
+  /**
+   * #4453 milestone 9 — an offering detail page: its cover is the social
+   * image (the page frame already carries `{offering}` as its title and the
+   * summary cut to 160 as its description; canonical is this site's own path).
+   */
+  detailCover?: { url: string | null; alt: string };
 }): Metadata {
   const { artifact, page, entry, origin, noindex } = input;
   const title = pageTitle(artifact, page);
   const description = pageDescription(artifact, page, entry);
   const canonical = canonicalUrl(page, origin);
-  const image = socialImage(artifact, page, origin, entry);
+  const coverUrl = input.detailCover?.url ? absolute(input.detailCover.url, origin) : null;
+  const image: SocialImage | undefined = coverUrl
+    ? { url: coverUrl, width: 1600, height: 1000, alt: input.detailCover?.alt ?? "" }
+    : socialImage(artifact, page, origin, entry);
   const images = image ? [{ url: image.url, width: image.width, height: image.height, alt: image.alt }] : [];
   const article = entry?.collection === "stories";
   return {

@@ -5,7 +5,7 @@
 import type { AgentLoopObservation, AgentLoopToolCall } from "./agentLoop.ts";
 import type { AriRenditionV2 } from "./ariRendition.ts";
 import { researchSourceLine } from "./ariBrandResearchCopy.ts";
-import { DESIGN_KEYS, DESIGNS } from "./siteContracts/designs.ts";
+import { ARI_DESIGN_KEYS, DESIGNS } from "./siteContracts/designs.ts";
 import {
   PLAN_OFFERING_OPTIONS,
   VENUE_DESCRIPTOR_CHIPS,
@@ -297,7 +297,8 @@ function fieldInteraction(
       version: 1,
       id: "design-choice",
       selection: "single",
-      options: DESIGN_KEYS.map((key) => ({
+      // #4453 6a — setup offers only ARI_DESIGN_KEYS (frozen #3355 path); PR 7's design pass offers every style behind SITES_ARI_DESIGN_PASS.
+      options: ARI_DESIGN_KEYS.map((key) => ({
         id: key,
         label: DESIGNS[key].label,
         detail: DESIGNS[key].description,

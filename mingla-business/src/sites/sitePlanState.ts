@@ -9,7 +9,7 @@
  * its own self-contained reader (websiteTodo.ts) so nothing here is shared
  * with — and hoisted into — the boot payload (#3493).
  */
-import { PLAN_PARTS, type PlanPartKey } from "../../../packages/site-contracts/src/sitePlan.ts";
+import { PLAN_PARTS, type FaqItem, type PlanPartKey, type ProcessStep, type QuickFacts, type ValuePoint } from "../../../packages/site-contracts/src/sitePlan.ts";
 
 export type SitePlanPart = { key: PlanPartKey; done: boolean; skipped: boolean; optional: boolean };
 
@@ -87,6 +87,11 @@ export type SitePlanState = {
     story: SitePlanStory | null;
     approvedPlan: Record<string, string> | null;
     approvedAt: string | null;
+    /** #4453 Q5-Q8 — the owner's own answers (setup part "proof"). */
+    valuePoints: ValuePoint[] | null;
+    faq: FaqItem[] | null;
+    processSteps: ProcessStep[] | null;
+    quickFacts: QuickFacts | null;
     skippedParts: string[];
     activePart: PlanPartKey | null;
     builtPages: string[] | null;
@@ -101,6 +106,15 @@ export type SitePlanState = {
   liveCounts: { trips: number; events: number; experiences: number };
   lock: { active: boolean; heldByMe: boolean; holderName: string | null; expiresAt: string | null };
   completeness: BrandContextCompleteness | null;
+  /** #4453 — SITES_PROOF_PART (Core lists the part only while it is on). */
+  proofEnabled: boolean;
+  /** #4453 — SITES_STYLE_LIBRARY for this brand (Core's value): the look pickers offer the ten styles. */
+  styleLibrary: boolean;
+  /** #4453 milestone 11 — SITES_ARI_ADD_PAGE for this brand (Core's value): "Add a page with Ari" shows. */
+  ariAddPage: boolean;
+  /** #4453 M10 — SITES_PLAN_PREVIEW for this brand (Core sends `plan_preview` only while it is on). */
+  planPreview: boolean;
+  proofCounts: { reviews: number; pastTrips: number; destinations: number; stories: number };
 };
 
 type Raw = Record<string, unknown>;
@@ -109,6 +123,22 @@ const str = (value: unknown): string | null => (typeof value === "string" && val
 const strings = (value: unknown): string[] | null =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : null;
 const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+/** #4453 — an array of objects keeping only string fields named in `keys`. */
+function textRows(value: unknown, keys: readonly string[]): Record<string, string>[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.map(obj).map((row) => Object.fromEntries(keys.flatMap((key) => (typeof row[key] === "string" ? [[key, row[key] as string]] : []))));
+}
+
+function quickFactsOf(value: unknown): QuickFacts | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = obj(value);
+  return {
+    facts: (textRows(raw.facts, ["big", "small"]) ?? []) as QuickFacts["facts"],
+    use_in_ticker: raw.use_in_ticker === true,
+    ticker: strings(raw.ticker) ?? [],
+  };
+}
+
 const isPart = (value: unknown): value is PlanPartKey => PLAN_PARTS.some((part) => part.key === value);
 
 export function normalizeSitePlan(brandId: string, value: unknown): SitePlanState {
@@ -161,6 +191,10 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
           : null,
         approvedPlan: plan.approved_plan ? Object.fromEntries(Object.entries(obj(plan.approved_plan)).filter(([, v]) => typeof v === "string")) as Record<string, string> : null,
         approvedAt: str(plan.approved_at),
+        valuePoints: textRows(plan.value_points, ["title", "sentence"]) as ValuePoint[] | null,
+        faq: textRows(plan.faq, ["question", "answer"]) as FaqItem[] | null,
+        processSteps: textRows(plan.process_steps, ["title", "text", "time"]) as ProcessStep[] | null,
+        quickFacts: quickFactsOf(plan.quick_facts),
         skippedParts: strings(plan.skipped_parts) ?? [],
         activePart: isPart(plan.active_part) ? plan.active_part : null,
         builtPages: strings(plan.built_pages),
@@ -173,6 +207,16 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     doneCount: num(status.done_count),
     nextPart: isPart(status.next_part) ? status.next_part : null,
     prefillOfferings: strings(raw.prefill_offerings),
+    proofEnabled: raw.proof_enabled === true,
+    styleLibrary: raw.style_library === true,
+    ariAddPage: raw.ari_add_page === true,
+    planPreview: raw.plan_preview === true,
+    proofCounts: {
+      reviews: num(obj(raw.proof_counts).reviews),
+      pastTrips: num(obj(raw.proof_counts).past_trips),
+      destinations: num(obj(raw.proof_counts).destinations),
+      stories: num(obj(raw.proof_counts).stories),
+    },
     liveCounts: { trips: num(counts.trips), events: num(counts.events), experiences: num(counts.experiences) },
     lock: {
       active: lock.active === true,

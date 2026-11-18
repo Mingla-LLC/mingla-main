@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { loadPublication, requestHost, resolveHostSite } from "../lib/publication";
 import { loadPreviewArtifact, parsePreviewArtifactKey, PREVIEW_KEY_HEADER } from "../lib/previewArtifact";
+import { loadPlanPreviewArtifact, PLAN_PREVIEW_KEY_HEADER } from "../lib/planPreviewArtifact";
 import { isV2Artifact, siteLanguageOf, type SiteArtifact } from "../lib/siteArtifact";
 import { SHARE_TOKEN, SHARE_TOKEN_HEADER, sharedPreviewForRequest } from "../lib/shareLinks";
 
@@ -22,6 +23,9 @@ async function documentArtifact(): Promise<SiteArtifact | null> {
   try {
     const incoming = await headers();
     const host = requestHost(incoming);
+    // #4453 milestone 10 — a plan preview (reserved host only; checked again by the page).
+    const planKey = incoming.get(PLAN_PREVIEW_KEY_HEADER);
+    if (planKey) return (await loadPlanPreviewArtifact(planKey, host)).artifact;
     const previewKey = parsePreviewArtifactKey(incoming.get(PREVIEW_KEY_HEADER));
     if (previewKey) return await loadPreviewArtifact(previewKey, await resolveHostSite(host));
     // #2829 W10 — a private share-preview link renders the site's newest preview.

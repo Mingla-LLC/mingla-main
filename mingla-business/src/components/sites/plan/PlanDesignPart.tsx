@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
-  DESIGN_KEYS,
   DESIGNS,
   designSwatches,
+  isDesignKey,
   type DesignKey,
 } from "../../../../../packages/site-contracts/src/designs.ts";
+import { lookPickerKeys, planFormatOf, styleFitLabel } from "../../../sites/styleLibrary";
 import { resolveTokens } from "../../../../../packages/site-contracts/src/tokens.ts";
 import { useSaveBrandSitePlanDesign } from "../../../sites/planApi";
 import { swatchHex } from "../../../sites/siteLook";
@@ -37,9 +38,11 @@ export function PlanDesignPart({
   const ctx = useWebsite();
   const save = useSaveBrandSitePlanDesign(brandId);
   const stored = planState.plan?.designKey;
-  const [choice, setChoice] = useState<DesignKey | null>(
-    stored === "atelier" || stored === "voyage" ? stored : null,
-  );
+  const [choice, setChoice] = useState<DesignKey | null>(isDesignKey(stored) ? stored : null);
+  // #4453 — SITES_STYLE_LIBRARY: the ten styles with their fit, else Atelier and Voyage.
+  const keys = lookPickerKeys(planState.styleLibrary, stored);
+  const format = planState.styleLibrary ? planFormatOf(planState.plan) : null;
+  const choiceFit = choice ? styleFitLabel(format, choice) : null;
   const readOnly = forcedReadOnly || ctx.lock.heldByOther || planState.site?.paused === true;
 
   const persist = (designKey: DesignKey, sourceType: "owner" | "mingla") => {
@@ -76,9 +79,10 @@ export function PlanDesignPart({
         right={<Chip label="No draft yet" tone="accent" />}
       />
       <View style={styles.grid} accessibilityRole="radiogroup">
-        {DESIGN_KEYS.map((key) => {
+        {keys.map((key) => {
           const design = DESIGNS[key];
           const selected = choice === key;
+          const fit = styleFitLabel(format, key);
           return (
             <Pressable
               key={key}
@@ -95,6 +99,12 @@ export function PlanDesignPart({
                 {selected ? <Chip label="Selected" tone="ok" /> : null}
               </View>
               <Text style={styles.description}>{design.description}</Text>
+              {fit ? (
+                <View style={styles.fitRow} testID={`plan-design-fit-${key}`}>
+                  <Chip label={fit.label} tone={fit.fit === "avoid" ? "warn" : fit.fit === "pick" ? "accent" : "neutral"} />
+                  <Text style={styles.description}>{fit.reason}</Text>
+                </View>
+              ) : null}
               <View style={styles.swatches}>
                 {designSwatches(design).slice(0, 5).map((swatch) => (
                   <View
@@ -108,6 +118,11 @@ export function PlanDesignPart({
           );
         })}
       </View>
+      {choiceFit?.warning ? (
+        <Card tone="warn" testID="plan-design-avoid-warning">
+          <Hint>{choiceFit.warning}</Hint>
+        </Card>
+      ) : null}
       <Card>
         <CardTitle>This choice does not create a website</CardTitle>
         <Hint>
@@ -154,6 +169,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   description: { color: ui.t2, fontSize: 14, lineHeight: 20, marginTop: 8 },
   swatches: { flexDirection: "row", gap: 8, marginTop: 20 },
+  fitRow: { gap: 6, marginTop: 10, alignItems: "flex-start" },
   swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: ui.cardBorder },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginTop: 16 },
 });

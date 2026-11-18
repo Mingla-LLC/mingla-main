@@ -87,6 +87,8 @@ export interface BrandSitePreview {
 export interface BrandSitePreviewPage {
   path: string;
   title: string;
+  /** #4453 m11 rework — a Draft page from Ari (owner-only grant): the editor's page menu tags it "Draft". */
+  draft_by_ari?: true;
 }
 
 /** #2829 W2 — the preview link opened at one page of the draft. */
