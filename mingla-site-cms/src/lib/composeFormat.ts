@@ -28,6 +28,7 @@ import {
   FORMAT_PAGE_SETS,
   FORMAT_PRIMARY_ACTION,
   FORMAT_RECIPES,
+  HOME_BOOKING_TYPES,
   MAX_SECONDARY_HOME_SECTIONS,
   SECONDARY_HOME_TYPES,
   designFingerprint,
@@ -174,6 +175,13 @@ const GRID_HEADING: Readonly<Record<string, string>> = {
   trip: "Upcoming trips",
   event: "What's on",
   experience: "Sessions",
+  stay: "Rooms",
+};
+/** #4453 — a secondary format's grid on Home shows its one next offering. */
+const NEXT_HEADING: Readonly<Record<string, string>> = {
+  trip: "Next trip",
+  event: "Next up",
+  experience: "Next session",
   stay: "Rooms",
 };
 const HISTORY_HEADING: Readonly<Record<FormatKey, string>> = {
@@ -532,17 +540,25 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
   const recipe = FORMAT_RECIPES[format];
   const homeBlocks = placeSections(ctx, recipe, "home");
   if (homeBlocks[0]?.blockType !== "hero") homeBlocks.unshift(blockFor(ctx, { type: "page_header" }, "home")!);
-  // Each secondary format adds at most two of its offering or booking sections, before the sign-up.
+  // Each secondary format adds at most two of its offering or booking sections,
+  // #4453 booking-first: straight after the primary's booking block (its first
+  // run of booking sections after the hero; right after the hero when it has
+  // none), never down by the sign-up. Its grid shows its one next offering
+  // ("Next up"), then that offering's tickets.
   const extras: ComposedBlock[] = [];
   for (const other of secondary) {
     const sub: Ctx = { ...ctx, format: other };
     const picked = FORMAT_RECIPES[other].filter((section) => SECONDARY_HOME_TYPES.includes(section.type));
-    const placed = placeSections(sub, picked, "home").filter((block) =>
-      !homeBlocks.some((existing) => existing.blockType === block.blockType && existing.kind === block.kind && existing.source === block.source));
+    const placed = placeSections(sub, picked, "home")
+      .filter((block) => ![...homeBlocks, ...extras].some((existing) => existing.blockType === block.blockType && existing.kind === block.kind && existing.source === block.source))
+      .map((block) => (block.blockType === "offering_grid" ? { ...block, heading: NEXT_HEADING[String(block.kind)] ?? block.heading, limit: 1 } : block));
     extras.push(...placed.slice(0, MAX_SECONDARY_HOME_SECTIONS));
   }
-  const signUp = homeBlocks.findIndex((block) => block.blockType === "newsletter_signup");
-  homeBlocks.splice(signUp < 0 ? homeBlocks.length : signUp, 0, ...extras);
+  const isBooking = (block: ComposedBlock): boolean => (HOME_BOOKING_TYPES as readonly string[]).includes(String(block.blockType));
+  const first = homeBlocks.findIndex((block, index) => index > 0 && isBooking(block));
+  let after = first < 0 ? 1 : first;
+  while (first >= 0 && after < homeBlocks.length && isBooking(homeBlocks[after]!)) after += 1;
+  homeBlocks.splice(after, 0, ...extras);
   const home: ComposeV2Page = { key: "home", slug: "", title: "Home", kind: "standard", blocks: homeBlocks };
 
   // ── The page set ────────────────────────────────────────────────────────
