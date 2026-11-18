@@ -357,7 +357,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4490 P1-2 implementor: listed migration 20280809014490 (hours: windows, special days) between 20280809004490 and the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 hours pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
 // #4490 P1-3 implementor: listed migration 20280809024490 (events.venue_id/space_id/space_use + issue_4490_set_event_venue) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 event-venue pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
 // #4490 P1-4 implementor: listed migration 20280809034490 (experience creator fixes) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed.
-export const BOOTSTRAP_SHA256 = "64ef481a3980dbf2fd44718af4aceefe565596e786ee7db581f44a9657166875";
+// #4490 P1-5 implementor: listed migration 20280809044490 (pg_public_venue_page, Host preview, admin read) before the #2099 pin owner in the #1857, #1931 and #2117 lanes and registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "bcafe4496f54d60f194e355f313483599b25ffe24fc5fa0a33b9a652a77124e8";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

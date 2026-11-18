@@ -612,7 +612,8 @@ export function phase3dContractDigest(manifest) {
 // #4490 P1-2 implementor: listed migration 20280809014490 (hours: windows, special days) between 20280809004490 and the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 hours pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P1-3 implementor: listed migration 20280809024490 (events.venue_id/space_id/space_use + issue_4490_set_event_venue) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 event-venue pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P1-4 implementor: listed migration 20280809034490 (experience creator fixes) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "a546b08df16a0d7165d1cd91786c9e5a04d61cce8eff02e465f6a2452059c764";
+// #4490 P1-5 implementor: listed migration 20280809044490 (pg_public_venue_page, Host preview, admin read) before the #2099 pin owner in the #1857, #1931 and #2117 lanes and registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "968389683981ec35697a2531127c5a1210669deff073bacc575567fb386e6859";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
