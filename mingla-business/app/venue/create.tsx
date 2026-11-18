@@ -25,7 +25,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper (KAS native /
 // passthrough web). KeyboardAvoidingView removed. Per SPEC §7.F.
 import { ScrollView } from "../../src/wrappers/SmartScrollView";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -41,7 +41,10 @@ import {
 } from "../../src/components/brand/ClaimMatchCard";
 import { VenueCategoryPicker } from "../../src/components/brand/VenueCategoryPicker";
 import { VenueCreatorWizard } from "../../src/components/venue/VenueCreatorWizard";
-import { venueWizardResumeProgress } from "../../src/components/venue/venueWizardValidation";
+import {
+  venueCreateCloseGoesBack,
+  venueWizardResumeProgress,
+} from "../../src/components/venue/venueWizardValidation";
 import { Button } from "../../src/components/ui/Button";
 import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { Icon } from "../../src/components/ui/Icon";
@@ -253,9 +256,22 @@ export default function VenueCreateRoute(): React.ReactElement {
     }
   }, [isAuthReady, router, user]);
 
+  // #4490 click-test D4 — X goes back only when there is a real screen behind
+  // the wizard. Opened by a direct link (nothing behind) or from another
+  // create screen (back would reopen the wizard), it lands on Hub › Venues.
+  const navigation = useNavigation();
   const handleClose = useCallback((): void => {
-    router.back();
-  }, [router]);
+    const state = navigation.getState?.() as
+      | { index?: number; routes?: readonly { name?: string }[] }
+      | undefined;
+    const index = state?.index ?? 0;
+    const previous = index > 0 ? state?.routes?.[index - 1]?.name ?? null : null;
+    if (venueCreateCloseGoesBack(previous)) {
+      router.back();
+      return;
+    }
+    router.replace("/(tabs)/hub/listing" as never);
+  }, [navigation, router]);
 
   const goToCategory = useCallback((): void => {
     const n = workingName.trim();

@@ -54,6 +54,7 @@ import {
   type PendingVenueIdentityCorrectionCategory,
   type PendingVenueIdentityPreview,
 } from "../../services/pendingVenueIdentityCorrectionService.web";
+import { venueTypeOption } from "../../types/venueFeatures";
 
 export const CORRECTION_CATEGORIES: readonly PendingVenueIdentityCorrectionCategory[] = [
   "restaurant",
@@ -95,7 +96,8 @@ function safeCodeCopy(code: string | null | undefined): string {
 }
 
 function categoryLabel(value: PendingVenueIdentityCorrectionCategory): string {
-  return value.replaceAll("_", " ");
+  // #4490 D12 — the type's own label ("Play and games").
+  return venueTypeOption(value)?.label ?? value.replaceAll("_", " ");
 }
 
 type Step = "edit" | "review";

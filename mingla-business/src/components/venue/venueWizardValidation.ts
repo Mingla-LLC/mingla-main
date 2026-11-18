@@ -24,6 +24,7 @@ import type { DraftVenueState } from "../../store/draftVenueStore";
 import type { BrandHourEntry } from "../../types/brand";
 import { provenanceFor } from "../../store/draftVenueStore";
 import { composeE164 } from "../../utils/phone";
+import { hoursWeekIssue } from "../../utils/venueBrandHours";
 import { COUNTRIES } from "../../../../packages/phone-input/countries";
 
 // ─── Step model ─────────────────────────────────────────────────────────────
@@ -50,7 +51,8 @@ const CREATE_STEPS: readonly VenueWizardStep[] = [
   { id: "s4", label: "Cover" },
   { id: "s5", label: "Contact" },
   { id: "s7", label: "Price" },
-  { id: "s8", label: "Bookings" },
+  // #4490 D9 — Features, not bookings: the type's starting switches.
+  { id: "s8", label: "Features" },
   { id: "s9", label: "Review" },
 ];
 
@@ -93,6 +95,16 @@ export function venueWizardResumeProgress(
   const safeIndex = Number.isFinite(stepIndex) ? Math.floor(stepIndex) : 0;
   const current = Math.min(Math.max(safeIndex + 1, 1), total);
   return { current, total };
+}
+
+/**
+ * #4490 click-test D4 — the add-venue X goes back only to a real screen. With
+ * nothing behind it (a direct link) or another create screen behind it (back
+ * would reopen the wizard and the X looked dead), it goes to Hub › Venues.
+ */
+export function venueCreateCloseGoesBack(previousRouteName: string | null): boolean {
+  if (previousRouteName === null || previousRouteName.length === 0) return false;
+  return !/^venue\/create/.test(previousRouteName);
 }
 
 // ─── Validation ─────────────────────────────────────────────────────────────
@@ -151,7 +163,8 @@ export function venueStepError(
       return null;
     }
     case "s2":
-      return hoursError(d.hours);
+      // #4490 D5 — split days: every window checked, overlaps refused.
+      return hoursError(d.hours) ?? hoursWeekIssue(d.hours);
     case "s3":
       // Mirror claim c3: GALLERY_MIN (≥5) is enforced at go-live/approve, NOT
       // at submit (SPEC §4.3.A / OQ-7 converge-to-claim). The counter shows

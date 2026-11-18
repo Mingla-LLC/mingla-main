@@ -190,7 +190,8 @@ describe("P — only changes are sent; an address keeps its pin (#3407)", () => 
       }),
     );
     expect(lines).toEqual([
-      { label: "Category", value: "Creative & Arts" },
+      // TEST-MOD-APPROVED #4490 D10/D12 — the type's own label everywhere.
+      { label: "Category", value: "Creative and arts" },
       { label: "Address", value: "20 Admiralty Way, Lekki" },
     ]);
   });

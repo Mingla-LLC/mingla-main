@@ -2,9 +2,6 @@
  * #4490 P1-6 — feature-driven venue navigation.
  * MINGLA-INVARIANT: I-4490-VENUE-FEATURES-GATE-SUITE (declared in venueModules.ts).
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import {
   BUILT_FEATURES,
   SWITCHABLE_FEATURES,
@@ -118,11 +115,21 @@ describe("feature layout — a venue with spaces", () => {
 });
 
 describe("venue type has no effect on navigation", () => {
-  it("venueModules.ts never reads venue_category", () => {
-    const src = readFileSync(join(__dirname, "..", "venueModules.ts"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
-    expect(src).not.toMatch(/venue_?[cC]ategory/);
+  it("two venues with the same switches get the same navigation whatever their type", () => {
+    const features = featureSetFrom({ menu: true, events_here: true });
+    const baseline = deriveVenueNav({ features, activeSpaceCount: 1, spacesRequested: false });
+    for (const { key: venueType } of VENUE_TYPES) {
+      // A stray type on the input must not change anything: navigation reads switches only.
+      const withType = { features, activeSpaceCount: 1, spacesRequested: false, venueCategory: venueType };
+      expect(deriveVenueNav(withType as Parameters<typeof deriveVenueNav>[0])).toEqual(baseline);
+      // And a type's own starting switches decide its nav, nothing else.
+      const preset = featureSetFrom(
+        Object.fromEntries(builtPreset(venueType).map((k) => [k, true])) as Partial<Record<VenueFeatureKey, boolean>>,
+      );
+      expect(deriveVenueNav({ ...withType, features: preset } as Parameters<typeof deriveVenueNav>[0])).toEqual(
+        deriveVenueNav({ features: preset, activeSpaceCount: 1, spacesRequested: false }),
+      );
+    }
   });
 });
 

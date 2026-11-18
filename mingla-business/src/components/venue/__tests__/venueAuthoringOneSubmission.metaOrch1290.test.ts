@@ -99,7 +99,8 @@ describe("META-ORCH-1290 Leg B — folded one-submission create wizard", () => {
       "Cover",
       "Contact",
       "Price",
-      "Bookings",
+      // TEST-MOD-APPROVED #4490 D9 — step 8 is Features, not Bookings.
+      "Features",
       "Review",
     ]);
     // The Pitch step is gone from BOTH the id and label sets (create + claim).

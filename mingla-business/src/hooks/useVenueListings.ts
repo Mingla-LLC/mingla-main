@@ -86,26 +86,32 @@ export function useCreateVenueListing(): UseMutationResult<
       // duplicate-place / sanitized copy → submit error). Nothing swallowed.
     },
     onSuccess: (venueId, input) => {
-      // #4490 — a new venue starts with its type's preset (built features
-      // only; never switches anything off). Best effort: a refusal (e.g. a
-      // team member below admin) leaves every switch to Settings › Venue type
-      // and features, so it never blocks the create.
-      // Loaded on demand: the features service stays out of the eager bundle.
-      void import("../services/venueFeaturesService")
-        .then((mod) => mod.applyFeaturePreset(venueId, input.venueCategory))
-        .then((result) => {
-          queryClient.setQueryData(
-            venueFeatureKeys.features(input.brandId, venueId),
-            result.state,
-          );
-        })
-        .catch(() => undefined);
       void queryClient.invalidateQueries({
         queryKey: venueListingKeys.byBrand(input.brandId),
       });
       void queryClient.invalidateQueries({
         queryKey: brandPlacePipelineKeys.byBrand(input.brandId),
       });
+      // #4490 — a new venue starts with its features: the add-venue Features
+      // step's own choice when it sent one (D9), else the type's preset
+      // (built features only; never switches anything off). Best effort: a
+      // refusal (e.g. a team member below admin) leaves every switch to
+      // Settings › Venue type and features, so it never blocks the create.
+      // Returned so `mutateAsync` resolves once the switches are written and
+      // the venue page opens with the right sections.
+      // Loaded on demand: the features service stays out of the eager bundle.
+      return import("../services/venueFeaturesService")
+        .then((mod) =>
+          input.startingFeatures !== undefined
+            ? mod.applyStartingFeatures(venueId, input.startingFeatures)
+            : mod.applyFeaturePreset(venueId, input.venueCategory).then((r) => r.state),
+        )
+        .then((state) => {
+          if (state !== null) {
+            queryClient.setQueryData(venueFeatureKeys.features(input.brandId, venueId), state);
+          }
+        })
+        .catch(() => undefined);
     },
   });
 }

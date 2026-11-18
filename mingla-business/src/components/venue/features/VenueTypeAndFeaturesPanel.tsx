@@ -44,7 +44,7 @@ import { CenteredState } from "../../ui/CenteredState";
 import { GlassCard } from "../../ui/GlassCard";
 import { Sheet } from "../../ui/Sheet";
 import { Skeleton } from "../../ui/Skeleton";
-import { featureSwitchConfirm } from "./featureSwitchModel";
+import { featureSavedLine, featureSwitchConfirm, otherChangedFeatures } from "./featureSwitchModel";
 import { venueWriteErrorCopy } from "./venueFeaturesCopy";
 
 const LazyConfirmDialog = React.lazy(async () => {
@@ -107,15 +107,16 @@ export function VenueTypeAndFeaturesPanel({
         },
         {
           onSuccess: (result) => {
-            const others = result.changedKeys.filter((k) => k !== key);
-            setRowStatus({
+            // #4490 D30 — name every switch that moved, including one the
+            // server changed through the backfill rule (Waitlist follows
+            // Table reservations) without listing it.
+            const others = otherChangedFeatures(
+              state?.features ?? null,
+              result.state.features,
               key,
-              text:
-                others.length > 0
-                  ? `Saved. ${joinFeatureLabels(others)} ${enable ? "turned on" : "turned off"} too.`
-                  : "Saved",
-              error: false,
-            });
+              result.changedKeys,
+            );
+            setRowStatus({ key, text: featureSavedLine(result.state.features, others), error: false });
           },
           onError: (error) => {
             const e = error instanceof VenueFeatureError ? error : null;

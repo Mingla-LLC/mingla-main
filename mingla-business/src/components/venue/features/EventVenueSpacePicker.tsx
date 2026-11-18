@@ -55,7 +55,7 @@ export function EventVenueSpacePicker({
     queryKey: validEventId !== null ? venueFeatureKeys.eventVenue(validEventId) : ["eventVenueLink", "disabled"],
     enabled: isAuthReady && validEventId !== null,
     staleTime: 30_000,
-    queryFn: () => fetchEventVenueLink(validEventId as string),
+    queryFn: () => fetchEventVenueLink(validEventId as string, noun),
   });
   const [venueId, setVenueId] = useState<string | null>(null);
   const [spaceId, setSpaceId] = useState<string | null>(null);

@@ -9,6 +9,7 @@
 import { supabase } from "./supabase";
 import { randomId } from "../utils/randomId";
 import {
+  SWITCHABLE_FEATURES,
   VENUE_FEATURE_KEYS,
   featureSetFrom,
   type VenueFeature,
@@ -164,6 +165,34 @@ export async function applyFeaturePreset(
     skipped,
     state: mapVenueFeatureState(row.features),
   };
+}
+
+/**
+ * #4490 click-test D9 — make a new venue's switches match the add-venue
+ * Features step: switch on what the host kept on, and switch off what reads
+ * as on only through the backfill rule (Menu for a non-stay venue) when the
+ * host turned it off. Table ordering is never written here (it waits for
+ * approval). Returns the final state, or null when nothing could be read.
+ */
+export async function applyStartingFeatures(
+  venueId: string,
+  chosen: readonly VenueFeatureKey[],
+): Promise<VenueFeatureState | null> {
+  let state = await fetchVenueFeatures(venueId);
+  for (const key of SWITCHABLE_FEATURES) {
+    if (key === "table_ordering") continue;
+    const want = chosen.includes(key);
+    if (state.features[key].enabled === want) continue;
+    const result = await setVenueFeature({
+      venueId,
+      key,
+      enabled: want,
+      cascade: true,
+      expectedVersion: state.features[key].version,
+    });
+    state = result.state;
+  }
+  return state;
 }
 
 // ---------------------------------------------------------------------------
@@ -460,13 +489,21 @@ export async function setEventVenue(input: {
   if (error !== null) throw toVenueFeatureError(error);
 }
 
+/** Row kinds that can sit in a venue space (the picker's two callers). */
+export function eventVenueLinkTypes(kind: "event" | "experience"): readonly string[] {
+  return kind === "experience" ? ["experience"] : ["event", "rsvp"];
+}
+
 export async function fetchEventVenueLink(
   eventId: string,
+  kind: "event" | "experience" = "event",
 ): Promise<{ venueId: string | null; spaceId: string | null }> {
   const { data, error } = await supabase
+    // orch-strict-grep-allow events-type-filter — #4490: event_type IS filtered with .in(eventVenueLinkTypes(kind)): the event creator's row is "event" or "rsvp", the experience creator's is "experience"; trips never reach the venue picker.
     .from("events")
     .select("venue_id, space_id")
     .eq("id", eventId)
+    .in("event_type", [...eventVenueLinkTypes(kind)])
     .maybeSingle();
   if (error !== null) throw toVenueFeatureError(error);
   const row = (data ?? {}) as Record<string, unknown>;

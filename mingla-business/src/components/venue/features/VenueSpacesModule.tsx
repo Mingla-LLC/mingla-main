@@ -582,10 +582,12 @@ const styles = StyleSheet.create({
   rowBorder: { borderTopWidth: 1, borderTopColor: color.line },
   rowPressed: { backgroundColor: color.fill.pressed },
   headCell: { ...type.label, color: color.text3 },
+  // #4490 D17 — the hire column is sized to its pill ("Can be hired") and
+  // never shrinks; name, fits and used-for share the rest and wrap.
   colName: { flex: 3, minWidth: 0 },
   colFits: { flex: 2, minWidth: 0 },
   colUsed: { flex: 2, minWidth: 0 },
-  colHire: { flex: 1.4, minWidth: 0, alignItems: "flex-start" },
+  colHire: { width: 128, flexShrink: 0, alignItems: "flex-start" },
   cellStack: { gap: 2 },
   cellText: { ...type.small, color: color.text2 },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },

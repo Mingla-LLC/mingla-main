@@ -61,8 +61,10 @@ import { VenueFeatureError } from "../../services/venueFeaturesService";
 import {
   VENUE_FEATURE_KEYS,
   backfilledFeatureSet,
+  builtPreset,
   featureSetFrom,
   type VenueFeatureKey,
+  type VenueTypeKey,
 } from "../../types/venueFeatures";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { VenueModule } from "../../types/venueReservation";
@@ -253,6 +255,16 @@ export function VenueSuiteShell({
     [featuresQuery.data, reservationsEnabled, settingsResolved, venueAccess.scoped],
   );
   const tableReservationsOn = features.table_reservations.enabled;
+  // #4490 click-test D12 — features, not types: the "Take table reservations"
+  // invitation shows only while the feature is off AND the venue's type
+  // usually starts with it (restaurant, bar and lounge, club). A play venue
+  // is not asked to set tables.
+  // Type unknown (the features read failed) keeps the old invitation.
+  const featuresCategory = featuresQuery.data?.venueCategory ?? null;
+  const showReservationsInvite =
+    !tableReservationsOn &&
+    (featuresCategory === null ||
+      builtPreset(featuresCategory as VenueTypeKey).includes("table_reservations"));
   const spacesRequestedVenueId = useVenueSuiteStore((s) => s.spacesRequestedVenueId);
   const navInput = useMemo(
     () => ({
@@ -610,7 +622,7 @@ export function VenueSuiteShell({
       // being pinned above it, and the invitation is one compact row.
       const header = (
         <>
-          {!tableReservationsOn ? (
+          {showReservationsInvite ? (
             <GlassCard
               variant="base"
               padding={space[4]}
@@ -658,7 +670,12 @@ export function VenueSuiteShell({
           {/* META-ORCH-1255(C) D-D: venue-scoped so the RPC resolves THIS
               venue's place signals + timezone (the legacy brand place pointer
               is inert for new venues). */}
-          <VenueIntelligenceModule brandId={brandId} venueId={venueId} header={header} />
+          <VenueIntelligenceModule
+            brandId={brandId}
+            venueId={venueId}
+            header={header}
+            showReservationMetrics={tableReservationsOn}
+          />
         </View>
       );
     }
@@ -758,6 +775,7 @@ export function VenueSuiteShell({
               ref={availabilityRef}
               brandId={brandId}
               venueId={venueId}
+              tableReservationsOn={tableReservationsOn}
               showTableTimes={
                 tableReservationsOn &&
                 (!venueAccess.scoped ||

@@ -232,9 +232,12 @@ describe("#4334 R3-1 — venue pages carry the venue's Google place id to the Ma
     expect(code("packages/brand-rendering/PublicVenueScreen.tsx")).toContain(
       "const candidate: MapsOpenTarget = { label, geo, googlePlaceId: venue.googlePlaceId ?? null };",
     );
-    expect(code("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx")).toContain(
+    // TEST-MOD-APPROVED #4490 — the buyer route's adapter moved into the shared
+    // view model (P1-11); the route maps every venue through it.
+    expect(code("mingla-business/src/components/venue/toPublicVenueViewModel.ts")).toContain(
       "googlePlaceId: venue.googlePlaceId ?? null,",
     );
+    expect(code("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx")).toContain("toPublicVenueViewModel");
     expect(code("app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx")).toContain("googlePlaceId: venue.googlePlaceId,");
     expect(code("app-mobile/src/services/publicVenueService.ts")).toMatch(/googlePlaceId:\s*typeof row\.google_place_id === "string"/);
   });

@@ -24,19 +24,13 @@ import {
 import { VenueCategoryPicker } from "../../brand/VenueCategoryPicker";
 import { useFeatureFlag } from "../../../hooks/useFeatureFlag";
 import { ProvenanceChip } from "../../ui/ProvenanceChip";
+import { VENUE_TYPES } from "../../../types/venueFeatures";
 
-const CAT_LABEL: Record<VenueCategory, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-  stay: "Stay",
-  // #4490 — five more venue types.
-  bar_lounge: "Bar and lounge",
-  club: "Club",
-  cafe: "Cafe",
-  event_space: "Event space",
-  coworking: "Coworking",
-};
+// #4490 click-test D10/D12 — one label per type, everywhere a host reads it
+// ("Play and games", never "Play"): the nine types' own labels.
+const CAT_LABEL: Record<VenueCategory, string> = Object.fromEntries(
+  VENUE_TYPES.map((t) => [t.key, t.label]),
+) as Record<VenueCategory, string>;
 
 export interface ClaimStepCategoryProps {
   showErrors: boolean;

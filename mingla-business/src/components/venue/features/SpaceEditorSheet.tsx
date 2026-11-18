@@ -23,7 +23,7 @@ import { Input } from "../../ui/Input";
 import { NumberStepper } from "../../ui/NumberStepper";
 import { Segmented } from "../../ui/Pill";
 import { Sheet } from "../../ui/Sheet";
-import { spaceDraftIssues } from "./spaceModel";
+import { spaceDraftIssues, starterSetting } from "./spaceModel";
 
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../../ui/ConfirmDialog");
@@ -41,7 +41,8 @@ const CAPACITY_MAX = 100_000;
 export function emptySpaceDraft(name = ""): SpaceDraft {
   return {
     name,
-    setting: "indoor",
+    // #4490 D14 — "Outdoor area" / "Rooftop" start outdoor.
+    setting: starterSetting(name),
     capacityStanding: null,
     capacitySeated: null,
     photos: [],
@@ -150,6 +151,16 @@ export function SpaceEditorSheet({
         <Text style={styles.error} accessibilityLiveRegion="polite" testID="space-editor-error">
           {error}
         </Text>
+      ) : showErrors && (issues.name !== null || issues.capacity !== null) ? (
+        // #4490 D19 — a refused Save always says why beside the button, even
+        // when the fields with errors are scrolled out of view.
+        <Text style={styles.error} accessibilityLiveRegion="polite" testID="space-editor-issues">
+          {[issues.name !== null ? "Add a name" : null, issues.capacity !== null ? "set how many it fits" : null]
+            .filter((part): part is string => part !== null)
+            .join(" and ")
+            .replace(/^./, (c) => c.toUpperCase())}
+          , then save.
+        </Text>
       ) : null}
       <View style={styles.footerRow}>
         {spaceRow !== null && canEdit ? (
@@ -200,6 +211,8 @@ export function SpaceEditorSheet({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* #4490 D18 — a visible label, not a placeholder alone. */}
+          <Text style={styles.fieldLabel} nativeID="space-editor-name-label">Name</Text>
           <Input
             value={draft.name}
             onChangeText={(name) => patch({ name: name.slice(0, 80) })}
@@ -378,7 +391,10 @@ const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: space[4], paddingTop: space[2] },
   heading: { ...type.h1, color: color.text1, marginBottom: space[2] },
   scroll: { flex: 1 },
-  scrollContent: { gap: space[2], paddingBottom: space[6] },
+  // #4490 D16 — room below the last field so it scrolls fully clear of the
+  // sticky footer.
+  scrollContent: { gap: space[2], paddingBottom: space[10] },
+  fieldLabel: { ...type.small, color: color.text2 },
   label: { ...type.small, color: color.text2, marginTop: space[2] },
   hint: { ...type.caption, color: color.text3 },
   // One stepper per row: a 400 inspector cannot fit two typeable steppers

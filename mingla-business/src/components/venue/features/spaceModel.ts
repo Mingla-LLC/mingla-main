@@ -33,6 +33,17 @@ export function spaceDraftIssues(
   return { name: nameIssue, capacity: capacityIssue };
 }
 
+/**
+ * #4490 click-test D14 — a starter opens with the setting its name says:
+ * "Outdoor area" and "Rooftop" are outdoor; everything else starts indoor.
+ */
+export function starterSetting(name: string): "indoor" | "covered" | "outdoor" {
+  const n = name.trim().toLowerCase();
+  if (/(outdoor|rooftop|garden|terrace|patio|courtyard|beach|lawn|deck)/.test(n)) return "outdoor";
+  if (/(covered|veranda|verandah|canopy|gazebo|pavilion)/.test(n)) return "covered";
+  return "indoor";
+}
+
 /** What a space is used for (P1: features scoped to it or to the whole venue). */
 export function spaceUsedFor(
   spaceRow: Pick<VenueSpace, "id">,

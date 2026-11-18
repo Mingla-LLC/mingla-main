@@ -103,5 +103,5 @@ export const VENUE_FEATURES_COPY = {
   saved: "Saved",
   arrangeTitle: "Arrange your spaces",
   arrangeBody: "Draw where each space sits, so staff and guests see the layout.",
-  arrangeOnComputer: "Arrange on a computer. Your list of spaces works the same here.",
+  arrangeOnComputer: "Arrange your spaces on a wider screen, like a computer. Your list of spaces works the same here.",
 } as const;

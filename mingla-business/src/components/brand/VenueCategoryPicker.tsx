@@ -9,9 +9,11 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { VenueCategory } from "../../types/brand";
 import { VENUE_TYPES, builtPreset, joinFeatureLabels } from "../../types/venueFeatures";
 import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
 
 import {
   color,
+  materials,
   radius,
   space,
   type,
@@ -31,18 +33,22 @@ const OPTIONS: {
   description: t.description,
 }));
 
+// #4490 D2 — the same shape as the other eight rows (no "· …" tail).
 const STAY_OPTION: (typeof OPTIONS)[number] = {
   id: "stay",
   label: "Stay",
-  description: "Hotels, resorts & short stays · Reserve rooms and places",
+  description: "Hotels, resorts and short stays",
 };
 
 /** "Starts with Menu and Events here" for a type (built features only). */
-export function venueTypePresetLine(category: VenueCategory): string | null {
-  // A new venue is not approved yet, and Table ordering waits for approval,
-  // so the line only promises what create can switch on.
+export function venueTypePresetLine(category: VenueCategory): string {
+  // #4490 D2 — every type says what it starts with, in one shape. Stays are
+  // run from the Stay workspace. A new venue is not approved yet and Table
+  // ordering waits for approval, so the line only promises what create can
+  // switch on; a type whose usual features are not built yet says so.
+  if (category === "stay") return "Starts with Stays";
   const keys = builtPreset(category).filter((key) => key !== "table_ordering");
-  if (keys.length === 0) return null;
+  if (keys.length === 0) return "Starts with nothing switched on. Pick features next.";
   return `Starts with ${joinFeatureLabels(keys)}`;
 }
 
@@ -90,13 +96,23 @@ export const VenueCategoryPicker: React.FC<VenueCategoryPickerProps> = ({
               disabled && styles.disabled,
             ]}
           >
+            {/* #4490 D1 — the picked card is plainly picked: accent border,
+                tinted fill and a check, not only a lighter glass. */}
             <GlassCard
               variant={selected ? "elevated" : "base"}
               padding={space[4]}
+              style={selected ? styles.cardSelected : styles.cardIdle}
             >
-              <Text style={[styles.title, selected && styles.titleOn]}>
-                {opt.label}
-              </Text>
+              <View style={styles.headRow}>
+                <Text style={[styles.title, selected && styles.titleOn]}>
+                  {opt.label}
+                </Text>
+                {selected ? (
+                  <View style={styles.check} testID={testID !== undefined ? `${testID}-selected-${opt.id}` : undefined}>
+                    <Icon name="check" size={14} color={color.ink} />
+                  </View>
+                ) : null}
+              </View>
               <Text style={styles.desc}>{opt.description}</Text>
               {preset !== null ? (
                 <Text style={styles.preset}>{preset}</Text>
@@ -133,6 +149,33 @@ const styles = StyleSheet.create({
   },
   titleOn: {
     color: color.text1,
+  },
+  // The kit's selected surface (OptionCard): a paper border and the selected
+  // material, never accent orange (contrast beats decoration).
+  cardSelected: {
+    borderWidth: 1.5,
+    borderColor: color.paper,
+    backgroundColor: materials.selected.glassFill,
+    borderRadius: radius.md,
+  },
+  cardIdle: {
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    borderRadius: radius.md,
+  },
+  headRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[2],
+  },
+  check: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: color.paper,
+    alignItems: "center",
+    justifyContent: "center",
   },
   preset: {
     marginTop: 4,

@@ -16,6 +16,7 @@
  * `mingla_venue_listing_submitted`.
  */
 
+import type { VenueFeatureKey } from "../types/venueFeatures";
 import type { ThemeInput } from "@mingla/offering-rendering";
 
 import type { BrandClaimStatus, BrandHourEntry, VenueCategory } from "../types/brand";
@@ -178,6 +179,12 @@ export interface CreateVenueListingInput {
    * only the colour and keeps the brand's font and motion.
    */
   themeOverrides?: ThemeInput | null;
+  /**
+   * #4490 click-test D9 — the add-venue Features step's switches. Absent =
+   * the type's starting preset (claim and other callers). Read only by the
+   * create mutation's follow-up, never sent to the create RPC.
+   */
+  startingFeatures?: readonly VenueFeatureKey[];
 }
 
 /**
