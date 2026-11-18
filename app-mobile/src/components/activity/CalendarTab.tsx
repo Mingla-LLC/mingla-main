@@ -73,6 +73,8 @@ import {
   useTicketsRealtimeSubscription, // ORCH-0854
 } from "../../hooks/useCalendarEntries";
 import { useMyStayReservations } from "../../hooks/useStayGuest";
+import { useSharedPurchases } from "../../hooks/usePurchases";
+import { sharedCalendarReservations } from "../../services/sharedPurchasesService";
 import {
   SourceRefundAttentionSheet,
   type SourceRefundBank,
@@ -259,7 +261,18 @@ const CalendarTab = ({
   const { refetch: refetchReservations } = reservationsQuery;
   const { refetch: refetchStays } = staysQuery;
   const { refetch: refetchRsvps } = goingRsvpsQuery;
-  const myReservations = useMemo(() => reservationsQuery.data ?? [], [reservationsQuery.data]);
+  // #4473 — reservations shared with this account (read-only) join its own.
+  const sharedPurchasesQuery = useSharedPurchases(user?.id);
+  const myReservations = useMemo(() => {
+    const own = reservationsQuery.data ?? [];
+    const ownIds = new Set(own.map((reservation) => reservation.id));
+    return [
+      ...own,
+      ...sharedCalendarReservations(sharedPurchasesQuery.data ?? []).filter(
+        (reservation) => !ownIds.has(reservation.id),
+      ),
+    ];
+  }, [reservationsQuery.data, sharedPurchasesQuery.data]);
 
   // Realtime freshness. Each hook subscribes in an effect keyed on
   // [userId, queryClient] and removes its channel on cleanup, so a re-render
@@ -1089,6 +1102,11 @@ const CalendarTab = ({
         openTicket(row);
         return;
       case "reservation":
+        if (row.reservation.shared) {
+          // #4473 — a shared booking opens read-only in Purchases.
+          router.push(`/purchases/reservation/${encodeURIComponent(row.reservation.id)}` as never);
+          return;
+        }
         handleReservationPress(row.reservation);
         return;
       case "stay":
@@ -1155,7 +1173,8 @@ const CalendarTab = ({
     ];
     if (row.kind === "reservation") {
       const startMs = Date.parse(row.reservation.reserved_for);
-      const cancellable = Number.isFinite(startMs) && startMs > Date.now() &&
+      const cancellable = !row.reservation.shared &&
+        Number.isFinite(startMs) && startMs > Date.now() &&
         (row.reservation.status === "confirmed" || row.reservation.status === "requested");
       if (cancellable) {
         const reservation = row.reservation;

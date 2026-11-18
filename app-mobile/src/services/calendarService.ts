@@ -1,4 +1,9 @@
 import { supabase } from "./supabase";
+import {
+  fetchMySharedPurchasesSafely,
+  sharedCalendarOrders,
+  sharedCalendarRsvps,
+} from "./sharedPurchasesService";
 // issue #2160 — the "how many calendar entries does this order produce"
 // rule lives in its own RN-free module so it can actually be CALLED by a
 // test. This file imports ./supabase at module scope and cannot be.
@@ -147,6 +152,8 @@ export interface BusinessEventCalendarRow {
   ticketPdfPath: string | null;
   // ORCH-0842: venue data retained for the canonical Purchases detail.
   venue: BusinessEventVenue;
+  /** #4473 — shared with this account by a proven contact; read-only, no PDF. */
+  shared?: boolean;
 }
 
 // ORCH-1163 [rsvp-shared-body]: one flat "Going" RSVP row for the consumer
@@ -186,6 +193,8 @@ export interface ConsumerRsvpRow {
     onlineUrl: string | null;
   };
   invitedBy: string | null;
+  /** #4473 — shared with this account by a proven contact; read-only. */
+  shared?: boolean;
 }
 
 // ORCH-0842: PostgREST returns `point` columns as either string "(x,y)" or
@@ -538,7 +547,7 @@ export class CalendarService {
     // independently and correctly, with no change to either. The RSVP and trip
     // fetchers below carry no day set at all (RSVPs are single-date by product
     // decision, #2131), so they are genuinely unaffected rather than skipped.
-    return ((orders ?? []) as unknown as OrderRow[]).flatMap(
+    const ownRows = ((orders ?? []) as unknown as OrderRow[]).flatMap(
       (order): BusinessEventCalendarRow[] => {
         const event = order.events;
         const brand = event?.brand ?? null;
@@ -656,6 +665,14 @@ export class CalendarService {
         });
       },
     );
+    // #4473 — purchases shared with this account (it proved the contact they
+    // were bought with). Read-only rows; a failed shared read never hides the
+    // buyer's own rows.
+    const ownIds = new Set(ownRows.map((row) => row.orderId));
+    const sharedRows = sharedCalendarOrders(
+      await fetchMySharedPurchasesSafely(),
+    ).filter((row) => !ownIds.has(row.orderId));
+    return [...ownRows, ...sharedRows];
   }
 
   /**
@@ -707,7 +724,7 @@ export class CalendarService {
       created_at: string | null;
     };
 
-    return ((data ?? []) as unknown as RsvpRpcRow[]).map(
+    const ownRows = ((data ?? []) as unknown as RsvpRpcRow[]).map(
       (row): ConsumerRsvpRow => ({
         rsvpId: row.rsvp_id,
         guestId: row.guest_id ?? null,
@@ -742,6 +759,14 @@ export class CalendarService {
         invitedBy: row.invited_by ?? null,
       }),
     );
+    // #4473 — RSVPs shared with this account; read-only.
+    const ownKeys = new Set(
+      ownRows.map((row) => `${row.rsvpId}:${row.guestId ?? ""}`),
+    );
+    const sharedRows = sharedCalendarRsvps(
+      await fetchMySharedPurchasesSafely(),
+    ).filter((row) => !ownKeys.has(`${row.rsvpId}:${row.guestId ?? ""}`));
+    return [...ownRows, ...sharedRows];
   }
 
   /**

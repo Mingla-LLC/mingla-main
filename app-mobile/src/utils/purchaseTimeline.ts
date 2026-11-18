@@ -20,6 +20,8 @@ export interface PurchaseOrderSource {
   currency: string;
   buyerTotalCents: number;
   refundedAmountCents: number;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -37,6 +39,8 @@ export interface PurchaseRsvpSource {
   status: string;
   approvalStatus: string;
   guestCount: number;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -53,6 +57,8 @@ export interface PurchaseReservationSource {
   feeCents: number;
   currency: string;
   refundedAmountCents: number;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -68,6 +74,8 @@ export interface PurchaseVenueOrderSource {
   totalCents: number;
   refundedAmountCents: number;
   currency: string;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -96,6 +104,8 @@ export interface PurchaseTimelineItem {
   refundedAmountCents: number;
   currency: string | null;
   source: string | null;
+  /** #4473 — shows here because this account proved its contact; read-only. */
+  shared?: boolean;
   raw: unknown;
 }
 
@@ -207,10 +217,11 @@ function orderItems(orders: readonly PurchaseOrderSource[]): PurchaseTimelineIte
       venueLine: order.venueLine,
       status: order.paymentStatus,
       count: order.ticketCount,
-      amountCents: order.buyerTotalCents,
+      amountCents: order.shared ? null : order.buyerTotalCents,
       refundedAmountCents: order.refundedAmountCents,
       currency: order.currency,
       source: order.source,
+      shared: order.shared === true,
       raw: order.raw,
     }];
   });
@@ -239,6 +250,7 @@ function rsvpItems(rsvps: readonly PurchaseRsvpSource[]): PurchaseTimelineItem[]
       refundedAmountCents: 0,
       currency: null,
       source: null,
+      shared: rsvp.shared === true,
       raw: rsvp.raw,
     }];
   });
@@ -264,10 +276,11 @@ function reservationItems(
       venueLine: reservation.venueLine,
       status: reservation.status,
       count: reservation.partySize,
-      amountCents: reservation.feeCents,
+      amountCents: reservation.shared ? null : reservation.feeCents,
       refundedAmountCents: reservation.refundedAmountCents,
       currency: reservation.currency,
       source: null,
+      shared: reservation.shared === true,
       raw: reservation.raw,
     }];
   });
@@ -293,10 +306,11 @@ function venueOrderItems(
       venueLine: order.venueLine,
       status: order.paymentStatus,
       count: 1,
-      amountCents: order.totalCents,
+      amountCents: order.shared ? null : order.totalCents,
       refundedAmountCents: order.refundedAmountCents,
       currency: order.currency,
       source: null,
+      shared: order.shared === true,
       raw: order.raw,
     }];
   });

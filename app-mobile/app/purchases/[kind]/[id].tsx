@@ -47,7 +47,18 @@ import {
   cancelMyReservation,
   type MyReservationRow,
 } from "../../../src/hooks/useMyReservations";
-import { usePurchaseDetail } from "../../../src/hooks/usePurchases";
+import {
+  usePurchaseDetail,
+  usePurchaseShareFlags,
+} from "../../../src/hooks/usePurchases";
+import {
+  PurchaseShareNote,
+  SharedPurchaseDetail,
+} from "../../../src/components/purchases/SharedPurchaseDetail";
+import {
+  isPurchaseShareFlagged,
+  type SharedPurchase,
+} from "../../../src/services/sharedPurchasesService";
 import type { ConsumerRsvpRow } from "../../../src/services/calendarService";
 import type {
   PurchaseOrderRecord,
@@ -246,11 +257,26 @@ export default function PurchaseDetailRoute(): React.ReactElement {
   const userId = useAppStore((state) => state.user?.id ?? null);
   const purchase = usePurchaseDetail(userId, kind, id);
   const item = purchase.data ?? null;
+  // #4473 — a purchase shared with this account renders read-only from its
+  // own payload; none of the owner's records (and none of their actions) exist.
+  const shared = item?.shared === true;
   const order =
-    item?.kind === "order" ? (item.raw as PurchaseOrderRecord) : null;
-  const rsvp = item?.kind === "rsvp" ? (item.raw as ConsumerRsvpRow) : null;
+    !shared && item?.kind === "order" ? (item.raw as PurchaseOrderRecord) : null;
+  const rsvp =
+    !shared && item?.kind === "rsvp" ? (item.raw as ConsumerRsvpRow) : null;
   const reservation =
-    item?.kind === "reservation" ? (item.raw as MyReservationRow) : null;
+    !shared && item?.kind === "reservation"
+      ? (item.raw as MyReservationRow)
+      : null;
+  const shareFlags = usePurchaseShareFlags(userId);
+  const ownPurchaseShared =
+    !shared &&
+    item !== null &&
+    isPurchaseShareFlagged(shareFlags.data, item.kind, [
+      item.id,
+      rsvp?.rsvpId,
+      rsvp?.guestId,
+    ]);
   const allTickets = order?.tickets ?? rsvpTickets;
   const sendTicket =
     allTickets.find((ticket) => ticket.id === sendTicketId) ?? null;
@@ -561,6 +587,33 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     );
   }, [captureQuietAction, order, router, rsvp]);
 
+  const handleOpenSharedEventPage = useCallback(
+    (sharedPurchase: SharedPurchase): void => {
+      const brandSlug = sharedPurchase.brand?.slug ?? null;
+      if (!brandSlug || !sharedPurchase.eventSlug) return;
+      captureQuietAction("event_page");
+      router.push(
+        explorerOfferingPath(
+          sharedPurchase.offeringType,
+          brandSlug,
+          sharedPurchase.eventSlug,
+        ) as never,
+      );
+    },
+    [captureQuietAction, router],
+  );
+
+  const handleOpenSharedChat = useCallback(
+    (conversationId: string, eventId: string): void => {
+      captureQuietAction("group_chat");
+      router.replace({
+        pathname: "/",
+        params: { tab: "messages", conversationId, eventId },
+      });
+    },
+    [captureQuietAction, router],
+  );
+
   const openSendTicket = useCallback((ticket: PurchaseTicket): void => {
     postHogService.capture("ticket_send_opened", {
       ticket_index: ticket.ticketIndex,
@@ -699,6 +752,16 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               <Text style={styles.retryText}>{t("error.retry")}</Text>
             </Pressable>
           </View>
+        ) : shared ? (
+          <SharedPurchaseDetail
+            item={item}
+            onAddToCalendar={() => {
+              void handleAddToCalendar();
+            }}
+            onOpenChat={handleOpenSharedChat}
+            onOpenEventPage={handleOpenSharedEventPage}
+            qrSize={ticketQrSize}
+          />
         ) : (
           <>
             <Text style={styles.eyebrow}>{purchaseKindLabel(item.kind)}</Text>
@@ -711,6 +774,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                 {purchaseStatusLabel(item.status)}
               </Text>
             </View>
+            {ownPurchaseShared ? <PurchaseShareNote variant="owner" /> : null}
 
             {order?.isOnline ? (
               <View style={styles.venueBlock}>

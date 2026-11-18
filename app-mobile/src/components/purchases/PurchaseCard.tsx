@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { EventCoverMedia } from "@mingla/offering-rendering";
+import { useTranslation } from "react-i18next";
 
 import type {
   PurchaseCoverMediaType,
@@ -82,6 +83,7 @@ export function PurchaseCard({
   onPress,
   dimmed = false,
 }: PurchaseCardProps): React.ReactElement {
+  const { t } = useTranslation("purchases");
   const [coverFailed, setCoverFailed] = useState(false);
   useEffect(() => {
     setCoverFailed(false);
@@ -105,7 +107,11 @@ export function PurchaseCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open ${kindLabel} for ${item.title}`}
+      accessibilityLabel={
+        item.shared
+          ? `Open ${kindLabel} for ${item.title}, ${t("shared.badge")}`
+          : `Open ${kindLabel} for ${item.title}`
+      }
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
@@ -157,6 +163,13 @@ export function PurchaseCard({
           >
             {purchaseStatusLabel(item.status)}
           </Text>
+          {item.shared ? (
+            <View style={styles.sharedPill} testID="purchase-card-shared">
+              <Text numberOfLines={1} style={styles.sharedText}>
+                {t("shared.badge")}
+              </Text>
+            </View>
+          ) : null}
           {amount ? (
             <Text
               numberOfLines={1}
@@ -258,6 +271,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   statusWarn: { color: "#f8a35f" },
+  sharedPill: {
+    flexShrink: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: "rgba(59,130,246,0.16)",
+  },
+  sharedText: { color: "#bfdbfe", fontSize: 10, fontWeight: "700" },
   amount: {
     flexShrink: 0,
     marginLeft: "auto",
