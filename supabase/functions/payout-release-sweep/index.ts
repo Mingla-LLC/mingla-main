@@ -10,6 +10,7 @@ import {
 import {
   createStripeReleasePayout,
   stripePayoutRelease,
+  stripeTicketCheckout,
   stripeWebhook,
 } from "../_shared/stripe.ts";
 import {
@@ -187,11 +188,15 @@ type StripeReleaseClient = {
   };
 };
 
-type FeeCandidate = {
+export type FeeCandidate = {
   source_type:
     | "order"
     | "rsvp_contribution"
     | "venue_reservation"
+    | "venue_menu_order"
+    // Issue #3645: Stripe instalments (Paystack instalments record their fee
+    // at sale from the verified transaction).
+    | "order_installment"
     | "stay_reservation";
   source_id: string;
   provider: "stripe" | "paystack";
@@ -320,10 +325,17 @@ function payoutReleaseAlertCopy(alertKind: string): {
 export function providerReferenceRoute(
   provider: FeeCandidate["provider"],
   reference: string,
-): "paystack_reference" | "stripe_charge" | "stripe_payment_intent" {
+):
+  | "paystack_reference"
+  | "stripe_charge"
+  | "stripe_payment_intent"
+  | "stripe_checkout_session" {
   if (provider === "paystack") return "paystack_reference";
   if (reference.startsWith("ch_")) return "stripe_charge";
   if (reference.startsWith("pi_")) return "stripe_payment_intent";
+  // Issue #3645: a hosted chip-in can be stored with only its Checkout Session
+  // id (cs_). Its fee is read through the session's PaymentIntent.
+  if (reference.startsWith("cs_")) return "stripe_checkout_session";
   throw new Error("unsupported_stripe_provider_reference");
 }
 
@@ -369,15 +381,87 @@ export function stripeFeeSnapshot(
   };
 }
 
-async function resolveProviderFee(
+/**
+ * Issue #3645: the PaymentIntent behind a paid Checkout Session. A session
+ * with no PaymentIntent has not been paid, so it never yields a fee.
+ */
+export function checkoutSessionPaymentIntentId(
+  session: { payment_intent?: string | { id?: string } | null },
+): string {
+  const ref = session.payment_intent;
+  const id = typeof ref === "string" ? ref : ref?.id ?? null;
+  if (typeof id !== "string" || !id.startsWith("pi_")) {
+    throw new Error("stripe_checkout_session_has_no_payment_intent");
+  }
+  return id;
+}
+
+type StripeBalanceTransactionRef = Parameters<typeof stripeFeeSnapshot>[0];
+type StripeAccountOption = { stripeAccount: string };
+
+/** The read-only Stripe calls the fee capture makes (injectable in tests). */
+export type StripeFeeReadClient = {
+  charges: {
+    retrieve: (
+      id: string,
+      params: { expand: string[] },
+      options: StripeAccountOption,
+    ) => Promise<{ balance_transaction: StripeBalanceTransactionRef }>;
+  };
+  paymentIntents: {
+    retrieve: (
+      id: string,
+      params: { expand: string[] },
+      options: StripeAccountOption,
+    ) => Promise<{
+      latest_charge:
+        | string
+        | { balance_transaction: StripeBalanceTransactionRef }
+        | null;
+    }>;
+  };
+};
+
+/** Issue #3645: the one Checkout Session read (hosted chip-ins). */
+export type StripeCheckoutSessionReadClient = {
+  checkout: {
+    sessions: {
+      retrieve: (
+        id: string,
+        params: Record<string, never>,
+        options: StripeAccountOption,
+      ) => Promise<{ payment_intent?: string | { id?: string } | null }>;
+    };
+  };
+};
+
+export type ProviderFeeClients = {
+  verifyPaystack: (reference: string) => Promise<Record<string, unknown>>;
+  stripeRead: () => StripeFeeReadClient;
+  stripeCheckoutSessionRead: () => StripeCheckoutSessionReadClient;
+};
+
+const defaultProviderFeeClients: ProviderFeeClients = {
+  verifyPaystack: (reference) =>
+    paystackVerifyTransaction(reference) as Promise<Record<string, unknown>>,
+  // WEBHOOK is the existing least-privilege read role with Charges +
+  // Balance-transactions read. BALANCES lacks Charges read.
+  stripeRead: () => stripeWebhook(),
+  // Issue #3645: TICKET_CHECKOUT is the role that created the hosted session,
+  // so it can read it back; only the PaymentIntent id is taken from it.
+  stripeCheckoutSessionRead: () => stripeTicketCheckout(),
+};
+
+export async function resolveProviderFeeWith(
   candidate: FeeCandidate,
+  clients: ProviderFeeClients,
 ): Promise<FeeSnapshot> {
   const route = providerReferenceRoute(
     candidate.provider,
     candidate.provider_reference,
   );
   if (route === "paystack_reference") {
-    const transaction = await paystackVerifyTransaction(
+    const transaction = await clients.verifyPaystack(
       candidate.provider_reference,
     );
     const fee = Number(transaction.fees ?? 0);
@@ -392,23 +476,29 @@ async function resolveProviderFee(
     };
   }
   if (!candidate.stripe_account_id) throw new Error("stripe_account_required");
-  // WEBHOOK is the existing least-privilege read role with Charges +
-  // Balance-transactions read. BALANCES lacks Charges read.
-  const stripe = stripeWebhook();
+  const account = { stripeAccount: candidate.stripe_account_id };
+  const stripe = clients.stripeRead();
   if (route === "stripe_charge") {
     // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
     const charge = await stripe.charges.retrieve(
       candidate.provider_reference,
       { expand: ["balance_transaction"] },
-      { stripeAccount: candidate.stripe_account_id },
+      account,
     );
     return stripeFeeSnapshot(charge.balance_transaction);
   }
+  let paymentIntentId = candidate.provider_reference;
+  if (route === "stripe_checkout_session") {
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+    const session = await clients.stripeCheckoutSessionRead().checkout.sessions
+      .retrieve(candidate.provider_reference, {}, account);
+    paymentIntentId = checkoutSessionPaymentIntentId(session);
+  }
   // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
   const paymentIntent = await stripe.paymentIntents.retrieve(
-    candidate.provider_reference,
+    paymentIntentId,
     { expand: ["latest_charge.balance_transaction"] },
-    { stripeAccount: candidate.stripe_account_id },
+    account,
   );
   const latestCharge = paymentIntent.latest_charge;
   if (!latestCharge) throw new Error("stripe_payment_intent_has_no_charge");
@@ -419,9 +509,13 @@ async function resolveProviderFee(
   const charge = await stripe.charges.retrieve(
     latestCharge,
     { expand: ["balance_transaction"] },
-    { stripeAccount: candidate.stripe_account_id },
+    account,
   );
   return stripeFeeSnapshot(charge.balance_transaction);
+}
+
+function resolveProviderFee(candidate: FeeCandidate): Promise<FeeSnapshot> {
+  return resolveProviderFeeWith(candidate, defaultProviderFeeClients);
 }
 
 const defaultDeps: SweepDeps = {
@@ -1337,8 +1431,27 @@ async function runPayoutReleaseSweepAuthenticated(
     });
     return json({ error: "fee_candidate_read_failed" }, 500);
   }
+  // Issue #3645: paid stays are their own candidate family with their own
+  // 100-row batch, so a backlog in one family never starves the other. Their
+  // fee lands in stay_payout_line_snapshots (record_stay_provider_fee below),
+  // which run_stay_payout_release_dark_sweep needs before it attaches a stay.
+  // A failed stay read is audible but does not stop the other payouts.
+  const { data: stayCandidates, error: stayCandidatesError } = await admin
+    .rpc("list_missing_stay_provider_fees", { p_limit: 100 });
+  if (stayCandidatesError) {
+    console.error("[payout-release-sweep] stay fee candidate read failed", {
+      code: stayCandidatesError.code,
+      message: stayCandidatesError.message,
+    });
+  }
+  const feeCandidates: FeeCandidate[] = [
+    ...(Array.isArray(candidates) ? candidates as FeeCandidate[] : []),
+    ...(Array.isArray(stayCandidates)
+      ? stayCandidates as FeeCandidate[]
+      : []),
+  ];
   let capturedFees = 0;
-  for (const candidate of (candidates ?? []) as FeeCandidate[]) {
+  for (const candidate of feeCandidates) {
     try {
       const fee = await deps.resolveProviderFee(candidate);
       if (candidate.source_type === "stay_reservation") {

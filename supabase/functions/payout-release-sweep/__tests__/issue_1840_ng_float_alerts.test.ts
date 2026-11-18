@@ -418,7 +418,11 @@ function sweepHarness(scenario: SweepCase) {
   const createAdmin = (() => ({
     rpc: (name: string, args: Record<string, unknown>) => {
       rpcOrder.push(name);
-      if (name === "list_missing_payout_source_fees") {
+      if (
+        name === "list_missing_payout_source_fees" ||
+        // Issue #3645: paid stays are their own fee-candidate family.
+        name === "list_missing_stay_provider_fees"
+      ) {
         return Promise.resolve({ data: [], error: null });
       }
       if (name === "run_payout_release_dark_sweep") {
