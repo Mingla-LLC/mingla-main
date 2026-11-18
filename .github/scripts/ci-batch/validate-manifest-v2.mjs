@@ -587,7 +587,8 @@ export function phase3dContractDigest(manifest) {
 // #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
 // #4473 purchase shared holders: listed migration 20280805004473 after 20280804004473 in the #1857, #1931 and #2117 lanes (guarded for both filtered replays; both verified) and registered its two pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ec41acefa6762d01cd8840e28fabf42837e9e8905d296152e17e83bdcb08015a";
+// #4473 shared holder Guest chat sync and hourly expiry: listed migration 20280806004473 after 20280805004473 in the #1857, #1931 and #2117 lanes (both filtered replays verified); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e95e3b791bee63e5a00bf62566ea76902b6067bf3fc9cd5d474f1d394e42bc9e";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

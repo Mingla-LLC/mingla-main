@@ -331,7 +331,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
 // #4473 purchase shared holders: listed migration 20280805004473 after 20280804004473 in the #1857, #1931 and #2117 lanes (guarded for both filtered replays; both verified) and registered its two pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "239e9b0d5f66729dfdb0d2066356961905bd413922b8d02382d76df24ebf3b7f";
+// #4473 shared holder Guest chat sync and hourly expiry: listed migration 20280806004473 after 20280805004473 in the #1857, #1931 and #2117 lanes (both filtered replays verified); re-sealed.
+export const BOOTSTRAP_SHA256 = "d7a40125625a59c31a35b6524a6512c3db74677253516b02dda37435d8fbb9dd";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
