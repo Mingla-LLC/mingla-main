@@ -41,6 +41,10 @@
 --
 -- The #4459 brand Guest chat (if present) is patched to treat a live shared
 -- holder like an owner, through `issue_4473_shared_brand_guest`.
+--
+-- Claim links: a signed-in account can ask for a code at the contact stored
+-- on the purchase behind a link (`issue_4473_begin_claim_link_contact_challenge`,
+-- purpose 'claim_add_contact'). Proving it records a claim-only extra.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -1156,7 +1160,10 @@ AS $function$
            OR EXISTS (
              SELECT 1 FROM public.tickets t
               WHERE t.event_id = e.id
-                AND t.holder_user_id = auth.uid()
+                -- Whole-row JSON keeps the deliberately filtered pre-#1931
+                -- replay (no send-to-friend columns) buildable; identical on
+                -- the live schema, as in consumer_can_read_event_for_caller.
+                AND to_jsonb(t)->>'holder_user_id' = auth.uid()::text
                 AND t.status IN ('valid', 'used'))
            -- #4473: a live shared holder of a paid order on this event.
            OR EXISTS (
@@ -1297,21 +1304,30 @@ DROP FUNCTION pg_temp.issue_4473_share_patch(regprocedure, text, text);
 -- purchase behind a claim link. The client never supplies or sees the value.
 -- On success the edge records it with issue_4063_record_claim_contact, so the
 -- yearly rule and the many-accounts rule apply, then runs the sweeps.
-ALTER TABLE public.contact_challenges
-  DROP CONSTRAINT IF EXISTS contact_challenges_purpose_check;
-ALTER TABLE public.contact_challenges
-  ADD CONSTRAINT contact_challenges_purpose_check
-  CHECK (purpose IN ('claim_sign_in', 'add_contact', 'claim_add_contact'));
-ALTER TABLE public.contact_challenges
-  DROP CONSTRAINT IF EXISTS contact_challenges_shape;
-ALTER TABLE public.contact_challenges
-  ADD CONSTRAINT contact_challenges_shape CHECK (
-    (purpose = 'add_contact' AND user_id IS NOT NULL AND claim_code IS NULL)
-    OR (purpose = 'claim_sign_in' AND user_id IS NULL
-        AND claim_code IS NOT NULL AND channel = 'email')
-    OR (purpose = 'claim_add_contact' AND user_id IS NOT NULL
-        AND claim_code IS NOT NULL)
-  );
+-- Guarded: the deliberately filtered pre-#1931 replay omits the #4063
+-- claim-link migration that creates contact_challenges.
+DO $challenge_shape$
+BEGIN
+  IF to_regclass('public.contact_challenges') IS NULL THEN
+    RETURN;
+  END IF;
+  ALTER TABLE public.contact_challenges
+    DROP CONSTRAINT IF EXISTS contact_challenges_purpose_check;
+  ALTER TABLE public.contact_challenges
+    ADD CONSTRAINT contact_challenges_purpose_check
+    CHECK (purpose IN ('claim_sign_in', 'add_contact', 'claim_add_contact'));
+  ALTER TABLE public.contact_challenges
+    DROP CONSTRAINT IF EXISTS contact_challenges_shape;
+  ALTER TABLE public.contact_challenges
+    ADD CONSTRAINT contact_challenges_shape CHECK (
+      (purpose = 'add_contact' AND user_id IS NOT NULL AND claim_code IS NULL)
+      OR (purpose = 'claim_sign_in' AND user_id IS NULL
+          AND claim_code IS NOT NULL AND channel = 'email')
+      OR (purpose = 'claim_add_contact' AND user_id IS NOT NULL
+          AND claim_code IS NOT NULL)
+    );
+END;
+$challenge_shape$;
 
 CREATE OR REPLACE FUNCTION public.issue_4473_begin_claim_link_contact_challenge(
   p_challenge_id uuid, p_user_id uuid, p_claim_code text, p_channel text,
@@ -1324,7 +1340,7 @@ SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_claim text := upper(btrim(coalesce(p_claim_code, '')));
-  v_link public.claim_links%ROWTYPE;
+  v_link record;
   v_subject jsonb;
   v_value text;
   v_conflict text;
@@ -1334,7 +1350,8 @@ BEGIN
      OR v_claim !~ '^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{10}$' THEN
     RETURN jsonb_build_object('outcome', 'invalid');
   END IF;
-  SELECT * INTO v_link FROM public.claim_links l
+  SELECT l.subject_kind, l.subject_id, l.expires_at INTO v_link
+    FROM public.claim_links l
    WHERE l.code = v_claim AND l.purpose = 'claim' AND l.revoked_at IS NULL;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('outcome', 'invalid');
@@ -1420,11 +1437,12 @@ CREATE OR REPLACE FUNCTION public.issue_4473_claim_link_challenge_for_user(
   p_challenge_id uuid, p_user_id uuid
 )
 RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
-  SELECT coalesce((
+BEGIN
+  RETURN coalesce((
     SELECT jsonb_build_object(
       'outcome', 'ok', 'channel', c.channel, 'value', c.target_value
     )
@@ -1432,6 +1450,7 @@ AS $function$
      WHERE c.id = p_challenge_id AND c.purpose = 'claim_add_contact'
        AND c.user_id = p_user_id AND c.consumed_at IS NULL
   ), jsonb_build_object('outcome', 'invalid'));
+END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.issue_4473_begin_claim_link_contact_challenge(uuid, uuid, text, text, text, text) FROM PUBLIC, anon, authenticated;
