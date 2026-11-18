@@ -298,6 +298,7 @@
         "paid": "Credit added. You can launch now.",
         "cancelled": "Payment cancelled. Nothing was charged.",
         "failed": "The payment didn't go through. Nothing was added.",
+        "minimum": "The least you can top up is {{amount}}.",
         "noAccess": "Topping up needs access to brand payments. {{name}} can add credit.",
         "returnFailed": "The payment came back but the credit didn't land yet. Try again or get help.",
         "method": "Card and other ways to pay · in {{currency}}"

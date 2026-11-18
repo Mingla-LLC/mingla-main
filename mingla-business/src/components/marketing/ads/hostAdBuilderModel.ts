@@ -96,6 +96,43 @@ export function hostAdCeilMajor(cents: number): number {
 }
 
 /**
+ * #4238 W6b: the Promote home top-up presets, in whole units, before
+ * hostAdTopUpTiles lifts them to the currency's minimum.
+ */
+export function hostAdTopUpPresetMajor(currency: string): readonly number[] {
+  return currency.trim().toUpperCase() === "NGN" ? [20_000, 50_000, 100_000] : [20, 50, 100];
+}
+
+/**
+ * #4238: the top-up amount buttons, never below the least one top-up can pay
+ * (the server refuses less) nor above the most. Presets under the minimum
+ * give way to the minimum; when that leaves fewer buttons than presets, the
+ * rest double from the last one. Without limits the presets stand.
+ */
+export function hostAdTopUpTiles(
+  presets: readonly number[],
+  limits: { min_pay_cents: number; max_pay_cents: number } | null | undefined,
+): number[] {
+  const clean = presets.filter((v) => Number.isInteger(v) && v > 0);
+  if (!limits || !(limits.min_pay_cents > 0)) return clean;
+  const min = limits.min_pay_cents;
+  const max = limits.max_pay_cents > 0 ? limits.max_pay_cents : Number.POSITIVE_INFINITY;
+  const tiles: number[] = [];
+  for (const v of clean) {
+    const t = Math.min(Math.max(v, min), max);
+    if (!tiles.includes(t)) tiles.push(t);
+  }
+  if (tiles.length === 0) tiles.push(Math.min(min, max));
+  const want = Math.max(clean.length, 1);
+  while (tiles.length < want) {
+    const next = Math.min(hostAdCeilMajor(tiles[tiles.length - 1] * 2), max);
+    if (tiles.includes(next)) break;
+    tiles.push(next);
+  }
+  return tiles.slice(0, want);
+}
+
+/**
  * The top-up a launch needs: the plain difference between what the launch
  * holds and the credit there is, both in pay terms, rounded up to a whole
  * unit. 0 when the credit covers it.

@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4238-TOPUP-TILES-MIN | issue #4238 | every top-up amount button a Host sees is at or above the currency's minimum top-up (adCreditTopUpLimits, sent with get_wallet) and at or below its maximum, so quoteTopUp accepts every button in every currency.
 // MINGLA-INVARIANT: I-4238-FEE-ONE-RATE | issue #4238 | the Host fee is 15%; credit = floor(pay x 0.85); a full withdraw of unspent credit returns the fee share; Host-facing amounts are grossed up only through hostMinimumPayCents.
 // MINGLA-INVARIANT: I-4238-HOST-FLOOR-LOCK | issue #4238 | a Host / Ari minimum is the price of ONE ad set. In what the Host pays (HOST_FEE_RATIO via hostMinimumPayCents) a USD connection with the production floors gives Meta 118, Snapchat 589, TikTok 2353 per day, on every page and every goal. Nothing is added on top.
 // MINGLA-INVARIANT: I-4238-HOST-ONE-ADSET | issue #4238 | admin-ad-create-campaign builds staged ad sets only for Admin (owner_kind "mingla"); Host and Ari ads are one ad set per app.
@@ -29,6 +30,8 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  AD_CREDIT_TOP_UP_LIMITS_CENTS,
+  adCreditTopUpLimits,
   allocateWithdrawFromLots,
   creditCentsFromPay,
   feeCentsFromPay,
@@ -271,4 +274,47 @@ Deno.test("6b every paid-social stage branch in create asks paidSocialStagesAppl
     new URL("../../ad-plan/index.ts", import.meta.url),
   );
   assert(plan.includes('plan.owner_kind === "host" && spark.present'));
+});
+
+// #4238 (live NGN test, 17 Nov): Promote offered a ₦20,000 button under the
+// ₦25,000 minimum, and the server refused it. The client buttons now come
+// from the limits get_wallet sends. FAILS-ON-REVERT: returning the raw
+// presets from hostAdTopUpTiles fails NGN, USD, EUR, CAD and SEK here.
+Deno.test("#4238 every top-up button is a payable amount in every currency", async () => {
+  const model = await import(
+    "../../../../mingla-business/src/components/marketing/ads/hostAdBuilderModel.ts"
+  );
+  for (const currency of Object.keys(AD_CREDIT_TOP_UP_LIMITS_CENTS)) {
+    const limits = adCreditTopUpLimits(currency);
+    assert(limits, `${currency} has limits`);
+    const presets = model.hostAdTopUpPresetMajor(currency).map((
+      major: number,
+    ) => major * 100);
+    const tiles: number[] = model.hostAdTopUpTiles(presets, limits);
+    assertEquals(
+      tiles.length,
+      presets.length,
+      `${currency} keeps three buttons`,
+    );
+    assertEquals(
+      new Set(tiles).size,
+      tiles.length,
+      `${currency} buttons differ`,
+    );
+    for (const tile of tiles) {
+      const quoted = quoteTopUp(tile, currency);
+      assert(quoted.ok, `${currency} button ${tile} is refused`);
+    }
+    // A shortfall smaller than the minimum is offered as the minimum.
+    const need: number[] = model.hostAdTopUpTiles([100], limits);
+    assertEquals(need[0], limits.min_pay_cents);
+  }
+  assertEquals(
+    model.hostAdTopUpTiles(
+      [20_000_00, 50_000_00, 100_000_00],
+      adCreditTopUpLimits("NGN"),
+    ),
+    [25_000_00, 50_000_00, 100_000_00],
+  );
+  assertEquals(adCreditTopUpLimits("XYZ"), null);
 });

@@ -1153,6 +1153,7 @@ function HostAdDetailBody(): React.ReactElement {
           currency={currency}
           neededCents={topUpCents}
           showNeed={editVisible}
+          limits={wallet.data?.top_up_limits ?? null}
           returnPath="/marketing/ads"
           money={money}
           onClose={() => setTopUpCents(null)}

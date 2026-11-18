@@ -1795,7 +1795,8 @@
         "mingla-business/src/services/adCreditService.ts",
         "supabase/functions/_shared/adCreditStatements.ts",
         "supabase/functions/_shared/adCreditStripe.ts",
-        "supabase/functions/_shared/adMoney.ts"
+        "supabase/functions/_shared/adMoney.ts",
+        "supabase/functions/ad-credit/index.ts"
       ]
     },
     {

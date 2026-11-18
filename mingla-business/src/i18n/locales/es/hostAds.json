@@ -298,6 +298,7 @@
         "paid": "Crédito añadido. Ya puedes lanzar.",
         "cancelled": "Pago cancelado. No se cobró nada.",
         "failed": "El pago no se completó. No se añadió nada.",
+        "minimum": "Lo mínimo que puedes recargar es {{amount}}.",
         "noAccess": "Para recargar hace falta acceso a los pagos de la marca. {{name}} puede añadir crédito.",
         "returnFailed": "El pago volvió pero el crédito aún no llegó. Inténtalo de nuevo o pide ayuda.",
         "method": "Tarjeta y otras formas de pago · en {{currency}}"
