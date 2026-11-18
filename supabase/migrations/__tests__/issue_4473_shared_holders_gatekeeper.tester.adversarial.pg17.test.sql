@@ -1,5 +1,5 @@
 \set ON_ERROR_STOP on
--- MINGLA-INVARIANT: I-4473-SHARED-HOLDER-NEEDS-LIVE-PROOF | issue #4473 | A purchase shows only on an account that proves its contact now; an expired claim-only contact never claims or shares; a lapsed holder keeps no access; claim-link challenges stay server-side.
+-- MINGLA-INVARIANT: I-4473-SHARED-HOLDER-GATEKEEPER | issue #4473 | A purchase shows only on an account that proves its contact now; an expired claim-only contact never claims or shares; a lapsed holder keeps no access; claim-link challenges stay server-side.
 --
 -- Independent gatekeeper checks for #4473, beyond the implementor and the
 -- first tester suite:
