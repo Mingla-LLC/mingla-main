@@ -39,9 +39,14 @@ import {
   type,
   scrim,
 } from "../../constants/designSystem";
-import type { BrandHourEntry } from "../../types/brand";
+import type { BrandHourEntry, BrandHourWindow } from "../../types/brand";
+import { hoursWeekIssue } from "../../utils/venueBrandHours";
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
+import { TimeField } from "../ui/TimeField";
+
+/** #4490 — up to four windows a day (window 0 + three extras). */
+const MAX_EXTRA_WINDOWS = 3;
 
 const DAY_NAMES = [
   "Monday",
@@ -94,6 +99,11 @@ export interface BrandHoursEditorProps {
   showErrors?: boolean;
   /** Disable all controls (non-manager / saving). */
   disabled?: boolean;
+  /**
+   * #4490 — several windows a day (split shifts, "Add a window"). Off for the
+   * create wizard, whose RPC takes one window a day.
+   */
+  allowWindows?: boolean;
 }
 
 export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
@@ -101,6 +111,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
   onChange,
   showErrors = false,
   disabled = false,
+  allowWindows = false,
 }) => {
   const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
   const [picker, setPicker] = useState<{
@@ -154,6 +165,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
 
   const stepErr = useMemo((): string | null => {
     if (!showErrors) return null;
+    if (allowWindows) return hoursWeekIssue(hours);
     for (const h of hours) {
       if (h.isClosed) continue;
       const o = h.openTime ?? "";
@@ -166,7 +178,55 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
       if (o === c) return "Open and close can't be the same time.";
     }
     return null;
-  }, [hours, showErrors]);
+  }, [allowWindows, hours, showErrors]);
+
+  // #4490 — extra windows (2nd..4th) of one day.
+  const setExtraWindow = useCallback(
+    (weekday: number, index: number, patch: Partial<BrandHourWindow>): void => {
+      onChange(
+        hours.map((r) => {
+          if (r.weekday !== weekday) return r;
+          const extras = [...(r.extraWindows ?? [])];
+          const current = extras[index];
+          if (current === undefined) return r;
+          extras[index] = { ...current, ...patch };
+          return { ...r, extraWindows: extras };
+        }),
+      );
+    },
+    [hours, onChange],
+  );
+  const addExtraWindow = useCallback(
+    (weekday: number): void => {
+      onChange(
+        hours.map((r) => {
+          if (r.weekday !== weekday) return r;
+          const extras = r.extraWindows ?? [];
+          if (extras.length >= MAX_EXTRA_WINDOWS) return r;
+          // Start the new window an hour after the last one closes.
+          const last = extras.length > 0 ? extras[extras.length - 1] : { openTime: r.openTime, closeTime: r.closeTime };
+          const lastClose = /^(\d{2}):(\d{2})/.exec(last.closeTime ?? "");
+          const startHour = lastClose !== null ? (Number(lastClose[1]) + 1) % 24 : 18;
+          const open = `${String(startHour).padStart(2, "0")}:00`;
+          const close = `${String((startHour + 3) % 24).padStart(2, "0")}:00`;
+          return { ...r, extraWindows: [...extras, { openTime: open, closeTime: close }] };
+        }),
+      );
+    },
+    [hours, onChange],
+  );
+  const removeExtraWindow = useCallback(
+    (weekday: number, index: number): void => {
+      onChange(
+        hours.map((r) =>
+          r.weekday !== weekday
+            ? r
+            : { ...r, extraWindows: (r.extraWindows ?? []).filter((_, i) => i !== index) },
+        ),
+      );
+    },
+    [hours, onChange],
+  );
 
   const openPicker = useCallback(
     (weekday: number, field: "open" | "close", row: BrandHourEntry): void => {
@@ -406,6 +466,8 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
                   isClosed: !on,
                   openTime: on ? row.openTime ?? "09:00" : null,
                   closeTime: on ? row.closeTime ?? "17:00" : null,
+                  // #4490 — a closed day has no windows.
+                  ...(on ? {} : { extraWindows: [] }),
                 })
               }
               accessibilityLabel={`${DAY_NAMES[row.weekday]} open`}
@@ -468,6 +530,48 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
                   </Pressable>
                 </>
               )}
+            </View>
+          ) : null}
+          {allowWindows && !row.isClosed ? (
+            <View style={styles.windowsBlock}>
+              {(row.extraWindows ?? []).map((w, index) => (
+                <View key={index} style={styles.extraWindowRow} testID={`hours-window-${row.weekday}-${index + 1}`}>
+                  <TimeField
+                    label={`Opens again`}
+                    value={(w.openTime ?? "").slice(0, 5)}
+                    onChangeValue={(v) => setExtraWindow(row.weekday, index, { openTime: v })}
+                    accessibilityLabel={`${DAY_NAMES[row.weekday]} window ${index + 2} opening time`}
+                  />
+                  <TimeField
+                    label="Closes"
+                    value={(w.closeTime ?? "").slice(0, 5)}
+                    onChangeValue={(v) => setExtraWindow(row.weekday, index, { closeTime: v })}
+                    accessibilityLabel={`${DAY_NAMES[row.weekday]} window ${index + 2} closing time`}
+                  />
+                  <Pressable
+                    onPress={() => removeExtraWindow(row.weekday, index)}
+                    disabled={disabled}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${DAY_NAMES[row.weekday]} window ${index + 2}`}
+                    style={styles.removeWindow}
+                  >
+                    <Text style={styles.removeWindowText}>Remove</Text>
+                  </Pressable>
+                </View>
+              ))}
+              {(row.extraWindows?.length ?? 0) < MAX_EXTRA_WINDOWS ? (
+                <Pressable
+                  onPress={() => addExtraWindow(row.weekday)}
+                  disabled={disabled}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add a window on ${DAY_NAMES[row.weekday]}`}
+                  style={styles.addWindow}
+                  testID={`hours-add-window-${row.weekday}`}
+                >
+                  <Text style={styles.addWindowText}>+ Add a window</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -659,6 +763,38 @@ const styles = StyleSheet.create({
     letterSpacing: type.label.letterSpacing,
     color: color.text3,
     marginTop: 1,
+  },
+  windowsBlock: {
+    gap: space[2],
+    marginTop: space[2],
+  },
+  extraWindowRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: space[2],
+  },
+  removeWindow: {
+    minHeight: 48,
+    justifyContent: "center",
+    paddingHorizontal: space[2],
+  },
+  removeWindowText: {
+    fontSize: type.small.fontSize,
+    color: color.text2,
+    fontWeight: "600",
+  },
+  addWindow: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: space[2],
+    borderRadius: radiusTokens.sm,
+    backgroundColor: color.fill.tile,
+  },
+  addWindowText: {
+    fontSize: type.small.fontSize,
+    color: color.text1,
+    fontWeight: "600",
   },
   webTimeInput: {
     fontSize: type.body.fontSize,

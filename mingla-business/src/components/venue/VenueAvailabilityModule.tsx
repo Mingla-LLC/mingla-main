@@ -367,13 +367,18 @@ export interface VenueAvailabilityModuleProps {
   /** META-ORCH-1255 — the venue this module is scoped to. */
   venueId?: string | null;
   testID?: string;
+  /**
+   * #4490 — mounted inside "Availability & pricing", where the opening hours
+   * editor sits right above: hide the "Edit hours in Settings" link.
+   */
+  hideHoursLink?: boolean;
 }
 
 export const VenueAvailabilityModule = forwardRef<
   VenueAvailabilityLeaveHandle,
   VenueAvailabilityModuleProps
 >(function VenueAvailabilityModule(
-  { brandId, venueId = null, testID },
+  { brandId, venueId = null, testID, hideHoursLink = false },
   forwardedRef,
 ): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
@@ -966,7 +971,7 @@ export const VenueAvailabilityModule = forwardRef<
             ))
           )}
         </View>
-        {canMutate ? (
+        {canMutate && !hideHoursLink ? (
           <Button
             label="Edit hours in Settings"
             onPress={goToSettingsHours}

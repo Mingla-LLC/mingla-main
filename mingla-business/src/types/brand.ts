@@ -419,4 +419,16 @@ export interface BrandHourEntry {
   openTime: string | null;
   closeTime: string | null;
   isClosed: boolean;
+  /**
+   * #4490 — the day's 2nd..4th windows (split shifts). Window 0 stays in
+   * openTime/closeTime so every single-window reader is unchanged. Absent or
+   * empty = one window, and the save payload stays the pre-#4490 shape.
+   */
+  extraWindows?: BrandHourWindow[];
+}
+
+/** #4490 — one extra opening window ("HH:MM"; a close before the open runs past midnight). */
+export interface BrandHourWindow {
+  openTime: string | null;
+  closeTime: string | null;
 }
