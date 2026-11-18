@@ -158,7 +158,8 @@ describe("#2830 the menu belongs to Mingla", () => {
     expect(builder).toContain("if (!menuSections.length) return null;");
     // #2829 W2 — the home page is the page with no slug (roles are gone).
     expect(builder).toContain(
-      "enabled: isHome ? page.enabled === true : page.enabled === true && rendered.length > 0",
+      // #4453 m7c — "Keep exploring" (page_links) alone is not content, so the test is stricter than length > 0.
+      'enabled: isHome ? page.enabled === true : page.enabled === true && rendered.some((block) => block?.type !== "page_links")',
     );
   });
 

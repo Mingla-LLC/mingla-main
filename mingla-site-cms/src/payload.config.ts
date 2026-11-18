@@ -24,6 +24,7 @@ import { DesignCheckRuns } from "./collections/DesignCheckRuns";
 import { fontEndpoints } from "./endpoints/fontEndpoints";
 import { sitesEndpoints } from "./endpoints/sitesEndpoints";
 import { composeEndpoints } from "./endpoints/composeEndpoint";
+import { planPreviewEndpoints } from "./endpoints/planPreviewEndpoint";
 import { contentEndpoints } from "./endpoints/contentEndpoint";
 import { cmsConfig } from "./lib/config";
 
@@ -111,7 +112,7 @@ export default buildConfig({
     WorkLog,
     DesignCheckRuns,
   ],
-  endpoints: [...sitesEndpoints, ...fontEndpoints, ...composeEndpoints, ...contentEndpoints],
+  endpoints: [...sitesEndpoints, ...fontEndpoints, ...composeEndpoints, ...planPreviewEndpoints, ...contentEndpoints],
   plugins: [
     multiTenantPlugin({
       collections: {

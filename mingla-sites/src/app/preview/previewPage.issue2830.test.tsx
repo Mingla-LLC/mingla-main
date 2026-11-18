@@ -52,7 +52,7 @@ const RENDERERS: Array<[string, () => SiteArtifact]> = [
 
 const anchors = (html: string) => [...html.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((match) => match[1]!.replace(/&amp;/g, "&"));
 const sameSite = (hrefs: string[]) => hrefs.filter((href) => href.startsWith("/"));
-const mediaUrls = (html: string) => [...html.matchAll(/\/media\/[0-9a-f-]{36}\/[a-z0-9.]+(\?k=[^"\s),&]*)?/gi)].map((match) => match[0]);
+const mediaUrls = (html: string) => [...html.matchAll(/\/media\/[0-9a-f-]{36}\/[a-z0-9.]+(\?[ks]=[^"\s),&]*)?/gi)].map((match) => match[0]);
 
 const team = async (artifact: SiteArtifact, path: string, extra: Record<string, string> = {}) => {
   loadPreviewArtifact.mockResolvedValue(artifact);
@@ -88,15 +88,18 @@ describe.each(RENDERERS)("#2830 private preview on %s", (_name, make) => {
     const links = sameSite(anchors(await shared(make(), path)));
     expect(links.length).toBeGreaterThan(0);
     for (const href of links) {
-      if (href.startsWith("/media/")) expect(href).toContain(`?k=${ENCODED}`);
+      if (href.startsWith("/media/")) expect(href).toContain(`?s=${TOKEN}`); // #4453 M11 — never the key
       else expect(href, href).toMatch(new RegExp(`^/preview/share/${TOKEN}(\\?|#|$)`));
     }
   });
 
-  it.each(paths)("/%s: every first-party media URL carries the key", async (path) => {
-    for (const html of [await team(make(), path), await shared(make(), path)]) {
-      for (const url of mediaUrls(html.replace(/&amp;/g, "&"))) expect(url, url).toContain(`?k=${ENCODED}`);
-    }
+  it.each(paths)("/%s: every first-party media URL carries the key (team) or the share token, never the key (shared)", async (path) => {
+    for (const url of mediaUrls((await team(make(), path)).replace(/&amp;/g, "&"))) expect(url, url).toContain(`?k=${ENCODED}`);
+    // #4453 M11 — a share view carries its own token; the preview key opens /preview, so it never appears.
+    const sharedHtml = (await shared(make(), path)).replace(/&amp;/g, "&");
+    expect(sharedHtml).not.toContain(ENCODED);
+    expect(sharedHtml).not.toContain(KEY);
+    for (const url of mediaUrls(sharedHtml)) expect(url, url).toContain(`?s=${TOKEN}`);
   });
 
   it("shows no consent banner, on either preview", async () => {

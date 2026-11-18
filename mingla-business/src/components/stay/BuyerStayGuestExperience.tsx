@@ -59,7 +59,14 @@ export function BuyerStayGuestExperience({
   surface,
   theme,
   onQuoteChange,
+  initialRange = null,
+  initialAdults = null,
+  initialRoomId = null,
 }: {
+  /** #4453 milestone 5 — a Mingla website's pre-fill (already re-validated by the route). */
+  initialRange?: { checkIn: string; checkOut: string } | null;
+  initialAdults?: number | null;
+  initialRoomId?: string | null;
   venueId: string;
   brandId: string;
   detail: PublicStayDetail | null;
@@ -319,6 +326,9 @@ export function BuyerStayGuestExperience({
       )}
     >
       <LazyStayGuestBooking
+        initialRange={initialRange}
+        initialAdults={initialAdults}
+        initialRoomId={initialRoomId}
         detail={detail}
         state={state}
         palette={palette}

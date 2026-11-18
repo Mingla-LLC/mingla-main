@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { SitePageView } from "../../components/SitePageView";
 import { wantsLessData } from "../../lib/siteVideo";
-import { resolveSitePath } from "../../lib/pageRouting";
+import { ariDraftPreviewPage, resolveSitePath } from "../../lib/pageRouting";
 import { normalizeRequestSegments } from "../../contracts/generated/routes.ts";
 import {
   loadPreviewArtifact,
@@ -14,7 +14,9 @@ import { loadPageExtras } from "../../lib/pageExtras";
 import { PreviewTokenBridge } from "../../components/PreviewTokenBridge";
 import { runtimeConfig } from "../../lib/config";
 import { PreviewLinkScope, type PreviewScope } from "../../components/PreviewLinks";
-import { withPreviewMediaKey, withPreviewOfferingKey } from "../../lib/previewMedia";
+import { withPreviewDetailKey, withPreviewMediaKey, withPreviewOfferingKey } from "../../lib/previewMedia";
+import { resolveOfferingDetail } from "../../lib/offeringDetail";
+import { isV2Artifact } from "../../lib/siteArtifact";
 import { businessPreviewFrameAncestor } from "../../lib/origins";
 
 /** Local mode only when the runtime config says so (any doubt: production rules). */
@@ -71,7 +73,32 @@ export default async function PreviewPage({
   }
   // #2830 — this page's pictures and videos come through the key, not the publication.
   artifact = withPreviewMediaKey(artifact, parsed.key);
-  const resolved = resolveSitePath(artifact, previewPath);
+  // #4453 m11 rework (spec v2.1 §3.3) — the owner's private preview also opens a Draft page from Ari
+  // (disabled, never in a publish, share link or sitemap), so the editor can show it before it goes live.
+  const ariDraft = ariDraftPreviewPage(artifact, previewPath);
+  const resolved = ariDraft ? { kind: "page" as const, page: ariDraft } : resolveSitePath(artifact, previewPath);
+  // #4453 milestone 9 — an offering detail page previews like the live site
+  // (step 3b: the same flag and the same live data, for this artifact's site).
+  const detailed = resolved.kind === "not_found" && isV2Artifact(artifact)
+    ? await resolveOfferingDetail({ site: { site_id: artifact.site_id }, artifact, path: previewPath, search: params })
+    : null;
+  if (detailed?.kind === "detail") {
+    const incomingDetail = await headers();
+    return (
+      <div data-preview="1" data-artifact-digest={parsed.digest} data-page={detailed.page.key}>
+        <p className="preview-banner" role="status">
+          Private preview — not live. Publishing is always a separate confirmation.
+        </p>
+        <PreviewLinkScope scope={{
+          target: { key: parsed.key, frameAncestor: businessPreviewFrameAncestor(Array.isArray(params.fa) ? params.fa[0] : params.fa) },
+          path: previewPath,
+          assetKey: parsed.key,
+        }}>
+          <SitePageView artifact={artifact} page={detailed.page} previewKey={parsed.key} live={withPreviewOfferingKey(detailed.live, parsed.key)} detail={withPreviewDetailKey(detailed.detail, parsed.key)} saveData={wantsLessData(incomingDetail)} nonce={incomingDetail.get("x-nonce") ?? undefined} />
+        </PreviewLinkScope>
+      </div>
+    );
+  }
   if (resolved.kind !== "page" && resolved.kind !== "entry") notFound();
   const entry = resolved.kind === "entry" ? resolved.entry : undefined;
   // #2829 W4/W5 — a draft's live grids show the brand's offerings as they are

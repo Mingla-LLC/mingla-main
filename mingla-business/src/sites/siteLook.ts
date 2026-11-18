@@ -30,15 +30,37 @@ import {
   warningSentence,
   type ReadabilityWarning,
 } from "../../../packages/site-contracts/src/readability.ts";
-import type { OwnerFontOverrides } from "../../../packages/site-contracts/src/fontSlots.ts";
+import type { FontSlotKey, OwnerFontOverrides } from "../../../packages/site-contracts/src/fontSlots.ts";
 
 export type LookSwatch = { label: string; role: SingleColorRole | RampRole; step?: RampStep };
 
 /** All eight primary swatches (spec §W3); the site-contracts registry owns them. */
 export const LOOK_SWATCHES: readonly LookSwatch[] = PRIMARY_SWATCHES;
 
-/** The font slots this screen edits (#2829 A8: the accent face too, which voyage draws). */
-export type LookFontSlot = "display" | "body" | "accent";
+/**
+ * The font slots a design draws (#2829 A8: the accent face too, which voyage
+ * draws; #4453 §3.2: the label face). One list with site-contracts.
+ */
+export type LookFontSlot = FontSlotKey;
+
+/*
+ * #4453 — the slots an owner may change. `label` is the design's own label
+ * face (or the body face when the design sets none): owner overrides carry no
+ * label key (OwnerFontOverrides), so the screen shows it and never edits it.
+ */
+export const OWNER_FONT_SLOTS = ["display", "body", "accent"] as const;
+export type OwnerFontSlot = (typeof OWNER_FONT_SLOTS)[number];
+
+export function isOwnerFontSlot(slot: LookFontSlot): slot is OwnerFontSlot {
+  return (OWNER_FONT_SLOTS as readonly string[]).includes(slot);
+}
+
+/** The design's own family for a slot (label: its label face, else the body face). */
+export function designSlotFamily(design: DesignDefinition, slot: LookFontSlot): string {
+  if (slot === "accent") return design.fonts.accent?.family ?? "";
+  if (slot === "label") return design.fonts.label?.family ?? design.fonts.body.family;
+  return design.fonts[slot].family;
+}
 
 /**
  * #2829 A8 — what the screen shows for a design: only the swatches and font
@@ -57,7 +79,12 @@ export function lookControls(
   return {
     swatches: designSwatches(design).map((swatch) => ({ swatch, hex: swatchHex(resolved, swatch) })),
     fontSlots: designFontSlots(design),
-    fonts: { display: slotFamily(design, fonts, "display"), body: slotFamily(design, fonts, "body"), accent: slotFamily(design, fonts, "accent") },
+    fonts: {
+      display: slotFamily(design, fonts, "display"),
+      body: slotFamily(design, fonts, "body"),
+      accent: slotFamily(design, fonts, "accent"),
+      label: slotFamily(design, fonts, "label"),
+    },
   };
 }
 
@@ -126,6 +153,8 @@ export function lookWarningRows(tokens: ResolvedTokens): LookWarningRow[] {
 /** The family shown for a slot: the owner's choice, else the design's. */
 export function slotFamily(design: DesignDefinition, fonts: OwnerFontOverrides, slot: LookFontSlot): string {
   if (slot === "accent") return fonts.accent?.family ?? design.fonts.accent?.family ?? "";
+  // #4453 — labels use the design's label face, else whatever the body is set in.
+  if (slot === "label") return design.fonts.label?.family ?? slotFamily(design, fonts, "body");
   return fonts[slot]?.family ?? design.fonts[slot].family;
 }
 

@@ -28,7 +28,7 @@
  * Anon-tolerant: no useAuth, no fetch — the route passes resolved occurrences.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -118,6 +118,13 @@ export interface ExperienceReservePickerProps {
   capacityScope?: "total" | "per_day" | "per_start" | null;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
+  /**
+   * #4453 milestone 5 — a Mingla website's pre-fill: the occurrence the guest
+   * chose on the site (matched by the route) and their party size. Applied on
+   * open; the guest can change both. Never selects a date not in `dates`.
+   */
+  initialDateId?: string | null;
+  initialParty?: number | null;
 }
 
 const SHEET_SNAP = "full" as const;
@@ -211,6 +218,8 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   capacityScope = null,
   onCancel,
   onConfirm,
+  initialDateId = null,
+  initialParty = null,
 }) => {
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
   // ORCH-1186 Fix 4 — open-daily is a 3-step TAP-TO-ADVANCE wizard. Init
@@ -252,6 +261,11 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   } = reserve;
   const showOptionChoice = optionList.length > 1;
   const resetReserve = reserve.reset;
+  const selectReserveDate = reserve.selectDate;
+  // setParty re-derives with partyMax; a ref keeps the open effect from
+  // re-running (and wiping the guest's pick) whenever that cap moves.
+  const setReservePartyRef = useRef(reserve.setParty);
+  setReservePartyRef.current = reserve.setParty;
 
   // ORCH-1153 BUG-4 (Seth device, /exp date picker "dead"): reset the selection
   // whenever the sheet opens so a re-open starts clean (a stale selectedDateId
@@ -261,9 +275,13 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   useEffect(() => {
     if (visible) {
       resetReserve();
-      setStep("day");
+      // #4453 milestone 5 — a website's pre-fill picks its date (only one in `dates`) and party.
+      const seeded = initialDateId && dates.some((date) => date.id === initialDateId) ? initialDateId : null;
+      if (seeded) selectReserveDate(seeded);
+      if (typeof initialParty === "number") setReservePartyRef.current(initialParty);
+      setStep(seeded && mode === "open-daily" ? "time" : "day");
     }
-  }, [visible, resetReserve]);
+  }, [visible, resetReserve, selectReserveDate, initialDateId, initialParty, dates, mode]);
 
   const handleConfirm = (): void => {
     // issue #4420 — the shared model builds the byte-identical hand-off

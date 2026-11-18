@@ -90,8 +90,10 @@ describe("#2829 W7 voyage design", () => {
     expect(html).toMatch(/<form role="search"[^>]*v-search--hero[^>]*action="\/trips" method="get">/);
     expect(html).toContain('class="v-tiles" data-count="4"');
     expect((html.match(/class="tile-icon"><svg/g) ?? []).length).toBe(4);
-    expect(html).toContain("No upcoming trips right now");
-    expect(html).toContain('href="/contact-us">Get in touch');
+    // #4453 I-SITES-NO-PUBLIC-EMPTY-STATE — the empty upcoming card is left out of the public site.
+    expect(html).not.toContain("No upcoming trips right now");
+    // (its "Get in touch" button went with it)
+    expect(html).not.toContain('href="/contact-us">Get in touch');
     expect(html).toContain('class="quote-wall"');
     expect(html).toContain('class="dest-tile__name">Harbour Coast</span>');
     expect(html).toContain('class="chip-category">Notes</span>');
@@ -122,7 +124,8 @@ describe("#2829 W7 voyage design", () => {
     expect(faqs).toContain('class="cta-panel on-dark"');
     const trips = await render("trips");
     expect(trips).toContain('class="v-faq-single"');
-    expect(trips).toContain("Upcoming trips");
+    // #4453 — no upcoming trips: that half is left out; the past half stays.
+    expect(trips).not.toContain("Upcoming trips");
     expect(trips).toContain("Past trips");
     expect(trips).toContain('class="chip-status chip-status--state">Ended</span>');
   });

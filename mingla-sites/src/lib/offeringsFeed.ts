@@ -21,9 +21,15 @@ export const FEED_TIMEOUT_MS = 2_500;
 export type SiteOfferingsView = {
   source: "live" | "snapshot";
   offerings: readonly SiteOffering[];
+  /**
+   * #4453 milestone 9 — SITES_DETAIL_PAGES, read by Core with the live feed.
+   * The snapshot fallback is always off (cards link to Mingla, no detail
+   * routes): a flag nobody could read fails closed.
+   */
+  detailPages: boolean;
 };
 
-type Entry = { offerings: SiteOffering[]; fetchedAt: number; refreshing: Promise<void> | null };
+type Entry = { offerings: SiteOffering[]; detailPages: boolean; fetchedAt: number; refreshing: Promise<void> | null };
 
 const cache = new Map<string, Entry>();
 
@@ -32,7 +38,11 @@ export function clearOfferingsCache(): void {
   cache.clear();
 }
 
-export type FeedFetcher = (site: SiteBinding) => Promise<SiteOffering[]>;
+export type FeedFetcher = (site: SiteBinding) => Promise<SiteOffering[] | { offerings: SiteOffering[]; detailPages: boolean }>;
+
+function feedResult(value: Awaited<ReturnType<FeedFetcher>>): { offerings: SiteOffering[]; detailPages: boolean } {
+  return Array.isArray(value) ? { offerings: value, detailPages: false } : value;
+}
 
 /** Core's live feed for ONE resolved site (signed, site-bound). */
 export const fetchCoreFeed: FeedFetcher = async (site) => {
@@ -51,7 +61,8 @@ export const fetchCoreFeed: FeedFetcher = async (site) => {
     if (!response.ok) throw new Error("FEED_UNAVAILABLE");
     const payload = await response.json() as { ok?: unknown; data?: unknown };
     if (payload?.ok !== true) throw new Error("FEED_UNAVAILABLE");
-    return parseOfferingsFeed(payload.data).offerings;
+    const feed = parseOfferingsFeed(payload.data);
+    return { offerings: feed.offerings, detailPages: feed.detail_pages === true };
   } finally {
     clearTimeout(timer);
   }
@@ -80,8 +91,8 @@ function refresh(site: SiteBinding, fetcher: FeedFetcher, now: () => number): Pr
   const entry = cache.get(site.site_id);
   if (entry?.refreshing) return entry.refreshing;
   const run = fetcher(site)
-    .then((offerings) => {
-      cache.set(site.site_id, { offerings, fetchedAt: now(), refreshing: null });
+    .then((value) => {
+      cache.set(site.site_id, { ...feedResult(value), fetchedAt: now(), refreshing: null });
     })
     .catch(() => {
       const current = cache.get(site.site_id);
@@ -107,18 +118,18 @@ export async function siteOfferings(
   const now = deps.now ?? Date.now;
   const entry = cache.get(site.site_id);
   const age = entry ? now() - entry.fetchedAt : Number.POSITIVE_INFINITY;
-  if (entry && age < FEED_FRESH_MS) return { source: "live", offerings: entry.offerings };
+  if (entry && age < FEED_FRESH_MS) return { source: "live", offerings: entry.offerings, detailPages: entry.detailPages };
   if (entry && age < FEED_STALE_MAX_MS) {
     void refresh(site, fetcher, now);
-    return { source: "live", offerings: entry.offerings };
+    return { source: "live", offerings: entry.offerings, detailPages: entry.detailPages };
   }
   try {
-    const offerings = await fetcher(site);
-    cache.set(site.site_id, { offerings, fetchedAt: now(), refreshing: null });
-    return { source: "live", offerings };
+    const { offerings, detailPages } = feedResult(await fetcher(site));
+    cache.set(site.site_id, { offerings, detailPages, fetchedAt: now(), refreshing: null });
+    return { source: "live", offerings, detailPages };
   } catch {
     cache.delete(site.site_id);
     observe(site, "public.offerings.snapshot_served", "feed_unavailable->snapshot_served");
-    return { source: "snapshot", offerings: artifact.offerings_snapshot ?? [] };
+    return { source: "snapshot", offerings: artifact.offerings_snapshot ?? [], detailPages: false };
   }
 }

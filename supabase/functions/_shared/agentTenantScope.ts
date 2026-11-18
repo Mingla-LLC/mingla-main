@@ -79,6 +79,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "get_block_catalog",
   "get_site_tokens",
   "run_site_design_checks",
+  // #4453 milestone 7 — the design brief read asserts the same brand
+  // authority inline (assertAgentReadBrand) before Core reauthorizes.
+  "get_site_design_brief",
 ]);
 
 export interface AccessibleAgentBrand {

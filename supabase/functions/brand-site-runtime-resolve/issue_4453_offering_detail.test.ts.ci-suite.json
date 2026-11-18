@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-site-runtime-resolve/issue_4453_offering_detail.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4453-brand-site-runtime-resolve-offering-detail",
+  "profile": "deno-2-unit"
+}

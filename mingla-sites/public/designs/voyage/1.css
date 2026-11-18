@@ -3740,3 +3740,72 @@ html[data-design="voyage"][data-motion="none"] .site-header .btn--icon {
     color: var(--text-strong);
   }
 }
+
+/*
+ * #4453 §3.3–§3.4 — added (no rule above changed): voyage's map from the
+ * shared block library's role variables (public/designs/_shared/blocks-1.css)
+ * onto its own tokens, its type tuning for the shared layouts, and the
+ * gallery look of `tile-bar` and `badge-tile` for new compositions (pages
+ * whose header is a shared layout, `data-mg-look="gallery"`). Stored sites
+ * without a shared header keep exactly the look above.
+ */
+:root[data-design="voyage"] {
+  --mg-bg: var(--c-canvas);
+  --mg-bg-alt: var(--c-surface-sunken);
+  --mg-surface: var(--c-surface);
+  --mg-ink: var(--c-ink-strong);
+  --mg-heading: var(--c-ink-strong);
+  --mg-body: var(--c-ink-body);
+  --mg-muted: var(--c-ink-quiet);
+  --mg-line: color-mix(in srgb, var(--c-ink-strong) 12%, transparent);
+  --mg-accent: var(--c-accent-400);
+  --mg-accent-ink: var(--c-accent-ink);
+  --mg-label: var(--c-accent-700);
+  --mg-band: var(--c-surface-deep);
+  --mg-band-ink: var(--c-ink-on-dark-body);
+  --mg-band-muted: color-mix(in srgb, var(--c-ink-on-dark-body) 72%, var(--c-surface-deep));
+  --mg-band-label: var(--c-highlight-on-dark);
+  --mg-btn: var(--c-action);
+  --mg-btn-ink: var(--c-surface);
+  --mg-btn-hover: var(--c-accent-700);
+  --mg-hero-ink: var(--c-ink-on-photo-body);
+  --mg-hero-quiet: var(--c-ink-on-photo-quiet);
+  --mg-i: var(--c-highlight-600);
+  --mg-focus: var(--c-accent-800);
+  --mg-scrim: var(--c-scrim-rgb);
+  --mg-shadow: var(--c-shadow-rgb);
+  --mg-f-display: var(--font-display);
+  --mg-f-body: var(--font-body);
+  --mg-f-label: var(--font-label, var(--font-body));
+  --mg-d-weight: 800;
+  --mg-d-track: -.04em;
+  --mg-d-lh: .94;
+  --mg-h1-track: -.055em;
+  --mg-h1-size: clamp(52px, 11.2vw, 184px);
+  --mg-l-weight: 700;
+  --mg-l-track: .14em;
+  --mg-man-weight: 700;
+  --mg-man-track: -.03em;
+}
+[data-design="voyage"] .v-page[data-mg-look="gallery"] .v-tiles {
+  gap: 1px;
+  background: var(--mg-line);
+  border-radius: var(--mg-r-card);
+  overflow: hidden;
+}
+[data-design="voyage"] .v-page[data-mg-look="gallery"] .v-tile {
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--c-surface);
+}
+[data-design="voyage"] .v-page[data-mg-look="gallery"] .dest-tile__name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+[data-design="voyage"] .v-page[data-mg-look="gallery"] .dest-tile__role {
+  font-family: var(--font-label, var(--font-body));
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--c-accent-700);
+}

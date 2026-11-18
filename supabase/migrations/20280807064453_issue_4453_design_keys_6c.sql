@@ -1,0 +1,33 @@
+-- Issue #4453 PR 6c (designs: Pop, Sunset, Pulse): the website design keys grow by three, to all ten.
+--
+-- Invariant I-SITES-DESIGN-KEYS-ONE-LIST (owned by its pg17 test): design keys come from
+-- packages/site-contracts DESIGN_KEYS; brand_site_design_keys() is the one Core list (the
+-- plan CHECK, brand_site_plan_save_design and brand_context_completeness_internal read it),
+-- pinned to the generated fixture by issue_4453_design_keys.implementor.pg17.test.sql.
+--
+-- What changes: public.brand_site_design_keys() is replaced (never edited) to return
+-- atelier, voyage, nocturne, haven, maison, journal, grid, terra, pop, sunset and pulse
+-- (the eleven DESIGN_KEYS: Atelier plus the ten gallery-era designs), in DESIGN_KEYS order.
+-- Nothing else: the CHECK and both functions already call it (20280807004453). Static SQL
+-- only. No data changes: the list only grows, so every stored design_key still passes the CHECK.
+
+BEGIN;
+
+SET LOCAL lock_timeout = '10s';
+
+CREATE OR REPLACE FUNCTION public.brand_site_design_keys()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE PARALLEL SAFE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra','pop','sunset','pulse']::text[]
+$function$;
+
+COMMENT ON FUNCTION public.brand_site_design_keys() IS
+  '#4453 I-SITES-DESIGN-KEYS-ONE-LIST: the website design keys, equal to site-contracts DESIGN_KEYS. Replaced (never edited) by each design PR; 6c adds pop, sunset and pulse.';
+
+REVOKE ALL ON FUNCTION public.brand_site_design_keys() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.brand_site_design_keys() TO anon, authenticated, service_role;
+
+COMMIT;

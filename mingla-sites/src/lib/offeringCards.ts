@@ -1,3 +1,4 @@
+import type { BookingView } from "./bookingFeed";
 import {
   formatOfferingDates,
   formatOfferingPrice,
@@ -13,6 +14,7 @@ import { isLiveOfferingGrid } from "../contracts/generated/blocks.ts";
 import type { SiteBinding } from "./coreGateway";
 import type { OfferingCoverMedia } from "../contracts/generated/artifactV2.ts";
 import { offeringCoverSources } from "./offeringMedia";
+import { offeringDetailHref, offeringHasDetailPage } from "../contracts/generated/offeringDetail.ts";
 import { siteOfferings, type SiteOfferingsView } from "./offeringsFeed";
 
 /*
@@ -36,6 +38,14 @@ export type OfferingCard = {
   coverSrcSet: string | null;
   href: string;
   cta: string;
+  /**
+   * #4453 milestone 9 — the card's title and image link here (the site's own
+   * detail page) while SITES_DETAIL_PAGES is on; null = no detail page, the
+   * card links to Mingla exactly as before. `href` (Book) is always Mingla.
+   */
+  detailHref: string | null;
+  /** #4453 milestone 10 — a plan preview's labelled sample (no link, no price, no date). */
+  sample?: boolean;
 };
 
 export type LiveOfferings = {
@@ -44,9 +54,13 @@ export type LiveOfferings = {
   cards: ReadonlyMap<string, OfferingCard>;
   now: Date;
   filters: OfferingFilters;
+  /** #4453 milestone 5 — the page's live booking facts (slots, tiers, the hero bar's target, the Mingla rating). */
+  booking?: BookingView;
+  /** #4453 milestone 9 — SITES_DETAIL_PAGES as the live feed carried it (always off on the snapshot). */
+  detailPages?: boolean;
 };
 
-const KIND_NOUN: Readonly<Record<SiteOffering["kind"], string>> = { trip: "trip", event: "event", experience: "experience" };
+const KIND_NOUN: Readonly<Record<SiteOffering["kind"], string>> = { trip: "trip", event: "event", experience: "experience", stay: "room" };
 
 function ctaFor(offering: SiteOffering, state: OfferingState): string {
   if (state.bookable) return "Book";
@@ -76,7 +90,24 @@ export async function offeringCard(
     coverSrcSet: cover?.srcSet ?? null,
     href: offering.public_url,
     cta: ctaFor(offering, state),
+    detailHref: null,
   };
+}
+
+/**
+ * #4453 milestone 9 — the address of an offering's detail page on this site,
+ * or null when it has none: the flag is off, it is cancelled, the owner hid
+ * it, or its slug cannot be a path segment.
+ */
+export function detailHrefFor(
+  artifact: Pick<ArtifactV2, "routes" | "site_display">,
+  offering: SiteOffering,
+  now: Date,
+  detailPages: boolean,
+): string | null {
+  if (!detailPages || !offeringHasDetailPage(offering, now)) return null;
+  if (hiddenOfferingIds(artifact).has(offering.id.toLowerCase())) return null;
+  return offeringDetailHref(artifact.routes, offering);
 }
 
 /** The request's `?where=&from=&to=` (junk is ignored, never an error). */
@@ -104,9 +135,10 @@ export async function loadLiveOfferings(
   const offerings = withoutHiddenPast(view.offerings, artifact, now);
   const cards = new Map<string, OfferingCard>();
   for (const offering of offerings) {
-    cards.set(offering.id, await offeringCard(site.site_id, offering, now, artifact.language, artifact.offering_media));
+    const card = await offeringCard(site.site_id, offering, now, artifact.language, artifact.offering_media);
+    cards.set(offering.id, { ...card, detailHref: detailHrefFor(artifact, offering, now, view.detailPages) });
   }
-  return { source: view.source, offerings, cards, now, filters };
+  return { source: view.source, offerings, cards, now, filters, detailPages: view.detailPages };
 }
 
 /**
