@@ -7,6 +7,12 @@
  * preview (and Build) failed with ARTIFACT_BLOCK_CONTENT_MISMATCH:
  * hours_location.hours. Found live on Gameland Lagos, 2026-11-18: "See your
  * site in three styles" answered "Couldn't load the previews" for every style.
+ *
+ * Then, once its venue was verified with reservations, a menu, bookable
+ * dates and a ticket on sale, every preview failed again with
+ * VALIDATION_FAILED: the preview handed the builder a row for every
+ * offering_id on the page, while the builder counts only a block's
+ * offering_ids list.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -85,4 +91,28 @@ describe("#4453 a venue's Find us block", () => {
       expect(result.previews.map((preview) => preview.style)).toEqual([style]);
     }
   });
+});
+
+const realFacts = {
+  upcoming: { trip: 0, event: 1, experience: 3 }, ended: { trip: 0, event: 0, experience: 0 },
+  next_offering: { event: FEED.offerings[2]!.id, experience: FEED.offerings[0]!.id },
+  bookable: { event: 1, experience: 14 }, venue_id: { play: "61dbdc6c-8926-46b4-978d-a3f4cdbd7b08" }, verified_venues: { play: 1 },
+  venue_reservations_on: { play: true }, open_venue_slots: { play: 12 }, published_menu: true, live_stay_offerings: 0, stay_offering_id: null,
+  public_ticket_tiers: 1, mingla_reviews: 0,
+};
+const realAnswers = {
+  value_points: [{ title: "100+ games in one place", sentence: "PS5 and Xbox, pool and more." }, { title: "Karaoke every Friday", sentence: "Every Friday from 6pm." }, { title: "Food, drinks and space to hire", sentence: "Kitchen and bar." }],
+  faq: [{ question: "What are your opening hours?", answer: "Every day from 12pm to 12am." }, { question: "Where are you?", answer: "The Lekki Coliseum." }],
+  process_steps: [{ title: "Book your pass", text: "Pay on Mingla." }, { title: "Show it at the gate", text: "Your ticket gets you in." }, { title: "Play all day", text: "Unlimited play." }],
+  quick_facts: null,
+};
+describe("#4453 a live venue: bookable dates, a ticket on sale, reservations and a menu (Gameland, 2026-11-18)", () => {
+  for (const style of ["voyage", "terra", "journal", "haven", "pop", "maison", "sunset", "nocturne", "grid", "pulse"]) {
+    it(`builds the ${style} preview`, async () => {
+      const body = parsePlanPreviewBody({ kind: "plan_preview", brand_id: BRAND, plan_revision: 9, format: "experiences", styles: [style], plan, answers: realAnswers, brand, address: ADDRESS, facts: realFacts, feed: FEED, live_fingerprints: [] }, BRAND);
+      if (!body) return; // an "avoid" style for this format is refused before composing
+      const result = await runPlanPreview(body, { store: store(), req, fontPipeline: offlineFonts });
+      expect(result.previews.map((preview) => preview.style)).toEqual([style]);
+    });
+  }
 });

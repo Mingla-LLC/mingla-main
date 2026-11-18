@@ -3,7 +3,7 @@
  * Core checks the flag, the caller's rank, the plan revision and the rate
  * limit; Studio composes and renders. Asking for a preview writes nothing.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invokeBrandSiteControl } from "../services/brandSitesService";
 import type { DesignKey } from "../../../packages/site-contracts/src/designs.ts";
 import { brandSiteKeys } from "./brandSiteKeys";
@@ -64,5 +64,52 @@ export function usePlanPreviews(brandId: string, revision: number | null, enable
     enabled: enabled && revision !== null,
     staleTime: 23 * 60 * 60 * 1000,
     retry: false,
+  });
+}
+
+/** Core's answer kept for one style (the shape the style preview reads). */
+function forStyle(answer: PlanPreviewState, style: DesignKey): PlanPreviewState {
+  return { ...answer, cards: answer.cards.filter((card) => card.style === style) };
+}
+
+/**
+ * #4453 — which styles one request asks for: the wanted style first, then up
+ * to two more not yet loaded, in the picker's order from the wanted one on.
+ * Core counts every request (3 a minute, 20 a day per brand) and composes up
+ * to three styles each, so ten styles cost about three requests, not ten.
+ */
+export function previewBatch(style: DesignKey, queue: readonly DesignKey[], loaded: (style: DesignKey) => boolean): DesignKey[] {
+  const start = Math.max(0, queue.indexOf(style));
+  const ordered = [...queue.slice(start), ...queue.slice(0, start)];
+  return [style, ...ordered.filter((key) => key !== style && !loaded(key))].slice(0, 3);
+}
+
+/**
+ * #4453 — the live preview of one style in "Choose your design". Reuses a
+ * render the three-style chooser already has, asks for neighbours in the same
+ * request and files each answer under its own style, so clicking through the
+ * styles stays inside Core's rate limit.
+ */
+export function useStylePreview(brandId: string, revision: number | null, style: DesignKey | null, enabled: boolean, queue: readonly DesignKey[]) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: brandSiteKeys.planPreview(brandId, revision, style ? [style] : undefined),
+    enabled: enabled && revision !== null && style !== null,
+    staleTime: 23 * 60 * 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      const wanted = style as DesignKey;
+      const rev = revision as number;
+      const picks = queryClient.getQueryData<PlanPreviewState>(brandSiteKeys.planPreview(brandId, rev));
+      if (picks?.cards.some((card) => card.style === wanted)) return forStyle(picks, wanted);
+      const loaded = (key: DesignKey) =>
+        queryClient.getQueryData(brandSiteKeys.planPreview(brandId, rev, [key])) !== undefined ||
+        Boolean(picks?.cards.some((card) => card.style === key));
+      const answer = await requestPlanPreviews(brandId, rev, previewBatch(wanted, queue, loaded));
+      for (const card of answer.cards) {
+        if (card.style !== wanted) queryClient.setQueryData(brandSiteKeys.planPreview(brandId, rev, [card.style]), forStyle(answer, card.style));
+      }
+      return forStyle(answer, wanted);
+    },
   });
 }
