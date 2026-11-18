@@ -14,6 +14,7 @@ import { WButton } from "../../src/components/sites/website/ui";
 import { SitePreviewPanel } from "../../src/components/sites/website/preview/SitePreviewPanel";
 import { ariPagePrompt } from "../../../packages/site-contracts/src/ariPage.ts";
 import type { SitePageRow } from "../../src/sites/contentApi";
+import { color } from "../../src/constants/designSystem";
 
 /**
  * #4453 milestone 11 — DEV-ONLY harness for "Add a page with Ari": the Pages
@@ -212,13 +213,13 @@ function Harness(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0c0e12" },
+  root: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   body: { padding: 16, paddingBottom: 48 },
-  dev: { color: "#9aa0a6", fontSize: 12, marginBottom: 12 },
-  toast: { color: "#fff", backgroundColor: "#333", padding: 10, borderRadius: 8, marginBottom: 12 },
+  dev: { color: color.text2, fontSize: 12, marginBottom: 12 },
+  toast: { color: color.textStrong, backgroundColor: color.card3, padding: 10, borderRadius: 8, marginBottom: 12 },
   steps: { flexDirection: "row", gap: 8, marginBottom: 16 },
   thread: { gap: 12, maxWidth: 640 },
-  owner: { alignSelf: "flex-end", color: "#fff", backgroundColor: "#2a2d33", padding: 12, borderRadius: 16, maxWidth: "85%" },
-  ari: { color: "#e8eaed", fontSize: 14, lineHeight: 20 },
+  owner: { alignSelf: "flex-end", color: color.textStrong, backgroundColor: color.card2, padding: 12, borderRadius: 16, maxWidth: "85%" },
+  ari: { color: color.text1, fontSize: 14, lineHeight: 20 },
 });

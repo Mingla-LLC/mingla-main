@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   fullBody: { flex: 1 },
   frameStage: { position: "relative" },
   overlay: { position: "absolute", left: 12, right: 12, top: 12, alignItems: "flex-start" },
-  overlayCard: { maxWidth: 420, gap: 6, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: ui.border2, backgroundColor: "rgba(22,24,28,0.94)" },
+  overlayCard: { maxWidth: 420, gap: 6, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: ui.border2, backgroundColor: color.card },
   overlayTitle: { fontSize: 14, fontWeight: "700", color: ui.t1, marginTop: 4 },
   overlayLine: { fontSize: 12, lineHeight: 16, color: ui.t3 },
   overlayQuestion: { fontSize: 13, lineHeight: 18, color: ui.t1 },

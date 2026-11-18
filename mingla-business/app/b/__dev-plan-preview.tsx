@@ -11,6 +11,7 @@ import { defaultPreviewPreference } from "../../src/sites/previewDevice";
 import { WebsiteProvider, type WebsiteContextValue } from "../../src/components/sites/website/WebsiteContext";
 import { PlanPreviewChooser } from "../../src/components/sites/plan/PlanPreviewChooser";
 import { PlanDesignPart } from "../../src/components/sites/plan/PlanDesignPart";
+import { color } from "../../src/constants/designSystem";
 
 /**
  * #4453 milestone 10 — DEV-ONLY harness for "See your site in three styles",
@@ -93,9 +94,9 @@ function Harness(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0c0e12" },
+  root: { flex: 1, backgroundColor: color.canvas },
   scroll: { flex: 1 },
   body: { padding: 16, paddingBottom: 48 },
-  dev: { color: "#9aa0a6", fontSize: 12, marginBottom: 12 },
-  toast: { color: "#fff", backgroundColor: "#333", padding: 10, borderRadius: 8, marginBottom: 12 },
+  dev: { color: color.text2, fontSize: 12, marginBottom: 12 },
+  toast: { color: color.textStrong, backgroundColor: color.card3, padding: 10, borderRadius: 8, marginBottom: 12 },
 });

@@ -1016,7 +1016,7 @@ function SitePagePlanCard({ args, isExecuting, onConfirm, onCancel }: Pick<ToolP
     }
   };
   return (
-    <GlassChrome intensity="cardElevated" tintColor={glass.tint.profileElevated} borderColor={ariPalette.proposalBorder} radius="lg" style={styles.card}>
+    <GlassChrome intensity="cardElevated" tintColor={color.fill.tile} borderColor={ariPalette.proposalBorder} radius="lg" style={styles.card}>
       <View style={styles.inner} accessibilityRole="summary" testID="site-page-plan-card">
         <Text style={styles.reviewBoundary}>Review before Ari acts</Text>
         <View style={styles.headerRow}>

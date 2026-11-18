@@ -14,6 +14,7 @@ import { Card, CardTitle, Chip, Hint, SectionHead, Segmented, Skeleton, WButton,
 import type { ScaledPreviewFrameProps } from "../website/preview/ScaledPreviewFrame";
 import { FullScreenPreviewBar } from "../website/preview/FullScreenPreviewBar";
 import { PreviewDeviceSwitcher } from "../website/preview/SitePreviewPanel";
+import { color } from "../../../constants/designSystem";
 
 // #4453 final rework — the native frame imports `react-native-webview` at
 // module scope. Website setup mounts this chooser, so a module-scope import
@@ -247,12 +248,12 @@ const styles = StyleSheet.create({
   reason: { color: ui.t2, fontSize: 14, lineHeight: 20 },
   frame: { minHeight: 360, minWidth: 0 },
   frameWide: { minHeight: 0 },
-  waiting: { minHeight: 360, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.02)", padding: 16 },
+  waiting: { minHeight: 360, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: color.fill.tableHead, padding: 16 },
   loading: { marginTop: 8 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   skipped: { marginBottom: 12 },
   // The same surface as the M8 full-screen preview (WebsiteApp).
-  fullRoot: { flex: 1, backgroundColor: "#050608" },
+  fullRoot: { flex: 1, backgroundColor: color.ink },
   fullBody: { flex: 1, padding: 12, gap: 10 },
   sheet: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40, gap: 12 },
   sheetLine: { color: ui.t2, fontSize: 15, lineHeight: 22 },

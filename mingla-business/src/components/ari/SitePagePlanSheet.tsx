@@ -12,7 +12,7 @@
 import React from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { ariPalette, radius, semantic, spacing, text as textTokens } from "../../constants/designSystem";
+import { ariPalette, color, radius, scrim, space } from "../../constants/designSystem";
 import { DESIGNS, designFor } from "../../../../packages/site-contracts/src/designs.ts";
 import { useBrandSitePlan } from "../../sites/planApi";
 import { useWebEscapeClose } from "../ui/useWebEscapeClose";
@@ -117,12 +117,12 @@ export function SitePagePlanSheet({ visible, onClose, args, isExecuting, error, 
 }
 
 const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: spacing.md },
+  scrim: { flex: 1, backgroundColor: scrim.modal, alignItems: "center", justifyContent: "center", padding: space[4] },
   dialog: {
     width: "100%",
     maxWidth: 560,
     maxHeight: "90%",
-    backgroundColor: "#16181c",
+    backgroundColor: color.card,
     borderWidth: 1,
     borderColor: ariPalette.proposalBorder,
     borderRadius: radius.xl,
@@ -131,26 +131,26 @@ const styles = StyleSheet.create({
     ...(Platform.OS === "web" ? { cursor: "default" } : {}),
   } as object,
   head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, marginBottom: 6 },
-  eyebrow: { fontSize: 10, fontWeight: "700", letterSpacing: 1.1, color: textTokens.secondary },
-  cancel: { fontSize: 13, fontWeight: "600", color: textTokens.secondary },
+  eyebrow: { fontSize: 10, fontWeight: "700", letterSpacing: 1.1, color: color.text2 },
+  cancel: { fontSize: 13, fontWeight: "600", color: color.text2 },
   scroll: { flexGrow: 0, flexShrink: 1 },
   scrollBody: { paddingHorizontal: 20, paddingBottom: 8 },
-  title: { fontSize: 20, lineHeight: 26, fontWeight: "700", color: textTokens.primary },
-  line: { fontSize: 13, lineHeight: 18, color: textTokens.secondary, marginTop: 4 },
-  section: { fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: textTokens.primary, marginTop: 18, marginBottom: 6 },
-  item: { paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.12)", gap: 2 },
-  itemTitle: { fontSize: 14, fontWeight: "600", color: textTokens.primary },
-  itemLine: { fontSize: 13, lineHeight: 18, color: textTokens.primary },
-  source: { fontSize: 11.5, lineHeight: 15, color: textTokens.tertiary },
-  need: { fontSize: 12.5, lineHeight: 17, color: semantic.warning, marginTop: 2 },
-  noGuess: { fontSize: 12.5, lineHeight: 17, color: textTokens.secondary, marginTop: 18 },
-  error: { fontSize: 12.5, lineHeight: 17, color: semantic.error, marginTop: 10 },
+  title: { fontSize: 20, lineHeight: 26, fontWeight: "700", color: color.text1 },
+  line: { fontSize: 13, lineHeight: 18, color: color.text2, marginTop: 4 },
+  section: { fontSize: 12, fontWeight: "700", letterSpacing: 0.4, color: color.text1, marginTop: 18, marginBottom: 6 },
+  item: { paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.lineStrong, gap: 2 },
+  itemTitle: { fontSize: 14, fontWeight: "600", color: color.text1 },
+  itemLine: { fontSize: 13, lineHeight: 18, color: color.text1 },
+  source: { fontSize: 11.5, lineHeight: 15, color: color.text3 },
+  need: { fontSize: 12.5, lineHeight: 17, color: color.warning, marginTop: 2 },
+  noGuess: { fontSize: 12.5, lineHeight: 17, color: color.text2, marginTop: 18 },
+  error: { fontSize: 12.5, lineHeight: 17, color: color.errorText, marginTop: 10 },
   actions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, paddingHorizontal: 20, paddingTop: 12 },
   btn: { minHeight: 40, paddingHorizontal: 16, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
-  btnSecondary: { borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
-  btnSecondaryText: { fontSize: 13, fontWeight: "600", color: textTokens.primary },
+  btnSecondary: { borderWidth: 1, borderColor: color.lineStrong },
+  btnSecondaryText: { fontSize: 13, fontWeight: "600", color: color.text1 },
   btnPrimary: { backgroundColor: ariPalette.userBubble },
-  btnPrimaryText: { fontSize: 13, fontWeight: "700", color: "#ffffff" },
+  btnPrimaryText: { fontSize: 13, fontWeight: "700", color: color.textStrong },
   pressed: { opacity: 0.8 },
   disabled: { opacity: 0.5 },
 });

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { spacing } from "../../../../constants/designSystem";
+import { space } from "../../../../constants/designSystem";
 import { Sheet } from "../../../ui/Sheet";
 import { WebsiteIcon } from "../WebsiteIcon";
 import { CardTitle, Hint, MiniButton, WButton, ui } from "../ui";
@@ -86,14 +86,14 @@ export function FullScreenPreviewBar({ brandName, onClose, canShare, shareReady,
 
 const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
-  bar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 56, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
-  back: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 44, paddingRight: spacing.xs },
+  bar: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 56, paddingHorizontal: space[4], paddingVertical: space[1], borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
+  back: { flexDirection: "row", alignItems: "center", gap: space[1], minHeight: 44, paddingRight: space[1] },
   backText: { fontSize: 14, fontWeight: "600", color: ui.t1 },
   titleWrap: { flex: 1, minWidth: 0 },
   title: { fontSize: 15, fontWeight: "700", color: ui.t1 },
   brand: { fontSize: 12, lineHeight: 16, color: ui.t3 },
-  sheet: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  sheetHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingBottom: spacing.md },
-  sheetScroll: { paddingBottom: spacing.xxl, gap: spacing.md },
+  sheet: { flex: 1, paddingHorizontal: space[6], paddingTop: space[4] },
+  sheetHead: { flexDirection: "row", alignItems: "flex-start", gap: space[2], paddingBottom: space[4] },
+  sheetScroll: { paddingBottom: space[9], gap: space[4] },
   help: { fontSize: 13, lineHeight: 18, color: ui.t3 },
 });

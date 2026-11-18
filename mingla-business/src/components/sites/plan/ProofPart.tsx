@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Sheet } from "../../ui/Sheet";
-import { spacing } from "../../../constants/designSystem";
+import { space } from "../../../constants/designSystem";
 import { useRouter } from "expo-router";
 import { Banner, Body, Card, CardTitle, Field, Hint, ListBox, MiniButton, Row, RowText, Skeleton, Toggle, WButton, ui } from "../website/ui";
 import { useBrandSitePlan, useSaveBrandSitePlan, useSetupContent, useSaveSetupContent, useAddPastTrip, type SetupContentItem } from "../../../sites/planApi";
@@ -532,9 +532,9 @@ const styles = StyleSheet.create({
   gap: { gap: 16 },
   form: { gap: 12, paddingTop: 8, paddingBottom: 4 },
   grow: { flex: 1 },
-  sheet: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.md },
+  sheet: { flex: 1, paddingHorizontal: space[6], paddingTop: space[4], gap: space[4] },
   sheetHead: { flexDirection: "row", alignItems: "center", gap: 12 },
-  sheetScroll: { gap: spacing.md, paddingBottom: spacing.xxl },
+  sheetScroll: { gap: space[4], paddingBottom: space[9] },
   list: { marginTop: 8 },
   row: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 4 },
   rowActions: { flexDirection: "row", gap: 8 },
