@@ -589,7 +589,8 @@ export function phase3dContractDigest(manifest) {
 // #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459) after 20280803004238 and kept its pg17 suites and sidecars; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
 // #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 replay inventories and its pg17 suite, hunk guard and sidecars in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "95cf82d98f80b56f0c99ea598a5dec230d7449fefdb4694a0802596434c8735b";
+// #3645 payout gaps PR checks: skipped 20280809003645 by exact filename in the #1931 and #2117 filtered template replays (the #2492 closure gate: it re-emits payout readers over occurrence_key / provider_fee_minor, which only skipped migrations create); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a5c342c56109e7611ca7885b657bb2c7e74a678e3e9fcd5daa14f0770bde2156";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
