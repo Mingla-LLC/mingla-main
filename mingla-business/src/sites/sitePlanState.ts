@@ -114,6 +114,13 @@ export type SitePlanState = {
   ariAddPage: boolean;
   /** #4453 M10 — SITES_PLAN_PREVIEW for this brand (Core sends `plan_preview` only while it is on). */
   planPreview: boolean;
+  /**
+   * #4453 — whether this answer carried Core's per-brand Sites values
+   * (style_library, ari_add_page, plan_preview). Only the plan READ does; the
+   * save, design, heartbeat and take-over replies do not, so they must never
+   * switch those features off (see keepCoreFlags).
+   */
+  coreFlags: boolean;
   proofCounts: { reviews: number; pastTrips: number; destinations: number; stories: number };
 };
 
@@ -211,6 +218,7 @@ export function normalizeSitePlan(brandId: string, value: unknown): SitePlanStat
     styleLibrary: raw.style_library === true,
     ariAddPage: raw.ari_add_page === true,
     planPreview: raw.plan_preview === true,
+    coreFlags: "style_library" in raw,
     proofCounts: {
       reviews: num(obj(raw.proof_counts).reviews),
       pastTrips: num(obj(raw.proof_counts).past_trips),
@@ -275,4 +283,21 @@ export function planBuildDone(plan: SitePlanState | null | undefined): boolean {
   return plan?.setupStatus?.parts.find((part) => part.key === "build")?.done
     ?? plan?.parts.find((part) => part.key === "build")?.done
     ?? false;
+}
+
+/**
+ * #4453 — a plan answer without Core's per-brand values (a save, design,
+ * heartbeat or take-over reply) keeps the ones the last plan read gave.
+ * Without this, the setup screen's first heartbeat switched the style library,
+ * the three-style preview and "Add a page with Ari" off a second after load.
+ */
+export function keepCoreFlags(previous: SitePlanState | undefined | null, next: SitePlanState): SitePlanState {
+  if (next.coreFlags || !previous || !previous.coreFlags) return next;
+  return {
+    ...next,
+    styleLibrary: previous.styleLibrary,
+    ariAddPage: previous.ariAddPage,
+    planPreview: previous.planPreview,
+    coreFlags: true,
+  };
 }

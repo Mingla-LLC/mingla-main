@@ -8,7 +8,7 @@
  * the fixed warning and still saves (D6). A design already in use is always
  * listed, so switching away is never forced.
  */
-import { DESIGN_KEYS, type DesignKey } from "../../../packages/site-contracts/src/designs.ts";
+import { DESIGN_KEYS, DESIGNS, type DesignKey } from "../../../packages/site-contracts/src/designs.ts";
 import {
   STYLE_AVOID_WARNING,
   STYLE_KEYS,
@@ -19,6 +19,7 @@ import {
   type StyleFitLevel,
 } from "../../../packages/site-contracts/src/formats.ts";
 import { mainActionPage } from "../../../packages/site-contracts/src/sitePlan.ts";
+import type { SitePlanState } from "./sitePlanState";
 
 const BEFORE_LIBRARY: readonly DesignKey[] = ["atelier", "voyage"];
 
@@ -48,4 +49,18 @@ export function styleFitLabel(format: FormatKey | null, key: DesignKey): StyleFi
     reason: styleFitReason(format, key),
     warning: fit === "avoid" ? STYLE_AVOID_WARNING : null,
   };
+}
+
+/**
+ * #4453 — why the picked style can't be previewed live in "Choose your
+ * design", or null when it can (Core's plan-previews route with that style).
+ */
+export function stylePreviewBlocker(planState: Pick<SitePlanState, "planPreview" | "plan">, style: DesignKey | null): string | null {
+  if (!style) return "Pick a style to see your site in it.";
+  if (!planState.planPreview) return "Live previews aren't on for this brand yet. You'll see your pages after Build your pages.";
+  const format = planFormatOf(planState.plan);
+  if (!format || planState.plan?.revision == null) return "Answer What you'll offer and Your story first, so Ari knows which pages to lay out.";
+  // Core refuses an "avoid" style: it is never composed for this kind of place.
+  if (styleFitLabel(format, style)?.fit === "avoid") return `${DESIGNS[style].label} is built for other kinds of places, so there's no preview of it for your site.`;
+  return null;
 }

@@ -6,6 +6,7 @@ import { Redirect } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { brandSiteKeys } from "../../src/sites/brandSiteKeys";
 import { normalizePlanPreview } from "../../src/sites/planPreviewApi";
+import { STYLE_KEYS } from "../../../packages/site-contracts/src/formats.ts";
 import { normalizeSitePlan } from "../../src/sites/sitePlanState";
 import { defaultPreviewPreference } from "../../src/sites/previewDevice";
 import { WebsiteProvider, type WebsiteContextValue } from "../../src/components/sites/website/WebsiteContext";
@@ -49,7 +50,18 @@ function Harness(): React.ReactElement {
     plan_preview: true,
   }), []);
   useMemo(() => {
-    queryClient.setQueryData(brandSiteKeys.planPreview(BRAND, plan.plan?.revision ?? null), normalizePlanPreview(fixture()));
+    const answer = normalizePlanPreview(fixture());
+    queryClient.setQueryData(brandSiteKeys.planPreview(BRAND, plan.plan?.revision ?? null), answer);
+    // "Choose your design" asks for one style at a time: seed each from the fixture's first render.
+    const first = answer.cards[0];
+    if (first) {
+      for (const style of STYLE_KEYS) {
+        queryClient.setQueryData(
+          brandSiteKeys.planPreview(BRAND, plan.plan?.revision ?? null, [style]),
+          { ...answer, cards: [{ ...first, style }] },
+        );
+      }
+    }
   }, [queryClient, plan]);
   const noop = (): void => undefined;
   const value = {

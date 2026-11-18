@@ -1173,6 +1173,7 @@
       "paths": [
         "mingla-business/src/components/sites/setup/WebsiteSetupScreen.tsx",
         "mingla-business/src/components/sites/plan/PlanDesignPart.tsx",
+        "mingla-business/src/components/sites/plan/PlanStylePreview.tsx",
         "mingla-business/src/components/sites/website/sections/OverviewSection.tsx",
         "mingla-business/src/sites/planApi.ts",
         "mingla-business/src/sites/sitePlanState.ts",
