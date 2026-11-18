@@ -108,6 +108,8 @@ DECLARE
   v_owner_in_chat boolean;
   v_chat_before boolean;
   v_chat_after boolean;
+  v_guest_before boolean;
+  v_guest_after boolean;
 BEGIN
   PERFORM set_config('session_replication_role', 'replica', true);
   INSERT INTO auth.users(id, email) VALUES
@@ -390,6 +392,13 @@ BEGIN
       JOIN public.conversation_participants cp ON cp.conversation_id = c.id
      WHERE c.event_id = v_event AND cp.user_id = v_second)
     INTO v_chat_before;
+  -- With #4459 the buyer chat is the brand's Guest chat.
+  SELECT EXISTS (
+    SELECT 1 FROM public.conversations c
+      JOIN public.conversation_participants cp ON cp.conversation_id = c.id
+     WHERE c.linked_entity_type = 'brand_guests'
+       AND to_jsonb(c)->>'brand_id' = v_brand::text AND cp.user_id = v_second)
+    INTO v_guest_before;
   UPDATE public.account_claim_contacts
      SET revoked_at = now()
    WHERE user_id = v_second AND value = v_email AND revoked_at IS NULL;
@@ -417,6 +426,22 @@ BEGIN
     v_chat_before, v_chat_after;
   IF v_chat_after THEN
     RAISE EXCEPTION 'G7 a lapsed holder is still a member of the event chat';
+  END IF;
+  SELECT EXISTS (
+    SELECT 1 FROM public.conversations c
+      JOIN public.conversation_participants cp ON cp.conversation_id = c.id
+     WHERE c.linked_entity_type = 'brand_guests'
+       AND to_jsonb(c)->>'brand_id' = v_brand::text AND cp.user_id = v_second)
+    INTO v_guest_after;
+  RAISE NOTICE 'G7 holder in brand Guest chat before lapse: %, after lapse and sweep: %',
+    v_guest_before, v_guest_after;
+  IF to_regprocedure('public.issue_4459_safe_sync(uuid,uuid,text)') IS NOT NULL THEN
+    IF NOT v_guest_before THEN
+      RAISE EXCEPTION 'G7 the shared holder never joined the brand Guest chat';
+    END IF;
+    IF v_guest_after THEN
+      RAISE EXCEPTION 'G7 a lapsed holder is still a member of the brand Guest chat';
+    END IF;
   END IF;
 END;
 $test$;
