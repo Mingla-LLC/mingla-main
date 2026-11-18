@@ -447,7 +447,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
                   {statusChip}
                   <WButton label="Preview draft" icon="eye" size="sm" onPress={openFullScreenPreview} testID="topbar-preview" />
                   {capabilities.canPublish && unpublished > 0 ? (
-                    <WButton label="Publish" variant="primary" size="sm" onPress={() => go({ kind: "section", section: "publish" })} testID="topbar-publish" />
+                    <WButton label="Review and publish" variant="primary" size="sm" onPress={() => go({ kind: "section", section: "publish" })} testID="topbar-publish" />
                   ) : null}
                 </View>
               ) : null}
@@ -712,7 +712,7 @@ function PhoneStatusCard(): React.ReactElement {
               <WButton label="Preview" icon="eye" size="sm" grow onPress={ctx.openPreviewSheet} testID="phone-status-preview" />
               {count > 0 || !published ? (
                 controller.capabilities.canPublish
-                  ? <WButton label="Publish" variant="primary" size="sm" grow onPress={() => ctx.go({ kind: "section", section: "publish" })} testID="phone-status-publish" />
+                  ? <WButton label="Review and publish" variant="primary" size="sm" grow onPress={() => ctx.go({ kind: "section", section: "publish" })} testID="phone-status-publish" />
                   : <WButton label="Ask an admin" icon="msg" size="sm" grow onPress={() => ctx.askAdmin("publish")} loading={ctx.asking} testID="phone-status-ask" />
               ) : null}
             </View>

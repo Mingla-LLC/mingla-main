@@ -751,6 +751,10 @@ export function useMarkReviewed(siteId: string | null) {
       void client.invalidateQueries({ queryKey: brandSiteKeys.reviewStatus(siteId) });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
+      // #4453 — marking sections reviewed saves a new Home revision; Publish
+      // must check (and send) that one, not the revision it held before
+      // (Gameland's live run: two publishes refused with REVISION_CONFLICT).
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "validation") });
     },
   });
 }
