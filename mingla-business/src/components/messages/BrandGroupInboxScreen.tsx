@@ -15,8 +15,11 @@ import { TopBar } from "../ui/TopBar";
 import { Icon } from "../ui/Icon";
 import { BrandGroupInboxList } from "./BrandGroupInboxList";
 import { BrandGuestChatSection } from "./BrandGuestChatSection";
+// #4459 — the Guest chat thread beside the inbox on wide desktop (design v2:
+// inbox 340, thread flexible), loaded on intent through the one shared chunk.
+import { LazyGroupChatPanel } from "../groupChat/LazyGroupChatPanel";
 import { useBrandGuestChats } from "../../hooks/useBrandGuestChats";
-import { brandGuestChatHref, type BrandGuestChatSummary } from "../../services/groupChatService";
+import { brandGuestChatHref, type BrandGuestChatSummary } from "../../services/brandGuestChatList";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -26,11 +29,6 @@ import { brandGroupThreadHref } from "../../utils/brandGroupThreadModel";
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { color, space } from "../../constants/designSystem";
 
-// #4459 — the Guest chat thread beside the inbox on wide desktop (design v2:
-// inbox 340, thread flexible). Loaded only when a Guest chat is picked.
-const LazyGroupChatPanel = React.lazy(async () => ({
-  default: (await import("../groupChat/GroupChatPanel")).GroupChatPanel,
-}));
 
 // #4111 — the enquiry list loads with this route, never in the boot chunk.
 // Same module as the enquiry route's thread, so the two share one lazy chunk.
@@ -127,9 +125,7 @@ export function BrandGroupInboxScreen(): React.ReactElement {
           <View style={styles.desktopList}>{list}</View>
           {openGuestChat ? (
             <View style={styles.desktopThread} testID="brand-guest-chat-desktop-thread">
-              <React.Suspense fallback={null}>
-                <LazyGroupChatPanel key={openGuestChat.brand_id} brandId={openGuestChat.brand_id} embedded />
-              </React.Suspense>
+              <LazyGroupChatPanel key={openGuestChat.brand_id} brandId={openGuestChat.brand_id} embedded />
             </View>
           ) : (
           <ScrollView style={styles.desktopEmptyScroll} contentContainerStyle={styles.desktopEmpty}>

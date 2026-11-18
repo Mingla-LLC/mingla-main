@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { listMyBrandGuestChats, type BrandGuestChatSummary } from "../services/groupChatService";
+import { listMyBrandGuestChats, type BrandGuestChatSummary } from "../services/brandGuestChatList";
 
 /** #4459: Messages → Guests. Loading, error (with retry) and the list. */
 export function useBrandGuestChats(): {

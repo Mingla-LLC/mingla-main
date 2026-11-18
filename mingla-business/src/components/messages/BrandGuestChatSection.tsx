@@ -9,7 +9,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { color, space } from "../../constants/designSystem";
-import type { BrandGuestChatSummary } from "../../services/groupChatService";
+import type { BrandGuestChatSummary } from "../../services/brandGuestChatList";
 import { Icon } from "../ui/Icon";
 import { BrandGroupTile } from "./BrandGroupTile";
 

@@ -53,7 +53,7 @@ import { GroupChatModerationSheet } from "./GroupChatModerationSheet";
 import { GroupChatMessageMedia } from "./GroupChatMessageMedia";
 import { groupChatMediaKind } from "../../utils/groupChatMedia";
 
-interface GroupChatPanelProps {
+export interface GroupChatPanelProps {
   /** A listing: opens its brand's Guest chat (#4459). */
   eventId?: string;
   /** #4459: Messages → Guests opens by brand. */

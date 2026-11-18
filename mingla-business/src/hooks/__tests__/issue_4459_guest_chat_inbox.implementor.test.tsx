@@ -20,7 +20,7 @@ jest.mock("../../services/supabase", () => ({
 // eslint-disable-next-line import/first
 import { useBrandGuestChats } from "../useBrandGuestChats";
 // eslint-disable-next-line import/first
-import { brandGuestChatHref } from "../../services/groupChatService";
+import { brandGuestChatHref } from "../../services/brandGuestChatList";
 
 const TestRenderer = require("react-test-renderer") as {
   create(element: React.ReactElement): { unmount(): void };
@@ -78,5 +78,5 @@ test("the inbox shows Guests above the Brand groups, with the guests badge, and 
   expect(section).toContain("`${chat.brand_name} Guests`");
   expect(section).toContain(">Guests</Text>");
   const route = read("../../../app/brand/[id]/guest-chat.tsx");
-  expect(route).toContain("<GroupChatPanel brandId={id} />");
+  expect(route).toContain("<LazyGroupChatPanel brandId={id} />");
 });

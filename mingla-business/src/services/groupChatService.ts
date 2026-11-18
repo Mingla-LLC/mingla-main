@@ -258,34 +258,3 @@ export async function deleteMessage(
   const { error } = await supabase.rpc("unsend_messages", { p_message_ids: [messageId] });
   return { error: error ? brandGuestErrorCopy(error) : null };
 }
-
-/** #4459: one brand Guest chat the signed-in person runs (Messages → Guests). */
-export interface BrandGuestChatSummary {
-  conversation_id: string;
-  brand_id: string;
-  brand_name: string;
-  brand_logo_url: string | null;
-  is_broadcast_only: boolean;
-  member_count: number;
-  last_message_at: string | null;
-}
-
-/** #4459: the Guest chats of every brand I am on the team of. Throws on a failed read. */
-export async function listMyBrandGuestChats(): Promise<BrandGuestChatSummary[]> {
-  const { data, error } = await supabase.rpc("issue_4459_list_my_brand_guest_chats");
-  if (error) throw new Error(brandGuestErrorCopy(error));
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    conversation_id: String(row.conversation_id),
-    brand_id: String(row.brand_id),
-    brand_name: typeof row.brand_name === "string" ? row.brand_name : "",
-    brand_logo_url: typeof row.brand_logo_url === "string" ? row.brand_logo_url : null,
-    is_broadcast_only: row.is_broadcast_only === true,
-    member_count: typeof row.member_count === "number" ? row.member_count : 0,
-    last_message_at: typeof row.last_message_at === "string" ? row.last_message_at : null,
-  }));
-}
-
-/** #4459: where a Guest chat opens in the Host app. */
-export function brandGuestChatHref(brandId: string): string {
-  return `/brand/${brandId}/guest-chat`;
-}
