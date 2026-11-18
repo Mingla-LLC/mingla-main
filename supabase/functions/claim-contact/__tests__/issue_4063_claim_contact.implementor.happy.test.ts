@@ -57,6 +57,19 @@ function claimEnvelope(): Record<string, unknown> {
   };
 }
 
+// #4473: every swept entry says whether it also shows on another account.
+function sweptEnvelope(): Record<string, unknown> {
+  return {
+    ...claimEnvelope(),
+    claimed: [{
+      kind: "order",
+      id: "order-id",
+      noun: "ticket",
+      sharedWithAnotherAccount: false,
+    }],
+  };
+}
+
 Deno.test("#4063 claim-contact parser rejects extra and malformed fields", () => {
   assertEquals(
     parseClaimContactBody({
@@ -160,6 +173,12 @@ Deno.test("#4063 already-confirmed contacts sweep without sending", async () => 
       if (name === "claim_attendance_by_verified_identity") {
         return Promise.resolve({ data: claimEnvelope(), error: null });
       }
+      if (name === "issue_4473_share_purchases_by_verified_identity") {
+        return Promise.resolve({
+          data: { claimed: [], more: false },
+          error: null,
+        });
+      }
       assertEquals(name, "issue_4063_claim_offered_tickets");
       return Promise.resolve({
         data: { claimed: [], more: false },
@@ -179,7 +198,7 @@ Deno.test("#4063 already-confirmed contacts sweep without sending", async () => 
     })),
   );
   assertEquals(result.alreadyConfirmed, true);
-  assertEquals(result.claimed, claimEnvelope());
+  assertEquals(result.claimed, sweptEnvelope());
   assertEquals(providerCalls, 0);
 });
 
@@ -220,6 +239,9 @@ Deno.test("#4063 settled email contact records then runs the identity sweep", as
     if (name === "claim_attendance_by_verified_identity") {
       return Promise.resolve({ data: claimEnvelope(), error: null });
     }
+    if (name === "issue_4473_share_purchases_by_verified_identity") {
+      return Promise.resolve({ data: { claimed: [], more: false }, error: null });
+    }
     assertEquals(name, "issue_4063_claim_offered_tickets");
     return Promise.resolve({ data: { claimed: [], more: false }, error: null });
   }));
@@ -229,10 +251,11 @@ Deno.test("#4063 settled email contact records then runs the identity sweep", as
     code: "123456",
   }));
   assertEquals(response.status, 200);
-  assertEquals((await responseBody(response)).claimed, claimEnvelope());
+  assertEquals((await responseBody(response)).claimed, sweptEnvelope());
   assert(calls.includes("issue_4063_record_claim_contact"));
   assert(calls.includes("claim_attendance_by_verified_identity"));
   assert(calls.includes("issue_4063_claim_offered_tickets"));
+  assert(calls.includes("issue_4473_share_purchases_by_verified_identity"));
 });
 
 Deno.test("#4063 phone-country allow-list stays in parity with Business", async () => {

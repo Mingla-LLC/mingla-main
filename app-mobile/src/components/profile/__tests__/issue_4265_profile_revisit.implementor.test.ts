@@ -54,7 +54,7 @@ Deno.test("#4265 P-3 every Profile section query uses the revisit window", () =>
   const purchasesCard = code(read("src/components/profile/PurchasesCard.tsx"));
   assert(purchasesCard.includes("usePurchases(userId, { staleTime: PROFILE_REVISIT_STALE_MS })"));
   const purchases = dense(read("src/hooks/usePurchases.ts"));
-  assertEquals((purchases.match(/staleTime,refetchOnWindowFocus:true,refetchOnMount:true,/g) ?? []).length, 4, "all four purchase lists take the caller's window");
+  assertEquals((purchases.match(/staleTime,refetchOnWindowFocus:true,refetchOnMount:true,/g) ?? []).length, 5, "all five purchase lists (incl. #4473 shared) take the caller's window");
   assert(purchases.includes("conststaleTime=options?.staleTime??60_000;"), "the Purchases screen keeps 60 s");
 
   const creator = code(read("src/components/profile/CreatorProgramsSection.tsx"));

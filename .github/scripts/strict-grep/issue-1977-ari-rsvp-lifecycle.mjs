@@ -300,11 +300,11 @@ export function audit(base, plans = effectiveSuites()) {
     // #4238 wave 2: list_ad_audiences; 182→183.
     // #4304: end_discount + resume_discount; 183→185.
     // #3355 Wave B: search_mingla_guide; #4389: start_payments_onboarding + start_door_sale; 185→188.
-    if (parsed.audit?.registered_tool_count !== 190) {
-      failures.push("ledger audit registered_tool_count is not 190");
+    if (parsed.audit?.registered_tool_count !== 191) {
+      failures.push("ledger audit registered_tool_count is not 191");
     }
-    if (mapped.length !== 190 || new Set(mapped).size !== 190) {
-      failures.push("ledger mapped tool census is not 190 unique tools");
+    if (mapped.length !== 191 || new Set(mapped).size !== 191) {
+      failures.push("ledger mapped tool census is not 191 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||

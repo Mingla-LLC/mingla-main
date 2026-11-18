@@ -949,10 +949,18 @@ async function handleConfirmAction(args: {
 
   let canonicalArgs: Record<string, unknown>;
   try {
-    canonicalArgs = canonicalizeAgentProposalArgs(
-      pending.tool_name,
-      candidateArgs,
-    );
+    // An `executing` retry replays the args its claim already stored (they
+    // were canonical when claimed). Canonicalizing them again under a newer
+    // deploy would change the bytes the #1972 receipt bound, so a committed
+    // edit could never replay (operation_binding_mismatch).
+    if (pending.status === "pending") {
+      canonicalArgs = canonicalizeAgentProposalArgs(
+        pending.tool_name,
+        candidateArgs,
+      );
+    } else {
+      canonicalArgs = candidateArgs;
+    }
   } catch (err: unknown) {
     if (err instanceof ToolError) {
       return errorResponse(400, err.code, err.message);

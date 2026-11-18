@@ -62,6 +62,9 @@ Deno.test("#1973 confirmed experience tools bind the exact public payload to the
             stop_order: 0,
             place_name: "First stop",
             coordinate_precision: "exact",
+            // [TEST-MOD-APPROVED #3281] bundle 3: every stop says its offset
+            // (null when none), or the canonicalizer refuses it.
+            start_offset_minutes: null,
           },
         ],
         experience_intents: ["adventurous"],

@@ -38,6 +38,8 @@ export interface MyReservationRow {
   guest_notes: string | null;
   created_at: string;
   refund?: ReservationRefundSummary | null;
+  /** #4473 — shown here as a shared purchase; read-only (no cancel). */
+  shared?: boolean;
 }
 
 interface RawBrandJoin {

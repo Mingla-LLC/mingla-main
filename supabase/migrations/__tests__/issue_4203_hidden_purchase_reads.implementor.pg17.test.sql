@@ -264,11 +264,15 @@ BEGIN
     RAISE EXCEPTION 'history_reconnect_changed_ticket_authority';
   END IF;
 
+  -- #4459: the retained order lands the buyer in the brand's one Guest chat;
+  -- the retired per-listing event chats never gain a member.
   IF NOT EXISTS (
     SELECT 1
       FROM public.conversations c
       JOIN public.conversation_participants cp ON cp.conversation_id = c.id
-     WHERE c.event_id = '42030000-0000-4000-a000-000000000003'
+     WHERE c.linked_entity_type = 'brand_guests'
+       AND c.brand_id = (SELECT e.brand_id FROM public.events e
+                          WHERE e.id = '42030000-0000-4000-a000-000000000003')
        AND cp.user_id = '42030000-0000-4000-8000-000000000002'
   ) THEN
     RAISE EXCEPTION 'retained_shared_order_chat_not_restored';
@@ -277,19 +281,12 @@ BEGIN
     SELECT 1
       FROM public.conversations c
       JOIN public.conversation_participants cp ON cp.conversation_id = c.id
-     WHERE c.event_id = '42030000-0000-4000-a000-000000000001'
+     WHERE c.event_id IN ('42030000-0000-4000-a000-000000000001',
+                          '42030000-0000-4000-a000-000000000002',
+                          '42030000-0000-4000-a000-000000000003')
        AND cp.user_id = '42030000-0000-4000-8000-000000000002'
   ) THEN
-    RAISE EXCEPTION 'transferred_only_buyer_rejoined_chat';
-  END IF;
-  IF EXISTS (
-    SELECT 1
-      FROM public.conversations c
-      JOIN public.conversation_participants cp ON cp.conversation_id = c.id
-     WHERE c.event_id = '42030000-0000-4000-a000-000000000002'
-       AND cp.user_id = '42030000-0000-4000-8000-000000000002'
-  ) THEN
-    RAISE EXCEPTION 'replacement_history_reconnect_joined_old_chat';
+    RAISE EXCEPTION 'retired_per_listing_chat_gained_a_member';
   END IF;
   IF EXISTS (
     SELECT 1
@@ -308,7 +305,9 @@ BEGIN
   SELECT count(*) INTO v_count
     FROM public.conversations c
     JOIN public.conversation_participants cp ON cp.conversation_id = c.id
-   WHERE c.event_id = '42030000-0000-4000-a000-000000000003'
+   WHERE c.linked_entity_type = 'brand_guests'
+     AND c.brand_id = (SELECT e.brand_id FROM public.events e
+                        WHERE e.id = '42030000-0000-4000-a000-000000000003')
      AND cp.user_id = '42030000-0000-4000-8000-000000000002';
   IF v_count <> 1 THEN
     RAISE EXCEPTION 'idempotent_repair_duplicated_chat_membership:%', v_count;

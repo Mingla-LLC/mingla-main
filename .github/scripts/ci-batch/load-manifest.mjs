@@ -329,7 +329,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4420 merge of main after #4462: kept the #4420 migrations and #4420 filtered-replay skips alongside 20280720004452, 20280721004456 and 20280725004452 in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 Stay pay link brand theme: listed migration 20280731104420 after 20280725004452 in the #1857, #1931 and #2117 lanes (plpgsql body, no filtered-replay skip needed; both filtered replays verified) and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4238 pre-PR merge of origin/main b855affc45 (#4420 merged): took main's rows and #1931 filtered-replay skips, renumbered the #4238 migrations to 20280801004238 / 20280802004238 / 20280803004238 (after main's 20280731104420) in the #1857, #1931 and #2117 lanes and the #1931 skip list; re-sealed.
-export const BOOTSTRAP_SHA256 = "13049b1a9e1e5f685f052656cefc149004511ea929f61bbc0d6cb128cb985a2c";
+// #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
+// #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459 to sort after main's 20280803004238 and #4473's 20280804004473) after 20280803004238 in the #1857, #1931 and #2117 lanes and the #1931 exact-filename skip list, kept its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
+export const BOOTSTRAP_SHA256 = "c740c4e8c5bcbc21e89bba68b2a789405fabd377c43ba087d09ab7ef41391b09";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

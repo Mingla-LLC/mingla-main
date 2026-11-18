@@ -189,7 +189,11 @@ Deno.test("#4063 email proof returns one hashed magic-link token after settlemen
       assertEquals(args.p_challenge_id, challengeId);
       assertEquals(args.p_code_hash, challengeHash);
       return {
-        data: { outcome: "ok", value: "buyer@example.test" },
+        data: {
+          outcome: "ok",
+          purpose: "claim_sign_in",
+          value: "buyer@example.test",
+        },
         error: null,
       };
     }

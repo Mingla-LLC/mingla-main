@@ -78,6 +78,19 @@ module.exports = {
     // issue #4111 — tester adversarial: enquiry rows and read status under
     // hostile data (other people's receipts, system rows, cross-thread pages).
     "**/__tests__/issue_4111_explorer_enquiry_rows.tester.adversarial.test.ts",
+    // issue #4459 rework — the Chats page and an open Guest chat mount together
+    // (one enquiries channel); the Message <Brand> sheet closes on send.
+    "**/__tests__/issue_4459_guest_chat_enquiry.implementor.render.test.tsx",
+    // issue #4459 QA retest — the booking card opens the Guest chat in the
+    // existing home shell; a rejoin drops the cached thread; row parity.
+    "**/__tests__/issue_4459_booking_guest_chat.implementor.render.test.tsx",
+    // issue #4459 QA retest 2 — a deep link to a chat the list has not loaded
+    // yet (Rejoin / Open guest chat) opens the thread once it is found.
+    "**/__tests__/issue_4459_deep_link_pending_chat.implementor.render.test.tsx",
+    // issue #4459 tester retest — two Chats pages alive at once (the booking
+    // card's Open/Rejoin guest chat replaces to /) must not throw on the
+    // enquiries channel.
+    "**/__tests__/issue_4459_chats_remount.tester.adversarial.render.test.tsx",
     // issue #4251 — RSVP covers keep their media type, and the compact
     // Purchases card draws a fixed 72 x 72 cover or its date tile.
     "**/__tests__/issue_4251_purchase_card_cover.implementor.happy.render.test.tsx",
@@ -179,5 +192,12 @@ module.exports = {
     "**/__tests__/issue_4456_unsend_confirm_sheet.implementor.render.test.tsx",
     // issue #4456 — Profile → Edit bio opens (it froze), saves and closes.
     "**/__tests__/issue_4456_edit_bio_sheet.implementor.render.test.tsx",
+    // issue #4473 — "Missing a ticket?": Check again, the three ways in, the
+    // dark add sheet (tabs, code, found / shared / nothing), ask-to-send and
+    // the confirmation-link step; Send to a friend draws dark.
+    "**/__tests__/issue_4473_missing_ticket.implementor.render.test.tsx",
+    // issue #4473 — purchases shared with a second proven account (list,
+    // read-only detail, owner note, Calendar) and "Is this your ticket?".
+    "**/__tests__/issue_4473_shared_purchases.implementor.render.test.tsx",
   ],
 };

@@ -55,7 +55,8 @@ Deno.test("F-2 the deck's Add people opens Group info only after the deck's moda
   assert(!/setTimeout/.test(mount), "no timer racing the iOS dismissal");
   assert(/onAddGroupPeople=\{friend\.sessionId \? \(\) => \{ setGroupInfoStartsOnAdd\(true\); setShowGroupInfo\(true\); \}/.test(mount), "opens Group info on Add people");
   const info = strip(read("src/components/chat/GroupInfoSheet.tsx"));
-  assert(/const showAdd = !managed && \(addingPeople \|\| \(startWithAddPeople && !backFromAdd\)\);/.test(info), "Add people is derived in render");
+  // #4459: a brand Guest chat never offers Add people either.
+  assert(/const showAdd = !managed && !isBrandGuests && \(addingPeople \|\| \(startWithAddPeople && !backFromAdd\)\);/.test(info), "Add people is derived in render");
   assert(/visible=\{visible && !showAdd\}/.test(info) && /visible=\{visible && showAdd\}/.test(info), "exactly one of the two sheets per open");
   assert(!/if \(visible && startWithAddPeople && !managed\) setAddingPeople\(true\)/.test(info), "no effect that flips the sheets after the first render");
 });
@@ -116,7 +117,8 @@ Deno.test("P3 one time to vote on is singular (i18n plural keys)", () => {
 
 Deno.test("P3 right after Clear chat the empty thread says it was cleared", () => {
   const thread = strip(read("src/components/MessageInterface.tsx"));
-  const empty = between(thread, "{visibleMessages.length === 0 ? (", "<FlatList");
+  // #4459: the removed card comes first; the empty thread is the next branch.
+  const empty = between(thread, ") : visibleMessages.length === 0 ? (", "<FlatList");
   const cleared = empty.indexOf("(isClearingChat || clearedAt) && !isTripEventGroupChat ?");
   const start = empty.indexOf("t('chat:startConversation')");
   assert(cleared > 0 && start > cleared, "the cleared notice is checked before the start-conversation state");

@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 190,
-    "capability_count": 202,
+    "registered_tool_count": 191,
+    "capability_count": 203,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 189,
+      "registered_unverified": 190,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -1030,6 +1030,52 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.get",
+      "domain": "experiences",
+      "outcome": "Read an experience's editable graph (status, revision, stops with offsets, price options with ids) before editing it",
+      "safety": "read",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue_3281"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/experience/[id]/edit.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getExperience"
+          }
+        ]
+      },
+      "ari_tool": "get_experience",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:get_experience toward #3281 bundle 3"
+        }
+      ],
+      "owning_issues": [
+        3281,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-11-17"
     },
     {
       "id": "ari.experience.update",

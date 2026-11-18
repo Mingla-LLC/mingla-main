@@ -38,6 +38,7 @@ import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
 import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
+import { BrandGuestChatBookingAction } from "../../../src/components/purchases/BrandGuestChatBookingAction";
 import { Icon } from "../../../src/components/ui/Icon";
 import { toastManager } from "../../../src/components/ui/Toast";
 // #4261: the online event link opens in Mingla's in-app browser.
@@ -47,7 +48,18 @@ import {
   cancelMyReservation,
   type MyReservationRow,
 } from "../../../src/hooks/useMyReservations";
-import { usePurchaseDetail } from "../../../src/hooks/usePurchases";
+import {
+  usePurchaseDetail,
+  usePurchaseShareFlags,
+} from "../../../src/hooks/usePurchases";
+import {
+  PurchaseShareNote,
+  SharedPurchaseDetail,
+} from "../../../src/components/purchases/SharedPurchaseDetail";
+import {
+  isPurchaseShareFlagged,
+  type SharedPurchase,
+} from "../../../src/services/sharedPurchasesService";
 import type { ConsumerRsvpRow } from "../../../src/services/calendarService";
 import type {
   PurchaseOrderRecord,
@@ -81,6 +93,7 @@ const KINDS = new Set<PurchaseKind>([
   "rsvp",
   "reservation",
   "venue_order",
+  "stay",
 ]);
 
 const TICKET_MAPS_PALETTE: ThemePalette = {
@@ -246,11 +259,26 @@ export default function PurchaseDetailRoute(): React.ReactElement {
   const userId = useAppStore((state) => state.user?.id ?? null);
   const purchase = usePurchaseDetail(userId, kind, id);
   const item = purchase.data ?? null;
+  // #4473 — a purchase shared with this account renders read-only from its
+  // own payload; none of the owner's records (and none of their actions) exist.
+  const shared = item?.shared === true;
   const order =
-    item?.kind === "order" ? (item.raw as PurchaseOrderRecord) : null;
-  const rsvp = item?.kind === "rsvp" ? (item.raw as ConsumerRsvpRow) : null;
+    !shared && item?.kind === "order" ? (item.raw as PurchaseOrderRecord) : null;
+  const rsvp =
+    !shared && item?.kind === "rsvp" ? (item.raw as ConsumerRsvpRow) : null;
   const reservation =
-    item?.kind === "reservation" ? (item.raw as MyReservationRow) : null;
+    !shared && item?.kind === "reservation"
+      ? (item.raw as MyReservationRow)
+      : null;
+  const shareFlags = usePurchaseShareFlags(userId);
+  const ownPurchaseShared =
+    !shared &&
+    item !== null &&
+    isPurchaseShareFlagged(shareFlags.data, item.kind, [
+      item.id,
+      rsvp?.rsvpId,
+      rsvp?.guestId,
+    ]);
   const allTickets = order?.tickets ?? rsvpTickets;
   const sendTicket =
     allTickets.find((ticket) => ticket.id === sendTicketId) ?? null;
@@ -423,19 +451,6 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     else router.replace("/purchases");
   };
 
-  const handleOpenChat = useCallback((): void => {
-    if (!order?.conversationId) return;
-    captureQuietAction("group_chat");
-    router.replace({
-      pathname: "/",
-      params: {
-        tab: "messages",
-        conversationId: order.conversationId,
-        eventId: order.eventId,
-      },
-    });
-  }, [captureQuietAction, order?.conversationId, order?.eventId, router]);
-
   const handleAddToCalendar = useCallback(async (): Promise<void> => {
     if (!item) return;
     captureQuietAction("add_to_calendar");
@@ -560,6 +575,33 @@ export default function PurchaseDetailRoute(): React.ReactElement {
       explorerOfferingPath(order?.eventType, brandSlug, eventSlug) as never,
     );
   }, [captureQuietAction, order, router, rsvp]);
+
+  const handleOpenSharedEventPage = useCallback(
+    (sharedPurchase: SharedPurchase): void => {
+      const brandSlug = sharedPurchase.brand?.slug ?? null;
+      if (!brandSlug || !sharedPurchase.eventSlug) return;
+      captureQuietAction("event_page");
+      router.push(
+        explorerOfferingPath(
+          sharedPurchase.offeringType,
+          brandSlug,
+          sharedPurchase.eventSlug,
+        ) as never,
+      );
+    },
+    [captureQuietAction, router],
+  );
+
+  const handleOpenSharedChat = useCallback(
+    (conversationId: string, eventId: string): void => {
+      captureQuietAction("group_chat");
+      router.replace({
+        pathname: "/",
+        params: { tab: "messages", conversationId, eventId },
+      });
+    },
+    [captureQuietAction, router],
+  );
 
   const openSendTicket = useCallback((ticket: PurchaseTicket): void => {
     postHogService.capture("ticket_send_opened", {
@@ -699,6 +741,16 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               <Text style={styles.retryText}>{t("error.retry")}</Text>
             </Pressable>
           </View>
+        ) : shared ? (
+          <SharedPurchaseDetail
+            item={item}
+            onAddToCalendar={() => {
+              void handleAddToCalendar();
+            }}
+            onOpenChat={handleOpenSharedChat}
+            onOpenEventPage={handleOpenSharedEventPage}
+            qrSize={ticketQrSize}
+          />
         ) : (
           <>
             <Text style={styles.eyebrow}>{purchaseKindLabel(item.kind)}</Text>
@@ -711,6 +763,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                 {purchaseStatusLabel(item.status)}
               </Text>
             </View>
+            {ownPurchaseShared ? <PurchaseShareNote variant="owner" /> : null}
 
             {order?.isOnline ? (
               <View style={styles.venueBlock}>
@@ -1163,11 +1216,13 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                   onPress={handleOpenEventPage}
                 />
               ) : null}
-              {order?.conversationId ? (
-                <QuietAction
-                  icon="chatbubbles-outline"
-                  label={t("ticket.groupChat")}
-                  onPress={handleOpenChat}
+              {/* #4459: the brand's one Guest chat (Open / Rejoin / Message <Brand>). */}
+              {followedBrandId && followedBrandName ? (
+                <BrandGuestChatBookingAction
+                  brandId={followedBrandId}
+                  brandSlug={followedBrandSlug}
+                  brandName={followedBrandName}
+                  onOpened={() => captureQuietAction("group_chat")}
                 />
               ) : null}
               <QuietAction
