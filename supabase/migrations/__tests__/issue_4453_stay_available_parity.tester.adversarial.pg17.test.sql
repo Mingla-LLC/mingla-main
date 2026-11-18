@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 5, tester's money guard for the extracted rooms-left read
--- (stay_room_night_available, 20280726004453). BEGIN ... ROLLBACK.
+-- (stay_room_night_available, 20280807044453). BEGIN ... ROLLBACK.
 -- MINGLA-INVARIANT: I-SITES-STAY-AVAILABLE-READ-ONLY | issue #4453 | stay_room_night_available is a website read: no quote, hold, booking or inventory function calls it, and its rooms-left agrees night for night with the availability rule Mingla already sells by.
 --
 -- P-1  only the website reads call it (the quote, group creation, staff

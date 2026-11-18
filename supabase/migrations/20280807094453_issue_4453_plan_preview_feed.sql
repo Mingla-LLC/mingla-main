@@ -5,7 +5,7 @@
 --      EMPTY: nobody gets the preview until Seth turns it on or lists a brand).
 --   2. brand_site_offerings_feed_for_brand(p_brand_id): the offerings feed BY
 --      BRAND (a plan preview runs before any site exists). Its body is the
---      latest brand_site_offerings_feed body (20280726014453) with only the
+--      latest brand_site_offerings_feed body (20280807054453) with only the
 --      brand lookup changed (brands.id instead of the site join).
 --   3. brand_site_offerings_feed(p_site_id) re-issued to resolve the site's
 --      brand and call (2): one body, so the two can never drift (the pg17
@@ -199,7 +199,7 @@ BEGIN
           AND p.effective_from <= now() AND (p.effective_to IS NULL OR p.effective_to > now())
         ORDER BY p.version_number DESC LIMIT 1
       ) pv ON true
-      -- A night with a room LEFT (sellable less holds and bookings; 20280726004453).
+      -- A night with a room LEFT (sellable less holds and bookings; 20280807044453).
       WHERE n.offering_id = o.id AND public.stay_room_night_available(n.offering_id, n.local_date) > 0
         AND n.local_date BETWEEN (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date
                              AND (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date + 60
@@ -303,7 +303,7 @@ $fn$;
 -- Build composes with the site's facts (verified venues, menu, Mingla reviews,
 -- open venue slots, bookable dates, on-sale ticket tiers). A plan preview has
 -- no site yet, so each of those reads gets a brand twin. The twin holds the
--- ONE body (verbatim from 20280726004453 / 20280728004453, only the brand
+-- ONE body (verbatim from 20280807044453 / 20280807074453, only the brand
 -- lookup changed: brands.id instead of the site join), and the site read is
 -- re-issued to resolve the site's brand and call the twin, so the preview and
 -- Build always see the same facts (SC-PP4). Core reduces the answers to

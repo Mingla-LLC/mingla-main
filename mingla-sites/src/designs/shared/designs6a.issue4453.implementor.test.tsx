@@ -98,7 +98,7 @@ describe("#4453 6a SC-D1 nocturne, haven and maison are design keys everywhere",
   });
 
   it("Core: the 6a migration replaced only brand_site_design_keys() with the five keys (6b's replaces it again), and nothing is applied by hand", () => {
-    const sql = read("supabase/migrations/20280725024453_issue_4453_design_keys_6a.sql");
+    const sql = read("supabase/migrations/20280807024453_issue_4453_design_keys_6a.sql");
     expect(sql).toContain("SELECT ARRAY['atelier','voyage','nocturne','haven','maison']::text[]");
     expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
     expect(sql).not.toMatch(/ALTER TABLE|DROP |INSERT |UPDATE |DELETE /);

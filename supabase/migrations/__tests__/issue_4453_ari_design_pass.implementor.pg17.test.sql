@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 7: executable PostgreSQL 17 proof of Ari's design-pass
--- migration (20280728004453). BEGIN ... ROLLBACK: every fixture rolls back.
+-- migration (20280807074453). BEGIN ... ROLLBACK: every fixture rolls back.
 -- MINGLA-INVARIANT: I-SITES-DESIGN-PASS-FLAGS-PER-BRAND | issue #4453 | SITES_ARI_DESIGN_PASS and SITES_STYLE_LIBRARY are seeded off and are on for a brand only when the flag is on or the brand is in brand_site_flag_brands; read by service role only.
 -- MINGLA-INVARIANT: I-SITES-COMPOSE-FACTS-COUNTS-ONLY | issue #4453 | brand_site_compose_facts returns counts, booleans and the site's own venue ids only (no names, prices or guest data), and never another brand's venues.
 -- MINGLA-INVARIANT: I-SITES-DESIGN-FINGERPRINT-ALLOWLIST | issue #4453 | brand_site_record_fingerprint refuses any key outside design/format/header/hero/home/fonts/colors (or a wrong type) and stores only those keys; brand_site_live_fingerprints returns only design/header/hero/home/fonts/colors of the right type, so no brand id or name leaves Core.
@@ -11,7 +11,7 @@
 -- T-4  fingerprints: record refuses malformed input and any key outside the allowlist; live fingerprints list only OTHER brands' PUBLISHED sites of the same format, returning only the six allowed look keys.
 -- T-5  Build receives the owner's Q5-Q8 answers (value_points, faq, process_steps, quick_facts).
 --
--- FAILS-ON-REVERT: drop 20280728004453 -> T-1 (functions missing); drop the allowlist EXISTS -> T-2c;
+-- FAILS-ON-REVERT: drop 20280807074453 -> T-1 (functions missing); drop the allowlist EXISTS -> T-2c;
 -- drop the brand filter in compose facts -> T-3b; drop the IS DISTINCT FROM brand filter -> T-4c;
 -- drop the write allowlist -> T-4g; store p_fingerprint as is -> T-4i; return design_fingerprint - 'format' -> T-4j.
 

@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 PR 3 (content foundation): executable PostgreSQL 17 proof of the Website
--- setup part "What guests say and where you've been" (20280725014453).
+-- setup part "What guests say and where you've been" (20280807014453).
 -- MINGLA-INVARIANT: I-SITES-SETUP-CONTENT-SERVICE-ONLY | issue #4453 | brand_site_setup_content has no anon or authenticated grants, RLS is forced, and materialised rows are immutable.
 -- MINGLA-INVARIANT: I-SITES-NO-INVENTED-PROOF | issue #4453 | a staged review needs the "real review" tick by a brand admin or owner; a past trip must have ended; owner answers are validated, never filled in.
 --
@@ -24,7 +24,7 @@
 -- T-17 P1-3 flag off: list, staging and past trips are refused (sites_feature_off).
 -- T-16 P1-1 Build's plan check is by key: proof skipped/untouched never blocks (flag on or off); unapproved is refused.
 --
--- FAILS-ON-REVERT: drop 20280725014453 -> T-1 (table and functions missing); the old
+-- FAILS-ON-REVERT: drop 20280807014453 -> T-1 (table and functions missing); the old
 -- plan_status_internal -> T-4; the old plan_save -> T-5/T-6; no confirmed_real CHECK -> T-10.
 
 BEGIN;

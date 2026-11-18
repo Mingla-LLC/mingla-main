@@ -7,7 +7,7 @@
 --      D10). No brand is seeded: Seth adds Young and Stamped when he chooses.
 --   3. brand_site_flag_on(flag, brand) knows the new flag. Service role only,
 --      static SQL, unchanged for the two milestone 7 flags.
---   4. brand_site_content_min_rank re-issued (from 20280725014453) with the
+--   4. brand_site_content_min_rank re-issued (from 20280807014453) with the
 --      owner's three Ari-page content actions at the content minimum (20):
 --      ari_page_answer ("Ari needs this" -> Save), ari_page_accept ("Publish
 --      this page") and ari_page_remove ("Remove"). Every other action keeps

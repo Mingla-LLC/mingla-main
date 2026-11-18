@@ -9,7 +9,7 @@
 --   * a direct cover path column for those rows (NULL for every other kind,
 --     which keep brand_site_offering_cover_path exactly as before).
 -- Trips, events and experiences are unchanged. Service role only (unchanged).
--- Needs 20280726004453 (brand_site_stay_flags_on, brand_site_zone_or_utc, stay_room_night_available).
+-- Needs 20280807044453 (brand_site_stay_flags_on, brand_site_zone_or_utc, stay_room_night_available).
 --
 -- Forward-only.
 
@@ -162,7 +162,7 @@ BEGIN
           AND p.effective_from <= now() AND (p.effective_to IS NULL OR p.effective_to > now())
         ORDER BY p.version_number DESC LIMIT 1
       ) pv ON true
-      -- A night with a room LEFT (sellable less holds and bookings; 20280726004453).
+      -- A night with a room LEFT (sellable less holds and bookings; 20280807044453).
       WHERE n.offering_id = o.id AND public.stay_room_night_available(n.offering_id, n.local_date) > 0
         AND n.local_date BETWEEN (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date
                              AND (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date + 60

@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 9: executable PostgreSQL 17 proof of the offering detail read
--- (20280729004453). BEGIN ... ROLLBACK: every fixture, and the feed stand-in
+-- (20280807084453). BEGIN ... ROLLBACK: every fixture, and the feed stand-in
 -- used for the trip and cross-brand cases, rolls back.
 -- MINGLA-INVARIANT: I-SITES-DETAIL-READ-SERVICE-ONLY | issue #4453 | brand_site_offering_detail is static SQL, SECURITY DEFINER with an explicit search_path, executable by the service role only, and answers only for an offering in the site's own feed and of the site's own brand.
 --
@@ -14,7 +14,7 @@
 -- T-5  isolation: a feed row naming ANOTHER brand's trip id still answers NULL (the brand bind);
 --      a cancelled row is NULL; an unknown site is NULL.
 --
--- FAILS-ON-REVERT: drop 20280729004453 -> T-1 (function missing); drop the brand bind on events -> T-5a;
+-- FAILS-ON-REVERT: drop 20280807084453 -> T-1 (function missing); drop the brand bind on events -> T-5a;
 -- drop the flag check -> T-2b; drop the status='ready' media filter -> T-3c; restore the {1,900} cover pattern -> T-3g.
 
 BEGIN;
@@ -146,7 +146,7 @@ BEGIN
     'T-3e a bad kind, a wrong kind, an empty or missing slug are NULL');
   PERFORM pg_temp.p_assert(public.brand_site_offering_detail((SELECT v FROM m9 WHERE k = 'site_other'), 'stay', v_room::text) IS NULL,
     'T-3f another brand''s site cannot read this brand''s room');
-  -- 20280726014453's cover pattern once used a {1,900} repeat, which PostgreSQL
+  -- 20280807054453's cover pattern once used a {1,900} repeat, which PostgreSQL
   -- refuses (max 255): ANY room with a ready photo errored the WHOLE feed.
   PERFORM pg_temp.p_assert((SELECT o->'cover'->>'path' FROM jsonb_array_elements(public.brand_site_offerings_feed(v_site)->'offerings') o
       WHERE o->>'id' = v_room::text) = 'brand_covers/' || (SELECT v FROM m9 WHERE k = 'brand') || '/room-2.jpg',

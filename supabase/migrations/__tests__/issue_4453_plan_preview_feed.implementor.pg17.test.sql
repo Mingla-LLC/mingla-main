@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 10: executable PostgreSQL 17 proof of the plan-preview
--- migration (20280801004453). BEGIN ... ROLLBACK: every fixture rolls back.
+-- migration (20280807094453). BEGIN ... ROLLBACK: every fixture rolls back.
 -- MINGLA-INVARIANT: I-SITES-PLAN-FEED-ONE-BODY | issue #4453 | brand_site_offerings_feed(site) resolves the site's brand and returns brand_site_offerings_feed_for_brand(brand): the two return equal rows; both are service-role only.
 -- MINGLA-INVARIANT: I-SITES-PLAN-FACTS-ONE-BODY | issue #4453 | brand_site_compose_facts / venue_slots / offering_dates / ticket_tiers by site resolve the site's brand and return their _for_brand twin, so a plan preview before any site sees the facts Build sees; service role only.
 -- MINGLA-INVARIANT: I-SITES-PLAN-PREVIEW-RATE | issue #4453 | brand_site_plan_preview_take refuses a 4th plan-preview request within a minute and a 21st within a day, per brand; the counter table is closed to clients.
@@ -14,7 +14,7 @@
 -- T-7  brand twins of the composer-fact reads: one body, equal answers by site and by brand, no cross-brand read (SC-PP4).
 -- T-8  the brand feed's rooms-left read agrees with Mingla's own sell rule night by night (the 7b money guard's allowlist entry).
 --
--- FAILS-ON-REVERT: drop 20280801004453 -> T-1 (functions missing); feed(site) keeps its own body -> T-3c;
+-- FAILS-ON-REVERT: drop 20280807094453 -> T-1 (functions missing); feed(site) keeps its own body -> T-3c;
 -- drop the minute check -> T-5b; drop the day check -> T-5d; drop the gate -> T-4a;
 -- a site read keeps its own body -> T-7c; drop the twins -> T-7a; drop the availability filter from the feed -> T-8.
 

@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 5, tester's adversarial proof of the live booking reads
--- (20280726004453, 20280726014453). A different angle from the implementor's
+-- (20280807044453, 20280807054453). A different angle from the implementor's
 -- suites: rooms already BOOKED or HELD (sellable_quantity is the room-night's
 -- total, not what is left), one stay flag off on a REAL live room, a venue
 -- with no or a broken timezone (UTC), and a key and value scan of every

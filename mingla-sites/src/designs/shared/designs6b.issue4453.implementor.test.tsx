@@ -121,12 +121,12 @@ describe("#4453 6b SC-D1 journal, grid and terra are design keys everywhere", ()
 
   it("Core: the 6b migration replaces only brand_site_design_keys() with the eight keys, after 6a", () => {
     const dir = path.join(ROOT, "supabase/migrations");
-    const sql = read("supabase/migrations/20280725104453_issue_4453_design_keys_6b.sql");
+    const sql = read("supabase/migrations/20280807034453_issue_4453_design_keys_6b.sql");
     expect(sql).toContain("SELECT ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra']::text[]");
     expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
     expect(sql).not.toMatch(/ALTER TABLE|DROP |INSERT |UPDATE |DELETE /);
     const prefixes = fs.readdirSync(dir).filter((file) => /^\d{14}_/.test(file)).map((file) => file.slice(0, 14)).sort();
-    expect(prefixes).toContain("20280725104453");
+    expect(prefixes).toContain("20280807034453");
     expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra',");
   });
 

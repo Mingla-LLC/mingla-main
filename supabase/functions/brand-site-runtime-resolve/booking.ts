@@ -4,7 +4,7 @@
  * The runtime asks for exactly what the page's stored blocks name (its own
  * venue, room, event or experience ids, derived by `bookingRequestFor`), and
  * Core answers from the static, service-role-only reads in
- * 20280726004453_issue_4453_booking_reads.sql. Every answer is re-validated
+ * 20280807044453_issue_4453_booking_reads.sql. Every answer is re-validated
  * here against the shared contract before it leaves Core: a read that fails
  * the contract (a link to another brand, a full slot with a link, over the
  * limits) is dropped, so the block renders nothing (fail closed). Nothing

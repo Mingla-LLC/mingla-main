@@ -1,9 +1,9 @@
 \set ON_ERROR_STOP on
--- #4453 milestone 10 — L3 tester adversarial proof of 20280801004453 (plan-preview feed).
+-- #4453 milestone 10 — L3 tester adversarial proof of 20280807094453 (plan-preview feed).
 -- BEGIN ... ROLLBACK: every fixture rolls back.
 -- MINGLA-INVARIANT: I-SITES-PLAN-PREVIEW-WRITES-NOTHING | issue #4453 | the plan-preview reads (inputs, feed by brand, flag) write no row; only brand_site_plan_preview_take writes, and only to brand_site_plan_preview_requests (pg_stat_xact diff).
 --
--- X-1 the re-issued site feed returns EXACTLY what the pre-M10 body (20280726014453, pinned verbatim below)
+-- X-1 the re-issued site feed returns EXACTLY what the pre-M10 body (20280807054453, pinned verbatim below)
 --     returned, on real rows (public / private / draft / cancelled / deleted / past events, RSVP, live and
 --     draft rooms), with the stay flags off and on; a site of a deleted brand raises in both.
 -- X-2 the feed by brand never leaks another brand's rows; a deleted brand raises sites_not_found.
@@ -15,7 +15,7 @@
 -- X-5 rate-limit boundaries: 3 rows 59 s old refuse the 4th; 20 rows 23 h 59 m old refuse the 21st;
 --     a NULL brand is refused without a row.
 --
--- FAILS-ON-REVERT: drop 20280801004453 -> X-2 (function missing); give feed(site) a drifted body
+-- FAILS-ON-REVERT: drop 20280807094453 -> X-2 (function missing); give feed(site) a drifted body
 -- (e.g. drop the deleted_at check or a CTE) -> X-1; drop the plan gate -> X-3b; drop the minute
 -- check -> X-5a.
 
@@ -38,7 +38,7 @@ EXCEPTION WHEN OTHERS THEN
 END
 $r$;
 
--- The pre-M10 site feed body, verbatim from 20280726014453 (only the name differs).
+-- The pre-M10 site feed body, verbatim from 20280807054453 (only the name differs).
 CREATE OR REPLACE FUNCTION pg_temp.m10t_old_feed(p_site_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -184,7 +184,7 @@ BEGIN
           AND p.effective_from <= now() AND (p.effective_to IS NULL OR p.effective_to > now())
         ORDER BY p.version_number DESC LIMIT 1
       ) pv ON true
-      -- A night with a room LEFT (sellable less holds and bookings; 20280726004453).
+      -- A night with a room LEFT (sellable less holds and bookings; 20280807044453).
       WHERE n.offering_id = o.id AND public.stay_room_night_available(n.offering_id, n.local_date) > 0
         AND n.local_date BETWEEN (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date
                              AND (now() AT TIME ZONE public.brand_site_zone_or_utc(ss.timezone))::date + 60

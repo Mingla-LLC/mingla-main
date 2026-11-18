@@ -25,7 +25,7 @@
 -- link to Mingla exactly as before, #2829). Rendering a stored page is never
 -- flagged; a detail page is not a stored page.
 --
--- Needs 20280726004453 (brand_site_booking_brand) and 20280726014453 (the feed
+-- Needs 20280807044453 (brand_site_booking_brand) and 20280807054453 (the feed
 -- with stays). Forward-only. Applied by Seth's chat before the matching Core
 -- deploy.
 

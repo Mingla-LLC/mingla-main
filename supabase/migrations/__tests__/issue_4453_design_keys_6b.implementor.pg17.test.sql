@@ -10,7 +10,7 @@
 -- T-4         brand_site_plan_save_design and brand_context_completeness_internal still read the function
 --             (6b re-issued neither).
 --
--- FAILS-ON-REVERT: drop 20280725104453 -> T-1 (the function still returns five keys) and T-3 (journal is refused).
+-- FAILS-ON-REVERT: drop 20280807034453 -> T-1 (the function still returns five keys) and T-3 (journal is refused).
 
 \ir issue_4453_design_keys.fixture.sql
 

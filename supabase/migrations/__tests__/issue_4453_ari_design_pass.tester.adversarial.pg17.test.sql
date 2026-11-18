@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 7 tester (adversarial): Ari's design-pass migration
--- (20280728004453) attacked from the angles the implementor's suite does not
+-- (20280807074453) attacked from the angles the implementor's suite does not
 -- take. BEGIN ... ROLLBACK: every fixture rolls back.
 -- MINGLA-INVARIANT: I-SITES-DESIGN-PASS-SERVICE-ROLE-ONLY | issue #4453 | anon and authenticated cannot EXECUTE brand_site_flag_on / brand_site_compose_facts / brand_site_live_fingerprints / brand_site_record_fingerprint or touch brand_site_flag_brands, even by calling them directly.
 --

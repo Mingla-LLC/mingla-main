@@ -119,12 +119,12 @@ describe("#4453 6c SC-D1 pop, sunset and pulse are design keys everywhere", () =
 
   it("Core: the 6c migration replaces only brand_site_design_keys() with every key, after 6b", () => {
     const dir = path.join(ROOT, "supabase/migrations");
-    const sql = read("supabase/migrations/20280727104453_issue_4453_design_keys_6c.sql");
+    const sql = read("supabase/migrations/20280807064453_issue_4453_design_keys_6c.sql");
     expect(sql).toContain("SELECT ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra','pop','sunset','pulse']::text[]");
     expect(sql.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1);
     expect(sql).not.toMatch(/ALTER TABLE|DROP |INSERT |UPDATE |DELETE /);
     const prefixes = fs.readdirSync(dir).filter((file) => /^\d{14}_/.test(file)).map((file) => file.slice(0, 14)).sort();
-    expect(prefixes.filter((prefix) => prefix > "20280725104453")).toContain("20280727104453");
+    expect(prefixes.filter((prefix) => prefix > "20280807034453")).toContain("20280807064453");
     expect(read("supabase/migrations/__tests__/issue_4453_design_keys.fixture.sql")).toContain("ARRAY['atelier','voyage','nocturne','haven','maison','journal','grid','terra','pop','sunset','pulse']");
   });
 

@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 11: executable PostgreSQL 17 proof of the "Add a page with
--- Ari" flag migration (20280803004453). BEGIN ... ROLLBACK: fixtures roll back.
+-- Ari" flag migration (20280807104453). BEGIN ... ROLLBACK: fixtures roll back.
 -- MINGLA-INVARIANT: I-SITES-ARI-ADD-PAGE-FLAG-PER-BRAND | issue #4453 | SITES_ARI_ADD_PAGE is seeded off with no brand allowlisted; brand_site_flag_on is true for it only when the flag is on or the brand is in brand_site_flag_brands; read by service role only; the milestone 7 flags read as before.
 --
 -- T-1  grants and shape: service role only; SECURITY DEFINER; search_path set; static SQL.
@@ -9,7 +9,7 @@
 -- T-4  the milestone 7 flags are unchanged; an unknown key is false and is refused by the allowlist.
 -- T-5  the three Ari-page content actions sit at the content minimum (20); other ranks are unchanged.
 --
--- FAILS-ON-REVERT: drop 20280803004453 -> T-2a (no flag row) and T-3b (allowlist insert refused);
+-- FAILS-ON-REVERT: drop 20280807104453 -> T-2a (no flag row) and T-3b (allowlist insert refused);
 -- drop the new key from brand_site_flag_on -> T-3b; drop the three actions from min_rank -> T-5a.
 
 BEGIN;

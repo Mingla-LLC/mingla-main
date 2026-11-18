@@ -2,7 +2,7 @@
  * #4453 PR 3 (spec v1 §3.4, SC-3.4) — Build creates the owner's setup entries.
  *
  * invariant: I-SITES-NO-INVENTED-PROOF (declared in
- * supabase/migrations/20280725014453_issue_4453_website_proof_part.sql).
+ * supabase/migrations/20280807014453_issue_4453_website_proof_part.sql).
  * Pinned here: a staged review without its confirmer refuses the Build; each
  * entry copies the owner's words verbatim (no field filled in); a review is
  * created confirmed by the member who ticked it and enabled; a rerun finds

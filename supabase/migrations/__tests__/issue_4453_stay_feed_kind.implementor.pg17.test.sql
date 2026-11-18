@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 5: executable PostgreSQL 17 proof of the stay feed kind
--- (20280726014453) and the nights read (20280726004453). BEGIN ... ROLLBACK.
+-- (20280807054453) and the nights read (20280807044453). BEGIN ... ROLLBACK.
 -- MINGLA-INVARIANT: I-SITES-STAY-ROWS-NEED-STAY-FLAGS | issue #4453 | the Sites feed carries stay rows, and the nights read answers, only while STAY_PUBLIC_PAGES and STAY_RESERVE_WRITES are on.
 --
 -- T-1  the feed stays service-role only.
@@ -14,7 +14,7 @@
 --      fully booked (full, no link), blocked (stop-sell: full), a released booking and an expired hold
 --      do not count; the "from" price and the stay target skip a night with no room left.
 --
--- FAILS-ON-REVERT: drop 20280726014453 -> T-2 (no stay rows); drop brand_site_stay_flags_on() from the feed -> T-3.
+-- FAILS-ON-REVERT: drop 20280807054453 -> T-2 (no stay rows); drop brand_site_stay_flags_on() from the feed -> T-3.
 
 BEGIN;
 

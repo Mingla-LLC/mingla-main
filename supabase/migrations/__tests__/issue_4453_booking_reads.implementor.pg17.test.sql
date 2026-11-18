@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 5: executable PostgreSQL 17 proof of the live booking reads
--- (20280726004453). BEGIN ... ROLLBACK: every fixture, and the slot-engine
+-- (20280807044453). BEGIN ... ROLLBACK: every fixture, and the slot-engine
 -- stand-in below, rolls back.
 -- MINGLA-INVARIANT: I-SITES-BOOKING-READS-SERVICE-ONLY | issue #4453 | every booking read is static SQL, SECURITY DEFINER with an explicit search_path, and executable by the service role only.
 -- MINGLA-INVARIANT: I-SITES-RATINGS-MINGLA-ONLY | issue #4453 | the rating is approved Mingla place reviews of the brand's verified venues, at least 20; Google data never.
@@ -20,7 +20,7 @@
 -- T-7  offering dates: an event's dates in the window, each linking to its own date; an experience pre-fills date and slot.
 -- T-8  stays: with the stay flags off, nights and the stay target are NULL.
 --
--- FAILS-ON-REVERT: drop 20280726004453 -> T-1 (functions missing); drop the claim_status filter -> T-3c;
+-- FAILS-ON-REVERT: drop 20280807044453 -> T-1 (functions missing); drop the claim_status filter -> T-3c;
 -- drop the ticket_type_links exclusion -> T-4b; drop the 20-review floor -> T-5a.
 
 BEGIN;

@@ -1,9 +1,9 @@
 \set ON_ERROR_STOP on
 -- #4453 milestone 11 tester (adversarial): the re-issued rank and flag functions
--- in 20280803004453 must keep EVERY earlier action and flag, must not give the
+-- in 20280807104453 must keep EVERY earlier action and flag, must not give the
 -- Ari tool names an owner content rank, and the allowlist must stay service-only.
 -- A different angle from the implementor suite (which spot-checks 3 old actions):
--- here the WHOLE earlier action list (20280725014453) is pinned, flags are
+-- here the WHOLE earlier action list (20280807014453) is pinned, flags are
 -- checked for cross-talk both ways, and the allowlist is attacked as a signed-in user.
 -- BEGIN ... ROLLBACK: fixtures roll back.
 --

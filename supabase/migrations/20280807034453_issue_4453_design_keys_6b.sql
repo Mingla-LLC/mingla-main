@@ -7,7 +7,7 @@
 --
 -- What changes: public.brand_site_design_keys() is replaced (never edited) to return
 -- atelier, voyage, nocturne, haven, maison, journal, grid and terra, in DESIGN_KEYS order.
--- Nothing else: the CHECK and both functions already call it (20280725004453). Static SQL
+-- Nothing else: the CHECK and both functions already call it (20280807004453). Static SQL
 -- only. No data changes: the list only grows, so every stored design_key still passes the CHECK.
 
 BEGIN;
