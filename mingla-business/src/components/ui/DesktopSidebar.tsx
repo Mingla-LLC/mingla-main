@@ -6,7 +6,10 @@
  * the bottom. Groups collapse (a collapsed group holding the page shows an
  * orange dot); the whole sidebar collapses to the 80 icon rail (remembered,
  * localStorage try/catch) and is always the rail on wizard / full-screen
- * routes. The rail has no Blast item. The rank gate applies: groups and items
+ * routes. The rail shows EVERY page (#4389 P3, Seth 2026-11-18): the top
+ * group, then each titled group's items after a thin divider (group titles
+ * and their chevrons live only in the expanded sidebar); every rail item has
+ * a hover / keyboard-focus label. The rail has no Blast item. The rank gate applies: groups and items
  * appear only for the tabs passed in (already rank-filtered by the caller).
  * Analytics stays out (BUILD_DECISIONS 11-14).
  *
@@ -29,6 +32,8 @@ import type { IconName } from "./Icon";
 // ISSUE-1001 — the official business lockup from @mingla/brand-assets.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
+const LazyDesktopRail = React.lazy(() => import("./DesktopSidebarRail"));
+
 export interface SidebarTab {
   id: string;
   icon: IconName;
@@ -48,27 +53,21 @@ export const SIDEBAR_SOURCE_TABS: readonly SidebarTab[] = [
 ];
 
 
-export interface SidebarItem {
-  key: string;
-  label: string;
-  icon: IconName;
-  path: string;
-}
-
-export interface SidebarGroup {
-  key: string;
-  /** null = the untitled top group. */
-  title: string | null;
-  items: SidebarItem[];
-}
+// SidebarItem / SidebarGroup live in desktopSidebarState so the lazy rail can
+// import them without a DesktopSidebar <-> DesktopSidebarRail require cycle (#4389).
+export type { SidebarItem, SidebarGroup } from "./desktopSidebarState";
+import type { SidebarItem, SidebarGroup } from "./desktopSidebarState";
 
 const MARKETING_ICONS: Record<string, IconName> = {
   overview: "megaphone",
   campaigns: "send",
-  ads: "target",
+  // #4389 P2-2 (Seth 2026-11-18) — `target` read like the Ari orb at 20px.
+  ads: "rocket",
   creators: "users",
   referrals: "gift",
-  people: "user",
+  // #4389 P4/P5 — People is the contact book (`notebook`), never Account's
+  // `user` (Creators keeps `users`), so the rail shows no two identical glyphs.
+  people: "notebook",
   templates: "template",
 };
 
@@ -169,54 +168,26 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
   const go = (path: string) => (): void => router.push(path as never);
 
   if (rail) {
-    // The 80 icon rail: the top group, then one icon per remaining group (its
-    // first item), Account at the bottom. No Blast item.
-    const railItems: SidebarItem[] = [
-      ...(groups[0]?.title === null ? groups[0].items : []),
-      ...groups.filter((g) => g.title !== null).map((g) => ({ ...g.items[0], key: `${g.key}:${g.items[0].key}`, label: g.title ?? g.items[0].label })),
-    ];
+    // #4389 P3 — the 80 icon rail (every page, hover / focus labels, a
+    // scrolling page list) loads on intent: it shows only when the host
+    // collapsed the sidebar or on a wizard route, so it stays off the eager
+    // boot chunk. Until it loads, the empty rail column holds the layout.
     return (
-      <View testID={testID} style={[styles.sidebar, styles.rail]} accessibilityRole="tablist">
-        <View style={styles.railLogo}>
-          <HostLogo width={LOGO_WIDTH_RAIL} />
-        </View>
-        {railItems.map((item) => {
-          const group = groups.find((g) => item.key.startsWith(`${g.key}:`));
-          const on = group !== undefined ? group.items.some((i) => i.key === activeKey) : item.key === activeKey;
-          return (
-            <Pressable
-              key={item.key}
-              onPress={go(item.path)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={item.label}
-              style={(state: PressableStateCallbackType & { hovered?: boolean }) => [
-                styles.railItem,
-                on ? styles.itemOn : state.hovered ? styles.itemHover : null,
-              ]}
-            >
-              <Icon name={item.icon} size={20} color={on ? color.accent : color.text2} />
-            </Pressable>
-          );
-        })}
-        <View style={styles.spacer} />
-        {!forcedRail ? (
-          <Pressable onPress={toggleCollapsed} accessibilityRole="button" accessibilityLabel="Expand sidebar" style={styles.railItem}>
-            <Icon name="chevR" size={18} color={color.text3} />
-          </Pressable>
-        ) : null}
-        {account !== null ? (
-          <Pressable
-            onPress={go(account.path)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeKey === "account" }}
-            accessibilityLabel={account.label}
-            style={[styles.railItem, activeKey === "account" ? styles.itemOn : null]}
-          >
-            <Icon name={account.icon} size={20} color={activeKey === "account" ? color.accent : color.text2} />
-          </Pressable>
-        ) : null}
-      </View>
+      <React.Suspense
+        fallback={<View testID={testID} style={[styles.sidebar, styles.rail]} accessibilityRole="tablist" />}
+      >
+        <LazyDesktopRail
+          testID={testID}
+          frameStyle={[styles.sidebar, styles.rail]}
+          logo={<HostLogo width={LOGO_WIDTH_RAIL} />}
+          groups={groups}
+          account={account}
+          activeKey={activeKey}
+          showExpand={!forcedRail}
+          onExpand={toggleCollapsed}
+          go={go}
+        />
+      </React.Suspense>
     );
   }
 
@@ -301,7 +272,6 @@ const styles = StyleSheet.create({
   },
   expanded: { width: DESKTOP_SIDEBAR_WIDTH, paddingVertical: space[4] },
   rail: { width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: space[5], gap: space[2] },
-  railLogo: { marginBottom: space[3], alignItems: "center", justifyContent: "center" },
   logoCrop: { overflow: "hidden" },
   brandRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: space[5], paddingBottom: space[4] },
   collapseButton: { width: 28, height: 28, borderRadius: radius.xs, alignItems: "center", justifyContent: "center" },
@@ -316,7 +286,6 @@ const styles = StyleSheet.create({
   rowLabelOn: { color: color.text1, fontWeight: "600" },
   itemOn: { backgroundColor: color.fill.railOn },
   itemHover: { backgroundColor: color.fill.rowHover },
-  railItem: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   footer: { paddingHorizontal: space[3], paddingTop: space[3], borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
   spacer: { flex: 1 },
 });

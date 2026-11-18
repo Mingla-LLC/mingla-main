@@ -54,6 +54,7 @@
       "checkingBody": "Li stiamo verificando. Di solito servono pochi minuti. Puoi continuare.",
       "actionNeeded": "Manca ancora una cosa prima di poter accettare pagamenti:",
       "ngDone": "Banca collegata. Sei pronto a vendere.",
+      "ngReadyNoBank": "Sei pronto a vendere. Aggiungi una banca in Pagamenti per ricevere i soldi.",
       "done": "Tutto pronto.",
       "refreshErrorTitle": "Impossibile verificare ora.",
       "refreshErrorBody": "Ti aggiorneremo.",

@@ -6,7 +6,8 @@ import {
   tenantWrite,
 } from "../lib/access";
 import { assertTenantPages, bindRequestTenant, singletonPerTenant } from "../lib/tenantIntegrity";
-import { safeText } from "../lib/validation";
+import { safeActionUrl, safeText } from "../lib/validation";
+import { HEADER_VARIANTS } from "../contracts/generated/designs.ts";
 import {
   MAX_NAV_CHILDREN,
   MAX_NAV_ITEMS,
@@ -136,6 +137,17 @@ export const Navigation: CollectionConfig = {
       maxRows: MAX_NAV_ITEMS,
       fields: [
         ...targetFields,
+        /*
+         * #4453 milestone 11 (spec v2.1 §3.1) — a menu entry Ari added for its
+         * Draft page. Studio-only: the builder never publishes it while the
+         * page is a Draft (§1.4), and "Publish this page" clears it.
+         */
+        {
+          name: "draft",
+          type: "checkbox",
+          defaultValue: false,
+          admin: { readOnly: true, description: "Draft: added by Ari with a Draft page; hidden until the page is published." },
+        },
         {
           name: "children",
           type: "array",
@@ -172,7 +184,12 @@ export const Navigation: CollectionConfig = {
           type: "text",
           maxLength: 2048,
           admin: { condition: (_data, sibling) => sibling?.target_type === "url" },
-          validate: secureExternalUrl,
+          // #4453 PR 2 — the header button is an action link: an outside
+          // address must be a Mingla page (the brand is checked at publish).
+          validate: (value: unknown) => {
+            const secure = secureExternalUrl(value);
+            return secure === true ? safeActionUrl(value) : secure;
+          },
         },
       ],
     },
@@ -182,6 +199,45 @@ export const Navigation: CollectionConfig = {
       maxLength: 60,
       admin: { description: "Text shown in the header when you have no logo." },
       validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 60)),
+    },
+    /*
+     * #4453 §3.3 — the shared header layout. Empty keeps the design's own
+     * header (every site before #4453). A layout the site's design does not
+     * offer is left out of the published site, never a failed publish.
+     */
+    {
+      name: "header_variant",
+      type: "select",
+      options: HEADER_VARIANTS.map((value) => ({ value, label: { glass: "Glass bar", center: "Centred", pill: "Floating pill", "journal-mast": "Masthead (Journal)", "grid-bar": "Ruled bar (Grid)" }[value] })),
+      admin: { description: "The header layout. Leave empty for the design's own header." },
+    },
+    /*
+     * #4453 milestone 5 (§5.7) — the sticky phone booking bar: one Mingla
+     * action below 721 px, after the hero. The words are checked like any
+     * site text; a "from" price only ever comes from Mingla's live data.
+     */
+    {
+      name: "sticky_booking",
+      label: "Phone booking bar",
+      type: "checkbox",
+      defaultValue: false,
+      admin: { description: "On phones, keeps one Book button at the bottom of the screen after the opening picture." },
+    },
+    {
+      name: "sticky_title",
+      label: "Phone booking bar title",
+      type: "text",
+      maxLength: 40,
+      validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 40)),
+      admin: { condition: (data) => data?.sticky_booking === true },
+    },
+    {
+      name: "sticky_note",
+      label: "Phone booking bar note",
+      type: "text",
+      maxLength: 60,
+      validate: (value: unknown) => (value == null || value === "" ? true : safeText(value, 60)),
+      admin: { condition: (data) => data?.sticky_booking === true },
     },
   ],
 };

@@ -6,6 +6,7 @@ import {
   tenantWrite,
 } from "../lib/access";
 import { safeText, safeUrl } from "../lib/validation";
+import { FOOTER_VARIANTS } from "../contracts/generated/designs.ts";
 import { bindRequestTenant, singletonPerTenant } from "../lib/tenantIntegrity";
 
 export const Footer: CollectionConfig = {
@@ -76,6 +77,13 @@ export const Footer: CollectionConfig = {
      * #2829 W2 — the richer footer the travel designs use (W3/W7 render it).
      * "Powered by Mingla" is not a field: every site shows it (A1.1).
      */
+    /* #4453 §3.3 — the shared footer layout (empty: the design's own footer). */
+    {
+      name: "footer_variant",
+      type: "select",
+      options: FOOTER_VARIANTS.map((value) => ({ value, label: { giant: "Big name", columns: "Columns" }[value] })),
+      admin: { description: "The footer layout. Leave empty for the design's own footer." },
+    },
     {
       name: "tagline_lines",
       type: "array",

@@ -51,6 +51,7 @@ import {
   stayDateBounds,
   stayDateErrorMessage,
   stayDefaultRange,
+  type StayDate,
   type StayDateRange,
 } from "./stayDateRules";
 import {
@@ -65,6 +66,14 @@ import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
 export interface StayGuestBookingProps {
+  /**
+   * #4453 milestone 5 — a Mingla website's pre-fill (re-validated by the
+   * route; bad values never arrive): the dates, adults and room the guest
+   * chose on the site. Mingla's own quote still decides what is bookable.
+   */
+  initialRange?: { checkIn: string; checkOut: string } | null;
+  initialAdults?: number | null;
+  initialRoomId?: string | null;
   detail: PublicStayDetail | null;
   state: "loading" | "ready" | "unavailable" | "error";
   palette: ThemePalette;
@@ -110,6 +119,9 @@ const labelForPricingUnit = (unit: PublicStayOffering["price"]["pricingUnit"]): 
   })[unit];
 
 export function StayGuestBooking({
+  initialRange = null,
+  initialAdults = null,
+  initialRoomId = null,
   detail,
   state,
   palette,
@@ -133,10 +145,12 @@ export function StayGuestBooking({
   // a guest in Los Angeles at 18:00 opened the form already two days past their
   // own tomorrow. `editedRange === null` means "the guest has not touched the
   // dates yet", so the seed can never overwrite a real edit.
-  const [editedRange, setEditedRange] = useState<StayDateRange | null>(null);
-  const [adults, setAdults] = useState(2);
+  const [editedRange, setEditedRange] = useState<StayDateRange | null>(
+    initialRange ? { checkIn: initialRange.checkIn as StayDate, checkOut: initialRange.checkOut as StayDate } : null,
+  );
+  const [adults, setAdults] = useState(initialAdults ?? 2);
   const [children, setChildren] = useState(0);
-  const [roomQuantities, setRoomQuantities] = useState<Record<string, number>>({});
+  const [roomQuantities, setRoomQuantities] = useState<Record<string, number>>(initialRoomId ? { [initialRoomId]: 1 } : {});
   const [placeSelections, setPlaceSelections] = useState<
     Record<string, string[]>
   >({});

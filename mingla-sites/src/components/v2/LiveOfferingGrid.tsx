@@ -37,17 +37,23 @@ function gridConfig(block: GridBlock): OfferingGridConfig {
 function Card({ card, context }: { card: OfferingCard; context: SiteEventContext }) {
   return (
     <article className="tile offering-card" data-offering-state={card.state.cancelled ? "cancelled" : card.state.phase} data-offering-kind={card.kind}>
-      {card.coverUrl ? <img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" /> : null}
-      {card.state.badge ? <p className="offering-badge">{card.state.badge}</p> : null}
-      <h3>{card.title}</h3>
+      {card.coverUrl ? (card.detailHref
+        ? <a href={card.detailHref} tabIndex={-1} aria-hidden="true"><img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" /></a>
+        : <img className="offering-cover" src={card.coverUrl} alt="" loading="lazy" decoding="async" />) : null}
+      {/* #4453 milestone 10 — a plan preview's labelled sample listing (never published). */}
+      {card.sample ? <p className="offering-badge offering-sample" data-sample="1">Sample</p> : card.state.badge ? <p className="offering-badge">{card.state.badge}</p> : null}
+      {/* #4453 milestone 9 — with detail pages on, the title opens the site's own page; the CTA below still goes to Mingla. */}
+      <h3>{card.detailHref ? <a className="mg-to-detail" href={card.detailHref}>{card.title}</a> : card.title}</h3>
       {card.dates ? <p className="offering-dates">{card.dates}</p> : null}
       {card.destination ? <p className="offering-place">{card.destination}</p> : null}
       {card.summary ? <p>{card.summary}</p> : null}
       {card.price ? <p className="offering-price">{card.price}</p> : null}
-      <TrackedLink href={card.href} context={context} ctaKind="offering" offeringId={card.id} className={card.state.bookable ? "button accent offering-cta" : "offering-cta"}>
-        {/* #2830 — no colon: the link reads "Book Fixture coast walk on Mingla". */}
-        {card.cta}<span className="sr-only"> {card.title} on Mingla</span>
-      </TrackedLink>
+      {card.sample ? <p className="offering-cta">Sample listing</p> : (
+        <TrackedLink href={card.href} context={context} ctaKind="offering" offeringId={card.id} className={card.state.bookable ? "button accent offering-cta" : "offering-cta"}>
+          {/* #2830 — no colon: the link reads "Book Fixture coast walk on Mingla". */}
+          {card.cta}<span className="sr-only"> {card.title} on Mingla</span>
+        </TrackedLink>
+      )}
     </article>
   );
 }
@@ -66,6 +72,12 @@ export function LiveOfferingGrid({ block, live, context, clearHref, eyebrow }: {
     ? selectGridOfferings(live.offerings, config, live.now, block.show_filters === true ? live.filters : { where: null, from: null, to: null })
     : { kind: "empty" as const };
   const filters = live?.filters;
+  /*
+   * #4453 I-SITES-NO-PUBLIC-EMPTY-STATE (spec v1 §4.2.3) — a grid with no
+   * live offering is not rendered at all: no heading, no message, no wrapper.
+   * `empty_text` stays in the schema for stored blocks; it is never printed.
+   */
+  if (result.kind === "empty") return null;
   return (
     <section className="editorial-grid offering-grid" data-offering-source={live?.source ?? "none"}>
       {eyebrow}
@@ -82,8 +94,6 @@ export function LiveOfferingGrid({ block, live, context, clearHref, eyebrow }: {
         <p className="offering-grid-message" role="status">Check your dates: the end comes before the start. <SiteAnchor href={clearHref}>Clear search</SiteAnchor></p>
       ) : result.kind === "no_match" ? (
         <p className="offering-grid-message" role="status">No {noun} match those dates. <SiteAnchor href={clearHref}>Clear search</SiteAnchor></p>
-      ) : result.kind === "empty" ? (
-        <p className="offering-grid-message">{text(block.empty_text) || `No ${noun} to show right now.`}</p>
       ) : (
         <div className="grid">
           {result.offerings.map(({ offering }) => {

@@ -15,6 +15,8 @@ export const WEBSITE_TODO_PART_LABELS: Readonly<Record<string, string>> = {
   brand: "Your brand details",
   look: "Choose your design",
   story: "Your story",
+  // #4453 — shown only while Core lists the part (SITES_PROOF_PART).
+  proof: "What guests say and where you've been",
   approve: "Approve the plan",
   build: "Build your pages",
   first_offering: "Add your first trip or event",

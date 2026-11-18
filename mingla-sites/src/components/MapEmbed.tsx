@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 
+import { assetQuery } from "../lib/assetCredential";
 import { planStaticMap } from "../lib/staticMap";
 import { usePreviewAssetKey } from "./PreviewLinks";
 
@@ -98,7 +99,7 @@ function StaticMap(
           // eslint-disable-next-line @next/next/no-img-element -- a map tile is a fixed 256px square served by this app's own route; the framework optimiser would re-encode it and add a second hop for nothing.
           <img
             key={tile.path}
-            src={previewKey ? `${tile.path}?k=${encodeURIComponent(previewKey)}` : tile.path}
+            src={previewKey ? `${tile.path}?${assetQuery(previewKey)}` : tile.path}
             alt=""
             width={256}
             height={256}

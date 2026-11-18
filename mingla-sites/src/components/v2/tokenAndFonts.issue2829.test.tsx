@@ -60,8 +60,9 @@ describe("#2829 FontFaces (R-9)", () => {
     expect(css).not.toMatch(/googleapis|gstatic|https?:/);
   });
 
-  it("preloads display and body regular/bold latin files, from the site itself", () => {
-    expect(preloadDigests(artifact()).sort()).toEqual([D("1"), D("2"), D("4"), D("5")].sort());
+  // #4453 §3.6 — at most 2 preloads: display regular + body regular (was regular and bold, 4 files).
+  it("preloads display and body regular latin files, from the site itself", () => {
+    expect(preloadDigests(artifact()).sort()).toEqual([D("1"), D("4")].sort());
     const html = renderToStaticMarkup(<FontFaces artifact={artifact()} />);
     expect(html).toContain(`href="/fonts/${D("1")}"`);
     expect(html).not.toMatch(/googleapis|gstatic/);

@@ -140,20 +140,24 @@ Deno.test("#2829 W9a no tick on an unknown or failed build", async () => {
   const refused = fakes({ user: () => ({ data: null, error: { message: "sites_plan_not_ready" } }) });
   const r1 = await handleSitePlanRoute(`/v1/brands/${BRAND}/site/compose-from-plan`, "POST", { operation_id: OP }, refused.ctx);
   assert(r1?.status === 409 && refused.cmsCalls.length === 0, "Studio called for an unapproved plan");
-  // Studio fails: nothing is recorded.
+  // Studio fails: nothing is recorded. "Recorded" means the build tick RPC;
+  // since #4453 the route also makes read-only flag probes
+  // (brand_site_proof_part_enabled, brand_site_flag_on) before composing, and
+  // those reads are not a tick, so only brand_site_plan_record_build counts.
+  const recorded = (calls: Call[]) => calls.some((call) => call.fn === "brand_site_plan_record_build");
   const failed = fakes({
     user: () => ({ data: composeInputs, error: null }),
     cms: () => new Response(JSON.stringify({ ok: false, error: { code: "SERVICE_TEMPORARILY_UNAVAILABLE" } }), { status: 503 }),
   });
   const r2 = await handleSitePlanRoute(`/v1/brands/${BRAND}/site/compose-from-plan`, "POST", { operation_id: OP }, failed.ctx);
-  assert(r2?.status === 503 && failed.serviceCalls.length === 0, "a failed build was recorded");
+  assert(r2?.status === 503 && !recorded(failed.serviceCalls), "a failed build was recorded");
   // Studio answers without a home page: not believed, nothing recorded.
   const odd = fakes({
     user: () => ({ data: composeInputs, error: null }),
     cms: () => new Response(JSON.stringify({ ok: true, data: { pages: ["trips"] } }), { status: 202 }),
   });
   const r3 = await handleSitePlanRoute(`/v1/brands/${BRAND}/site/compose-from-plan`, "POST", { operation_id: OP }, odd.ctx);
-  assert(r3?.status === 503 && odd.serviceCalls.length === 0, "a build without a home page was recorded");
+  assert(r3?.status === 503 && !recorded(odd.serviceCalls), "a build without a home page was recorded");
   // No operation id: refused before Core.
   const noOp = fakes();
   const r4 = await handleSitePlanRoute(`/v1/brands/${BRAND}/site/compose-from-plan`, "POST", {}, noOp.ctx);

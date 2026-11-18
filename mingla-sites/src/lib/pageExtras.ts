@@ -1,6 +1,8 @@
 import { blockReadsFeed } from "../contracts/generated/blocks.ts";
 import type { SiteBinding } from "./coreGateway";
 import { enquiryAvailability } from "./enquiryAvailability";
+import { loadBooking } from "./bookingFeed";
+import { blockReadsBooking } from "../contracts/generated/availability.ts";
 import { loadLiveOfferings, offeringFilters, type LiveOfferings } from "./offeringCards";
 import type { ArtifactPage } from "./pageRouting";
 import type { CollectionEntry } from "./siteCollections";
@@ -41,10 +43,16 @@ export async function loadPageExtras(input: {
   const { artifact, page, entry, site } = input;
   if (!isV2Artifact(artifact)) return {};
   const types = new Set(page.blocks.map((block) => (block as unknown as { type: string }).type));
-  const [live, enquiries] = await Promise.all([
-    needsFeed(page, entry) ? loadLiveOfferings(site, artifact, offeringFilters(input.search)) : Promise.resolve(undefined),
+  // #4453 milestone 5 — the live booking facts ride with the live offerings
+  // (both are Mingla's live data for this page); a page with a booking block
+  // or bar also gets the feed (stay rooms, the sticky bar's "from").
+  const readsBooking = !entry && page.blocks.some((block) => blockReadsBooking(block as unknown as Record<string, unknown>));
+  const [feed, enquiries, booking] = await Promise.all([
+    needsFeed(page, entry) || readsBooking ? loadLiveOfferings(site, artifact, offeringFilters(input.search)) : Promise.resolve(undefined),
     types.has("contact_form") && !input.preview ? enquiryAvailability(site) : Promise.resolve("unknown" as const),
+    readsBooking ? loadBooking(site, artifact, page.blocks) : Promise.resolve(undefined),
   ]);
+  const live = feed && booking ? { ...feed, booking } : feed;
   let forms: FormsContext | undefined;
   if (!entry && (types.has("contact_form") || types.has("newsletter_signup"))) {
     const renderedAt = (input.now ?? Date.now)();
