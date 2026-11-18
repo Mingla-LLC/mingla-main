@@ -211,3 +211,132 @@ export function leadTimeOptions(input: { includeNone?: boolean } = {}): SelectOp
   ];
   return values.map((value) => ({ value, label: leadTimeLabel(value) }));
 }
+
+// ---------------------------------------------------------------------------
+// #4490 click-test fixes (D20, D21, D25) — one 24-hour time field and one
+// day-first date field for venue hours and special days. Pure; RN-free.
+// ---------------------------------------------------------------------------
+
+/** "09:00" from "09:00:00", "9:00", "0900"; null when it is not a time. */
+export function normalizeTime24(raw: string | null | undefined): string | null {
+  if (raw === null || raw === undefined) return null;
+  const text = raw.trim().replace(/\s+/g, "").replace(/[.h]/gi, ":");
+  if (text.length === 0) return null;
+  let h: number;
+  let m: number;
+  const withColon = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(text);
+  if (withColon !== null) {
+    h = Number(withColon[1]);
+    m = Number(withColon[2]);
+  } else if (/^\d{1,2}$/.test(text)) {
+    h = Number(text);
+    m = 0;
+  } else if (/^\d{3,4}$/.test(text)) {
+    h = Number(text.slice(0, text.length - 2));
+    m = Number(text.slice(-2));
+  } else {
+    return null;
+  }
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Every `step` minutes of a day as "HH:mm" (default every 30 minutes). */
+export function timeOptions(step = 30): SelectOption<string>[] {
+  const out: SelectOption<string>[] = [];
+  for (let minutes = 0; minutes < 1440; minutes += step) {
+    const value = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+    out.push({ value, label: value });
+  }
+  return out;
+}
+
+const DAY_SHORT_SUN_FIRST = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+const MONTH_LONG = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+
+function isoFromParts(y: number, m: number, d: number): string | null {
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  if (y < 1900 || y > 2999 || m < 1 || m > 12 || d < 1) return null;
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  if (d > days) return null;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function isoParts(iso: string): { y: number; m: number; d: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (match === null) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  return isoFromParts(y, m, d) === null ? null : { y, m, d };
+}
+
+/** "Fri 25 Dec 2026" from "2026-12-25"; "" when not a date. Day first, always. */
+export function dayDateLabel(iso: string): string {
+  const parts = isoParts(iso);
+  if (parts === null) return "";
+  const weekday = new Date(Date.UTC(parts.y, parts.m - 1, parts.d)).getUTCDay();
+  return `${DAY_SHORT_SUN_FIRST[weekday]} ${parts.d} ${MONTH_SHORT[parts.m - 1]} ${parts.y}`;
+}
+
+/**
+ * Typed date to "YYYY-MM-DD", read DAY FIRST: "25/12/2026", "25-12-2026",
+ * "25.12.26", "25 Dec 2026", "Fri 25 Dec 2026", "25 December" (this year), or
+ * an ISO "2026-12-25". Null when it is not a real date.
+ */
+export function parseDayDateInput(raw: string, todayIso: string): string | null {
+  const text = raw.trim().replace(/,/g, " ").replace(/\s+/g, " ");
+  if (text.length === 0) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  if (iso !== null) return isoFromParts(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const thisYear = isoParts(todayIso)?.y ?? new Date().getFullYear();
+  const fullYear = (y: string | undefined): number => {
+    if (y === undefined) return thisYear;
+    const n = Number(y);
+    return y.length <= 2 ? 2000 + n : n;
+  };
+  const numeric = /^(\d{1,2})[/.\- ](\d{1,2})(?:[/.\- ](\d{2}|\d{4}))?$/.exec(text);
+  if (numeric !== null) {
+    return isoFromParts(fullYear(numeric[3]), Number(numeric[2]), Number(numeric[1]));
+  }
+  const words = /^(?:[a-z]{3,9} )?(\d{1,2}) ([a-z]{3,9})(?: (\d{2}|\d{4}))?$/i.exec(text);
+  if (words !== null) {
+    const name = words[2].toLowerCase();
+    const index = MONTH_LONG.findIndex((month) => month.toLowerCase().startsWith(name.slice(0, 3)));
+    if (index < 0 || !MONTH_LONG[index].toLowerCase().startsWith(name)) return null;
+    return isoFromParts(fullYear(words[3]), index + 1, Number(words[1]));
+  }
+  return null;
+}
+
+/** "December 2026". */
+export function monthTitle(year: number, month1: number): string {
+  return `${MONTH_LONG[month1 - 1] ?? ""} ${year}`;
+}
+
+/** Next / previous month as { year, month1 }. */
+export function shiftMonth(year: number, month1: number, delta: number): { year: number; month1: number } {
+  const zero = year * 12 + (month1 - 1) + delta;
+  return { year: Math.floor(zero / 12), month1: (zero % 12) + 1 };
+}
+
+/**
+ * A Monday-first month grid: weeks of 7 cells, each an ISO date or null for
+ * the blanks before the 1st and after the last day.
+ */
+export function monthGrid(year: number, month1: number): (string | null)[][] {
+  const first = new Date(Date.UTC(year, month1 - 1, 1)).getUTCDay();
+  const leading = (first + 6) % 7;
+  const days = new Date(Date.UTC(year, month1, 0)).getUTCDate();
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < leading; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(isoFromParts(year, month1, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}

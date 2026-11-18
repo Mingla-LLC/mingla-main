@@ -33,7 +33,12 @@ import {
 import { VenueFeatureError, type VenueSpecialDay } from "../../../services/venueFeaturesService";
 import { useVenueSuiteStore } from "../../../store/venueSuiteStore";
 import type { BrandHourEntry } from "../../../types/brand";
-import { hoursWeekIssue } from "../../../utils/venueBrandHours";
+import {
+  hoursWeekIssue,
+  normalizeHoursWeek,
+  reconcileHoursForm,
+  sameHoursWeek,
+} from "../../../utils/venueBrandHours";
 import { Button } from "../../ui/Button";
 import { CenteredState } from "../../ui/CenteredState";
 import { GlassCard } from "../../ui/GlassCard";
@@ -63,6 +68,8 @@ export interface VenueAvailabilityPricingModuleProps {
   showTableTimes: boolean;
   /** The viewer may edit spaces/special days at this venue (unscoped or venue.manage_offers). */
   canEditHours: boolean;
+  /** #4490 D25 — the venue takes table reservations (closed-day wording). */
+  tableReservationsOn?: boolean;
 }
 
 function errorCopy(context: "hours" | "special_day", error: unknown): string {
@@ -80,7 +87,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
   VenueAvailabilityLeaveHandle,
   VenueAvailabilityPricingModuleProps
 >(function VenueAvailabilityPricingModule(
-  { brandId, venueId, showTableTimes, canEditHours },
+  { brandId, venueId, showTableTimes, canEditHours, tableReservationsOn = false },
   forwardedRef,
 ): React.ReactElement {
   const access = useVenueEditAccess(brandId, venueId);
@@ -94,7 +101,17 @@ export const VenueAvailabilityPricingModule = forwardRef<
   const tableTimesRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
 
   const serverHours = hoursQuery.data ?? null;
-  const [draft, setDraft] = useState<BrandHourEntry[] | null>(null);
+  // #4490 D23/D26 — the form keeps the hours it was last in step with
+  // (`base`) beside the host's edits (`draft`). Saving moves both to what was
+  // saved; the server's answer then replaces both (see reconcileHoursForm).
+  const [form, setForm] = useState<{ base: BrandHourEntry[] | null; draft: BrandHourEntry[] | null }>({
+    base: null,
+    draft: null,
+  });
+  const draft = form.draft;
+  const setDraft = useCallback((next: BrandHourEntry[] | null): void => {
+    setForm((current) => ({ ...current, draft: next === null ? current.base : next }));
+  }, []);
   const [hoursStatus, setHoursStatus] = useState<"idle" | "saved" | "failed">("idle");
   const [hoursError, setHoursError] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetState>({ open: false });
@@ -104,10 +121,11 @@ export const VenueAvailabilityPricingModule = forwardRef<
   const today = localIsoDate();
 
   useEffect(() => {
-    if (serverHours !== null && draft === null) setDraft(serverHours);
-  }, [draft, serverHours]);
+    if (serverHours === null) return;
+    setForm((current) => reconcileHoursForm(current, serverHours));
+  }, [serverHours]);
 
-  const hoursDirty = draft !== null && serverHours !== null && JSON.stringify(draft) !== JSON.stringify(serverHours);
+  const hoursDirty = form.draft !== null && form.base !== null && !sameHoursWeek(form.draft, form.base);
   const hoursIssue = draft === null ? null : hoursWeekIssue(draft);
 
   useEffect(() => {
@@ -121,9 +139,12 @@ export const VenueAvailabilityPricingModule = forwardRef<
     }
     setHoursError(null);
     return new Promise<void>((resolve, reject) => {
-      upsertHours.mutate(draft, {
+      const saved = normalizeHoursWeek(draft);
+      upsertHours.mutate(saved, {
         onSuccess: () => {
-          setDraft(null);
+          // In step with what was saved straight away; the refetch then
+          // replaces it with the server's copy (never the stale cache).
+          setForm({ base: saved, draft: saved });
           setHoursStatus("saved");
           setToast("Opening hours saved");
           resolve();
@@ -275,7 +296,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
               </Text>
               <View style={styles.saveButtons}>
                 {hoursDirty ? (
-                  <Button label="Discard" variant="ghost" size="sm" onPress={() => setDraft(serverHours)} disabled={upsertHours.isPending} />
+                  <Button label="Discard" variant="ghost" size="sm" onPress={() => setDraft(null)} disabled={upsertHours.isPending} />
                 ) : null}
                 <Button
                   label="Save opening hours"
@@ -374,6 +395,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
       ) : null}
 
       <SpecialDaySheet
+        tableReservationsOn={tableReservationsOn}
         visible={sheet.open}
         day={sheet.open ? sheet.day : null}
         mode={sheet.open ? sheet.mode : "special"}
@@ -399,13 +421,13 @@ export const VenueAvailabilityPricingModule = forwardRef<
             onConfirm={() => {
               const next = leave.proceed;
               setLeave(null);
-              setDraft(serverHours);
+              setDraft(null);
               next();
             }}
             onDiscard={() => {
               const next = leave.proceed;
               setLeave(null);
-              setDraft(serverHours);
+              setDraft(null);
               next();
             }}
             onSave={async () => {

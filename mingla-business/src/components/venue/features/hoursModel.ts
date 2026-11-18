@@ -4,14 +4,11 @@
 import type { HoursWindow } from "../../../services/venueFeaturesService";
 import { hoursWeekIssue } from "../../../utils/venueBrandHours";
 
-/** "6:00 PM" from "18:00" (same wording as TimeField; kept RN-free here). */
+/** "18:00" from "18:00" or "18:00:00": venue hours read 24-hour, like the TimeField (#4490 D20/D21). */
 export function timeLabel(value: string): string {
   const match = /^(\d{2}):(\d{2})/.exec(value);
   if (!match) return "";
-  const hours = Number(match[1]);
-  const suffix = hours >= 12 ? "PM" : "AM";
-  const twelve = hours % 12 === 0 ? 12 : hours % 12;
-  return `${twelve}:${match[2]} ${suffix}`;
+  return `${match[1]}:${match[2]}`;
 }
 
 function parseIsoDate(iso: string): Date | null {
@@ -43,15 +40,16 @@ export function shortDateLabel(iso: string): string {
   return `${WEEKDAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
 }
 
-/** "12:00 PM to 4:00 PM, 6:00 PM until 00:00" style summary of windows. */
+/** "12:00–16:00, 18:00–02:00 (next day)" style summary of windows. */
 export function windowsSummary(windows: readonly HoursWindow[]): string {
   if (windows.length === 0) return "Closed";
   return windows
-    .map((w) =>
-      w.close === "00:00"
-        ? `${timeLabel(w.open)} until 00:00`
-        : `${timeLabel(w.open)} to ${timeLabel(w.close)}${w.close <= w.open ? " (next day)" : ""}`,
-    )
+    .map((w) => {
+      const open = timeLabel(w.open);
+      const close = timeLabel(w.close);
+      if (close === "00:00") return `${open} until 00:00`;
+      return `${open}–${close}${close <= open ? " (next day)" : ""}`;
+    })
     .join(", ");
 }
 
@@ -80,3 +78,10 @@ export function specialDayIssue(draft: SpecialDayDraft, today: string): string |
   ]);
 }
 
+
+/** #4490 click-test D25 — what a closed day means for guests, feature-aware. */
+export function closedDayCopy(tableReservationsOn: boolean): string {
+  return tableReservationsOn
+    ? "Guests see you as closed that day and can't book a table."
+    : "Guests see you as closed that day.";
+}

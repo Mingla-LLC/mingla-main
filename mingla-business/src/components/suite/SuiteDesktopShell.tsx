@@ -51,6 +51,8 @@ import {
 } from "react-native";
 import type { PressableStateCallbackType, ViewStyle } from "react-native";
 
+import { SHELL_WEB_CLIP } from "./shellWebClip";
+
 import {
   radius,
   venueRailWidth,
@@ -149,12 +151,24 @@ export function SuiteDesktopShell({
           accessibilityRole="tablist"
           accessibilityLabel={grouped ? railLabel : undefined}
         >
-          <SuiteDesktopRail
-            modules={modules}
-            activeModule={activeModule}
-            onSelect={onSelect}
-            testIdPrefix={railTestIdPrefix}
-          />
+          {/* #4490 click-test D29 — the rail scrolls inside its own column.
+              A long rail (a venue with Offers, Bookings and Operations on)
+              used to spill below the window; the page root then became
+              scrollable, and focusing a rail row near the bottom scrolled
+              the whole app shell up (top bar gone, a band below). */}
+          <ScrollView
+            style={styles.railScroll}
+            contentContainerStyle={styles.railScrollContent}
+            showsVerticalScrollIndicator={false}
+            testID={`${railTestIdPrefix}scroll`}
+          >
+            <SuiteDesktopRail
+              modules={modules}
+              activeModule={activeModule}
+              onSelect={onSelect}
+              testIdPrefix={railTestIdPrefix}
+            />
+          </ScrollView>
         </View>
         <View style={styles.desktopWorkspace}>
           {workspaceSelfScrolls ? (
@@ -472,9 +486,14 @@ function GroupedSuiteDesktopRail({
 const styles = StyleSheet.create({
   desktopHost: {
     flex: 1,
+    // #4490 D29 — the shell is exactly the space it is given: nothing inside
+    // (rail or workspace) may grow it, so the page root can never scroll.
+    minHeight: 0,
+    ...SHELL_WEB_CLIP,
   },
   desktopCentered: {
     flex: 1,
+    minHeight: 0,
     flexDirection: "row",
     width: "100%",
     // ORCH-1184 — the workspace FILLS the page width (Seth's decision). The old
@@ -492,6 +511,7 @@ const styles = StyleSheet.create({
   },
   desktopRail: {
     width: venueRailWidth,
+    minHeight: 0,
     paddingTop: space[1],
     // Hairline divider separating the rail from the workspace, top-aligned with
     // the content. Subtle (matches the app's restrained desktop chrome), opaque
@@ -502,6 +522,13 @@ const styles = StyleSheet.create({
   },
   desktopRailGrouped: {
     paddingTop: 0,
+  },
+  railScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  railScrollContent: {
+    paddingBottom: space[4],
   },
   railInner: {
     gap: 2,
@@ -594,6 +621,7 @@ const styles = StyleSheet.create({
   },
   desktopWorkspace: {
     flex: 1,
+    minHeight: 0,
     // Balanced gutter between the rail and the workspace (paired with the rail's
     // `paddingRight: spacing.sm` + hairline → a coherent, symmetric seam).
     paddingLeft: space[6],

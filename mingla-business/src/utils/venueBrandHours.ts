@@ -100,3 +100,57 @@ export function hoursWeekIssue(entries: readonly BrandHourEntry[]): string | nul
   }
   return null;
 }
+
+function hm24(value: string | null | undefined): string | null {
+  const match = /^(\d{1,2}):(\d{2})/.exec((value ?? "").trim());
+  if (match === null) return null;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+/**
+ * #4490 click-test D20/D23/D26 — one week of hours in the shape the editor
+ * shows: times as "HH:mm" (the server returns "HH:mm:ss"), closed days with no
+ * times or windows, extra windows always an array, rows in weekday order.
+ */
+export function normalizeHoursWeek(entries: readonly BrandHourEntry[]): BrandHourEntry[] {
+  return [...entries]
+    .sort((a, b) => a.weekday - b.weekday)
+    .map((entry) =>
+      entry.isClosed
+        ? { weekday: entry.weekday, openTime: null, closeTime: null, isClosed: true, extraWindows: [] }
+        : {
+            weekday: entry.weekday,
+            openTime: hm24(entry.openTime),
+            closeTime: hm24(entry.closeTime),
+            isClosed: false,
+            extraWindows: (entry.extraWindows ?? []).map((w) => ({
+              openTime: hm24(w.openTime),
+              closeTime: hm24(w.closeTime),
+            })),
+          },
+    );
+}
+
+/** True when two weeks show the same hours (seconds and empty windows ignored). */
+export function sameHoursWeek(
+  a: readonly BrandHourEntry[] | null,
+  b: readonly BrandHourEntry[] | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return JSON.stringify(normalizeHoursWeek(a)) === JSON.stringify(normalizeHoursWeek(b));
+}
+
+/**
+ * #4490 click-test D26 — what an hours form shows after the server answers.
+ * The form keeps a `base` (the hours it was last in step with) and a `draft`.
+ * A new server value replaces both while the host has no unsaved edits; with
+ * unsaved edits only the base moves, so their typing is never wiped.
+ */
+export function reconcileHoursForm(
+  form: { base: BrandHourEntry[] | null; draft: BrandHourEntry[] | null },
+  server: readonly BrandHourEntry[],
+): { base: BrandHourEntry[]; draft: BrandHourEntry[] } {
+  const next = normalizeHoursWeek(server);
+  const editing = form.draft !== null && form.base !== null && !sameHoursWeek(form.draft, form.base);
+  return { base: next, draft: editing && form.draft !== null ? form.draft : next };
+}

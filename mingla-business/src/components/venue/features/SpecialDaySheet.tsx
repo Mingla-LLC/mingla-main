@@ -12,11 +12,12 @@ import type { HoursWindow, VenueSpecialDay } from "../../../services/venueFeatur
 import { ScrollView } from "../../../wrappers/SmartScrollView";
 import { BrandSwitch } from "../../ui/BrandSwitch";
 import { Button } from "../../ui/Button";
-import { DateField } from "../../ui/DateField";
+import { DayDateField } from "../../ui/DayDateField";
+import { Icon } from "../../ui/Icon";
 import { Input } from "../../ui/Input";
 import { Sheet } from "../../ui/Sheet";
 import { TimeField } from "../../ui/TimeField";
-import { longDateLabel, specialDayIssue, type SpecialDayDraft } from "./hoursModel";
+import { closedDayCopy, longDateLabel, specialDayIssue, type SpecialDayDraft } from "./hoursModel";
 
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../../ui/ConfirmDialog");
@@ -37,6 +38,11 @@ export interface SpecialDaySheetProps {
   onSave: (draft: SpecialDayDraft) => void;
   onClear: () => void;
   onClose: () => void;
+  /**
+   * #4490 D25 — the venue takes table reservations, so a closed day also
+   * stops table bookings. Off: the copy says only "closed".
+   */
+  tableReservationsOn?: boolean;
 }
 
 export function SpecialDaySheet({
@@ -49,6 +55,7 @@ export function SpecialDaySheet({
   onSave,
   onClear,
   onClose,
+  tableReservationsOn = false,
 }: SpecialDaySheetProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const baseline = useMemo<SpecialDayDraft>(
@@ -72,6 +79,7 @@ export function SpecialDaySheet({
   }, [baseline, visible]);
 
   const issue = specialDayIssue(draft, today);
+  const dateIssue = issue === "Pick a date." || issue === "Pick today or a later date.";
   const patchWindow = (index: number, patch: Partial<HoursWindow>): void =>
     setDraft((prev) => ({
       ...prev,
@@ -105,21 +113,33 @@ export function SpecialDaySheet({
         <Text style={styles.heading} accessibilityRole="header">{heading}</Text>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {day === null ? (
-            <DateField
+            <DayDateField
               label="Date"
               value={draft.localDate}
               onChangeValue={(localDate) => setDraft((prev) => ({ ...prev, localDate }))}
               accessibilityLabel="Special day date"
               min={today}
-              placeholder="Pick a date"
-              hasError={showErrors && issue === "Pick a date."}
+              today={today}
+              // #4490 D25 — a date problem shows under the date, nowhere else.
+              error={showErrors && dateIssue ? issue : null}
               testID="special-day-date"
             />
           ) : null}
+          <View style={styles.labelField}>
+            <Text style={styles.label}>Name (optional)</Text>
+            <Input
+              value={draft.label}
+              onChangeText={(label) => setDraft((prev) => ({ ...prev, label: label.slice(0, 60) }))}
+              placeholder="Like Christmas Day"
+              accessibilityLabel="Special day name, optional"
+              error={showErrors && issue === "Keep the name to 60 characters." ? issue : null}
+              testID="special-day-label"
+            />
+          </View>
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchTitle}>Closed all day</Text>
-              <Text style={styles.hint}>Guests see you as closed and can&apos;t book a table that day.</Text>
+              <Text style={styles.hint}>{closedDayCopy(tableReservationsOn)}</Text>
             </View>
             <BrandSwitch
               value={draft.isClosed}
@@ -138,12 +158,14 @@ export function SpecialDaySheet({
                     value={w.open}
                     onChangeValue={(open) => patchWindow(index, { open })}
                     accessibilityLabel={`Window ${index + 1} opening time`}
+                    testID={`special-day-window-${index}-open`}
                   />
                   <TimeField
                     label="Closes"
                     value={w.close}
                     onChangeValue={(close) => patchWindow(index, { close })}
                     accessibilityLabel={`Window ${index + 1} closing time`}
+                    testID={`special-day-window-${index}-close`}
                   />
                   {draft.windows.length > 1 ? (
                     <Pressable
@@ -153,9 +175,9 @@ export function SpecialDaySheet({
                       accessibilityRole="button"
                       accessibilityLabel={`Remove window ${index + 1}`}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={styles.remove}
+                      style={({ pressed }) => [styles.remove, pressed && styles.removePressed]}
                     >
-                      <Text style={styles.removeText}>Remove</Text>
+                      <Icon name="trash" size={16} color={color.text2} />
                     </Pressable>
                   ) : null}
                 </View>
@@ -176,14 +198,7 @@ export function SpecialDaySheet({
               <Text style={styles.hint}>A close earlier than the open runs past midnight.</Text>
             </View>
           ) : null}
-          <Input
-            value={draft.label}
-            onChangeText={(label) => setDraft((prev) => ({ ...prev, label: label.slice(0, 60) }))}
-            placeholder="Name (optional), like Christmas Day"
-            accessibilityLabel="Special day name"
-            testID="special-day-label"
-          />
-          {showErrors && issue !== null ? (
+          {showErrors && issue !== null && !dateIssue && issue !== "Keep the name to 60 characters." ? (
             <Text style={styles.error} testID="special-day-issue">{issue}</Text>
           ) : null}
         </ScrollView>
@@ -212,7 +227,11 @@ export function SpecialDaySheet({
             visible
             onClose={() => setConfirmClose(false)}
             title={`Close ${longDateLabel(draft.localDate)}?`}
-            description="Guests see you as closed and can't book a table that day. Table bookings already made stay booked, so contact those guests if you need to."
+            description={
+              tableReservationsOn
+                ? `${closedDayCopy(true)} Table bookings already made stay booked, so contact those guests if you need to.`
+                : closedDayCopy(false)
+            }
             confirmLabel="Close the day"
             cancelLabel="Keep it open"
             destructive
@@ -241,8 +260,18 @@ const styles = StyleSheet.create({
   label: { ...type.small, color: color.text2 },
   windows: { gap: space[2] },
   windowRow: { flexDirection: "row", alignItems: "flex-end", gap: space[2] },
-  remove: { minHeight: 48, justifyContent: "center", paddingHorizontal: space[2], borderRadius: radius.sm },
-  removeText: { ...type.small, color: color.text2, fontWeight: "600" },
+  remove: {
+    width: 40,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.line,
+    backgroundColor: color.fill.tile,
+  },
+  removePressed: { backgroundColor: color.fill.inset },
+  labelField: { gap: space[1] },
   addBtn: { alignSelf: "flex-start" },
   error: { ...type.caption, color: color.errorText },
   footer: { gap: space[2], paddingTop: space[3], paddingBottom: space[4], borderTopWidth: 1, borderTopColor: color.line },

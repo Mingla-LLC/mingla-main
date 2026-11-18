@@ -142,8 +142,9 @@ describe("special days and closing a day", () => {
   });
   it("names the day in full and says until 00:00 for a midnight close", () => {
     expect(longDateLabel("2026-12-25")).toBe("Friday 25 December");
-    expect(windowsSummary([{ open: "12:00", close: "00:00" }])).toBe("12:00 PM until 00:00");
-    expect(windowsSummary([{ open: "18:00", close: "02:00" }])).toBe("6:00 PM to 2:00 AM (next day)");
+    // #4490 D20/D21 — 24-hour everywhere in venue hours, never AM/PM or seconds.
+    expect(windowsSummary([{ open: "12:00", close: "00:00" }])).toBe("12:00 until 00:00");
+    expect(windowsSummary([{ open: "18:00:00", close: "02:00:00" }])).toBe("18:00–02:00 (next day)");
   });
 });
 

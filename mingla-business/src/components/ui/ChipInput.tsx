@@ -200,6 +200,11 @@ export const ChipInput: React.FC<ChipInputProps> = ({
           ))}
         </View>
       ) : null}
+      {/* #4490 click-test D15 — the input sits in its own box, so the web
+          focus ring (fieldFocusCss: drawn on the input's direct parent)
+          rings this box, not the whole field column (it showed as a bright
+          line above the label and below the input). */}
+      <View style={[styles.inputBox, !editable || atCap ? styles.inputDisabled : null]}>
       <TextInput
         accessibilityLabel={label}
         accessibilityHint={helper}
@@ -213,9 +218,10 @@ export const ChipInput: React.FC<ChipInputProps> = ({
         placeholder={atCap ? `${CHIP_MAX_COUNT} is the most you can add` : placeholder}
         placeholderTextColor={color.text3}
         editable={editable && !atCap}
-        style={[styles.input, !editable || atCap ? styles.inputDisabled : null]}
+        style={styles.input}
         testID={testID}
       />
+      </View>
       {remaining.length > 0 && editable && !atCap ? (
         <View style={styles.chipRow} testID={`${testID}-suggestions`}>
           {remaining.map((suggestion) => (
@@ -283,13 +289,17 @@ const styles = StyleSheet.create({
   chipFlashed: FLASH_SURFACE,
   chipText: { ...type.small, color: color.text1 },
   chipRemove: { ...type.small, color: color.text3 },
-  input: {
+  inputBox: {
     minHeight: 46,
     maxWidth: stayProseMaxWidth,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: color.line,
     backgroundColor: color.fill.inset,
+    justifyContent: "center",
+  },
+  input: {
+    minHeight: 46,
     paddingHorizontal: space[4],
     paddingVertical: space[2],
     ...type.body,
