@@ -11,7 +11,9 @@
 //
 // Actions: offer, availability, quote, hold, pay, confirm_return, get,
 // cancel_preview, cancel, change_preview, change (P3: more or fewer guests,
-// another day, more extras). (withdraw arrives in P4.)
+// another day, more extras), hire_options and withdraw (P4 private hire:
+// which places are free for a session; the guest withdraws a request or an
+// unpaid hold with the booking token).
 // `offer` is the guest's read of one live offer (its named prices, the day
 // rules and the refund terms). It is answered only for an offer the public
 // venue page itself lists (pg_public_venue_page: verified venue, feature on,
@@ -65,6 +67,8 @@ const ACTIONS = new Set([
   "cancel",
   "change_preview",
   "change",
+  "hire_options",
+  "withdraw",
 ]);
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_PER_WINDOW = 120;
@@ -111,6 +115,8 @@ const SAFE_CODES = [
   "offer_change_not_allowed",
   "offer_change_too_late",
   "offer_change_nothing",
+  "offer_space_taken",
+  "offer_overtime_unavailable",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -392,6 +398,8 @@ export function publicOfferDetail(
       ? projection.startTimes
       : [],
     durationMinutes: projection.durationMinutes ?? null,
+    hire: publicHireDetail(projection.hire),
+    confirmationMode: projection.confirmationMode ?? "instant",
     currencyCode: page.currencyCode ?? null,
     minorUnitExponent: page.minorUnitExponent ?? 2,
     vat: isJson(page.vat) ? page.vat : null,
@@ -406,6 +414,58 @@ export function publicOfferDetail(
       countryCode: venue.country_code ?? null,
       timezone: venue.iana_timezone ?? schedule?.timezone ?? null,
     },
+  };
+}
+
+/**
+ * The guest-facing part of a private hire: the places and their price rows,
+ * the sessions, the refundable damage deposit, the extra-guest price, extra
+ * hours and how the venue answers. Never the setup / cleanup minutes (kept
+ * from guests), internal ids of price versions or the pay-within timer.
+ */
+export function publicHireDetail(hire: unknown): Json | null {
+  if (!isJson(hire)) return null;
+  const list = (v: unknown) => Array.isArray(v) ? v.filter(isJson) : [];
+  return {
+    charge: hire.charge ?? "hire_fee",
+    bookingMode: hire.bookingMode ?? "request",
+    requestResponseHours: hire.requestResponseHours ?? null,
+    damageDepositMinor: hire.damageDepositMinor ?? 0,
+    minSpendMinor: hire.minSpendMinor ?? 0,
+    extraGuestMinor: hire.extraGuestMinor ?? null,
+    overtimeMinorPerHour: hire.overtimeMinorPerHour ?? null,
+    spaces: list(hire.spaces).map((s) => ({
+      id: s.id,
+      name: s.name,
+      setting: s.setting ?? null,
+      capacityStanding: s.capacityStanding ?? null,
+      capacitySeated: s.capacitySeated ?? null,
+    })),
+    combinations: list(hire.combinations).map((c) => ({
+      id: c.id,
+      name: c.name,
+      spaceIds: Array.isArray(c.spaceIds) ? c.spaceIds : [],
+    })),
+    rows: list(hire.rows).map((r) => ({
+      optionId: r.optionId,
+      name: r.name,
+      unit: r.unit,
+      spaceId: r.spaceId ?? null,
+      combinationId: r.combinationId ?? null,
+      placeName: r.placeName ?? null,
+      capacity: r.capacity ?? null,
+      guestMin: r.guestMin,
+      guestMax: r.guestMax,
+      weekdays: r.weekdays ?? null,
+      priceMinor: r.priceMinor,
+    })),
+    sessions: list(hire.sessions).map((s) => ({
+      label: s.label ?? null,
+      startTime: s.startTime ?? null,
+      endTime: s.endTime ?? null,
+      pastMidnight: s.pastMidnight === true,
+      weekdays: s.weekdays ?? null,
+    })),
   };
 }
 
@@ -562,6 +622,26 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       });
       if (error) return rpcFailure(error);
       return json(200, { kind: "success", data: { days: data ?? [] } });
+    }
+
+    // ---- hire_options: the places for one hire session (no identity) -----
+    if (action === "hire_options") {
+      const offeringId = str(body.offeringId);
+      const windowId = str(body.windowId);
+      const guests = body.guests;
+      if (
+        !UUID.test(offeringId) || !UUID.test(windowId) ||
+        (guests !== undefined && guests !== null && !Number.isInteger(guests))
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const { data, error } = await client.rpc("pg_venue_hire_options", {
+        p_offering_id: offeringId,
+        p_window_id: windowId,
+        p_guests: guests ?? null,
+      });
+      if (error) return rpcFailure(error);
+      return json(200, { kind: "success", data: { options: data ?? [] } });
     }
 
     // ---- quote / hold: actor key = user, else the browser's cart key ------
@@ -863,6 +943,16 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
 
     if (action === "cancel_preview") {
       const { data, error } = await client.rpc("issue_4490_cancel_preview", {
+        p_group_id: groupId,
+        p_token_hash: tokenHash,
+        p_user_id: caller.userId,
+      });
+      if (error) return rpcFailure(error);
+      return json(200, { kind: "success", data });
+    }
+
+    if (action === "withdraw") {
+      const { data, error } = await client.rpc("issue_4490_withdraw_request", {
         p_group_id: groupId,
         p_token_hash: tokenHash,
         p_user_id: caller.userId,

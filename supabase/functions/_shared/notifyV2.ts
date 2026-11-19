@@ -185,6 +185,12 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     venue_balance_overdue: ["venue_group_id", "venue_id"],
     venue_booking_changed: ["venue_group_id", "venue_id"],
     venue_balance_paid: ["venue_group_id", "venue_id"],
+    venue_request_received: ["venue_group_id", "venue_id"],
+    venue_request_action_needed: ["venue_group_id", "venue_id"],
+    venue_payment_required: ["venue_group_id", "venue_id"],
+    venue_hold_expiring: ["venue_group_id", "venue_id"],
+    venue_request_declined: ["venue_group_id", "venue_id"],
+    venue_request_expired: ["venue_group_id", "venue_id"],
     // #3682 wave 2 — Explorer routes these to the brand / offering page from
     // the public slugs; the receive reason is not personal data.
     brand_offering_invite: ["brand_slug", "event_slug", "reason"],

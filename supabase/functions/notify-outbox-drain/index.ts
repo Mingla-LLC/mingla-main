@@ -48,6 +48,7 @@ import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
 // #4490 — venue booking emails: the words and the private link at send time.
 import {
   isVenueBookingCategory,
+  isVenueHostCategory,
   venueBookingEmailFacts,
 } from "../_shared/email/templates/venueBookingEmails.ts";
 import { rederiveVenueOfferBookingToken } from "../_shared/venueOfferBookingToken.ts";
@@ -294,6 +295,11 @@ export async function resolveVenueBookingDispatch(
     facts = venueBookingEmailFacts(projection, payload);
   } catch {
     facts = {};
+  }
+  // #4490 P4: a message to the venue's own people never carries the guest's
+  // private booking link.
+  if (isVenueHostCategory(String(row.category_key ?? ""))) {
+    return { facts, visitUrl: null };
   }
   const contact = typeof row.contact === "string" ? row.contact : "";
   if (!EMAIL_RE.test(contact)) return { facts, visitUrl: null };

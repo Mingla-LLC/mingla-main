@@ -3,6 +3,10 @@
 //   venue_booking_confirmed · venue_booking_cancelled · venue_refund_state
 //   P3: venue_balance_due · venue_balance_overdue · venue_booking_changed ·
 //       venue_balance_paid
+//   P4 (private hire requests): venue_request_received ·
+//       venue_payment_required · venue_hold_expiring · venue_request_declined
+//       · venue_request_expired (guest) and venue_request_action_needed (the
+//       venue's people: no guest link, no guest contact in the copy)
 // ---------------------------------------------------------------------------
 // The outbox row carries ids only (venue_group_id, venue_id, reference,
 // amount). `notify-outbox-drain` adds the words at send time from the booking
@@ -21,7 +25,18 @@ export const VENUE_BOOKING_CATEGORIES = new Set([
   "venue_balance_overdue",
   "venue_booking_changed",
   "venue_balance_paid",
+  "venue_request_received",
+  "venue_payment_required",
+  "venue_hold_expiring",
+  "venue_request_declined",
+  "venue_request_expired",
+  "venue_request_action_needed",
 ]);
+
+/** Messages to the venue's own people (never carry the guest's booking link). */
+export const VENUE_HOST_CATEGORIES = new Set(["venue_request_action_needed"]);
+export const isVenueHostCategory = (key: string): boolean =>
+  VENUE_HOST_CATEGORIES.has(key);
 
 export const isVenueBookingCategory = (key: string): boolean =>
   VENUE_BOOKING_CATEGORIES.has(key);
@@ -126,6 +141,49 @@ export function venueBookingEmailFacts(
     ...(amountMinor !== null
       ? { amount: venueEmailMoney(amountMinor, currency) }
       : {}),
+    // #4490 P4: the hire's place, the hold clock and the venue's answer.
+    ...hireFacts(projection, currency),
+  };
+}
+
+const venueLocalTime = (iso: string, timezone: string): string => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone || "UTC",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(d).replace(",", "");
+  } catch {
+    return "";
+  }
+};
+
+function hireFacts(projection: Json, currency: string): Json {
+  const hire = isJson(projection.hire) ? projection.hire : null;
+  if (!hire) return {};
+  const venue = isJson(projection.venue) ? projection.venue : {};
+  const tz = text(venue.timezone);
+  const holdUntil = text(projection.holdUntil) ||
+    text(projection.paymentDeadline);
+  const dueNow = minor(projection.amountDueNowMinor);
+  return {
+    place_name: text(hire.placeName),
+    session_label: text(hire.sessionLabel),
+    hold_until_text: holdUntil ? venueLocalTime(holdUntil, tz) : "",
+    reply_hours: minor(hire.replyWithinHours) ?? 0,
+    decline_reason: text(hire.declineReason),
+    host_note: text(hire.hostNote),
+    closed_reason: text(hire.closedReason),
+    due_now: dueNow !== null && dueNow > 0
+      ? venueEmailMoney(dueNow, currency)
+      : "",
+    guests: minor(hire.guests) ?? 0,
   };
 }
 
@@ -253,6 +311,105 @@ export function renderVenueBookingMessage(
       push: { title: `Payment received by ${venue}`, body: `${offer}${on}.` },
       email: { subject: `Payment received: ${offer} at ${venue}`, body },
       sms: `${venue}: payment received.${refLine}`,
+    };
+  }
+  // #4490 P4 — private hire requests.
+  const place = text(payload.place_name) || offer;
+  const holdText = text(payload.hold_until_text);
+  if (categoryKey === "venue_request_received") {
+    const hours = minor(payload.reply_hours) ?? 0;
+    const body = `Your request for ${place} at ${venue}${on}${
+      guests > 0 ? ` for ${guestsWord(guests)}` : ""
+    } is sent.${refLine} Nothing to pay yet. ${venue} replies${
+      hours > 0 ? ` within ${hours} hours` : " soon"
+    }; if they say yes, you pay the deposit to hold your date.`;
+    return {
+      push: { title: `Request sent to ${venue}`, body: `${place}${on}.` },
+      email: { subject: `Your request to ${venue} is sent`, body },
+      sms: `${venue}: your request${on} is sent. Nothing to pay yet.${refLine}`,
+    };
+  }
+  if (categoryKey === "venue_request_action_needed") {
+    const nextInLine = text(payload.reminder_reason) === "next_in_line";
+    const body = nextInLine
+      ? `${place}${on} is free again and a request was waiting for it.${refLine} Open Requests to answer it.`
+      : `New request for ${place}${on}${
+        guests > 0 ? ` for ${guestsWord(guests)}` : ""
+      }.${refLine} Open Requests to answer it before the reply deadline.`;
+    return {
+      push: {
+        title: nextInLine
+          ? "A request is next in line"
+          : "New request to answer",
+        body: `${place}${on}.`,
+      },
+      email: {
+        subject: nextInLine
+          ? `${place} is free: a request is next in line`
+          : `New request: ${place}${on}`,
+        body,
+      },
+      sms: `Mingla: a request for ${venue}${on} needs an answer.${refLine}`,
+    };
+  }
+  if (
+    categoryKey === "venue_payment_required" ||
+    categoryKey === "venue_hold_expiring"
+  ) {
+    const due = text(payload.due_now) || amount;
+    const expiring = categoryKey === "venue_hold_expiring";
+    const note = text(payload.host_note);
+    const body = `${
+      expiring
+        ? `Your hold on ${place} at ${venue}${on} ends soon.`
+        : `${venue} said yes to ${place}${on}.`
+    }${refLine} ${place} is held for you${
+      holdText ? ` until ${holdText}` : ""
+    }. Pay ${due || "the deposit"} to make it yours.${
+      note && !expiring ? `\n\n${venue} says: ${note}` : ""
+    }`;
+    return {
+      push: {
+        title: expiring ? `${venue}: your hold ends soon` : `${venue} said yes`,
+        body: `Pay ${due || "the deposit"} to hold ${place}${on}.`,
+      },
+      email: {
+        subject: expiring
+          ? `Your hold on ${place} ends soon`
+          : `${venue} said yes: pay to hold your date`,
+        body,
+      },
+      sms: `${venue}: ${
+        expiring ? "your hold ends soon" : "they said yes"
+      }${on}. Pay from your booking page.${refLine}`,
+    };
+  }
+  if (categoryKey === "venue_request_declined") {
+    const reason = text(payload.decline_reason);
+    const body = `${venue} can't do ${place}${on}.${refLine}${
+      reason ? ` They said: ${reason}.` : ""
+    } Nothing was charged. Your booking page shows any other dates they offered.`;
+    return {
+      push: { title: `${venue} can't do that date`, body: `${place}${on}.` },
+      email: { subject: `${venue} can't do that date`, body },
+      sms: `${venue}: they can't do that date. Nothing was charged.${refLine}`,
+    };
+  }
+  if (categoryKey === "venue_request_expired") {
+    const why = text(payload.reminder_reason);
+    const body = why === "not_paid"
+      ? `Your hold on ${place} at ${venue}${on} ended before it was paid.${refLine} Nothing was charged. You can ask again from the venue page.`
+      : why === "released"
+      ? `${venue} let go of the hold on ${place}${on}.${refLine} Nothing was charged.`
+      : `${venue} didn't reply to your request for ${place}${on} in time.${refLine} Nothing was charged, and they've been told. You can ask again.`;
+    return {
+      push: {
+        title: `${venue}: request closed`,
+        body: `${place}${on}. Nothing was charged.`,
+      },
+      email: { subject: `Your request to ${venue} has closed`, body },
+      sms:
+        `${venue}: your request${on} has closed. Nothing was charged.${refLine}`,
     };
   }
   // venue_refund_state

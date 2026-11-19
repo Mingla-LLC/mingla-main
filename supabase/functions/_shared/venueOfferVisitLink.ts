@@ -36,6 +36,11 @@ export const VENUE_VISIT_CATEGORIES = new Set([
   "venue_balance_overdue",
   "venue_booking_changed",
   "venue_balance_paid",
+  "venue_request_received",
+  "venue_payment_required",
+  "venue_hold_expiring",
+  "venue_request_declined",
+  "venue_request_expired",
 ]);
 
 export function isLocalSupabaseUrl(url: string): boolean {
@@ -144,6 +149,30 @@ const CTA: Record<string, { label: string; note: string }> = {
   venue_balance_paid: {
     label: "See your booking",
     note: "Your booking page shows what is paid. The link is private to you.",
+  },
+  venue_request_received: {
+    label: "See your request",
+    note:
+      "Your booking page shows your request and the venue's answer when it comes. The link is private to you.",
+  },
+  venue_payment_required: {
+    label: "Pay to hold your date",
+    note:
+      "Pay from your booking page before the hold ends. The link is private to you, so please don't forward this email.",
+  },
+  venue_hold_expiring: {
+    label: "Pay to hold your date",
+    note:
+      "Pay from your booking page before the hold ends. The link is private to you, so please don't forward this email.",
+  },
+  venue_request_declined: {
+    label: "See your request",
+    note:
+      "Your booking page shows the venue's answer. The link is private to you.",
+  },
+  venue_request_expired: {
+    label: "See your request",
+    note: "Your booking page shows what happened. The link is private to you.",
   },
 };
 
