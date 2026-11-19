@@ -12,10 +12,19 @@
  * is logged (Constitution 3) and never shown. Sign-out clears everything held
  * (Constitution 6).
  *
- * Imports only `./supabase` and AsyncStorage so it can be tested on its own.
+ * Imports only `./supabase` so it can be tested on its own. AsyncStorage is
+ * loaded on use: this file is reached from appsFlyerService at import time, and
+ * a module-scope native import would break every render suite that loads it.
  */
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
+
+/** AsyncStorage, loaded on first use (see the header). */
+async function storage(): Promise<{
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+}> {
+  return (await import("@react-native-async-storage/async-storage")).default;
+}
 
 export type JourneyKind = "explorer_onboarding" | "host_brand_setup";
 
@@ -274,12 +283,12 @@ export async function recordHostSignupSourceOnce(input: {
   try {
     const flagKey = `${SIGNUP_SOURCE_SENT_KEY_PREFIX}${userId}`;
     try {
-      if ((await AsyncStorage.getItem(flagKey)) === "1") return;
+      if ((await (await storage()).getItem(flagKey)) === "1") return;
     } catch (e) {
       warn("signup source flag unreadable:", e);
     }
     try {
-      if ((await AsyncStorage.getItem(HOST_REFERRAL_CODE_KEY)) !== null) {
+      if ((await (await storage()).getItem(HOST_REFERRAL_CODE_KEY)) !== null) {
         noteSourceHints({ referralLink: true });
       }
     } catch (e) {
@@ -301,7 +310,7 @@ export async function recordHostSignupSourceOnce(input: {
       return;
     }
     try {
-      await AsyncStorage.setItem(flagKey, "1");
+      await (await storage()).setItem(flagKey, "1");
     } catch (e) {
       warn("signup source flag not saved:", e);
     }
