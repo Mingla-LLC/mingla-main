@@ -90,7 +90,7 @@ BEGIN
   WHERE conrelid = 'public.agent_activity_events'::regclass
     AND conname = 'agent_activity_events_event_type_check';
   SELECT pg_get_functiondef(
-    'public.append_agent_activity_event(uuid,uuid,integer,text,timestamptz)'::regprocedure
+    'public.append_agent_activity_event(uuid,uuid,integer,text,timestamptz,jsonb)'::regprocedure
   ) INTO v_function;
   IF v_constraint NOT LIKE '%planning_started%'
      OR v_constraint NOT LIKE '%research_started%'

@@ -331,7 +331,7 @@ SELECT pg_temp.p_as('44530000-0000-4000-8000-0000000000b1');
 SELECT pg_temp.p_assert(pg_temp.p_create_error(
     '44530000-0000-4000-8000-000000000102', '44530000-0000-4000-8000-0000000000e1',
     '44530000-0000-4000-8000-0000000000f1', E'Make the whole site feel warmer\nand more like our venue', NULL) = 'ok',
-  'T-5t a request with only the what is accepted');
+  'T-5t a request with only the what is accepted (no where, no why, a null draft version)');
 RESET ROLE;
 SELECT pg_temp.p_assert(
     r.page_path IS NULL AND r.section_id IS NULL AND r.why IS NULL AND r.missing_capability IS NULL AND r.draft_digest IS NULL
