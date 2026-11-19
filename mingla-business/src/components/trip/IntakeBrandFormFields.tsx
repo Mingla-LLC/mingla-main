@@ -20,7 +20,6 @@ import {
   type ConditionSource,
 } from "../../utils/brandFormDefinition";
 import { FORMS_COPY } from "../forms/brandFormsCopy";
-import type { IntakeBuilderFeatures } from "./intakeBuilderFeatures";
 
 type SetDraft = React.Dispatch<React.SetStateAction<IntakeQuestion>>;
 
@@ -54,7 +53,8 @@ export const IntakeHelpTextField: React.FC<IntakeHelpTextFieldProps> = ({ draft,
 export interface IntakeBrandFormFieldsProps {
   draft: IntakeQuestion;
   setDraft: SetDraft;
-  features: IntakeBuilderFeatures;
+  /** The two builder switches this panel reads (a leaf shape: no import back into intakeBuilderFeatures, which would be a require cycle). */
+  features: { door: boolean; conditions: boolean };
   /** Door questions on the form besides this one. */
   otherDoorCount: number;
   /** Earlier single-choice questions this one may depend on. */
