@@ -35,6 +35,12 @@ import {
   deriveScopedSecret,
   type ScopedSecretRootEnv,
 } from "../_shared/derivedSecret.ts";
+import {
+  type CodeDeps,
+  handleCodeRequest,
+  isCodeOp,
+  parseCodeRequest,
+} from "./code.ts";
 
 /** The derivation label for this limiter's salt (one label per purpose, #3201). */
 export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
@@ -75,6 +81,8 @@ export interface BrandFormSubmitDeps {
   log?: (line: string) => void;
   /** The address-hash salt; defaults to the service-role-derived one. */
   ipSalt?: () => Promise<string>;
+  /** Wave 3: the link page's one-time code actions (./code.ts). */
+  code?: CodeDeps;
 }
 
 export function corsFor(origin: string | null): Record<string, string> | null {
@@ -184,6 +192,32 @@ export async function handleBrandFormSubmit(
     raw = JSON.parse(text);
   } catch {
     return fail("bad_request", cors);
+  }
+  // Wave 3: {op:"code_begin"|"code_verify"} are the link page's one-time code
+  // actions (./code.ts); every other body is an answer submit.
+  if (isCodeOp(raw)) {
+    const codeReq = parseCodeRequest(raw);
+    if (!codeReq || !deps.code) return fail("bad_request", cors);
+    try {
+      if (await deps.db.switchedOff()) return fail("forms_paused", cors);
+      const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+      const ipHash = await hashIp(clientIp(req), salt);
+      const result = await handleCodeRequest(codeReq, ipHash, {
+        log,
+        ...deps.code,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] code server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
   }
   const body = parseSubmitRequest(raw);
   if (!body) return fail("bad_request", cors);

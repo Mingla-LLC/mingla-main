@@ -983,7 +983,9 @@ BEGIN
   RETURN jsonb_build_object('versionId', v_vid, 'version', v_version, 'status', v_status,
     -- C12: the client offers "Ask earlier guests?" for each live page with guests.
     'attachedEventIds', COALESCE((SELECT jsonb_agg(a.event_id) FROM public.brand_form_attachments a
-                                   WHERE a.form_id = p_form_id AND a.detached_at IS NULL), '[]'::jsonb));
+                                   WHERE a.form_id = p_form_id AND a.detached_at IS NULL), '[]'::jsonb),
+    -- Wave 3: per live page, the guests who signed up and have not answered.
+    'earlierGuests', CASE WHEN v_status = 'live' THEN public.brand_form_earlier_guests(p_form_id) ELSE '[]'::jsonb END);
 END;
 $fn$;
 
@@ -1097,7 +1099,12 @@ BEGIN
        + (SELECT count(*) FROM public.orders o WHERE o.event_id = p_event_id AND o.payment_status IN ('paid', 'partial_refund'))
     INTO v_guests;
   RETURN jsonb_build_object('attachmentId', v_id, 'mode', p_mode, 'autoRemind', COALESCE(p_auto_remind, false),
-    'formStatus', v_f.status, 'replacedAttachmentId', v_current, 'existingGuests', v_guests);
+    'formStatus', v_f.status, 'replacedAttachmentId', v_current, 'existingGuests', v_guests,
+    -- Wave 3 (C12): signed up and not answered; only a live form asks anyone.
+    'earlierGuests', CASE WHEN v_f.status = 'live'
+                          THEN COALESCE((SELECT (g->>'count')::integer FROM jsonb_array_elements(
+                                 public.brand_form_earlier_guests(p_form_id, p_event_id)) g), 0)
+                          ELSE 0 END);
 END;
 $fn$;
 
@@ -1989,6 +1996,187 @@ END;
 $fn$;
 
 -- ---------------------------------------------------------------------------
+-- 12b. Wave 3: link-page codes, counts, earlier guests, roster export answers
+-- ---------------------------------------------------------------------------
+-- Guests of one page who have not answered: going RSVPs and paid or partly
+-- refunded orders with no response by the person rule (the Responses page's
+-- "Not answered" list, counted).
+CREATE FUNCTION public.brand_form_unanswered_count(p_form_id uuid, p_event_id uuid) RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  SELECT (SELECT count(*) FROM public.event_rsvps x
+           WHERE x.event_id = p_event_id AND x.rsvp_status = 'going'
+             AND (public.brand_form_find_response(p_form_id, 'rsvp', x.id)).id IS NULL)::integer
+       + (SELECT count(*) FROM public.orders o
+           WHERE o.event_id = p_event_id AND o.payment_status IN ('paid', 'partial_refund')
+             AND (public.brand_form_find_response(p_form_id, 'order', o.id)).id IS NULL)::integer;
+$fn$;
+
+-- The link page's one-time code (C2, decision 12): the challenge behind a code
+-- check, only when it is a brand form challenge OF THIS LINK (a claim sign-in or
+-- add-contact challenge id never resolves here: purpose isolation). Service role.
+CREATE FUNCTION public.brand_form_code_challenge(p_challenge_id uuid, p_token text) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_link public.brand_form_links;
+  v_c record;
+BEGIN
+  IF to_regclass('public.contact_challenges') IS NULL OR p_challenge_id IS NULL THEN
+    RETURN jsonb_build_object('outcome', 'invalid');
+  END IF;
+  v_link := public.brand_form_link_by_token(p_token);
+  IF v_link.id IS NULL OR v_link.revoked_at IS NOT NULL THEN RETURN jsonb_build_object('outcome', 'invalid'); END IF;
+  EXECUTE 'SELECT c.channel, c.target_value, c.consumed_at, c.purpose, c.brand_form_link_id
+             FROM public.contact_challenges c WHERE c.id = $1'
+    INTO v_c USING p_challenge_id;
+  IF v_c IS NULL OR v_c.purpose IS DISTINCT FROM 'brand_form_access'
+     OR v_c.brand_form_link_id IS DISTINCT FROM v_link.id OR v_c.consumed_at IS NOT NULL THEN
+    RETURN jsonb_build_object('outcome', 'invalid');
+  END IF;
+  RETURN jsonb_build_object('outcome', 'ok', 'channel', v_c.channel, 'target', v_c.target_value,
+                            'linkId', v_link.id, 'formId', v_link.form_id);
+END;
+$fn$;
+
+-- Settle a link-page code: the same checks as brand_form_code_challenge, then the
+-- existing #4063 settle (5 tries per challenge, 10 minute expiry, one use).
+CREATE FUNCTION public.brand_form_code_settle(
+  p_challenge_id uuid, p_token text, p_code_hash text, p_provider_approved boolean
+) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_check jsonb;
+  v_out jsonb;
+BEGIN
+  v_check := public.brand_form_code_challenge(p_challenge_id, p_token);
+  IF v_check->>'outcome' <> 'ok' THEN RETURN v_check; END IF;
+  EXECUTE 'SELECT public.issue_4063_settle_contact_challenge($1, $2, $3)'
+    INTO v_out USING p_challenge_id, p_code_hash, COALESCE(p_provider_approved, false);
+  IF v_out->>'outcome' = 'ok' THEN
+    -- The grant is read by brand_form_code_grant_ok; nothing about the contact leaves.
+    RETURN jsonb_build_object('outcome', 'ok', 'challengeId', p_challenge_id);
+  END IF;
+  RETURN v_out - 'value' - 'userId' - 'claimCode';
+END;
+$fn$;
+
+-- Answered and to-answer counts (marketing_manager+, the Responses gate): per form
+-- for the forms list cards, and per page (the active attachment) for the manage tile.
+CREATE FUNCTION public.biz_brand_form_counts(p_brand_id uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_pages jsonb;
+  v_forms jsonb;
+BEGIN
+  PERFORM public.brand_form_require_rank(p_brand_id, 'marketing_manager');
+  WITH pages AS (
+    SELECT a.event_id, a.form_id, f.status AS form_status,
+           (SELECT count(*) FROM public.brand_form_event_responses(a.form_id, a.event_id) r WHERE r.verified)::integer AS answered,
+           CASE WHEN f.status = 'live' THEN public.brand_form_unanswered_count(a.form_id, a.event_id) ELSE 0 END AS to_answer
+      FROM public.brand_form_attachments a
+      JOIN public.brand_forms f ON f.id = a.form_id
+      JOIN public.events e ON e.id = a.event_id AND e.deleted_at IS NULL
+     WHERE a.brand_id = p_brand_id AND a.detached_at IS NULL AND f.brand_id = p_brand_id
+  )
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('eventId', p.event_id, 'formId', p.form_id,
+           'formStatus', p.form_status, 'answered', p.answered, 'toAnswer', p.to_answer)
+           ORDER BY p.event_id), '[]'::jsonb)
+    INTO v_pages FROM pages p;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('formId', f.id,
+           'answered', (SELECT count(*) FROM public.brand_form_responses r WHERE r.form_id = f.id AND r.verified)::integer,
+           'toAnswer', COALESCE((SELECT sum((pg->>'toAnswer')::integer) FROM jsonb_array_elements(v_pages) pg
+                                  WHERE (pg->>'formId')::uuid = f.id), 0)::integer,
+           'pages', (SELECT count(*) FROM jsonb_array_elements(v_pages) pg WHERE (pg->>'formId')::uuid = f.id)::integer)
+           ORDER BY f.id), '[]'::jsonb)
+    INTO v_forms
+    FROM public.brand_forms f WHERE f.brand_id = p_brand_id AND f.status <> 'archived';
+  RETURN jsonb_build_object('forms', v_forms, 'pages', v_pages);
+END;
+$fn$;
+
+-- C12 / §4.6: earlier guests on each live page a form is attached to (people who
+-- signed up and have not answered), for "Ask earlier guests?" after attach or publish.
+CREATE FUNCTION public.brand_form_earlier_guests(p_form_id uuid, p_event_id uuid DEFAULT NULL) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('eventId', x.event_id, 'count', x.n) ORDER BY x.event_id), '[]'::jsonb)
+    FROM (
+      SELECT a.event_id, public.brand_form_unanswered_count(a.form_id, a.event_id) AS n
+        FROM public.brand_form_attachments a
+        JOIN public.events e ON e.id = a.event_id
+       WHERE a.form_id = p_form_id AND a.detached_at IS NULL
+         AND (p_event_id IS NULL OR a.event_id = p_event_id)
+         AND e.deleted_at IS NULL AND e.status IN ('scheduled', 'live')
+    ) x
+   WHERE x.n > 0;
+$fn$;
+
+-- The roster export's answer columns (§4.9: "the existing roster CSV plus one
+-- column per question and version"). Service role: the export worker calls it for
+-- an offering_guest_roster job, whose rank gate (event_manager+, C5) already ran
+-- when the job was created. The page's active form (live or closed); none: no
+-- columns. A person's answer is found from their RSVP, then their order, at this
+-- page, by the one person rule.
+CREATE FUNCTION public.brand_form_roster_export_answers(p_job_id uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_event uuid;
+  v_brand uuid;
+  v_form uuid;
+  v_multi boolean;
+  v_cols jsonb;
+  v_rows jsonb;
+BEGIN
+  SELECT j.scope_id, j.brand_id INTO v_event, v_brand
+    FROM public.brand_people_export_jobs j
+   WHERE j.id = p_job_id AND j.export_kind = 'offering_guest_roster';
+  IF v_event IS NULL THEN RETURN jsonb_build_object('columns', '[]'::jsonb, 'rows', '{}'::jsonb); END IF;
+  SELECT a.form_id INTO v_form FROM public.brand_form_active_for_event(v_event) a WHERE a.brand_id = v_brand;
+  IF v_form IS NULL THEN RETURN jsonb_build_object('columns', '[]'::jsonb, 'rows', '{}'::jsonb); END IF;
+  SELECT count(*) > 1 INTO v_multi FROM public.brand_form_versions v WHERE v.form_id = v_form;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('key', v.version || ':' || (q.value->>'id'),
+           'header', CASE WHEN v_multi THEN (q.value->>'label') || ' (v' || v.version || ')' ELSE q.value->>'label' END)
+           ORDER BY v.version, (q.value->>'position')::integer), '[]'::jsonb)
+    INTO v_cols
+    FROM public.brand_form_versions v
+    CROSS JOIN LATERAL jsonb_array_elements(v.definition->'questions') q
+   WHERE v.form_id = v_form;
+  WITH people AS (
+    SELECT l.brand_person_id AS person_id,
+           (array_agg(l.source_id ORDER BY l.linked_at) FILTER (WHERE l.source_kind = 'event_rsvp'
+              AND EXISTS (SELECT 1 FROM public.event_rsvps r WHERE r.id = l.source_id AND r.event_id = v_event)))[1] AS rsvp_id,
+           (array_agg(l.source_id ORDER BY l.linked_at) FILTER (WHERE l.source_kind = 'order'
+              AND EXISTS (SELECT 1 FROM public.orders o WHERE o.id = l.source_id AND o.event_id = v_event)))[1] AS order_id
+      FROM public.brand_person_source_links l
+     WHERE l.brand_id = v_brand AND l.detached_at IS NULL AND l.source_kind IN ('event_rsvp', 'order')
+     GROUP BY l.brand_person_id
+  ), answered AS (
+    -- (A not-found response is a row of nulls, not a null: test its id, never COALESCE.)
+    SELECT p.person_id,
+           CASE WHEN (public.brand_form_find_response(v_form, 'rsvp', p.rsvp_id)).id IS NOT NULL
+                THEN public.brand_form_find_response(v_form, 'rsvp', p.rsvp_id)
+                ELSE public.brand_form_find_response(v_form, 'order', p.order_id) END AS r
+      FROM people p
+     WHERE p.rsvp_id IS NOT NULL OR p.order_id IS NOT NULL
+  )
+  SELECT COALESCE(jsonb_object_agg(a.person_id, (
+           SELECT COALESCE(jsonb_object_agg(v.version || ':' || (q.value->>'id'),
+                    public.brand_form_answer_text(q.value, (a.r).answers->(q.value->>'id'))), '{}'::jsonb)
+             FROM public.brand_form_versions v
+             CROSS JOIN LATERAL jsonb_array_elements(v.definition->'questions') q
+            WHERE v.id = (a.r).version_id AND (a.r).answers ? (q.value->>'id'))), '{}'::jsonb)
+    INTO v_rows
+    FROM answered a
+   WHERE (a.r).id IS NOT NULL AND (a.r).verified;
+  RETURN jsonb_build_object('formId', v_form, 'columns', v_cols, 'rows', v_rows);
+END;
+$fn$;
+
+-- ---------------------------------------------------------------------------
 -- 13. Grants
 -- ---------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION
@@ -2035,7 +2223,13 @@ REVOKE ALL ON FUNCTION
   public.brand_form_submit_core(jsonb),
   public.brand_form_door_authority(uuid, uuid),
   public.brand_form_door_answers(uuid, uuid, jsonb),
-  public.brand_form_door_full_answers(uuid, uuid, jsonb, text)
+  public.brand_form_door_full_answers(uuid, uuid, jsonb, text),
+  public.brand_form_unanswered_count(uuid, uuid),
+  public.brand_form_code_challenge(uuid, text),
+  public.brand_form_code_settle(uuid, text, text, boolean),
+  public.biz_brand_form_counts(uuid),
+  public.brand_form_earlier_guests(uuid, uuid),
+  public.brand_form_roster_export_answers(uuid)
 FROM PUBLIC, anon, authenticated;
 
 -- Pure validators: the builder may check a draft before saving.
@@ -2055,7 +2249,8 @@ GRANT EXECUTE ON FUNCTION
   public.biz_brand_form_attach(uuid, uuid, text, boolean, uuid),
   public.biz_brand_form_detach(uuid),
   public.biz_brand_form_responses(uuid, uuid, text, integer, integer),
-  public.biz_brand_form_responses_export(uuid, uuid)
+  public.biz_brand_form_responses_export(uuid, uuid),
+  public.biz_brand_form_counts(uuid)
 TO authenticated, service_role;
 -- Public and guest reads.
 GRANT EXECUTE ON FUNCTION public.public_brand_form_for_event(uuid) TO anon, authenticated, service_role;
@@ -2088,7 +2283,12 @@ GRANT EXECUTE ON FUNCTION
   public.brand_form_submit_core(jsonb),
   public.brand_form_door_authority(uuid, uuid),
   public.brand_form_door_answers(uuid, uuid, jsonb),
-  public.brand_form_door_full_answers(uuid, uuid, jsonb, text)
+  public.brand_form_door_full_answers(uuid, uuid, jsonb, text),
+  public.brand_form_unanswered_count(uuid, uuid),
+  public.brand_form_code_challenge(uuid, text),
+  public.brand_form_code_settle(uuid, text, text, boolean),
+  public.brand_form_earlier_guests(uuid, uuid),
+  public.brand_form_roster_export_answers(uuid)
 TO service_role;
 
 COMMENT ON FUNCTION public.brand_form_submit_core(jsonb) IS '#4514: the only writer of brand_form_responses (service role; brand-form-submit). See BUILD CONTRACT v2 §3.5 and the wave 1 implementation report on #4514 for codes.';

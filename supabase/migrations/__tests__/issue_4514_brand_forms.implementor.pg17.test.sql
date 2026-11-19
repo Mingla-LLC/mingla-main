@@ -1303,4 +1303,256 @@ BEGIN
 END
 $t$;
 
+-- ═══ Wave 3 (links, counts, earlier guests, export) ═══════════════════════════
+-- Fixtures: form W on e10 (RSVP): three going RSVPs (Wes answers, Val and Ike do
+-- not), one not going, and a person linked to Wes's RSVP for the roster export.
+DO $f$
+DECLARE
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_e10 uuid := gen_random_uuid(); v_e11 uuid := gen_random_uuid();
+  v_rw uuid := gen_random_uuid(); v_rv uuid := gen_random_uuid(); v_ri uuid := gen_random_uuid(); v_rn uuid := gen_random_uuid();
+  v_pw uuid := gen_random_uuid();
+BEGIN
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_e10, v_ba, 'RSVP ten', 'f4514-e10', 'rsvp', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_e11, v_ba, 'No form eleven', 'f4514-e11', 'rsvp', 'scheduled', 'public', 'UTC', 'USD');
+  INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_rw, v_e10, NULL, 'Wes Answer', 'f4514-w@example.test', '+12025551001', 'going', 'approved'),
+         (v_rv, v_e10, NULL, 'Val Waiting', 'f4514-v@example.test', '+12025551002', 'going', 'approved'),
+         (v_ri, v_e10, NULL, 'Ike Idle', 'f4514-i@example.test', '+12025551003', 'going', 'approved'),
+         (v_rn, v_e10, NULL, 'Ned Nope', 'f4514-n@example.test', '+12025551004', 'not_going', 'approved');
+  INSERT INTO public.brand_people(id, brand_id, display_name) VALUES (v_pw, v_ba, 'Wes Answer');
+  INSERT INTO public.brand_person_source_links(brand_id, brand_person_id, source_kind, source_id, link_method, source_occurred_at)
+  VALUES (v_ba, v_pw, 'event_rsvp', v_rw, 'normalized_address', now());
+  PERFORM set_config('session_replication_role', 'origin', true);
+  INSERT INTO f4514 VALUES ('e10', v_e10), ('e11', v_e11), ('rw', v_rw), ('rv', v_rv), ('ri', v_ri), ('rn', v_rn), ('pw', v_pw);
+END
+$f$;
+
+-- T-W3-EARLY  C12/§4.6: attaching a live form to a page with guests, and publishing a
+--             draft attached to one, report the guests who signed up and have not answered.
+DO $t$
+DECLARE
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v jsonb; v_w uuid; v_d uuid;
+BEGIN
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  v_w := (public.biz_brand_form_create((SELECT id FROM f4514 WHERE k = 'ba'), 'Form W', pg_temp.f_def())->>'formId')::uuid;
+  PERFORM public.biz_brand_form_publish(v_w, 1);
+  -- A draft (never published) for the publish path.
+  v_d := (public.biz_brand_form_create((SELECT id FROM f4514 WHERE k = 'ba'), 'Form Draft', pg_temp.f_def())->>'formId')::uuid;
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_attach(v_d, v_e10, 'required_step');
+  PERFORM pg_temp.f_assert((v->>'earlierGuests')::integer = 0 AND (v->>'existingGuests')::integer = 3,
+    'T-W3-EARLY a draft attached to a live page asks nobody yet (earlierGuests 0)');
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_publish(v_d, 1);
+  PERFORM pg_temp.f_assert(v->'earlierGuests' = jsonb_build_array(jsonb_build_object('eventId', v_e10, 'count', 3)),
+    'T-W3-EARLY publishing a draft on a live page reports its 3 earlier guests (' || (v->'earlierGuests')::text || ')');
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_attach(v_w, v_e10, 'required_step', false,
+         (SELECT a.id FROM public.brand_form_attachments a WHERE a.event_id = v_e10 AND a.detached_at IS NULL));
+  PERFORM pg_temp.f_assert((v->>'earlierGuests')::integer = 3, 'T-W3-EARLY attaching a live form reports 3 earlier guests');
+  RESET ROLE;
+  INSERT INTO f4514 VALUES ('form_w', v_w), ('form_d', v_d);
+  -- Wes answers through his personal link.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_link_issue(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'rw')));
+  INSERT INTO f4514t VALUES ('tok_w', v->>'token');
+  PERFORM public.brand_form_submit_core(jsonb_build_object('formId', v_w, 'answers',
+    jsonb_build_object('11111111-1111-4111-8111-111111111111', 'yes', '22222222-2222-4222-8222-222222222222', 'Juggle'),
+    'source', 'link', 'credential', jsonb_build_object('kind', 'link', 'token', v->>'token')));
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_attach(v_w, v_e10, 'optional_on_page', false,
+         (SELECT a.id FROM public.brand_form_attachments a WHERE a.event_id = v_e10 AND a.detached_at IS NULL));
+  PERFORM pg_temp.f_assert((v->>'earlierGuests')::integer = 2,
+    'T-W3-EARLY after one answer, switching the mode reports 2 who have not answered');
+  RESET ROLE;
+END
+$t$;
+
+-- T-W3-COUNT  one read: answered and to-answer per form (cards) and per page (tile);
+--             another brand's host, a scanner and anon are refused.
+DO $t$
+DECLARE
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v jsonb; v_r text; v_page jsonb; v_card jsonb;
+BEGIN
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_counts(v_ba);
+  RESET ROLE;
+  SELECT p INTO v_page FROM jsonb_array_elements(v->'pages') p WHERE p->>'eventId' = v_e10::text;
+  SELECT c INTO v_card FROM jsonb_array_elements(v->'forms') c WHERE c->>'formId' = v_w::text;
+  PERFORM pg_temp.f_assert((v_page->>'answered')::integer = 1 AND (v_page->>'toAnswer')::integer = 2 AND v_page->>'formId' = v_w::text,
+    'T-W3-COUNT the page tile: 1 answered, 2 to answer (' || v_page::text || ')');
+  PERFORM pg_temp.f_assert((v_card->>'answered')::integer = 1 AND (v_card->>'toAnswer')::integer = 2 AND (v_card->>'pages')::integer = 1,
+    'T-W3-COUNT the form card: 1 answered, 2 to answer, on 1 page');
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'forms') c
+                                        WHERE c->>'formId' IN (SELECT id::text FROM public.brand_forms WHERE brand_id <> v_ba)),
+    'T-W3-COUNT only this brand''s forms are counted');
+  -- Closing the form stops the "to answer" count (a closed form asks nobody).
+  UPDATE public.brand_forms SET status = 'closed', closed_at = now() WHERE id = v_w;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  SELECT p INTO v_page FROM jsonb_array_elements(public.biz_brand_form_counts(v_ba)->'pages') p WHERE p->>'eventId' = v_e10::text;
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((v_page->>'toAnswer')::integer = 0 AND (v_page->>'answered')::integer = 1,
+    'T-W3-COUNT a closed form keeps its answers and has nobody to answer');
+  UPDATE public.brand_forms SET status = 'live', closed_at = NULL WHERE id = v_w;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'owner_b'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.f_err(format($$SELECT public.biz_brand_form_counts(%L)$$, v_ba));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-W3-COUNT another brand''s host cannot count (' || v_r || ')');
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'scan_a'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.f_err(format($$SELECT public.biz_brand_form_counts(%L)$$, v_ba));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-W3-COUNT a scanner cannot count');
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v_r := pg_temp.f_err(format($$SELECT public.biz_brand_form_counts(%L)$$, v_ba));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-W3-COUNT anon cannot count');
+END
+$t$;
+
+-- T-W3-CODE  the link page's code check: a claim or add-contact challenge never resolves
+--            through a form link (purpose isolation); another link's challenge is refused;
+--            five wrong codes lock it; a used code cannot be replayed; the grant opens the answer.
+DO $t$
+DECLARE
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v_tok text := (SELECT val FROM f4514t WHERE k = 'tok_w');
+  v_g1 uuid := (SELECT id FROM f4514 WHERE k = 'g1');
+  v jsonb; v_other_tok text; v_claim uuid := gen_random_uuid(); v_c1 uuid := gen_random_uuid(); v_c2 uuid := gen_random_uuid();
+  v_c3 uuid := gen_random_uuid(); v_attempts integer; i integer; v_r text;
+BEGIN
+  INSERT INTO public.contact_challenges (id, purpose, channel, user_id, target_value, code_hash, ip_hash)
+  VALUES (v_claim, 'add_contact', 'email', v_g1, 'f4514-w@example.test', repeat('a', 64), NULL);
+  -- Anon and signed-in callers cannot reach the code functions at all.
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_code_settle(%L, %L, %L, false)$$, v_claim, v_tok, repeat('a', 64)));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-W3-CODE anon cannot call the settle function');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_settle(v_claim, v_tok, repeat('a', 64), false);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'invalid', 'T-W3-CODE an add-contact challenge with the right code does not settle through a form link');
+  RESET ROLE;
+  SELECT attempts INTO v_attempts FROM public.contact_challenges WHERE id = v_claim;
+  PERFORM pg_temp.f_assert(v_attempts = 0 AND (SELECT consumed_at FROM public.contact_challenges WHERE id = v_claim) IS NULL,
+    'T-W3-CODE the other purpose''s challenge is untouched (no try used, not consumed)');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_begin(v_c1, v_tok, 'email', repeat('b', 64), repeat('9', 64));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'started' AND v->>'target' = 'f4514-w@example.test', 'T-W3-CODE a code starts to the contact on file');
+  v := public.brand_form_code_challenge(v_c1, v_tok);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'ok' AND v->>'channel' = 'email', 'T-W3-CODE the challenge resolves through its own link');
+  -- Another link (Val's) cannot settle Wes's challenge.
+  v_other_tok := public.brand_form_link_issue(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'rv')))->>'token';
+  v := public.brand_form_code_settle(v_c1, v_other_tok, repeat('b', 64), false);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'invalid', 'T-W3-CODE another link cannot settle this challenge');
+  -- A provider approval never settles an email challenge; the wrong code uses a try.
+  v := public.brand_form_code_settle(v_c1, v_tok, repeat('0', 64), true);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'bad_code' AND (v->>'attemptsLeft')::integer = 4, 'T-W3-CODE a wrong email code is bad_code with 4 tries left');
+  FOR i IN 1..4 LOOP v := public.brand_form_code_settle(v_c1, v_tok, repeat('0', 64), false); END LOOP;
+  v := public.brand_form_code_settle(v_c1, v_tok, repeat('b', 64), false);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'locked', 'T-W3-CODE after five wrong codes even the right code is locked (brute force)');
+  RESET ROLE;
+  -- Without a settled code, the existing answer stays hidden.
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v := public.brand_form_my_response(v_w, NULL, v_tok, v_c1);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'state' = 'code_required' AND NOT (v ? 'response'), 'T-W3-CODE a locked challenge reveals nothing');
+  SET LOCAL ROLE service_role;
+  PERFORM public.brand_form_code_begin(v_c2, v_tok, 'email', repeat('c', 64), repeat('9', 64));
+  v := public.brand_form_code_settle(v_c2, v_tok, repeat('c', 64), false);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'ok' AND NOT (v ? 'value') AND NOT (v ? 'userId'),
+    'T-W3-CODE the right code settles and returns no contact');
+  v := public.brand_form_code_settle(v_c2, v_tok, repeat('c', 64), false);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'invalid', 'T-W3-CODE a used code cannot be replayed');
+  RESET ROLE;
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v := public.brand_form_my_response(v_w, NULL, v_tok, v_c2);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND v->'response'->'answers'->>'22222222-2222-4222-8222-222222222222' = 'Juggle',
+    'T-W3-CODE the settled code opens the person''s own answer');
+  -- The grant is for its own link only: Val's link with Wes's challenge reveals nothing.
+  SET LOCAL ROLE anon;
+  v := public.brand_form_my_response(v_w, NULL, v_other_tok, v_c2);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'state' = 'unanswered' AND v->'response' = 'null'::jsonb,
+    'T-W3-CODE another link with this grant sees only its own (unanswered) person');
+  -- A phone challenge settles only with the provider's approval.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_begin(v_c3, v_tok, 'phone', NULL, repeat('8', 64));
+  IF v->>'outcome' = 'started' THEN
+    v := public.brand_form_code_settle(v_c3, v_tok, NULL, false);
+    PERFORM pg_temp.f_assert(v->>'outcome' = 'bad_code', 'T-W3-CODE a phone code the provider did not approve is bad_code');
+    v := public.brand_form_code_settle(v_c3, v_tok, NULL, true);
+    PERFORM pg_temp.f_assert(v->>'outcome' = 'ok', 'T-W3-CODE a provider-approved phone code settles');
+  ELSE
+    PERFORM pg_temp.f_assert(false, 'T-W3-CODE phone challenge could not start: ' || (v->>'outcome'));
+  END IF;
+  RESET ROLE;
+END
+$t$;
+
+-- T-W3-EXPORT  the roster export's answer columns: one per question for the page's form,
+--              the person's answer by their RSVP; another job kind or a page with no
+--              form adds nothing; signed-in callers cannot call the feed.
+DO $t$
+DECLARE
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v_pw uuid := (SELECT id FROM f4514 WHERE k = 'pw');
+  v_job uuid := gen_random_uuid(); v_book uuid := gen_random_uuid(); v_nof uuid := gen_random_uuid();
+  v jsonb; v_r text;
+BEGIN
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.brand_people_export_jobs(id, brand_id, export_kind, scope_id, filter_hash, client_request_id, requested_by)
+  VALUES (v_job, v_ba, 'offering_guest_roster', v_e10, repeat('1', 64), gen_random_uuid(), (SELECT id FROM f4514 WHERE k = 'em_a')),
+         (v_book, v_ba, 'brand_book', NULL, repeat('2', 64), gen_random_uuid(), (SELECT id FROM f4514 WHERE k = 'em_a')),
+         (v_nof, v_ba, 'offering_guest_roster', (SELECT id FROM f4514 WHERE k = 'e11'), repeat('3', 64), gen_random_uuid(), (SELECT id FROM f4514 WHERE k = 'em_a'));
+  PERFORM set_config('session_replication_role', 'origin', true);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_roster_export_answers(v_job);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(jsonb_array_length(v->'columns') = 5
+      AND v->'columns'->0->>'header' = 'Would you like to perform?' AND v->'columns'->0->>'key' = '1:11111111-1111-4111-8111-111111111111',
+    'T-W3-EXPORT one column per question of the page''s form (' || (v->'columns')::text || ')');
+  PERFORM pg_temp.f_assert(v->'rows'->v_pw::text->>'1:11111111-1111-4111-8111-111111111111' = 'Yes'
+      AND v->'rows'->v_pw::text->>'1:22222222-2222-4222-8222-222222222222' = 'Juggle',
+    'T-W3-EXPORT Wes''s row carries his answers as display text');
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM jsonb_object_keys(v->'rows')) = 1, 'T-W3-EXPORT only people with an answer have values');
+  SET LOCAL ROLE service_role;
+  PERFORM pg_temp.f_assert(public.brand_form_roster_export_answers(v_book)->'columns' = '[]'::jsonb,
+    'T-W3-EXPORT a brand book job gets no answer columns');
+  PERFORM pg_temp.f_assert(public.brand_form_roster_export_answers(v_nof)->'columns' = '[]'::jsonb,
+    'T-W3-EXPORT a page with no form gets no answer columns');
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'owner_a'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_roster_export_answers(%L)$$, v_job));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-W3-EXPORT even the brand owner cannot call the export feed directly');
+END
+$t$;
+
 ROLLBACK;

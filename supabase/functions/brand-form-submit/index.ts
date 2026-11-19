@@ -10,12 +10,23 @@
 // of operations live in ./submit.ts.
 //
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (platform; also the root the
-// address-hash salt is derived from, _shared/derivedSecret.ts). No new secret.
+// address-hash and code-digest salts are derived from, _shared/derivedSecret.ts).
+// Wave 3's one-time code (./code.ts) reuses the existing email sender and SMS
+// verify secrets that claim-contact (#4063) already uses. No new secret.
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { type BrandFormSubmitDb, handleBrandFormSubmit } from "./submit.ts";
 import { BRAND_FORM_PER_IP_10MIN } from "../_shared/brandFormsContract.ts";
+import type { CodeDeps } from "./code.ts";
+import {
+  checkVerification,
+  startVerification,
+} from "../_shared/twilioVerify.ts";
+import { emailAdapter } from "../_shared/adapters/emailAdapter.ts";
+import { renderContactCodeEmail } from "../_shared/email/contactCodeEmail.ts";
+import { EMAIL_SENDERS } from "../_shared/email/senders.ts";
+import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 
 // deno-lint-ignore no-explicit-any
 type Client = any;
@@ -84,13 +95,68 @@ export function restSubmitDb(supabase: Client): BrandFormSubmitDb {
   };
 }
 
+/** Wave 3: the one-time code rails (the same ones claim-contact uses). */
+export function restCodeDeps(supabase: Client): CodeDeps {
+  return {
+    async rpc(name, args) {
+      const { data, error } = await supabase.rpc(name, args);
+      return {
+        data,
+        error: error ? { message: String(error.message ?? "") } : null,
+      };
+    },
+    async allow(scope, limit) {
+      const { data, error } = await supabase.rpc(
+        "pg_venue_order_rate_limit_hit",
+        {
+          p_scope_key: scope,
+          p_limit: limit,
+        },
+      );
+      if (error) return "unavailable";
+      return data && typeof data === "object" &&
+          (data as Record<string, unknown>).allowed === false
+        ? "limited"
+        : "allow";
+    },
+    async sendEmail(target, code, challengeId) {
+      const rendered = renderContactCodeEmail({
+        code,
+        supportEmail: "support@usemingla.com",
+        logoUrl: minglaLogoUrl(),
+        footerAddress: "Mingla · support@usemingla.com",
+        sender: EMAIL_SENDERS.noreply,
+      });
+      const result = await emailAdapter.send({
+        to: target,
+        title: rendered.subject,
+        body: rendered.text,
+        idempotencyKey: `brand-form-code:${challengeId}`,
+        rendered,
+      });
+      return result.ok;
+    },
+    async startPhone(phone) {
+      const result = await startVerification(phone);
+      return result.ok ? { ok: true } : result;
+    },
+    async checkPhone(phone, code) {
+      const result = await checkVerification(phone, code);
+      return result.ok ? { ok: true, approved: result.approved } : result;
+    },
+  };
+}
+
 export async function handler(req: Request): Promise<Response> {
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const supabase = createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  return await handleBrandFormSubmit(req, { db: restSubmitDb(supabase) });
+  return await handleBrandFormSubmit(req, {
+    db: restSubmitDb(supabase),
+    code: restCodeDeps(supabase),
+  });
 }
 
 if (import.meta.main) {
