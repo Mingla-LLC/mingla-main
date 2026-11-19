@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   FlatList,
   Pressable,
   StyleSheet,
@@ -511,7 +512,8 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
                   <View style={hasImage ? styles.messageTextWithImage : null}>{thread.renderText(message.content, mine)}</View>
                 ) : (
                   <Text
-                    selectable
+                    // #4420 I1: native selection on web only (the OS callout fought the menu).
+                    selectable={Platform.OS === "web"}
                     style={[
                       styles.messageText,
                       mine && styles.messageTextMine,

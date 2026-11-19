@@ -56,6 +56,13 @@ export function brandGroupBubbleCorners(
  * the menu's Select text sheet). A long-press on a link opens the message
  * menu, never the link and never a second action.
  */
+/**
+ * #4420 I1 — only web selects bubble text natively. On iOS / Android a
+ * selectable bubble raised the OS "Copy" callout on long-press ON TOP of the
+ * app's message menu; there, partial copy is the menu's "Select text" sheet.
+ */
+export const BUBBLE_TEXT_SELECTABLE = Platform.OS === "web";
+
 export function BrandGroupMessageText({
   content,
   mine,
@@ -73,10 +80,10 @@ export function BrandGroupMessageText({
   const segments = splitBrandGroupMentions(content, mentionNames);
   const plain = segments.length <= 1 && !segments[0]?.mention && linkifyMessageText(content).every((token) => token.type === "text");
   if (plain) {
-    return <Text style={[styles.text, mine && styles.textMine]} selectable testID="brand-group-message-text">{content}</Text>;
+    return <Text style={[styles.text, mine && styles.textMine]} selectable={BUBBLE_TEXT_SELECTABLE} testID="brand-group-message-text">{content}</Text>;
   }
   return (
-    <Text style={[styles.text, mine && styles.textMine]} selectable testID="brand-group-message-text">
+    <Text style={[styles.text, mine && styles.textMine]} selectable={BUBBLE_TEXT_SELECTABLE} testID="brand-group-message-text">
       {segments.map((segment, index) => segment.mention ? (
         <Text key={index} style={[styles.mention, mine && styles.mentionMine]}>{segment.text}</Text>
       ) : linkifyMessageText(segment.text).map((token, tokenIndex) => token.type === "link" && onOpenLink ? (

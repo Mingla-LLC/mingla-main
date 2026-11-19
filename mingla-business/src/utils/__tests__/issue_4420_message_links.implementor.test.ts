@@ -90,9 +90,14 @@ describe("SC-15 the linkify tokenizer", () => {
 });
 
 describe("SC-16 part of a message can be selected and copied", () => {
-  test("message text is selectable (web selects natively)", () => {
-    expect(source("src/components/messages/BrandGroupMessageRow.tsx")).toContain('selectable testID="brand-group-message-text"');
-    expect(source("src/components/groupChat/GroupChatPanel.tsx")).toContain("selectable\n");
+  test("I1: bubble text is natively selectable on web only (native uses Select text, no OS callout over the menu)", () => {
+    const row = source("src/components/messages/BrandGroupMessageRow.tsx");
+    expect(row).toContain('export const BUBBLE_TEXT_SELECTABLE = Platform.OS === "web";');
+    expect(row.match(/selectable=\{BUBBLE_TEXT_SELECTABLE\} testID="brand-group-message-text"/g)).toHaveLength(2);
+    expect(row).not.toMatch(/\bselectable testID=/);
+    const panel = source("src/components/groupChat/GroupChatPanel.tsx");
+    expect(panel).toContain('selectable={Platform.OS === "web"}');
+    expect(panel).not.toMatch(/^\s*selectable\s*$/m);
   });
 
   test("phones keep Copy and add Select text; web keeps Copy only", () => {
