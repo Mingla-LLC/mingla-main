@@ -29,7 +29,8 @@
     "deleteFailed": "削除失敗", "deleteFailedMsg": "このセッションを削除できませんでした。",
     "permissionDeleteBoard": "セッション作成者または管理者のみがこのセッションを削除できます。",
     "deleteSessionTitle": "セッションを削除", "deleteSessionMsg": "\"{{name}}\"を削除しますか？この操作は取り消せず、すべてのカード、投票、ディスカッションが完全に削除されます。",
-    "leaveSessionTitle": "ボードを退出", "leaveSessionMsg": "\"{{name}}\"を退出しますか？", "namePlaceholder": "セッション名を入力"
+    "leaveSessionTitle": "ボードを退出", "leaveSessionMsg": "\"{{name}}\"を退出しますか？", "namePlaceholder": "セッション名を入力",
+    "sessionShareMessage": "Minglaの「{{name}}」に追加したよ。ここから参加してね：{{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "ディスカッション", "cardDiscussion": "カードディスカッション", "errorLoadMsg": "メッセージの読み込みに失敗",

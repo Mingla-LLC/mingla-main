@@ -91,6 +91,12 @@ export type PeerGuestRow = {
   isMinglaUser: boolean;
   isAnonymous: boolean;
   partySize: number;
+  /**
+   * issue #4508 2.4 — for a guest someone brought: that person's name, ONLY
+   * when the server sends it (peer_list_event_guests does not yet; the
+   * product decision is pending). Absent/null ⇒ nothing is shown.
+   */
+  broughtByName?: string | null;
 };
 
 /**

@@ -51,7 +51,9 @@
         "brand_offering_invite": "Jemputan daripada tempat yang anda ikuti",
         "brand_offering_invite_hint": "Apabila tempat atau hos menjemput anda ke sesuatu."
       }
-    }
+    },
+    "friends_going": "Kawan keluar",
+    "friends_going_hint": "Apabila kawan rapat pergi ke acara"
   },
   "quiet_hours": {
     "title": "Waktu Senyap",

@@ -708,10 +708,19 @@ export function EventGuestListSheet({
       // retain their established hierarchy.
       const city = item.isNamed ? cityFor(guest.location) : null;
       const party = `party of ${guest.partySize}`;
+      // #4508 2.4 — "Brought by {name}" only when the server row carries it.
+      const broughtBy =
+        item.isNamed && typeof guest.broughtByName === "string" && guest.broughtByName.trim().length > 0
+          ? `Brought by ${guest.broughtByName.trim()}`
+          : null;
       const line2 = item.isYou
         ? "You"
         : item.isNamed
-          ? city
+          ? broughtBy !== null
+            ? city !== null
+              ? `${city} · ${broughtBy}`
+              : broughtBy
+            : city
           : guest.isMinglaUser
             ? "Keeping it low-key"
             : "Not on Mingla";
@@ -754,8 +763,8 @@ export function EventGuestListSheet({
       const a11yLabel = item.isYou
         ? `${name}, you`
         : item.isNamed
-          ? city !== null
-            ? `${name}, ${city}`
+          ? line2 !== null
+            ? `${name}, ${line2}`
             : name
           : guest.isMinglaUser
             ? "Someone, keeping it low-key"

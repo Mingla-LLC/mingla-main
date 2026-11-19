@@ -71,7 +71,8 @@
     "deleteSessionMsg": "Ị ji n'ezie na ị chọrọ ihichapụ \"{{name}}\"? Agaghị emehie nke a ma kaadị, vootu, na mkparịta ụka niile ga-ala n'iyi.",
     "leaveSessionTitle": "Hapụ Bọọdụ",
     "leaveSessionMsg": "Ị ji n'ezie na ị chọrọ ịhapụ \"{{name}}\"?",
-    "namePlaceholder": "Tinye aha nnọkọ"
+    "namePlaceholder": "Tinye aha nnọkọ",
+    "sessionShareMessage": "I've added you to \"{{name}}\" on Mingla. Join here: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Mkparịta Ụka",

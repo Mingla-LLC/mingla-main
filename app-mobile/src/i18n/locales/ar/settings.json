@@ -51,7 +51,9 @@
         "brand_offering_invite": "دعوات من الأماكن التي تتابعها",
         "brand_offering_invite_hint": "عندما يدعوك مكان أو مضيف إلى شيء ما."
       }
-    }
+    },
+    "friends_going": "خروج الأصدقاء",
+    "friends_going_hint": "عندما يذهب صديق مقرّب إلى فعالية"
   },
   "quiet_hours": {
     "title": "ساعات الهدوء",

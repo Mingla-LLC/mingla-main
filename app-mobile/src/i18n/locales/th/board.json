@@ -29,7 +29,8 @@
     "deleteFailed": "ลบไม่สำเร็จ", "deleteFailedMsg": "ไม่สามารถลบเซสชันนี้",
     "permissionDeleteBoard": "เฉพาะผู้สร้างเซสชันหรือผู้ดูแลเท่านั้นที่สามารถลบเซสชันนี้",
     "deleteSessionTitle": "ลบเซสชัน", "deleteSessionMsg": "คุณแน่ใจหรือไม่ว่าต้องการลบ \"{{name}}\"? การกระทำนี้ไม่สามารถย้อนกลับได้และการ์ด โหวต และการสนทนาทั้งหมดจะถูกลบถาวร",
-    "leaveSessionTitle": "ออกจากบอร์ด", "leaveSessionMsg": "คุณแน่ใจหรือไม่ว่าต้องการออกจาก \"{{name}}\"?", "namePlaceholder": "ใส่ชื่อเซสชัน"
+    "leaveSessionTitle": "ออกจากบอร์ด", "leaveSessionMsg": "คุณแน่ใจหรือไม่ว่าต้องการออกจาก \"{{name}}\"?", "namePlaceholder": "ใส่ชื่อเซสชัน",
+    "sessionShareMessage": "ฉันเพิ่มคุณใน \"{{name}}\" บน Mingla แล้ว เข้าร่วมที่นี่: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "การสนทนา", "cardDiscussion": "การสนทนาการ์ด", "errorLoadMsg": "ไม่สามารถโหลดข้อความ",

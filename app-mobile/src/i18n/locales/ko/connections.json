@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "삭제하지 못했어요. 다시 시도하세요.",
   "brand_guests_leave_title": "{{brand}} 게스트에서 나갈까요?",
   "brand_guests_leave_body": "새로 예약해도 다시 추가되지 않아요. 예약에서 다시 참여할 수 있어요.",
-  "brand_guests_left_toast": "{{brand}} 게스트에서 나갔어요. 예약에서 다시 참여할 수 있어요."
+  "brand_guests_left_toast": "{{brand}} 게스트에서 나갔어요. 예약에서 다시 참여할 수 있어요.",
+  "af_send_yourself_title": "직접 보내기도 하세요",
+  "af_send_yourself_body": "내가 보낸 메시지가 가장 잘 전달돼요. 문자와 같은 링크예요.",
+  "af_copy_message": "메시지 복사",
+  "af_message_copied": "메시지를 복사했어요"
 }

@@ -51,7 +51,9 @@
         "brand_offering_invite": "Запрошення від місць, за якими ви стежите",
         "brand_offering_invite_hint": "Коли місце чи організатор запрошує вас кудись."
       }
-    }
+    },
+    "friends_going": "Друзі виходять",
+    "friends_going_hint": "Коли близький друг іде на подію"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

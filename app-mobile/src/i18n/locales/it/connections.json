@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Impossibile rimuoverlo. Riprova.",
   "brand_guests_leave_title": "Lasciare Ospiti di {{brand}}?",
   "brand_guests_leave_body": "Le nuove prenotazioni non ti aggiungeranno di nuovo. Puoi rientrare dalla tua prenotazione.",
-  "brand_guests_left_toast": "Hai lasciato Ospiti di {{brand}}. Puoi rientrare dalla tua prenotazione."
+  "brand_guests_left_toast": "Hai lasciato Ospiti di {{brand}}. Puoi rientrare dalla tua prenotazione.",
+  "af_send_yourself_title": "Mandalo anche tu",
+  "af_send_yourself_body": "Un messaggio tuo arriva meglio. Stesso link del nostro SMS.",
+  "af_copy_message": "Copia messaggio",
+  "af_message_copied": "Messaggio copiato"
 }
