@@ -32,7 +32,13 @@ export function ClaimRow({
   const sla = slaLabel(row.created_at);
   const phoneInfo = resolveClaimDisplayPhone(row);
   const tel = formatPhoneHref(phoneInfo.phone);
-  const addressLine = [row.address, row.city, row.country_code]
+  // #4490: say the city once ("Ikoyi, Lagos, Lagos, NG" repeated it).
+  const addressText = String(row.address ?? "").toLowerCase();
+  const addressLine = [
+    row.address,
+    row.city && !addressText.includes(String(row.city).toLowerCase()) ? row.city : null,
+    row.country_code,
+  ]
     .filter(Boolean)
     .join(", ");
 

@@ -31,3 +31,8 @@ test("the claims list, claim detail, correction panel and venue detail use the s
   assert.match(read("components/claims/PendingVenueIdentityCorrectionPanel.jsx"), /VENUE_CATEGORY_LABELS/);
   assert.match(read("pages/VenueDetailView.jsx"), /venueCategoryLabel\(v\.venue_category\)/);
 });
+
+test("the claims list says the city once", () => {
+  const src = read("components/claims/ClaimRow.jsx");
+  assert.match(src, /addressText\.includes\(String\(row\.city\)\.toLowerCase\(\)\)/);
+});
