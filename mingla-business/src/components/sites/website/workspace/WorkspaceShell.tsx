@@ -17,7 +17,7 @@ import { buildMarks } from "../../../../sites/previewBridge";
 import { undoTooltip } from "../../../../sites/sectionEdits";
 import { designOfSettings, safeTokenOverrides } from "../../../../sites/siteLook";
 import { teamRequestFromCouldnt, teamRequestFromSection, type AriSiteFocus } from "../../../../sites/ariWorkspace";
-import { useSendTeamRequest, useTeamRequests } from "../../../../sites/teamRequestsPort";
+import { useSendTeamRequest, useTeamRequests, type TeamRequest } from "../../../../sites/teamRequestsPort";
 import { publishBarButton, workspaceStatus, type WorkspaceStatusInput } from "../../../../sites/workspaceStatus";
 import {
   detailSection,
@@ -31,7 +31,7 @@ import {
 import type { CollectionSection as CollectionKind, WebsiteRoute } from "../../../../sites/websiteNav";
 import type { WorkspaceSection } from "../../../../sites/contentApi";
 import { WebsiteProvider, type StickyBar, type TopbarSave, type WebsiteContextValue } from "../WebsiteContext";
-import { BrandSlot } from "../BrandSlot";
+import { WorkspaceBrandSwitcher } from "../../../brand/WorkspaceBrandSwitcher";
 import { LockBanner } from "../LockBanner";
 import { NoticeBanner } from "../NoticeBanner";
 import { Banner, Chip, Skeleton, WButton, ui } from "../ui";
@@ -113,7 +113,9 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
 
   /* ── Ari and team requests ─────────────────────────────────────────── */
   const pageTitleOf = useCallback((pagePath: string | null) => {
-    const clean = (pagePath ?? "").replace(/^\/+|\/+$/g, "");
+    // Null is "the whole website", not the home page.
+    if (pagePath === null) return null;
+    const clean = pagePath.replace(/^\/+|\/+$/g, "");
     return ws.pages.find((entry) => (entry.path ?? "") === clean)?.title ?? null;
   }, [ws.pages]);
   const allPageIds = useMemo(() => ws.pages.map((entry) => entry.id), [ws.pages]);
@@ -182,8 +184,14 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
     return null;
   };
   const undoRun = async (turn: AriTurn): Promise<boolean> => {
+    // Only ever Ari's own change set: without its id, the top Undo button is
+    // the owner's call (it steps back the latest change, whoever made it).
     const groupId = turn.result?.groupId ?? null;
-    const done = groupId ? await ws.undoGroup(groupId) : await ws.undo();
+    if (!groupId) {
+      notify({ message: "I can’t tell which change that was. Use Undo at the top to step back one change at a time.", kind: "info" });
+      return false;
+    }
+    const done = await ws.undoGroup(groupId);
     if (done) run.settle(turn.id, "undone");
     return done;
   };
@@ -194,6 +202,28 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
     byPage.forEach((ids, pageId) => ws.looksGood(pageId, ids));
     run.settle(turn.id, "kept");
   };
+
+  /* ── A team request opened from its notification (?request=<id>) ───── */
+  const pageOfRequest = useCallback((request: TeamRequest) => (request.pagePath === null
+    ? null
+    : ws.pages.find((entry) => (entry.path ?? "") === request.pagePath) ?? null), [ws.pages]);
+  const focusedRequest = useRef<string | null>(null);
+  const preselect = ws.preselect;
+  useEffect(() => {
+    const requestId = ws.requestId;
+    if (!requestId) {
+      focusedRequest.current = null;
+      return;
+    }
+    if (focusedRequest.current === requestId || ws.pages.length === 0) return;
+    const request = teamRequests.requests.find((entry) => entry.ticketId === requestId);
+    if (!request) return;
+    focusedRequest.current = requestId;
+    // The Requests list stays in front with this request marked; the page and
+    // section it is about are already chosen and in view behind it.
+    const page = pageOfRequest(request);
+    if (page) preselect(page.id, request.sectionId);
+  }, [pageOfRequest, preselect, teamRequests.requests, ws.pages.length, ws.requestId]);
 
   /* ── Status, Publish ───────────────────────────────────────────────── */
   const changes = useDraftChanges(siteId);
@@ -340,6 +370,18 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
           <Text style={styles.stageBody}>Your live website isn’t affected. Your changes are still saved.</Text>
           <WButton label="Try again" variant="primary" size="sm" onPress={ws.retry} testID="workspace-preview-retry" />
         </View>
+      ) : ws.page && !ws.pagePreviewable ? (
+        <View style={styles.stageNote} testID="workspace-preview-off">
+          <Text style={styles.stageTitle}>{ws.page.enabled ? "This page has no address yet" : `“${ws.page.title}” is off`}</Text>
+          <Text style={styles.stageBody}>
+            {ws.page.enabled
+              ? "It can’t be shown until it has an address. Open Pages and menu to give it one."
+              : "Visitors can’t open it, so there is no draft page to show. Its sections are kept: turn the page on to see and publish it."}
+          </Text>
+          {ws.page.enabled
+            ? <WButton label="Open Pages and menu" size="sm" onPress={() => ws.openDetail("pages")} testID="workspace-preview-off-pages" />
+            : <WButton label="Turn this page on" variant="primary" size="sm" onPress={() => { void ws.togglePage(ws.page!, true); }} disabled={readOnlyReason !== null} accessibilityLabel={readOnlyReason ? `Turn this page on. ${readOnlyReason}` : "Turn this page on"} testID="workspace-preview-off-turn-on" />}
+        </View>
       ) : ws.frameUrl === null ? (
         <View style={styles.stageNote} role="status" accessibilityLabel="Building your draft preview" testID="workspace-preview-loading">
           <Skeleton height={48} width="60%" /><Skeleton height={160} /><Skeleton height={96} />
@@ -348,6 +390,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
         <LivePreview
           ref={ws.previewRef}
           url={ws.frameUrl}
+          pageKey={ws.page?.id ?? null}
           preference={preference}
           editMode
           marks={marks}
@@ -414,8 +457,11 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
           highlightId={ws.requestId}
           pageTitleOf={pageTitleOf}
           onRead={(request) => {
-            const clean = (request.pagePath ?? "").replace(/^\/+|\/+$/g, "");
-            const page = ws.pages.find((entry) => (entry.path ?? "") === clean);
+            const page = pageOfRequest(request);
+            if (page && request.sectionId) {
+              ws.showSection(page.id, request.sectionId);
+              return;
+            }
             if (page) ws.selectPage(page.id);
             ws.setMode("edit");
           }}
@@ -483,7 +529,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
             <View style={styles.panel} role="complementary" accessibilityLabel="Website controls" testID="workspace-panel">
               <View style={styles.panelHead}>
                 <IconButton icon="left" label={`Back to ${brandName}`} onPress={exit} testID="website-back" />
-                <BrandSlot brandId={brandId} brandName={brandName} line={saveLine} />
+                <BrandHead brandId={brandId} line={saveLine} />
                 {undoRedo}
               </View>
               <View style={styles.modes}><ModeSwitch mode={ws.mode} onChange={ws.setMode} /></View>
@@ -545,7 +591,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
         <View style={styles.phone} testID="website-workspace-phone">
           <View style={styles.phoneBar}>
             <IconButton icon="left" label={`Back to ${brandName}`} onPress={exit} testID="website-back" />
-            <BrandSlot brandId={brandId} brandName={brandName} line={saveLine} />
+            <BrandHead brandId={brandId} line={saveLine} />
             {moreButton}
             {publishControl}
           </View>
@@ -581,6 +627,20 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
   );
 }
 
+/**
+ * The brand being edited, as the app's brand switcher (it always names this
+ * screen's brand; choosing another opens that brand's Website), with the
+ * autosave state under it.
+ */
+function BrandHead({ brandId, line }: { brandId: string; line: string }): React.ReactElement {
+  return (
+    <View style={styles.brandHead} testID="workspace-brand-slot">
+      <WorkspaceBrandSwitcher brandId={brandId} compact testID="workspace-brand-switcher" />
+      <Text style={styles.saveLine} numberOfLines={1} role="status" accessibilityLiveRegion="polite" testID="workspace-save-state">{line}</Text>
+    </View>
+  );
+}
+
 function DetailBody({ detail, route, requests }: { detail: WorkspaceDetail; route: Shown; requests: React.ReactNode }): React.ReactElement {
   if (route.kind === "editor") {
     return route.section === "destinations" ? <DestinationEditor entryId={route.entryId} />
@@ -603,6 +663,9 @@ const styles = StyleSheet.create({
   hidden: { display: "none" },
   desktop: { flex: 1, flexDirection: "row", minHeight: 0 },
   panel: { width: websiteWorkspacePanelWidth, flexGrow: 0, flexShrink: 0, borderRightWidth: 1, borderRightColor: ui.cardBorder, minHeight: 0 },
+  // The switcher keeps its 44pt target; the save line tucks under its name inside the 56pt bar.
+  brandHead: { flex: 1, minWidth: 0, justifyContent: "center", alignItems: "flex-start" },
+  saveLine: { marginTop: -10, fontSize: 12, lineHeight: 16, color: ui.t3, pointerEvents: "none" },
   panelHead: { height: websiteWorkspaceBarHeight, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[3], borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
   modes: { paddingHorizontal: space[3], paddingVertical: space[2] },
   banner: { paddingHorizontal: space[3], paddingTop: space[2] },

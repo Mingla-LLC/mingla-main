@@ -36,7 +36,10 @@ export type WebsiteRequest = {
   ticketId: string;
   ticketNumber: number | null;
   what: string;
+  /** The section the request is about (the id the workspace's section list uses), when it names one. */
+  sectionId: string | null;
   sectionLabel: string | null;
+  /** The page's visitor address as stored: "/" is the home page, "/about". Null: the whole website. */
   pagePath: string | null;
   status: WebsiteRequestStatus;
   createdAt: string;
@@ -45,6 +48,7 @@ export type WebsiteRequest = {
 };
 
 export type WebsiteRequestWhere = {
+  /** The page's visitor address, starting with "/" ("/" is the home page): the database refuses any other form. */
   pagePath?: string | null;
   sectionId?: string | null;
   sectionLabel?: string | null;
@@ -70,6 +74,7 @@ export type CreatedWebsiteRequest = {
 type RequestRow = {
   ticket_id: string;
   what: string;
+  section_id?: string | null;
   section_label: string | null;
   page_path: string | null;
   due_at: string;
@@ -79,7 +84,7 @@ type RequestRow = {
 };
 
 const REQUEST_SELECT =
-  "ticket_id, what, section_label, page_path, due_at, ready_at, created_at, ticket:support_tickets!inner(ticket_number, status)";
+  "ticket_id, what, section_id, section_label, page_path, due_at, ready_at, created_at, ticket:support_tickets!inner(ticket_number, status)";
 
 /** received → Mingla is working on it; ready → look at the draft; closed → finished. */
 export function websiteRequestStatus(ticketStatus: string | null | undefined, readyAt: string | null | undefined): WebsiteRequestStatus {
@@ -94,6 +99,7 @@ export function toWebsiteRequest(row: RequestRow): WebsiteRequest {
     ticketId: row.ticket_id,
     ticketNumber: Number.isInteger(number) && number > 0 ? number : null,
     what: row.what,
+    sectionId: typeof row.section_id === "string" && row.section_id.length > 0 ? row.section_id : null,
     sectionLabel: row.section_label,
     pagePath: row.page_path,
     status: websiteRequestStatus(ticket?.status, row.ready_at),

@@ -292,7 +292,7 @@ export class FakeCore {
           return { data: null, error: { code: "XX000", message: "boom" } };
         }
         return {
-          data: { ticket_id: WS_TICKET_ID, ticket_number: "S-2041" },
+          data: { ticket_id: WS_TICKET_ID, ticket_number: 2041 },
           error: null,
         };
       },

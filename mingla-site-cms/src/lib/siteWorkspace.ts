@@ -102,7 +102,9 @@ function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loa
       fields: section.fields.map((field) => (wordless ? { key: field.key } : { key: field.key, ...cut(field.value, valueMax) })),
       // Lists whose rows a step may add, remove or move (`list_ops`), with the fields of one row.
       ...(section.lists.length && level < 5 ? { lists: section.lists.map((list) => ({ name: list.name, min: list.min, max: list.max, count: list.count, fields: list.fields.map((field) => field.key) })) } : {}),
-      ...(section.media.some((slot) => slot.media_id) ? { media: section.media.filter((slot) => slot.media_id).map((slot) => ({ slot: slot.slot, media_id: slot.media_id })) } : {}),
+      // Every photo spot, the empty ones too (`media_id: null`): a step names a spot by its slot, so Ari
+      // can only fill a spot it has been shown.
+      ...(section.media.length ? { media: section.media.map((slot) => ({ slot: slot.slot, media_id: slot.media_id })) } : {}),
     }));
     return { id: row.id, title: row.title, path: row.path, enabled: row.enabled, in_menu: row.in_menu, ari_draft: row.ari_draft, sections: fieldless ? sections.map(({ fields: _fields, ...rest }) => rest) : sections };
   });

@@ -728,6 +728,9 @@ export function useAriPageAction(siteId: string | null) {
 export type CoverMedia = { id: string; name: string; thumb_url: string | null; duration_ms: number | null };
 export type SiteCover = { available: boolean; revision: string | null; photo: CoverMedia | null; video: CoverMedia | null };
 
+/** What a saved cover makes stale, beside the cover itself (keys under `siteData`). */
+export const COVER_TOUCHES = ["page-sections", "workspace", "history", "pages", "validation"] as const;
+
 export function useSiteCover(siteId: string | null, enabled = true) {
   return useQuery({
     queryKey: brandSiteKeys.siteData(siteId, "cover"),
@@ -749,6 +752,12 @@ export function useSetSiteCover(siteId: string | null) {
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "cover") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
+      // #4453 — the cover is the home page's top section: saving it moves the
+      // home page's revision and adds an undo step, so every page's sections,
+      // the workspace (revisions, undo / redo) and the history are re-read.
+      // Without this the next edit to the home page states the old revision
+      // and is refused as "someone changed this".
+      for (const what of COVER_TOUCHES) void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, what) });
     },
   });
 }
@@ -861,7 +870,8 @@ export type SiteUndoResult = { group_id: string; label: string; pages: string[];
 /** Joins several writes into one undoable change (Ari's change set, a mood). */
 export type ChangeGroup = { groupId: string; groupLabel: string };
 export type SectionEdit = { key: string; value: string };
-export type LookWarning = { pair?: string; message?: string; suggestion?: string | null };
+/** As built (Studio `tokensView`): the pairing, the plain sentence, and the nearest readable colour. */
+export type LookWarning = { pair?: string; sentence?: string; foreground?: string; background?: string; suggestion?: string | null };
 /**
  * As built: an owner's `tokens` REPLACE the stored colours whole (send the
  * full set), and corners, button shape and movement travel beside them.
@@ -921,7 +931,7 @@ export function setSectionMedia(siteId: string, input: { pageId: string; expecte
 }
 
 export function setSiteLook(siteId: string, input: SiteLookInput, group?: ChangeGroup | null) {
-  return contentCall<{ look_revision: string; warnings: LookWarning[]; design?: string }>(siteId, "set_look", {
+  return contentCall<{ look_revision: string; warnings: LookWarning[] }>(siteId, "set_look", {
     expected_revision: input.expectedRevision,
     ...(input.design !== undefined ? { design: input.design } : {}),
     ...(input.tokens !== undefined ? { tokens: input.tokens } : {}),

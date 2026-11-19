@@ -24,7 +24,8 @@ import { MAX_BLOCKS_PER_PAGE, MAX_NAV_ITEMS, MAX_NAV_LABEL_LENGTH } from "../con
 import { MAX_HERO_VIDEO_MS } from "../contracts/generated/video.ts";
 import { findAllTenantPages } from "./tenantPages";
 import { relationId, tenantPagePaths } from "./pageTree";
-import { ownerTokensOf } from "./siteLook";
+import { ownerFontsOf, ownerTokensOf } from "./siteLook";
+import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
 import { AriRefusal, currentSettings, mergeTokens, plainTextToLexical, readyMedia, siteDesign, tokensView } from "./ariSiteActions";
 import {
   LOOK_KEYS, MENU_KEYS, pageSnapshot, pickSnapshot, recordChanges,
@@ -1038,7 +1039,23 @@ export async function setLook(ctx: SectionContext, args: AnyDoc): Promise<{ look
       changes.tokens = args.tokens;
     }
   }
-  if (args.fonts !== undefined) changes.fonts = args.fonts;
+  if (args.fonts !== undefined) {
+    if (ctx.actor === "ari") {
+      // Ari names a family per slot (its tool takes nothing else): each is a Google Fonts family from the
+      // catalogue, added to the fonts the owner already chose (as propose_site_tokens does). Stored without
+      // a source the choice is refused by the fonts check, or dropped when the look is read back.
+      if (!args.fonts || typeof args.fonts !== "object" || Array.isArray(args.fonts)) refuse("VALIDATION_FAILED", { problems: ["fonts"] });
+      const fonts: AnyDoc = { ...ownerFontsOf(settings) };
+      for (const [slot, choice] of Object.entries(args.fonts as AnyDoc)) {
+        const family = String((choice as AnyDoc | null)?.family ?? "");
+        if (!findCatalogFont(family)) refuse("VALIDATION_FAILED", { problems: [`${family || "that font"} is not in the Google Fonts list`] });
+        fonts[slot] = { family, source: "google" };
+      }
+      changes.fonts = fonts;
+    } else {
+      changes.fonts = args.fonts;
+    }
+  }
   for (const [key, allowed] of [["radius", RADIUS_PRESETS], ["button_shape", BUTTON_SHAPES], ["motion", MOTION_PRESETS]] as const) {
     if (args[key] === undefined) continue;
     if (!(allowed as readonly unknown[]).includes(args[key])) refuse("VALIDATION_FAILED", { problems: [key] });

@@ -25,8 +25,11 @@ export type DraftJob =
 export type SaveState = "idle" | "waiting" | "saving" | "saved" | "error";
 
 export type DraftWriterDeps = {
-  /** Sends one job against `revision`; resolves with the page's new revision (null: unchanged/unknown). */
-  send: (job: DraftJob, revision: string) => Promise<string | null>;
+  /**
+   * Sends one job against `revision`; resolves with the page's new revision (null: unchanged/unknown).
+   * `revision` is null only for a job that states none (`needsRevision` false).
+   */
+  send: (job: DraftJob, revision: string | null) => Promise<string | null>;
   getRevision: (pageId: string) => string | null;
   setRevision: (pageId: string, revision: string) => void;
   onState: (state: SaveState) => void;
@@ -45,6 +48,16 @@ export type DraftWriter = {
   pending: () => number;
   dispose: () => void;
 };
+
+/**
+ * "Looks good" is the one change the server takes without a revision
+ * (`mark_reviewed` reads the page itself), so it can be sent for a page whose
+ * sections were never opened here: the Publish panel's read-first list and
+ * Ari's "Looks good" span every page, not only the one on screen.
+ */
+export function needsRevision(job: DraftJob): boolean {
+  return job.kind !== "reviewed";
+}
 
 type Typing = { pageId: string; sectionId: string; label: string; edits: Map<string, string>; timer: ReturnType<typeof setTimeout> | null };
 
@@ -80,7 +93,7 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
           return rest.length;
         };
         const revision = deps.getRevision(pageId);
-        if (revision === null) {
+        if (revision === null && needsRevision(job)) {
           failed = true;
           done(false);
           deps.onError(new Error("PAGE_NOT_LOADED"), job, dropRest());

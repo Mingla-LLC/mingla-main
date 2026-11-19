@@ -9,6 +9,7 @@ import {
   ARI_SUGGESTIONS,
   adjustedColoursLine,
   couldntLine,
+  ALREADY_STARTED_LINE,
   doneLine,
   failedLine,
   planIntro,
@@ -202,7 +203,7 @@ function TurnView({ turn, run, disabledReason, onUndoRun, onKeepRun, onAskTeam, 
       ) : null}
       {turn.phase === "done" && turn.result?.ok ? (
         <View style={[parts.box, styles.done]} testID="ari-result" role="status" accessibilityLiveRegion="polite">
-          <Text style={parts.title}>{turn.settled === "undone" ? "Undone. Your draft is back to how it was." : turn.result.alreadyDone ? "That was already done. Your page is up to date." : doneLine(turn.result.applied, couldnt.length)}</Text>
+          <Text style={parts.title}>{turn.settled === "undone" ? "Undone. Your draft is back to how it was." : turn.result.alreadyDone ? ALREADY_STARTED_LINE : doneLine(turn.result.applied, couldnt.length)}</Text>
           {turn.settled !== "undone" && turn.result.applied > 0 ? (
             <Text style={parts.small} testID="ari-checks">
               {turn.result.checksNote
@@ -232,6 +233,20 @@ function TurnView({ turn, run, disabledReason, onUndoRun, onKeepRun, onAskTeam, 
               />
               <WButton label="Looks good" variant="primary" size="sm" onPress={() => onKeepRun(turn)} disabled={Boolean(disabledReason)} grow testID="ari-keep-run" />
             </View>
+          ) : null}
+          {turn.settled === null && turn.result.alreadyDone && turn.result.groupId ? (
+            <WButton
+              label="Undo this"
+              size="sm"
+              loading={undoing}
+              disabled={Boolean(disabledReason)}
+              onPress={() => {
+                setUndoing(true);
+                void onUndoRun(turn).finally(() => setUndoing(false));
+              }}
+              style={styles.start}
+              testID="ari-undo-already"
+            />
           ) : null}
           {turn.settled === "kept" ? <Text style={parts.small}>Marked as read. Publish when you’re ready.</Text> : null}
         </View>

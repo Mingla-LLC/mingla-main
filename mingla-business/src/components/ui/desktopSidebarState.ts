@@ -85,13 +85,22 @@ export const useDesktopSidebarStore = create<SidebarState>((set, get) => ({
   },
 }));
 
+/**
+ * #4453 — the Website workspace (`/brand/<id>/website` and everything under
+ * it: old section addresses, editors, the setup wizard, the full Ari chat)
+ * is a full-screen task: its own 392 panel sits beside the live draft, so
+ * the app sidebar is always the rail there.
+ */
+const WEBSITE_WORKSPACE_RE = /^\/brand\/[^/]+\/website(\/|$)/;
+
 /** Wizard and full-screen task routes always get the 80 rail. */
 export const isRailRoute = (pathname: string): boolean => {
-  const lower = pathname.toLowerCase();
+  const lower = (pathname.split("?")[0] ?? "").toLowerCase();
   return (
     lower.includes("/campaigns/compose") ||
     /\/(create|new|edit)(\/|$)/.test(lower) ||
-    /\/marketing\/ads\/[^/]+/.test(lower)
+    /\/marketing\/ads\/[^/]+/.test(lower) ||
+    WEBSITE_WORKSPACE_RE.test(lower)
   );
 };
 

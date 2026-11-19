@@ -20,9 +20,10 @@ const selected: { id: string; rect: unknown }[] = [];
 let api!: Api;
 const NO_MARKS: PreviewMarks = { selected: null, ari: null, unread: [] };
 
-function Harness(props: { url: string | null; marks?: PreviewMarks; tokens?: readonly string[] | null; edit?: boolean }): null {
+function Harness(props: { url: string | null; page?: string | null; marks?: PreviewMarks; tokens?: readonly string[] | null; edit?: boolean }): null {
   api = usePreviewFrames({
     url: props.url,
+    pageKey: props.page ?? "home",
     editMode: props.edit ?? true,
     marks: props.marks ?? NO_MARKS,
     tokenDeclarations: props.tokens ?? null,
@@ -45,7 +46,7 @@ describe("the live preview's frames", () => {
   it("tells the first frame it is in edit mode with the current marks, and re-tells it when they change", async () => {
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<Harness url="https://x/1" />); });
-    expect(api.swap.shown).toEqual({ key: 1, url: "https://x/1" });
+    expect(api.swap.shown).toEqual({ key: 1, url: "https://x/1", page: "home" });
     expect(sent.find((entry) => entry.message.type === "mingla:preview-mode")!.message).toEqual({ type: "mingla:preview-mode", edit: true });
     expect(api.bridged).toBe(false);
     await act(async () => { api.onMessage(1, ready()); });
@@ -75,30 +76,103 @@ describe("the live preview's frames", () => {
     await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [], scroll_y: 640 }); });
     await act(async () => { tree.update(<Harness url="https://x/2" />); });
     expect(api.swap.shown!.url).toBe("https://x/1");
-    expect(api.swap.loading).toEqual({ key: 2, url: "https://x/2" });
+    expect(api.swap.loading).toEqual({ key: 2, url: "https://x/2", page: "home" });
     // A click in the hidden frame is not a click.
     await act(async () => { api.onMessage(2, { type: "mingla:preview-select", section_id: "s1", rect: { top: 0, left: 0, width: 1, height: 1 } }); });
     expect(selected).toEqual([]);
     sent.length = 0;
     await act(async () => { api.onMessage(2, ready(0)); });
-    expect(api.swap.shown).toEqual({ key: 2, url: "https://x/2" });
+    expect(api.swap.shown).toEqual({ key: 2, url: "https://x/2", page: "home" });
     expect(api.swap.loading).toBeNull();
-    expect(types(2).slice(0, 3)).toEqual(["mingla:preview-restore-scroll", "mingla:preview-mode", "mingla:preview-marks"]);
-    expect(sent[0]!.message).toEqual({ type: "mingla:preview-restore-scroll", scroll_y: 640 });
+    expect(types(2)).toEqual(["mingla:preview-mode", "mingla:preview-marks", "mingla:preview-restore-scroll"]);
+    expect(sent.at(-1)!.message).toEqual({ type: "mingla:preview-restore-scroll", scroll_y: 640 });
+    // The frame is where it SAID it is until it reports the restored scroll itself.
+    expect(api.geometry.scrollY).toBe(0);
+    await act(async () => { api.onMessage(2, { type: "mingla:preview-rects", sections: [], scroll_y: 640, doc_height: 2000 }); });
     expect(api.geometry.scrollY).toBe(640);
+    // A second `ready` for the same load (Firefox) refreshes the numbers and restores nothing again.
+    sent.length = 0;
+    await act(async () => { api.onMessage(2, ready(640)); });
+    expect(types(2)).not.toContain("mingla:preview-restore-scroll");
+  });
+
+  it("another page opens at its top: the old page's scroll is not handed over", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/home" page="home" />); });
+    await act(async () => { api.onMessage(1, ready(0)); });
+    await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [], scroll_y: 900 }); });
+    await act(async () => { tree.update(<Harness url="https://x/about" page="about" />); });
+    sent.length = 0;
+    await act(async () => { api.onMessage(2, ready(0)); });
+    expect(api.swap.shown!.page).toBe("about");
+    expect(types(2)).not.toContain("mingla:preview-restore-scroll");
+    expect(api.swap.scrollY).toBe(0);
+    expect(api.geometry.scrollY).toBe(0);
+  });
+
+  it("\"Show me\" a section on another page scrolls the frame that has it, once that frame is ready", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/home" page="home" />); });
+    await act(async () => { api.onMessage(1, ready(0)); });
+    await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [], scroll_y: 300 }); });
+    // The workspace switches page and asks for the section in the same breath.
+    await act(async () => { tree.update(<Harness url="https://x/about" page="about" />); });
+    sent.length = 0;
+    api.commands.post({ type: "mingla:preview-scroll-to", section_id: "about-faq" });
+    // The old page's frame is still the one on screen: it does not have that section.
+    expect(sent).toEqual([{ key: 1, message: { type: "mingla:preview-scroll-to", section_id: "about-faq" } }]);
+    sent.length = 0;
+    await act(async () => {
+      api.onMessage(2, { type: "mingla:preview-ready", page_path: "about", sections: [{ id: "about-top", type: "hero", top: 0, height: 500 }, { id: "about-faq", type: "faq", top: 500, height: 300 }], scroll_y: 0, doc_height: 900 });
+    });
+    expect(sent.filter((entry) => entry.key === 2).map((entry) => entry.message)).toContainEqual({ type: "mingla:preview-scroll-to", section_id: "about-faq" });
+    expect(types(2)).not.toContain("mingla:preview-restore-scroll");
+    // Asked once: a later rebuild of that page goes back to restoring the scroll.
+    await act(async () => { api.onMessage(2, { type: "mingla:preview-rects", sections: [], scroll_y: 480 }); });
+    await act(async () => { tree.update(<Harness url="https://x/about-2" page="about" />); });
+    sent.length = 0;
+    await act(async () => { api.onMessage(3, ready(0)); });
+    expect(sent.filter((entry) => entry.key === 3).map((entry) => entry.message)).toContainEqual({ type: "mingla:preview-restore-scroll", scroll_y: 480 });
+    expect(types(3)).not.toContain("mingla:preview-scroll-to");
+  });
+
+  it("a section already on screen is scrolled to at once and nothing is remembered", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/1" />); });
+    await act(async () => { api.onMessage(1, ready(0)); });
+    await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [], scroll_y: 700 }); });
+    sent.length = 0;
+    api.commands.post({ type: "mingla:preview-scroll-to", section_id: "s2" });
+    expect(sent).toEqual([{ key: 1, message: { type: "mingla:preview-scroll-to", section_id: "s2" } }]);
+    await act(async () => { tree.update(<Harness url="https://x/2" />); });
+    sent.length = 0;
+    await act(async () => { api.onMessage(2, ready(0)); });
+    expect(types(2)).toContain("mingla:preview-restore-scroll");
+    expect(types(2)).not.toContain("mingla:preview-scroll-to");
   });
 
   it("a frame that never speaks still swaps in shortly after it loads, and at the latest after the fallback", async () => {
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<Harness url="https://x/1" />); });
+    await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [], scroll_y: 640 }); });
     await act(async () => { tree.update(<Harness url="https://x/2" />); });
     sent.length = 0;
     await act(async () => { api.onLoaded(2); });
     // A first word from the parent lets a silent frame (Firefox on localhost) answer.
     expect(sent).toEqual([{ key: 2, message: { type: "mingla:preview-mode", edit: true } }]);
     expect(api.swap.shown!.key).toBe(1);
-    await act(async () => { jest.advanceTimersByTime(1300); });
+    // Still silent: it is spoken to again every half second (the bridge may not have been listening yet).
+    await act(async () => { jest.advanceTimersByTime(1100); });
+    expect(sent.filter((entry) => entry.key === 2 && entry.message.type === "mingla:preview-mode")).toHaveLength(3);
+    await act(async () => { jest.advanceTimersByTime(200); });
     expect(api.swap.shown!.key).toBe(2);
+    // It swapped in on the timer; when its bridge finally speaks it is handed the scroll it replaced.
+    // Nothing is restored into a page that is not listening yet...
+    expect(types(2)).not.toContain("mingla:preview-restore-scroll");
+    sent.length = 0;
+    await act(async () => { api.onMessage(2, ready(0)); });
+    // ...it is restored when the bridge speaks.
+    expect(sent.filter((entry) => entry.key === 2).map((entry) => entry.message)).toContainEqual({ type: "mingla:preview-restore-scroll", scroll_y: 640 });
     await act(async () => { tree.update(<Harness url="https://x/3" />); });
     await act(async () => { jest.advanceTimersByTime(6100); });
     expect(api.swap.shown!.url).toBe("https://x/3");

@@ -20,7 +20,7 @@ function prefersReducedMotion(): boolean {
 }
 
 export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(function LivePreview(props, ref) {
-  const { url, preference, editMode, marks, tokenDeclarations, selectedId, onSelect, onReady, renderCard, cardHeight } = props;
+  const { url, pageKey, preference, editMode, marks, tokenDeclarations, selectedId, onSelect, onReady, renderCard, cardHeight } = props;
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const frames = useRef(new Map<number, HTMLIFrameElement>());
   const device = previewDimensions(preference);
@@ -36,6 +36,7 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
 
   const preview = usePreviewFrames({
     url,
+    pageKey,
     editMode,
     marks,
     tokenDeclarations,

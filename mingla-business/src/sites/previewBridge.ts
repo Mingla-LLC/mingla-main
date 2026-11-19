@@ -44,8 +44,18 @@ export type PreviewOutbound =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const num = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
-const SECTION_ID = /^[A-Za-z0-9_-]{1,80}$/;
+// The same limits the frame enforces (mingla-sites previewBridgeProtocol.ts).
+const SECTION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_SECTIONS = 200;
+/** The most "read me" marks the frame keeps; later ones are dropped there. */
+export const PREVIEW_UNREAD_MAX = 200;
+/** The longest `from` / `to` the frame's optimistic text swap accepts. */
+export const PREVIEW_TEXT_MAX = 5000;
+
+/** Whether the frame would act on this optimistic text swap (`from` 1 to 5000 characters, `to` up to 5000). */
+export function previewTextSendable(from: string, to: string): boolean {
+  return from.length >= 1 && from.length <= PREVIEW_TEXT_MAX && to.length <= PREVIEW_TEXT_MAX;
+}
 
 function sectionsOf(value: unknown): FrameSection[] | null {
   if (!Array.isArray(value) || value.length > MAX_SECTIONS) return null;
@@ -182,7 +192,7 @@ export function buildMarks(input: { sections: readonly Pick<WorkspaceSection, "i
   return {
     selected: input.selected && ids.has(input.selected) ? input.selected : null,
     ari: input.ari && ids.has(input.ari) ? input.ari : null,
-    unread,
+    unread: unread.slice(0, PREVIEW_UNREAD_MAX),
   };
 }
 
@@ -194,13 +204,13 @@ export function markLabel(by: MarkBy | null, ariWorking = false): string | null 
 }
 
 /* ── Flash-free refresh: two frames, swap when the new one is ready ─────── */
-export type FrameSlot = { key: number; url: string };
+export type FrameSlot = { key: number; url: string; /** The page this address shows (the workspace's page id). */ page: string | null };
 export type SwapState = {
   /** The frame the owner sees. */
   shown: FrameSlot | null;
   /** The next draft, loading out of sight. */
   loading: FrameSlot | null;
-  /** Scroll to hand to the next frame when it swaps in. */
+  /** Scroll to hand to the next frame when it swaps in (0 when the next frame shows another page). */
   scrollY: number;
   nextKey: number;
 };
@@ -208,7 +218,7 @@ export type SwapState = {
 export const EMPTY_SWAP: SwapState = { shown: null, loading: null, scrollY: 0, nextKey: 1 };
 
 export type SwapEvent =
-  | { type: "url"; url: string | null }
+  | { type: "url"; url: string | null; page?: string | null }
   | { type: "ready"; key: number }
   | { type: "scroll"; key: number; scrollY: number }
   | { type: "timeout"; key: number };
@@ -224,14 +234,16 @@ export function swapReducer(state: SwapState, event: SwapEvent): SwapState {
       if (event.url === null) return { ...EMPTY_SWAP, nextKey: state.nextKey };
       if (state.shown?.url === event.url) return state.loading ? { ...state, loading: null } : state;
       if (state.loading?.url === event.url) return state;
-      const slot: FrameSlot = { key: state.nextKey, url: event.url };
+      const slot: FrameSlot = { key: state.nextKey, url: event.url, page: event.page ?? null };
       if (!state.shown) return { ...state, shown: slot, loading: null, nextKey: state.nextKey + 1 };
       return { ...state, loading: slot, nextKey: state.nextKey + 1 };
     }
     case "ready":
     case "timeout": {
       if (!state.loading || state.loading.key !== event.key) return state;
-      return { ...state, shown: state.loading, loading: null };
+      // The same page rebuilt keeps the owner's place; another page starts at its top.
+      const samePage = state.loading.page === (state.shown?.page ?? null);
+      return { ...state, shown: state.loading, loading: null, scrollY: samePage ? state.scrollY : 0 };
     }
     case "scroll":
       return state.shown?.key === event.key && state.scrollY !== event.scrollY ? { ...state, scrollY: event.scrollY } : state;

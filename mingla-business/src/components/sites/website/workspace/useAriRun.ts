@@ -9,6 +9,7 @@ import {
   questionFrom,
   runResultFrom,
   SITE_FOCUS_LABEL_MAX,
+  teamRequestEditedArgs,
   teamRequestFromProposal,
   TEAM_REQUEST_TOOL,
   WORKSPACE_CONTEXT,
@@ -45,7 +46,13 @@ export type AriTurn = {
   settled: null | "kept" | "undone";
 };
 
-export type AriTeamDraft = { turnId: string | null; draft: TeamRequestDraft; pendingActionId: string | null };
+export type AriTeamDraft = {
+  turnId: string | null;
+  draft: TeamRequestDraft;
+  pendingActionId: string | null;
+  /** Ari's whole proposal: the server takes edited words as the COMPLETE request, never a patch. */
+  toolArgs: Record<string, unknown> | null;
+};
 
 const blank = (id: string, request: string, focus: AriSiteFocus | null): AriTurn => ({
   id, request, focus, phase: "thinking", plan: null, events: [], result: null, reply: null, choices: null, question: null, error: null, settled: null,
@@ -108,6 +115,10 @@ export function useAriRun(input: {
     } catch {
       result = { ok: false, groupId: null, partly: true, failedIndex: null, failedLabel: null, reason: "I lost the connection while changing your draft" };
     }
+    // The change set's group IS the approval's id (the server runs the plan
+    // under it), so a run whose answer never arrived, or was refused as a
+    // repeat, can still be undone as that one group and nothing else.
+    if (result.groupId === null) result = { ...result, groupId: pendingActionId };
     stopFollowing.current?.();
     stopFollowing.current = null;
     clearPendingAction();
@@ -127,7 +138,12 @@ export function useAriRun(input: {
         const draft = teamRequestFromProposal(response.tool_name, response.tool_args, live.current.pageTitleOf);
         if (draft) {
           patch(id, { phase: "reply", reply: "I can’t do this one myself yet, but the Mingla team can. I wrote the request for you." });
-          setTeamDraft({ turnId: id, draft, pendingActionId: response.pending_action_id });
+          setTeamDraft({
+            turnId: id,
+            draft,
+            pendingActionId: response.pending_action_id,
+            toolArgs: response.tool_args && typeof response.tool_args === "object" ? { ...(response.tool_args as Record<string, unknown>) } : null,
+          });
           return;
         }
       }
@@ -222,7 +238,7 @@ export function useAriRun(input: {
   const confirmTeamDraft = useCallback(async (what: string): Promise<{ ok: boolean; message: string | null }> => {
     const pendingActionId = teamDraft?.pendingActionId;
     if (!pendingActionId) return { ok: false, message: "That request is no longer waiting." };
-    const response = await confirmer.confirm(pendingActionId, { what }, WORKSPACE_CONTEXT);
+    const response = await confirmer.confirm(pendingActionId, teamRequestEditedArgs(teamDraft?.toolArgs ?? null, what), WORKSPACE_CONTEXT);
     clearPendingAction();
     if (response.kind === "executed") return { ok: true, message: null };
     return { ok: false, message: response.kind === "error" && response.message ? response.message : "The request wasn’t sent. Try again." };
@@ -237,7 +253,7 @@ export function useAriRun(input: {
     retry,
     settle,
     teamDraft,
-    openTeamDraft: (draft: TeamRequestDraft, turnId: string | null = null) => setTeamDraft({ turnId, draft, pendingActionId: null }),
+    openTeamDraft: (draft: TeamRequestDraft, turnId: string | null = null) => setTeamDraft({ turnId, draft, pendingActionId: null, toolArgs: null }),
     closeTeamDraft: () => setTeamDraft(null),
     dropTeamDraft,
     confirmTeamDraft,

@@ -205,10 +205,15 @@ export function storageCoverRenditionDeps(): CoverRenditionDeps {
 }
 
 /** #2829 W3 — what a build produced, and what Core must record about it. */
-/** #4453 website workspace — a Studio section's own id ("" when it has none or it is not a plain id). */
-function sectionIdOf(raw: unknown): string {
+/**
+ * #4453 website workspace — the id the section list gives this section (sectionActions `sectionIdOf`):
+ * its own id, or `at-<index in the page>` when it was stored without one, so a section the owner
+ * can pick in the list can be picked on the page too. "" only for an id that is not a plain one.
+ */
+function sectionIdOf(raw: unknown, index: number): string {
   const value = (raw as { id?: unknown } | null | undefined)?.id;
-  return typeof value === "string" && PREVIEW_SECTION_ID_RE.test(value) ? value : "";
+  if (typeof value !== "string" || !value) return `at-${index}`;
+  return PREVIEW_SECTION_ID_RE.test(value) ? value : "";
 }
 
 export type BuiltPublication = {
@@ -1268,7 +1273,7 @@ export async function buildPublicationArtifact(
       blocks(sourceBlocks).forEach((shaped, index) => {
         if (!shaped) return;
         rendered.push(shaped as AnyDoc);
-        renderedIds.push(sectionIdOf(sourceBlocks[index]));
+        renderedIds.push(sectionIdOf(sourceBlocks[index], index));
       });
       const isHome = isHomePage(page);
       return {

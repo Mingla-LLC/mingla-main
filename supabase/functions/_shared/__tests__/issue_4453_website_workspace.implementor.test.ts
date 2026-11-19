@@ -57,6 +57,7 @@ import {
   siteStepWritesWords,
   siteTeamRequestProblem,
   siteWorkspaceContextText,
+  siteTicketNumber,
   siteWorkspaceFollowupText,
   siteWorkspaceIds,
   siteWorkspaceProposalIssue,
@@ -1354,7 +1355,8 @@ Deno.test("#4453 team request: confirming sends exactly the request, keyed by th
   });
   assertEquals(result, {
     ticket_id: WS_TICKET_ID,
-    ticket_number: "S-2041",
+    // As the database returns it: a whole number (bigint), never a string.
+    ticket_number: 2041,
     status: "received",
   });
   assertEquals(core.rpcCalls, [{
@@ -1364,8 +1366,9 @@ Deno.test("#4453 team request: confirming sends exactly the request, keyed by th
       p_brand_id: WS_BRAND_ID,
       p_site_id: WS_SITE_ID,
       p_what: "A page where guests can buy gift cards.",
+      // The database wants the visitor address: "/" is the home page.
       p_where: {
-        page_path: "",
+        page_path: "/",
         section_id: "sec_hero",
         section_label: "Top of the page",
       },
@@ -1378,8 +1381,27 @@ Deno.test("#4453 team request: confirming sends exactly the request, keyed by th
   assertEquals(core.actions(), ["get_site_workspace"]);
   assertEquals(
     siteWorkspaceFollowupText("propose_website_team_request", result),
-    "Sent to the Mingla team (S-2041). They reply within 24 hours, and you’ll see it under Requests to the team.",
+    "Sent to the Mingla team (request 2041). They reply within 24 hours, and you’ll see it under Requests to the team.",
   );
+});
+
+Deno.test("#4453 team request: an inner page is sent as its visitor address, the form the database accepts", async () => {
+  const tool = rawSiteTool("propose_website_team_request");
+  const core = new FakeCore({});
+  await tool.executor(
+    { ...TEAM, where: { page_path: "resources/faqs" } },
+    core.client(),
+    WS_USER_ID,
+    { operationId: WS_PENDING_ID },
+  );
+  const sent = core.rpcCalls[0].args.p_where as Record<string, unknown>;
+  assertEquals(sent, { page_path: "/resources/faqs" });
+  // issue_4453_create_website_request: v_page !~ '^/[^[:space:][:cntrl:]]*$' is refused.
+  assert(/^\/[^\s]*$/.test(String(sent.page_path)));
+  assertEquals(siteTicketNumber(2041), 2041);
+  assertEquals(siteTicketNumber("2041"), 2041);
+  assertEquals(siteTicketNumber("S-2041"), null);
+  assertEquals(siteTicketNumber(null), null);
 });
 
 Deno.test("#4453 team request: a draft Core cannot describe still sends; refusals are plain and never a second request", async () => {

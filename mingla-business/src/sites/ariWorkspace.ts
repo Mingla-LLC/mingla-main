@@ -77,6 +77,18 @@ export function teamRequestFromProposal(toolName: string, args: unknown, pageTit
   };
 }
 
+/**
+ * What confirming a request Ari proposed sends as `edited_args`. The server
+ * REPLACES the stored request with it and checks every required field again
+ * (brand, site, where, why, what the website cannot do), so the owner's
+ * edited words travel with the rest of the proposal, never on their own.
+ */
+export function teamRequestEditedArgs(toolArgs: Record<string, unknown> | null, what: string): Record<string, unknown> | undefined {
+  if (!toolArgs) return undefined;
+  const { __proposal_context: _context, ...args } = toolArgs;
+  return { ...args, what };
+}
+
 /** The request an owner starts themselves from a section ("Ask the Mingla team"). */
 export function teamRequestFromSection(input: { typed: string; pageTitle: string | null; pagePath: string; sectionId: string | null; sectionLabel: string | null }): TeamRequestDraft {
   const want = input.typed.trim();
@@ -103,7 +115,8 @@ export function teamRequestFromCouldnt(input: { request: string; couldnt: readon
   };
 }
 
-export const TEAM_REQUEST_MAX = 1200;
+/** The shortest of the limits a request passes through (Ari's request tool takes 1000; the database 2000). */
+export const TEAM_REQUEST_MAX = 1000;
 
 export function teamRequestBlocked(what: string, sending: boolean): string | null {
   if (sending) return "Sending…";
@@ -242,6 +255,9 @@ export function runResultFrom(response: { kind: string; result?: unknown; messag
     alreadyDone: false,
   };
 }
+
+/** A change set the server refused to run twice: it may have landed in part the first time. */
+export const ALREADY_STARTED_LINE = "This change was already started. Check your draft, and use Undo this if it looks half done.";
 
 export function doneLine(applied: number, couldnt: number): string {
   if (applied === 0) return couldnt > 0 ? "I can’t do this one myself yet, but the Mingla team can." : "Nothing needed changing.";

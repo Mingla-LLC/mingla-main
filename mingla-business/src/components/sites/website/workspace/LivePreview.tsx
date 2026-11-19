@@ -16,7 +16,7 @@ import type { LivePreviewProps } from "./LivePreview.types";
  * card as a sheet, so nothing is drawn over the page here.
  */
 export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(function LivePreview(props, ref) {
-  const { url, preference, editMode, marks, tokenDeclarations, onSelect, onReady } = props;
+  const { url, pageKey, preference, editMode, marks, tokenDeclarations, onSelect, onReady } = props;
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const views = useRef(new Map<number, { injectJavaScript: (script: string) => void }>());
   const device = previewDimensions(preference);
@@ -25,7 +25,7 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
   const send = useCallback((key: number, message: FrameMessage) => {
     views.current.get(key)?.injectJavaScript(nativeBridgeCall(message));
   }, []);
-  const preview = usePreviewFrames({ url, editMode, marks, tokenDeclarations, send, onSelect: (sectionId) => onSelect(sectionId), onReady });
+  const preview = usePreviewFrames({ url, pageKey, editMode, marks, tokenDeclarations, send, onSelect: (sectionId) => onSelect(sectionId), onReady });
   useImperativeHandle(ref, () => preview.commands, [preview.commands]);
 
   const onLayout = (event: LayoutChangeEvent) => {

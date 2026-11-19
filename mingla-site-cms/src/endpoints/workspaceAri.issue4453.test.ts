@@ -96,6 +96,15 @@ describe("#4453 get_site_workspace", () => {
     expect(JSON.stringify(data).length).toBeLessThan(WORKSPACE_MAX_BYTES);
   });
 
+  it("lists every photo spot of a section, the empty ones too, so a step can name the spot to fill", async () => {
+    pageOf(site, site.homeId).blocks[0].media = null;
+    const { data } = await ari(site, "get_site_workspace");
+    const hero = data.pages[0].sections[0] as Doc;
+    expect(hero.media).toContainEqual({ slot: "media", media_id: null });
+    const filled = await apply(site, { op: "set_section_media", page_id: site.homeId, section_id: hero.id, slot: "media", media_id: PHOTO_B }, { cites: [{ kind: "owner_material", media_id: PHOTO_B }] });
+    expect(filled.status, JSON.stringify(filled.error)).toBe(200);
+  });
+
   it("long words are cut at 280 characters and flagged", async () => {
     pageOf(site, site.homeId).blocks[2].items[0].answer = "word ".repeat(150).trim();
     const { data } = await ari(site, "get_site_workspace");
@@ -265,6 +274,18 @@ describe("#4453 apply_site_change", () => {
     // Ari changes the whole style through the design pass; the owner picks any style in Design.
     expect((await apply(site, { op: "set_look", design: "haven" }, { cites: [] })).error.code).toBe("VALIDATION_FAILED");
     expect((await apply(site, { op: "set_look" }, { cites: [] })).error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("set_look fonts: Ari names a family; it is stored as a Google font beside the fonts the owner already chose", async () => {
+    site.rows("site-settings")[0]!.fonts = { body: { family: "Inter", source: "google" } };
+    const ok = await apply(site, { op: "set_look", fonts: { display: { family: "Playfair Display" } } }, { cites: [] });
+    expect(ok.status, JSON.stringify(ok.error)).toBe(200);
+    // Without a source the fonts check refuses the choice (or the look drops it when read back).
+    expect(site.rows("site-settings")[0]!.fonts).toEqual({ body: { family: "Inter", source: "google" }, display: { family: "Playfair Display", source: "google" } });
+    const before = structuredClone(site.rows("site-settings")[0]!);
+    const unknown = await apply(site, { op: "set_look", fonts: { display: { family: "Not A Real Font" } } }, { cites: [] });
+    expect(unknown.error.code).toBe("VALIDATION_FAILED");
+    expect(site.rows("site-settings")[0]).toEqual(before);
   });
 
   it("each step reads the current revision itself and tries once more on a clash", async () => {

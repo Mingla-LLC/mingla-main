@@ -5,6 +5,8 @@ import type { PreviewMarks } from "../../../../sites/previewBridge";
 export type LivePreviewProps = {
   /** The frame address for the page being edited (null: nothing to show yet). */
   url: string | null;
+  /** The page `url` shows (its id): another page opens at its top; the same page rebuilt keeps its scroll. */
+  pageKey?: string | null;
   preference: PreviewDevicePreference;
   editMode: boolean;
   marks: PreviewMarks;

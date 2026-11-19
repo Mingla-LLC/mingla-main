@@ -88,6 +88,30 @@ function websiteTarget(brandId: string, section: unknown): BusinessNavTarget {
     ? `/brand/${brandId}/website/${section}`
     : `/brand/${brandId}/website`;
 }
+/**
+ * #4453 — "your website change is ready" (business.website_request_ready):
+ * the Website workspace, open on that request. Only a well-formed ticket id
+ * is carried into the address; anything else opens the workspace itself.
+ */
+function websiteRequestTarget(brandId: string, ticketId: unknown): BusinessNavTarget {
+  return typeof ticketId === "string" && UUID_RE.test(ticketId)
+    ? `/brand/${brandId}/website?request=${ticketId}`
+    : `/brand/${brandId}/website`;
+}
+/** The value of one key in a deep link's query ("a=1&request=<id>"), or null. */
+function queryValue(query: string | undefined, key: string): string | null {
+  for (const pair of (query ?? "").split("&")) {
+    const [name, value] = pair.split("=", 2);
+    if (name === key && typeof value === "string" && value.length > 0) {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
 /** #4111 — the three team-side customer enquiry categories. */
 const BRAND_ENQUIRY_PUSH_TYPES = new Set([
   "business.brand_enquiry_new",
@@ -143,7 +167,14 @@ export function parseBusinessDeepLink(
       if (sub === "listing") return `/brand/${brandId}/listing`;
       // #2829 W9r — mingla-business://brand/{id}/website[/{section}]
       // (business.site_admin_requested). An unknown section opens Overview.
-      if (sub === "website") return websiteTarget(brandId, rest[2]?.split("?", 1)[0]);
+      // #4453 — mingla-business://brand/{id}/website?request={ticketId}
+      // (business.website_request_ready) keeps its request.
+      if (sub === "website") {
+        const requestId = rest.length === 2 ? queryValue(query, "request") : null;
+        return requestId
+          ? websiteRequestTarget(brandId, requestId)
+          : websiteTarget(brandId, rest[2]?.split("?", 1)[0]);
+      }
       if (sub === "discounts") {
         return `/brand/${brandId}/discounts${query ? `?${query}` : ""}`;
       }
@@ -325,6 +356,16 @@ export function resolveBusinessNavTarget(
     case "business.site_admin_requested":
     case "business.site_plan_reminder":
       return brandId ? websiteTarget(brandId, data.section) : ACCOUNT_FALLBACK;
+
+    // #4453 — the Mingla team finished a website change the owner asked for:
+    // the Website workspace, on that request (payload: ticket_id, brand_id).
+    case "business.website_request_ready": {
+      const requestBrandId = (data.brandId ?? data.brand_id ?? brandId) as string | undefined;
+      const ticketId = data.ticketId ?? data.ticket_id ?? data.relatedId;
+      return typeof requestBrandId === "string" && UUID_RE.test(requestBrandId)
+        ? websiteRequestTarget(requestBrandId, ticketId)
+        : ACCOUNT_FALLBACK;
+    }
 
     case "business.community_announcement": {
       const announcementId = (data.announcementId ?? data.announcement_id) as

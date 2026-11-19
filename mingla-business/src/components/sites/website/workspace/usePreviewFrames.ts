@@ -7,6 +7,7 @@ import {
   PREVIEW_READY,
   PREVIEW_RECTS,
   PREVIEW_RESTORE_SCROLL,
+  PREVIEW_SCROLL_TO,
   PREVIEW_SELECT,
   SWAP_FALLBACK_MS,
   swapReducer,
@@ -30,9 +31,15 @@ export type PreviewCommands = { post: (message: PreviewOutbound) => void };
 
 const AFTER_LOAD_MS = 1_200;
 const TOKENS_DEBOUNCE_MS = 150;
+/** A frame that has loaded but not spoken is spoken to again this often (see `onLoaded`). */
+const NUDGE_MS = 500;
+/** How long a "show this section" waits for the page that holds it to load. */
+const WANTED_SCROLL_MS = 15_000;
 
 export function usePreviewFrames(options: {
   url: string | null;
+  /** The page `url` shows (the workspace's page id): another page starts at its top, the same page keeps its scroll. */
+  pageKey?: string | null;
   editMode: boolean;
   marks: PreviewMarks;
   tokenDeclarations: readonly string[] | null;
@@ -56,10 +63,50 @@ export function usePreviewFrames(options: {
   const swapRef = useRef(swap);
   swapRef.current = swap;
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const nudges = useRef(new Map<number, ReturnType<typeof setInterval>>());
+  /** Frames whose bridge has said `ready`, with the sections each one listed. */
+  const readyFrames = useRef(new Map<number, readonly FrameSection[]>());
+  /** The scroll a rebuilt frame takes over, sent once its bridge is listening. */
+  const pendingRestore = useRef<{ key: number; scrollY: number } | null>(null);
+  /** A section the workspace asked to show while its page was not on screen yet. */
+  const wanted = useRef<{ id: string; at: number } | null>(null);
 
+  const pageKey = options.pageKey ?? null;
   useEffect(() => {
-    dispatch({ type: "url", url: options.url });
+    dispatch({ type: "url", url: options.url, page: pageKey });
+    // The page is part of the address, so a new page always arrives with a new url.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.url]);
+
+  const stopNudging = useCallback((key: number) => {
+    const nudge = nudges.current.get(key);
+    if (nudge) clearInterval(nudge);
+    nudges.current.delete(key);
+  }, []);
+
+  /**
+   * The visible frame is listening: put it where the owner should be. A
+   * section the workspace asked for wins; otherwise a rebuilt page goes back
+   * to the scroll it replaced. A frame that swapped in on a timer gets this
+   * when its `ready` finally arrives, not before (a page that is not
+   * listening yet would drop it).
+   */
+  const settle = useCallback((key: number) => {
+    const sections = readyFrames.current.get(key);
+    if (!sections) return;
+    const want = wanted.current;
+    if (want && Date.now() - want.at > WANTED_SCROLL_MS) wanted.current = null;
+    else if (want && sections.some((section) => section.id === want.id)) {
+      wanted.current = null;
+      if (pendingRestore.current?.key === key) pendingRestore.current = null;
+      latest.current.send(key, { type: PREVIEW_SCROLL_TO, section_id: want.id });
+      return;
+    }
+    const restore = pendingRestore.current;
+    if (restore?.key !== key) return;
+    pendingRestore.current = null;
+    if (restore.scrollY > 0) latest.current.send(key, { type: PREVIEW_RESTORE_SCROLL, scroll_y: restore.scrollY });
+  }, []);
 
   const sync = useCallback((key: number) => {
     const current = latest.current;
@@ -78,24 +125,41 @@ export function usePreviewFrames(options: {
   useEffect(() => () => {
     timers.current.forEach((timer) => clearTimeout(timer));
     timers.current.clear();
+    nudges.current.forEach((nudge) => clearInterval(nudge));
+    nudges.current.clear();
   }, []);
 
-  // The new frame took over: hand it the scroll it replaces, then the state.
+  // The new frame took over: give it the state, then the place it replaces.
   const shownKey = swap.shown?.key ?? null;
   const previousShown = useRef<number | null>(null);
   useEffect(() => {
+    // Forget frames that are gone.
+    for (const key of [...readyFrames.current.keys()]) {
+      if (key !== shownKey && key !== loadingKey) readyFrames.current.delete(key);
+    }
+    for (const key of [...nudges.current.keys()]) {
+      if (key !== shownKey && key !== loadingKey) stopNudging(key);
+    }
     if (shownKey === null) {
       previousShown.current = null;
+      pendingRestore.current = null;
       setBridged(false);
       setGeometry({ sections: [], scrollY: 0 });
       return;
     }
-    if (previousShown.current !== null && previousShown.current !== shownKey) {
-      latest.current.send(shownKey, { type: PREVIEW_RESTORE_SCROLL, scroll_y: swapRef.current.scrollY });
-    }
+    const replaced = previousShown.current !== null && previousShown.current !== shownKey;
     previousShown.current = shownKey;
+    if (replaced) {
+      // The reducer already set this to 0 when the new frame shows another page.
+      pendingRestore.current = { key: shownKey, scrollY: swapRef.current.scrollY };
+      const known = readyFrames.current.get(shownKey);
+      setBridged(known !== undefined);
+      // Until the frame says otherwise it sits at its own top.
+      if (known === undefined) setGeometry({ sections: [], scrollY: 0 });
+    }
     sync(shownKey);
-  }, [shownKey, sync]);
+    settle(shownKey);
+  }, [loadingKey, settle, shownKey, stopNudging, sync]);
 
   const marksKey = useMemo(() => JSON.stringify(options.marks), [options.marks]);
   useEffect(() => {
@@ -129,10 +193,17 @@ export function usePreviewFrames(options: {
     const fromLoading = state.loading?.key === key;
     if (!fromShown && !fromLoading) return;
     if (message.type === PREVIEW_READY) {
-      setGeometry({ sections: message.sections, scrollY: fromLoading ? state.scrollY : message.scrollY });
+      readyFrames.current.set(key, message.sections);
+      stopNudging(key);
+      // Where the frame says it IS: a restored scroll is reported by the
+      // frame itself (`rects`) once it has moved, never assumed here.
+      setGeometry({ sections: message.sections, scrollY: message.scrollY });
       setBridged(true);
       if (fromLoading) dispatch({ type: "ready", key });
-      else sync(key);
+      else {
+        sync(key);
+        settle(key);
+      }
       latest.current.onReady?.(message.pagePath);
       return;
     }
@@ -147,27 +218,53 @@ export function usePreviewFrames(options: {
       setGeometry((current) => (current.scrollY === message.scrollY ? current : { ...current, scrollY: message.scrollY }));
       latest.current.onSelect(message.sectionId, message.rect);
     }
-  }, [sync]);
+  }, [settle, stopNudging, sync]);
+
+  /**
+   * Some browsers (Firefox on localhost) only tell the frame who its parent
+   * is once the parent speaks, and a page may load before its bridge is
+   * listening: a frame that has loaded but not said `ready` is spoken to
+   * again every half second until it does (or is replaced).
+   */
+  const nudge = useCallback((key: number) => {
+    if (readyFrames.current.has(key) || nudges.current.has(key)) return;
+    nudges.current.set(key, setInterval(() => {
+      const state = swapRef.current;
+      if (readyFrames.current.has(key) || (state.shown?.key !== key && state.loading?.key !== key)) {
+        stopNudging(key);
+        return;
+      }
+      latest.current.send(key, { type: PREVIEW_MODE, edit: latest.current.editMode });
+    }, NUDGE_MS));
+  }, [stopNudging]);
 
   const onLoaded = useCallback((key: number) => {
     const state = swapRef.current;
     if (state.shown?.key === key) {
       sync(key);
+      nudge(key);
       return;
     }
     if (state.loading?.key !== key || timers.current.has(key)) return;
-    // Some browsers only tell the frame who its parent is once the parent
-    // speaks: a first message lets a silent frame answer with `ready`.
     latest.current.send(key, { type: PREVIEW_MODE, edit: latest.current.editMode });
+    nudge(key);
     timers.current.set(key, setTimeout(() => {
       timers.current.delete(key);
       dispatch({ type: "timeout", key });
     }, AFTER_LOAD_MS));
-  }, [sync]);
+  }, [nudge, sync]);
 
   const commands = useMemo<PreviewCommands>(() => ({
     post: (message) => {
-      const key = swapRef.current.shown?.key;
+      const state = swapRef.current;
+      const key = state.shown?.key;
+      if (message.type === PREVIEW_SCROLL_TO) {
+        // The section may be on a page that is still loading (another page,
+        // or this one being rebuilt): remember it for the frame that has it.
+        const onScreen = key !== undefined && state.loading === null &&
+          (readyFrames.current.get(key) ?? []).some((section) => section.id === message.section_id);
+        wanted.current = onScreen ? null : { id: message.section_id, at: Date.now() };
+      }
       if (key !== undefined) latest.current.send(key, message);
     },
   }), []);

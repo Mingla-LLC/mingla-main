@@ -1750,15 +1750,26 @@ export async function runSiteChangeSet(input: {
   };
 }
 
+/** The request's number as the database returns it (a whole number), else null. */
+export function siteTicketNumber(value: unknown): number | null {
+  const number = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^\d{1,15}$/.test(value)
+    ? Number(value)
+    : Number.NaN;
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
 /** Ari's line after a confirmed workspace write (the server's words, not the model's). */
 export function siteWorkspaceFollowupText(
   toolName: string,
   result: unknown,
 ): string | null {
   if (toolName === SITE_TEAM_REQUEST_TOOL) {
-    const number = isRecord(result) && typeof result.ticket_number === "string"
-      ? ` (${result.ticket_number})`
-      : "";
+    const ticket = isRecord(result)
+      ? siteTicketNumber(result.ticket_number)
+      : null;
+    const number = ticket === null ? "" : ` (request ${ticket})`;
     return `Sent to the Mingla team${number}. They reply within 24 hours, and you’ll see it under Requests to the team.`;
   }
   if (toolName !== SITE_CHANGE_SET_TOOL || !isRecord(result)) return null;
@@ -1986,7 +1997,10 @@ export function siteWorkspaceToolParts(deps: SiteWorkspaceToolDeps): {
           p_site_id: args.site_id,
           p_what: String(args.what).trim(),
           p_where: {
-            page_path: where.page_path,
+            // The request table holds the address visitors see ("/" is the
+            // home page, "/about"); the workspace names pages without the
+            // leading slash ("" is the home page).
+            page_path: `/${String(where.page_path)}`,
             ...(typeof where.section_id === "string"
               ? { section_id: where.section_id }
               : {}),
@@ -2021,9 +2035,7 @@ export function siteWorkspaceToolParts(deps: SiteWorkspaceToolDeps): {
       }
       return {
         ticket_id: row.ticket_id,
-        ticket_number: typeof row.ticket_number === "string"
-          ? row.ticket_number
-          : null,
+        ticket_number: siteTicketNumber(row.ticket_number),
         status: "received",
       };
     },

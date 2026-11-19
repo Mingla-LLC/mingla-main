@@ -35,7 +35,7 @@ import {
   applyReviewed,
   changeLabel,
 } from "../../../../sites/sectionEdits";
-import { PREVIEW_SCROLL_TO, PREVIEW_TEXT } from "../../../../sites/previewBridge";
+import { PREVIEW_SCROLL_TO, PREVIEW_TEXT, previewTextSendable } from "../../../../sites/previewBridge";
 import { previewFrameSource } from "../../../../sites/previewFrame";
 import { unreviewedSectionCount } from "../../../../sites/setupStatus";
 import type { WorkspaceDetail, WorkspaceMode, WorkspaceTarget } from "../../../../sites/workspaceRoute";
@@ -51,6 +51,11 @@ import type { PreviewCommands } from "./usePreviewFrames";
  */
 export const CONFLICT_MESSAGE = "Someone changed this while you were editing. Showing the latest.";
 const PREVIEW_REFRESH_MS = 350;
+
+/** Whether the draft preview has a page to draw for this one (as the site runtime resolves it). */
+export function previewablePage(page: Pick<WorkspacePage, "enabled" | "ari_draft" | "path">): boolean {
+  return (page.enabled || page.ari_draft) && typeof page.path === "string";
+}
 
 export type WorkspaceToast = { message: string; kind: "success" | "info" | "warn" | "error"; action?: { label: string; onPress: () => void } };
 export type LoadState = "loading" | "error" | "ready";
@@ -139,6 +144,8 @@ export function useWorkspace(input: {
     void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
     void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "validation") });
     void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "history") });
+    // The cover is the home page's top section: any page change may have moved its revision or its photo.
+    void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "cover") });
     void client.invalidateQueries({ queryKey: brandSiteKeys.reviewStatus(siteId) });
     for (const id of what.pages ?? []) void client.invalidateQueries({ queryKey: sectionsKey(id) });
     if (what.look) void client.invalidateQueries({ queryKey: brandSiteKeys.look(siteId) });
@@ -157,7 +164,14 @@ export function useWorkspace(input: {
       const fresh = await client.fetchQuery({ queryKey: sectionsKey(id), queryFn: () => getPageSections(siteId, id), staleTime: 0 });
       return fresh.page.revision;
     };
-    const send = async (job: DraftJob, revision: string): Promise<string | null> => {
+    const send = async (job: DraftJob, revision: string | null): Promise<string | null> => {
+      if (job.kind === "reviewed") {
+        // No revision is stated, so this works for a page never opened here.
+        await markSectionsReviewed(siteId, job.pageId, job.sectionIds);
+        // An open page's revision moved: read it again. A page never opened is read when it is.
+        return client.getQueryData<PageSections>(sectionsKey(job.pageId)) ? freshRevision(job.pageId) : null;
+      }
+      if (revision === null) throw new Error("PAGE_NOT_LOADED");
       const base = { pageId: job.pageId, expectedRevision: revision };
       switch (job.kind) {
         case "edit": return (await editSection(siteId, { ...base, sectionId: job.sectionId, edits: job.edits })).page_revision;
@@ -172,9 +186,6 @@ export function useWorkspace(input: {
         case "add":
           await addSection(siteId, { ...base, type: job.type, afterSectionId: job.afterSectionId, mediaId: job.mediaId ?? null });
           // The new section's fields come from the server: read the page again.
-          return freshRevision(job.pageId);
-        case "reviewed":
-          await markSectionsReviewed(siteId, job.pageId, job.sectionIds);
           return freshRevision(job.pageId);
       }
     };
@@ -251,9 +262,27 @@ export function useWorkspace(input: {
     setSelectedId(sectionId);
     setExpandedId(sectionId);
     setCardFor(null);
-    // The frame may still be loading that page: ask again once it has settled.
+    // On another page the frame that holds this section is still loading:
+    // the preview remembers the request and scrolls once that frame is ready.
     previewRef.current?.post({ type: PREVIEW_SCROLL_TO, section_id: sectionId });
-    setTimeout(() => previewRef.current?.post({ type: PREVIEW_SCROLL_TO, section_id: sectionId }), 900);
+  }, [activePageId, writer]);
+
+  /**
+   * A section to land on without leaving the screen that is open (a team
+   * request opened from its notification: the Requests list stays in front,
+   * and the section is selected, open and in view when the owner goes back
+   * to the page). Null `sectionId`: just that page.
+   */
+  const preselect = useCallback((targetPageId: string, sectionId: string | null) => {
+    if (targetPageId !== activePageId) {
+      void writer.flush();
+      setPageId(targetPageId);
+      shownText.current.clear();
+    }
+    setSelectedId(sectionId);
+    setExpandedId(sectionId);
+    setCardFor(null);
+    if (sectionId) previewRef.current?.post({ type: PREVIEW_SCROLL_TO, section_id: sectionId });
   }, [activePageId, writer]);
 
   /* ── Changes ───────────────────────────────────────────────────────── */
@@ -262,8 +291,12 @@ export function useWorkspace(input: {
     const field = section.fields.find((entry) => entry.key === key);
     const id = `${section.id}:${key}`;
     const from = shownText.current.get(id) ?? field?.value ?? "";
-    if (from && value && from !== value) previewRef.current?.post({ type: PREVIEW_TEXT, section_id: section.id, from, to: value });
-    if (value) shownText.current.set(id, value);
+    // The page shows the new words only when the frame takes the swap: words it
+    // would drop (longer than its limit) leave the page as it is until the rebuild.
+    if (from && value && from !== value && previewTextSendable(from, value)) {
+      previewRef.current?.post({ type: PREVIEW_TEXT, section_id: section.id, from, to: value });
+      shownText.current.set(id, value);
+    }
     patchSections(activePageId, (list) => applyFieldEdits(list, section.id, [{ key, value }]));
     writer.typeField(activePageId, section.id, key, value, changeLabel.edit(section.label));
   }, [activePageId, guard, patchSections, writer]);
@@ -376,7 +409,10 @@ export function useWorkspace(input: {
 
   const grant = controller.previewGrant;
   const origin = Platform.OS === "web" && typeof window !== "undefined" ? window.location.origin : null;
-  const frameUrl = grant.data && page ? previewFrameSource(grant.data.preview_url, siteId, page.path ?? "", origin) : null;
+  // The draft preview draws a page only when it is on (or is a page Ari drafted) and has an
+  // address; for any other page the frame would be "not found", with nothing to click.
+  const pagePreviewable = page ? previewablePage(page) : false;
+  const frameUrl = grant.data && page && pagePreviewable ? previewFrameSource(grant.data.preview_url, siteId, page.path ?? "", origin) : null;
   const previewState: LoadState = grant.data ? "ready" : grant.isError ? "error" : "loading";
 
   const retry = useCallback(() => {
@@ -394,7 +430,12 @@ export function useWorkspace(input: {
     setMode: (next: WorkspaceMode) => { setMode(next); setDetail(null); },
     detail,
     openDetail: (next: WorkspaceDetail) => { setDetail(next); setPublishOpen(false); setCardFor(null); },
-    closeDetail: () => { setDetail(null); setRequestId(null); },
+    closeDetail: () => {
+      setDetail(null);
+      setRequestId(null);
+      // The page was out of sight behind that screen: bring the chosen section back into view.
+      if (selectedId) setTimeout(() => previewRef.current?.post({ type: PREVIEW_SCROLL_TO, section_id: selectedId }), 80);
+    },
     publishOpen,
     openPublish: () => { void writer.flush(); setPublishOpen(true); setCardFor(null); },
     closePublish: () => setPublishOpen(false),
@@ -416,6 +457,7 @@ export function useWorkspace(input: {
     closeCard: () => setCardFor(null),
     select,
     showSection,
+    preselect,
     ariSectionId,
     setAriSectionId,
     typeField,
@@ -439,6 +481,8 @@ export function useWorkspace(input: {
     afterChange,
     previewRef,
     frameUrl,
+    /** False when the page on screen is off (or has no address): there is no draft page to show for it. */
+    pagePreviewable,
     previewState,
     retry,
     notify,
