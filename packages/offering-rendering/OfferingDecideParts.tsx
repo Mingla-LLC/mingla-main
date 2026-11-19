@@ -131,7 +131,7 @@ export const OfferingStepper = ({
   // #4490: hitSlop does nothing in a phone browser, so the 36 buttons are drawn 44 there.
   const { width } = useWindowDimensions();
   const touch =
-    Platform.OS === "web" && width > 0 && width < 768
+    Platform.OS === "web" && width > 0 && width < 1024
       ? { width: 44, height: 44, borderRadius: 22 }
       : null;
   return (

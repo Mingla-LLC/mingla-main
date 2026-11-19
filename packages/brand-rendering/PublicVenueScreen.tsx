@@ -2974,7 +2974,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   messageBrandBtn: {
-    minHeight: 36,
+    // #4490: 44 touch floor (a phone browser has no hitSlop).
+    minHeight: 44,
     borderRadius: 999,
     borderWidth: 1.5,
     paddingHorizontal: 14,

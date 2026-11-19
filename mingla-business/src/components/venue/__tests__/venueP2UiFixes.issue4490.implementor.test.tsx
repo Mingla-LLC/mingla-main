@@ -303,10 +303,11 @@ describe("H3 VAT included shows the 'Includes VAT' line", () => {
 });
 
 describe("tap targets are 44 in a phone-width browser", () => {
-  it("the floor is 44 on web below tablet width and 0 elsewhere", () => {
+  it("the floor is 44 on web below the wide-desktop width and 0 elsewhere", () => {
     expect(touchFloorFor("web", 390)).toBe(44);
-    expect(touchFloorFor("web", 767)).toBe(44);
-    expect(touchFloorFor("web", 768)).toBe(0);
+    expect(touchFloorFor("web", 768)).toBe(44);
+    expect(touchFloorFor("web", 1023)).toBe(44);
+    expect(touchFloorFor("web", 1024)).toBe(0);
     expect(touchFloorFor("web", 1440)).toBe(0);
     expect(touchFloorFor("ios", 390)).toBe(0);
     expect(touchFloorFor("web", 0)).toBe(0);

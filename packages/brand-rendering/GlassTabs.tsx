@@ -222,7 +222,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tab: {
-    minHeight: 40,
+    // #4490: 44 touch floor (a phone browser has no hitSlop).
+    minHeight: 44,
     flexGrow: 1,
     flexShrink: 0,
     flexBasis: "auto",

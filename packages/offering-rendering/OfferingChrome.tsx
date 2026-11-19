@@ -291,9 +291,10 @@ const styles = StyleSheet.create({
     // 44pt min hit target via hitSlop; the visible glass is 40×40.
   },
   glass: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    // #4490: 44 touch target (a phone browser has no hitSlop).
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     // Android opaque glass fallback (ANDROID_GLASS_USES_OPAQUE_FALLBACK).

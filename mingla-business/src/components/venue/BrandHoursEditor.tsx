@@ -220,7 +220,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Select weekdays"
-            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
+            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, minWidth: touchFloor, justifyContent: "center", alignItems: "center" } : null]}
           >
             <Text style={styles.bulkQuickText}>Weekdays</Text>
           </Pressable>
@@ -229,7 +229,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Select weekend"
-            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
+            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, minWidth: touchFloor, justifyContent: "center", alignItems: "center" } : null]}
           >
             <Text style={styles.bulkQuickText}>Weekend</Text>
           </Pressable>
@@ -238,7 +238,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Select all days"
-            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
+            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, minWidth: touchFloor, justifyContent: "center", alignItems: "center" } : null]}
           >
             <Text style={styles.bulkQuickText}>All</Text>
           </Pressable>
@@ -248,7 +248,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel="Clear day selection"
-              style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
+              style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, minWidth: touchFloor, justifyContent: "center", alignItems: "center" } : null]}
             >
               <Text style={styles.bulkQuickText}>Clear</Text>
             </Pressable>
