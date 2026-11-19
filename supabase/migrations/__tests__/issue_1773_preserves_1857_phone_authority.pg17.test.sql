@@ -54,6 +54,14 @@ BEGIN
   -- that failed the brand_people insert. The fingerprint HAD to move; the
   -- behavioural block below passes against the new writer unchanged.
   --
+  -- [TEST-MOD-APPROVED #4508] S3 moves it again, by the same live-definition
+  -- patch: until a plus-one claims the pass, the rsvp_plus_one arm reads no
+  -- account (claimed_at gates matched_user_id) and no number the server
+  -- resolved for a friend pick, and a claimed plus-one's account is attached
+  -- to the person it lands on when no other active person of the brand holds
+  -- it. Every other arm and statement is byte-identical (catalogue diff on the
+  -- #4508 issue); the behavioural block below passes unchanged.
+  --
   -- `issue_1770_enqueue_source` is UNCHANGED at the same value it has always
   -- carried, which is the control: the fingerprint pipeline still reproduces the
   -- original numbers, so the one that moved moved for a reason.
@@ -72,7 +80,7 @@ BEGIN
   -- the enqueue trigger, and its md5 is unchanged -- which is also the control
   -- proving this fingerprint pipeline still reproduces the original values.
   FOR v_signature,v_expected_md5 IN SELECT * FROM (VALUES
-    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','77835b81caf453af44783b57b6c5a44a'),
+    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','c16055658e7e77503a20b12b48934717'),
     ('public.issue_1770_enqueue_source()','b6f76457afc333703f59d065cd4224ba')
   ) AS expected(signature,definition_md5) LOOP
     SELECT pg_get_functiondef(to_regprocedure(v_signature)) INTO STRICT v_definition;

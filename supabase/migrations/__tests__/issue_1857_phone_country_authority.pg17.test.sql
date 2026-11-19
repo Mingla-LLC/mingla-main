@@ -129,12 +129,17 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'498565615bd834f1d3efa95fb3d4552c' THEN
+  -- [TEST-MOD-APPROVED #4508] #4508 (S3) is the current last writer of the
+  -- worker's derived entry point: re-created from 20270305001770 with only the
+  -- rsvp_plus_one SELECT changed (no account and no server-resolved friend
+  -- number before the plus-one claims). The fingerprint HAD to move; the
+  -- deliberate-drift self-test below still proves it moves with the body.
+  IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'20aebc0302940997a7ad90c992f7c1e2' THEN
     RAISE EXCEPTION 'issue_1857_derived_fingerprint_baseline_failed';
   END IF;
   BEGIN
     ALTER FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid) SET search_path TO issue_1857_deliberate_drift;
-    IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'498565615bd834f1d3efa95fb3d4552c' THEN
+    IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'20aebc0302940997a7ad90c992f7c1e2' THEN
       RAISE EXCEPTION USING ERRCODE='P1857',MESSAGE='issue_1857_derived_definition_changed';
     END IF;
     RAISE EXCEPTION 'issue_1857_derived_mutation_survived';

@@ -68,9 +68,12 @@
 -- anon, authenticated restores the table read. N-1: re-apply
 -- issue_4459_brand_guest_eligible and its party trigger from 20280805004459
 -- (then 20280805004473's hook), and run issue_4459_safe_sync for each matched
--- guest; claimed_at may stay (it is additive). The S2
--- patch of biz_resolve_brand_person_source reverses by swapping its two
--- literals back. DATA NOTE: number-only guest rows (name and email NULL) and
+-- guest; claimed_at may stay (it is additive). The S2/S3
+-- patch of biz_resolve_brand_person_source reverses by swapping its three
+-- literal pairs back; biz_resolve_brand_person_source_derived(text,uuid) is
+-- restored from 20270305001770 and biz_brand_person_conflict_subject from
+-- 20270426002305; drop trigger issue_4508_guest_claim_reingest and its
+-- function. DATA NOTE: number-only guest rows (name and email NULL) and
 -- friend guests with no proven number (phone NULL) exist once this has run;
 -- the old submit_event_rsvp and old readers assume NOT NULL there, so roll the
 -- functions back only together with a decision about those rows (keep them
@@ -3830,34 +3833,62 @@ $function$;
 
 
 -- ---------------------------------------------------------------------------
--- S2 biz_resolve_brand_person_source: a number-only plus-one has no name, and
--- the rsvp_plus_one arm read btrim(g.name) into the brand_people insert, which
--- failed on NULL (the ingest trigger then dropped the guest). The arm now uses
--- the 'Guest' sentinel every other arm uses. This follows #3524's convention
--- for this function (its live body carries #1772's and #3524's string
--- patches): take the live definition, replace exactly one expression, and
--- raise if it did not land. Idempotent: a second run leaves it as it is.
+-- S2 / S3 biz_resolve_brand_person_source (the brand's People, #1770-#1773).
+-- S2: a number-only plus-one has no name, and the rsvp_plus_one arm read
+-- btrim(g.name) into the brand_people insert, which failed on NULL (the ingest
+-- trigger then dropped the guest). The arm now uses the 'Guest' sentinel every
+-- other arm uses.
+-- S3: until a plus-one claims the pass, the account their number matched (or
+-- the friend picked from a list) is not theirs to show a brand. The arm reads
+-- the account only once claimed_at is set, and a friend pick's number (which
+-- the server resolved and the inviter never typed) only once claimed, so an
+-- unclaimed guest is imported exactly as an unmatched number-only guest: no
+-- account link, no account name, the typed number only. When the guest claims
+-- (rsvp_guest_claim or a proven-number claim sweep), the source is re-ingested
+-- (issue_4508_guest_claim_reingest below) and the account is attached to the
+-- person, unless another active person of the brand already holds it.
+-- Guest rows claimed before this (the N-6 backfill) keep their link.
+-- This follows #3524's convention for this function (its live body carries
+-- #1772's and #3524's string patches): take the live definition, replace
+-- exactly these expressions, and raise if one did not land. Idempotent: a
+-- second run leaves it as it is.
 -- ---------------------------------------------------------------------------
 DO $s2_patch$
 DECLARE
   v_def text;
-  v_anchor text := 'SELECT e.brand_id,r.event_id,g.matched_user_id,btrim(g.name),';
-  v_new text := 'SELECT e.brand_id,r.event_id,g.matched_user_id,COALESCE(NULLIF(btrim(g.name),''''),''Guest''),';
+  v_marker text := '-- #4508 S3: the account is attached at the claim.';
+  v_patches text[][] := ARRAY[
+    ARRAY['SELECT e.brand_id,r.event_id,g.matched_user_id,btrim(g.name),',
+          'SELECT e.brand_id,r.event_id,CASE WHEN g.claimed_at IS NOT NULL THEN g.matched_user_id END,COALESCE(NULLIF(btrim(g.name),''''),''Guest''),'],
+    ARRAY['public.issue_1770_normalize_phone(g.phone),g.phone_country_iso,g.created_at',
+          'public.issue_1770_normalize_phone(CASE WHEN g.claimed_at IS NOT NULL OR NOT g.added_from_friend THEN g.phone END),g.phone_country_iso,g.created_at'],
+    ARRAY['  INSERT INTO public.brand_person_source_links(brand_id,brand_person_id,source_kind,source_id,offering_invite_id,link_method,source_occurred_at)',
+          '  -- #4508 S3: the account is attached at the claim.
+  IF p_source_kind=''rsvp_plus_one'' AND v_user IS NOT NULL
+     AND NOT EXISTS(SELECT 1 FROM public.brand_people p WHERE p.brand_id=v_brand AND p.record_status=''active'' AND p.linked_user_id=v_user) THEN
+    UPDATE public.brand_people SET linked_user_id=v_user,updated_at=now() WHERE id=v_person AND linked_user_id IS NULL;
+  END IF;
+  INSERT INTO public.brand_person_source_links(brand_id,brand_person_id,source_kind,source_id,offering_invite_id,link_method,source_occurred_at)']
+  ];
+  i integer;
 BEGIN
   SELECT pg_get_functiondef(
     'public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz)'::regprocedure)
     INTO v_def;
-  IF position(v_new in v_def) > 0 THEN
-    RAISE NOTICE '#4508: biz_resolve_brand_person_source already names number-only guests; unchanged.';
+  IF position(v_marker in v_def) > 0 THEN
+    RAISE NOTICE '#4508: biz_resolve_brand_person_source already carries S2 and S3; unchanged.';
     RETURN;
   END IF;
-  IF (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 THEN
-    RAISE EXCEPTION 'issue_4508_s2_patch_anchor_missing';
-  END IF;
-  v_def := replace(v_def, v_anchor, v_new);
+  FOR i IN 1 .. array_length(v_patches, 1) LOOP
+    IF (length(v_def) - length(replace(v_def, v_patches[i][1], ''))) / length(v_patches[i][1]) <> 1 THEN
+      RAISE EXCEPTION 'issue_4508_s2_patch_anchor_missing:%', i;
+    END IF;
+    v_def := replace(v_def, v_patches[i][1], v_patches[i][2]);
+  END LOOP;
   IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source%'
      OR v_def NOT LIKE '%s.superseded_at IS NULL%'
-     OR v_def NOT LIKE '%issue_3524_grade_marketing_consent%' THEN
+     OR v_def NOT LIKE '%issue_3524_grade_marketing_consent%'
+     OR position(v_marker in v_def) = 0 THEN
     RAISE EXCEPTION 'issue_4508_s2_patch_failed';
   END IF;
   EXECUTE format('CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source%s',
@@ -3868,6 +3899,162 @@ REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source(
   uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_resolve_brand_person_source(
   uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) TO service_role;
+
+-- S3: the ingest worker's entry point, re-created from its latest writer
+-- (20270305001770 lines 1509-1534; #1857 and #1773 re-granted it but never
+-- re-wrote it). Only the rsvp_plus_one SELECT changes, the same two
+-- expressions as above, so the worker's derived identity and the resolver's
+-- own read always agree (the resolver refuses a mismatch as 'unlinked').
+CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source_derived(p_source_kind text, p_source_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_brand uuid; v_event uuid; v_user uuid; v_email text; v_phone text; v_occurred timestamptz;
+BEGIN
+  IF p_source_kind='event_rsvp' THEN
+    SELECT e.brand_id,r.event_id,r.user_id,public.issue_1770_normalize_email(r.guest_email),public.issue_1770_normalize_phone(r.guest_phone),r.created_at
+    INTO v_brand,v_event,v_user,v_email,v_phone,v_occurred FROM public.event_rsvps r JOIN public.events e ON e.id=r.event_id WHERE r.id=p_source_id;
+  ELSIF p_source_kind='rsvp_plus_one' THEN
+    SELECT e.brand_id,r.event_id,CASE WHEN g.claimed_at IS NOT NULL THEN g.matched_user_id END,public.issue_1770_normalize_email(g.email),public.issue_1770_normalize_phone(CASE WHEN g.claimed_at IS NOT NULL OR NOT g.added_from_friend THEN g.phone END),g.created_at
+    INTO v_brand,v_event,v_user,v_email,v_phone,v_occurred FROM public.event_rsvp_guests g JOIN public.event_rsvps r ON r.id=g.rsvp_id JOIN public.events e ON e.id=r.event_id WHERE g.id=p_source_id;
+  ELSIF p_source_kind='order' THEN
+    SELECT e.brand_id,o.event_id,o.buyer_user_id,public.issue_1770_normalize_email(o.buyer_email),public.issue_1770_normalize_phone(COALESCE(o.buyer_phone_e164,o.buyer_phone)),o.created_at
+    INTO v_brand,v_event,v_user,v_email,v_phone,v_occurred FROM public.orders o JOIN public.events e ON e.id=o.event_id WHERE o.id=p_source_id;
+  ELSIF p_source_kind='ticket_holder' THEN
+    SELECT e.brand_id,t.event_id,o.buyer_user_id,public.issue_1770_normalize_email(o.buyer_email),public.issue_1770_normalize_phone(COALESCE(o.buyer_phone_e164,o.buyer_phone)),o.created_at
+    INTO v_brand,v_event,v_user,v_email,v_phone,v_occurred FROM public.tickets t JOIN public.orders o ON o.id=t.order_id JOIN public.events e ON e.id=t.event_id WHERE t.id=p_source_id;
+  END IF;
+  IF v_brand IS NULL THEN
+    UPDATE public.brand_person_source_links SET detached_at=COALESCE(detached_at,now()),updated_at=now()
+      WHERE source_kind=p_source_kind AND source_id=p_source_id AND detached_at IS NULL;
+    RETURN jsonb_build_object('personId',NULL,'sourceLinkId',NULL,'linkOutcome','retired','conflictId',NULL);
+  END IF;
+  RETURN public.biz_resolve_brand_person_source(v_brand,v_event,p_source_kind,p_source_id,v_user,NULL,v_email,v_phone,v_occurred);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid) TO service_role;
+
+-- S3: the identity behind a People conflict (#2305), re-created from its
+-- latest writer (20270426002305 lines 335-417). It must use the resolver's
+-- expressions (its own comment says so): a host resolving a conflict on an
+-- unclaimed plus-one would otherwise attach the matched account
+-- (biz_resolve_brand_person_conflict reads userId from here). Only the
+-- rsvp_plus_one SELECT changes.
+CREATE OR REPLACE FUNCTION public.biz_brand_person_conflict_subject(p_source_kind text, p_source_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_brand uuid; v_user uuid; v_name text; v_email text; v_phone text;
+  v_country text; v_occurred timestamptz; v_provenance text;
+BEGIN
+  IF p_source_kind='event_rsvp' THEN
+    SELECT e.brand_id,r.user_id,COALESCE(NULLIF(btrim(r.guest_name),''),'Guest'),
+      public.issue_1770_normalize_email(r.guest_email),public.issue_1770_normalize_phone(r.guest_phone),
+      r.guest_phone_country_iso,r.created_at,'rsvp'
+    INTO v_brand,v_user,v_name,v_email,v_phone,v_country,v_occurred,v_provenance
+    FROM public.event_rsvps r JOIN public.events e ON e.id=r.event_id WHERE r.id=p_source_id;
+  ELSIF p_source_kind='rsvp_plus_one' THEN
+    SELECT e.brand_id,CASE WHEN g.claimed_at IS NOT NULL THEN g.matched_user_id END,btrim(g.name),public.issue_1770_normalize_email(g.email),
+      public.issue_1770_normalize_phone(CASE WHEN g.claimed_at IS NOT NULL OR NOT g.added_from_friend THEN g.phone END),g.phone_country_iso,g.created_at,'rsvp'
+    INTO v_brand,v_user,v_name,v_email,v_phone,v_country,v_occurred,v_provenance
+    FROM public.event_rsvp_guests g JOIN public.event_rsvps r ON r.id=g.rsvp_id
+    JOIN public.events e ON e.id=r.event_id WHERE g.id=p_source_id;
+  ELSIF p_source_kind='order' THEN
+    SELECT e.brand_id,o.buyer_user_id,COALESCE(NULLIF(btrim(o.buyer_name),''),'Guest'),
+      public.issue_1770_normalize_email(o.buyer_email),
+      public.issue_1770_normalize_phone(COALESCE(o.buyer_phone_e164,o.buyer_phone)),NULL,o.created_at,'order'
+    INTO v_brand,v_user,v_name,v_email,v_phone,v_country,v_occurred,v_provenance
+    FROM public.orders o JOIN public.events e ON e.id=o.event_id
+    WHERE o.id=p_source_id AND o.confirmed_at IS NOT NULL
+      AND o.payment_status IN ('paid','partial_refund','refunded','cancelled');
+  ELSIF p_source_kind='ticket_holder' THEN
+    SELECT e.brand_id,o.buyer_user_id,COALESCE(NULLIF(btrim(o.buyer_name),''),'Guest'),
+      public.issue_1770_normalize_email(o.buyer_email),
+      public.issue_1770_normalize_phone(COALESCE(o.buyer_phone_e164,o.buyer_phone)),NULL,o.created_at,'ticket'
+    INTO v_brand,v_user,v_name,v_email,v_phone,v_country,v_occurred,v_provenance
+    FROM public.tickets t JOIN public.orders o ON o.id=t.order_id JOIN public.events e ON e.id=t.event_id
+    WHERE t.id=p_source_id AND o.confirmed_at IS NOT NULL
+      AND o.payment_status IN ('paid','partial_refund','refunded','cancelled');
+  ELSIF p_source_kind='reservation' THEN
+    SELECT r.brand_id,r.consumer_user_id,COALESCE(NULLIF(btrim(r.guest_name),''),'Guest'),
+      public.issue_1770_normalize_email(r.guest_email),
+      public.issue_1770_normalize_phone(NULLIF(btrim(r.guest_phone_e164),'')),
+      r.guest_phone_country_iso,r.created_at,'reservation'
+    INTO v_brand,v_user,v_name,v_email,v_phone,v_country,v_occurred,v_provenance
+    FROM public.reservations r WHERE r.id=p_source_id;
+  ELSIF p_source_kind='stay_reservation' THEN
+    SELECT g.brand_id,g.user_id,COALESCE(NULLIF(btrim(g.guest_snapshot->>'name'),''),'Guest'),
+      public.issue_1770_normalize_email(g.guest_snapshot->>'email'),
+      public.issue_1770_normalize_phone(NULLIF(btrim(g.guest_snapshot->>'phone'),'')),
+      NULLIF(g.guest_snapshot->>'phoneCountryIso',''),min(e.created_at),'reservation'
+    INTO v_brand,v_user,v_name,v_email,v_phone,v_country,v_occurred,v_provenance
+    FROM public.stay_reservation_groups g JOIN public.stay_reservation_events e ON e.group_id=g.id
+    WHERE g.id=p_source_id AND e.event_type='stay_reservation_confirmed'
+    GROUP BY g.id,g.brand_id,g.user_id,g.guest_snapshot;
+  ELSIF p_source_kind='import' THEN
+    SELECT b.brand_id,NULL::uuid,COALESCE(NULLIF(btrim(r.name),''),'Guest'),
+      public.issue_1770_normalize_email(r.email),public.issue_1770_normalize_phone(r.phone_e164),
+      r.phone_country,r.created_at,'import'
+    INTO v_brand,v_user,v_name,v_email,v_phone,v_country,v_occurred,v_provenance
+    FROM public.brand_contact_import_rows r
+    JOIN public.brand_contact_import_batches b ON b.id=r.batch_id
+    WHERE r.id=p_source_id;
+  ELSIF p_source_kind='manual' THEN
+    -- The payload was hashed, never stored. Report the row, describe nothing.
+    SELECT m.brand_id,m.actor_user_id,m.created_at INTO v_brand,v_user,v_occurred
+    FROM public.brand_person_manual_add_requests m WHERE m.client_request_id=p_source_id;
+    IF v_brand IS NULL THEN RETURN NULL; END IF;
+    RETURN jsonb_build_object(
+      'retained',false,'brandId',v_brand,'displayName',NULL,'normalizedName',NULL,
+      'email',NULL,'phone',NULL,'phoneCountryIso',NULL,'userId',NULL,
+      'occurredAt',v_occurred,'provenanceKind','manual');
+  ELSE
+    RETURN NULL;
+  END IF;
+
+  IF v_brand IS NULL THEN RETURN NULL; END IF;
+  RETURN jsonb_build_object(
+    'retained',true,'brandId',v_brand,'displayName',v_name,
+    'normalizedName',lower(regexp_replace(btrim(v_name),'[[:space:]]+',' ','g')),
+    'email',v_email,'phone',v_phone,'phoneCountryIso',v_country,'userId',v_user,
+    'occurredAt',v_occurred,'provenanceKind',v_provenance);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.biz_brand_person_conflict_subject(text,uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_brand_person_conflict_subject(text,uuid) TO service_role;
+
+-- S3: a claim re-ingests the plus-one into the brand's People. The #1770
+-- enqueue trigger compares the guest's identity fields, and claimed_at is not
+-- one of them, so a claim by the account the number already matched would
+-- otherwise never reach the People worker. One outbox row per claim (the
+-- revision names the claim); the worker resolves the live row.
+CREATE OR REPLACE FUNCTION public.tg_issue_4508_guest_claim_reingest()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $g$
+BEGIN
+  INSERT INTO public.brand_person_ingest_outbox(source_kind, source_id, operation, revision_key)
+  VALUES ('rsvp_plus_one', NEW.id, 'upsert',
+          md5('issue_4508_claim:' || NEW.id::text || ':' || NEW.claimed_at::text))
+  ON CONFLICT DO NOTHING;
+  RETURN NULL;
+END;
+$g$;
+REVOKE ALL ON FUNCTION public.tg_issue_4508_guest_claim_reingest() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS issue_4508_guest_claim_reingest ON public.event_rsvp_guests;
+CREATE TRIGGER issue_4508_guest_claim_reingest
+  AFTER UPDATE ON public.event_rsvp_guests
+  FOR EACH ROW
+  WHEN (OLD.claimed_at IS NULL AND NEW.claimed_at IS NOT NULL)
+  EXECUTE FUNCTION public.tg_issue_4508_guest_claim_reingest();
 
 -- ---------------------------------------------------------------------------
 -- 10b. Brand Guest chat (#4459): a plus-one joins only after claiming (N-1).
