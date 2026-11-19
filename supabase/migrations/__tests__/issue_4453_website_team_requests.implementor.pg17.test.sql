@@ -524,6 +524,8 @@ SELECT pg_temp.p_assert(
     AND count(DISTINCT o.user_id) = 2
     AND bool_and(o.status = 'pending' AND o.brand_id = '44530000-0000-4000-8000-0000000000e1')
     AND bool_and(o.payload->>'deep_link' = 'mingla-business://brand/44530000-0000-4000-8000-0000000000e1/website?request=44530000-0000-4000-8000-000000000101')
+    -- #1529: this producer decides the country at enqueue. No SMS leg, so an explicit NULL.
+    AND bool_and(o.country_code IS NULL)
     AND bool_and((o.payload->>'push')::boolean)
     AND bool_and(o.payload->>'ticket_id' = '44530000-0000-4000-8000-000000000101'
       AND o.payload->>'brand_id' = '44530000-0000-4000-8000-0000000000e1'
