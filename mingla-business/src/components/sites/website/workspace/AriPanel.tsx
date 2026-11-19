@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { color, radius, space } from "../../../../constants/designSystem";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
 import { Spinner, WButton, ui } from "../ui";
@@ -9,6 +9,7 @@ import {
   ARI_SUGGESTIONS,
   adjustedColoursLine,
   couldntLine,
+  enterSendsToAri,
   ALREADY_STARTED_LINE,
   doneLine,
   failedLine,
@@ -60,6 +61,7 @@ export function AriPanel({ run, disabledReason, draftText, onDraftText, onUndoRu
     if (!refused) onDraftText("");
   };
   const idle = run.turns.length === 0 && !run.teamDraft && !teamSent;
+  const sendBlocked = disabledReason ?? (run.working ? "Ari is still working on your last request." : !draftText.trim() ? "Say what you’d like changed." : null);
   return (
     <View style={styles.panel} testID="ari-panel">
       <ScrollView ref={scrollRef as never} style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -108,6 +110,13 @@ export function AriPanel({ run, disabledReason, draftText, onDraftText, onUndoRu
             placeholderTextColor={ui.t4}
             accessibilityLabel="Message Ari"
             multiline
+            onKeyPress={(event) => {
+              if (!enterSendsToAri(Platform.OS, event.nativeEvent as { key?: string; shiftKey?: boolean; isComposing?: boolean })) return;
+              // Enter sends; without this the box only grew a line and nothing happened.
+              (event as unknown as { preventDefault?: () => void }).preventDefault?.();
+              if (sendBlocked) setNote(sendBlocked);
+              else submit(draftText);
+            }}
             maxLength={2000}
             editable={!disabledReason}
             testID="ari-input"
@@ -117,7 +126,7 @@ export function AriPanel({ run, disabledReason, draftText, onDraftText, onUndoRu
             icon="send"
             label="Send to Ari"
             onPress={() => submit(draftText)}
-            disabledReason={disabledReason ?? (run.working ? "Ari is still working on your last request." : !draftText.trim() ? "Say what you’d like changed." : null)}
+            disabledReason={sendBlocked}
             onDisabledPress={setNote}
             testID="ari-send"
           />

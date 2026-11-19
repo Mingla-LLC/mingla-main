@@ -37,6 +37,7 @@ const HARNESS_ADD_PAGE = "mingla-business/app/b/__dev-ari-add-page.tsx";
 const HOST_SHELL = "mingla-business/src/components/ui/HostDesktopShell.tsx";
 const WORKSPACE_SHELL = "mingla-business/src/components/sites/website/workspace/WorkspaceShell.tsx";
 const ACCOUNT = "mingla-business/app/(tabs)/account.tsx";
+const ARI_PANEL = "mingla-business/src/components/sites/website/workspace/AriPanel.tsx";
 
 const has = (needle) => (src) => src.includes(needle);
 const matches = (re) => (src) => re.test(src);
@@ -104,6 +105,7 @@ export const RULES = [
   { file: HOST_SHELL, why: "the phone strip sits above the screen", ok: (src) => src.includes('testID="host-phone-brand-strip"') && src.indexOf('testID="host-phone-brand-strip"') < src.indexOf("<View style={styles.stack}>{children}</View>") },
   { file: HOST_SHELL, why: "one item's brand (a trip, an event, a listing) is the route's brand for the chrome", ok: has("routeBrandId: brandIdFromRoute(pathname, params) ?? itemBrand.brandId") },
   { file: WORKSPACE_SHELL, why: "the Website workspace tells the shell it carries the switcher on phones", ok: has("useOwnPhoneBrandSwitcher(phone);") },
+  { file: ARI_PANEL, why: "Enter sends from Ari's message box on the web (Shift+Enter is a new line)", ok: (src) => src.includes("if (!enterSendsToAri(Platform.OS, event.nativeEvent") && src.includes("else submit(draftText);") },
   { file: ACCOUNT, why: "Account has no brand switcher at the top", ok: (src) => /<TopBar\s+leftKind="none"/.test(src) && !/<TopBar\s+leftKind="brand"/.test(src) },
   { file: ACCOUNT, why: "Account still opens the brands sheet from Your brands", ok: (src) => src.includes('testID="account-manage-brands"') && /<ListRow\s+onPress=\{handleOpenSwitcher\}\s+accessibilityLabel="Add or manage brands"/.test(src) },
 ];
@@ -151,6 +153,7 @@ function selfTest() {
     [HOST_SHELL, (s) => s.replace("brandIdFromRoute(pathname, params) ?? itemBrand.brandId", "brandIdFromRoute(pathname, params)")],
     [WORKSPACE_SHELL, (s) => s.replace("useOwnPhoneBrandSwitcher(phone);", "")],
     [ACCOUNT, (s) => s.replace('leftKind="none"', 'leftKind="brand"')],
+    [ARI_PANEL, (s) => s.replace("else submit(draftText);", "")],
   ];
   let caught = 0;
   for (const [file, mutate] of mutations) {

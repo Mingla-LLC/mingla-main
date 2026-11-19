@@ -333,3 +333,12 @@ export function sectionSuggestions(type: string, label: string): string[] {
 export function scopedRequest(typed: string): string {
   return typed.trim() || "Make this section better";
 }
+
+/**
+ * In Ari's message box on the web, Enter sends and Shift+Enter starts a new
+ * line (a key press while an input method is composing is never a send).
+ * Phones keep the return key as a new line and send with the button.
+ */
+export function enterSendsToAri(platform: string, key: { key?: string; shiftKey?: boolean; isComposing?: boolean }): boolean {
+  return platform === "web" && key.key === "Enter" && key.shiftKey !== true && key.isComposing !== true;
+}

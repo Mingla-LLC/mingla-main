@@ -15,6 +15,7 @@ import { createDraftWriter, saveStateLine, type DraftJob, type SaveState } from 
 import {
   adjustedColoursLine, doneLine, failedLine, planFromProposal, questionFrom, runResultFrom, sectionSuggestions, stepStatuses, teamRequestBlocked,
   teamRequestFromCouldnt, teamRequestFromProposal, teamRequestFromSection, teamRequestStatusLine,
+  enterSendsToAri,
 } from "../ariWorkspace";
 import type { WorkspaceSection } from "../contentApi";
 
@@ -442,5 +443,20 @@ describe("Ari's plan as data", () => {
     expect(sectionSuggestions("hero", "Top of the page")).toContain("Use a different photo");
     expect(sectionSuggestions("mystery", "Something")).toHaveLength(3);
     expect(sectionSuggestions("faq", "Good to know").length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("#4453 Ari's message box on the web", () => {
+  it("Enter sends", () => {
+    expect(enterSendsToAri("web", { key: "Enter" })).toBe(true);
+  });
+  it("Shift+Enter starts a new line", () => {
+    expect(enterSendsToAri("web", { key: "Enter", shiftKey: true })).toBe(false);
+  });
+  it("a key press while composing, another key, or a phone's return key never sends", () => {
+    expect(enterSendsToAri("web", { key: "Enter", isComposing: true })).toBe(false);
+    expect(enterSendsToAri("web", { key: "a" })).toBe(false);
+    expect(enterSendsToAri("ios", { key: "Enter" })).toBe(false);
+    expect(enterSendsToAri("android", { key: "Enter" })).toBe(false);
   });
 });
