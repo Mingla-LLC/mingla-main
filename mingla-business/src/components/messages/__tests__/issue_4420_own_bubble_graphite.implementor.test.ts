@@ -44,3 +44,16 @@ describe("#4420 D2 own bubble", () => {
     expect(source("app/messages/[conversationId].tsx")).toContain("messageTextMine: { color: brandGroupChat.mineBubbleText }");
   });
 });
+
+describe("#4420 D3 sticky day marker", () => {
+  test("its chip is opaque, above the bubbles, with a top inset", () => {
+    const route = source("app/messages/[conversationId].tsx");
+    const dayRow = /dayRow: \{[^}]*\}/.exec(route)?.[0] ?? "";
+    const dayText = /dayText: \{[^}]*\}/.exec(route)?.[0] ?? "";
+    expect(dayRow).toContain("zIndex: 3");
+    expect(dayRow).toContain("paddingTop: space[2]");
+    expect(dayText).toContain("backgroundColor: color.card2");
+    expect(dayText).not.toContain("brandGroupChat.strip");
+    expect(color.card2.startsWith("#")).toBe(true);
+  });
+});

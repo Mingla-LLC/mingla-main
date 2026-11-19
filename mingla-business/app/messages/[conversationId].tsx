@@ -1727,14 +1727,17 @@ const styles = StyleSheet.create({
   messages: { flex: 1 },
   messagesContent: { paddingHorizontal: 12, paddingTop: space[4], paddingBottom: space[6] },
   empty: { margin: space[6], padding: space[7], borderRadius: 20, backgroundColor: brandGroupChat.surface },
-  dayRow: { alignItems: "center", marginVertical: 12 },
+  // #4420 D3: the day marker sticks while you scroll, so its chip is opaque
+  // (glass fallback: the solid card), sits above the bubbles and keeps a top
+  // inset: bubble text never shows through it.
+  dayRow: { alignItems: "center", paddingTop: space[2], paddingBottom: space[1], marginVertical: 4, zIndex: 3, elevation: 3 },
   // #4420 history affordances.
   historyTop: { alignItems: "center", paddingTop: space[2], paddingBottom: space[1] },
   historyNote: { color: brandGroupChat.textSoft, fontSize: 13, textAlign: "center", paddingTop: space[2] },
   jumpWrap: { position: "relative", height: 0, zIndex: 4 },
   jump: { position: "absolute", right: space[4], bottom: space[2], minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: radius.full, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.card2 },
   jumpText: { color: brandGroupChat.textPrimary, fontSize: 14, fontWeight: "600" },
-  dayText: { color: brandGroupChat.textSoft, fontSize: 12, fontWeight: "700", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: "hidden", backgroundColor: brandGroupChat.strip },
+  dayText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600", paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.full, overflow: "hidden", borderWidth: 1, borderColor: color.line, borderTopColor: color.lineStrong, backgroundColor: color.card2 },
   systemLine: { alignItems: "center", paddingHorizontal: space[7], marginVertical: 8 },
   systemLineText: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, textAlign: "center" },
   cardRow: { marginVertical: 8 },
