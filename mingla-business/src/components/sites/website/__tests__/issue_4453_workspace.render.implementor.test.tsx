@@ -129,7 +129,11 @@ jest.mock("../PhotoField", () => {
 });
 jest.mock("../sections/DesignSection", () => {
   const { Pressable, Text, View } = jest.requireActual("react-native");
-  const marker = (name: string) => () => <View testID={`mock-${name}`} />;
+  const marker = (name: string) => {
+    const Marker = () => <View testID={`mock-${name}`} />;
+    Marker.displayName = `Mock(${name})`;
+    return Marker;
+  };
   return {
     DesignCard: marker("design-card"),
     CoverCard: marker("cover-card"),

@@ -79,7 +79,8 @@ describe("#4453 get_site_workspace", () => {
     expect(hero).toMatchObject({
       id: sectionId(site, site.homeId, "hero"), index: 0, type: "hero", label: "Top of the page", layout: "pop-stack",
       layouts: ["pop-stack", "fullbleed", "editorial", "arch"], feed: false, review: { state: "draft", source: "composer" },
-      media: [{ slot: "media", media_id: PHOTO_A }],
+      // Every photo spot is listed, the empty ones too (a step names a spot by its slot).
+      media: [{ slot: "media", media_id: PHOTO_A }, { slot: "video", media_id: null }],
     });
     expect(hero.fields).toContainEqual({ key: "heading", value: "Play together" });
     expect(hero.fields).toContainEqual({ key: "ctas.0.label", value: "See what's on" });

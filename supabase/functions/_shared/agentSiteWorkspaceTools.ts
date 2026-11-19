@@ -175,7 +175,9 @@ export function siteWorkspaceContextText(input: {
       "No section is selected, so the request is about the website as a whole unless the owner names a page or section.",
     );
   }
-  return `<user_data>\n${lines.join("\n")}\n</user_data>`;
+  // Joined, not a template: this is prompt text for the model, never HTML
+  // (the buyer-string escape gate reads a tagged template as an HTML one).
+  return ["<user_data>", ...lines, "</user_data>"].join("\n");
 }
 
 /** The rules the system prompt carries for a Website workspace turn. */
