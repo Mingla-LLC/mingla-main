@@ -779,10 +779,8 @@ function AppContent() {
           const guest = await resolveRsvpGuestLink(code);
           if (guest.status !== "not_found") {
             const { rsvpGuestRoutePath } = await import("../src/utils/rsvpGuestClaim");
-            if (!userIdRef.current) {
-              const { setPendingRsvpGuest } = await import("../src/services/pendingRsvpGuest");
-              await setPendingRsvpGuest(code);
-            }
+            // Signed out, the screen shows the invite and holds the code when
+            // the person taps Get my pass (it reopens after sign-in).
             router.push(rsvpGuestRoutePath(code) as never);
             return;
           }

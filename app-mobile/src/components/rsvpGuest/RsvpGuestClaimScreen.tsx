@@ -175,7 +175,10 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
 
   const signInFirst = useCallback((): void => {
     // Held through install, sign-up and onboarding; the shell reopens this screen.
-    void setPendingRsvpGuest(code).then(() => router.replace("/" as never));
+    void setPendingRsvpGuest(code).then(() => {
+      if (router.canGoBack()) router.back();
+      else router.replace("/" as never);
+    });
   }, [code, router]);
 
   const release = useCallback(async (): Promise<void> => {
