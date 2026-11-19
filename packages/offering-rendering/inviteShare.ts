@@ -53,6 +53,7 @@ export const shareInviteText = async (
     await write.call(nav.clipboard, text);
     return "copied";
   }
+  // SHARE-NON-CONTENT:invite
   await Share.share({ message: text });
   return "shared";
 };
