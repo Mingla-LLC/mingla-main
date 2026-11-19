@@ -1,9 +1,9 @@
 // Issue #4508 1.9 / amendment 4 / 2.5 — public-submit-rsvp's guest contract.
 //
-// MINGLA-INVARIANT: I-4508-SUBMIT-ACCEPTS-BOTH-GUEST-SHAPES | issue #4508 | public-submit-rsvp accepts a plus-one as {phone, phoneCountryIso} and still accepts the old {name, email, phone} guest; it refuses the inviter's own number and duplicates before the write, maps the database's refusals (plus-one limit, already listed, released, daily cap) to plain error codes, and a signed-out guest_lookup never returns an account.
+// MINGLA-INVARIANT: I-4508-SUBMIT-ACCEPTS-BOTH-GUEST-SHAPES | issue #4508 | public-submit-rsvp accepts a plus-one as {phone, phoneCountryIso} and still accepts the old {name, email, phone} guest; it refuses the inviter's own number and duplicates before the write, maps the database's refusals (plus-one limit, already listed, released, daily cap) to plain error codes, and a signed-out guest_lookup or guest_bring is refused (rsvp_guest_sign_in_required) before anything is read.
 //
 // fails-on-revert: restoring the name+email requirement reds the number-only
-// case; dropping the signed-out strip reds the lookup case.
+// case; dropping the T1 signed-out refusal reds the lookup case.
 import {
   digitsOf,
   mapGuestRpcError,
@@ -164,7 +164,7 @@ function opsDeps(userId: string | null, rpcResults: Record<string, unknown>) {
   return { deps, calls, drained };
 }
 
-Deno.test("guest_lookup: signed out learns only valid, rate-limited by IP", async () => {
+Deno.test("guest_lookup: T1 signed out is refused before the number is read", async () => {
   const { deps, calls } = opsDeps(null, {
     rsvp_guest_lookup: {
       valid: true,
@@ -172,30 +172,15 @@ Deno.test("guest_lookup: signed out learns only valid, rate-limited by IP", asyn
       user: { id: "x", displayName: "Leak" },
     },
   });
-  const r = await handleGuestOp({
-    op: "guest_lookup",
-    eventId: EVENT,
-    phone: "+15550104508",
-  }, deps);
-  assert(
-    r.status === 200 && JSON.stringify(r.body) === '{"valid":true}',
-    `P1-1: a signed-out caller learns only valid: ${JSON.stringify(r)}`,
-  );
-  assert(
-    calls[0].args.p_scope_key === "rsvp_guest_lookup:ip:203.0.113.9",
-    "per-IP limit",
-  );
-  const limited = await handleGuestOp(
-    { op: "guest_lookup", eventId: EVENT, phone: "+15550104508" },
-    opsDeps(null, { allowed: false }).deps,
-  );
-  assert(limited.status === 429, "rate limited");
-  const bad = await handleGuestOp({
-    op: "guest_lookup",
-    eventId: EVENT,
-    phone: "12345",
-  }, deps);
-  assert(bad.status === 400, "invalid number");
+  for (const phone of ["+15550104508", "12345", "+15550104999"]) {
+    const r = await handleGuestOp({ op: "guest_lookup", eventId: EVENT, phone }, deps);
+    assert(
+      r.status === 403 &&
+        JSON.stringify(r.body) === '{"error":"rsvp_guest_sign_in_required"}',
+      `T1: a signed-out lookup is the one refusal: ${JSON.stringify(r)}`,
+    );
+  }
+  assert(calls.length === 0, "T1: a signed-out lookup reaches no counter and no database read");
 });
 
 Deno.test("guest_lookup: signed in sees the account", async () => {
@@ -246,10 +231,7 @@ Deno.test("guest_lookup: a signed-in account has a daily ceiling of 200", async 
   );
   const out = opsDeps(null, { dayAllowed: false, rsvp_guest_lookup: { valid: true } });
   await handleGuestOp(body, out.deps);
-  assert(
-    !out.calls.some((c) => c.name === "rsvp_guest_lookup_day_hit"),
-    "signed-out callers keep the per-address limit only",
-  );
+  assert(out.calls.length === 0, "T1: signed-out callers are refused before any counter");
 });
 
 Deno.test("guest_bring: signed in only; added drains and returns the invite link", async () => {
@@ -257,7 +239,10 @@ Deno.test("guest_bring: signed in only; added drains and returns the invite link
     { op: "guest_bring", guestId: GUEST, phone: "+15550104950" },
     opsDeps(null, {}).deps,
   );
-  assert(anon.status === 401, "signed out refused");
+  assert(
+    anon.status === 403 && anon.body.error === "rsvp_guest_sign_in_required",
+    `T1: signed out gets the one refusal: ${JSON.stringify(anon)}`,
+  );
   const { deps, drained } = opsDeps("45080000-0000-4000-8000-000000000012", {
     rsvp_guest_bring: { outcome: "added", guestId: "g-new", rsvpId: "r-1" },
   });
@@ -571,4 +556,189 @@ Deno.test("R-9: a plus-one's pass name follows the 1.11 rule", async () => {
       !/name = guest\.name \?\? "Guest";/.test(fetch),
     "the submit's credentials and the pass PDF both use it",
   );
+});
+
+// ---- Fix round 4 -----------------------------------------------------------
+import {
+  applySmsRoute,
+  guestNoticeDispatch,
+  signedOutGuestRefusal,
+} from "../guestPayload.ts";
+import { passAccess } from "../../rsvp-pass-fetch/passAccess.ts";
+import { smsProviderForDestination } from "../../_shared/adapters/smsAdapter.ts";
+
+// T1: the refusal is decided from the guest count only, before any number.
+Deno.test("T1: any guest from a caller without a session refuses the RSVP; none passes", () => {
+  const refused = signedOutGuestRefusal({
+    signedIn: false,
+    rawGuests: [{ phone: "+15550104508" }],
+    rawPlusCount: 1,
+    rsvpStatus: "going",
+  });
+  assert(
+    refused?.status === 403 && refused.body.error === "rsvp_guest_sign_in_required",
+    JSON.stringify(refused),
+  );
+  for (const ok of [
+    { signedIn: false, rawGuests: [], rawPlusCount: 0, rsvpStatus: "going" },
+    { signedIn: false, rawGuests: [{ phone: "x" }], rawPlusCount: 0, rsvpStatus: "maybe" },
+    { signedIn: false, rawGuests: [{ phone: "+15550104508" }], rawPlusCount: 1, rsvpStatus: "not_going" },
+    { signedIn: true, rawGuests: [{ phone: "+15550104508" }], rawPlusCount: 1, rsvpStatus: "going" },
+  ]) {
+    assert(signedOutGuestRefusal(ok) === null, `passes: ${JSON.stringify(ok)}`);
+  }
+  assert(
+    signedOutGuestRefusal({ signedIn: false, rawGuests: [{ phone: "+1" }], rawPlusCount: undefined, rsvpStatus: "going" }) !== null,
+    "no plusCount: the array's length decides",
+  );
+  assert(
+    mapGuestRpcError("42501", "rsvp_guest_sign_in_required")?.status === 403 &&
+      mapGuestRpcError("22023", "rsvp_guest_has_pass")?.status === 409,
+    "the database's T1 / T3 refusals map to plain codes",
+  );
+});
+
+Deno.test("T1 wiring: the refusal runs before contact parsing, guest parsing and every RPC", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  const refusal = src.indexOf("const signedOutRefusal = signedOutGuestRefusal(");
+  assert(
+    refusal > 0 && refusal < src.indexOf("const parsedGuests = parseGuests(") &&
+      refusal < src.indexOf('admin.rpc("submit_event_rsvp_with_delivery"') &&
+      refusal < src.indexOf('"rsvp_guest_signed_out_attempt"'),
+    "the refusal comes first",
+  );
+});
+
+Deno.test("P3: a number the SMS adapter cannot route reads willText false, unsupported_region", () => {
+  const routable = (phone: string) => smsProviderForDestination(phone) !== null;
+  const phones: Record<string, string> = {
+    gh: "+233201234567",
+    us: "+15550104508",
+    ng: "+2348030301005",
+  };
+  const out = applySmsRoute(
+    [
+      { guestId: "gh", willText: true },
+      { guestId: "us", willText: true },
+      { guestId: "ng", willText: true },
+      { guestId: "held", willText: false, notTextedReason: "number_limit" },
+      { guestId: null, willText: true },
+    ],
+    (id) => phones[id],
+    routable,
+  );
+  assert(out[0].willText === false && out[0].notTextedReason === "unsupported_region", JSON.stringify(out[0]));
+  assert(out[1].willText === true && out[2].willText === true, "mapped countries still text");
+  assert(out[3].notTextedReason === "number_limit", "an earlier reason is kept");
+  assert(out[4].willText === true, "a row with no id is left as the database answered");
+});
+
+Deno.test("T3 / P3-T11: notices go through the release path with plain words", () => {
+  const own = guestNoticeDispatch({
+    kind: "guest_has_own_rsvp",
+    userId: "u-inviter",
+    guestId: "g1",
+    eventId: "e1",
+    eventTitle: "Rooftop Night",
+    phoneLast4: "1200",
+  });
+  assert(
+    own?.userId === "u-inviter" && own.type === "rsvp_guest_released" && own.skipPush &&
+      own.body === "The number ending 1200 RSVPed for Rooftop Night on their own, so they don't need your spot." &&
+      own.idempotencyKey === "rsvp_guest_own_rsvp:g1",
+    JSON.stringify(own),
+  );
+  const removed = guestNoticeDispatch({
+    kind: "guest_pass_removed",
+    userId: "u-guest",
+    guestId: "g2",
+    eventId: "e1",
+    eventTitle: "Rooftop Night",
+    inviterName: "Ivy I.",
+  });
+  assert(
+    removed?.userId === "u-guest" && removed.title === "Your guest pass was cancelled" &&
+      removed.body.startsWith("Ivy I. is no longer bringing you for Rooftop Night"),
+    JSON.stringify(removed),
+  );
+  assert(guestNoticeDispatch({ kind: "guest_pass_removed", guestId: "g", eventId: "e" }) === null, "no user, no notice");
+  assert(guestNoticeDispatch({ kind: "other", userId: "u", guestId: "g", eventId: "e" }) === null, "unknown kind");
+});
+
+Deno.test("T3 / P3-T11 wiring: notices are sent and never returned to the caller", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(/await sendGuestNotices\(admin, result\.guestNotices\)/.test(src), "sent");
+  assert(!/guestNotices:/.test(src.slice(src.indexOf("return json(200, {"))), "not in the answer");
+});
+
+Deno.test("K: a plus-one's pass is fetchable only once claimed (the inviter keeps theirs)", async () => {
+  const base = { role: "guest" as const, ownerUserId: "gia", parentOwnerUserId: "ivy" };
+  const pre = passAccess({ ...base, userId: "gia", guestClaimed: false });
+  assert(!pre.ok && pre.status === 409 && pre.error === "claim_required", JSON.stringify(pre));
+  assert(passAccess({ ...base, userId: "gia", guestClaimed: true }).ok, "claimed (or backfilled legacy): theirs");
+  assert(passAccess({ ...base, userId: "ivy", guestClaimed: false }).ok, "the party owner keeps their read");
+  const stranger = passAccess({ ...base, userId: "eve", guestClaimed: true });
+  assert(!stranger.ok && stranger.status === 403, "anyone else: sign in required");
+  assert(
+    passAccess({ role: "primary", userId: "ivy", ownerUserId: "ivy", parentOwnerUserId: null, guestClaimed: false }).ok,
+    "a primary pass is untouched",
+  );
+  const src = await Deno.readTextFile(new URL("../../rsvp-pass-fetch/index.ts", import.meta.url));
+  const gate = src.indexOf("const access = passAccess(");
+  assert(
+    gate > 0 && gate < src.indexOf("if (wantsMetadata)") &&
+      gate < src.indexOf("const pdf = await buildRsvpPassPdf") &&
+      /"id,rsvp_id,matched_user_id,name,qr_code,claimed_at"/.test(src),
+    "the claim gate runs before metadata and the PDF",
+  );
+});
+
+// Kept last: the handler module's clients leave timers behind.
+// T1: through the real handler, a signed-out submit with a listed, a released,
+// an account's and a new number gets byte-identical answers, and nothing
+// (not the database, not the network) is touched.
+Deno.test({
+  name: "T1: the signed-out answer is byte-identical for every kind of number",
+  // The handler module builds clients that keep timers; none touch the network.
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async () => {
+  Deno.env.set("SUPABASE_URL", "http://127.0.0.1:9");
+  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+  const realFetch = globalThis.fetch;
+  const fetched: string[] = [];
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    fetched.push(String(input));
+    return Promise.reject(new Error("no network in this test"));
+  }) as typeof fetch;
+  try {
+    const { handler } = await import("../index.ts");
+    const answers: string[] = [];
+    // listed, released, an account's, new (the same four the tester probed).
+    for (const [i, phone] of ["+15550301002", "+15550301003", "+15550301004", "+15550309999"].entries()) {
+      const res = await handler(new Request("http://localhost/public-submit-rsvp", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": `198.51.100.${i + 1}` },
+        body: JSON.stringify({
+          eventId: EVENT,
+          rsvpStatus: "going",
+          guestName: "Stranger",
+          guestEmail: `stranger${i}@example.test`,
+          guestPhone: "+15550309001",
+          plusCount: 1,
+          guests: [{ phone, phoneCountryIso: "US" }],
+        }),
+      }));
+      const headers = [...res.headers.entries()].sort().map(([k, v]) => `${k}:${v}`).join("|");
+      answers.push(`${res.status}\n${headers}\n${await res.text()}`);
+    }
+    assert(new Set(answers).size === 1, `one answer for every number:\n${answers.join("\n---\n")}`);
+    assert(
+      answers[0].startsWith("403\n") && answers[0].endsWith('{"error":"rsvp_guest_sign_in_required"}'),
+      answers[0],
+    );
+    assert(fetched.length === 0, `no request left the function: ${fetched.join(", ")}`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

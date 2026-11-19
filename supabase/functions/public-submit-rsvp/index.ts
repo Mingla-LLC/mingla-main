@@ -41,12 +41,19 @@ import {
   scheduleRsvpAdConversion,
 } from "./rsvpAdConversion.ts";
 import {
+  applySmsRoute,
+  guestNoticeDispatch,
+  type GuestNotice,
   mapGuestRpcError,
   parseGuests,
   rsvpClientKey,
   shapeSubmitGuest,
   signedOutGuestGate,
+  signedOutGuestRefusal,
 } from "./guestPayload.ts";
+// #4508 P3: the SMS adapter's own routing rule (a number it cannot route is
+// never texted).
+import { smsProviderForDestination } from "../_shared/adapters/smsAdapter.ts";
 import { handleGuestOp, isGuestOp } from "./guestOps.ts";
 // #4508 R-4 — the caller's address, read the one way the repo reads it.
 import { requestClientIp } from "../_shared/ticketLinkToken.ts";
@@ -115,7 +122,9 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-serve(async (req: Request): Promise<Response> => {
+// #4508 T1: exported so the signed-out guest refusal can be driven through
+// the real handler in a test; the runtime serves it as before.
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -253,6 +262,20 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // #4508 T1: adding a plus-one needs a signed-in account. Any guest from a
+  // caller without a verified session refuses the whole RSVP here, before a
+  // number (or the list) is read, with one constant answer. A signed-out RSVP
+  // without guests carries on exactly as before.
+  const signedOutRefusal = signedOutGuestRefusal({
+    signedIn: userId !== null,
+    rawGuests: body.guests,
+    rawPlusCount: body.plusCount,
+    rsvpStatus,
+  });
+  if (signedOutRefusal !== null) {
+    return json(signedOutRefusal.status, signedOutRefusal.body);
+  }
+
   let guestName = typeof body.guestName === "string"
     ? body.guestName.trim()
     : "";
@@ -383,7 +406,9 @@ serve(async (req: Request): Promise<Response> => {
   // the database reads it from this request header.
   const inviterClient = await rsvpClientKey(ip);
   // Issue #4508 R-1: count a signed-out caller's guest numbers first, in a
-  // transaction of their own, so a refused submit still counts.
+  // transaction of their own, so a refused submit still counts. T1: a
+  // signed-out caller with guests is refused above, so this passes straight
+  // through; it stays as defence in depth (no caller reaches it with guests).
   const gate = await signedOutGuestGate({
     signedIn: userId !== null,
     guests: normalizedGuests,
@@ -503,6 +528,7 @@ serve(async (req: Request): Promise<Response> => {
       willText?: boolean;
       notTextedReason?: string | null;
     }>;
+    guestNotices?: unknown;
   };
 
   const passEligible = result.status === "going" &&
@@ -571,10 +597,19 @@ serve(async (req: Request): Promise<Response> => {
     await drainRsvpDeliveries(admin, result.rsvpId);
   }
 
+  // Issue #4508 T3 / P3-T11 — in-app notices the submit asked for (an
+  // inviter whose guest RSVPed on their own; a claimed guest who was
+  // removed). Best-effort: the RSVP is committed.
+  await sendGuestNotices(admin, result.guestNotices);
+
+  // Issue #4508 P3 — a guest the SMS adapter has no route for is answered
+  // willText false (unsupported_region) now, not "Text on its way".
+  const submittedGuests = await routeSubmittedGuests(admin, result.guests ?? []);
+
   // Issue #4508 1.15 — each guest with the link the text carries, for the
   // success screen's "Invites sent" and "Send it yourself too".
   const guestsOut: Array<Record<string, unknown>> = [];
-  for (const guest of result.guests ?? []) {
+  for (const guest of submittedGuests) {
     // R-1: a signed-out caller gets no invite link (see shapeSubmitGuest).
     const link = userId !== null && typeof guest.guestId === "string"
       ? await mintClaimLink(admin, "rsvp_guest", guest.guestId)
@@ -620,7 +655,58 @@ serve(async (req: Request): Promise<Response> => {
     anonymousRecovery: [],
     guests: guestsOut,
   });
-});
+};
+
+if (import.meta.main) serve(handler);
+
+// Issue #4508 P3 — willText false (unsupported_region) for a guest whose
+// stored number the SMS adapter cannot route. One read of the party's numbers
+// (service role); on a read failure the answer stays as the database gave it.
+async function routeSubmittedGuests<
+  T extends { guestId?: string | null; willText?: boolean },
+>(admin: AdminClient, guests: T[]): Promise<T[]> {
+  const ids = guests
+    .filter((g) => g.willText !== false && typeof g.guestId === "string")
+    .map((g) => g.guestId as string);
+  if (ids.length === 0) return guests;
+  const { data, error } = await admin.from("event_rsvp_guests")
+    .select("id,phone")
+    .in("id", ids);
+  if (error !== null) {
+    console.warn("[public-submit-rsvp] guest route read failed", error.message);
+    return guests;
+  }
+  const phones = new Map<string, string | null>();
+  for (const row of (data ?? []) as Array<{ id: string; phone: string | null }>) {
+    phones.set(String(row.id), row.phone);
+  }
+  return applySmsRoute(
+    guests,
+    (id) => phones.get(id),
+    (phone) => smsProviderForDestination(phone) !== null,
+  );
+}
+
+// Issue #4508 T3 / P3-T11 — send each notice through notify-dispatch (the
+// path "This isn't me" uses). Never throws into the committed RSVP.
+async function sendGuestNotices(
+  admin: AdminClient,
+  notices: unknown,
+): Promise<void> {
+  if (!Array.isArray(notices)) return;
+  for (const notice of notices as GuestNotice[]) {
+    const body = guestNoticeDispatch(notice);
+    if (body === null) continue;
+    try {
+      const { error } = await admin.functions.invoke("notify-dispatch", { body });
+      if (error) {
+        console.warn("[public-submit-rsvp] guest notice failed", error.message);
+      }
+    } catch (err) {
+      console.warn("[public-submit-rsvp] guest notice failed", String(err));
+    }
+  }
+}
 
 // Best-effort: deliver the RSVP's pending rows now (the queue's every-minute
 // sweep is the backstop).

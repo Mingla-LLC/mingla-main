@@ -1,14 +1,14 @@
 // Issue #4508 — the RSVP form's two guest operations on public-submit-rsvp.
 //
 //   {op:"guest_lookup", eventId, phone}  amendment 4: the live match under the
-//     number field. Anyone may call it; a signed-out caller learns only
-//     whether the number is valid. Rate-limited per user (30/min, and 200 per
-//     rolling day) or per IP (15/min).
+//     number field. Signed in only (T1: a caller without a verified session
+//     gets rsvp_guest_sign_in_required before the number is read).
+//     Rate-limited per user (30/min, and 200 per rolling day).
 //   {op:"guest_bring", guestId, phone, phoneCountryIso?}  2.5: a claimed
 //     guest brings one more person when the host allows it. Signed in only.
 
 import { mintClaimLink } from "../_shared/claimLink.ts";
-import { mapGuestRpcError } from "./guestPayload.ts";
+import { guestSignInRequiredResponse, mapGuestRpcError } from "./guestPayload.ts";
 
 type RpcResult = {
   data: unknown;
@@ -70,6 +70,9 @@ export async function handleGuestOp(
   deps: GuestOpsDeps,
 ): Promise<GuestOpResponse> {
   if (body.op === "guest_lookup") {
+    // T1: adding a plus-one needs a signed-in account; one constant answer,
+    // before the payload or the number is looked at.
+    if (deps.userId === null) return guestSignInRequiredResponse();
     if (!only(body, ["op", "eventId", "phone"])) {
       return { status: 400, body: { error: "rsvp_payload_invalid" } };
     }
@@ -83,39 +86,28 @@ export async function handleGuestOp(
     }
     const limited = await rateLimit(
       deps,
-      deps.userId
-        ? `rsvp_guest_lookup:user:${deps.userId}`
-        : `rsvp_guest_lookup:ip:${deps.ip}`,
-      deps.userId ? 30 : 15,
+      `rsvp_guest_lookup:user:${deps.userId}`,
+      30,
     );
     if (limited) return limited;
     // A signed-in account also has a ceiling per rolling day.
-    if (deps.userId) {
-      const day = await rateLimit(deps, "", 200, {
-        name: "rsvp_guest_lookup_day_hit",
-        args: { p_user_id: deps.userId, p_limit: 200 },
-      });
-      if (day) return day;
-    }
+    const day = await rateLimit(deps, "", 200, {
+      name: "rsvp_guest_lookup_day_hit",
+      args: { p_user_id: deps.userId, p_limit: 200 },
+    });
+    if (day) return day;
     const { data, error } = await deps.rpc("rsvp_guest_lookup", {
       p_viewer: deps.userId,
       p_event_id: eventId,
       p_phone: phone,
     });
     if (error) return { status: 503, body: { error: "unavailable" } };
-    const result = objectResult(data);
-    // P1-1, defence in depth: a signed-out caller learns only whether the
-    // number is valid (the database already answers nothing more).
-    if (deps.userId === null) {
-      return { status: 200, body: { valid: result.valid === true } };
-    }
-    return { status: 200, body: result };
+    return { status: 200, body: objectResult(data) };
   }
 
   if (body.op === "guest_bring") {
-    if (deps.userId === null) {
-      return { status: 401, body: { error: "unauthorized" } };
-    }
+    // T1: the same one answer as the submit and the lookup.
+    if (deps.userId === null) return guestSignInRequiredResponse();
     if (!only(body, ["op", "guestId", "phone", "phoneCountryIso"])) {
       return { status: 400, body: { error: "rsvp_payload_invalid" } };
     }

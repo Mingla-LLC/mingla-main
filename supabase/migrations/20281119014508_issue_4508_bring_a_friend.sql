@@ -2614,7 +2614,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $function$
     JOIN public.event_rsvps r ON r.id=g.rsvp_id
     JOIN public.events e ON e.id=r.event_id
    WHERE r.id=p_rsvp_id
-     AND (r.user_id=auth.uid() OR g.matched_user_id=auth.uid())
+     -- K: a matched guest reads their pass only once they have claimed it.
+     AND (r.user_id=auth.uid() OR (g.matched_user_id=auth.uid() AND g.claimed_at IS NOT NULL))
      AND r.rsvp_status='going'
      AND r.approval_status='approved'
      AND g.qr_code IS NOT NULL
@@ -3380,6 +3381,8 @@ BEGIN
   LEFT JOIN public.event_dates ed ON ed.event_id = e.id AND ed.is_master = true
   LEFT JOIN public.profiles pg ON pg.id = g.matched_user_id
   WHERE g.matched_user_id = p_user_id
+    -- K: a plus-one's pass is theirs only once claimed.
+    AND g.claimed_at IS NOT NULL
     AND r.rsvp_status = 'going'
     AND r.approval_status IN ('approved', 'pending')
     AND e.deleted_at IS NULL;

@@ -1846,6 +1846,30 @@ BEGIN
         AND m.phone_sha256 = public.ad_list_audience_sha256(public.ad_list_audience_normalize_phone('+15550411500'))),
     'J: once claimed, the plus-one enters the audience like any guest');
 
+  -- ---- K: an unclaimed matched plus-one cannot read their pass yet -------
+  -- (FAILS-ON-REVERT: drop the claimed_at condition from the matched-guest
+  -- arm of fetch_user_rsvp_party_passes or fetch_user_going_rsvps -> fails.)
+  v_res := public.submit_event_rsvp(v_ev3, v_ivy, 'Ivy Ink', 'i4508v-11@example.test',
+    '+15550411100', 'going', 2, '[{"phone":"+15550411500"},{"phone":"+15550411400"}]'::jsonb, NULL, 'US');
+  v_rsvp := (v_res->>'rsvpId')::uuid;
+  SELECT id INTO v_gid FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550411400';
+  UPDATE public.event_rsvp_guests SET qr_code = 'mingla-rsvp:4508v-k' WHERE id = v_gid;
+  PERFORM pg_temp.ok((SELECT matched_user_id = v_jo AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE id = v_gid),
+    'K fixture: Jo is matched, unclaimed');
+  PERFORM pg_temp.as_user(v_jo);
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp))
+    AND NOT EXISTS (SELECT 1 FROM public.fetch_user_going_rsvps(v_jo) f WHERE f.qr_code = 'mingla-rsvp:4508v-k'),
+    'K: an unclaimed matched guest reads no pass (party passes, going list)');
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM public.rsvp_guest_claim(v_jo, public.mint_claim_link('rsvp_guest', v_gid)->>'code', NULL);
+  PERFORM pg_temp.as_user(v_jo);
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp) WHERE entity_id = v_gid)
+    AND EXISTS (SELECT 1 FROM public.fetch_user_going_rsvps(v_jo) f WHERE f.qr_code = 'mingla-rsvp:4508v-k'),
+    'K: once claimed, the pass is theirs');
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
   RAISE NOTICE '#4508 fix round 4: all cases passed';
 END
 $round4$;

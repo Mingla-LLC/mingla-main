@@ -132,8 +132,44 @@ export function parseGuests(input: {
   return { ok: true, guests, plusCount };
 }
 
+/** Issue #4508 T1 — adding a plus-one needs a signed-in Mingla account. */
+export const GUEST_SIGN_IN_REQUIRED = "rsvp_guest_sign_in_required";
+
+/** The one answer a caller without a verified session gets when it sends any
+ * guest. A constant: it is built from nothing the caller sent, so it is the
+ * same bytes for every number (on the list, released, an account's, new). */
+export const guestSignInRequiredResponse = (): {
+  status: number;
+  body: { error: string };
+} => ({ status: 403, body: { error: GUEST_SIGN_IN_REQUIRED } });
+
+/**
+ * Issue #4508 T1 — does a signed-out submit carry guests? Decided from the
+ * guest COUNT alone (never a number): not_going carries none, plusCount when
+ * sent (0 ignores a stray array, as the old app relies on), else the array's
+ * length. Any guest from a caller without a verified session refuses the
+ * whole RSVP (never a silent drop); a signed-out RSVP without guests passes.
+ */
+export function signedOutGuestRefusal(input: {
+  signedIn: boolean;
+  rawGuests: unknown;
+  rawPlusCount: unknown;
+  rsvpStatus: unknown;
+}): { status: number; body: { error: string } } | null {
+  if (input.signedIn || input.rsvpStatus === "not_going") return null;
+  const count = typeof input.rawPlusCount === "number" &&
+      Number.isFinite(input.rawPlusCount)
+    ? Math.max(0, Math.floor(input.rawPlusCount))
+    : Array.isArray(input.rawGuests)
+    ? input.rawGuests.length
+    : 0;
+  return count > 0 ? guestSignInRequiredResponse() : null;
+}
+
 /** RPC messages the form can act on, with their HTTP status. */
 export const GUEST_RPC_ERRORS: ReadonlyArray<readonly [string, number]> = [
+  [GUEST_SIGN_IN_REQUIRED, 403],
+  ["rsvp_guest_has_pass", 409],
   ["rsvp_plus_ones_exceeded", 400],
   ["rsvp_guest_own_number", 400],
   ["rsvp_guest_duplicate", 400],
@@ -243,4 +279,106 @@ export function shapeSubmitGuest(
       ? guest.notTextedReason ?? null
       : null,
   };
+}
+
+/** Issue #4508 P3 — why a guest will not be texted when the SMS adapter has no
+ * route for the number's country (it would fail at send time). */
+export const UNSUPPORTED_REGION = "unsupported_region";
+
+/**
+ * Issue #4508 P3 — a guest whose number the SMS adapter cannot route (no
+ * country mapping, e.g. some +233 numbers) is answered willText false with
+ * notTextedReason "unsupported_region", so the inviter is told now to send
+ * the invite themselves instead of "Text on its way". `phoneOf` gives the
+ * stored number of a guest row (signed-in callers only: they alone have
+ * guests); `routable` is the adapter's own routing rule.
+ */
+export function applySmsRoute<T extends SubmitGuestRow>(
+  guests: readonly T[],
+  phoneOf: (guestId: string) => string | null | undefined,
+  routable: (phone: string) => boolean,
+): T[] {
+  return guests.map((guest) => {
+    if (guest.willText === false || typeof guest.guestId !== "string") {
+      return guest;
+    }
+    const phone = phoneOf(guest.guestId);
+    if (typeof phone !== "string" || phone.length === 0 || routable(phone)) {
+      return guest;
+    }
+    return { ...guest, willText: false, notTextedReason: UNSUPPORTED_REGION };
+  });
+}
+
+/** One in-app notice the submit asks for (submit_event_rsvp guestNotices). */
+export interface GuestNotice {
+  kind?: unknown;
+  userId?: unknown;
+  guestId?: unknown;
+  eventId?: unknown;
+  eventTitle?: unknown;
+  phoneLast4?: unknown;
+  inviterName?: unknown;
+}
+
+const noticeText = (v: unknown): string | null =>
+  typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+
+/**
+ * Issue #4508 T3 / P3-T11 — the notify-dispatch body for one notice, through
+ * the same in-app path "This isn't me" uses to tell an inviter (type
+ * rsvp_guest_released, no push). Null for anything malformed.
+ *   guest_has_own_rsvp: the inviter's guest RSVPed on their own, so the
+ *     guest spot was freed.
+ *   guest_pass_removed: a guest who had claimed their pass was removed by
+ *     the inviter (taken off the party, or the party can't go).
+ */
+export function guestNoticeDispatch(notice: GuestNotice): {
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  data: { eventId: string };
+  relatedId: string;
+  relatedType: "event";
+  skipPush: true;
+  idempotencyKey: string;
+} | null {
+  const userId = noticeText(notice.userId);
+  const guestId = noticeText(notice.guestId);
+  const eventId = noticeText(notice.eventId);
+  if (userId === null || guestId === null || eventId === null) return null;
+  const title = noticeText(notice.eventTitle);
+  const forEvent = title !== null ? ` for ${title}` : "";
+  const common = {
+    userId,
+    data: { eventId },
+    relatedId: eventId,
+    relatedType: "event" as const,
+    skipPush: true as const,
+  };
+  if (notice.kind === "guest_has_own_rsvp") {
+    const last4 = noticeText(notice.phoneLast4);
+    const who = last4 !== null && /^\d{4}$/.test(last4)
+      ? `The number ending ${last4}`
+      : "Someone you were bringing";
+    return {
+      ...common,
+      type: "rsvp_guest_released",
+      title: "Your guest's spot is free",
+      body: `${who} RSVPed${forEvent} on their own, so they don't need your spot.`,
+      idempotencyKey: `rsvp_guest_own_rsvp:${guestId}`,
+    };
+  }
+  if (notice.kind === "guest_pass_removed") {
+    const inviter = noticeText(notice.inviterName) ?? "Your friend";
+    return {
+      ...common,
+      type: "rsvp_guest_pass_removed",
+      title: "Your guest pass was cancelled",
+      body: `${inviter} is no longer bringing you${forEvent}, so your guest pass was cancelled. You can still RSVP yourself.`,
+      idempotencyKey: `rsvp_guest_pass_removed:${guestId}`,
+    };
+  }
+  return null;
 }
