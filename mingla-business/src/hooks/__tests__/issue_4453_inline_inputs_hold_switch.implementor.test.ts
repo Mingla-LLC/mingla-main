@@ -46,7 +46,7 @@ describe("#4453 small forms in the page hold a brand switch while they hold unsa
     ["Venue settings: the details or contact form, changed", "src/components/venue/VenueDetailsEditor.tsx", "dirty: canMutate && (identityChanged || contactChanged)"],
     ["Sale settings changed and not saved", "src/components/discounts/ItemDiscountControls.tsx", "dirty: touched"],
     ["Stay: an unsaved Room or Place (in the page on a wide screen)", "src/components/stay/StayInventoryManager.tsx", "dirty: editor !== null && editorDirty"],
-    ["Stay availability: a price typed and not yet saved", "src/components/stay/StayInventoryManager.tsx", "dirty: overridePrice.trim() !== savedPrice.trim()"],
+    ["Stay availability: a price or open-rooms number typed and not yet saved", "src/components/stay/StayInventoryManager.tsx", "dirty: overridePrice.trim() !== savedPrice.trim() || quantity.trim() !== savedQuantity.trim()"],
     ["Website: a request typed for Ari on a section", "src/components/sites/website/workspace/SectionAriCard.tsx", 'dirty: text.trim() !== ""'],
     ["Website: words typed for Ari in its panel", "src/components/sites/website/workspace/AriPanel.tsx", 'dirty: draftText.trim() !== ""'],
     ["Website: a request for the Mingla team, written or changed", "src/components/sites/website/workspace/TeamRequestCard.tsx", "dirty: what.trim() !== draft.what.trim()"],
@@ -79,7 +79,7 @@ describe("#4453 small forms in the page hold a brand switch while they hold unsa
     expect(sale).toContain("touch(setLimitMode)(value)");
     expect(sale).toMatch(/onPress=\{\(\) => \{\s*setTouched\(true\);\s*setScheduleDays\(/);
     // Stay availability: the saved price is the one the save sent.
-    expect(read("src/components/stay/StayInventoryManager.tsx")).toMatch(/onSuccess: \(\{ inventory \}\) => \{\s*setSavedPrice\(overridePrice\);/);
+    expect(read("src/components/stay/StayInventoryManager.tsx")).toMatch(/onSuccess: \(\{ inventory \}\) => \{\s*setSavedPrice\(overridePrice\);\s*setSavedQuantity\(quantity\);/);
     // Ari's panel clears the box when the request was taken; the access card when the account was added.
     expect(read("src/components/sites/website/workspace/AriPanel.tsx")).toContain('if (!refused) onDraftText("");');
     expect(read("src/components/event/EventTicketCheckoutAccessCard.tsx")).toMatch(/onSuccess: \(\) => \{\s*setUsername\(""\);/);

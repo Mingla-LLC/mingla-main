@@ -2011,11 +2011,13 @@ function AvailabilityManager({
   const [quantity, setQuantity] = useState("1");
   const [stopSell, setStopSell] = useState(false);
   const [overridePrice, setOverridePrice] = useState("");
-  // #4453 — a price typed here and not yet saved holds a brand switch.
-  // `savedPrice` is the price the last save sent.
+  // #4453 — a price or a number of open rooms typed here and not yet saved
+  // holds a brand switch. `savedPrice` / `savedQuantity` are what the last
+  // save sent (the form opens on no price and 1).
   const [savedPrice, setSavedPrice] = useState("");
+  const [savedQuantity, setSavedQuantity] = useState("1");
   useUnsavedChangesGuard({
-    dirty: overridePrice.trim() !== savedPrice.trim(),
+    dirty: overridePrice.trim() !== savedPrice.trim() || quantity.trim() !== savedQuantity.trim(),
     onRequestLeave: () => undefined,
     hardwareBack: false,
   });
@@ -2145,6 +2147,7 @@ function AvailabilityManager({
     },
     onSuccess: ({ inventory }) => {
       setSavedPrice(overridePrice);
+      setSavedQuantity(quantity);
       queryClient.setQueryData(stayInventoryKeys.detail(venueId), inventory);
     },
   });
