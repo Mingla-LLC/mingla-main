@@ -146,9 +146,9 @@ BEGIN
   PERFORM public.record_install_attribution('af-x4', 'consumer', '{"af_status":"Organic"}'::jsonb);
   RESET ROLE;
   PERFORM pg_temp.t4226x_check(
-    (SELECT onboarding_furthest_step = 2 AND signup_source = 'friend_invite' FROM public.profiles WHERE id = v_u1)
+    (SELECT onboarding_furthest_step = 2 AND signup_source = 'friend_invite' FROM public.person_journey WHERE user_id = v_u1)
     AND (SELECT media_source = 'tiktok_int' FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-x1')
-    AND (SELECT brand_setup_furthest_step = 2 FROM public.creator_accounts WHERE id = v_u2),
+    AND (SELECT brand_setup_furthest_step = 2 FROM public.person_journey WHERE user_id = v_u2),
     'T-00 fixtures: tracking recorded through the RPCs');
 
   ------------------------------------------------------------------------------
@@ -172,9 +172,10 @@ BEGIN
   END;
   -- A whole-row write-back of the row as read (unchanged tracking values) is not refused.
   BEGIN
-    UPDATE public.profiles p SET signup_source = p.signup_source, signup_source_detail = p.signup_source_detail,
-           onboarding_furthest_step = p.onboarding_furthest_step, onboarding_furthest_step_at = p.onboarding_furthest_step_at
-     WHERE id = v_u1;
+    UPDATE public.appsflyer_devices d SET af_status = d.af_status, media_source = d.media_source, campaign = d.campaign,
+           install_time = d.install_time, conversion_payload = d.conversion_payload,
+           attribution_received_at = d.attribution_received_at
+     WHERE d.user_id = v_u1 AND d.appsflyer_uid = 'af-x1';
     PERFORM pg_temp.t4226x_check(true, 'T-01 writing back unchanged tracking values is allowed');
   EXCEPTION WHEN others THEN PERFORM pg_temp.t4226x_check(false, 'T-01 writing back unchanged tracking values is allowed', SQLERRM);
   END;
@@ -234,8 +235,8 @@ BEGIN
   PERFORM pg_temp.t4226x_check(
     (SELECT media_source = 'tiktok_int' AND campaign = 'c1' AND conversion_payload IS NOT NULL FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-x1')
     AND (SELECT media_source = 'Facebook Ads' FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-x2')
-    AND (SELECT onboarding_furthest_step = 2 AND signup_source = 'friend_invite' FROM public.profiles WHERE id = v_u1)
-    AND (SELECT brand_setup_furthest_step = 2 FROM public.creator_accounts WHERE id = v_u2),
+    AND (SELECT onboarding_furthest_step = 2 AND signup_source = 'friend_invite' FROM public.person_journey WHERE user_id = v_u1)
+    AND (SELECT brand_setup_furthest_step = 2 FROM public.person_journey WHERE user_id = v_u2),
     'T-01 the device upsert and profile edits keep every stored tracking value');
 
   ------------------------------------------------------------------------------
@@ -244,12 +245,6 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.t4226x_as(v_u1);
   FOR v_fn IN SELECT unnest(ARRAY[
-      'UPDATE public.profiles SET signup_source = ''paid_ad'' WHERE id = ''' || v_u1 || '''',
-      'UPDATE public.profiles SET signup_source_detail = ''{"label":"x"}'' WHERE id = ''' || v_u1 || '''',
-      'UPDATE public.profiles SET signup_surface = ''web'' WHERE id = ''' || v_u1 || '''',
-      'UPDATE public.profiles SET onboarding_furthest_step = 1 WHERE id = ''' || v_u1 || '''',
-      'UPDATE public.profiles SET onboarding_furthest_step_key = ''x'' WHERE id = ''' || v_u1 || '''',
-      'UPDATE public.profiles SET onboarding_furthest_step_at = NULL WHERE id = ''' || v_u1 || '''',
       'UPDATE public.appsflyer_devices SET media_source = NULL WHERE appsflyer_uid = ''af-x1''',
       'UPDATE public.appsflyer_devices SET af_status = ''Organic'' WHERE appsflyer_uid = ''af-x1''',
       'UPDATE public.appsflyer_devices SET campaign = ''x'' WHERE appsflyer_uid = ''af-x1''',
@@ -266,24 +261,33 @@ BEGIN
     END;
     PERFORM pg_temp.t4226x_check(v_raised AND v_msg = 'journey_fields_server_owned', 'T-02 refused: ' || left(v_fn, 90), v_msg);
   END LOOP;
-  PERFORM pg_temp.t4226x_as(v_u2);
-  v_raised := false; v_msg := NULL;
-  BEGIN
-    UPDATE public.creator_accounts SET brand_setup_furthest_step = 4 WHERE id = v_u2;
-  EXCEPTION WHEN others THEN v_raised := true; v_msg := SQLERRM;
-  END;
-  PERFORM pg_temp.t4226x_check(v_raised AND v_msg = 'journey_fields_server_owned', 'T-02 refused: creator_accounts brand setup step', v_msg);
-  PERFORM pg_temp.t4226x_as(v_u6);
-  v_raised := false; v_msg := NULL;
-  BEGIN
-    UPDATE public.creator_accounts SET brand_setup_furthest_step_key = 'done' WHERE id = v_u6;
-  EXCEPTION WHEN others THEN v_raised := true; v_msg := SQLERRM;
-  END;
-  PERFORM pg_temp.t4226x_check(v_raised AND v_msg = 'journey_fields_server_owned', 'T-02 refused: creator_accounts brand setup key', v_msg);
+  -- The sign-up source and the steps are not columns of profiles / creator_accounts
+  -- any more: they live in the private person_journey table. A signed-in client
+  -- has no access to it at all (read, insert, update or delete).
+  FOR v_fn IN SELECT unnest(ARRAY[
+      'UPDATE public.person_journey SET signup_source = ''paid_ad'' WHERE user_id = ''' || v_u1 || '''',
+      'UPDATE public.person_journey SET signup_source_detail = ''{"label":"x"}'' WHERE user_id = ''' || v_u1 || '''',
+      'UPDATE public.person_journey SET signup_surface = ''web'' WHERE user_id = ''' || v_u1 || '''',
+      'UPDATE public.person_journey SET onboarding_furthest_step = 1 WHERE user_id = ''' || v_u1 || '''',
+      'UPDATE public.person_journey SET onboarding_furthest_step_key = ''x'' WHERE user_id = ''' || v_u1 || '''',
+      'UPDATE public.person_journey SET onboarding_furthest_step_at = NULL WHERE user_id = ''' || v_u1 || '''',
+      'UPDATE public.person_journey SET brand_setup_furthest_step = 4 WHERE user_id = ''' || v_u2 || '''',
+      'UPDATE public.person_journey SET brand_setup_furthest_step_key = ''done'' WHERE user_id = ''' || v_u2 || '''',
+      'INSERT INTO public.person_journey(user_id, signup_source) VALUES (''' || v_u6 || ''', ''paid_ad'')',
+      'DELETE FROM public.person_journey WHERE user_id = ''' || v_u1 || '''',
+      'SELECT count(*) FROM public.person_journey'])
+  LOOP
+    v_raised := false; v_msg := NULL;
+    BEGIN
+      EXECUTE v_fn;
+    EXCEPTION WHEN others THEN v_raised := true; v_msg := SQLERRM;
+    END;
+    PERFORM pg_temp.t4226x_check(v_raised AND v_msg LIKE 'permission denied%', 'T-02 refused: ' || left(v_fn, 90), v_msg);
+  END LOOP;
   RESET ROLE;
   SET LOCAL ROLE service_role;
   BEGIN
-    UPDATE public.profiles SET onboarding_furthest_step_key = 'svc' WHERE id = v_u1;
+    UPDATE public.person_journey SET onboarding_furthest_step_key = 'svc' WHERE user_id = v_u1;
     UPDATE public.appsflyer_devices SET campaign = 'svc' WHERE appsflyer_uid = 'af-x1';
     PERFORM pg_temp.t4226x_check(true, 'T-02 service_role (edge functions) is not refused');
   EXCEPTION WHEN others THEN PERFORM pg_temp.t4226x_check(false, 'T-02 service_role (edge functions) is not refused', SQLERRM);
@@ -369,7 +373,9 @@ BEGIN
     END;
     IF NOT v_raised THEN PERFORM pg_temp.t4226x_check(false, 'T-04 rejects junk: ' || left(v_fn, 80), 'accepted'); END IF;
   END LOOP;
-  PERFORM pg_temp.t4226x_check((SELECT signup_source IS NULL FROM public.profiles WHERE id = v_u6), 'T-04 nothing junk was stored');
+  RESET ROLE;
+  PERFORM pg_temp.t4226x_check(NOT EXISTS (SELECT 1 FROM public.person_journey WHERE user_id = v_u6 AND signup_source IS NOT NULL), 'T-04 nothing junk was stored');
+  SET LOCAL ROLE authenticated;
   -- Another person's row, another app, another AppsFlyer id: never touched.
   PERFORM pg_temp.t4226x_as(v_u4);
   PERFORM public.record_install_attribution('af-x3', 'consumer', '{"af_status":"Non-organic","media_source":"hijack"}'::jsonb);
@@ -380,7 +386,7 @@ BEGIN
   RESET ROLE;
   PERFORM pg_temp.t4226x_check(
     NOT EXISTS (SELECT 1 FROM public.appsflyer_devices WHERE media_source = 'hijack')
-    AND (SELECT brand_setup_furthest_step IS NULL FROM public.creator_accounts WHERE id = v_u2) IS NOT TRUE,
+    AND (SELECT brand_setup_furthest_step IS NULL FROM public.person_journey WHERE user_id = v_u2) IS NOT TRUE,
     'T-04 an RPC never writes a row that is not the caller''s (other user, other app, no Host account)');
   -- An organic first answer may be upgraded, a media source never replaced.
   SET LOCAL ROLE authenticated;
@@ -401,7 +407,7 @@ BEGIN
   v_msg := NULL;
   BEGIN
     SELECT concat_ws('|', p.signup_source, p.signup_source_detail::text, p.signup_surface, p.onboarding_furthest_step::text)
-      INTO v_msg FROM public.profiles p WHERE p.id = v_u1;
+      INTO v_msg FROM public.person_journey p WHERE p.user_id = v_u1;
   EXCEPTION WHEN insufficient_privilege THEN v_msg := NULL;
   END;
   PERFORM pg_temp.t4226x_check(COALESCE(v_msg, '') = '',
@@ -416,7 +422,7 @@ BEGIN
 
   -- T-05 PII via p_detail.
   SET LOCAL ROLE postgres;
-  UPDATE public.profiles SET signup_source = NULL WHERE id = v_u6;
+  UPDATE public.person_journey SET signup_source = NULL WHERE user_id = v_u6;
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.t4226x_as(v_u6);
   PERFORM public.record_signup_source('referral_link',

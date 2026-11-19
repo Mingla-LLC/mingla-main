@@ -107,6 +107,7 @@ DECLARE
   v_e_seed constant uuid := '42262000-0000-4000-a000-000000000017';
   v_e_src2 constant uuid := '42262000-0000-4000-a000-000000000018';
   v_e_src3 constant uuid := '42262000-0000-4000-a000-000000000019';
+  v_e_nostep constant uuid := '42262000-0000-4000-a000-00000000001a';
   -- Host checklist states.
   v_h1 constant uuid := '42262000-0000-4000-a000-000000000021';
   v_h2 constant uuid := '42262000-0000-4000-a000-000000000022';
@@ -141,6 +142,7 @@ DECLARE
   v_checked  integer := 0;
   v_raised   boolean;
   v_j        jsonb;
+  v_fn       text;
 BEGIN
   -- Everyone in auth.users first (profiles reference it).
   INSERT INTO auth.users(id, email, created_at)
@@ -151,6 +153,7 @@ BEGIN
     (v_e_reg, 't4226j-reg@mingla-fixture.org'), (v_e_sign, 't4226j-sign@mingla-fixture.org'),
     (v_e_test, 'test.t4226j@mingla-fixture.org'), (v_e_seed, 't4226j-seed@mingla-fixture.org'),
     (v_e_src2, 't4226j-src2@mingla-fixture.org'), (v_e_src3, 't4226j-src3@mingla-fixture.org'),
+    (v_e_nostep, 't4226j-nostep@mingla-fixture.org'),
     (v_h1, 't4226j-h1@mingla-fixture.org'), (v_h2, 't4226j-h2@mingla-fixture.org'),
     (v_h3, 't4226j-h3@mingla-fixture.org'), (v_h4, 't4226j-h4@mingla-fixture.org'),
     (v_h5, 't4226j-h5@mingla-fixture.org'), (v_h6, 't4226j-h6@mingla-fixture.org'),
@@ -171,6 +174,7 @@ BEGIN
     (v_e_seed, 't4226j-seed@mingla-fixture.org', 'J Seed',       true,  true,  NULL, now() - interval '50 days', NULL),
     (v_e_src2, 't4226j-src2@mingla-fixture.org', 'J Src2',       true,  false, NULL, now() - interval '10 days', NULL),
     (v_e_src3, 't4226j-src3@mingla-fixture.org', 'J Src3',       true,  false, NULL, now() - interval '10 days', NULL),
+    (v_e_nostep, 't4226j-nostep@mingla-fixture.org', 'J No Step', false, false, NULL, now() - interval '5 days', NULL),
     (v_h1, 't4226j-h1@mingla-fixture.org', 'J H1', false, false, NULL, now() - interval '50 days', NULL),
     (v_h2, 't4226j-h2@mingla-fixture.org', 'J H2', false, false, NULL, now() - interval '50 days', NULL),
     (v_h3, 't4226j-h3@mingla-fixture.org', 'J H3', false, false, NULL, now() - interval '50 days', NULL),
@@ -244,15 +248,15 @@ BEGIN
   PERFORM public.record_journey_mark('explorer_onboarding', 3::smallint, 'interests');
   PERFORM public.record_journey_mark('explorer_onboarding', 2::smallint, 'phone');
   RESET ROLE;
-  SELECT onboarding_furthest_step AS s, onboarding_furthest_step_key AS k INTO v_r FROM public.profiles WHERE id = v_e_sign;
+  SELECT onboarding_furthest_step AS s, onboarding_furthest_step_key AS k INTO v_r FROM public.person_journey WHERE user_id = v_e_sign;
   PERFORM pg_temp.t4226j_assert(v_r.s = 3 AND v_r.k = 'interests', 'J-02 a lower step does not lower the furthest step');
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.t4226j_as(v_e_sign);
   PERFORM public.record_journey_mark('explorer_onboarding', 3::smallint, 'interests_v2');
   RESET ROLE;
-  PERFORM pg_temp.t4226j_assert((SELECT onboarding_furthest_step_key FROM public.profiles WHERE id = v_e_sign) = 'interests_v2',
+  PERFORM pg_temp.t4226j_assert((SELECT onboarding_furthest_step_key FROM public.person_journey WHERE user_id = v_e_sign) = 'interests_v2',
     'J-02 the same step with a new key updates the key');
-  PERFORM pg_temp.t4226j_assert((SELECT onboarding_furthest_step FROM public.profiles WHERE id = v_e_onb) IS NULL,
+  PERFORM pg_temp.t4226j_assert((SELECT onboarding_furthest_step FROM public.person_journey WHERE user_id = v_e_onb) IS NULL,
     'J-02 another person''s row is untouched');
 
   SET LOCAL ROLE authenticated;
@@ -270,8 +274,11 @@ BEGIN
   PERFORM public.record_journey_mark('host_brand_setup', 1::smallint, 'welcome');
   RESET ROLE;
   PERFORM pg_temp.t4226j_assert(
-    (SELECT brand_setup_furthest_step = 2 AND brand_setup_furthest_step_key = 'brand_name' FROM public.creator_accounts WHERE id = v_h1),
+    (SELECT brand_setup_furthest_step = 2 AND brand_setup_furthest_step_key = 'brand_name' FROM public.person_journey WHERE user_id = v_h1),
     'J-02 brand setup step is monotonic on the caller''s Host account');
+  PERFORM pg_temp.t4226j_assert(
+    (SELECT brand_setup_furthest_step IS NULL FROM public.person_journey WHERE user_id = v_e_sign) IS NOT FALSE,
+    'J-02 a person with no Host account records no brand setup step');
 
   -- Signup source: first write wins; allow-list.
   SET LOCAL ROLE authenticated;
@@ -287,7 +294,7 @@ BEGIN
   PERFORM public.record_signup_source('paid_ad', NULL, 'web');
   RESET ROLE;
   PERFORM pg_temp.t4226j_assert(
-    (SELECT signup_source = 'friend_invite' AND signup_surface = 'explorer_app' FROM public.profiles WHERE id = v_e_onb),
+    (SELECT signup_source = 'friend_invite' AND signup_surface = 'explorer_app' FROM public.person_journey WHERE user_id = v_e_onb),
     'J-02 the first signup source wins');
 
   -- Install attribution: own row only, first media source wins.
@@ -308,16 +315,112 @@ BEGIN
   PERFORM pg_temp.t4226j_assert(v_r.media_source = 'Facebook Ads' AND v_r.campaign = 'Lagos weekends' AND v_r.install_time IS NOT NULL,
     'J-02 the first media source wins and the payload fields are stored');
 
+  -- Return value, device row created when missing, foreign ids refused.
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4226j_as(v_e_src3);
+  PERFORM pg_temp.t4226j_assert(
+    public.record_install_attribution('af-src3', 'consumer', '{"af_status":"Non-organic","media_source":"tiktok_int"}'::jsonb) IS TRUE,
+    'J-02 install attribution returns true when it wrote the row');
+  PERFORM pg_temp.t4226j_assert(
+    public.record_install_attribution('af-src3', 'consumer', '{"af_status":"Non-organic","media_source":"later_ad"}'::jsonb) IS FALSE,
+    'J-02 install attribution returns false once the first write happened');
+  PERFORM pg_temp.t4226j_as(v_e_exp);
+  PERFORM pg_temp.t4226j_assert(
+    public.record_install_attribution('af-new-con', 'consumer',
+      '{"af_status":"Non-organic","media_source":"Facebook Ads","platform":"ios","app_id":"id123"}'::jsonb) IS TRUE,
+    'J-02 install attribution creates the device row when the app has not registered it yet');
+  v_raised := false;
+  BEGIN
+    PERFORM public.record_install_attribution('af-new-con2', 'consumer', '{"af_status":"Organic"}'::jsonb);
+  EXCEPTION WHEN others THEN v_raised := SQLERRM = 'invalid_platform';
+  END;
+  PERFORM pg_temp.t4226j_assert(v_raised, 'J-02 creating a device row needs the platform in the payload (no invented data)');
+  PERFORM pg_temp.t4226j_assert(
+    public.record_install_attribution('af-src2', 'consumer', '{"af_status":"Non-organic","media_source":"x","platform":"ios","app_id":"id1"}'::jsonb) IS FALSE,
+    'J-02 another person''s AppsFlyer id is never written (false, no row)');
+  RESET ROLE;
+  PERFORM pg_temp.t4226j_assert(
+    (SELECT count(*) FROM public.appsflyer_devices WHERE user_id = v_e_exp) = 1
+    AND (SELECT platform = 'ios' AND app_id = 'id123' AND media_source = 'Facebook Ads' FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-new-con'),
+    'J-02 the created device row carries the payload''s platform and app id and the attribution');
+  -- The app's own registration upsert afterwards keeps the stored attribution.
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.t4226j_as(v_e_exp);
+  INSERT INTO public.appsflyer_devices(user_id, appsflyer_uid, platform, app_id, app, updated_at)
+  VALUES (v_e_exp, 'af-new-con', 'ios', 'id123', 'consumer', now())
+  ON CONFLICT (user_id, app, appsflyer_uid) DO UPDATE SET platform = EXCLUDED.platform, app_id = EXCLUDED.app_id, updated_at = EXCLUDED.updated_at;
+  RESET ROLE;
+  PERFORM pg_temp.t4226j_assert(
+    (SELECT media_source FROM public.appsflyer_devices WHERE appsflyer_uid = 'af-new-con') = 'Facebook Ads',
+    'J-02 registering the device afterwards keeps the attribution');
+
   -- Direct writes by a signed-in client are refused.
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.t4226j_as(v_e_src3);
   v_raised := false;
   BEGIN
-    UPDATE public.profiles SET signup_source = 'paid_ad' WHERE id = v_e_src3;
+    UPDATE public.appsflyer_devices SET media_source = 'forged' WHERE user_id = v_e_src3;
   EXCEPTION WHEN others THEN v_raised := SQLERRM = 'journey_fields_server_owned';
   END;
+  PERFORM pg_temp.t4226j_assert(v_raised, 'J-02 a signed-in client cannot write the AppsFlyer attribution columns directly');
+  FOREACH v_fn IN ARRAY ARRAY['SELECT count(*) FROM public.person_journey',
+      'UPDATE public.person_journey SET signup_source = ''paid_ad''',
+      'INSERT INTO public.person_journey(user_id, signup_source) VALUES (''' || v_e_src3 || ''', ''paid_ad'')',
+      'DELETE FROM public.person_journey'] LOOP
+    v_raised := false;
+    BEGIN
+      EXECUTE v_fn;
+    EXCEPTION WHEN insufficient_privilege THEN v_raised := true;
+    END;
+    PERFORM pg_temp.t4226j_assert(v_raised, 'J-02 a signed-in client has no access to person_journey: ' || left(v_fn, 50));
+  END LOOP;
   RESET ROLE;
-  PERFORM pg_temp.t4226j_assert(v_raised, 'J-02 a signed-in client cannot write the tracking columns directly');
+  SET LOCAL ROLE anon;
+  v_raised := false;
+  BEGIN
+    PERFORM count(*) FROM public.person_journey;
+  EXCEPTION WHEN insufficient_privilege THEN v_raised := true;
+  END;
+  RESET ROLE;
+  PERFORM pg_temp.t4226j_assert(v_raised, 'J-02 anon has no access to person_journey');
+  PERFORM pg_temp.t4226j_assert(
+    (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.person_journey'::regclass)
+    AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'person_journey')
+    AND NOT has_table_privilege('authenticated', 'public.person_journey', 'SELECT')
+    AND NOT has_table_privilege('anon', 'public.person_journey', 'SELECT')
+    AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                     WHERE table_schema = 'public' AND table_name IN ('profiles', 'creator_accounts')
+                       AND column_name IN ('signup_source', 'signup_source_detail', 'signup_surface', 'onboarding_furthest_step',
+                                           'brand_setup_furthest_step')),
+    'J-02 the tracking values are a private table (RLS on, no policy, no grants), not columns of profiles or creator_accounts');
+  PERFORM pg_temp.t4226j_assert(
+    (SELECT confdeltype FROM pg_constraint WHERE conrelid = 'public.person_journey'::regclass AND contype = 'f') = 'c',
+    'J-02 a person''s journey row is deleted with their account (ON DELETE CASCADE)');
+  -- The set-based classifier keeps admin_account_is_internal()'s rule and the
+  -- old per-person host test, for every profile (this runs as the table owner).
+  PERFORM pg_temp.t4226j_assert(
+    NOT EXISTS (SELECT 1 FROM public.admin_people_app_status() s
+                 WHERE s.is_internal IS DISTINCT FROM public.admin_account_is_internal(s.user_id)
+                    OR s.is_host IS DISTINCT FROM (
+                         EXISTS (SELECT 1 FROM public.creator_accounts ca WHERE ca.id = s.user_id AND ca.deleted_at IS NULL)
+                         OR EXISTS (SELECT 1 FROM public.brand_team_members m
+                                     WHERE m.user_id = s.user_id AND m.accepted_at IS NOT NULL AND m.removed_at IS NULL))),
+    'J-07 the set-based classifier equals admin_account_is_internal and the per-person host test for every profile');
+  -- The set-based filter (one failed-filter mask per person) equals the one
+  -- predicate for every filter key, as the facets and counts read it.
+  PERFORM pg_temp.t4226j_assert(
+    NOT EXISTS (
+      SELECT 1 FROM public.admin_people_journey_rows() r
+       CROSS JOIN (VALUES ('{}'::jsonb), ('{"track":"hosts"}'), ('{"track":"explorers","explorer_stage":"going"}'),
+                          ('{"search":"j brand"}'), ('{"track":"hosts","bank_connected":"yes"}'),
+                          ('{"country":"zz","city":"lagos"}'), ('{"stopped_step":"none"}')) f(v)
+       CROSS JOIN LATERAL (SELECT * FROM unnest(ARRAY['explorer_stage','host_next_step','stopped_step','source',
+            'activity_status','country','city','payout_country','bank_connected','brand_id','emails_ok']) k) sk
+      WHERE (public.admin_people_row_fails(r, f.v) & ~(CASE sk.k WHEN 'explorer_stage' THEN 2 WHEN 'host_next_step' THEN 4
+              WHEN 'stopped_step' THEN 8 WHEN 'source' THEN 16 WHEN 'activity_status' THEN 32 WHEN 'country' THEN 64
+              WHEN 'city' THEN 128 WHEN 'payout_country' THEN 256 WHEN 'bank_connected' THEN 512 WHEN 'brand_id' THEN 2048
+              ELSE 4096 END) = 0) IS DISTINCT FROM public.admin_people_row_matches(r, f.v, sk.k)),
+    'J-08 the failed-filter mask and the skip-one predicate agree for every key');
 
   ------------------------------------------------------------------------------
   -- Read the journey as the admin.
@@ -339,6 +442,16 @@ BEGIN
     (SELECT f.explorer_stopped_step = 3 AND f.explorer_stopped_step_key = 'interests_v2' AND f.person_kind = 'signing_up'
        FROM public.admin_people_filter('{}'::jsonb) f WHERE f.user_id = v_e_sign),
     'J-03 signing up says the furthest step reached');
+  PERFORM pg_temp.t4226j_assert(
+    (SELECT f.explorer_stage = 'signing_up' AND f.explorer_stopped_step IS NULL FROM public.admin_people_filter('{}'::jsonb) f WHERE f.user_id = v_e_nostep)
+    AND EXISTS (SELECT 1 FROM public.admin_people_filter('{"track":"signing_up","stopped_step":"none"}'::jsonb) f WHERE f.user_id = v_e_nostep)
+    AND (SELECT (o ->> 'count')::int FROM jsonb_array_elements(public.admin_people_facets('{"track":"signing_up"}'::jsonb) #> '{facets,stopped_step}') o
+          WHERE o ->> 'value' = 'none') >= 1,
+    'J-03 a sign-up with no recorded step has no stopped step, matches stopped_step=none and is counted in the facet');
+  PERFORM pg_temp.t4226j_assert(
+    (SELECT abs(extract(epoch FROM (public.admin_person_journey('u:' || v_e_onb) #>> '{person,joined_at}')::timestamptz - (m ->> 'at')::timestamptz)) < 1
+       FROM jsonb_array_elements(public.admin_person_journey('u:' || v_e_onb) -> 'milestones') m WHERE m ->> 'kind' = 'signed_up'),
+    'J-03 Joined and the Signed up milestone are the same date (the auth sign-up)');
   PERFORM pg_temp.t4226j_assert(
     (SELECT f.ticket_count = 1 AND f.rsvp_count = 0 FROM public.admin_people_filter('{}'::jsonb) f WHERE f.user_id = v_e_go),
     'J-03 going: one ticket');
@@ -381,8 +494,8 @@ BEGIN
   SELECT f.source, f.source_confidence INTO v_r FROM public.admin_people_filter('{}'::jsonb) f WHERE f.user_id = v_e_onb;
   PERFORM pg_temp.t4226j_assert(v_r.source = 'friend_invite' AND v_r.source_confidence = 'known', 'J-05 a recorded signup source is known');
   SELECT f.source, f.source_confidence, f.source_detail INTO v_r FROM public.admin_people_filter('{}'::jsonb) f WHERE f.user_id = v_e_src2;
-  PERFORM pg_temp.t4226j_assert(v_r.source = 'paid_ad' AND v_r.source_confidence = 'known' AND v_r.source_detail LIKE 'Facebook Ads%',
-    'J-05 install data outranks a web ticket bought before sign-up');
+  PERFORM pg_temp.t4226j_assert(v_r.source = 'web_ticket_first' AND v_r.source_confidence = 'inferred',
+    'J-05 a web ticket before sign-up (strong evidence) outranks AppsFlyer non-organic install data (campaign evidence)');
   SELECT f.source, f.source_confidence INTO v_r FROM public.admin_people_filter('{}'::jsonb) f WHERE f.user_id = v_e_src3;
   PERFORM pg_temp.t4226j_assert(v_r.source = 'web_ticket_first' AND v_r.source_confidence = 'inferred',
     'J-05 a web ticket before sign-up is inferred');
