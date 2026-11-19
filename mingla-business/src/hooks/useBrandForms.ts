@@ -51,7 +51,8 @@ export { brandFormKeys } from "./brandFormKeys";
 
 const useReady = (): boolean => {
   const { isAuthReady, user } = useAuth();
-  return isAuthReady && user !== null;
+  const enabledAuth = isAuthReady && user !== null;
+  return enabledAuth;
 };
 
 export function useBrandFormsList(brandId: string | null): UseQueryResult<BrandFormListItem[]> {
