@@ -51,9 +51,10 @@ import {
   signedOutGuestGate,
   signedOutGuestRefusal,
 } from "./guestPayload.ts";
-// #4508 P3: the SMS adapter's own routing rule (a number it cannot route is
-// never texted).
-import { smsProviderForDestination } from "../_shared/adapters/smsAdapter.ts";
+// #4508 P3: the one E.164 -> country authority the SMS adapter routes by
+// (smsProviderForDestination is null exactly when this is). Imported directly
+// so this function does not take on the adapter's secret-bundle reads.
+import { countryFromE164 } from "../_shared/e164Country.ts";
 import { handleGuestOp, isGuestOp } from "./guestOps.ts";
 // #4508 R-4 — the caller's address, read the one way the repo reads it.
 import { requestClientIp } from "../_shared/ticketLinkToken.ts";
@@ -683,7 +684,7 @@ async function routeSubmittedGuests<
   return applySmsRoute(
     guests,
     (id) => phones.get(id),
-    (phone) => smsProviderForDestination(phone) !== null,
+    (phone) => /^\+[1-9][0-9]{7,14}$/.test(phone.trim()) && countryFromE164(phone.trim()) !== null,
   );
 }
 

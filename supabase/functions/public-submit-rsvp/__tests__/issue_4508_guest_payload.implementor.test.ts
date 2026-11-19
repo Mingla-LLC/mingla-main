@@ -566,6 +566,7 @@ import {
 } from "../guestPayload.ts";
 import { passAccess } from "../../rsvp-pass-fetch/passAccess.ts";
 import { smsProviderForDestination } from "../../_shared/adapters/smsAdapter.ts";
+import { countryFromE164 } from "../../_shared/e164Country.ts";
 
 // T1: the refusal is decided from the guest count only, before any number.
 Deno.test("T1: any guest from a caller without a session refuses the RSVP; none passes", () => {
@@ -631,6 +632,13 @@ Deno.test("P3: a number the SMS adapter cannot route reads willText false, unsup
   assert(out[1].willText === true && out[2].willText === true, "mapped countries still text");
   assert(out[3].notTextedReason === "number_limit", "an earlier reason is kept");
   assert(out[4].willText === true, "a row with no id is left as the database answered");
+  // The function routes by countryFromE164 (no adapter import); it agrees with
+  // the adapter's own rule on every kind of number.
+  const edgeRule = (phone: string) =>
+    /^\+[1-9][0-9]{7,14}$/.test(phone.trim()) && countryFromE164(phone.trim()) !== null;
+  for (const phone of ["+233201234567", "+15550104508", "+2348030301005", "+447700900123", "+0234803030100", "+1234", "+4915112345678"]) {
+    assert(edgeRule(phone) === routable(phone), `edge and adapter agree on ${phone}`);
+  }
 });
 
 Deno.test("T3 / P3-T11: notices go through the release path with plain words", () => {
