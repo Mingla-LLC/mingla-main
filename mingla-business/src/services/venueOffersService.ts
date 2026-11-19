@@ -48,6 +48,9 @@ import type {
   CalendarClaim,
   ClosedReason,
   HireBookingFacts,
+  DamageDepositState,
+  DamageDepositStatus,
+  HireHoursYouSet,
   HireTerms,
   NextFreeDate,
   RequestFilter,
@@ -320,7 +323,7 @@ export function mapHireTerms(v: unknown): HireTerms {
       return {
         optionId: str(r.optionId),
         name: str(r.name),
-        unit: str(r.unit) === "guest" ? ("guest" as const) : ("booking" as const),
+        unit: str(r.unit) === "guest" ? ("guest" as const) : str(r.unit) === "hour" ? ("hour" as const) : ("booking" as const),
         spaceId: strOrNull(r.spaceId),
         combinationId: strOrNull(r.combinationId),
         placeName: str(r.placeName),
@@ -353,10 +356,27 @@ export function mapHireTerms(v: unknown): HireTerms {
     overtimeMinorPerHour: numOrNull(h.overtimeMinorPerHour),
     requestResponseHours: num(h.requestResponseHours, 48),
     approvedPaymentMinutes: num(h.approvedPaymentMinutes, 4320),
+    hoursYouSet: mapHoursYouSet(h.hoursYouSet),
+    damageDepositReleaseDays: num(h.damageDepositReleaseDays, 7),
   };
 }
 
-export type ManageHireAction = "set_spaces" | "set_price_row" | "set_sessions" | "set_terms" | "set_booking";
+function mapHoursYouSet(v: unknown): HireHoursYouSet | null {
+  if (v === null || v === undefined || typeof v !== "object") return null;
+  const r = obj(v);
+  return {
+    ruleId: strOrNull(r.ruleId),
+    weekdays: weekdays(r.weekdays),
+    startTime: str(r.startTime),
+    endTime: str(r.endTime),
+    pastMidnight: r.pastMidnight === true,
+    minMinutes: num(r.minMinutes, 60),
+    maxMinutes: numOrNull(r.maxMinutes),
+    stepMinutes: num(r.stepMinutes, 60),
+  };
+}
+
+export type ManageHireAction = "set_spaces" | "set_price_row" | "set_sessions" | "set_terms" | "set_booking" | "set_flexible";
 
 export async function manageVenueHire(input: {
   venueId: string;
@@ -751,7 +771,52 @@ export function mapHireBookingFacts(v: unknown): HireBookingFacts | null {
     alternatives: arr(h.alternatives).filter((x): x is string => typeof x === "string"),
     hostNote: strOrNull(h.hostNote),
     closedReason: strOrNull(h.closedReason),
+    damageDeposit: mapDamageDeposit(h.damageDeposit),
   };
+}
+
+const DEPOSIT_STATUSES: readonly DamageDepositStatus[] = ["none", "due", "collected", "held_by_venue", "released"];
+
+export function mapDamageDeposit(v: unknown): DamageDepositState | null {
+  if (v === null || v === undefined || typeof v !== "object") return null;
+  const d = obj(v);
+  const status = str(d.status) as DamageDepositStatus;
+  if (!DEPOSIT_STATUSES.includes(status) || status === "none") return null;
+  return {
+    amountMinor: num(d.amountMinor),
+    paidMinor: num(d.paidMinor),
+    status,
+    hireEndsAt: strOrNull(d.hireEndsAt),
+    releaseAt: strOrNull(d.releaseAt),
+    heldReason: strOrNull(d.heldReason),
+    refundedMinor: numOrNull(d.refundedMinor),
+    keptMinor: numOrNull(d.keptMinor),
+    keptReason: strOrNull(d.keptReason),
+    releasedAt: strOrNull(d.releasedAt),
+  };
+}
+
+/** #4490 P4 follow-up — return the damage deposit after the hire (keep part of it with a reason). Money rights only. */
+export async function releaseDamageDeposit(input: { groupId: string; keepMinor: number; reason: string | null; idempotencyKey: string }): Promise<DamageDepositState | null> {
+  const { data, error } = await supabase.rpc("issue_4490_release_damage_deposit", {
+    p_group_id: input.groupId,
+    p_keep_minor: input.keepMinor,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapDamageDeposit(data);
+}
+
+/** #4490 P4 follow-up — keep holding the damage deposit (something to sort out); it then doesn't go back by itself. */
+export async function holdDamageDeposit(input: { groupId: string; reason: string; idempotencyKey: string }): Promise<DamageDepositState | null> {
+  const { data, error } = await supabase.rpc("issue_4490_hold_damage_deposit", {
+    p_group_id: input.groupId,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapDamageDeposit(data);
 }
 
 export function mapBookingSettings(v: unknown): VenueBookingSettings | null {

@@ -356,7 +356,8 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
           vatMode: b.vatMode,
           vatRateBps: settings?.vatRateBps ?? null,
           damageDepositMinor: b.hire.damageDepositMinor,
-          deposit: offer?.deposit ?? null,
+          // Inside the balance window the server asks for everything (no deposit on the request).
+          deposit: b.depositMinor === null ? null : offer?.deposit ?? null,
         })
       : null;
 
@@ -740,7 +741,7 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
         initial={quote}
         currency={currency}
         vatRateBps={settings?.vatRateBps ?? null}
-        deposit={offer?.deposit ?? null}
+        deposit={b?.depositMinor === null ? null : offer?.deposit ?? null}
         onClose={() => setDialog(null)}
         onSave={(next) => {
           setQuote(next);

@@ -7,6 +7,8 @@
 import type {
   BookingChangeRow,
   BookingChangeSummary,
+  DamageDepositState,
+  HireTerms,
   OfflineMethod,
   VenueBookingDetail,
 } from "../../../../types/venueOffers";
@@ -144,6 +146,8 @@ const HISTORY_WORDS: Readonly<Record<string, string>> = {
   stay_refund_succeeded: "Refund completed",
   stay_hold_expired: "Hold ran out",
   stay_offer_checked_in: "Checked in",
+  stay_offer_deposit_released: "Damage deposit settled",
+  stay_offer_deposit_held: "Damage deposit held",
 };
 
 export function historyTitle(type: string, by: string | null): string {
@@ -193,4 +197,67 @@ export function staffCancelWords(input: { paidMinor: number; refundMinor: number
   if (input.refundMinor >= input.paidMinor) return `They paid ${m(input.paidMinor)} online and get all of it back.${atVenue}`;
   if (input.refundMinor <= 0) return `They paid ${m(input.paidMinor)} online. Under the terms nothing comes back.${atVenue}`;
   return `They paid ${m(input.paidMinor)} online. They get ${m(input.refundMinor)} back; ${m(input.keepMinor)} stays with the venue.${atVenue}`;
+}
+
+// ------------------------------------------------- #4490 P4 follow-ups (hire)
+
+/**
+ * The guest numbers a hire can change to: from its price row's smallest
+ * group up to the row's largest (or the place's capacity when the venue
+ * sells extra guests), as the server allows. Null when the row is unknown.
+ */
+export function hireGuestRangeFor(hire: Pick<HireTerms, "rows" | "extraGuestMinor"> | null, priceOptionId: string | null): { min: number; max: number } | null {
+  if (hire === null || priceOptionId === null) return null;
+  const row = hire.rows.find((r) => r.optionId === priceOptionId);
+  if (row === undefined) return null;
+  const max = hire.extraGuestMinor !== null && row.capacity > 0 ? Math.max(row.guestMax, row.capacity) : row.guestMax;
+  return { min: row.guestMin, max };
+}
+
+/** The damage deposit in one pill and one line, and whether the hire has ended (return allowed). */
+export function damageDepositWords(
+  d: DamageDepositState,
+  currency: string,
+  timezone: string,
+  now: number,
+): { pill: string; variant: "ok" | "warn" | "info" | "muted" | "error"; body: string; ended: boolean } {
+  const ended = d.hireEndsAt !== null && Date.parse(d.hireEndsAt) <= now;
+  const day = (iso: string | null): string => (iso === null ? "" : shortDay(dateIn(iso, timezone) ?? iso.slice(0, 10)));
+  switch (d.status) {
+    case "due":
+      return { pill: "Not paid yet", variant: "muted", body: `${money(d.amountMinor, currency)}, paid with the rest of the booking.`, ended };
+    case "collected":
+      return {
+        pill: "Held",
+        variant: "info",
+        body:
+          d.releaseAt !== null
+            ? `${money(d.paidMinor, currency)} held. It goes back to the guest by itself on ${day(d.releaseAt)} unless you return it sooner or hold it.`
+            : `${money(d.paidMinor, currency)} held.`,
+        ended,
+      };
+    case "held_by_venue":
+      return {
+        pill: "Held by you",
+        variant: "warn",
+        body: `${money(d.paidMinor, currency)} held${d.heldReason !== null ? `: ${d.heldReason}` : ""}. It won't go back by itself.`,
+        ended,
+      };
+    case "released": {
+      const back = d.refundedMinor ?? 0;
+      const kept = d.keptMinor ?? 0;
+      const when = d.releasedAt !== null ? ` on ${day(d.releasedAt)}` : "";
+      return {
+        pill: kept > 0 ? "Partly returned" : "Returned",
+        variant: kept > 0 ? "warn" : "ok",
+        body:
+          kept > 0
+            ? `${money(back, currency)} returned${when}. Kept ${money(kept, currency)}${d.keptReason !== null ? `: ${d.keptReason}` : ""}.`
+            : `${money(back, currency)} returned${when}.`,
+        ended,
+      };
+    }
+    default:
+      return { pill: "None", variant: "muted", body: "", ended };
+  }
 }

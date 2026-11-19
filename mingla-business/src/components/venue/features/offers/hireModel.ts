@@ -10,7 +10,7 @@
  * holds. Request first is the default (the venue answers before anything is
  * held). Reply and pay windows are venue-wide (reconciliation conflict 43).
  */
-import type { HireCharge, RefundRung, VenueOffer } from "../../../../types/venueOffers";
+import type { HireCharge, HireHoursYouSet, RefundRung, VenueOffer } from "../../../../types/venueOffers";
 import type { VenueSpace, VenueSpaceCombination } from "../../../../services/venueFeaturesService";
 import { weekdaysSummary } from "../../../ui/fieldModels";
 import { draftKey, minutesBeforeLabel, money, refundSummary } from "./offersModel";
@@ -147,7 +147,34 @@ export interface HireRowDraft {
   priceMinor: number | null;
   /** Empty = every day. */
   weekdays: number[];
+  /** #4490 P4 follow-up: price x booked hours (sessions count their own length). */
+  perHour: boolean;
 }
+
+/** #4490 P4 follow-up: "Hours you set" — the guest picks a start and a length. */
+export const FLEX_STEP_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 60, label: "On the hour" },
+  { value: 30, label: "Every 30 minutes" },
+  { value: 15, label: "Every 15 minutes" },
+];
+
+export const FLEX_MIN_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 60, label: "1 hour" },
+  { value: 120, label: "2 hours" },
+  { value: 180, label: "3 hours" },
+  { value: 240, label: "4 hours" },
+  { value: 360, label: "6 hours" },
+  { value: 480, label: "8 hours" },
+];
+
+export const FLEX_MAX_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 0, label: "No limit" },
+  { value: 240, label: "4 hours" },
+  { value: 360, label: "6 hours" },
+  { value: 480, label: "8 hours" },
+  { value: 720, label: "12 hours" },
+  { value: 1440, label: "24 hours" },
+];
 
 export interface HireDraft {
   name: string;
@@ -156,6 +183,13 @@ export interface HireDraft {
   combinationIds: string[];
   sessions: HireSessionDraft[];
   weekdays: number[];
+  flexOn: boolean;
+  flexStart: string;
+  flexEnd: string;
+  flexStep: number;
+  flexMinMinutes: number;
+  /** 0 = no limit. */
+  flexMaxMinutes: number;
   setupMinutes: number;
   cleanupMinutes: number;
   minNoticeMinutes: number;
@@ -174,6 +208,14 @@ export interface HireDraft {
   damageDepositMinor: number | null;
   refundPreset: HireRefundPreset;
   customLadder: RefundRung[];
+  /** #4490 P4 follow-up: guests may change their numbers online until a cut-off. */
+  guestChangeOn: boolean;
+  guestChangeCutoffMinutes: number;
+  /** Guests may move the hire to another day online (the same space must be free). */
+  dateChange: boolean;
+  moveCutoffMinutes: number;
+  maxChanges: number;
+  changeFeePercent: number;
   mode: "request" | "instant";
   requestResponseHours: number;
   approvedPaymentMinutes: number;
@@ -189,7 +231,7 @@ export function parsePlaceKey(key: PlaceKey | null): { spaceId: string | null; c
 }
 
 export function emptyHireRow(place: PlaceKey | null = null): HireRowDraft {
-  return { key: draftKey("hire-row"), optionId: null, place, guestMin: 1, guestMax: 1, priceMinor: null, weekdays: [] };
+  return { key: draftKey("hire-row"), optionId: null, place, guestMin: 1, guestMax: 1, priceMinor: null, weekdays: [], perHour: false };
 }
 
 export function sessionFromPreset(key: string): HireSessionDraft {
@@ -227,7 +269,13 @@ export function hireDraftFrom(offer: VenueOffer | null): HireDraft {
       h !== null && h.sessions.length > 0
         ? h.sessions.map((s) => ({ key: draftKey("session"), label: s.label, startTime: s.startTime, endTime: s.endTime }))
         : [sessionFromPreset("full_day")],
-    weekdays: h !== null && h.sessions.length > 0 ? [...h.sessions[0].weekdays] : [0, 1, 2, 3, 4, 5, 6],
+    weekdays: h !== null && h.sessions.length > 0 ? [...h.sessions[0].weekdays] : h?.hoursYouSet ? [...h.hoursYouSet.weekdays] : [0, 1, 2, 3, 4, 5, 6],
+    flexOn: h?.hoursYouSet != null,
+    flexStart: h?.hoursYouSet?.startTime ?? "10:00",
+    flexEnd: h?.hoursYouSet?.endTime ?? "22:00",
+    flexStep: h?.hoursYouSet?.stepMinutes ?? 60,
+    flexMinMinutes: h?.hoursYouSet?.minMinutes ?? 240,
+    flexMaxMinutes: h?.hoursYouSet?.maxMinutes ?? 0,
     setupMinutes: h?.setupMinutes ?? 180,
     cleanupMinutes: h?.cleanupMinutes ?? 120,
     minNoticeMinutes: offer?.minNoticeMinutes ?? 10080,
@@ -241,6 +289,7 @@ export function hireDraftFrom(offer: VenueOffer | null): HireDraft {
       guestMax: r.guestMax,
       priceMinor: r.priceMinor,
       weekdays: r.weekdays.length === 7 ? [] : [...r.weekdays],
+      perHour: r.unit === "hour",
     })),
     extraGuestOn: h?.extraGuestMinor !== null && h?.extraGuestMinor !== undefined,
     extraGuestMinor: h?.extraGuestMinor ?? null,
@@ -254,6 +303,13 @@ export function hireDraftFrom(offer: VenueOffer | null): HireDraft {
     damageDepositMinor: h === null || h.damageDepositMinor === 0 ? null : h.damageDepositMinor,
     refundPreset: ladder === null ? "standard" : hirePresetFor(ladder),
     customLadder: ladder === null ? [] : [...ladder],
+    guestChangeOn: (offer?.policy?.dateChangeRule?.guestChangeUntilMinutesBefore ?? null) !== null,
+    guestChangeCutoffMinutes: offer?.policy?.dateChangeRule?.guestChangeUntilMinutesBefore ?? 10080,
+    dateChange: (offer?.policy?.dateChangeRule?.allowedUntilMinutesBefore ?? null) !== null,
+    moveCutoffMinutes: offer?.policy?.dateChangeRule?.allowedUntilMinutesBefore ?? 10080,
+    maxChanges: offer?.policy?.dateChangeRule?.maxChanges ?? 1,
+    changeFeePercent:
+      offer?.policy?.dateChangeRule?.feeBps !== null && offer?.policy?.dateChangeRule?.feeBps !== undefined ? Math.round(offer.policy.dateChangeRule.feeBps / 100) : 0,
     mode: h?.bookingMode ?? "request",
     requestResponseHours: h?.requestResponseHours ?? 48,
     approvedPaymentMinutes: h?.approvedPaymentMinutes ?? 4320,
@@ -357,6 +413,10 @@ export function hireStepIssue(step: HireStepId, draft: HireDraft, places: readon
         if (issue !== null) return issue;
       }
       if (draft.weekdays.length === 0) return "Pick the days it can be hired";
+      {
+        const flex = flexIssue(draft);
+        if (flex !== null) return flex;
+      }
       if (draft.overtimeOn && (draft.overtimeMinorPerHour === null || draft.overtimeMinorPerHour <= 0)) return "Enter the price per hour for running over";
       return null;
     }
@@ -396,6 +456,63 @@ export function spacesPayload(draft: HireDraft): Record<string, unknown> {
   return { spaceIds: [...draft.spaceIds], combinationIds: [...draft.combinationIds] };
 }
 
+/** "Hours you set" checks, in plain words (null when off or fine). */
+export function flexIssue(draft: Pick<HireDraft, "flexOn" | "flexStart" | "flexEnd" | "flexStep" | "flexMinMinutes" | "flexMaxMinutes">): string | null {
+  if (!draft.flexOn) return null;
+  if (draft.flexStart === draft.flexEnd) return "\"Hours you set\" needs different start and end times";
+  const open = flexOpenMinutes(draft.flexStart, draft.flexEnd);
+  if (draft.flexMinMinutes > open) return `The shortest booking (${minutesWords(draft.flexMinMinutes)}) is longer than the hours you're open for it`;
+  if (draft.flexMinMinutes % draft.flexStep !== 0) return "The shortest booking must fit the start-time steps";
+  if (draft.flexMaxMinutes > 0 && draft.flexMaxMinutes < draft.flexMinMinutes) return "The longest booking can't be shorter than the shortest";
+  return null;
+}
+
+/** Minutes between two clock times; an end at or before the start runs past midnight. */
+export function flexOpenMinutes(start: string, end: string): number {
+  const toMin = (t: string): number => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const d = toMin(end) - toMin(start);
+  return d > 0 ? d : d + 1440;
+}
+
+export function minutesWords(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} minutes`;
+  return `${h} ${h === 1 ? "hour" : "hours"}${m > 0 ? ` ${m} min` : ""}`;
+}
+
+export function flexPayload(draft: HireDraft): Record<string, unknown> {
+  if (!draft.flexOn) return { enabled: false };
+  return {
+    enabled: true,
+    weekdays: [...draft.weekdays].sort((a, b) => a - b),
+    startTime: draft.flexStart,
+    endTime: draft.flexEnd,
+    stepMinutes: draft.flexStep,
+    minMinutes: draft.flexMinMinutes,
+    maxMinutes: draft.flexMaxMinutes > 0 ? draft.flexMaxMinutes : null,
+  };
+}
+
+/** Whether the saved "Hours you set" already matches the draft (so nothing is written). */
+export function sameFlex(saved: HireHoursYouSet | null, draft: HireDraft): boolean {
+  if (!draft.flexOn) return saved === null;
+  return (
+    saved !== null &&
+    saved.startTime === draft.flexStart &&
+    saved.endTime === draft.flexEnd &&
+    saved.stepMinutes === draft.flexStep &&
+    saved.minMinutes === draft.flexMinMinutes &&
+    (saved.maxMinutes ?? 0) === draft.flexMaxMinutes &&
+    JSON.stringify([...saved.weekdays].sort((a, b) => a - b)) === JSON.stringify([...draft.weekdays].sort((a, b) => a - b))
+  );
+}
+
+export function flexWords(draft: Pick<HireDraft, "flexOn" | "flexStart" | "flexEnd" | "flexMinMinutes" | "flexMaxMinutes">): string | null {
+  if (!draft.flexOn) return null;
+  return `Hours you set ${draft.flexStart}–${draft.flexEnd} · at least ${minutesWords(draft.flexMinMinutes)}${draft.flexMaxMinutes > 0 ? `, up to ${minutesWords(draft.flexMaxMinutes)}` : ""}`;
+}
+
 export function sessionsPayload(draft: HireDraft): Record<string, unknown> {
   return {
     sessions: draft.sessions.map((s) => ({ label: s.label.trim(), startTime: s.startTime, endTime: s.endTime })),
@@ -416,7 +533,7 @@ export function rowPayload(row: HireRowDraft, draft: HireDraft, places: readonly
     ...(row.optionId !== null ? { optionId: row.optionId } : {}),
     name: rowName(row, places),
     ...(spaceId !== null ? { spaceId } : { combinationId }),
-    unit: draft.charge === "per_guest" ? "guest" : "booking",
+    unit: row.perHour ? "hour" : draft.charge === "per_guest" ? "guest" : "booking",
     guestMin: row.guestMin,
     guestMax: row.guestMax,
     priceMinor: row.priceMinor ?? 0,
@@ -443,6 +560,27 @@ export function termsPayload(draft: HireDraft): Record<string, unknown> {
   };
 }
 
+/** The hire's change rules for `manage_package set_change_rules` (both off = no changes online). */
+export function hireChangeRulesPayload(
+  draft: Pick<HireDraft, "guestChangeOn" | "guestChangeCutoffMinutes" | "dateChange" | "moveCutoffMinutes" | "maxChanges" | "changeFeePercent">,
+): { allowedUntilMinutesBefore: number | null; maxChanges: number | null; feeBps: number | null; guestChangeUntilMinutesBefore: number | null } {
+  return {
+    allowedUntilMinutesBefore: draft.dateChange ? draft.moveCutoffMinutes : null,
+    maxChanges: draft.dateChange ? draft.maxChanges : null,
+    feeBps: draft.dateChange ? draft.changeFeePercent * 100 : null,
+    guestChangeUntilMinutesBefore: draft.guestChangeOn ? draft.guestChangeCutoffMinutes : null,
+  };
+}
+
+export function hireChangeWords(draft: Pick<HireDraft, "guestChangeOn" | "guestChangeCutoffMinutes" | "dateChange" | "moveCutoffMinutes" | "maxChanges" | "changeFeePercent">): string {
+  const guests = draft.guestChangeOn ? `Numbers up to ${minutesBeforeLabel(draft.guestChangeCutoffMinutes)}` : null;
+  const move = draft.dateChange
+    ? `Another day up to ${minutesBeforeLabel(draft.moveCutoffMinutes)}${draft.maxChanges > 1 ? `, ${draft.maxChanges} times` : ", once"}${draft.changeFeePercent > 0 ? `, ${draft.changeFeePercent}% fee` : ""}`
+    : null;
+  if (guests === null && move === null) return "Changes are agreed with you, not online";
+  return [guests, move].filter((x): x is string => x !== null).join(" · ");
+}
+
 export function bookingPayload(draft: HireDraft): Record<string, unknown> {
   return {
     mode: draft.mode,
@@ -466,6 +604,7 @@ export function hirePriceLine(draft: HireDraft, currency: string | null): string
   const prices = draft.rows.map((r) => r.priceMinor).filter((p): p is number => p !== null && p > 0);
   if (prices.length === 0) return "No price yet";
   const from = money(Math.min(...prices), currency);
+  if (draft.rows.every((r) => r.perHour)) return `From ${from} an hour`;
   return draft.charge === "per_guest" ? `From ${from} a guest` : `From ${from}`;
 }
 
@@ -493,7 +632,7 @@ export function hireReviewItems(
   return [
     { key: "name", label: "Name", value: draft.name.trim() || "—" },
     { key: "spaces", label: "Spaces", value: chosen.length > 0 ? chosen.map((p) => p.name).join(", ") : "None yet" },
-    { key: "sessions", label: "Sessions", value: draft.sessions.map(sessionWords).join(", ") },
+    { key: "sessions", label: "Sessions", value: [...draft.sessions.map(sessionWords), flexWords(draft)].filter((x): x is string => x !== null).join(", ") },
     { key: "days", label: "Days", value: weekdaysSummary(draft.weekdays) },
     {
       key: "buffers",
@@ -528,6 +667,7 @@ export function hireReviewItems(
       value: draft.damageDepositMinor !== null && draft.damageDepositMinor > 0 ? `${money(draft.damageDepositMinor, currency)}, refundable` : "None",
     },
     { key: "refunds", label: "If the guest cancels", value: refundSummary(hireLadder(draft)) },
+    { key: "changes", label: "Changes", value: hireChangeWords(draft) },
     { key: "mode", label: "How guests book", value: modeLine(draft) },
     {
       key: "notice",

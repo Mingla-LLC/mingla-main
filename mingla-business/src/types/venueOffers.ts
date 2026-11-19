@@ -180,7 +180,8 @@ export interface HireCombination {
 export interface HirePriceRow {
   optionId: string;
   name: string;
-  unit: "guest" | "booking";
+  /** #4490 P4 follow-up: "hour" = price x booked hours. */
+  unit: "guest" | "booking" | "hour";
   spaceId: string | null;
   combinationId: string | null;
   placeName: string;
@@ -204,6 +205,19 @@ export interface HireSession {
   endDate: string | null;
 }
 
+/** #4490 P4 follow-up: "Hours you set": the guest picks a start and a length inside these hours. */
+export interface HireHoursYouSet {
+  ruleId: string | null;
+  /** 0 = Monday … 6 = Sunday. */
+  weekdays: number[];
+  startTime: string;
+  endTime: string;
+  pastMidnight: boolean;
+  minMinutes: number;
+  maxMinutes: number | null;
+  stepMinutes: number;
+}
+
 export interface HireTerms {
   charge: HireCharge;
   bookingMode: "request" | "instant";
@@ -221,6 +235,10 @@ export interface HireTerms {
   requestResponseHours: number;
   /** Venue-wide: how long an approved guest has to pay the deposit. */
   approvedPaymentMinutes: number;
+  /** Null when "Hours you set" is off. */
+  hoursYouSet: HireHoursYouSet | null;
+  /** Venue-wide: days after the hire the damage deposit goes back by itself. */
+  damageDepositReleaseDays: number;
 }
 
 export type RequestTab = "to_answer" | "waiting_for_deposit" | "confirmed" | "closed";
@@ -440,6 +458,25 @@ export interface HireBookingFacts {
   alternatives: string[];
   hostNote: string | null;
   closedReason: string | null;
+  /** #4490 P4 follow-up: the refundable damage deposit's state (null when none was asked). */
+  damageDeposit: DamageDepositState | null;
+}
+
+export type DamageDepositStatus = "none" | "due" | "collected" | "held_by_venue" | "released";
+
+export interface DamageDepositState {
+  amountMinor: number;
+  /** Still held (paid and not returned). */
+  paidMinor: number;
+  status: DamageDepositStatus;
+  hireEndsAt: string | null;
+  /** When it goes back by itself; null when held by the venue or already back. */
+  releaseAt: string | null;
+  heldReason: string | null;
+  refundedMinor: number | null;
+  keptMinor: number | null;
+  keptReason: string | null;
+  releasedAt: string | null;
 }
 
 export interface VenueBookingSettings {

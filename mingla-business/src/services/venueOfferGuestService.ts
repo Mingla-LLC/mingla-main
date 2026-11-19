@@ -34,10 +34,12 @@ import {
 
 import {
   parseHireDayRows,
+  parseHireHourDay,
   parseHireOfferDetail,
   parseHirePlaces,
   parseHireQuote,
   type HireDayRow,
+  type HireHourDay,
   type HireOfferDetail,
   type HirePlaceOption,
   type HireQuote,
@@ -132,6 +134,9 @@ export const venueOfferGuestService = {
   async hireQuote(input: {
     offeringId: string;
     windowId: string;
+    /** "Hours you set": the start and length replace the window (the server makes its own). */
+    startsAt?: string;
+    minutes?: number;
     priceOptionId: string;
     guests: number;
     overtimeHours: number;
@@ -143,7 +148,9 @@ export const venueOfferGuestService = {
       await invoke({
         action: "quote",
         offeringId: input.offeringId,
-        windowId: input.windowId,
+        ...(input.startsAt !== undefined && input.minutes !== undefined
+          ? { startsAt: input.startsAt, minutes: input.minutes }
+          : { windowId: input.windowId }),
         lines: [
           {
             priceOptionId: input.priceOptionId,
@@ -159,6 +166,18 @@ export const venueOfferGuestService = {
     );
     if (parsed === null) throw new VenueOfferGuestError("offer_request_failed", null);
     return parsed;
+  },
+
+  /** #4490 P4 follow-up — a hire's "Hours you set" day: opening hours, start times, places and when each is busy. */
+  async hireHourDay(input: { offeringId: string; date: string; guests: number | null }): Promise<HireHourDay | null> {
+    return parseHireHourDay(
+      await invoke({
+        action: "hour_day",
+        offeringId: input.offeringId,
+        date: input.date,
+        ...(input.guests !== null ? { guests: input.guests } : {}),
+      }),
+    );
   },
 
   /** #4490 P4 — the guest withdraws a request (or an approved hold not yet paid). */

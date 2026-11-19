@@ -21,8 +21,9 @@ import {
 import { neutralHair, statusOn } from "@mingla/offering-rendering/themePalette";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
-import { entryDateLabel, venueOfferErrorCopy } from "@mingla/brand-rendering/venueOffers/entryModel";
+import { entryDateLabel, venueClock, venueOfferErrorCopy } from "@mingla/brand-rendering/venueOffers/entryModel";
 import {
+  hourLengthWords,
   hirePriceWords,
   placeFitsLine,
   placeUnavailableLine,
@@ -196,7 +197,52 @@ export function HireForm({ selection, palette, theme, compact = false, testID = 
             </>
           ) : null}
 
-          {selection.windowId !== null ? (
+          {selection.isFlex && selection.hourDay !== null ? (
+            <>
+              <EntrySectionLabel palette={palette}>Start time</EntrySectionLabel>
+              <OfferingChipRow accessibilityLabel="Choose a start time" testID={`${testID}-flex-starts`}>
+                {selection.hourDay.starts.map((x) => {
+                  const clock = venueClock(x.startsAt, offer.venue.timezone) ?? "—";
+                  return (
+                    <OfferingChoiceChip
+                      key={x.startsAt}
+                      palette={palette}
+                      label={clock}
+                      note={null}
+                      selected={x.startsAt === selection.startsAt}
+                      onPress={() => selection.selectStart(x.startsAt)}
+                      role="radio"
+                      accessibilityLabel={`Start at ${clock}`}
+                      testID={`${testID}-flex-start-${clock.replace(":", "")}`}
+                    />
+                  );
+                })}
+              </OfferingChipRow>
+              {selection.startsAt !== null ? (
+                <>
+                  <EntrySectionLabel palette={palette}>How long</EntrySectionLabel>
+                  <OfferingChipRow accessibilityLabel="Choose how long" testID={`${testID}-flex-lengths`}>
+                    {selection.lengths.map((m) => (
+                      <OfferingChoiceChip
+                        key={m}
+                        palette={palette}
+                        label={hourLengthWords(m)}
+                        note={null}
+                        selected={m === selection.minutes}
+                        onPress={() => selection.selectMinutes(m)}
+                        role="radio"
+                        accessibilityLabel={hourLengthWords(m)}
+                        testID={`${testID}-flex-length-${m}`}
+                      />
+                    ))}
+                  </OfferingChipRow>
+                  <Text style={[styles.small, { color: palette.secondaryText }]}>{`At least ${hourLengthWords(selection.hourDay.minMinutes)}.`}</Text>
+                </>
+              ) : null}
+            </>
+          ) : null}
+
+          {selection.windowId !== null && !(selection.isFlex && (selection.startsAt === null || selection.minutes === null)) ? (
             <>
               <EntrySectionLabel palette={palette}>Choose your space</EntrySectionLabel>
               {selection.placesState === "error" ? (
@@ -308,7 +354,7 @@ function PlaceCard({
 }): React.ReactElement {
   const why = placeUnavailableLine(place);
   const free = place.status === "available";
-  const price = place.unit === "guest" ? `${money(place.priceMinor)} a guest` : money(place.priceMinor);
+  const price = place.unit === "guest" ? `${money(place.priceMinor)} a guest` : place.unit === "hour" ? `${money(place.priceMinor)} an hour` : money(place.priceMinor);
   const extra = free && guests > place.guestMax ? `${guests - place.guestMax} above this price's range: extra guests cost more` : null;
   return (
     <Pressable

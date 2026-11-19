@@ -26,6 +26,7 @@ import { useVenueOffers } from "../../../../hooks/useVenueOffers";
 import { useVenueSpaceCombinations, useVenueSpaces } from "../../../../hooks/useVenueSpaces";
 import {
   manageVenueHire,
+  manageVenuePackage,
   manageVenueOffer,
   policyPayload,
   toVenueOfferError,
@@ -80,6 +81,15 @@ import {
   sessionFromPreset,
   sessionIssue,
   sessionsPayload,
+  hireChangeRulesPayload,
+  FLEX_MAX_OPTIONS,
+  FLEX_MIN_OPTIONS,
+  FLEX_STEP_OPTIONS,
+  flexIssue,
+  flexOpenMinutes,
+  flexPayload,
+  minutesWords,
+  sameFlex,
   spacesPayload,
   termsPayload,
   type HireDraft,
@@ -87,7 +97,7 @@ import {
   type HireStepId,
 } from "./hireModel";
 import { draftKey, offerErrorCopy, refundSummary, vatLine } from "./offersModel";
-import { ONLINE_PAYMENTS_OFF } from "./packageModel";
+import { CHANGE_CUTOFFS, ONLINE_PAYMENTS_OFF } from "./packageModel";
 
 const RAIL_MIN_WIDTH = 1280;
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
@@ -256,6 +266,9 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
         if (savedSessions !== wantSessions || !sameDays) {
           current = await manageVenueHire({ venueId, action: "set_sessions", payload: { offerId: id0, ...want }, expectedVersion: current.version });
         }
+        if (!sameFlex(hire?.hoursYouSet ?? null, draft)) {
+          current = await manageVenueHire({ venueId, action: "set_flexible", payload: { offerId: id0, ...flexPayload(draft) }, expectedVersion: current.version });
+        }
         if ((hire?.setupMinutes ?? -1) !== draft.setupMinutes || (hire?.cleanupMinutes ?? -1) !== draft.cleanupMinutes) {
           current = await manageVenueHire({
             venueId,
@@ -357,13 +370,25 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
           });
         }
         const ladder = hireLadder(draft);
-        if (current.policy === null || JSON.stringify(current.policy.refundLadder) !== JSON.stringify(ladder)) {
+        const policyChanged = current.policy === null || JSON.stringify(current.policy.refundLadder) !== JSON.stringify(ladder);
+        if (policyChanged) {
           current = await manageVenueOffer({
             venueId,
             action: "set_policy",
             payload: { offerId: id0, ...policyPayload(ladder, null) },
             expectedVersion: current.version,
           });
+        }
+        // #4490 P4 follow-up: what guests may change online (after the policy: a new policy starts without rules).
+        const rule = current.policy?.dateChangeRule ?? null;
+        const want = hireChangeRulesPayload(draft);
+        const sameRule =
+          (rule?.allowedUntilMinutesBefore ?? null) === want.allowedUntilMinutesBefore &&
+          (rule?.maxChanges ?? null) === want.maxChanges &&
+          ((rule?.feeBps ?? null) === want.feeBps || (want.feeBps === null && (rule?.feeBps ?? 0) === 0)) &&
+          (rule?.guestChangeUntilMinutesBefore ?? null) === want.guestChangeUntilMinutesBefore;
+        if (!sameRule) {
+          current = await manageVenuePackage({ venueId, action: "set_change_rules", payload: { offerId: id0, ...want }, expectedVersion: current.version });
         }
       }
 
@@ -926,6 +951,7 @@ function TimesStep({ draft, patch, showErrors, disabled }: StepProps): React.Rea
         </View>
       ) : null}
       <Banner tone="info" title="One booking per space, per session" body="A second request for the same space waits in line. A combined space blocks every space inside it." />
+      <FlexCard draft={draft} patch={patch} showErrors={showErrors} disabled={disabled} />
       <WeekdayChips label="Days it can be hired" value={draft.weekdays} onChange={(weekdays) => patch({ weekdays })} disabled={disabled} showSummary testID="hire-days" />
       <View style={styles.inlineRow}>
         <View style={styles.grow}>
@@ -945,6 +971,50 @@ function TimesStep({ draft, patch, showErrors, disabled }: StepProps): React.Rea
         </View>
       </View>
       {showErrors && issue !== null ? <Text style={styles.error}>{issue}</Text> : null}
+    </View>
+  );
+}
+
+/** #4490 P4 follow-up: "Hours you set" — besides the sessions, guests pick a start and a length inside these hours. */
+function FlexCard({ draft, patch, showErrors, disabled }: Omit<StepProps, "currency">): React.ReactElement {
+  const issue = showErrors ? flexIssue(draft) : null;
+  const open = flexOpenMinutes(draft.flexStart, draft.flexEnd);
+  return (
+    <View style={styles.subCard} testID="hire-flex">
+      <View style={styles.switchRow}>
+        <View style={styles.grow}>
+          <Text style={styles.switchTitle}>Hours you set</Text>
+          <Text style={styles.hint}>Guests can also pick their own start and length, inside these hours. Price these places per hour in the next step.</Text>
+        </View>
+        <BrandSwitch value={draft.flexOn} onValueChange={(flexOn) => patch({ flexOn })} disabled={disabled} accessibilityLabel="Hours you set" testID="hire-flex-toggle" />
+      </View>
+      {draft.flexOn ? (
+        <>
+          <View style={styles.inlineRow}>
+            <View style={styles.grow}>
+              <TimeField label="From" value={draft.flexStart} onChangeValue={(flexStart) => patch({ flexStart })} accessibilityLabel="Hours you set, from" disabled={disabled} hasError={issue !== null && draft.flexStart === draft.flexEnd} testID="hire-flex-start" />
+            </View>
+            <View style={styles.grow}>
+              <TimeField label="Until" value={draft.flexEnd} onChangeValue={(flexEnd) => patch({ flexEnd })} accessibilityLabel="Hours you set, until" disabled={disabled} hasError={issue !== null && draft.flexStart === draft.flexEnd} testID="hire-flex-end" />
+            </View>
+          </View>
+          {draft.flexStart !== draft.flexEnd ? (
+            <Text style={styles.hint}>
+              {minutesWords(open)} a day{draft.flexEnd < draft.flexStart && draft.flexEnd !== "00:00" ? `, until ${draft.flexEnd} the next day` : ""}. Same days as the sessions.
+            </Text>
+          ) : null}
+          <View style={styles.inlineRow}>
+            <View style={styles.grow}>
+              <SelectSheet label="Shortest booking" value={draft.flexMinMinutes} options={FLEX_MIN_OPTIONS} onChange={(flexMinMinutes) => patch({ flexMinMinutes })} disabled={disabled} testID="hire-flex-min" />
+            </View>
+            <View style={styles.grow}>
+              <SelectSheet label="Longest booking" value={draft.flexMaxMinutes} options={FLEX_MAX_OPTIONS} onChange={(flexMaxMinutes) => patch({ flexMaxMinutes })} disabled={disabled} testID="hire-flex-max" />
+            </View>
+          </View>
+          <SelectSheet label="Start times" value={draft.flexStep} options={FLEX_STEP_OPTIONS} onChange={(flexStep) => patch({ flexStep })} disabled={disabled} testID="hire-flex-step" />
+          {issue !== null ? <Text style={styles.error}>{issue}</Text> : null}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -1046,8 +1116,23 @@ function PriceStep({
             </View>
             {place !== null ? <Text style={styles.hint}>{place.name} holds {place.capacity.toLocaleString("en-GB")}.</Text> : null}
             {showErrors && ri.guests !== null ? <Text style={styles.error}>{ri.guests}</Text> : null}
+            {draft.flexOn || row.perHour ? (
+              <View style={styles.switchRow}>
+                <View style={styles.grow}>
+                  <Text style={styles.switchTitle}>Price per hour</Text>
+                  <Text style={styles.hint}>The price times the hours booked (a session counts its own length).</Text>
+                </View>
+                <BrandSwitch
+                  value={row.perHour}
+                  onValueChange={(perHour) => patch({ rows: draft.rows.map((r) => (r.key === row.key ? { ...r, perHour } : r)) })}
+                  disabled={disabled}
+                  accessibilityLabel={`Row ${i + 1} priced per hour`}
+                  testID={`hire-row-${i}-per-hour`}
+                />
+              </View>
+            ) : null}
             <MoneyField
-              label={charge.column}
+              label={row.perHour ? "Per hour" : charge.column}
               valueMinor={row.priceMinor}
               onChangeMinor={(priceMinor) => patch({ rows: draft.rows.map((r) => (r.key === row.key ? { ...r, priceMinor } : r)) })}
               currency={currency}
@@ -1266,8 +1351,39 @@ function TermsStep({ draft, patch, showErrors, disabled, currency }: StepProps):
       <View style={styles.subCard} testID="hire-refund-words">
         <Text style={styles.hint}>{refundSummary(ladder)}. The damage deposit always comes back.</Text>
       </View>
+      <Text style={styles.sectionLabel}>Changes guests can make</Text>
+      <View style={styles.switchRow}>
+        <View style={styles.grow}>
+          <Text style={styles.switchTitle}>Change their numbers</Text>
+          <Text style={styles.hint}>Within the place&apos;s group sizes; they pay the difference or get some back under your refund rules.</Text>
+        </View>
+        <BrandSwitch value={draft.guestChangeOn} onValueChange={(guestChangeOn) => patch({ guestChangeOn })} disabled={disabled} accessibilityLabel="Guests can change their numbers" testID="hire-guest-change" />
+      </View>
+      {draft.guestChangeOn ? (
+        <SelectSheet label="Up to" value={draft.guestChangeCutoffMinutes} options={CHANGE_CUTOFFS} onChange={(guestChangeCutoffMinutes) => patch({ guestChangeCutoffMinutes })} disabled={disabled} testID="hire-guest-cutoff" />
+      ) : null}
+      <View style={styles.switchRow}>
+        <View style={styles.grow}>
+          <Text style={styles.switchTitle}>Move to another day</Text>
+          <Text style={styles.hint}>Only when the same space is free then, setup and cleanup included.</Text>
+        </View>
+        <BrandSwitch value={draft.dateChange} onValueChange={(dateChange) => patch({ dateChange })} disabled={disabled} accessibilityLabel="Guests can move to another day" testID="hire-date-change" />
+      </View>
+      {draft.dateChange ? (
+        <View style={styles.subCard}>
+          <SelectSheet label="Up to" value={draft.moveCutoffMinutes} options={CHANGE_CUTOFFS} onChange={(moveCutoffMinutes) => patch({ moveCutoffMinutes })} disabled={disabled} testID="hire-move-cutoff" />
+          <View style={styles.inlineRow}>
+            <View style={styles.grow}>
+              <NumberStepper label="How many times" value={draft.maxChanges} min={1} max={5} onChange={(maxChanges) => patch({ maxChanges })} testID="hire-max-changes" />
+            </View>
+            <View style={styles.grow}>
+              <NumberStepper label="Fee (% of the booking)" value={draft.changeFeePercent} min={0} max={100} onChange={(changeFeePercent) => patch({ changeFeePercent })} testID="hire-change-fee" />
+            </View>
+          </View>
+        </View>
+      ) : null}
       <Text style={styles.hint}>
-        The terms are saved on each booking, so later changes here never change a deal already made. Moving a hire to another day or changing its numbers is agreed with you, not online.
+        The terms are saved on each booking, so later changes here never change a deal already made. Anything else is agreed with you.
       </Text>
       {showErrors && issue !== null ? <Text style={styles.error}>{issue}</Text> : null}
     </View>

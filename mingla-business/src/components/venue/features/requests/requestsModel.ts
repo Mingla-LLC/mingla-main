@@ -95,7 +95,8 @@ export function momentWords(iso: string | null, timezone: string): string | null
 /** "Sat 13 Dec · Full day" or "Sat 13 Dec · 12:00 to 00:00". */
 export function requestDateLine(r: Pick<VenueRequest, "localDate" | "sessionLabel" | "startsAt" | "endsAt">, timezone: string): string {
   const day = r.localDate.length > 0 ? shortDay(r.localDate) : "No date";
-  if (r.sessionLabel !== null) return `${day} · ${r.sessionLabel}`;
+  // #4490 P4 follow-up: "Hours you set" reads as the hours booked.
+  if (r.sessionLabel !== null && r.sessionLabel !== "Hours you set") return `${day} · ${r.sessionLabel}`;
   const start = clockIn(r.startsAt, timezone);
   const end = clockIn(r.endsAt, timezone);
   return start !== null && end !== null ? `${day} · ${start} to ${end}` : day;

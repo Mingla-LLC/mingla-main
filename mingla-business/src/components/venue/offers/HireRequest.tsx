@@ -19,12 +19,13 @@ import { boldFontFamily, neutralHair, statusOn } from "@mingla/offering-renderin
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { OfferingChipRow, OfferingChoiceChip, OfferingStepper } from "@mingla/offering-rendering/OfferingDecideParts";
 import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
-import { entryDateLabel, holdUntilText, venueAddressLine } from "@mingla/brand-rendering/venueOffers/entryModel";
+import { entryDateLabel, holdUntilText, venueAddressLine, venueClock } from "@mingla/brand-rendering/venueOffers/entryModel";
 import {
   OCCASIONS,
   damageLine,
   hireErrorCopy,
   hirePayNowMinor,
+  hourLengthWords,
   hireSummaryLines,
   requestPromise,
   type HireChoice,
@@ -100,7 +101,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
     if (siteVisit) out.siteVisit = true;
     return out;
   }, [occasion, note, siteVisit]);
-  const quoteKey = `${choice?.windowId ?? ""}|${choice?.priceOptionId ?? ""}|${choice?.guests ?? 0}|${overtime}`;
+  const quoteKey = `${choice?.windowId ?? ""}|${choice?.priceOptionId ?? ""}|${choice?.guests ?? 0}|${overtime}|${choice?.startsAt ?? ""}|${choice?.minutes ?? 0}`;
   const latest = useRef(quoteKey);
   latest.current = quoteKey;
   const askQuote = async (withAnswers: boolean): Promise<HireQuote | null> => {
@@ -114,9 +115,10 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
       const next = await venueOfferGuestService.hireQuote({
         offeringId: offerId,
         windowId: choice.windowId,
+        ...(choice.startsAt !== undefined && choice.minutes !== undefined ? { startsAt: choice.startsAt, minutes: choice.minutes } : {}),
         priceOptionId: choice.priceOptionId,
         guests: choice.guests,
-        overtimeHours: overtime,
+        overtimeHours: choice.startsAt !== undefined ? 0 : overtime,
         answers: withAnswers ? answers : {},
         cartKey,
         idempotencyKey: `venue-offer:quote:${randomId()}`,
@@ -247,7 +249,11 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
             <Text style={[styles.small, { color: palette.secondaryText }]}>
               {[
                 selection.selectedDate !== null ? entryDateLabel(selection.selectedDate) : null,
-                session !== null ? `${session.label}${session.times !== null ? ` ${session.times}` : ""}` : null,
+                selection.isFlex && selection.startsAt !== null && selection.minutes !== null
+                  ? `${venueClock(selection.startsAt, offer?.venue.timezone ?? null) ?? ""} for ${hourLengthWords(selection.minutes)}`
+                  : session !== null
+                    ? `${session.label}${session.times !== null ? ` ${session.times}` : ""}`
+                    : null,
                 `${selection.guests.toLocaleString("en-GB")} guests`,
               ]
                 .filter(Boolean)
@@ -281,7 +287,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
           />
         ))}
       </OfferingChipRow>
-      {offer?.overtimeMinorPerHour !== null && offer?.overtimeMinorPerHour !== undefined ? (
+      {offer?.overtimeMinorPerHour !== null && offer?.overtimeMinorPerHour !== undefined && !selection.isFlex ? (
         <>
           <EntrySectionLabel palette={palette}>Extra hours</EntrySectionLabel>
           <View style={styles.choiceRow}>

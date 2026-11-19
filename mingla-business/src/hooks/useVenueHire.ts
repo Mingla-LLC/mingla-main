@@ -23,10 +23,13 @@ import {
   fetchNextFreeDates,
   fetchVenueCalendar,
   fetchVenueRequests,
+  holdDamageDeposit,
+  releaseDamageDeposit,
   staffRequestAction,
   unblockVenueSpace,
 } from "../services/venueOffersService";
 import type {
+  DamageDepositState,
   NextFreeDate,
   RequestFilter,
   StaffActionResult,
@@ -174,5 +177,25 @@ export function useSpaceBlock(
       });
     },
     onSettled: () => invalidate(null),
+  });
+}
+
+export type DamageDepositInput =
+  | { kind: "release"; keepMinor: number; reason: string | null; idempotencyKey: string }
+  | { kind: "hold"; reason: string; idempotencyKey: string };
+
+/** #4490 P4 follow-up — return the damage deposit (all, or keep part with a reason), or keep holding it. */
+export function useDamageDeposit(
+  brandId: string | null,
+  venueId: string | null,
+  groupId: string,
+): UseMutationResult<DamageDepositState | null, Error, DamageDepositInput> {
+  const invalidate = useInvalidateHire(brandId, venueId);
+  return useMutation<DamageDepositState | null, Error, DamageDepositInput>({
+    mutationFn: (input) =>
+      input.kind === "release"
+        ? releaseDamageDeposit({ groupId, keepMinor: input.keepMinor, reason: input.reason, idempotencyKey: input.idempotencyKey })
+        : holdDamageDeposit({ groupId, reason: input.reason, idempotencyKey: input.idempotencyKey }),
+    onSettled: () => invalidate(groupId),
   });
 }

@@ -1172,6 +1172,10 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   offer_change_not_allowed: "This booking can't be changed that way.",
   offer_change_too_late: "It's too late to change this booking online. Contact the venue.",
   offer_change_nothing: "That's the same as your booking now.",
+  // #4490 P4 follow-ups (private hire changes, "Hours you set").
+  offer_space_taken: "Your space is already booked then. Pick another day or time.",
+  offer_capacity_conflict: "That day is full. Pick another day.",
+  offer_length_invalid: "Pick a length between the shortest and longest booking.",
 };
 
 /** Plain words for a server code. Unknown codes never show a raw code. */

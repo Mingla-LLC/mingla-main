@@ -101,7 +101,7 @@ function HireBody({ brandSlug, venueSlug, offerId, palette, theme, onBookingBarC
   };
 
   const place = selection.selectedPlace;
-  const barKey = `${selection.selectedDate}|${selection.windowId}|${selection.guests}|${selection.optionId}|${ready}|${selection.problem}`;
+  const barKey = `${selection.selectedDate}|${selection.windowId}|${selection.guests}|${selection.optionId}|${selection.startsAt}|${selection.minutes}|${ready}|${selection.problem}`;
   useEffect(() => {
     if (onBookingBarChange === undefined) return undefined;
     if (selection.offerState !== "ready" || selection.selectedDate === null || offer?.canCollectOnline === false) {

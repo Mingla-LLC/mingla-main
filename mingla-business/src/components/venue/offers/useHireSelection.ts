@@ -14,11 +14,15 @@ import { addDays, venueToday } from "@mingla/brand-rendering/venueOffers/entryMo
 import {
   hireDayTiles,
   hireGuestRange,
+  hourLengthsFor,
+  hourPlaceFree,
+  venueClockRange,
   placeListFor,
   sessionChipsFor,
   type HireChoice,
   type HireDayRow,
   type HireDayTile,
+  type HireHourDay,
   type HireOfferDetail,
   type HirePlaceOption,
   type HireSessionChip,
@@ -59,6 +63,15 @@ export interface HireSelection {
   optionId: string | null;
   selectOption: (id: string) => void;
   selectedPlace: HirePlaceOption | null;
+  /** #4490 P4 follow-up: "Hours you set" for the chosen day (null when the venue doesn't offer it that day). */
+  hourDay: HireHourDay | null;
+  /** The chosen session is "Your own hours". */
+  isFlex: boolean;
+  startsAt: string | null;
+  selectStart: (iso: string) => void;
+  minutes: number | null;
+  selectMinutes: (m: number) => void;
+  lengths: number[];
   /** Why the guest can't go on, in plain words; null when they can. */
   problem: string | null;
   choice: HireChoice | null;
@@ -124,34 +137,99 @@ export function useHireSelection(input: {
     setSelectedDate(tiles.find((t) => t.state === "free")?.date ?? tiles.find((t) => t.state !== "none")?.date ?? null);
   }, [daysQuery.isSuccess, selectedDate, tiles, stripFrom, initialDate]);
 
-  const sessions = useMemo(
-    () => sessionChipsFor(rows, selectedDate, offer?.sessions ?? [], offer?.venue.timezone ?? null),
-    [rows, selectedDate, offer?.sessions, offer?.venue.timezone],
-  );
+  // #4490 P4 follow-up: "Hours you set" — the day's opening hours, start times and busy places.
+  const hourQuery = useQuery({
+    queryKey: ["venueOfferGuest", "hireHourDay", offeringId, selectedDate, guests],
+    enabled: enabled && offer !== null && selectedDate !== null && guests > 0,
+    retry: 0,
+    staleTime: 15_000,
+    queryFn: () => venueOfferGuestService.hireHourDay({ offeringId, date: selectedDate as string, guests }),
+  });
+  const hourDay = hourQuery.data !== undefined && hourQuery.data !== null && hourQuery.data.status === "open" && hourQuery.data.windowId !== null ? hourQuery.data : null;
+  const flexWindowId = hourDay?.windowId ?? null;
+  const sessions = useMemo(() => {
+    const tz = offer?.venue.timezone ?? null;
+    const list = sessionChipsFor(rows.filter((r) => r.windowId !== flexWindowId), selectedDate, offer?.sessions ?? [], tz, true);
+    if (hourDay === null || flexWindowId === null) return list;
+    return [
+      ...list,
+      {
+        windowId: flexWindowId,
+        label: "Your own hours",
+        times: venueClockRange(hourDay.opensAt, hourDay.closesAt, tz),
+        usable: hourDay.starts.length > 0,
+        note: hourDay.starts.length > 0 ? null : "Fully booked",
+      },
+    ];
+  }, [rows, selectedDate, offer?.sessions, offer?.venue.timezone, hourDay, flexWindowId]);
+  const isFlexChosen = (id: string | null): boolean => id !== null && id === flexWindowId;
   // One session that day: pick it; a session that left the day is dropped.
+  // Named sessions first; "Your own hours" only when it's the one thing open.
   useEffect(() => {
-    if (!daysQuery.isSuccess) return;
+    if (!daysQuery.isSuccess || hourQuery.isFetching) return;
     const usable = sessions.filter((s) => s.usable);
     if (windowId !== null && sessions.some((s) => s.windowId === windowId)) return;
     setWindowId(usable.length >= 1 ? usable[0].windowId : null);
-  }, [daysQuery.isSuccess, sessions, windowId]);
+  }, [daysQuery.isSuccess, hourQuery.isFetching, sessions, windowId]);
+
+  const isFlex = isFlexChosen(windowId);
+  const [startsAt, setStartsAt] = useState<string | null>(input.initial?.startsAt ?? null);
+  const [minutes, setMinutes] = useState<number | null>(input.initial?.minutes ?? null);
+  const lengths = useMemo(() => (hourDay === null ? [] : hourLengthsFor(hourDay, startsAt)), [hourDay, startsAt]);
+  // A start that left the day is dropped; a length that no longer fits snaps to the longest that does.
+  useEffect(() => {
+    if (!isFlex || hourDay === null) return;
+    if (startsAt !== null && !hourDay.starts.some((x) => x.startsAt === startsAt)) setStartsAt(null);
+  }, [isFlex, hourDay, startsAt]);
+  useEffect(() => {
+    if (!isFlex) return;
+    if (lengths.length === 0) {
+      if (minutes !== null && startsAt === null) setMinutes(null);
+      return;
+    }
+    if (minutes === null || !lengths.includes(minutes)) setMinutes(lengths[0]);
+  }, [isFlex, lengths, minutes, startsAt]);
 
   const placesQuery = useQuery({
     queryKey: ["venueOfferGuest", "hireOptions", offeringId, windowId, guests],
-    enabled: enabled && windowId !== null && guests > 0,
+    enabled: enabled && windowId !== null && guests > 0 && !isFlex,
     retry: 1,
     staleTime: 15_000,
     queryFn: () => venueOfferGuestService.hireOptions({ offeringId, windowId: windowId as string, guests }),
   });
-  const allPlaces = useMemo(() => placesQuery.data ?? [], [placesQuery.data]);
+  const flexPlaces = useMemo<HirePlaceOption[]>(() => {
+    if (!isFlex || hourDay === null || offer === null) return [];
+    return hourDay.places.map((p) => {
+      const row = offer.rows.find((r) => r.optionId === p.priceOptionId);
+      const free = startsAt !== null && minutes !== null && hourPlaceFree(p, startsAt, minutes, hourDay.setupMinutes, hourDay.cleanupMinutes);
+      return {
+        priceOptionId: p.priceOptionId,
+        name: row?.name ?? p.name,
+        spaceId: row?.spaceId ?? null,
+        combinationId: row?.combinationId ?? null,
+        placeName: row?.placeName ?? p.name,
+        setting: null,
+        capacity: row?.capacity ?? null,
+        guestMin: row?.guestMin ?? 1,
+        guestMax: row?.guestMax ?? guests,
+        unit: row?.unit ?? "booking",
+        priceMinor: row?.priceMinor ?? 0,
+        status: startsAt === null || minutes === null || free ? "available" : "taken",
+        reason: null,
+        blockedBy: null,
+      };
+    });
+  }, [isFlex, hourDay, offer, startsAt, minutes, guests]);
+  const allPlaces = useMemo(() => (isFlex ? flexPlaces : placesQuery.data ?? []), [isFlex, flexPlaces, placesQuery.data]);
   const places = useMemo(() => placeListFor(allPlaces, guests), [allPlaces, guests]);
   // A place that isn't free for this group any more is dropped; one free place is picked.
   useEffect(() => {
-    if (!placesQuery.isSuccess) return;
+    if (!placesQuery.isSuccess && !isFlex) return;
+    if (isFlex && (startsAt === null || minutes === null)) return;
     const free = places.shown.filter((p) => p.status === "available");
     if (optionId !== null && free.some((p) => p.priceOptionId === optionId)) return;
     setOptionId(free.length === 1 ? free[0].priceOptionId : null);
-  }, [placesQuery.isSuccess, places, optionId]);
+  }, [placesQuery.isSuccess, places, optionId, isFlex, startsAt, minutes]);
 
   const selectedPlace = places.shown.find((p) => p.priceOptionId === optionId) ?? null;
   const problem: string | null =
@@ -165,14 +243,20 @@ export function useHireSelection(input: {
             ? sessions.length === 0
               ? "Nothing to hire that day. Pick another day."
               : "Pick a session."
-            : placesQuery.isLoading
+            : isFlex && startsAt === null
+              ? "Pick a start time."
+              : isFlex && minutes === null
+                ? "Pick how long."
+            : !isFlex && placesQuery.isLoading
               ? "Checking which spaces are free…"
               : places.shown.length === 0
                 ? `No space fits ${guests} that session. Change the number of guests or the day.`
                 : selectedPlace === null
                   ? places.shown.some((p) => p.status === "available")
                     ? "Pick a space."
-                    : "Every space is taken that session. Pick another day."
+                    : isFlex
+                      ? "No space is free for that time. Pick another start or length."
+                      : "Every space is taken that session. Pick another day."
                   : null;
 
   return {
@@ -199,6 +283,7 @@ export function useHireSelection(input: {
       setSelectedDate(date);
       setWindowId(null);
       setOptionId(null);
+      setStartsAt(null);
     },
     sessions,
     windowId,
@@ -206,17 +291,34 @@ export function useHireSelection(input: {
       setWindowId(id);
       setOptionId(null);
     },
-    placesState: windowId === null ? "idle" : placesQuery.isLoading ? "loading" : placesQuery.isError ? "error" : "ready",
+    placesState: windowId === null ? "idle" : isFlex ? (startsAt === null ? "idle" : "ready") : placesQuery.isLoading ? "loading" : placesQuery.isError ? "error" : "ready",
     retryPlaces: () => void placesQuery.refetch(),
     places,
     allPlaces,
     optionId,
     selectOption: setOptionId,
     selectedPlace,
+    hourDay,
+    isFlex,
+    startsAt,
+    selectStart: (iso) => {
+      setStartsAt(iso);
+      setOptionId(null);
+    },
+    minutes,
+    selectMinutes: (m) => {
+      setMinutes(m);
+      setOptionId(null);
+    },
+    lengths,
     problem,
     choice:
       selectedDate !== null && windowId !== null && optionId !== null && guests > 0
-        ? { date: selectedDate, windowId, guests, priceOptionId: optionId }
+        ? isFlex
+          ? startsAt !== null && minutes !== null
+            ? { date: selectedDate, windowId, guests, priceOptionId: optionId, startsAt, minutes }
+            : null
+          : { date: selectedDate, windowId, guests, priceOptionId: optionId }
         : null,
   };
 }

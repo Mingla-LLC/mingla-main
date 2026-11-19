@@ -529,6 +529,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
           taxMinor={bookingVat(booking, offerVatRatePct).taxMinor}
           vatMode={booking.vatMode}
           bookedTotalMinor={booking.totalMinor}
+          timeZone={booking.venue.timezone}
         />
       ) : pkg.offerKind === "group_package" ? null : (
         <EntrySummaryRows

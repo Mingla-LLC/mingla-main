@@ -17,7 +17,9 @@ import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 import { countdownText, entryDateLabel, holdSecondsLeft } from "@mingla/brand-rendering/venueOffers/entryModel";
 import {
+  damageDepositGuestLine,
   hireMoment,
+  venueClockRange,
   hireTrackerSteps,
   type HireBookingView,
   type HireStateCard,
@@ -245,6 +247,7 @@ export function HireFacts({
   taxMinor = 0,
   vatMode = null,
   bookedTotalMinor = null,
+  timeZone = null,
 }: {
   hire: HireBookingView;
   palette: ThemePalette;
@@ -259,11 +262,19 @@ export function HireFacts({
   vatMode?: "added" | "included" | "none" | null;
   /** The total when booked; differs from `totalDueMinor` once the venue edited the price. */
   bookedTotalMinor?: number | null;
+  timeZone?: string | null;
 }): React.ReactElement {
   const money = (m: number): string => formatVenueMoney(m, currencyCode, exponent);
   const rows: Array<{ k: string; v: string; strong?: boolean }> = [
     { k: "Space", v: hire.placeName ?? "—" },
-    ...(hire.sessionLabel !== null ? [{ k: "Session", v: hire.sessionLabel }] : []),
+    ...(hire.sessionLabel !== null || hire.bookedFrom !== null
+      ? [
+          {
+            k: "Session",
+            v: [hire.sessionLabel, venueClockRange(hire.bookedFrom, hire.bookedTo, timeZone)].filter((x): x is string => x !== null).join(" · "),
+          },
+        ]
+      : []),
     { k: "Guests", v: hire.guests.toLocaleString("en-GB") },
     ...(hire.occasion !== null ? [{ k: "Occasion", v: hire.occasion }] : []),
     ...(hire.siteVisit ? [{ k: "Site visit", v: "You asked to see the space first" }] : []),
@@ -298,6 +309,11 @@ export function HireFacts({
         </View>
       ))}
       {hire.note !== null ? <Text style={[styles.caption, styles.leftText, { color: palette.tertiaryText }]}>{`Your note: “${hire.note}”`}</Text> : null}
+      {showMoney && hire.damageDeposit !== null && hire.damageDeposit.status !== "due" ? (
+        <Text style={[styles.small, { color: palette.secondaryText }]} testID="issue-4490-visit-hire-deposit">
+          {damageDepositGuestLine(hire.damageDeposit, currencyCode, exponent, timeZone)}
+        </Text>
+      ) : null}
     </View>
   );
 }

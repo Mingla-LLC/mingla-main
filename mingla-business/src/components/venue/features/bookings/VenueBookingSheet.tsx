@@ -22,16 +22,20 @@ import {
   useVenueBooking,
 } from "../../../../hooks/useVenueBooking";
 import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
+import { useDamageDeposit } from "../../../../hooks/useVenueHire";
 import { useVenueOffers } from "../../../../hooks/useVenueOffers";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import { venueOfferGuestService } from "../../../../services/venueOfferGuestService";
+import { sessionChipsFor } from "@mingla/brand-rendering/venueOffers/hireModel";
 import type {
   BookingChangeAction,
   BookingChangeSummary,
   OfflineMethod,
   StaffCancelPreview,
   VenueBookingDetail,
+  VenueOffer,
 } from "../../../../types/venueOffers";
+import { randomId } from "../../../../utils/randomId";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
 import { Banner } from "../../../ui/Banner";
 import { Button } from "../../../ui/Button";
@@ -56,6 +60,8 @@ import {
   clockIn,
   dateIn,
   historyTitle,
+  damageDepositWords,
+  hireGuestRangeFor,
   isOverdue,
   methodLabel,
   shortDay,
@@ -69,7 +75,7 @@ const LazyToast = React.lazy(async () => {
   return { default: mod.Toast };
 });
 
-type Mode = "view" | "pay" | "guests" | "date" | "extras" | "cancel";
+type Mode = "view" | "pay" | "guests" | "date" | "extras" | "cancel" | "deposit_release" | "deposit_hold";
 
 function todayIso(timezone: string): string {
   return dateIn(new Date().toISOString(), timezone) ?? new Date().toISOString().slice(0, 10);
@@ -185,11 +191,15 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
   if (mode === "pay") return <Shell title="Mark as paid" onClose={onClose} plainHead={plainHead}><PayForm {...common} /></Shell>;
   if (mode === "guests") {
     const opts = offer?.options ?? [];
-    const min = opts.length > 0 ? Math.min(...opts.map((o) => o.guestMin)) : 1;
-    const max = opts.length > 0 ? Math.max(...opts.map((o) => o.guestMax)) : 1000;
+    // #4490 P4 follow-up: a hire changes within its own place (up to the place's capacity when extra guests are sold).
+    const hireRange = b.hire !== null ? hireGuestRangeFor(offer?.hire ?? null, b.lines.find((l) => l.state !== "cancelled")?.priceOptionId ?? null) : null;
+    const min = hireRange?.min ?? (opts.length > 0 ? Math.min(...opts.map((o) => o.guestMin)) : 1);
+    const max = hireRange?.max ?? (opts.length > 0 ? Math.max(...opts.map((o) => o.guestMax)) : 1000);
     return <Shell title="Change guest numbers" onClose={onClose} plainHead={plainHead}><GuestsForm {...common} min={min} max={max} /></Shell>;
   }
-  if (mode === "date") return <Shell title="Move the date" onClose={onClose} plainHead={plainHead}><DateForm {...common} /></Shell>;
+  if (mode === "date") return <Shell title="Move the date" onClose={onClose} plainHead={plainHead}><DateForm {...common} offer={offer} /></Shell>;
+  if (mode === "deposit_release") return <Shell title="Return the damage deposit" onClose={onClose} plainHead={plainHead}><DepositReleaseForm {...common} /></Shell>;
+  if (mode === "deposit_hold") return <Shell title="Hold the damage deposit" onClose={onClose} plainHead={plainHead}><DepositHoldForm {...common} /></Shell>;
   if (mode === "extras") {
     return (
       <Shell title="Add an extra" onClose={onClose} plainHead={plainHead}>
@@ -302,6 +312,10 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
           ) : null}
         </View>
 
+        {b.hire?.damageDeposit ? (
+          <DepositSection b={b} canMoney={b.canManageMoney || access.canManageMoney} setMode={setMode} />
+        ) : null}
+
         {canChange ? (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Change</Text>
@@ -311,8 +325,8 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
             {b.changeRules === null || b.changeRules.canMove ? (
               <ActionLine icon="calendar" label="Move the date" detail={b.window !== null ? shortDay(b.window.localDate) : null} onPress={() => setMode("date")} testID="venue-booking-move" />
             ) : null}
-            {b.hire !== null ? (
-              <Text style={styles.meta}>A hire&apos;s day and guest numbers are changed with the guest directly for now: cancel and rebook, or agree it with them.</Text>
+            {b.changeRules !== null && !b.changeRules.canChangeGuests && !b.changeRules.canMove ? (
+              <Text style={styles.meta}>The guest numbers and the day can&apos;t be changed any more under this booking&apos;s terms.</Text>
             ) : null}
             {offer !== null && offer.extras.length > 0 ? (
               <ActionLine icon="plus" label="Add an extra" detail={null} onPress={() => setMode("extras")} testID="venue-booking-add-extra" />
@@ -345,7 +359,7 @@ function hireFacts(b: VenueBookingDetail): Array<{ key: string; label: string; v
   if (setup !== null && cleanup !== null) out.push({ key: "setup", label: "Setup", value: `From ${setup} · cleanup until ${cleanup}` });
   if (h.extraGuests > 0) out.push({ key: "extra", label: "Extra guests", value: `${h.extraGuests} · ${money(h.extraGuestMinor, b.currencyCode)}` });
   if (h.overtimeHours > 0) out.push({ key: "over", label: "Running over", value: `${h.overtimeHours} h · ${money(h.overtimeMinor, b.currencyCode)}` });
-  if (h.damageDepositMinor > 0) out.push({ key: "damage", label: "Damage deposit", value: `${money(h.damageDepositMinor, b.currencyCode)} · refundable` });
+  if (h.damageDepositMinor > 0 && h.damageDeposit === null) out.push({ key: "damage", label: "Damage deposit", value: `${money(h.damageDepositMinor, b.currencyCode)} · refundable` });
   if (h.occasion !== null) out.push({ key: "occasion", label: "Occasion", value: h.occasion });
   if (h.note !== null) out.push({ key: "note", label: "Their note", value: h.note });
   if (h.siteVisit) out.push({ key: "visit", label: "Site visit", value: "Asked to see the space first" });
@@ -623,11 +637,11 @@ function GuestsForm({ b, brandId, venueId, onBack, onDone, min, max }: FormProps
   );
 }
 
-function DateForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.ReactElement {
+function DateForm({ b, brandId, venueId, onBack, onDone, offer }: FormProps & { offer: VenueOffer | null }): React.ReactElement {
   const today = todayIso(b.timezone);
   const [date, setDate] = useState<string>(b.window !== null && b.window.localDate > today ? b.window.localDate : addDays(today, 1));
   const [windowId, setWindowId] = useState<string | null>(null);
-  const [rows, setRows] = useState<Array<{ windowId: string; startsAt: string; status: string; remaining: number }> | null>(null);
+  const [rows, setRows] = useState<Array<{ windowId: string; startsAt: string; status: string; remaining: number; label: string | null }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const guests = b.lines.reduce((n, l) => n + l.guests, 0);
   const offeringId = b.offer.id;
@@ -637,10 +651,24 @@ function DateForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.Rea
     setWindowId(null);
     setLoadError(null);
     if (offeringId === null) return undefined;
-    venueOfferGuestService
-      .availability({ offeringId, from: date, to: date })
-      .then((r) => {
-        if (live) setRows(r.filter((x) => x.localDate === date).map((x) => ({ windowId: x.windowId, startsAt: x.startsAt, status: x.status, remaining: x.remaining })));
+    // #4490 P4 follow-up: a hire moves to another session window, named like the guest sees it.
+    const load =
+      b.hire !== null
+        ? venueOfferGuestService.hireDays({ offeringId, from: date, to: date, guests }).then((r) =>
+            sessionChipsFor(r, date, (offer?.hire?.sessions ?? []).map((x) => ({ ...x, weekdays: x.weekdays })), b.timezone, true).map((c) => ({
+              windowId: c.windowId,
+              startsAt: r.find((x) => x.windowId === c.windowId)?.startsAt ?? "",
+              status: r.find((x) => x.windowId === c.windowId)?.status ?? "closed",
+              remaining: 1,
+              label: `${c.label}${c.times !== null ? ` ${c.times}` : ""}`,
+            })),
+          )
+        : venueOfferGuestService
+            .availability({ offeringId, from: date, to: date })
+            .then((r) => r.filter((x) => x.localDate === date).map((x) => ({ windowId: x.windowId, startsAt: x.startsAt, status: x.status, remaining: x.remaining, label: null })));
+    load
+      .then((list) => {
+        if (live) setRows(list);
       })
       .catch(() => {
         if (live) setLoadError("Couldn't load the times for that day. Try again.");
@@ -648,6 +676,7 @@ function DateForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.Rea
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, offeringId]);
   const payload = windowId === null || windowId === b.window?.windowId ? null : { windowId };
   const p = usePreview(b, brandId, venueId, "move_date", payload);
@@ -655,7 +684,10 @@ function DateForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.Rea
   return (
     <>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" testID="venue-booking-date">
-        <Text style={styles.meta}>Now on {whenLine(b)}. Pick the new day, then the time.</Text>
+        <Text style={styles.meta}>
+          Now on {whenLine(b)}. Pick the new day, then the {b.hire !== null ? "session" : "time"}.
+          {b.hire !== null ? " The same space must be free then, setup and cleanup included." : ""}
+        </Text>
         <DayDateField label="Move to" value={date} onChangeValue={setDate} accessibilityLabel="New date" min={addDays(today, 1)} today={today} testID="venue-booking-date-field" />
         {loadError !== null ? (
           <Text style={styles.error}>{loadError}</Text>
@@ -666,9 +698,10 @@ function DateForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.Rea
         ) : (
           <View style={styles.chips}>
             {rows.map((r) => {
-              const time = clockIn(r.startsAt, b.timezone) ?? "—";
+              const time = r.label ?? clockIn(r.startsAt, b.timezone) ?? "—";
               // Staff may move into kept-for-walk-in places, so only a closed or truly full slot is off.
               const off = r.status === "closed" || r.status === "wrong_weekday" || (r.status === "sold_out" && r.remaining < guests);
+              const note = off ? (b.hire !== null ? "Closed" : "Full") : b.hire !== null && r.status === "held" ? "On hold" : b.hire !== null && r.status === "taken" ? "Booked" : null;
               const on = r.windowId === windowId;
               return (
                 <Pressable
@@ -677,12 +710,12 @@ function DateForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.Rea
                   disabled={off}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: on, disabled: off }}
-                  accessibilityLabel={`${time}${off ? ", not available" : ""}`}
+                  accessibilityLabel={`${time}${off ? ", not available" : note !== null ? `, ${note}` : ""}`}
                   style={[styles.chip, on ? styles.chipOn : null, off ? styles.chipOff : null]}
                   testID={`venue-booking-date-time-${time}`}
                 >
                   <Text style={[styles.chipText, on ? styles.chipTextOn : null]}>{time}</Text>
-                  {off ? <Text style={styles.chipNote}>Full</Text> : null}
+                  {note !== null ? <Text style={styles.chipNote}>{note}</Text> : null}
                 </Pressable>
               );
             })}
@@ -751,6 +784,163 @@ function ExtrasForm({ b, brandId, venueId, onBack, onDone, extras }: FormProps &
         onPrimary={() => {
           setError(null);
           p.apply((s) => onDone(`Added. ${money(s.amountMinor, s.currencyCode)} more to pay`), setError);
+        }}
+      />
+    </>
+  );
+}
+
+/** #4490 P4 follow-up — the refundable damage deposit: held, held by the venue, or returned (all or part). */
+function DepositSection({ b, canMoney, setMode }: { b: VenueBookingDetail; canMoney: boolean; setMode: (m: Mode) => void }): React.ReactElement | null {
+  const d = b.hire?.damageDeposit ?? null;
+  if (d === null) return null;
+  const words = damageDepositWords(d, b.currencyCode, b.timezone, Date.now());
+  const canAct = canMoney && (d.status === "collected" || d.status === "held_by_venue");
+  return (
+    <View style={styles.section} testID="venue-booking-deposit">
+      <Text style={styles.sectionLabel}>Damage deposit</Text>
+      <View style={styles.pills}>
+        <Pill variant={words.variant}>{words.pill}</Pill>
+      </View>
+      <Text style={styles.meta}>{words.body}</Text>
+      {canAct ? (
+        <View style={styles.actionRow}>
+          <Button
+            label={d.status === "held_by_venue" ? "Return it" : "Return it now"}
+            variant="secondary"
+            size="md"
+            leadingIcon="refund"
+            onPress={() => setMode("deposit_release")}
+            disabled={!words.ended}
+            testID="venue-booking-deposit-release"
+          />
+          {d.status === "collected" ? (
+            <Button label="Hold it" variant="ghost" size="md" onPress={() => setMode("deposit_hold")} testID="venue-booking-deposit-hold" />
+          ) : null}
+        </View>
+      ) : null}
+      {canAct && !words.ended ? <Text style={styles.meta}>You can return it once the hire has ended.</Text> : null}
+      {!canMoney && (d.status === "collected" || d.status === "held_by_venue") ? (
+        <Text style={styles.meta}>Only people who handle money for this venue can return or hold it.</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function DepositReleaseForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.ReactElement {
+  const d = b.hire?.damageDeposit ?? null;
+  const held = d?.paidMinor ?? 0;
+  const action = useDamageDeposit(brandId, venueId, b.groupId);
+  const [key] = useState(() => `deposit-release-${randomId()}`);
+  const [how, setHow] = useState<"all" | "some">("all");
+  const [keep, setKeep] = useState<number | null>(null);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const keepMinor = how === "all" ? 0 : keep ?? 0;
+  const back = Math.max(0, held - keepMinor);
+  const issue =
+    how === "some" && (keep === null || keep <= 0)
+      ? "Enter how much you're keeping"
+      : keepMinor > held
+        ? `You can keep at most ${money(held, b.currencyCode)}`
+        : how === "some" && reason.trim().length < 3
+          ? "Say why you're keeping it"
+          : null;
+  return (
+    <>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" testID="venue-booking-deposit-release-form">
+        <Text style={styles.meta}>
+          {b.guest.name} paid a {money(held, b.currencyCode)} damage deposit. It goes back the way they paid, and they&apos;re told by email.
+        </Text>
+        <Segmented
+          options={[
+            { key: "all", label: "Return all of it" },
+            { key: "some", label: "Keep some" },
+          ]}
+          value={how}
+          onChange={setHow}
+          accessibilityLabel="How much to return"
+          testID="venue-booking-deposit-how"
+        />
+        {how === "some" ? (
+          <>
+            <MoneyField label="Amount you keep" valueMinor={keep} onChangeMinor={setKeep} currency={b.currencyCode} error={keep !== null && keepMinor > held ? issue : null} testID="venue-booking-deposit-keep" />
+            <View style={styles.field}>
+              <Text style={styles.label}>Why (the guest sees this)</Text>
+              <Input value={reason} onChangeText={(t) => setReason(t.slice(0, 500))} placeholder="e.g. Broken table, invoice attached in email" accessibilityLabel="Why you keep part of the deposit" testID="venue-booking-deposit-reason" />
+            </View>
+          </>
+        ) : null}
+        <Banner
+          tone={keepMinor > 0 ? "warning" : "info"}
+          title={`${money(back, b.currencyCode)} goes back to ${b.guest.name}`}
+          body={keepMinor > 0 ? `You keep ${money(keepMinor, b.currencyCode)}. This can't be undone.` : "This can't be undone."}
+          testID="venue-booking-deposit-preview"
+        />
+      </ScrollView>
+      <FormFooter
+        onBack={onBack}
+        primary={back > 0 ? `Return ${money(back, b.currencyCode)}` : "Keep all of it"}
+        disabled={issue !== null}
+        loading={action.isPending}
+        error={error}
+        testID="venue-booking-deposit-release"
+        onPrimary={() => {
+          if (issue !== null) return;
+          setError(null);
+          action.mutate(
+            { kind: "release", keepMinor, reason: keepMinor > 0 ? reason.trim() : null, idempotencyKey: key },
+            {
+              onSuccess: (s) => onDone(s !== null && (s.refundedMinor ?? 0) > 0 ? `${money(s.refundedMinor ?? 0, b.currencyCode)} is on its way back` : "Damage deposit settled"),
+              onError: (e) => {
+                const err = toVenueOfferError(e);
+                setError(offerErrorCopy(err.code, err.detail));
+              },
+            },
+          );
+        }}
+      />
+    </>
+  );
+}
+
+function DepositHoldForm({ b, brandId, venueId, onBack, onDone }: FormProps): React.ReactElement {
+  const action = useDamageDeposit(brandId, venueId, b.groupId);
+  const [key] = useState(() => `deposit-hold-${randomId()}`);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const issue = reason.trim().length < 3 ? "Say why you're holding it" : null;
+  return (
+    <>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" testID="venue-booking-deposit-hold-form">
+        <Text style={styles.meta}>
+          The deposit stops going back by itself. Return it here when it&apos;s sorted, all of it or part.
+        </Text>
+        <View style={styles.field}>
+          <Text style={styles.label}>Why</Text>
+          <Input value={reason} onChangeText={(t) => setReason(t.slice(0, 500))} placeholder="e.g. Checking a stain on the sofa" accessibilityLabel="Why you are holding the deposit" testID="venue-booking-deposit-hold-reason" />
+        </View>
+      </ScrollView>
+      <FormFooter
+        onBack={onBack}
+        primary="Hold the deposit"
+        disabled={issue !== null}
+        loading={action.isPending}
+        error={error}
+        testID="venue-booking-deposit-hold"
+        onPrimary={() => {
+          if (issue !== null) return;
+          setError(null);
+          action.mutate(
+            { kind: "hold", reason: reason.trim(), idempotencyKey: key },
+            {
+              onSuccess: () => onDone("Deposit held. It won't go back by itself"),
+              onError: (e) => {
+                const err = toVenueOfferError(e);
+                setError(offerErrorCopy(err.code, err.detail));
+              },
+            },
+          );
         }}
       />
     </>

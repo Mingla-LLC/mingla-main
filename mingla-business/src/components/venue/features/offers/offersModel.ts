@@ -683,6 +683,23 @@ export function offerErrorCopy(code: string, detail: string | null = null): stri
       return "This payment is too large to take in one go. Ask for a smaller deposit, or record it as paid to the venue.";
     case "balance_link_unavailable":
       return "This booking's pay link can't be shown here. Take the money at the door instead.";
+    // #4490 P4 follow-ups: changing a hire, the damage deposit, "Hours you set".
+    case "offer_space_taken":
+      return "That space is already booked then (setup and cleanup count too). Pick another day or time.";
+    case "offer_capacity_conflict":
+      return "That day's guest limit is already used up. Pick another day.";
+    case "deposit_release_too_early":
+      return "The damage deposit can be returned once the hire has ended.";
+    case "deposit_nothing_to_release":
+      return "There's no damage deposit held for this booking.";
+    case "deposit_keep_invalid":
+      return "You can keep at most what the guest paid as a damage deposit.";
+    case "deposit_keep_reason_required":
+      return "Say why you're keeping part of the damage deposit (3 to 500 characters). The guest sees it.";
+    case "deposit_hold_reason_required":
+      return "Say why you're holding the damage deposit (3 to 500 characters).";
+    case "hire_flexible_invalid":
+      return "Check \"Hours you set\": a start and an end, and a shortest booking of at least 30 minutes that fits the steps.";
     default:
       return "Couldn't save. Your changes are still here, so try again.";
   }

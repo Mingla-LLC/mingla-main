@@ -56,7 +56,8 @@ export interface HireSpaceView {
 export interface HireRowView {
   optionId: string;
   name: string;
-  unit: "guest" | "booking";
+  /** #4490 P4 follow-up: "hour" = price x booked hours. */
+  unit: "guest" | "booking" | "hour";
   spaceId: string | null;
   combinationId: string | null;
   placeName: string;
@@ -106,7 +107,7 @@ export function parseHireOfferDetail(raw: unknown): HireOfferDetail | null {
     rows.push({
       optionId,
       name: asText(r.name) ?? "",
-      unit: r.unit === "guest" ? "guest" : "booking",
+      unit: r.unit === "guest" ? "guest" : r.unit === "hour" ? "hour" : "booking",
       spaceId: asText(r.spaceId),
       combinationId: asText(r.combinationId),
       placeName: asText(r.placeName) ?? asText(r.name) ?? "",
@@ -183,6 +184,7 @@ export function hirePriceWords(offer: Pick<HireOfferDetail, "rows" | "currencyCo
   if (offer.rows.length === 0) return "Ask for a price";
   const low = Math.min(...offer.rows.map((r) => r.priceMinor));
   const money = formatVenueMoney(low, offer.currencyCode, offer.exponent);
+  if (offer.rows.every((r) => r.unit === "hour")) return `From ${money} an hour`;
   if (offer.charge === "per_guest") return `From ${money} a guest`;
   if (offer.charge === "min_spend") return `From ${money} minimum spend`;
   return `From ${money}`;
@@ -237,7 +239,9 @@ export interface HireDayTile {
   word: string;
 }
 
-const RANK: Record<HireDayStatus, number> = { available: 6, held: 5, taken: 4, closed: 3, wrong_weekday: 2, too_soon: 1, too_far: 0 };
+// #4490 P4 follow-up: "too soon" outranks "taken": inside the notice period an
+// "Hours you set" day reads as taken (no free start), which isn't the reason.
+const RANK: Record<HireDayStatus, number> = { available: 7, held: 6, too_soon: 5, taken: 4, closed: 3, wrong_weekday: 2, too_far: 1 };
 
 /** One tile per day: the best session that day decides it. */
 export function hireDayTiles(rows: readonly HireDayRow[], from: string, count: number): HireDayTile[] {
@@ -285,15 +289,22 @@ export function sessionChipsFor(
   date: string | null,
   sessions: readonly HireSessionView[],
   timeZone: string | null,
+  /** #4490 P4 follow-up: drop windows that aren't a named session (the "Hours you set" day window). */
+  namedOnly = false,
 ): HireSessionChip[] {
   if (date === null) return [];
+  const nameOf = (r: HireDayRow): HireSessionView | undefined => {
+    const start = venueClock(r.startsAt, timeZone);
+    const end = venueClock(r.endsAt, timeZone);
+    return sessions.find((s) => s.startTime === start && s.endTime === (end === "24:00" ? "00:00" : end)) ?? sessions.find((s) => s.startTime === start);
+  };
   return rows
-    .filter((r) => r.localDate === date)
+    .filter((r) => r.localDate === date && (!namedOnly || sessions.length === 0 || nameOf(r) !== undefined))
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
     .map((r) => {
       const start = venueClock(r.startsAt, timeZone);
       const end = venueClock(r.endsAt, timeZone);
-      const named = sessions.find((s) => s.startTime === start && s.endTime === (end === "24:00" ? "00:00" : end)) ?? sessions.find((s) => s.startTime === start);
+      const named = nameOf(r);
       const note =
         r.status === "available"
           ? null
@@ -334,7 +345,7 @@ export interface HirePlaceOption {
   capacity: number | null;
   guestMin: number;
   guestMax: number;
-  unit: "guest" | "booking";
+  unit: "guest" | "booking" | "hour";
   priceMinor: number;
   status: HirePlaceStatus;
   reason: string | null;
@@ -362,7 +373,7 @@ export function parseHirePlaces(raw: unknown): HirePlaceOption[] {
       capacity: asInt(r.capacity),
       guestMin: Math.max(1, asInt(r.guest_min) ?? 1),
       guestMax: Math.max(1, asInt(r.guest_max) ?? 1),
-      unit: r.unit === "guest" ? "guest" : "booking",
+      unit: r.unit === "guest" ? "guest" : r.unit === "hour" ? "hour" : "booking",
       priceMinor,
       status: status as HirePlaceStatus,
       reason: asText(r.reason),
@@ -517,9 +528,13 @@ export function damageLine(q: Pick<HireQuote, "damageDepositMinor" | "currencyCo
 
 export interface HireChoice {
   date: string;
+  /** A session window, or the day's "Hours you set" window. */
   windowId: string;
   guests: number;
   priceOptionId: string;
+  /** #4490 P4 follow-up: "Hours you set" — the start (ISO) and length the guest picked. */
+  startsAt?: string;
+  minutes?: number;
 }
 
 /** `/b/{brand}/v/{venue}/book/{offerId}?k=hire&d=…&w=…&g=120&o=…`. */
@@ -530,6 +545,10 @@ export function hireRequestPath(input: { brandSlug: string; venueSlug: string; o
   if (UUID.test(input.windowId)) params.set("w", input.windowId);
   params.set("g", String(Math.max(1, Math.floor(input.guests))));
   if (UUID.test(input.priceOptionId)) params.set("o", input.priceOptionId);
+  if (input.startsAt !== undefined && input.minutes !== undefined && !Number.isNaN(Date.parse(input.startsAt))) {
+    params.set("s", new Date(input.startsAt).toISOString());
+    params.set("m", String(Math.floor(input.minutes)));
+  }
   return `/b/${encodeURIComponent(input.brandSlug)}/v/${encodeURIComponent(input.venueSlug)}/book/${encodeURIComponent(input.offerId)}?${params.toString()}`;
 }
 
@@ -546,7 +565,122 @@ export function parseHireRequestParams(params: Record<string, string | string[] 
   ) {
     return null;
   }
-  return { date, windowId: windowId.toLowerCase(), guests, priceOptionId: option.toLowerCase() };
+  const startsAt = first(params.s);
+  const minutes = Number(first(params.m));
+  const flex =
+    startsAt !== null && !Number.isNaN(Date.parse(startsAt)) && Number.isInteger(minutes) && minutes >= 15 && minutes <= 1440
+      ? { startsAt: new Date(startsAt).toISOString(), minutes }
+      : {};
+  return { date, windowId: windowId.toLowerCase(), guests, priceOptionId: option.toLowerCase(), ...flex };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #4490 P4 follow-up: "Hours you set" (hour_day)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface HireHourPlace {
+  key: string;
+  name: string;
+  spaceIds: string[];
+  priceOptionId: string;
+  busy: Array<{ from: string; to: string }>;
+}
+
+export interface HireHourDay {
+  status: "open" | "closed" | "paused" | "too_far";
+  windowId: string | null;
+  opensAt: string | null;
+  closesAt: string | null;
+  stepMinutes: number;
+  minMinutes: number;
+  maxMinutes: number | null;
+  setupMinutes: number;
+  cleanupMinutes: number;
+  places: HireHourPlace[];
+  starts: Array<{ startsAt: string; maxMinutes: number; places: number }>;
+}
+
+export function parseHireHourDay(raw: unknown): HireHourDay | null {
+  if (!isJson(raw)) return null;
+  const status = asText(raw.status);
+  if (status !== "open" && status !== "closed" && status !== "paused" && status !== "too_far") return null;
+  const places: HireHourPlace[] = [];
+  for (const p of Array.isArray(raw.places) ? raw.places : []) {
+    if (!isJson(p)) continue;
+    const priceOptionId = asText(p.priceOptionId);
+    if (priceOptionId === null) continue;
+    places.push({
+      key: asText(p.key) ?? priceOptionId,
+      name: asText(p.name) ?? "",
+      spaceIds: ids(p.spaceIds),
+      priceOptionId,
+      busy: (Array.isArray(p.busy) ? p.busy : [])
+        .filter(isJson)
+        .map((b) => ({ from: asText(b.from) ?? "", to: asText(b.to) ?? "" }))
+        .filter((b) => b.from.length > 0 && b.to.length > 0),
+    });
+  }
+  const starts: HireHourDay["starts"] = [];
+  for (const x of Array.isArray(raw.starts) ? raw.starts : []) {
+    if (!isJson(x)) continue;
+    const startsAt = asText(x.startsAt);
+    const max = asInt(x.maxMinutes);
+    if (startsAt === null || max === null || Number.isNaN(Date.parse(startsAt))) continue;
+    // One spelling for an instant, so a start carried in the address matches.
+    starts.push({ startsAt: new Date(startsAt).toISOString(), maxMinutes: max, places: asInt(x.places) ?? 0 });
+  }
+  return {
+    status,
+    windowId: asText(raw.windowId),
+    opensAt: asText(raw.opensAt),
+    closesAt: asText(raw.closesAt),
+    stepMinutes: Math.max(15, asInt(raw.stepMinutes) ?? 60),
+    minMinutes: Math.max(15, asInt(raw.minMinutes) ?? 60),
+    maxMinutes: asInt(raw.maxMinutes),
+    setupMinutes: Math.max(0, asInt(raw.setupMinutes) ?? 0),
+    cleanupMinutes: Math.max(0, asInt(raw.cleanupMinutes) ?? 0),
+    places,
+    starts,
+  };
+}
+
+/** The lengths a guest can pick from a start: shortest, then every step up to the longest free booking from it. */
+export function hourLengthsFor(day: Pick<HireHourDay, "minMinutes" | "maxMinutes" | "stepMinutes" | "starts">, startsAt: string | null): number[] {
+  if (startsAt === null) return [];
+  const start = day.starts.find((s) => s.startsAt === startsAt);
+  if (start === undefined) return [];
+  const cap = Math.min(start.maxMinutes, day.maxMinutes ?? 1440);
+  const out: number[] = [];
+  for (let m = day.minMinutes; m <= cap && out.length < 48; m += day.stepMinutes) out.push(m);
+  return out;
+}
+
+/** A place is free for a start and length when nothing it holds (setup and cleanup included) overlaps. */
+export function hourPlaceFree(
+  place: Pick<HireHourPlace, "busy">,
+  startsAt: string,
+  minutes: number,
+  setupMinutes: number,
+  cleanupMinutes: number,
+): boolean {
+  const from = Date.parse(startsAt) - setupMinutes * 60_000;
+  const to = Date.parse(startsAt) + (minutes + cleanupMinutes) * 60_000;
+  return place.busy.every((b) => Date.parse(b.to) <= from || Date.parse(b.from) >= to);
+}
+
+/** "10:00–22:00" in the venue's time; null when either end is missing. */
+export function venueClockRange(from: string | null, to: string | null, timeZone: string | null): string | null {
+  if (from === null || to === null) return null;
+  const a = venueClock(from, timeZone);
+  const b = venueClock(to, timeZone);
+  return a !== null && b !== null ? `${a}–${b === "24:00" ? "00:00" : b}` : null;
+}
+
+export function hourLengthWords(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return `${h} ${h === 1 ? "hour" : "hours"}${m > 0 ? ` ${m} min` : ""}`;
 }
 
 export const OCCASIONS: readonly string[] = ["Wedding", "Birthday", "Company day", "Brand event", "Party", "Other"];
@@ -558,6 +692,9 @@ export const OCCASIONS: readonly string[] = ["Wedding", "Birthday", "Company day
 export interface HireBookingView {
   placeName: string | null;
   sessionLabel: string | null;
+  /** The booked hours (current: a moved hire reads its new day). */
+  bookedFrom: string | null;
+  bookedTo: string | null;
   guests: number;
   hireMinor: number;
   extraGuests: number;
@@ -581,6 +718,79 @@ export interface HireBookingView {
   balanceDueAt: string | null;
   paidMinor: number;
   payModes: Array<{ mode: "deposit" | "full"; amountMinor: number }>;
+  /** #4490 P4 follow-up: the refundable damage deposit's state; null when none. */
+  damageDeposit: HireDamageDeposit | null;
+}
+
+export interface HireDamageDeposit {
+  status: "due" | "collected" | "held_by_venue" | "released";
+  amountMinor: number;
+  paidMinor: number;
+  releaseAt: string | null;
+  heldReason: string | null;
+  refundedMinor: number | null;
+  keptMinor: number | null;
+  keptReason: string | null;
+  releasedAt: string | null;
+}
+
+const DEPOSIT_STATUSES: ReadonlySet<string> = new Set(["due", "collected", "held_by_venue", "released"]);
+
+export function parseHireDamageDeposit(raw: unknown): HireDamageDeposit | null {
+  if (!isJson(raw)) return null;
+  const status = asText(raw.status);
+  if (status === null || !DEPOSIT_STATUSES.has(status)) return null;
+  return {
+    status: status as HireDamageDeposit["status"],
+    amountMinor: asMinor(raw.amountMinor) ?? 0,
+    paidMinor: asMinor(raw.paidMinor) ?? 0,
+    releaseAt: asText(raw.releaseAt),
+    heldReason: asText(raw.heldReason),
+    refundedMinor: asMinor(raw.refundedMinor),
+    keptMinor: asMinor(raw.keptMinor),
+    keptReason: asText(raw.keptReason),
+    releasedAt: asText(raw.releasedAt),
+  };
+}
+
+/** The guest's line for the damage deposit (held, goes back on…, returned, part kept and why). */
+export function damageDepositGuestLine(d: HireDamageDeposit, currencyCode: string, exponent: number, timeZone: string | null): string {
+  const money = (m: number): string => formatVenueMoney(m, currencyCode, exponent);
+  const day = (iso: string | null): string | null => {
+    if (iso === null) return null;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return null;
+    return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: timeZone ?? undefined }).format(new Date(t));
+  };
+  switch (d.status) {
+    case "due":
+      return `${money(d.amountMinor)} refundable damage deposit, paid with the rest.`;
+    case "collected": {
+      const when = day(d.releaseAt);
+      return `${money(d.paidMinor)} damage deposit held.${when !== null ? ` It comes back to you by ${when} if nothing was damaged.` : ""}`;
+    }
+    case "held_by_venue":
+      return `${money(d.paidMinor)} damage deposit held by the venue${d.heldReason !== null ? `: ${d.heldReason}` : ""}. They'll return it once it's sorted.`;
+    case "released": {
+      const kept = d.keptMinor ?? 0;
+      const back = d.refundedMinor ?? 0;
+      return kept > 0
+        ? `${money(back)} of your damage deposit is on its way back. The venue kept ${money(kept)}${d.keptReason !== null ? `: ${d.keptReason}` : ""}.`
+        : `Your ${money(back)} damage deposit is on its way back.`;
+    }
+  }
+}
+
+/** The guest numbers a booked hire can change to (its row; up to the place's capacity when extra guests are sold). */
+export function hireChangeRange(
+  offer: Pick<HireOfferDetail, "rows" | "extraGuestMinor"> | null,
+  priceOptionId: string | null,
+): { min: number; max: number } | null {
+  if (offer === null || priceOptionId === null) return null;
+  const row = offer.rows.find((r) => r.optionId === priceOptionId);
+  if (row === undefined) return null;
+  const max = offer.extraGuestMinor !== null && row.capacity !== null ? Math.max(row.guestMax, row.capacity) : row.guestMax;
+  return { min: row.guestMin, max };
 }
 
 /** The hire part of a guest booking read; null for other kinds. */
@@ -591,6 +801,8 @@ export function parseHireBooking(raw: unknown): HireBookingView | null {
   return {
     placeName: asText(h.placeName),
     sessionLabel: asText(h.sessionLabel),
+    bookedFrom: asText(h.bookedFrom),
+    bookedTo: asText(h.bookedTo),
     guests: asInt(h.guests) ?? 0,
     hireMinor: asMinor(h.hireMinor) ?? 0,
     extraGuests: asInt(h.extraGuests) ?? 0,
@@ -616,6 +828,7 @@ export function parseHireBooking(raw: unknown): HireBookingView | null {
     payModes: (Array.isArray(raw.payModes) ? raw.payModes : [])
       .filter(isJson)
       .map((m) => ({ mode: m.mode === "deposit" ? ("deposit" as const) : ("full" as const), amountMinor: asMinor(m.amountMinor) ?? 0 })),
+    damageDeposit: parseHireDamageDeposit(h.damageDeposit),
   };
 }
 

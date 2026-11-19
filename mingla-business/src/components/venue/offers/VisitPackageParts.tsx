@@ -38,6 +38,8 @@ import {
   type PackageBookingView,
 } from "@mingla/brand-rendering/venueOffers/packageModel";
 
+import { hireChangeRange, hireDayTiles, sessionChipsFor } from "@mingla/brand-rendering/venueOffers/hireModel";
+
 import { radius, size, space, type } from "../../../constants/designSystem";
 import { VenueOfferGuestError, venueOfferGuestService } from "../../../services/venueOfferGuestService";
 import { randomId } from "../../../utils/randomId";
@@ -148,6 +150,20 @@ export function VisitChanges({
   const [panel, setPanel] = useState<Panel>(null);
   const rules = pkg.changeRules;
   const isPackage = pkg.offerKind === "group_package";
+  // #4490 P4 follow-up: a private hire changes guests within its place, and moves to another session.
+  const isHire = pkg.offerKind === "private_hire";
+  const hireQuery = useQuery({
+    queryKey: [...venueOfferQueryKeys.offer(booking.venue.brandSlug ?? "", booking.venue.slug ?? "", booking.offer.id ?? ""), "hire"],
+    enabled: isHire && booking.venue.brandSlug !== null && booking.venue.slug !== null && booking.offer.id !== null,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: () =>
+      venueOfferGuestService.hireOffer({
+        brandSlug: booking.venue.brandSlug as string,
+        venueSlug: booking.venue.slug as string,
+        offeringId: booking.offer.id as string,
+      }),
+  });
   const offerQuery = useQuery({
     queryKey: [...venueOfferQueryKeys.offer(booking.venue.brandSlug ?? "", booking.venue.slug ?? "", booking.offer.id ?? ""), "package"],
     enabled: isPackage && booking.venue.brandSlug !== null && booking.venue.slug !== null && booking.offer.id !== null,
@@ -172,7 +188,7 @@ export function VisitChanges({
     {
       key: "guests",
       icon: "users",
-      label: isPackage ? "Change the number of guests" : "Add more guests",
+      label: isPackage || isHire ? "Change the number of guests" : "Add more guests",
       detail:
         booking.lines.length > 1
           ? "This booking has several prices. Contact the venue to change it."
@@ -236,14 +252,34 @@ export function VisitChanges({
           theme={theme}
           exponent={exponent}
           token={token}
-          range={offer !== null ? groupRange(offer.options) : { min: 1, max: Math.max(1, booking.lines.reduce((n, l) => n + l.guests, 0) * 2) }}
+          range={
+            isHire
+              ? hireChangeRange(hireQuery.data ?? null, booking.lines[0]?.priceOptionId ?? null) ?? { min: 1, max: Math.max(1, booking.lines.reduce((n, l) => n + l.guests, 0)) }
+              : offer !== null
+                ? groupRange(offer.options)
+                : { min: 1, max: Math.max(1, booking.lines.reduce((n, l) => n + l.guests, 0) * 2) }
+          }
           onDone={(m) => {
             setPanel(null);
             onChanged(m);
           }}
         />
       ) : null}
-      {panel === "move" && booking.offer.id !== null ? (
+      {panel === "move" && booking.offer.id !== null && isHire ? (
+        <HireMoveChange
+          booking={booking}
+          pkg={pkg}
+          palette={palette}
+          theme={theme}
+          exponent={exponent}
+          token={token}
+          sessions={hireQuery.data?.sessions ?? []}
+          onDone={(m) => {
+            setPanel(null);
+            onChanged(m);
+          }}
+        />
+      ) : panel === "move" && booking.offer.id !== null ? (
         <MoveChange
           booking={booking}
           pkg={pkg}
@@ -476,6 +512,99 @@ function MoveChange({ booking, pkg, palette, theme, exponent, token, onDone }: C
         palette={palette}
         theme={theme}
         label={date !== null && payload !== null ? `Move to ${entryDateLabel(date)}` : "Pick a new day and time"}
+        onPress={() => c.apply(() => onDone(date !== null ? `Moved to ${entryDateLabel(date)}.` : "Moved."))}
+        disabled={payload === null || c.summary === null}
+        busy={c.applying}
+        testID="issue-4490-visit-move-confirm"
+      />
+    </View>
+  );
+}
+
+/** #4490 P4 follow-up — move a private hire to another day's session; the same place must be free (setup and cleanup included). */
+function HireMoveChange({
+  booking,
+  pkg,
+  palette,
+  theme,
+  exponent,
+  token,
+  sessions,
+  onDone,
+}: Common & { token: string | null; sessions: Parameters<typeof sessionChipsFor>[2]; onDone: (m: string) => void }): React.ReactElement {
+  const tz = booking.venue.timezone;
+  const from = useMemo(() => venueToday(new Date(), tz), [tz]);
+  const guests = booking.lines.reduce((n, l) => n + l.guests, 0);
+  const daysQuery = useQuery({
+    queryKey: ["venueOfferGuest", "hireDays", booking.offer.id ?? "", from, guests],
+    staleTime: 30_000,
+    retry: 1,
+    queryFn: () => venueOfferGuestService.hireDays({ offeringId: booking.offer.id as string, from, to: addDays(from, 59), guests }),
+  });
+  const rows = useMemo(() => daysQuery.data ?? [], [daysQuery.data]);
+  const tiles = useMemo(() => hireDayTiles(rows, from, 60), [rows, from]);
+  const [date, setDate] = useState<string | null>(null);
+  const [windowId, setWindowId] = useState<string | null>(null);
+  const chips = sessionChipsFor(rows, date, sessions, tz, true);
+  const payload = windowId === null || windowId === pkg.windowId ? null : { windowId };
+  const c = useGuestChange(booking, token, "move_date", payload);
+  const stripTiles: OfferingDateTile[] = tiles.map((t, index) => ({
+    key: t.date,
+    top: index === 0 ? "Today" : new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(`${t.date}T12:00:00Z`)),
+    big: String(Number(t.date.slice(8, 10))),
+    bottom: t.date === booking.window?.localDate ? "Booked" : t.word.length > 0 ? t.word : MONTHS[Number(t.date.slice(5, 7)) - 1] ?? "",
+    selected: t.date === date,
+    disabled: t.state === "none",
+    accessibilityLabel: `${entryDateLabel(t.date)}${t.word.length > 0 ? `, ${t.word}` : ""}`,
+  }));
+  return (
+    <View style={styles.panel} testID="issue-4490-visit-move-panel">
+      <Text style={[styles.small, { color: palette.secondaryText }]}>Your space has to be free on the new day.</Text>
+      {daysQuery.isError ? (
+        <EntryNote palette={palette} icon="flag" tone="error">We couldn&apos;t load the days. Close this and try again.</EntryNote>
+      ) : daysQuery.isLoading ? (
+        <View style={[styles.stripSkeleton, { backgroundColor: palette.panel }]} accessibilityLabel="Loading days" />
+      ) : (
+        <OfferingDateStrip
+          palette={palette}
+          tiles={stripTiles}
+          onPress={(d) => {
+            setDate(d);
+            setWindowId(null);
+          }}
+          fontFamily={themeBoldFace(theme).fontFamily}
+          accessibilityLabel="Choose the new day"
+          testID="issue-4490-visit-move-day"
+        />
+      )}
+      {date !== null ? (
+        chips.length === 0 ? (
+          <Text style={[styles.small, { color: palette.secondaryText }]}>{`Nothing to hire on ${entryDateLabel(date)}. Pick another day.`}</Text>
+        ) : (
+          <OfferingChipRow accessibilityLabel="Choose the new session">
+            {chips.map((chip) => (
+              <OfferingChoiceChip
+                key={chip.windowId}
+                palette={palette}
+                label={`${chip.label}${chip.times !== null ? ` ${chip.times}` : ""}`}
+                note={chip.windowId === pkg.windowId ? "Booked" : chip.note}
+                selected={chip.windowId === windowId}
+                disabled={chip.note !== null || chip.windowId === pkg.windowId}
+                onPress={() => setWindowId(chip.windowId)}
+                role="radio"
+                testID={`issue-4490-visit-move-session-${chip.label.replace(/\s+/g, "-").toLowerCase()}`}
+              />
+            ))}
+          </OfferingChipRow>
+        )
+      ) : (
+        <Text style={[styles.small, { color: palette.secondaryText }]}>Pick the new day, then the session.</Text>
+      )}
+      <PreviewNote palette={palette} summary={c.summary} loading={c.loading} error={c.error} exponent={exponent} testID="issue-4490-visit-move" />
+      <EntryButton
+        palette={palette}
+        theme={theme}
+        label={date !== null && payload !== null ? `Move to ${entryDateLabel(date)}` : "Pick a new day and session"}
         onPress={() => c.apply(() => onDone(date !== null ? `Moved to ${entryDateLabel(date)}.` : "Moved."))}
         disabled={payload === null || c.summary === null}
         busy={c.applying}
