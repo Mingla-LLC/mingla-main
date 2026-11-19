@@ -89,6 +89,31 @@ Deno.test("#4517 never-asked returning user: exactly one request; repeated calls
   assert(h.calls.request === 1, `expected 1 request, got ${h.calls.request}`);
 });
 
+Deno.test("#4517 first call asks nobody (SDK not ready), a later call asks exactly once", async () => {
+  const h = await load({ canRequest: false });
+  await h.svc.requestReturningUserPushPermission();
+  assert(h.calls.request === 0, "nobody asked while the SDK is not ready");
+  g().canRequest = true;
+  await h.svc.requestReturningUserPushPermission();
+  await h.svc.requestReturningUserPushPermission();
+  assert(h.calls.request === 1, `expected exactly 1 request, got ${h.calls.request}`);
+});
+
+Deno.test("#4517 after a real request, further calls ask zero more times", async () => {
+  const h = await load({ canRequest: true });
+  await h.svc.requestReturningUserPushPermission();
+  await h.svc.requestPostTourPermissions();
+  await h.svc.requestReturningUserPushPermission();
+  assert(h.calls.request === 1, `expected 1 request, got ${h.calls.request}`);
+});
+
+Deno.test("#4517 two concurrent calls ask at most once", async () => {
+  const h = await load({ canRequest: true });
+  await Promise.all([h.svc.requestReturningUserPushPermission(), h.svc.requestReturningUserPushPermission()]);
+  assert(h.calls.request === 1, `expected 1 request, got ${h.calls.request}`);
+  assert(h.calls.can === 1, `concurrent callers share one check, got ${h.calls.can}`);
+});
+
 Deno.test("#4517 already-answered user: never asked again", async () => {
   const h = await load({ canRequest: false });
   await h.svc.requestReturningUserPushPermission();

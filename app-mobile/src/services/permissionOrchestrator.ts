@@ -176,21 +176,29 @@ export async function requestPostTourPermissions(): Promise<void> {
 // #4517: the gated push request, single-flight per app session. Shared by the
 // post-onboarding call above and the returning-user call below so the two can
 // never both raise the OS prompt (both would read "can still ask" before either
-// finished). Never throws.
+// finished). Released again when nobody was asked. Never throws.
 let _pushRequestInFlight: Promise<void> | null = null;
 
 function requestPushOnce(): Promise<void> {
   if (_pushRequestInFlight) return _pushRequestInFlight;
-  _pushRequestInFlight = (async () => {
+  let asked = false;
+  const flight: Promise<void> = (async () => {
     try {
       if (await canRequestPushPermission()) {
+        asked = true;
         await requestPushPermission();
       }
     } catch (e) {
       console.warn('[permissions] push request failed:', e);
+    } finally {
+      // Nobody was asked (the SDK was not ready, or the check failed): release, so
+      // a later call this session can try again. Once the request was made the
+      // latch stays, so the two callers can never both raise the prompt.
+      if (!asked && _pushRequestInFlight === flight) _pushRequestInFlight = null;
     }
   })();
-  return _pushRequestInFlight;
+  _pushRequestInFlight = flight;
+  return flight;
 }
 
 /**
