@@ -367,13 +367,13 @@ Deno.test("T1-C signed out: the body shows the Bring someone card (lazy), never 
     "a real button");
   const src = await Deno.readTextFile(new URL("../RsvpOfferingBody.tsx", import.meta.url));
   assert(
-    /const RsvpBringSomeoneCard = React\.lazy\(\(\) =>\s*import\("\.\/RsvpGuestPartyBlock"\)\.then\(\(m\) => \(\{ default: m\.RsvpBringSomeoneCard \}\)\),\s*\);/.test(src),
-    "the card loads on demand",
+    /<RsvpGuestPartyBlock\s+\/\/[^\n]*\n\s+\/\/[^\n]*\n\s+signedOut=\{!isLoggedIn\}\s+onGetApp=\{props\.onGetApp\}/.test(src),
+    "signed out: the guest section (loaded on demand) renders the card, with the surface's Get the app",
   );
   assert(
-    /<RsvpBringSomeoneCard[^>]*onGetApp=\{props\.onGetApp\}/.test(src) &&
-      /const guestForms = showGuestStepper \? !isLoggedIn \? bringSomeoneCard : \(/.test(src),
-    "signed out: the card, with the surface's Get the app",
+    /p\.signedOut === true \? \(\s*<RsvpBringSomeoneCard/.test(cardSrc) &&
+      /export default RsvpGuestSection;/.test(cardSrc),
+    "the section picks the card when signed out, the party panel otherwise",
   );
   assert(!/^import .*RsvpBringSomeoneCard/m.test(src), "no eager import of the card");
   assert(!/[\u{1F300}-\u{1FAFF}]/u.test(cardSrc), "no emoji");

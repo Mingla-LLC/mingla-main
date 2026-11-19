@@ -695,4 +695,19 @@ const cardStyles = StyleSheet.create({
   ctaText: { fontSize: 15 },
 });
 
-export default RsvpGuestPartyPanel;
+/** issue #4508 T1 — the guest section: signed out, the "Bring someone" card;
+ * signed in, the party panel. One on-demand module, one eager mount point. */
+export interface RsvpGuestSectionProps extends RsvpGuestPartyPanelProps {
+  signedOut?: boolean;
+  onGetApp?: () => void;
+}
+
+export function RsvpGuestSection(p: RsvpGuestSectionProps): React.ReactElement {
+  return p.signedOut === true ? (
+    <RsvpBringSomeoneCard palette={p.palette} boldFamily={p.boldFamily} onGetApp={p.onGetApp} />
+  ) : (
+    <RsvpGuestPartyPanel {...p} />
+  );
+}
+
+export default RsvpGuestSection;

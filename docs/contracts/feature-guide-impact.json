@@ -2656,6 +2656,8 @@
         "supabase/functions/_shared/rsvpInviterName.ts",
         "supabase/functions/public-submit-rsvp/guestOps.ts",
         "supabase/functions/public-submit-rsvp/guestPayload.ts",
+        "supabase/functions/rsvp-pass-fetch/passAccess.ts",
+        "packages/phone-input/accessibilityLabel.ts",
         "supabase/functions/rsvp-notify/friendGoingFailureAlert.ts",
         "supabase/functions/rsvp-notify/guestInvite.ts",
         "supabase/functions/rsvp-notify/signedOutCeilingAlert.ts",

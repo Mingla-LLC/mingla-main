@@ -191,6 +191,6 @@ Deno.test("P4: the guest number field's spoken name does not repeat itself", () 
   assertEquals(phoneFieldAccessibilityLabel(" Guest 1 "), "Guest 1 phone number");
   const web = Deno.readTextFileSync("mingla-business/src/components/event/useBusinessRsvpPhoneField.tsx");
   const app = Deno.readTextFileSync("app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx");
-  assert(web.includes("phoneInputAccessibilityLabel={`${phoneFieldAccessibilityLabel(label)}"));
+  assert(web.includes("phoneInputAccessibilityLabel={`${/phone number$/i.test(label) ? label : `${label} phone number`}"));
   assert(app.includes("phoneInputAccessibilityLabel={phoneFieldAccessibilityLabel(args.label)}"));
 });

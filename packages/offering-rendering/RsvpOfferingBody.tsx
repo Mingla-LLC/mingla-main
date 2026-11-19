@@ -210,12 +210,6 @@ const loadGuestBlock = (retry: () => void) =>
       ),
     })),
   );
-// issue #4508 T1 — plus-ones need a signed-in account: a signed-out viewer
-// sees a small "Bring someone" card instead, also on demand.
-// It lives in the guest section's own on-demand module (RsvpGuestPartyBlock).
-const RsvpBringSomeoneCard = React.lazy(() =>
-  import("./RsvpGuestPartyBlock").then((m) => ({ default: m.RsvpBringSomeoneCard })),
-);
 // Only a refused submit needs the guest error lines, so they load on demand.
 const guestErrorLine = (code: string): Promise<string | null> =>
   import("./rsvpGuestErrors").then(
@@ -1783,17 +1777,14 @@ export const useRsvpOfferingState = (
   // The number preview, add / remove handlers, number field and friends section
   // live in the lazily loaded guest block (RsvpGuestPartyBlock.tsx); this body
   // keeps only the state, the debounced lookup above and the submit payload.
-  // issue #4508 T1 — signed out: the "Bring someone" card, never the guest
-  // block (a plus-one needs a signed-in account; the RSVP stays one tap).
-  const bringSomeoneCard = (
-    <Suspense fallback={null}>
-      <RsvpBringSomeoneCard palette={palette} boldFamily={boldFamily} onGetApp={props.onGetApp} />
-    </Suspense>
-  );
-  const guestForms = showGuestStepper ? !isLoggedIn ? bringSomeoneCard : (
+  const guestForms = showGuestStepper ? (
     // N-7: the slot holds the section's height while the block loads.
     <Suspense fallback={<View style={[styles.guestSlot, surface.card]} />}>
       <RsvpGuestPartyBlock
+        // issue #4508 T1 — signed out: the "Bring someone" card, never the
+        // guest form (a plus-one needs a signed-in account).
+        signedOut={!isLoggedIn}
+        onGetApp={props.onGetApp}
         palette={palette}
         boldFamily={boldFamily}
         max={config.plusOnesMax}
