@@ -239,6 +239,7 @@
         "mingla-business/jest.issue2323.render.cjs",
         "mingla-business/src/components/checkout/useSteadyQuote.ts",
         "mingla-business/src/components/event/EventTicketCheckoutAccessCard.native.tsx",
+        "mingla-business/src/components/event/EventTicketCheckoutAccessCard.tsx",
         "mingla-business/src/constants/purchaseTermsDisclosure.ts",
         "mingla-business/src/hooks/useRevealedFieldErrors.ts",
         "mingla-business/src/payments/openPaymentPage.ts",
