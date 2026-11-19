@@ -6,6 +6,8 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { useTouchFloor } from "../../hooks/useTouchFloor";
+
 import { color, radius, space, type } from "../../constants/designSystem";
 import { WEEKDAY_NAMES, WEEKDAY_SHORT, toggleWeekday, weekdaysSummary } from "./fieldModels";
 
@@ -27,6 +29,8 @@ export function WeekdayChips({
   showSummary = true,
   testID,
 }: WeekdayChipsProps): React.ReactElement {
+  // #4490: hitSlop does nothing in a phone browser, so the 34 chip is drawn 44 there.
+  const touchFloor = useTouchFloor();
   return (
     <View style={styles.host} testID={testID}>
       {label !== undefined ? <Text style={styles.label}>{label}</Text> : null}
@@ -42,7 +46,7 @@ export function WeekdayChips({
               accessibilityRole="checkbox"
               accessibilityState={{ checked: on, disabled }}
               accessibilityLabel={WEEKDAY_NAMES[day]}
-              style={[styles.chip, on && styles.chipOn, disabled && styles.disabled]}
+              style={[styles.chip, touchFloor > 0 ? { height: touchFloor, minWidth: touchFloor } : null, on && styles.chipOn, disabled && styles.disabled]}
               testID={testID !== undefined ? `${testID}-${day}` : undefined}
             >
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{short.slice(0, 2)}</Text>

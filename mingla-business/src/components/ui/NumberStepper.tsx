@@ -56,6 +56,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 
 // Same row fill as the RSVP step it came from — Android gets the opaque
 // fallback (ANDROID_GLASS_USES_OPAQUE_FALLBACK; #1028 tracks the composite).
@@ -255,6 +256,9 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
 
   const shownText = editText ?? String(value);
   const isNative = Platform.OS !== "web";
+  // #4490: hitSlop does nothing in a phone browser, so the 36 controls are drawn 44 there.
+  const touchFloor = useTouchFloor();
+  const touchStyle = touchFloor > 0 ? { width: touchFloor, height: touchFloor } : null;
   const fieldLabel = `Type ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
 
   return (
@@ -286,7 +290,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           onLongPress={() => startHold(-1)}
           onPressOut={stopHold}
           delayLongPress={HOLD_DELAY_MS}
-          style={[styles.btn, !canDec && styles.btnDisabled]}
+          style={[styles.btn, touchStyle, !canDec && styles.btnDisabled]}
           testID={testID ? `${testID}-dec` : undefined}
         >
           <Text style={styles.btnText}>−</Text>
@@ -305,7 +309,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           selectTextOnFocus
           maxLength={maxDigits}
           accessibilityLabel={fieldLabel}
-          style={styles.field}
+          style={[styles.field, touchFloor > 0 ? { height: touchFloor } : null]}
           testID={testID ? `${testID}-value` : undefined}
         />
         <Pressable
@@ -318,7 +322,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           onLongPress={() => startHold(1)}
           onPressOut={stopHold}
           delayLongPress={HOLD_DELAY_MS}
-          style={[styles.btn, !canInc && styles.btnDisabled]}
+          style={[styles.btn, touchStyle, !canInc && styles.btnDisabled]}
           testID={testID ? `${testID}-inc` : undefined}
         >
           <Text style={styles.btnText}>+</Text>
@@ -371,8 +375,9 @@ const styles = StyleSheet.create({
     minWidth: 64,
     // #4490 — on web a TextInput keeps the browser's intrinsic input width
     // (~20 characters), which squeezed the label into one letter per line in
-    // a 390-wide sheet. Six digits (100,000) fit in 120.
-    maxWidth: 120,
+    // a 390-wide sheet. Six digits (100,000) fit in 96, and 96 leaves the label
+    // room to read on one line ("Guests that day" wrapped to three at 120).
+    maxWidth: 96,
     height: 36,
     paddingHorizontal: space[2],
     paddingVertical: 0,

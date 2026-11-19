@@ -123,6 +123,11 @@ function clone<T>(value: T): T {
 }
 
 // OptionCard is row-only (flexBasis 0); stacked in a column it must size to its content.
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../../../ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
+
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
 
 export interface EntryEditorProps {
@@ -164,6 +169,10 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ text: string; stale: boolean; reasons: string[] } | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  // #4490: leaving the editor with unsaved work asks first (Close in the header and
+  // the shell's own section switch both end here).
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveSaving, setLeaveSaving] = useState(false);
 
   const state: VenueOffersState | undefined = offersQuery.data;
   const listOffer = state?.offers.find((o) => o.id === currentOfferId) ?? null;
@@ -454,6 +463,14 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
     [base, issueFor, runSave, stepIndex],
   );
 
+  const requestClose = useCallback((): void => {
+    if (dirtyRef.current) {
+      setLeaveOpen(true);
+      return;
+    }
+    onClose();
+  }, [onClose]);
+
   // ----------------------------------------------------------- states
   if (offersQuery.isError && state === undefined) {
     return (
@@ -520,7 +537,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
       <View style={styles.titleActions}>
         {savedNote !== null && !dirty ? <Text style={styles.saved} accessibilityLiveRegion="polite">{savedNote}</Text> : null}
         {dirty ? <Text style={styles.saved}>Unsaved changes</Text> : null}
-        <Button label="Close" variant="ghost" size="sm" leadingIcon="close" onPress={() => onClose()} testID="entry-editor-close" />
+        <Button label="Close" variant="ghost" size="sm" leadingIcon="close" onPress={requestClose} testID="entry-editor-close" />
       </View>
     </View>
   );
@@ -624,9 +641,53 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
     />
   );
 
+  const stepIssue = issueFor(step.id);
+  const leaveDialog = leaveOpen ? (
+    <React.Suspense fallback={null}>
+      <LazyConfirmDialog
+        visible
+        variant="leave"
+        title="Save your changes?"
+        description={`You changed ${step.label}. If you leave without saving, those changes are gone.`}
+        onClose={() => setLeaveOpen(false)}
+        onConfirm={() => {
+          setLeaveOpen(false);
+          onClose();
+        }}
+        onDiscard={() => {
+          setLeaveOpen(false);
+          onClose();
+        }}
+        onSave={async () => {
+          setLeaveSaving(true);
+          const ok = step.id === "review" ? false : await runSave(step.id);
+          setLeaveSaving(false);
+          if (ok) {
+            setLeaveOpen(false);
+            onClose();
+          }
+        }}
+        saveDisabled={stepIssue !== null || step.id === "review"}
+        confirmLoading={leaveSaving}
+        errorMessage={
+          stepIssue !== null
+            ? "These changes can't be saved yet. Keep editing to fix them."
+            : error !== null
+              ? error.text
+              : null
+        }
+        saveTestID="entry-editor-leave-save"
+        discardTestID="entry-editor-leave-discard"
+        keepTestID="entry-editor-leave-keep"
+        testID="entry-editor-leave-dialog"
+      />
+    </React.Suspense>
+  ) : null;
+
   if (railLayout) {
     return (
       <View style={styles.wideHost} testID="entry-editor">
+        {leaveDialog}
         {header}
         <View style={styles.wideBody}>
           <View style={styles.rail}>
@@ -652,6 +713,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
   }
   return (
     <View style={styles.phoneHost} testID="entry-editor">
+      {leaveDialog}
       {header}
       <Stepper
         steps={steps}

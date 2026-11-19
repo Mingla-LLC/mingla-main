@@ -24,6 +24,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "./Icon";
 import { PickerSheetHead } from "./PickerSheetHead";
@@ -71,6 +72,8 @@ export function TimeField({
   const focused = useRef(false);
   const listRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const { isWideDesktop } = useResponsiveLayout();
+  // #4490: hitSlop does nothing in a phone browser, so the field parts are drawn 44 there.
+  const touchFloor = useTouchFloor();
 
   // Re-read the value from the owner unless the host is typing in this field.
   useEffect(() => {
@@ -131,7 +134,7 @@ export function TimeField({
               if (normalized !== null && normalized !== shown) onChangeValue(normalized);
             }
           }}
-          style={styles.input}
+          style={[styles.input, touchFloor > 0 ? { minHeight: touchFloor } : null]}
           testID={testID !== undefined ? `${testID}-input` : undefined}
         />
         <Pressable
@@ -140,7 +143,7 @@ export function TimeField({
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel={`Choose ${accessibilityLabel.toLowerCase()} from a list`}
-          style={({ pressed }) => [styles.listButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.listButton, touchFloor > 0 ? { width: touchFloor, height: touchFloor } : null, pressed && styles.pressed]}
           testID={testID !== undefined ? `${testID}-list` : undefined}
         >
           <Icon name="clock" size={16} color={color.text2} />

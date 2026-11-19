@@ -17,15 +17,21 @@ export interface PickerSheetHeadProps {
   /** Shown as the sheet heading. Omit for a sheet whose own row is the heading (a calendar). */
   title?: string;
   onClose: () => void;
+  /**
+   * A wide side panel draws its own Close (Sheet.web); pass true there so the head
+   * shows only the title and the panel's button is the one control.
+   */
+  plain?: boolean;
   testID?: string;
 }
 
-export function PickerSheetHead({ title, onClose, testID }: PickerSheetHeadProps): React.ReactElement {
+export function PickerSheetHead({ title, onClose, plain = false, testID }: PickerSheetHeadProps): React.ReactElement {
   return (
     <View style={styles.row} testID={testID}>
       <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
         {title ?? ""}
       </Text>
+      {plain ? null : (
       <Pressable
         onPress={onClose}
         hitSlop={4}
@@ -36,6 +42,7 @@ export function PickerSheetHead({ title, onClose, testID }: PickerSheetHeadProps
       >
         <Icon name="close" size={18} color={color.text1} />
       </Pressable>
+      )}
     </View>
   );
 }

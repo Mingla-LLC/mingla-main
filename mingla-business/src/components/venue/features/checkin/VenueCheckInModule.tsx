@@ -494,19 +494,16 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         testID="venue-checkin-scan-sheet"
       >
         <View style={styles.sheetBody}>
-          {isWideDesktop ? (
-            <Text style={styles.sheetTitle} accessibilityRole="header">Scan a pass</Text>
-          ) : (
-            <PickerSheetHead
-              title="Scan a pass"
-              onClose={() => {
-                setScanOpen(false);
-                setOutcome(null);
-                setCameraOn(false);
-              }}
-              testID="venue-checkin-scan-head"
-            />
-          )}
+          <PickerSheetHead
+            title="Scan a pass"
+            onClose={() => {
+              setScanOpen(false);
+              setOutcome(null);
+              setCameraOn(false);
+            }}
+            plain={isWideDesktop}
+            testID="venue-checkin-scan-head"
+          />
           <ScrollView style={styles.grow} contentContainerStyle={styles.sheetScroll} keyboardShouldPersistTaps="handled">
             {scanBody}
           </ScrollView>

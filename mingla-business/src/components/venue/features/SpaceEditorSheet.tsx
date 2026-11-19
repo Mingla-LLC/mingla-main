@@ -23,6 +23,7 @@ import { Input } from "../../ui/Input";
 import { NumberStepper } from "../../ui/NumberStepper";
 import { Segmented } from "../../ui/Pill";
 import { Sheet } from "../../ui/Sheet";
+import { PickerSheetHead } from "../../ui/PickerSheetHead";
 import { spaceDraftIssues, starterSetting } from "./spaceModel";
 
 const LazyConfirmDialog = React.lazy(async () => {
@@ -202,9 +203,7 @@ export function SpaceEditorSheet({
       testID="space-editor-sheet"
     >
       <View style={styles.body}>
-        <Text style={styles.heading} accessibilityRole="header">
-          {spaceRow === null ? "Add a space" : spaceRow.name}
-        </Text>
+        <PickerSheetHead title={spaceRow === null ? "Add a space" : spaceRow.name} onClose={handleClose} plain={isWideDesktop} testID="space-editor-head" />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}

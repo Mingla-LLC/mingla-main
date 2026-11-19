@@ -22,6 +22,7 @@ import { GlassCard } from "../../../ui/GlassCard";
 import { NumberStepper } from "../../../ui/NumberStepper";
 import { SelectSheet } from "../../../ui/SelectSheet";
 import { Sheet } from "../../../ui/Sheet";
+import { PickerSheetHead } from "../../../ui/PickerSheetHead";
 import { Skeleton } from "../../../ui/Skeleton";
 import { dayLimitIssue, offerErrorCopy, overrideLine, type DayLimitDraft as Draft } from "./offersModel";
 
@@ -168,9 +169,14 @@ export function DayLimitsSection({ brandId, venueId, canEdit, today }: DayLimits
       >
         {draft !== null ? (
           <View style={styles.sheetBody}>
-            <Text style={styles.sheetTitle} accessibilityRole="header">
-              {editing?.existing === true ? dayDateLabel(draft.localDate) : "Set a day limit"}
-            </Text>
+            <PickerSheetHead
+              title={editing?.existing === true ? dayDateLabel(draft.localDate) : "Set a day limit"}
+              onClose={() => {
+                if (!setOverride.isPending) setEditing(null);
+              }}
+              plain={isWideDesktop}
+              testID="av-day-limit-head"
+            />
             <ScrollView style={styles.scroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
               {multiPool ? (
                 <SelectSheet

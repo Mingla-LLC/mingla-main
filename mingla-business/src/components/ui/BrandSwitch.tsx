@@ -36,6 +36,8 @@ import { Switch } from "react-native";
 import type { SwitchProps } from "react-native";
 
 import { color } from "../../constants/designSystem";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
+import { SWITCH_HEIGHT, SWITCH_WIDTH } from "./Switch";
 
 /** Neutral OFF-state track (translucent on dark glass). */
 const OFF_TRACK = color.fill.step;
@@ -56,6 +58,9 @@ export function BrandSwitch(props: BrandSwitchProps): React.ReactElement {
     activeThumbColor: THUMB,
     activeTrackColor: color.accent,
   };
+  // #4490: a phone-width browser draws the web switch 40x20; use the 51x31 phone switch there.
+  const touchFloor = useTouchFloor();
+  const phoneSize = touchFloor > 0 ? { width: SWITCH_WIDTH, height: SWITCH_HEIGHT } : null;
   return (
     <Switch
       trackColor={{ false: OFF_TRACK, true: color.accent }}
@@ -63,6 +68,7 @@ export function BrandSwitch(props: BrandSwitchProps): React.ReactElement {
       ios_backgroundColor={OFF_TRACK}
       {...webExtras}
       {...props}
+      style={[props.style, phoneSize]}
     />
   );
 }

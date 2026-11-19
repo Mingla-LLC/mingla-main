@@ -26,6 +26,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 import type { BrandHourEntry, BrandHourWindow } from "../../types/brand";
 import { hoursWeekIssue } from "../../utils/venueBrandHours";
 import { BrandSwitch } from "../ui/BrandSwitch";
@@ -68,6 +69,8 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
   allowWindows = false,
 }) => {
   const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set());
+  // #4490: hitSlop does nothing in a phone browser, so small controls are drawn 44 there.
+  const touchFloor = useTouchFloor();
 
   // ----- controlled mutators (replace the old store setters) -----------------
   const setHoursRow = useCallback(
@@ -202,7 +205,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 accessibilityRole="button"
                 accessibilityLabel={`${on ? "Deselect" : "Select"} ${name}`}
-                style={[styles.bulkDayChip, on && styles.bulkDayChipOn]}
+                style={[styles.bulkDayChip, touchFloor > 0 ? { width: touchFloor, height: touchFloor, borderRadius: touchFloor / 2 } : null, on && styles.bulkDayChipOn]}
               >
                 <Text style={[styles.bulkDayChipText, on && styles.bulkDayChipTextOn]}>
                   {name.slice(0, 1)}
@@ -217,7 +220,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Select weekdays"
-            style={styles.bulkQuickBtn}
+            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
           >
             <Text style={styles.bulkQuickText}>Weekdays</Text>
           </Pressable>
@@ -226,7 +229,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Select weekend"
-            style={styles.bulkQuickBtn}
+            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
           >
             <Text style={styles.bulkQuickText}>Weekend</Text>
           </Pressable>
@@ -235,7 +238,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Select all days"
-            style={styles.bulkQuickBtn}
+            style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
           >
             <Text style={styles.bulkQuickText}>All</Text>
           </Pressable>
@@ -245,7 +248,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel="Clear day selection"
-              style={styles.bulkQuickBtn}
+              style={[styles.bulkQuickBtn, touchFloor > 0 ? { minHeight: touchFloor, justifyContent: "center" } : null]}
             >
               <Text style={styles.bulkQuickText}>Clear</Text>
             </Pressable>
@@ -377,7 +380,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     accessibilityRole="button"
                     accessibilityLabel={`Remove ${DAY_NAMES[row.weekday]} window ${index + 2}`}
-                    style={({ pressed }) => [styles.removeWindow, pressed && styles.removeWindowPressed]}
+                    style={({ pressed }) => [styles.removeWindow, touchFloor > 0 ? { width: touchFloor } : null, pressed && styles.removeWindowPressed]}
                     testID={`hours-window-${row.weekday}-${index + 1}-remove`}
                   >
                     <Icon name="trash" size={16} color={color.text2} />
@@ -390,7 +393,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
                   disabled={disabled}
                   accessibilityRole="button"
                   accessibilityLabel={`Add a window on ${DAY_NAMES[row.weekday]}`}
-                  style={styles.addWindow}
+                  style={[styles.addWindow, touchFloor > 0 ? { minHeight: touchFloor } : null]}
                   testID={`hours-add-window-${row.weekday}`}
                 >
                   <Text style={styles.addWindowText}>+ Add a window</Text>

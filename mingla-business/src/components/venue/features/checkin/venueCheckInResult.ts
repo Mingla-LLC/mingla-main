@@ -79,7 +79,7 @@ export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
           subject,
           body: `Ask ${idGuests} of ${party} guests for ${label}. If they have no ID, ${
             idGuests === 1 ? "sell that guest a walk-in ticket" : "sell those guests walk-in tickets"
-          } instead of using this price. The other ${rest} ${rest === 1 ? "guest keeps" : "guests keep"} their entry.`,
+          } instead of using this price. ${rest === 1 ? "The other guest keeps" : `The other ${rest} guests keep`} their entry.`,
           primary: "id_seen",
           secondary: "sell_walk_in",
         };

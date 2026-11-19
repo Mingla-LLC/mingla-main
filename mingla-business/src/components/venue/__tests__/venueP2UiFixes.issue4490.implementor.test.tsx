@@ -17,6 +17,7 @@ import {
   venueAddressLine,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
 
+import { touchFloorFor } from "../../../hooks/useTouchFloor";
 import { checkInResultView } from "../features/checkin/venueCheckInResult";
 import { OFFER_STATUS } from "../features/offers/offersModel";
 import { bookingStateLabel } from "../features/today/todayModel";
@@ -206,6 +207,9 @@ describe("I2 a mixed party says how many guests need the ID", () => {
     expect(view.body).toContain("Ask 1 of 3 guests for Student or NYSC ID");
     expect(view.body).toContain("sell that guest a walk-in ticket");
     expect(view.body).toContain("The other 2 guests keep their entry");
+    const two = checkInResultView(outcome(pass({ admits: 2 })));
+    expect(two.body).toContain("Ask 1 of 2 guests");
+    expect(two.body).toContain("The other guest keeps their entry");
   });
 
   it("everyone on the ID price keeps the short wording", () => {
@@ -294,5 +298,68 @@ describe("H3 VAT included shows the 'Includes VAT' line", () => {
   it("VAT not charged never shows a VAT line", () => {
     const quote = parseEntryQuote({ quoteId: "q", currencyCode: "NGN", totalMinor: 100, vat: { mode: "none", amountMinor: 9 }, lines: [] });
     expect(quote?.taxMinor).toBe(0);
+  });
+});
+
+describe("tap targets are 44 in a phone-width browser", () => {
+  it("the floor is 44 on web below tablet width and 0 elsewhere", () => {
+    expect(touchFloorFor("web", 390)).toBe(44);
+    expect(touchFloorFor("web", 767)).toBe(44);
+    expect(touchFloorFor("web", 768)).toBe(0);
+    expect(touchFloorFor("web", 1440)).toBe(0);
+    expect(touchFloorFor("ios", 390)).toBe(0);
+    expect(touchFloorFor("web", 0)).toBe(0);
+  });
+
+  it("the small controls read the floor (hitSlop does nothing on web)", () => {
+    for (const file of [
+      "ui/Button.tsx",
+      "ui/IconChrome.tsx",
+      "ui/Stepper.tsx",
+      "ui/WeekdayChips.tsx",
+      "ui/NumberStepper.tsx",
+      "venue/VenueModulePillRow.tsx",
+    ]) {
+      expect(read(`src/components/${file}`)).toContain("useTouchFloor");
+    }
+  });
+});
+
+describe("leaving the Entry editor with unsaved work asks first", () => {
+  it("the header Close goes through a leave dialog with Save, Discard and Keep editing", () => {
+    const src = read("src/components/venue/features/offers/EntryEditor.tsx");
+    expect(src).toContain("onPress={requestClose} testID=\"entry-editor-close\"");
+    expect(src).toContain('variant="leave"');
+    expect(src).toContain("if (dirtyRef.current)");
+    expect(src).toContain("entry-editor-leave-keep");
+  });
+});
+
+describe("a quote problem offers a real button, not an inline text link", () => {
+  it("Check again is an EntryButton", () => {
+    const src = read("src/components/venue/offers/EntryPicker.tsx");
+    expect(src).toContain('label="Check again"');
+    expect(src).not.toMatch(/<Text[^>]*onPress=\{selection\.retryQuote\}/);
+  });
+});
+
+describe("a stretched segmented control never runs past its track", () => {
+  it("renders a plain row (not a horizontal scroll view) when stretched, with labels that can wrap", () => {
+    const src = read("src/components/ui/Pill.tsx");
+    expect(src).toContain("const Row: React.ElementType = full ? View : ScrollView;");
+    expect(src).toContain("numberOfLines={full ? 2 : 1}");
+  });
+});
+
+describe("the wide side panel and the phone sheets all have a Close", () => {
+  it("the day-limit, special-day, space and scan sheets use the shared head", () => {
+    for (const f of [
+      "features/offers/DayLimitsSection.tsx",
+      "features/SpecialDaySheet.tsx",
+      "features/SpaceEditorSheet.tsx",
+      "features/checkin/VenueCheckInModule.tsx",
+    ]) {
+      expect(read(`src/components/venue/${f}`)).toContain("<PickerSheetHead");
+    }
   });
 });

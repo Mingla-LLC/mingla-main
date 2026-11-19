@@ -15,6 +15,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { color, materials, radius, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 import { Icon } from "./Icon";
 import { PickerSheetHead } from "./PickerSheetHead";
 import { Sheet } from "./Sheet";
@@ -67,6 +68,8 @@ export function DayDateField({
   const [open, setOpen] = useState(false);
   const focused = useRef(false);
   const { isWideDesktop } = useResponsiveLayout();
+  // #4490: hitSlop does nothing in a phone browser, so the field parts are drawn 44 there.
+  const touchFloor = useTouchFloor();
   const start = ym(value) ?? ym(min ?? today) ?? ym(today) ?? { year: 2026, month1: 1 };
   const [month, setMonth] = useState(start);
 
@@ -132,7 +135,7 @@ export function DayDateField({
             setText(next);
             setTypingError(null);
           }}
-          style={styles.input}
+          style={[styles.input, touchFloor > 0 ? { minHeight: touchFloor } : null]}
           testID={testID !== undefined ? `${testID}-input` : undefined}
         />
         <Pressable
@@ -141,7 +144,7 @@ export function DayDateField({
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel={`Choose ${accessibilityLabel.toLowerCase()} from a calendar`}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.iconButton, touchFloor > 0 ? { width: touchFloor, height: touchFloor } : null, pressed && styles.pressed]}
           testID={testID !== undefined ? `${testID}-calendar` : undefined}
         >
           <Icon name="calendar" size={16} color={color.text2} />

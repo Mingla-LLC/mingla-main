@@ -16,6 +16,7 @@ import { DayDateField } from "../../ui/DayDateField";
 import { Icon } from "../../ui/Icon";
 import { Input } from "../../ui/Input";
 import { Sheet } from "../../ui/Sheet";
+import { PickerSheetHead } from "../../ui/PickerSheetHead";
 import { TimeField } from "../../ui/TimeField";
 import { closedDayCopy, longDateLabel, specialDayIssue, type SpecialDayDraft } from "./hoursModel";
 
@@ -110,7 +111,7 @@ export function SpecialDaySheet({
       testID="special-day-sheet"
     >
       <View style={styles.body}>
-        <Text style={styles.heading} accessibilityRole="header">{heading}</Text>
+        <PickerSheetHead title={heading} onClose={() => { if (!saving) onClose(); }} plain={isWideDesktop} testID="special-day-head" />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {day === null ? (
             <DayDateField

@@ -14,6 +14,7 @@
 
 import React from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,7 @@ import {
   View,
   type StyleProp,
   type ViewStyle,
+  useWindowDimensions,
 } from "react-native";
 
 import { accentFill, accentOutline, themeFontFace } from "./themeAccentStyle";
@@ -126,6 +128,12 @@ export const OfferingStepper = ({
 }: OfferingStepperProps) => {
   const canDec = value > min;
   const canInc = value < max;
+  // #4490: hitSlop does nothing in a phone browser, so the 36 buttons are drawn 44 there.
+  const { width } = useWindowDimensions();
+  const touch =
+    Platform.OS === "web" && width > 0 && width < 768
+      ? { width: 44, height: 44, borderRadius: 22 }
+      : null;
   return (
     <View style={styles.stepper} testID={testID}>
       <Pressable
@@ -137,6 +145,7 @@ export const OfferingStepper = ({
         hitSlop={6}
         style={[
           styles.stepBtn,
+          touch,
           { borderColor: palette.panelBorder },
           !canDec ? styles.stepDisabled : null,
         ]}
@@ -165,6 +174,7 @@ export const OfferingStepper = ({
         hitSlop={6}
         style={[
           styles.stepBtn,
+          touch,
           styles.stepPlus,
           { backgroundColor: palette.primaryText },
           !canInc ? styles.stepDisabled : null,

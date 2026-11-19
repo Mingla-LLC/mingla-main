@@ -242,15 +242,17 @@ export function EntryPicker({
         ) : quote.status === "error" ? (
           <EntryNote palette={palette} icon="flag" tone="error" testID={`${testID}-quote-error`}>
             <Text style={[styles.noteText, { color: palette.primaryText }]}>
-              {venueOfferErrorCopy(quote.code, quote.remaining)}{" "}
-              <Text
-                accessibilityRole="button"
-                onPress={selection.retryQuote}
-                style={[styles.link, { color: palette.accent }]}
-              >
-                Check again
-              </Text>
+              {venueOfferErrorCopy(quote.code, quote.remaining)}
             </Text>
+            {/* #4490: the way forward is a real button, never an inline text link. */}
+            <EntryButton
+              palette={palette}
+              theme={theme}
+              variant="secondary"
+              label="Check again"
+              onPress={selection.retryQuote}
+              testID={`${testID}-quote-retry`}
+            />
           </EntryNote>
         ) : null
       ) : null}

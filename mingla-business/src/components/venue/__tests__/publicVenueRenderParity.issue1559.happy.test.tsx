@@ -34,6 +34,11 @@
  *
  * APPEND-ONLY — new file; modifies/deletes no existing test.
  *
+ * [TEST-MOD-APPROVED #4490 H1] — the baseline for `restaurant-desktop-full` moves:
+ * the reserve bar is no longer a `position: fixed` dock (it scrolled with the page
+ * and ended up over the cover photo); it is in the flyer column under Share and
+ * Directions. Only that one case changed; the six others are byte for byte the same.
+ *
  * ---------------------------------------------------------------------------
  * [TEST-MOD-APPROVED #1595] — THE BASELINE MOVES BY 22 CHARACTERS, IN ONE PLACE
  * ---------------------------------------------------------------------------
