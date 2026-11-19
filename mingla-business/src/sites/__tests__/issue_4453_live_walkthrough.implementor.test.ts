@@ -25,3 +25,31 @@ describe("a step that cannot be undone on its own says what to do next", () => {
     );
   });
 });
+
+describe("the workspace's autosave writer survives its effect being run again", () => {
+  it("resumes on setup and is disposed only by the cleanup of the latest run", () => {
+    const source = readFileSync(resolve(__dirname, "../../components/sites/website/workspace/useWorkspace.ts"), "utf8");
+    expect(source).toContain("current?.resume();");
+    expect(source).toContain("if (writerOwners.current === owner) current.dispose();");
+  });
+});
+
+describe("a first publish runs the design checks on the draft it is about to publish", () => {
+  // Core refuses a first publish (DESIGN_CHECKS_REQUIRED) unless the checks ran on that exact
+  // draft; "Looks good" in the Publish panel makes a new draft after the panel's own run.
+  const source = readFileSync(resolve(__dirname, "../../components/sites/website/useWebsiteController.ts"), "utf8");
+  const action = source.slice(source.indexOf("publishChecked: async"), source.indexOf("rollback: (selectedVersion"));
+  it("after the fresh draft check and before the publish starts, only while nothing has been published", () => {
+    const validated = action.indexOf("validateBrandSiteDraft({ brandId: safeBrandId, siteId })");
+    const checked = action.indexOf("await runDesignChecks(siteId)");
+    const started = action.indexOf("await startPublication({");
+    expect(validated).toBeGreaterThan(-1);
+    expect(checked).toBeGreaterThan(validated);
+    expect(started).toBeGreaterThan(checked);
+    expect(action).toContain("if (site.data?.last_successful_publication_id === null) {");
+  });
+  it("keeps the run the panel shows in step", () => {
+    expect(action).toContain('queryClient.setQueryData(brandSiteKeys.siteData(siteId, "design-checks"), await runDesignChecks(siteId));');
+    expect(read("contentApi.ts")).toContain('export const runDesignChecks = (siteId: string) => contentCall<DesignCheckRun>(siteId, "design_checks");');
+  });
+});

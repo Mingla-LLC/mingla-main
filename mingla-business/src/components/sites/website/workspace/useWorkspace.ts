@@ -221,10 +221,20 @@ export function useWorkspace(input: {
     });
   }
   const writer = writerRef.current;
-  useEffect(() => () => {
+  const writerOwners = useRef(0);
+  useEffect(() => {
+    // The writer lives as long as this screen: if the effect is run again for the same
+    // screen, the writer takes changes again (a disposed one drops them silently).
     const current = writerRef.current;
-    if (!current) return;
-    void current.flush().finally(() => current.dispose());
+    writerOwners.current += 1;
+    const owner = writerOwners.current;
+    current?.resume();
+    return () => {
+      if (!current) return;
+      void current.flush().finally(() => {
+        if (writerOwners.current === owner) current.dispose();
+      });
+    };
   }, []);
 
   const guard = useCallback((): boolean => {

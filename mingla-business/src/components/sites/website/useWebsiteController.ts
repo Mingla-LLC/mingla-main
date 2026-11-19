@@ -42,6 +42,7 @@ import {
   type PersistedPublicationOperation,
 } from "../../../services/brandSitesService";
 import { brandSiteKeys } from "../../../sites/brandSiteKeys";
+import { runDesignChecks } from "../../../sites/contentApi";
 import {
   capabilitiesFrom,
   previewUrlForPage,
@@ -430,6 +431,12 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
         setNotice(null);
         const fresh = await validateBrandSiteDraft({ brandId: safeBrandId, siteId });
         queryClient.setQueryData(brandSiteKeys.siteData(siteId, "validation"), fresh);
+        // A first publish is accepted only when the design checks ran on THIS draft. The panel ran
+        // them when it opened; a section read or an autosave since then made a new draft, so they
+        // are run again here (they never block; the run is what Core asks for).
+        if (site.data?.last_successful_publication_id === null) {
+          queryClient.setQueryData(brandSiteKeys.siteData(siteId, "design-checks"), await runDesignChecks(siteId));
+        }
         await startPublication({
           accountId,
           brandId: safeBrandId,

@@ -82,6 +82,8 @@ describe("one status chip and one Publish button", () => {
     expect(workspaceStatus({ ...base, unpublished: 3 }).text).toBe("Live · 3 not published yet");
     expect(workspaceStatus({ ...base, unpublished: 3, unread: 2 })).toEqual({ text: "2 to read · 3 not published", tone: "warn" });
     expect(workspaceStatus({ ...base, unread: 1 }).text).toBe("1 to read first");
+    // A website that has never been live has nothing "published" to count against.
+    expect(workspaceStatus({ ...base, live: false, unpublished: 1, unread: 2 })).toEqual({ text: "2 to read · not live", tone: "warn" });
     expect(workspaceStatus({ ...base, live: false }).text).toBe("Draft · not live");
     expect(workspaceStatus({ ...base, publishing: true }).text).toBe("Publishing…");
     expect(workspaceStatus({ ...base, failed: true }).tone).toBe("err");
@@ -287,6 +289,18 @@ describe("autosave", () => {
     });
     return { writer, sent, states, errors, revisions };
   }
+
+  it("takes changes again after its screen's effect is run again (a disposed writer would drop them silently)", async () => {
+    const { writer, sent } = harness();
+    writer.dispose();
+    await expect(writer.enqueue({ kind: "reviewed", pageId: "p1", sectionIds: ["s1"], label: "Looks good" })).resolves.toBe(false);
+    expect(sent).toHaveLength(0);
+    writer.resume();
+    const saved = writer.enqueue({ kind: "reviewed", pageId: "p1", sectionIds: ["s1"], label: "Looks good" });
+    await settle();
+    await expect(saved).resolves.toBe(true);
+    expect(sent.map((entry) => entry.job.kind)).toEqual(["reviewed"]);
+  });
 
   it("saves typing 600 ms after the last key, as one change", async () => {
     const { writer, sent, states } = harness();

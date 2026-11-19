@@ -26,6 +26,8 @@ export function workspaceStatus(input: WorkspaceStatusInput): WorkspaceStatus {
   if (input.offline) return { text: "Offline · visitors see a holding page", tone: "err" };
   const waiting = input.unpublished ?? 0;
   if (input.unread > 0) {
+    // Nothing is live yet: there is no "published" to compare the draft with.
+    if (!input.live) return { text: `${input.unread} to read · not live`, tone: "warn" };
     return { text: waiting > 0 ? `${input.unread} to read · ${waiting} not published` : `${input.unread} to read first`, tone: "warn" };
   }
   if (!input.live) return { text: "Draft · not live", tone: "neutral" };

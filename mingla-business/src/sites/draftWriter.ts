@@ -47,6 +47,13 @@ export type DraftWriter = {
   flush: () => Promise<void>;
   pending: () => number;
   dispose: () => void;
+  /**
+   * The screen that owns this writer is on again (React runs an effect's
+   * cleanup and then the effect again without rebuilding the screen, in
+   * development and when a hidden screen is shown again): accept changes
+   * again. A writer left disposed would drop every later change silently.
+   */
+  resume: () => void;
 };
 
 /**
@@ -170,6 +177,9 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
       await Promise.all([...running.values()]);
     },
     pending: waitingCount,
+    resume() {
+      disposed = false;
+    },
     dispose() {
       disposed = true;
       queues.forEach((queue) => queue.forEach((waiting) => waiting.done(false)));

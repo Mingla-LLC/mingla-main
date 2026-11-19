@@ -462,10 +462,13 @@ export type DesignCheckRun = { draft_digest: string; warning_count: number; chec
  * stores the result against this exact draft (a site's first publish needs
  * that run). Never cached across drafts: every open re-runs.
  */
+/** Runs the design checks on the draft as it is now (the run is kept against that exact draft). */
+export const runDesignChecks = (siteId: string) => contentCall<DesignCheckRun>(siteId, "design_checks");
+
 export function useDesignChecks(siteId: string | null, enabled = true) {
   return useQuery({
     queryKey: brandSiteKeys.siteData(siteId, "design-checks"),
-    queryFn: () => contentCall<DesignCheckRun>(siteId!, "design_checks"),
+    queryFn: () => runDesignChecks(siteId!),
     enabled: siteId !== null && enabled,
     staleTime: 0,
     refetchOnMount: "always",
