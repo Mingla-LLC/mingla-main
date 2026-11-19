@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeScreen } from "../../../ui/SafeScreen";
 import { Sheet } from "../../../ui/Sheet";
 import { Toast } from "../../../ui/Toast";
+import { HostShellInsetContext } from "../../../ui/hostShellContext";
 import { color, radius, space, websitePaneMaxWidth, websiteWorkspaceBarHeight, websiteWorkspacePanelWidth } from "../../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useBrandSiteLook } from "../../../../hooks/useBrandSite";
@@ -83,6 +84,8 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
   const phone = !isWideDesktop;
+  // The desktop shell's top bar already carries the brand switcher: one per screen.
+  const shellHasSwitcher = useContext(HostShellInsetContext);
   const siteId = controller.siteId!;
   const site = controller.site.data ?? null;
 
@@ -531,7 +534,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
             <View style={styles.panel} role="complementary" accessibilityLabel="Website controls" testID="workspace-panel">
               <View style={styles.panelHead}>
                 <IconButton icon="left" label={`Back to ${brandName}`} onPress={exit} testID="website-back" />
-                <BrandHead brandId={brandId} line={saveLine} />
+                <BrandHead brandId={brandId} line={saveLine} switcher={!shellHasSwitcher} />
                 {undoRedo}
               </View>
               <View style={styles.modes}><ModeSwitch mode={ws.mode} onChange={ws.setMode} /></View>
@@ -593,7 +596,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
         <View style={styles.phone} testID="website-workspace-phone">
           <View style={styles.phoneBar}>
             <IconButton icon="left" label={`Back to ${brandName}`} onPress={exit} testID="website-back" />
-            <BrandHead brandId={brandId} line={saveLine} />
+            <BrandHead brandId={brandId} line={saveLine} switcher />
             {moreButton}
             {publishControl}
           </View>
@@ -632,13 +635,14 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
 /**
  * The brand being edited, as the app's brand switcher (it always names this
  * screen's brand; choosing another opens that brand's Website), with the
- * autosave state under it.
+ * autosave state under it. Where the app's top bar already shows the switcher
+ * (desktop), only the autosave state is shown: one switcher per screen.
  */
-function BrandHead({ brandId, line }: { brandId: string; line: string }): React.ReactElement {
+function BrandHead({ brandId, line, switcher }: { brandId: string; line: string; switcher: boolean }): React.ReactElement {
   return (
     <View style={styles.brandHead} testID="workspace-brand-slot">
-      <WorkspaceBrandSwitcher brandId={brandId} compact testID="workspace-brand-switcher" />
-      <Text style={styles.saveLine} numberOfLines={1} role="status" accessibilityLiveRegion="polite" testID="workspace-save-state">{line}</Text>
+      {switcher ? <WorkspaceBrandSwitcher brandId={brandId} compact testID="workspace-brand-switcher" /> : null}
+      <Text style={[styles.saveLine, switcher ? null : styles.saveLineAlone]} numberOfLines={1} role="status" accessibilityLiveRegion="polite" testID="workspace-save-state">{line}</Text>
     </View>
   );
 }
@@ -670,6 +674,7 @@ const styles = StyleSheet.create({
   // The switcher keeps its 44pt target; the save line tucks under its name inside the 56pt bar.
   brandHead: { flex: 1, minWidth: 0, justifyContent: "center", alignItems: "flex-start" },
   saveLine: { marginTop: -10, fontSize: 12, lineHeight: 16, color: ui.t3, pointerEvents: "none" },
+  saveLineAlone: { marginTop: 0, fontSize: 13, lineHeight: 18, color: ui.t2 },
   panelHead: { height: websiteWorkspaceBarHeight, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[3], borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
   modes: { paddingHorizontal: space[3], paddingVertical: space[2] },
   banner: { paddingHorizontal: space[3], paddingTop: space[2] },

@@ -18,7 +18,7 @@ const mockPost = jest.fn();
 const mockRpcCalls: { name: string; args: Record<string, unknown> }[] = [];
 let mockRequestRows: Record<string, unknown>[] = [];
 let mockAboutOff = false;
-let mockSwitcherProps: { brandId?: string; compact?: boolean } = {};
+let mockSwitcherProps: { brandId?: string; compact?: boolean } | null = {};
 let mockEmit: (events: { id: string; event_type: string; detail?: unknown }[]) => void = () => undefined;
 const mockChat = {
   conversationId: null as string | null,
@@ -179,6 +179,7 @@ for (const [file, names] of [
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseWebsitePath, type WebsiteRoute } from "../../../../sites/websiteNav";
 import type { WebsiteContextValue } from "../WebsiteContext";
+import { HostShellInsetContext } from "../../../ui/hostShellContext";
 
 const { WorkspaceShell } = require("../workspace/WorkspaceShell") as typeof import("../workspace/WorkspaceShell");
 const { act, create } = require("react-test-renderer") as {
@@ -292,7 +293,7 @@ function controller(over: Record<string, unknown> = {}) {
   } as unknown as WebsiteContextValue["controller"];
 }
 
-async function open(options: { segments?: string[]; search?: Record<string, string>; lockedBy?: string | null | false; controller?: Record<string, unknown>; wide?: boolean } = {}) {
+async function open(options: { segments?: string[]; search?: Record<string, string>; lockedBy?: string | null | false; controller?: Record<string, unknown>; wide?: boolean; shellTopBar?: boolean } = {}) {
   mockWide = options.wide ?? true;
   const control = controller(options.controller);
   const setTokenDeclarations = jest.fn();
@@ -312,7 +313,9 @@ async function open(options: { segments?: string[]; search?: Record<string, stri
   await act(async () => {
     tree = create(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })}>
-        <WorkspaceShell base={base} route={route} search={options.search ?? {}} segments={segments} contentDetails={["stories"]} dialogs={null} offlineDevice={false} />
+        <HostShellInsetContext.Provider value={options.shellTopBar === true}>
+          <WorkspaceShell base={base} route={route} search={options.search ?? {}} segments={segments} contentDetails={["stories"]} dialogs={null} offlineDevice={false} />
+        </HostShellInsetContext.Provider>
       </QueryClientProvider>,
     );
   });
@@ -442,6 +445,23 @@ describe("the workspace shell (desktop)", () => {
     expect(words(root)).toContain("“About” is off");
     await press(root, "workspace-preview-off-turn-on");
     expect(called("set_page_enabled")[0]!.args).toEqual({ page_id: "p2", expected_revision: "3", enabled: true });
+  });
+});
+
+describe("one brand switcher per screen", () => {
+  it("leaves the switcher to the app's top bar on desktop and keeps only the save state in the panel", async () => {
+    mockSwitcherProps = null;
+    const { root } = await open({ shellTopBar: true });
+    expect(has(root, "workspace-brand-slot")).toBe(true);
+    expect(has(root, "workspace-brand-switcher")).toBe(false);
+    expect(mockSwitcherProps).toBeNull();
+    expect(has(root, "workspace-save-state")).toBe(true);
+    expect(words(root)).toContain("Website · saved");
+  });
+  it("is the panel's own switcher where no top bar shows one (phones, narrow web)", async () => {
+    const { root } = await open({ wide: false, shellTopBar: false });
+    expect(has(root, "workspace-brand-switcher")).toBe(true);
+    expect(has(root, "workspace-save-state")).toBe(true);
   });
 });
 
