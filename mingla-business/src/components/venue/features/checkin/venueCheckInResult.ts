@@ -39,17 +39,113 @@ function timeOf(iso: string | null): string | null {
 }
 
 function subjectOf(outcome: ScanOutcome): string | null {
+  if (outcome.kind === "member") {
+    const m = outcome.member ?? null;
+    if (m === null) return null;
+    return `${m.name} · ${m.planName.length > 0 ? `${m.planName} · ` : ""}Member`;
+  }
   if (outcome.kind === "event_ticket") {
     const parts = [outcome.ticketHolder, outcome.ticketName].filter((p): p is string => p !== null && p.length > 0);
     return parts.length > 0 ? parts.join(" · ") : null;
   }
   const pass = outcome.pass;
   if (pass === null) return null;
-  return `${pass.holderName} · ${pass.offerName} × ${pass.admits}`;
+  return pass.offerKind === "by_the_hour"
+    ? `${pass.holderName} · ${pass.offerName}`
+    : `${pass.holderName} · ${pass.offerName} × ${pass.admits}`;
+}
+
+/** #4490 P6 — a member pass or a member from the list. */
+function memberResultView(outcome: ScanOutcome, subject: string | null): CheckInResultView {
+  const m = outcome.member ?? null;
+  const due = outcome.paymentDue === true || m?.paymentDue === true;
+  switch (outcome.result) {
+    case "admitted": {
+      const n = outcome.admitted ?? 1;
+      const guests = Math.max(0, n - 1);
+      return {
+        state: "ok",
+        tone: due ? "warning" : "success",
+        title: "Member checked in",
+        subject,
+        body: `${guests > 0 ? `The member and ${guests === 1 ? "1 guest" : `${guests} guests`} in.` : "The member is in."}${
+          due ? " This month isn't paid yet: remind them to pay from their member page." : ""
+        }`,
+        primary: "scan_next",
+        secondary: outcome.logId !== null ? "undo" : null,
+      };
+    }
+    case "already_used":
+      return {
+        state: "already_in",
+        tone: "warning",
+        title: "Already in today",
+        subject,
+        body: "Members check in once a day. They came in earlier today.",
+        primary: "scan_next",
+        secondary: null,
+      };
+    case "not_yet":
+      return {
+        state: "not_yet",
+        tone: "warning",
+        title: "Membership starts later",
+        subject,
+        body: "Their membership hasn't started yet. They can buy entry today.",
+        primary: "scan_next",
+        secondary: "sell_walk_in",
+      };
+    case "void":
+      return {
+        state: "void",
+        tone: "danger",
+        title: m?.status === "lapsed" ? "Not paid this month" : m?.status === "paused" ? "Membership paused" : "Membership not active",
+        subject,
+        body:
+          m?.status === "lapsed"
+            ? "Their pass won't open the door until they pay. They can pay from their member page, or buy entry today."
+            : m?.status === "paused"
+              ? "It starts again once they pay for a new month. They can buy entry today."
+              : "This membership has ended or was never paid. They can buy entry today.",
+        primary: "scan_next",
+        secondary: "sell_walk_in",
+      };
+    case "undone":
+      return {
+        state: "undone",
+        tone: "neutral",
+        title: "Check-in undone",
+        subject,
+        body: "Their visit today is cleared, and any guest passes are back.",
+        primary: "scan_next",
+        secondary: null,
+      };
+    case "wrong_venue":
+      return {
+        state: "wrong_venue",
+        tone: "danger",
+        title: "For another venue",
+        subject,
+        body: "This member pass is for a different venue.",
+        primary: "scan_next",
+        secondary: null,
+      };
+    default:
+      return {
+        state: "not_found",
+        tone: "danger",
+        title: "Code not recognised",
+        subject: null,
+        body: "This isn't a member pass for this venue. Search their name instead.",
+        primary: "scan_next",
+        secondary: null,
+      };
+  }
 }
 
 export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
   const subject = subjectOf(outcome);
+  if (outcome.kind === "member") return memberResultView(outcome, subject);
   const pass = outcome.pass;
   switch (outcome.result) {
     case "admitted": {
@@ -227,6 +323,17 @@ export function doorErrorCopy(code: string, detail: string | null = null): strin
       return "Too many tries in a row. Wait a moment, then try again.";
     case "network":
       return "You're offline or the connection dropped. Try again.";
+    // #4490 P6 — members.
+    case "member_guest_passes_used_up":
+      return detail !== null && Number(detail) > 0
+        ? `Only ${detail} guest ${Number(detail) === 1 ? "pass is" : "passes are"} left this month.`
+        : "No guest passes left this month. The guests can buy entry instead.";
+    case "member_guests_day_full":
+      return detail !== null && Number(detail) > 0
+        ? `Only ${detail} more ${Number(detail) === 1 ? "guest fits" : "guests fit"} today. The member can still go in.`
+        : "Today is full, so guests can't come in on passes. The member can still go in alone.";
+    case "membership_not_found":
+      return "That member couldn't be found. Refresh the list.";
     default:
       return "That didn't go through. Try again.";
   }
@@ -254,6 +361,12 @@ export function matchTypedCode(raw: string, passes: readonly CheckInPass[]): { k
 /** The pass id inside a scanned pass code (`mingla:v1:vpass:<id>:sig:…`). */
 export function passIdFromCode(payload: string): string | null {
   const m = /^mingla:v\d+:vpass:([0-9a-f-]{36}):/i.exec(payload.trim());
+  return m === null ? null : m[1].toLowerCase();
+}
+
+/** #4490 P6 — the member id inside a member pass code (`mingla:v1:vmember:<id>:sig:…`). */
+export function memberIdFromCode(payload: string): string | null {
+  const m = /^mingla:v\d+:vmember:([0-9a-f-]{36}):/i.exec(payload.trim());
   return m === null ? null : m[1].toLowerCase();
 }
 

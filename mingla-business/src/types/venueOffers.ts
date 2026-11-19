@@ -598,6 +598,8 @@ export interface VenueDay {
   offers: VenueDayOffer[];
   checkIn: { passes: number; expected: number; admitted: number };
   bookings: VenueDayBooking[];
+  /** #4490 P6 — members checked in today (0 when the venue has none). */
+  membersIn?: number;
 }
 
 // ------------------------------------------------------------- check-in
@@ -639,11 +641,38 @@ export interface CheckInTicket {
   time: string | null;
 }
 
+/** #4490 P6 — a member on the day's door list. */
+export interface CheckInMember {
+  subscriptionId: string;
+  holderName: string;
+  planName: string;
+  status: string;
+  /** The month is due or in grace: let them in and remind them. */
+  paymentDue: boolean;
+  guestPassesLeft: number;
+  inToday: boolean;
+  guests: number;
+  logId: string | null;
+  checkedInAt: string | null;
+}
+
+/** #4490 P6 — who a member scan was about. */
+export interface ScanMember {
+  subscriptionId: string;
+  name: string;
+  planName: string;
+  status: string;
+  guestPassesLeft: number;
+  paymentDue: boolean;
+}
+
 export interface CheckInList {
   localDate: string;
   timezone: string;
   passes: CheckInPass[];
   tickets: CheckInTicket[];
+  /** #4490 P6 — members of this venue's plans who can come in today. */
+  members: CheckInMember[];
   totals: { passes: number; admits: number; admitted: number };
 }
 
@@ -663,8 +692,12 @@ export interface ScanOutcome {
   admitted: number | null;
   logId: string | null;
   balanceDueMinor: number;
-  kind: "pass" | "event_ticket";
+  kind: "pass" | "event_ticket" | "member";
   pass: CheckInPass | null;
+  /** #4490 P6 — set when the code was a member pass (kind "member"). */
+  member?: ScanMember | null;
+  /** #4490 P6 — a member whose month is due (let in, remind). */
+  paymentDue?: boolean;
   ticketHolder: string | null;
   ticketName: string | null;
   venueName: string | null;

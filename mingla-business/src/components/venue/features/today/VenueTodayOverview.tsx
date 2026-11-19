@@ -195,7 +195,11 @@ export function VenueTodayOverview({
           <KpiTile label="Still to arrive" value={n.toArrive} sub={`${n.soldToday} sold for today`} />
         </View>
         <View style={styles.tile}>
-          <KpiTile label="Paying now" value={n.waiting} sub="Guests mid-checkout" />
+          {(day.membersIn ?? 0) > 0 ? (
+            <KpiTile label="Members in" value={day.membersIn ?? 0} sub="Checked in today" testID="venue-overview-tile-members" />
+          ) : (
+            <KpiTile label="Paying now" value={n.waiting} sub="Guests mid-checkout" />
+          )}
         </View>
         <View style={styles.tile}>
           <KpiTile label="Taken today" value={money(n.takenMinor, cur)} sub={n.takenAtGateMinor > 0 ? `${money(n.takenAtGateMinor, cur)} at the gate` : "Online and at the gate"} />

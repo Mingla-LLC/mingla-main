@@ -43,7 +43,9 @@ export function moduleSelfScrolls(module: VenueModule): boolean {
     // #4490 P4 — Requests (list and detail side by side) and the Calendar
     // (week grid with its own horizontal scroll) own their scroll.
     module === "requests" ||
-    module === "calendar"
+    module === "calendar" ||
+    // #4490 P6 — Members owns its scroll so the plan editor pins Save / Publish.
+    module === "members"
   );
 }
 

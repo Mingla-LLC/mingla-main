@@ -227,6 +227,12 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    auth.uid()). An anon answer would read as "nothing to answer" or an
   //    empty calendar. Folds isAuthReady into enabled.
   "useVenueHire.ts",
+  // ── #4490 P6 — membership plans, members and one member
+  //    (issue_4490_membership_plans / venue_members / venue_member read
+  //    auth.uid()). An anon answer would read as "no plans" or "no members".
+  //    Both fold isAuthReady into enabled.
+  "useVenueMembershipPlans.ts",
+  "useVenueMembers.ts",
   // ── #1792 (#1767 Phase 3b) — waiter mode. The pad reads the venue's own
   //    menus/menu_items/menu_modifier_groups and the open-tab summaries, all
   //    brand-member-RLS-gated. A pre-auth fire caches an RLS-empty 200, which a

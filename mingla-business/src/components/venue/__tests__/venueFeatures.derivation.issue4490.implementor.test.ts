@@ -99,11 +99,9 @@ describe("feature layout — a venue with spaces", () => {
   it("never shows modules whose phase has not shipped, even with every feature on", () => {
     const modules = deriveVenueNav({ features: ALL_ON, activeSpaceCount: 3, hasRequestOffers: true });
     // TEST-MOD-APPROVED #4490 — P2 ships Offers, Today and Check-in.
-    // TEST-MOD-APPROVED #4490 P4 — Calendar and Requests ship with private hire; Members stays unbuilt.
-    for (const unbuilt of ["members"]) {
-      expect(modules).not.toContain(unbuilt);
-    }
-    for (const built of ["offers", "today", "checkin", "calendar", "requests"]) {
+    // TEST-MOD-APPROVED #4490 P4 — Calendar and Requests ship with private hire.
+    // TEST-MOD-APPROVED #4490 P6-2 — Members ships with memberships, so every module is built now.
+    for (const built of ["offers", "today", "checkin", "calendar", "requests", "members"]) {
       expect(modules).toContain(built);
     }
     expect(modules[0]).toBe("overview");
@@ -175,6 +173,8 @@ describe("dependencies (mirror of the server cascade)", () => {
       "menu",
       "table_ordering",
       "min_spend_tables",
+      // TEST-MOD-APPROVED #4490 P6-2 — memberships are built and switchable.
+      "memberships",
       "events_here",
       "waitlist",
     ]);
@@ -187,9 +187,14 @@ describe("dependencies (mirror of the server cascade)", () => {
     );
     // TEST-MOD-APPROVED #4490 — P2 ships Entry.
     // TEST-MOD-APPROVED #4490 P4 — the play preset's packages and hire are built now.
-    expect(builtPreset("play")).toEqual(["entry", "group_packages", "private_hire", "menu", "events_here"]);
+    // TEST-MOD-APPROVED #4490 P6-2 — every feature is built, so each type starts with what it usually sells
+    // (spec 04 §4): play and clubs add table ordering (offered, never started before approval), clubs a menu,
+    // creative and arts entry and memberships, cafes entry, by the hour and events.
+    expect(builtPreset("play")).toEqual(["entry", "group_packages", "private_hire", "menu", "table_ordering", "events_here"]);
     // TEST-MOD-APPROVED #4490 P5-2 — minimum-spend tables are built now.
-    expect(builtPreset("club")).toEqual(["entry", "table_reservations", "min_spend_tables", "events_here"]);
+    expect(builtPreset("club")).toEqual(["entry", "table_reservations", "min_spend_tables", "menu", "table_ordering", "events_here"]);
+    expect(builtPreset("coworking")).toEqual(["entry", "by_the_hour", "private_hire", "memberships"]);
+    expect(builtPreset("creative_and_arts")).toEqual(["entry", "by_the_hour", "private_hire", "memberships", "events_here"]);
     expect(builtPreset("stay")).toEqual([]);
   });
 });

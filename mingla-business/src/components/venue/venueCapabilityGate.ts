@@ -54,6 +54,10 @@ export function filterVenueModulesForCapabilities(
     allowed.add("requests");
     allowed.add("checkin");
   }
+  // #4490 P6 — memberships: plans, members, pause/end.
+  if (capabilities.includes("venue.manage_members")) {
+    allowed.add("members");
+  }
   if (capabilities.includes("venue.check_in")) {
     allowed.add("today");
     allowed.add("checkin");

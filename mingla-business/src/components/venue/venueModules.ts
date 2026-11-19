@@ -309,8 +309,8 @@ export function shouldLeaveBookingModule(input: {
 //  - FEATURES: once the venue has a space (or Events here is on), the Offers
 //    group appears: Spaces and "Availability & pricing" (hours, special days,
 //    closing a day, and Table times when table reservations are on).
-// Modules whose phase has not shipped (Members) stay hidden through
-// BUILT_FEATURES / BUILT_MODULES. P2 ships Offers, Today and Check-in; P4
+// Modules whose phase has not shipped stay hidden through BUILT_FEATURES /
+// BUILT_MODULES (P6 ships Members). P2 ships Offers, Today and Check-in; P4
 // ships Calendar and Requests (private hire); Today and Check-in show only for a booking feature (entry, group
 // packages, private hire, by the hour, events here — reconciliation 34).
 // ---------------------------------------------------------------------------
@@ -325,6 +325,8 @@ export const BUILT_MODULES: ReadonlySet<VenueModule> = new Set<VenueModule>([
   // P4: private hire — Calendar and Requests.
   "calendar",
   "requests",
+  // P6: memberships — Members (plans live inside it).
+  "members",
   "checkin",
   "tables",
   "availability",
@@ -374,7 +376,9 @@ export function venueUsesSpaces(input: VenueNavInput): boolean {
     featureOn(input.features, "private_hire") ||
     // P5: by the hour sells from Offers; tables live in spaces.
     featureOn(input.features, "by_the_hour") ||
-    featureOn(input.features, "floor_plan")
+    featureOn(input.features, "floor_plan") ||
+    // P6: plans are sold from Offers › Membership and members check in at the door.
+    featureOn(input.features, "memberships")
   );
 }
 
@@ -386,6 +390,8 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
   const { features } = input;
   const tables = featureOn(features, "table_reservations");
   const anyBooking = BOOKING_FEATURES.some((key) => featureOn(features, key));
+  // P6: members come in through the same door (Check-in) and count on Today.
+  const door = anyBooking || featureOn(features, "memberships");
   const usesSpaces = venueUsesSpaces(input);
 
   const candidates: Array<[VenueModule, boolean]> = usesSpaces
@@ -394,7 +400,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["offers", BUILT_MODULES.has("offers")],
         ["spaces", true],
         ["availability", true],
-        ["today", anyBooking],
+        ["today", door],
         ["calendar", anyBooking],
         [
           "requests",
@@ -406,7 +412,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["reservations", tables],
         ["waitlist", featureOn(features, "waitlist")],
         ["members", featureOn(features, "memberships")],
-        ["checkin", anyBooking],
+        ["checkin", door],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
         ["orders", true],

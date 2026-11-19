@@ -185,6 +185,11 @@ const LazyVenueCalendarModule = React.lazy(async () => {
   const mod = await import("./features/calendar/VenueCalendarModule");
   return { default: mod.VenueCalendarModule };
 });
+// #4490 P6 — Members (plans and the plan editor inside), own lazy boundary.
+const LazyVenueMembersModule = React.lazy(async () => {
+  const mod = await import("./features/members/VenueMembersModule");
+  return { default: mod.VenueMembersModule };
+});
 const LazyVenueTodayOverview = React.lazy(async () => {
   const mod = await import("./features/today/VenueTodayOverview");
   return { default: mod.VenueTodayOverview };
@@ -339,6 +344,13 @@ export function VenueSuiteShell({
   const offersRef = useRef<VenueModuleLeaveHandle | null>(null);
   // #4490 P5 — Spaces holds the floor editor (unsaved layouts guard leaving).
   const spacesRef = useRef<VenueModuleLeaveHandle | null>(null);
+  // #4490 P6 — Members holds the plan editor; Offers › Membership opens it on a new plan.
+  const membersRef = useRef<VenueModuleLeaveHandle | null>(null);
+  const [membersView, setMembersView] = useState<"members" | "plans" | "new_plan">("members");
+  useEffect(() => {
+    // Opening Members from the rail later starts on the members list again.
+    if (activeModule !== "members") setMembersView("members");
+  }, [activeModule]);
   const [spacesView, setSpacesView] = useState<"list" | "site" | "tables" | undefined>(
     initialModule === "tables" ? "tables" : undefined,
   );
@@ -367,6 +379,7 @@ export function VenueSuiteShell({
       if (module === "settings") return settingsRef.current;
       if (module === "offers") return offersRef.current;
       if (module === "spaces") return spacesRef.current;
+      if (module === "members") return membersRef.current;
       return null;
     },
     [],
@@ -677,7 +690,12 @@ export function VenueSuiteShell({
       // reviews panel now scroll WITH the dashboard (as its header) instead of
       // being pinned above it, and the invitation is one compact row.
       // #4490 — any selling feature (Entry, group packages, private hire).
-      const sellsOffers = features.entry.enabled || features.group_packages.enabled || features.private_hire.enabled;
+      const sellsOffers =
+        features.entry.enabled ||
+        features.group_packages.enabled ||
+        features.private_hire.enabled ||
+        features.by_the_hour.enabled ||
+        features.memberships.enabled;
       const header = (
         <>
           {sellsOffers && !venueAccess.scoped ? (
@@ -786,6 +804,10 @@ export function VenueSuiteShell({
             venueId={venueId}
             onOpenModule={openModule}
             initialOfferId={initialModule === "offers" ? initialItemId : null}
+            onOpenMembers={(view) => {
+              setMembersView(view);
+              if (visibleModules.includes("members")) selectModule("members");
+            }}
           />
         </React.Suspense>
       );
@@ -856,6 +878,28 @@ export function VenueSuiteShell({
           }
         >
           <LazyVenueCheckInModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      );
+    }
+    // #4490 P6 — Members (plans, the plan editor, one member).
+    if (activeModule === "members") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueMembersModule
+            key={membersView}
+            ref={membersRef}
+            brandId={brandId}
+            venueId={venueId}
+            initialView={membersView}
+            initialMemberId={initialModule === "members" ? initialItemId : null}
+            onOpenModule={openModule}
+          />
         </React.Suspense>
       );
     }

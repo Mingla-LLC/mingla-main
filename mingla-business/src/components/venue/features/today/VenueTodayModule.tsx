@@ -12,6 +12,7 @@ import { color, space, type } from "../../../../constants/designSystem";
 import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
 import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useVenueDay } from "../../../../hooks/useVenueDay";
+import { useVenueFeatures } from "../../../../hooks/useVenueFeatures";
 import type { VenueModule } from "../../../../types/venueReservation";
 import { Button } from "../../../ui/Button";
 import { CenteredState } from "../../../ui/CenteredState";
@@ -42,6 +43,8 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
   // #4490 P3 — any day, not only today: a Saturday's group bookings and balances.
   const [date, setDate] = useState<string | null>(null);
   const dayQuery = useVenueDay(brandId, venueId, date, { live: date === null });
+  // #4490 P6 — members who came in today (one visit a day).
+  const membersOn = useVenueFeatures(brandId, venueId).data?.features.memberships.enabled === true;
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const openScan = (): void => {
@@ -146,6 +149,15 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
           sub={n.takenAtGateMinor > 0 ? `${money(n.takenAtGateMinor, cur)} at the gate` : "Online and at the gate"}
           style={styles.tile}
         />
+        {membersOn ? (
+          <KpiTile
+            label="Members in"
+            value={day.membersIn ?? 0}
+            sub={isToday ? "Checked in today" : "Checked in that day"}
+            style={styles.tile}
+            testID="venue-today-tile-members"
+          />
+        ) : null}
         {balances.count > 0 ? (
           <KpiTile
             label="Balances to collect"
@@ -167,7 +179,7 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
               <View style={styles.cellText}>
                 <Text style={styles.rowTitle}>{o.name}</Text>
                 <Text style={styles.meta}>
-                  {o.kind === "entry" ? entryStyleLabel(o.entryStyle) : o.kind === "group_package" ? "Group package" : o.kind === "private_hire" ? "Private hire" : "Offer"} · {o.sold} sold
+                  {o.kind === "entry" ? entryStyleLabel(o.entryStyle) : o.kind === "group_package" ? "Group package" : o.kind === "private_hire" ? "Private hire" : o.kind === "by_the_hour" ? "By the hour" : "Offer"} · {o.sold} sold
                   {o.held > 0 ? ` · ${o.held} paying now` : ""}
                 </Text>
               </View>

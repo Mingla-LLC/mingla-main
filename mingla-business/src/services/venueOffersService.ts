@@ -17,6 +17,7 @@ import type {
   HourTerms,
   CapacityOverride,
   CheckInList,
+  CheckInMember,
   CheckInPass,
   CheckInTicket,
   DateChangeRule,
@@ -1080,6 +1081,7 @@ export function mapVenueDay(v: unknown): VenueDay {
       };
     }),
     checkIn: { passes: num(check.passes), expected: num(check.expected), admitted: num(check.admitted) },
+    membersIn: num(d.membersIn),
     bookings: arr(d.bookings).map((b): VenueDayBooking => {
       const r = obj(b);
       return {
@@ -1193,6 +1195,21 @@ export async function fetchCheckInList(venueId: string, localDate: string | null
       };
     }),
     totals: { passes: num(totals.passes), admits: num(totals.admits), admitted: num(totals.admitted) },
+    members: arr(data.members).map((m): CheckInMember => {
+      const r = obj(m);
+      return {
+        subscriptionId: str(r.subscriptionId),
+        holderName: str(r.holderName, "Member"),
+        planName: str(r.planName),
+        status: str(r.status, "active"),
+        paymentDue: r.paymentDue === true,
+        guestPassesLeft: num(r.guestPassesLeft),
+        inToday: r.inToday === true,
+        guests: num(r.guests),
+        logId: strOrNull(r.logId),
+        checkedInAt: strOrNull(r.checkedInAt),
+      };
+    }),
   };
 }
 
@@ -1212,12 +1229,27 @@ export function mapScanOutcome(v: unknown): ScanOutcome {
   const d = obj(v);
   const result = str(d.result) as ScanResultCode;
   const ticket = d.ticket === undefined ? null : obj(d.ticket);
+  const member = d.member === undefined || d.member === null ? null : obj(d.member);
+  const memberPlan = member === null ? {} : obj(member.plan);
+  const memberCredits = member === null ? {} : obj(member.credits);
   return {
     result: SCAN_RESULTS.includes(result) ? result : "not_found",
     admitted: numOrNull(d.admitted ?? d.undid),
     logId: strOrNull(d.logId),
     balanceDueMinor: num(d.balanceDueMinor),
-    kind: d.kind === "event_ticket" ? "event_ticket" : "pass",
+    kind: d.kind === "event_ticket" ? "event_ticket" : d.kind === "member" ? "member" : "pass",
+    member:
+      member === null
+        ? null
+        : {
+            subscriptionId: str(member.subscriptionId),
+            name: str(member.memberName ?? member.name, "Member"),
+            planName: str(memberPlan.name ?? member.planName),
+            status: str(member.status),
+            guestPassesLeft: num(memberCredits.guestPassesLeft),
+            paymentDue: member.paymentDue !== null && member.paymentDue !== undefined && ["payment_due", "grace"].includes(str(member.status)),
+          },
+    paymentDue: d.paymentDue === true,
     pass: d.pass === undefined || d.pass === null ? null : mapPass(d.pass),
     ticketHolder: ticket === null ? null : strOrNull(ticket.holderName),
     ticketName: ticket === null ? null : strOrNull(ticket.ticketName),

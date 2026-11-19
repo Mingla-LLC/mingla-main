@@ -22,6 +22,8 @@ import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { useSetVenueFeature, useVenueFeatures } from "../../../../hooks/useVenueFeatures";
 import { useVenueListing } from "../../../../hooks/useVenueListings";
 import { useManageVenueOffer, useVenueOffers } from "../../../../hooks/useVenueOffers";
+import { useVenueMembershipPlans } from "../../../../hooks/useVenueMembershipPlans";
+import { planStatusWords } from "../members/membersModel";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import type { VenueOffer, VenueOfferKind } from "../../../../types/venueOffers";
 import type { VenueModule } from "../../../../types/venueReservation";
@@ -45,9 +47,9 @@ import { HireEditor } from "./HireEditor";
 import { HourEditor } from "./HourEditor";
 import { PackageEditor } from "./PackageEditor";
 import {
-  COMING_SOON_REASON,
   NEW_OFFER_CARDS,
   OFFER_KIND_LABEL,
+  money,
   OFFER_STATUS,
   kindLine,
   offerErrorCopy,
@@ -77,6 +79,8 @@ export interface VenueOffersModuleProps {
   onOpenModule?: (module: VenueModule) => void;
   /** `&item=<offerId>` deep link: open that offer's editor on arrival. */
   initialOfferId?: string | null;
+  /** #4490 P6 — open Members on its plans, or straight into a new plan. */
+  onOpenMembers?: (view: "plans" | "new_plan") => void;
 }
 
 type EditorKind = "entry" | "group_package" | "private_hire" | "by_the_hour";
@@ -84,7 +88,7 @@ type Editing = { offerId: string | null; kind: EditorKind } | null;
 type Confirm = { action: "pause" | "archive"; offer: VenueOffer } | null;
 
 export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersModuleProps>(function VenueOffersModule(
-  { brandId, venueId, onOpenModule, initialOfferId = null },
+  { brandId, venueId, onOpenModule, initialOfferId = null, onOpenMembers },
   ref,
 ): React.ReactElement {
   const router = useRouter();
@@ -134,6 +138,9 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const packagesOn = featuresQuery.data?.features.group_packages.enabled === true;
   const hireOn = featuresQuery.data?.features.private_hire.enabled === true;
   const hourOn = featuresQuery.data?.features.by_the_hour.enabled === true;
+  const membersOn = featuresQuery.data?.features.memberships.enabled === true;
+  const plansQuery = useVenueMembershipPlans(brandId, venueId);
+  const livePlans = useMemo(() => (plansQuery.data?.plans ?? []).filter((p) => p.status !== "archived"), [plansQuery.data?.plans]);
   const activeSpaces = featuresQuery.data?.activeSpaceCount ?? 0;
   const canEdit = access.canEditSpaces;
   const soldToday = useMemo(() => {
@@ -249,12 +256,36 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
         );
         return;
       }
+      // #4490 P6 — Membership: a plan is made in Members › Plans.
+      if (card.key === "membership") {
+        if (membersOn) {
+          setPicker(false);
+          onOpenMembers?.("new_plan");
+          return;
+        }
+        setFeatureError(null);
+        setFeature.mutate(
+          { key: "memberships", enabled: true, cascade: true },
+          {
+            onSuccess: () => {
+              setPicker(false);
+              setToast("Memberships turned on");
+              onOpenMembers?.("new_plan");
+            },
+            onError: () => {
+              setPicker(false);
+              setFeatureError("Couldn't turn on Memberships. Try again, or switch it on in Settings.");
+            },
+          },
+        );
+        return;
+      }
       if (card.key === "table_reservations") {
         setPicker(false);
         onOpenModule?.(tablesOn ? "reservations" : "settings");
       }
     },
-    [activeSpaces, hireOn, hourOn, onOpenModule, openEditor, packagesOn, setFeature, tablesOn],
+    [activeSpaces, hireOn, hourOn, membersOn, onOpenMembers, onOpenModule, openEditor, packagesOn, setFeature, tablesOn],
   );
 
   const runStatus = useCallback(
@@ -394,9 +425,17 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           (card.key === "private_hire" && !hireOn && !access.canSwitchFeatures) ||
           (card.key === "private_hire" && setFeature.isPending) ||
           (card.key === "by_the_hour" && !hourOn && !access.canSwitchFeatures) ||
-          (card.key === "by_the_hour" && setFeature.isPending);
+          (card.key === "by_the_hour" && setFeature.isPending) ||
+          (card.key === "membership" && !membersOn && !access.canSwitchFeatures) ||
+          (card.key === "membership" && (setFeature.isPending || onOpenMembers === undefined));
         const helper = !card.built
-          ? "Coming soon"
+          ? card.helper
+          : card.key === "membership" && !membersOn
+            ? access.canSwitchFeatures
+              ? `${card.helper} Picking it turns on Memberships.`
+              : `${card.helper} Ask a brand owner or admin to turn on Memberships.`
+          : card.key === "membership"
+            ? `${card.helper} Opens a new plan.`
           : card.key === "entry" && !entryOn
             ? `${card.helper} Turn on Entry first.`
             : card.key === "group_package" && !packagesOn
@@ -476,7 +515,6 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           </View>
           <ScrollView style={{ maxHeight: Math.max(280, height * 0.62) }} contentContainerStyle={styles.modalScroll}>
             {cardGrid(pickCard)}
-            <Text style={styles.meta}>{COMING_SOON_REASON}</Text>
             <View style={styles.eventRow}>
               <Text style={[styles.meta, styles.grow]}>A dated night with tickets is an event.</Text>
               <Button
@@ -549,6 +587,47 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
     </>
   );
 
+  // #4490 P6 — monthly plans are sold here too; they are made in Members › Plans.
+  const plansCard =
+    membersOn || livePlans.length > 0 ? (
+      <GlassCard variant="base" padding={0} contentStyle={styles.listCard} testID="venue-offers-plans">
+        <View style={[styles.row, styles.plansHead]}>
+          <View style={styles.cellText}>
+            <Text style={styles.rowTitle}>Membership plans</Text>
+            <Text style={styles.meta}>
+              {livePlans.length === 0 ? "No plan yet. Members pay one month at a time." : "Monthly plans, paid one month at a time."}
+            </Text>
+          </View>
+          {onOpenMembers !== undefined ? (
+            <Button
+              label={livePlans.length === 0 ? "New plan" : "Manage plans"}
+              variant="secondary"
+              size="sm"
+              onPress={() => onOpenMembers(livePlans.length === 0 ? "new_plan" : "plans")}
+              testID="venue-offers-plans-open"
+            />
+          ) : null}
+        </View>
+        {livePlans.map((plan) => {
+          const st = planStatusWords(plan);
+          return (
+            <View key={plan.id} style={[styles.row, styles.rowBorder, styles.planRow]} testID={`venue-offers-plan-${plan.id}`}>
+              <View style={styles.iconTile}>
+                <Icon name="star" size={18} color={color.text2} />
+              </View>
+              <View style={styles.cellText}>
+                <Text style={styles.rowTitle} numberOfLines={1}>{plan.name}</Text>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {`${money(plan.priceMinor, plan.currencyCode || currency)} a month · ${plan.activeMembers} ${plan.activeMembers === 1 ? "member" : "members"}`}
+                </Text>
+              </View>
+              <Pill variant={st.variant}>{st.label}</Pill>
+            </View>
+          );
+        })}
+      </GlassCard>
+    ) : null;
+
   const header = (
     <View style={styles.header}>
       <Text style={styles.title} accessibilityRole="header">Offers</Text>
@@ -571,6 +650,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           </Text>
           {canEdit ? cardGrid(pickCard) : null}
         </GlassCard>
+        {plansCard}
         {sheets}
       </ScrollView>
     );
@@ -615,7 +695,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
               >
                 <View style={[styles.colName, styles.nameCell]}>
                   <View style={styles.iconTile}>
-                    <Icon name={offer.kind === "group_package" ? "users" : offer.kind === "private_hire" ? "home" : offer.options.some((o) => o.eligibility !== null) ? "shield" : "ticket"} size={18} color={color.text2} />
+                    <Icon name={offer.kind === "group_package" ? "users" : offer.kind === "private_hire" ? "home" : offer.kind === "by_the_hour" ? "clock" : offer.options.some((o) => o.eligibility !== null) ? "shield" : "ticket"} size={18} color={color.text2} />
                   </View>
                   <View style={styles.cellText}>
                     <Text style={styles.rowTitle} numberOfLines={1}>{offer.name}</Text>
@@ -655,6 +735,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           );
         })}
       </GlassCard>
+      {plansCard}
       {sheets}
     </ScrollView>
   );
@@ -707,6 +788,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.tile,
   },
   cellText: { flex: 1, minWidth: 0, gap: 2 },
+  plansHead: { paddingHorizontal: space[4], paddingVertical: space[3], gap: space[3], flexWrap: "wrap" },
+  planRow: { paddingHorizontal: space[4], paddingVertical: space[3], gap: space[3], minHeight: 56 },
   rowTitle: { ...type.row, color: color.text1 },
   cell: { ...type.small, color: color.text2 },
   modalBody: { gap: space[3], padding: space[5] },

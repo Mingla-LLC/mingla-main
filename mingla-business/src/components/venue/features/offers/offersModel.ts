@@ -69,12 +69,9 @@ export const NEW_OFFER_CARDS: readonly NewOfferCard[] = [
   { key: "private_hire", label: "Private hire", helper: "A space to themselves. By request, with a deposit.", icon: "shield", built: true },
   { key: "by_the_hour", label: "By the hour", helper: "A room, court, lane, table or desk.", icon: "clock", built: true },
   { key: "table_reservations", label: "Table reservations", helper: "A table at a time. Restaurants, bars, lounges.", icon: "calendar", built: true },
-  { key: "membership", label: "Membership", helper: "Monthly access with perks. Coworking, clubs.", icon: "star", built: false },
+  // #4490 P6 — a monthly plan, built in Members › Plans.
+  { key: "membership", label: "Membership", helper: "Monthly access with perks. Coworking, clubs.", icon: "star", built: true },
 ];
-
-/** Why a card can't be picked yet (plain words, no dead tap). */
-export const COMING_SOON_REASON =
-  "Memberships are coming soon. You'll sell them here once they're ready.";
 
 // ---------------------------------------------------------------- money
 

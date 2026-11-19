@@ -23,7 +23,8 @@ import { useVenueDay } from "../../../../hooks/useVenueDay";
 import { useVenueOffers } from "../../../../hooks/useVenueOffers";
 import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
-import type { CheckInPass, CheckInTicket, ScanOutcome, VenueOffer } from "../../../../types/venueOffers";
+import { useAdmitMember } from "../../../../hooks/useVenueMembers";
+import type { CheckInMember, CheckInPass, CheckInTicket, ScanOutcome, VenueOffer } from "../../../../types/venueOffers";
 import { Banner } from "../../../ui/Banner";
 import { Button } from "../../../ui/Button";
 import { CenteredState } from "../../../ui/CenteredState";
@@ -39,7 +40,8 @@ import { Skeleton } from "../../../ui/Skeleton";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
 import { dayHeadline } from "../today/todayModel";
 import { ScanCamera, scanCameraSupported } from "./ScanCamera";
-import { checkInResultView, doorErrorCopy, matchTypedCode, type CheckInAction } from "./venueCheckInResult";
+import { checkInResultView, doorErrorCopy, matchTypedCode, memberIdFromCode, type CheckInAction } from "./venueCheckInResult";
+import { VenueMemberCheckIn } from "./VenueMemberCheckIn";
 import { VenueGateSale } from "./VenueGateSale";
 import { VenueGroupCheckIn, needsGroupStep, passIdFromCode } from "./VenueGroupCheckIn";
 import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
@@ -50,11 +52,12 @@ const LazyToast = React.lazy(async () => {
   return { default: mod.Toast };
 });
 
-type Filter = "all" | "entry" | "events";
+type Filter = "all" | "entry" | "events" | "members";
 
 type Row =
   | { kind: "pass"; key: string; pass: CheckInPass }
-  | { kind: "ticket"; key: string; ticket: CheckInTicket };
+  | { kind: "ticket"; key: string; ticket: CheckInTicket }
+  | { kind: "member"; key: string; member: CheckInMember };
 
 /** "18:30" in the venue's own timezone (not the device's). */
 function timeOf(iso: string | null, timezone?: string): string | null {
@@ -94,6 +97,9 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   // #4490 P3 — a group, or a booking that still owes money, gets a step before going in.
   const [groupStep, setGroupStep] = useState<{ passId: string; qr: string | null } | null>(null);
   const [openBooking, setOpenBooking] = useState<string | null>(null);
+  // #4490 P6 — a member from the list or a scanned member pass, before going in.
+  const [memberStep, setMemberStep] = useState<{ subscriptionId: string; qr: string | null } | null>(null);
+  const admitMember = useAdmitMember(brandId, venueId);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -124,7 +130,9 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const rows: Row[] = useMemo(() => {
     const passes: Row[] = (list?.passes ?? []).map((pass) => ({ kind: "pass", key: `p-${pass.passId}`, pass }));
     const tickets: Row[] = (list?.tickets ?? []).map((ticket) => ({ kind: "ticket", key: `t-${ticket.ticketId}`, ticket }));
-    const all = filter === "entry" ? passes : filter === "events" ? tickets : [...passes, ...tickets];
+    const members: Row[] = (list?.members ?? []).map((member) => ({ kind: "member", key: `m-${member.subscriptionId}`, member }));
+    const all =
+      filter === "entry" ? passes : filter === "events" ? tickets : filter === "members" ? members : [...passes, ...members, ...tickets];
     const needle = search.trim().toLowerCase();
     if (needle.length === 0) return all;
     return all.filter((r) =>
@@ -132,9 +140,11 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         ? r.pass.holderName.toLowerCase().includes(needle) ||
           (r.pass.reference ?? "").toLowerCase().includes(needle) ||
           r.pass.offerName.toLowerCase().includes(needle)
-        : r.ticket.holderName.toLowerCase().includes(needle) || r.ticket.eventTitle.toLowerCase().includes(needle),
+        : r.kind === "member"
+          ? r.member.holderName.toLowerCase().includes(needle) || r.member.planName.toLowerCase().includes(needle)
+          : r.ticket.holderName.toLowerCase().includes(needle) || r.ticket.eventTitle.toLowerCase().includes(needle),
     );
-  }, [filter, list?.passes, list?.tickets, search]);
+  }, [filter, list?.members, list?.passes, list?.tickets, search]);
 
   const runDoor = useCallback(
     (action: Parameters<typeof door.mutate>[0], onDone?: (o: ScanOutcome) => void): void => {
@@ -173,6 +183,30 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
 
   const submitCode = useCallback(
     (raw: string): void => {
+      // #4490 P6 — a member pass, or a member's name.
+      const typed = raw.trim();
+      const scannedMember = memberIdFromCode(typed);
+      if (scannedMember !== null) {
+        setCode("");
+        const known = (list?.members ?? []).find((m) => m.subscriptionId === scannedMember);
+        if (known !== undefined && !known.inToday) {
+          setMemberStep({ subscriptionId: known.subscriptionId, qr: typed });
+          return;
+        }
+        setLastQr(typed);
+        runDoor({ kind: "scan", qrPayload: typed });
+        return;
+      }
+      if (typed.length > 1 && !/^mingla:/i.test(typed)) {
+        const needle = typed.toLowerCase();
+        const passHits = (list?.passes ?? []).filter((p) => p.holderName.toLowerCase().includes(needle) || (p.reference ?? "").toLowerCase().startsWith(needle));
+        const memberHits = (list?.members ?? []).filter((m) => m.holderName.toLowerCase().includes(needle));
+        if (passHits.length === 0 && memberHits.length === 1) {
+          setCode("");
+          setMemberStep({ subscriptionId: (memberHits[0] as CheckInMember).subscriptionId, qr: null });
+          return;
+        }
+      }
       const match = matchTypedCode(raw, list?.passes ?? []);
       if (match.kind === "none") {
         setScanError("Type or paste a code, a booking code like VB-1A2B, or a name.");
@@ -201,7 +235,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         runDoor({ kind: "admit", passId: match.pass.passId });
       }
     },
-    [list?.passes, runDoor],
+    [list?.members, list?.passes, runDoor],
   );
 
   const onAction = useCallback(
@@ -306,9 +340,50 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
             : "Close";
   const toneColor = view === null ? color.text3 : view.tone === "success" ? color.success : view.tone === "warning" ? color.warning : view.tone === "danger" ? color.danger : color.text3;
   const groupPass = groupStep === null ? null : list.passes.find((p) => p.passId === groupStep.passId) ?? null;
+  const stepMember = memberStep === null ? null : (list.members ?? []).find((m) => m.subscriptionId === memberStep.subscriptionId) ?? null;
+  const admitMemberNow = (guests: number): void => {
+    if (memberStep === null) return;
+    const step = memberStep;
+    if (step.qr !== null) {
+      setLastQr(step.qr);
+      runDoor({ kind: "scan", qrPayload: step.qr, admitCount: 1 + guests }, () => setMemberStep(null));
+      return;
+    }
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setScanError(null);
+    admitMember.mutate(
+      { subscriptionId: step.subscriptionId, guests },
+      {
+        onSuccess: (o) => {
+          setMemberStep(null);
+          setOutcome(o);
+          if (!scanOpen) setScanOpen(true);
+        },
+        onError: (e) => {
+          const err = toVenueOfferError(e);
+          setScanError(doorErrorCopy(err.code, err.detail));
+        },
+        onSettled: () => {
+          busyRef.current = false;
+        },
+      },
+    );
+  };
   const scanBody = (
     <View style={styles.scanBody} testID="venue-checkin-scan">
-      {view === null && groupPass !== null && groupStep !== null ? (
+      {view === null && stepMember !== null ? (
+        <VenueMemberCheckIn
+          member={stepMember}
+          admitting={door.isPending || admitMember.isPending}
+          onAdmit={admitMemberNow}
+          onClose={() => {
+            setMemberStep(null);
+            setScanOpen(false);
+            setScanError(null);
+          }}
+        />
+      ) : view === null && groupPass !== null && groupStep !== null ? (
         <VenueGroupCheckIn
           pass={groupPass}
           brandId={brandId}
@@ -338,8 +413,14 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         <>
           {cameraOn ? (
             <ScanCamera
-              active={scanOpen && view === null && groupStep === null}
+              active={scanOpen && view === null && groupStep === null && memberStep === null}
               onCode={(payload) => {
+                const memberId = memberIdFromCode(payload);
+                const knownMember = memberId === null ? undefined : (list?.members ?? []).find((m) => m.subscriptionId === memberId);
+                if (knownMember !== undefined && !knownMember.inToday) {
+                  setMemberStep({ subscriptionId: knownMember.subscriptionId, qr: payload });
+                  return;
+                }
                 const id = passIdFromCode(payload);
                 const known = id === null ? undefined : (list?.passes ?? []).find((p) => p.passId === id);
                 if (known !== undefined && needsGroupStep(known)) {
@@ -433,6 +514,45 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
     ) : (
       <GlassCard variant="base" padding={0} contentStyle={styles.listCard} testID="venue-checkin-list">
         {rows.map((r, index) => {
+          if (r.kind === "member") {
+            const m = r.member;
+            return (
+              <View key={r.key} style={[styles.row, index > 0 ? styles.rowBorder : null]} testID={`venue-checkin-member-${m.subscriptionId}`}>
+                <View style={styles.cellText}>
+                  <View style={styles.memberName}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{m.holderName}</Text>
+                    <Pill variant="info">Member</Pill>
+                  </View>
+                  <Text style={styles.meta} numberOfLines={2}>
+                    {m.planName}
+                    {m.paymentDue ? " · payment due" : ""}
+                    {m.guestPassesLeft > 0 ? ` · ${m.guestPassesLeft} guest ${m.guestPassesLeft === 1 ? "pass" : "passes"}` : ""}
+                    {m.inToday && m.guests > 0 ? ` · came with ${m.guests}` : ""}
+                  </Text>
+                </View>
+                {m.inToday ? (
+                  <Pill variant="ok">{`In · ${timeOf(m.checkedInAt, list.timezone) ?? "today"}`}</Pill>
+                ) : (
+                  <Button
+                    label="Check in"
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => {
+                      setRowError(null);
+                      setOutcome(null);
+                      setScanError(null);
+                      setCameraOn(false);
+                      setMemberStep({ subscriptionId: m.subscriptionId, qr: null });
+                      setScanOpen(true);
+                    }}
+                    disabled={door.isPending || admitMember.isPending}
+                    accessibilityLabel={`Check in ${m.holderName}, member`}
+                    testID={`venue-checkin-member-admit-${m.subscriptionId}`}
+                  />
+                )}
+              </View>
+            );
+          }
           if (r.kind === "ticket") {
             const t = r.ticket;
             const inNow = t.admittedCount >= t.admits;
@@ -459,7 +579,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
               <View style={styles.cellText}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{p.holderName}</Text>
                 <Text style={styles.meta} numberOfLines={2}>
-                  {p.offerName} × {p.admits}
+                  {p.offerKind === "by_the_hour" ? `${p.offerName}${timeOf(p.time, list.timezone) !== null ? ` · from ${timeOf(p.time, list.timezone)}` : ""}` : `${p.offerName} × ${p.admits}`}
                   {p.reference !== null ? ` · ${p.reference}` : ""}
                   {p.source === "gate" || p.source === "gate_sale" ? " · gate sale" : ""}
                   {p.idCheckLabel !== null ? ` · ${p.idCheckLabel}` : ""}
@@ -535,8 +655,9 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         </View>
         <Segmented
           options={[
-            { key: "all", label: "Everyone", count: list.passes.length + list.tickets.length },
+            { key: "all", label: "Everyone", count: list.passes.length + list.tickets.length + (list.members ?? []).length },
             { key: "entry", label: "Entry", count: list.passes.length },
+            ...((list.members ?? []).length > 0 ? [{ key: "members" as const, label: "Members", count: (list.members ?? []).length }] : []),
             { key: "events", label: "Events", count: list.tickets.length },
           ]}
           value={filter}
@@ -556,6 +677,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
           setOutcome(null);
           setCameraOn(false);
           setGroupStep(null);
+          setMemberStep(null);
         }}
         snapPoint={0.85}
         presentation={isWideDesktop ? "panel" : undefined}
@@ -563,12 +685,13 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
       >
         <View style={styles.sheetBody}>
           <PickerSheetHead
-            title={groupStep !== null ? "Check in a group" : "Scan a pass"}
+            title={memberStep !== null ? "Check in a member" : groupStep !== null ? "Check in a group" : "Scan a pass"}
             onClose={() => {
               setScanOpen(false);
               setOutcome(null);
               setCameraOn(false);
               setGroupStep(null);
+              setMemberStep(null);
             }}
             plain={isWideDesktop}
             testID="venue-checkin-scan-head"
@@ -624,6 +747,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: space[3], paddingHorizontal: space[4], paddingVertical: space[3], minHeight: 60 },
   rowBorder: { borderTopWidth: 1, borderTopColor: color.line },
   cellText: { flex: 1, minWidth: 0, gap: 2 },
+  memberName: { flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" },
   rowTitle: { ...type.row, color: color.text1 },
   guests: { ...type.small, color: color.text2, minWidth: 40, textAlign: "right" },
   emptyCard: { gap: space[2], alignItems: "center" },

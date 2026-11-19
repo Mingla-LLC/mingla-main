@@ -21,7 +21,8 @@ export type VenueCapability =
   | "venue.manage_bookings"
   | "venue.view_bookings"
   | "venue.check_in"
-  | "venue.manage_money";
+  | "venue.manage_money"
+  | "venue.manage_members";
 
 export interface VenueAccessGrant {
   venueId: string;

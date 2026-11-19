@@ -55,4 +55,13 @@ export const venueFeatureKeys = {
     ["venueFloor", brandId, venueId, at] as const,
   tableSuggestions: (brandId: string, venueId: string, reservationId: string): readonly string[] =>
     ["venueTableSuggestions", brandId, venueId, reservationId] as const,
+  // #4490 P6 — memberships: plans, the members list (by server filter) and one member.
+  membershipPlans: (brandId: string, venueId: string): readonly string[] =>
+    ["venueMembershipPlans", brandId, venueId] as const,
+  membersAll: (brandId: string, venueId: string): readonly string[] => ["venueMembers", brandId, venueId] as const,
+  members: (brandId: string, venueId: string, filter: string): readonly string[] =>
+    ["venueMembers", brandId, venueId, filter] as const,
+  memberAll: (brandId: string, venueId: string): readonly string[] => ["venueMember", brandId, venueId] as const,
+  member: (brandId: string, venueId: string, subscriptionId: string): readonly string[] =>
+    ["venueMember", brandId, venueId, subscriptionId] as const,
 };

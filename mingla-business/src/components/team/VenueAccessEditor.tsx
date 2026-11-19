@@ -75,9 +75,13 @@ const CAPABILITY_OPTIONS: readonly CapabilityOption[] = [
   { capability: "restaurant.manage_menu", label: "Manage restaurant menu", categories: NON_STAY_CATEGORIES },
   { capability: "restaurant.manage_qr", label: "Manage QR ordering spots", categories: NON_STAY_CATEGORIES },
   { capability: "restaurant.manage_reservations", label: "Manage restaurant reservations", categories: NON_STAY_CATEGORIES },
-  // #4490 — shown only for features whose host surfaces have shipped (P1:
-  // spaces and hours). The other venue.* capabilities arrive with their phase.
-  { capability: "venue.manage_offers", label: "Manage spaces and opening hours", categories: NON_STAY_CATEGORIES },
+  // #4490 — the venue capabilities (every phase has shipped its surfaces).
+  { capability: "venue.manage_offers", label: "Manage offers, spaces and opening hours", categories: NON_STAY_CATEGORIES },
+  { capability: "venue.view_bookings", label: "See bookings, Today and the calendar", categories: NON_STAY_CATEGORIES },
+  { capability: "venue.manage_bookings", label: "Answer requests and change bookings", categories: NON_STAY_CATEGORIES },
+  { capability: "venue.check_in", label: "Check guests in at the door", categories: NON_STAY_CATEGORIES },
+  { capability: "venue.manage_money", label: "Take payments and give refunds", categories: NON_STAY_CATEGORIES },
+  { capability: "venue.manage_members", label: "Manage members and plans", categories: NON_STAY_CATEGORIES },
 ];
 
 export function isVenueAccessAssignable(venue: VenueListing): boolean {

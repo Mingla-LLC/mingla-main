@@ -91,6 +91,8 @@ export const BUILT_FEATURES: ReadonlySet<VenueFeatureKey> = new Set<VenueFeature
   "menu",
   "table_ordering",
   "events_here",
+  // P6: memberships (monthly plans, members, member check-in).
+  "memberships",
   "stays",
 ]);
 
@@ -208,7 +210,13 @@ export interface VenueTypeOption {
   key: VenueTypeKey;
   label: string;
   description: string;
-  /** Mirror of `issue_4490_feature_preset` (starting switches only). */
+  /**
+   * Starting switches only (the add-venue Features step and "Change type"
+   * offer these; nothing is ever switched off by a type). P6: every feature is
+   * built, so each type now starts with what venues of that kind usually sell
+   * (spec 04 §4 data sheets). The server's `issue_4490_feature_preset` is only
+   * the fallback when a create sends no list; see the P6 UI report.
+   */
   preset: readonly VenueFeatureKey[];
 }
 
@@ -223,25 +231,25 @@ export const VENUE_TYPES: readonly VenueTypeOption[] = [
     key: "play",
     label: "Play and games",
     description: "Games, activities and family fun",
-    preset: ["entry", "group_packages", "private_hire", "menu", "events_here"],
+    preset: ["entry", "group_packages", "private_hire", "menu", "table_ordering", "events_here"],
   },
   {
     key: "bar_lounge",
     label: "Bar and lounge",
     description: "Drinks, tables and nights out",
-    preset: ["table_reservations", "min_spend_tables", "private_hire", "menu", "events_here"],
+    preset: ["table_reservations", "min_spend_tables", "private_hire", "menu", "table_ordering", "events_here"],
   },
   {
     key: "club",
     label: "Club",
     description: "Entry, tables and big nights",
-    preset: ["entry", "table_reservations", "min_spend_tables", "events_here"],
+    preset: ["entry", "table_reservations", "min_spend_tables", "menu", "table_ordering", "events_here"],
   },
   {
     key: "cafe",
     label: "Cafe",
-    description: "Coffee, food and ordering at the table",
-    preset: ["menu", "table_ordering"],
+    description: "Coffee, food, day passes and a room to book",
+    preset: ["entry", "by_the_hour", "menu", "table_ordering", "events_here"],
   },
   {
     key: "coworking",
@@ -259,7 +267,7 @@ export const VENUE_TYPES: readonly VenueTypeOption[] = [
     key: "creative_and_arts",
     label: "Creative and arts",
     description: "Studios, galleries and performance",
-    preset: ["private_hire", "by_the_hour", "events_here"],
+    preset: ["entry", "by_the_hour", "private_hire", "memberships", "events_here"],
   },
   {
     key: "stay",

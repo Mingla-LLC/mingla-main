@@ -28,7 +28,12 @@ export function featureSwitchConfirm(
       : // #4490 P2 — the server pauses live Entry offers when Entry goes off.
         key === "entry"
         ? " Your live Entry offers pause. Passes already bought stay valid; guests can't buy new ones."
-        : "";
+        : // #4490 P6 — the server stops new joins; members carry on.
+          key === "memberships"
+          ? " Nobody new can join your plans and the Plans tab leaves your venue page. Current members keep their membership and their payment emails."
+          : key === "group_packages" || key === "private_hire" || key === "by_the_hour"
+            ? " Bookings already made stay valid; guests can't book new ones."
+            : "";
   if (cascade.length === 0 && bookings.length === 0) return null;
   return {
     title: `Turn off ${label}?`,
