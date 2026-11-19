@@ -36,6 +36,12 @@ const BRAND_MARK_SIZE = 24;
 const truncate = (value: string, max: number): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
+export interface BrandChipMenuState {
+  accessibilityState: { expanded: boolean };
+  "aria-expanded": boolean;
+  "aria-haspopup": "menu";
+}
+
 export interface BrandChipProps {
   onPress?: () => void;
   /** issue #3345 — the host knows the active brand is still being resolved. */
@@ -51,8 +57,12 @@ export interface BrandChipProps {
   brand?: Brand | null;
   /** #4453 — the brand mark's size (a tight header uses a smaller one). */
   markSize?: number;
-  /** #4453 — the switcher says whether its menu is open (announced to screen readers). */
-  accessibilityState?: { expanded: boolean };
+  /**
+   * #4453 — the switcher says that the chip opens a menu and whether it is
+   * open, in both spellings: `accessibilityState` is what native announces,
+   * `aria-expanded` / `aria-haspopup` are what the web build renders.
+   */
+  menuState?: BrandChipMenuState;
   /** #4453 — the pressable, so a popover can anchor under it and hand focus back. */
   chipRef?: React.Ref<View>;
   testID?: string;
@@ -64,7 +74,7 @@ export const BrandChip: React.FC<BrandChipProps> = ({
   fullNameLabel = false,
   brand,
   markSize = BRAND_MARK_SIZE,
-  accessibilityState,
+  menuState,
   chipRef,
   testID,
 }) => {
@@ -118,7 +128,7 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
-      accessibilityState={accessibilityState}
+      {...menuState}
       style={fullNameLabel ? [styles.brandRow, styles.brandRowShrink] : styles.brandRow}
       testID={testID}
     >

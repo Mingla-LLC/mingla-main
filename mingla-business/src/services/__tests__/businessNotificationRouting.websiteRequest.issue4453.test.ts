@@ -51,6 +51,26 @@ describe("#4453 website change request is ready", () => {
     expect(resolveBusinessNavTarget({ type: "business.website_request_ready" })).toBe("/(tabs)/account");
   });
 
+  // The link may arrive percent-encoded (a mail client, a share sheet, a
+  // push relay). FAILS-ON-REVERT: drop the decode in `websiteRequestQuery`
+  // and the encoded id opens the workspace without its request.
+  test("a percent-encoded request id is decoded; a malformed one is dropped, never thrown", () => {
+    const encoded = TICKET.replace(/-/g, "%2D");
+    expect(encoded).not.toBe(TICKET);
+    expect(parseBusinessDeepLink(`mingla-business://brand/${BRAND}/website?request=${encoded}`)).toBe(TARGET);
+    expect(parseBusinessDeepLink(`mingla-business://brand/${BRAND}/website?request=${encoded.toLowerCase()}`)).toBe(TARGET);
+    expect(resolveBusinessNavTarget({ type: "business.website_request_ready", brand_id: BRAND, ticket_id: encoded } as BusinessPushData)).toBe(TARGET);
+    // Raw still works.
+    expect(parseBusinessDeepLink(`mingla-business://brand/${BRAND}/website?request=${TICKET}`)).toBe(TARGET);
+    // Malformed escapes: no throw, no request.
+    for (const bad of ["%", "%E0%A4%A", `${TICKET}%`, "%zz", "%2F..%2Faccount", `${TICKET}%26mode%3Ddesign`]) {
+      expect(() => parseBusinessDeepLink(`mingla-business://brand/${BRAND}/website?request=${bad}`)).not.toThrow();
+      expect(parseBusinessDeepLink(`mingla-business://brand/${BRAND}/website?request=${bad}`)).toBe(`/brand/${BRAND}/website`);
+      expect(resolveBusinessNavTarget({ type: "business.website_request_ready", brand_id: BRAND, ticket_id: bad } as BusinessPushData))
+        .toBe(`/brand/${BRAND}/website`);
+    }
+  });
+
   test("the older Website links are unchanged", () => {
     expect(parseBusinessDeepLink(`mingla-business://brand/${BRAND}/website`)).toBe(`/brand/${BRAND}/website`);
     expect(parseBusinessDeepLink(`mingla-business://brand/${BRAND}/website/publish?x=1`)).toBe(`/brand/${BRAND}/website/publish`);

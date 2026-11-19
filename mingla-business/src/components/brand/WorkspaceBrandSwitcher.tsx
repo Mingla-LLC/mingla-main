@@ -22,7 +22,7 @@ import type { View } from "react-native";
 
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useWorkspaceBrand } from "../../hooks/useWorkspaceBrand";
-import { BrandChip } from "../ui/BrandChip";
+import { BrandChip, type BrandChipMenuState } from "../ui/BrandChip";
 import type { BrandMenuAnchor } from "./WorkspaceBrandMenu";
 import type { WorkspaceBrandSwitcherProps } from "./workspaceBrandContext";
 
@@ -92,7 +92,11 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
     node.measureInWindow((x, y, width, height) => show({ x, y, width, height }));
   }, [isWideDesktop, onOpenSheet, workspace.brand, workspace.pending]);
 
-  const expandedState = useMemo(() => ({ expanded: open }), [open]);
+  // Native reads accessibilityState; react-native-web renders only aria-*.
+  const menuState = useMemo<BrandChipMenuState>(
+    () => ({ accessibilityState: { expanded: open }, "aria-expanded": open, "aria-haspopup": "menu" }),
+    [open],
+  );
 
   const focusChip = useCallback((): void => {
     (chipRef.current as Measurable)?.focus?.();
@@ -110,7 +114,7 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
         fullNameLabel={compact}
         markSize={compact ? COMPACT_MARK_SIZE : undefined}
         brandLoading={brandLoading === true || workspace.pending}
-        accessibilityState={expandedState}
+        menuState={menuState}
         chipRef={chipRef}
         testID={testID}
       />

@@ -94,7 +94,13 @@ function websiteTarget(brandId: string, section: unknown): BusinessNavTarget {
  * is carried into the address; anything else opens the workspace itself.
  */
 function websiteRequestQuery(ticketId: unknown): string {
-  return UUID_RE.test(String(ticketId)) ? `?request=${ticketId}` : "";
+  let id = String(ticketId);
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    // A malformed value is not a ticket id: the check below drops it.
+  }
+  return UUID_RE.test(id) ? `?request=${id}` : "";
 }
 /** #4111 — the three team-side customer enquiry categories. */
 const BRAND_ENQUIRY_PUSH_TYPES = new Set([
