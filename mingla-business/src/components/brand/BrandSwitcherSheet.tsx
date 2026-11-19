@@ -419,3 +419,7 @@ const styles = StyleSheet.create({
 });
 
 export default BrandSwitcherSheet;
+
+// #4453 — the desktop brand menu ships in this module's chunk (see
+// WorkspaceBrandSwitcher.tsx: one import target, one chunk, nothing hoisted).
+export { WorkspaceBrandMenu } from "./WorkspaceBrandMenu";

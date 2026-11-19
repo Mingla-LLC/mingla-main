@@ -7,13 +7,21 @@
  * id, so a step is never counted twice.
  */
 import { supabase } from "../services/supabase";
-import { fetchAriTurnStatus } from "../services/ariTurnService";
 import type { StepEvent } from "./ariWorkspace";
 
 const POLL_MS = 2_500;
 const hasDetail = (event: StepEvent): boolean => event.detail !== null && typeof event.detail === "object";
 
-export function followAriRun(clientTurnId: string, onEvents: (events: StepEvent[]) => void): () => void {
+/**
+ * `readStatus` is Ari's own turn-status read, handed in by the caller: this
+ * file is part of the Website chunk and must not pull Ari's services into it
+ * (see workspace/ariRuntime.ts).
+ */
+export function followAriRun(
+  clientTurnId: string,
+  onEvents: (events: StepEvent[]) => void,
+  readStatus: (clientTurnId: string) => Promise<{ events: readonly unknown[] }>,
+): () => void {
   const seen = new Map<string, StepEvent & { sequence?: number }>();
   let active = true;
   const push = (rows: readonly unknown[]) => {
@@ -37,7 +45,7 @@ export function followAriRun(clientTurnId: string, onEvents: (events: StepEvent[
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "agent_activity_events", filter: `client_turn_id=eq.${clientTurnId}` }, (payload) => push([payload.new]))
     .subscribe();
   const poll = () => {
-    void fetchAriTurnStatus(clientTurnId).then((status) => push(status.events)).catch(() => undefined);
+    void readStatus(clientTurnId).then((status) => push(status.events)).catch(() => undefined);
   };
   const timer = setInterval(poll, POLL_MS);
   return () => {

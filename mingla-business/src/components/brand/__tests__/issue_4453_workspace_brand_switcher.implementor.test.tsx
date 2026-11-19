@@ -84,6 +84,12 @@ jest.mock("../../../hooks/useBrandSetupStates", () => ({
 jest.mock("../../../hooks/useWorkspaceBrandSwitch", () => ({
   useWorkspaceBrandSwitch: () => (brand: unknown) => mockSwitch(brand),
 }));
+// #4453 integration: the menu loads through the brand sheet's module (one
+// on-demand chunk for both, so nothing they share lands on the boot path).
+// The menu under test is the real one; the sheet itself is not part of this test.
+jest.mock("../BrandSwitcherSheet", () => ({
+  WorkspaceBrandMenu: (jest.requireActual("../WorkspaceBrandMenu") as { WorkspaceBrandMenu: unknown }).WorkspaceBrandMenu,
+}));
 jest.mock("../BrandMark", () => {
   const { View } = require("react-native");
   return { BrandMark: ({ testID }: { testID?: string }) => <View testID={testID} /> };

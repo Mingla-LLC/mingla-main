@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAgentChat } from "../../../../hooks/useAgentChat";
-import { useConfirmPendingAction } from "../../../../hooks/useConfirmPendingAction";
-import { buildChoiceSubmission } from "../../../ari/agentChoices";
+import type { AriRuntime } from "./ariRuntime";
 import type { AgentChatResponse, AgentChoicesV2 } from "../../../../services/agentChatService";
 import { followAriRun } from "../../../../sites/ariRunActivity";
 import {
@@ -69,9 +67,12 @@ export function useAriRun(input: {
   onActiveSection: (sectionId: string | null) => void;
   /** A step landed, or the run ended: re-read the draft and refresh the page. */
   onDraftChanged: (result: AriRunResult | null) => void;
-}) {
-  const chat = useAgentChat(null, input.brandId);
-  const confirmer = useConfirmPendingAction(chat.conversationId, input.brandId);
+}, runtime: AriRuntime) {
+  // Ari's hooks arrive through the AriChatScreen chunk (ariRuntime.ts); the
+  // same runtime object is passed for the life of the component.
+  const { buildChoiceSubmission, fetchAriTurnStatus } = runtime;
+  const chat = runtime.useAgentChat(null, input.brandId);
+  const confirmer = runtime.useConfirmPendingAction(chat.conversationId, input.brandId);
   const [turns, setTurns] = useState<AriTurn[]>([]);
   const [teamDraft, setTeamDraft] = useState<AriTeamDraft | null>(null);
   const busy = useRef(false);
@@ -107,7 +108,7 @@ export function useAriRun(input: {
           lastDone = done;
           live.current.onDraftChanged(null);
         }
-      });
+      }, fetchAriTurnStatus);
     }
     let result: AriRunResult;
     try {
@@ -125,7 +126,7 @@ export function useAriRun(input: {
     live.current.onActiveSection(null);
     patch(id, { phase: result.ok ? "done" : "failed", result });
     live.current.onDraftChanged(result);
-  }, [clearPendingAction, confirmer, patch]);
+  }, [clearPendingAction, confirmer, fetchAriTurnStatus, patch]);
 
   const handle = useCallback(async (id: string, response: AgentChatResponse) => {
     if (response.kind === "pending_action") {
@@ -213,7 +214,7 @@ export function useAriRun(input: {
     setSiteFocus(turn.focus);
     void send(id, () => chat.sendChoice(submission, choice.label));
     return null;
-  }, [ask, chat, patch, send, setSiteFocus, turns]);
+  }, [ask, buildChoiceSubmission, chat, patch, send, setSiteFocus, turns]);
 
   const retry = useCallback((turnId: string) => {
     const turn = turns.find((entry) => entry.id === turnId);

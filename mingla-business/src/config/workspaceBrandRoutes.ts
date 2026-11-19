@@ -11,71 +11,19 @@
  * whole table is unit-tested in the node jest lane.
  */
 
-export type WorkspaceRouteParams = Readonly<
-  Record<string, string | string[] | undefined>
->;
+// The route's own brand (and the path helpers) live in workspaceBrandRoute.ts,
+// the small part the app shell loads at boot; this file is the switcher's.
+import { brandIdFromRoute, firstParam as one, workspacePathSegments, workspaceRoutePath, type WorkspaceRouteParams } from "./workspaceBrandRoute";
+
+export {
+  brandIdFromRoute,
+  workspacePathSegments,
+  workspaceRoutePath,
+  type WorkspaceRouteParams,
+} from "./workspaceBrandRoute";
 
 /** Home for any brand: the Home tab reads the current brand. */
 export const WORKSPACE_BRAND_HOME = "/(tabs)/home";
-
-const one = (value: string | string[] | undefined): string | null => {
-  const first = Array.isArray(value) ? value[0] : value;
-  return typeof first === "string" && first.length > 0 ? first : null;
-};
-
-/** Path segments without the query string or `(group)` segments. */
-export const workspacePathSegments = (
-  pathname: string | null | undefined,
-): string[] =>
-  typeof pathname !== "string"
-    ? []
-    : (pathname.split(/[?#]/)[0] ?? "")
-        .split("/")
-        .filter((segment) => segment.length > 0 && !/^\(.*\)$/.test(segment));
-
-/** `/(tabs)/hub/events?x=1` and `/hub/events/` both read `/hub/events`. */
-export const workspaceRoutePath = (
-  pathname: string | null | undefined,
-): string => `/${workspacePathSegments(pathname).join("/")}`;
-
-/**
- * Host screens that carry their brand in the query string. Public buyer
- * routes (`/reserve/[brandId]`, `/b/...`) are deliberately absent: a visitor's
- * page never moves the host's current brand.
- */
-const QUERY_BRAND_SCREENS: Readonly<Record<string, readonly string[]>> = {
-  "/ari": ["brandId"],
-  "/account/tap-to-pay": ["brandId"],
-  "/people/import": ["brandId"],
-  "/venue/deck-readiness": ["brand_id"],
-};
-
-/**
- * The brand this screen is about, or null when the screen follows the
- * current-brand store. `/brand/new` is the create flow, not a brand.
- */
-export function brandIdFromRoute(
-  pathname: string | null | undefined,
-  params: WorkspaceRouteParams | null | undefined,
-): string | null {
-  const segments = workspacePathSegments(pathname);
-  if (segments[0] === "brand") {
-    const id = segments[1];
-    if (id === undefined || id === "new") return null;
-    try {
-      return decodeURIComponent(id);
-    } catch {
-      return id;
-    }
-  }
-  const keys = QUERY_BRAND_SCREENS[`/${segments.join("/")}`];
-  if (keys === undefined || params == null) return null;
-  for (const key of keys) {
-    const value = one(params[key]);
-    if (value !== null) return value;
-  }
-  return null;
-}
 
 /** `/brand/<id>/<these>` exist for every brand: switching keeps the screen. */
 const BRAND_SCREENS: ReadonlySet<string> = new Set([

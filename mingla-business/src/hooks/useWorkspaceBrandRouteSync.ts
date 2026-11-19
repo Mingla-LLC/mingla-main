@@ -25,7 +25,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { queryClient } from "../config/queryClient";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { getBrandFromCache } from "./brandCache";
-import { settlePendingBrandSwitch } from "./useWorkspaceBrandSwitch";
+import { settlePendingBrandSwitch } from "./pendingBrandSwitch";
 
 // Before paint in the browser and on native; a plain effect where there is no
 // layout phase (static rendering).

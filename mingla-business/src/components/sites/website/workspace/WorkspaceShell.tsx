@@ -55,7 +55,8 @@ import { PublishPanel } from "./PublishPanel";
 import { RequestsPane } from "./RequestsPane";
 import { SectionAriCard } from "./SectionAriCard";
 import { IconButton, ModeSwitch } from "./parts";
-import { useAriRun, type AriTurn } from "./useAriRun";
+import { useLazyAriRun } from "./AriRunHost";
+import type { AriTurn } from "./useAriRun";
 import { useWorkspace, type WorkspaceToast } from "./useWorkspace";
 
 /*
@@ -120,7 +121,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
   }, [ws.pages]);
   const allPageIds = useMemo(() => ws.pages.map((entry) => entry.id), [ws.pages]);
   const afterChange = ws.afterChange;
-  const run = useAriRun({
+  const { run, host: ariHost } = useLazyAriRun({
     brandId,
     blockedReason: readOnlyReason,
     pageTitleOf,
@@ -514,6 +515,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
   );
   const overlays = (
     <>
+      {ariHost}
       <PublishPanel ws={ws} visible={ws.publishOpen} onClose={closePublishPanel} unreadablePairs={unreadablePairs} onOpenDesign={() => showMode("design")} offlineDevice={offlineDevice} />
       {dialogs}
       <Toast visible={toast !== null} kind={toast?.kind ?? "info"} message={toast?.message ?? ""} action={toast?.action} onDismiss={() => setToast(null)} testID="website-toast" />

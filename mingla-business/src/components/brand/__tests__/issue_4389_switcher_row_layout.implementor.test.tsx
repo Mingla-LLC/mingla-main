@@ -33,6 +33,9 @@ const mockBrands = [
   { id: "b-inc", displayName: "Published Brand", accountId: USER_ID, role: "owner" },
 ];
 
+// #4453 integration: the sheet's module also carries the desktop brand menu
+// (one on-demand chunk for both). This test is about the sheet only.
+jest.mock("../WorkspaceBrandMenu", () => ({ WorkspaceBrandMenu: () => null }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a) }) }));
 jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ user: { id: USER_ID } }) }));
 jest.mock("../../../hooks/useBrandListShim", () => ({

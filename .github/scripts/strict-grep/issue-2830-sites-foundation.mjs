@@ -1110,7 +1110,16 @@ export function violations(files) {
     const ALLOWED_DYNAMIC = new Set([
       "mingla-business/app/(tabs)/ari.tsx",
       "mingla-business/src/components/sites/setup/WebsiteSetupScreen.tsx",
+      // #4453 — the Website workspace's Ari panel takes Ari's chat hooks
+      // through the same module (a third dynamic importer of the SAME target
+      // is still one chunk). Measured when it imported the hooks statically
+      // instead: __common 2,743,812 B to 2,808,468 B, of which 51.9 KB was
+      // Ari's chat graph.
+      "mingla-business/src/components/sites/website/workspace/ariRuntime.ts",
     ]);
+    // #4453 — the same rule for the pieces of that chunk the workspace uses:
+    // no Website file may import them as values (types are free).
+    const ARI_CHUNK_MODULES = /^import\s+(?!type\b)[^;]*?from\s+"[^"]*(?:hooks\/useAgentChat|hooks\/useConfirmPendingAction|ari\/agentChoices|services\/ariTurnService)"/m;
     const walk = (dir) => {
       const found = [];
       let entries = [];
@@ -1128,6 +1137,14 @@ export function violations(files) {
       return found;
     };
     const dynamicImporters = [];
+    for (const file of [...walk("mingla-business/src/components/sites/website"), ...walk("mingla-business/src/sites")]) {
+      if (ARI_CHUNK_MODULES.test(fs.readFileSync(path.join(ROOT, file), "utf8"))) {
+        failures.push(
+          `AriChatScreen import boundary: ${file} imports part of Ari's chat chunk statically. ` +
+            `Take it through components/sites/website/workspace/ariRuntime.ts, or Metro moves Ari's chat graph into __common.`,
+        );
+      }
+    }
     for (const file of [...walk("mingla-business/app"), ...walk("mingla-business/src/components/sites")]) {
       // Strip comments: docblocks name the module on purpose.
       const body = fs.readFileSync(path.join(ROOT, file), "utf8")

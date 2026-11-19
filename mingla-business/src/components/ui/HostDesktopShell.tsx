@@ -33,7 +33,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useWorkspaceBrandRouteSync } from "../../hooks/useWorkspaceBrandRouteSync";
-import { brandIdFromRoute, type WorkspaceRouteParams } from "../../config/workspaceBrandRoutes";
+import { brandIdFromRoute, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
 import { WorkspaceRouteContext, type WorkspaceRoute } from "../brand/workspaceBrandContext";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { visibleTabsForRank } from "../../utils/navTabGate";

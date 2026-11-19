@@ -2644,3 +2644,12 @@ const styles = StyleSheet.create({
 });
 
 export default AriChatScreen;
+
+// #4453 — the Website workspace's Ari panel takes Ari's chat machinery through
+// this module (components/sites/website/workspace/ariRuntime.ts), so it stays
+// in this one on-demand chunk instead of moving onto the boot path
+// (I-ARI-CHAT-ONE-CHUNK). All four are already part of this screen's graph.
+export { useAgentChat } from "../../hooks/useAgentChat";
+export { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
+export { buildChoiceSubmission } from "../../components/ari/agentChoices";
+export { fetchAriTurnStatus } from "../../services/ariTurnService";

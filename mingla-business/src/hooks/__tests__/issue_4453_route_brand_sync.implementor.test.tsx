@@ -55,7 +55,9 @@ jest.mock("../../config/queryClient", () => ({
   },
 }));
 const mockSettle = jest.fn();
-jest.mock("../useWorkspaceBrandSwitch", () => ({
+// #4453 integration: the held switch moved to its own small file (the only
+// part the shell loads at boot); the behaviour asserted below is unchanged.
+jest.mock("../pendingBrandSwitch", () => ({
   settlePendingBrandSwitch: (pathname: string | null) => mockSettle(pathname),
 }));
 

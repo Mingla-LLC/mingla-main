@@ -54,35 +54,13 @@ export function showWorkspaceToast(kind: ToastKind, message: string): void {
   });
 }
 
-interface PendingBrandSwitch {
-  /** The address being opened, as `workspaceRoutePath` reads it. */
-  targetPath: string;
-  apply: () => void;
-}
+import { holdPendingBrandSwitch } from "./pendingBrandSwitch";
 
-let pendingSwitch: PendingBrandSwitch | null = null;
-
-/**
- * Called by the root shell whenever the pathname changes. The held brand is
- * applied only when the route really became the screen we asked for; any
- * other move (the host went somewhere else) drops it.
- */
-export function settlePendingBrandSwitch(pathname: string | null | undefined): void {
-  const pending = pendingSwitch;
-  if (pending === null) return;
-  pendingSwitch = null;
-  const path = workspaceRoutePath(pathname);
-  // A target that forwards to its own child (a tab root) still counts.
-  if (path === pending.targetPath || path.startsWith(`${pending.targetPath}/`)) {
-    pending.apply();
-  }
-}
-
-/** Test seam. */
-export function resetPendingBrandSwitchForTest(): void {
-  pendingSwitch = null;
-}
-export const hasPendingBrandSwitchForTest = (): boolean => pendingSwitch !== null;
+export {
+  hasPendingBrandSwitchForTest,
+  resetPendingBrandSwitchForTest,
+  settlePendingBrandSwitch,
+} from "./pendingBrandSwitch";
 
 /**
  * The member's role rank on a brand they are about to switch to. A brand they
@@ -152,7 +130,7 @@ export function useWorkspaceBrandSwitch(
 
   return useCallback(
     async (brand: Brand): Promise<WorkspaceBrandSwitchOutcome> => {
-      pendingSwitch = null;
+      holdPendingBrandSwitch(null);
       const from = fromBrandId ?? routeBrandId ?? currentBrandId ?? null;
       const sameScreen =
         pathname === null ? null : sameScreenForBrand(pathname, params, from, brand.id);
@@ -189,7 +167,7 @@ export function useWorkspaceBrandSwitch(
         // Same path, another brand in the query: nothing can hold this move.
         pickBrand(brand);
       } else {
-        pendingSwitch = { targetPath, apply: () => pickBrand(brand) };
+        holdPendingBrandSwitch({ targetPath, apply: () => pickBrand(brand) });
       }
       router.replace(href as never);
       return outcome;

@@ -34,8 +34,12 @@ export interface WorkspaceBrandSwitcherProps {
   testID?: string;
 }
 
+// The menu loads through the brand sheet's module, not its own file: the two
+// share their search field, copy and switching rules, and Metro moves
+// anything that sits in two on-demand chunks onto the boot path. One import
+// target is one chunk (the sheet's, which the shell already warms up on idle).
 const LazyWorkspaceBrandMenu = React.lazy(async () => {
-  const mod = await import("./WorkspaceBrandMenu");
+  const mod = await import("./BrandSwitcherSheet");
   return { default: mod.WorkspaceBrandMenu };
 });
 

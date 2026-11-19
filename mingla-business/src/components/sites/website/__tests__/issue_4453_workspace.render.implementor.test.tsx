@@ -102,6 +102,16 @@ let mockLook: { design: string; tokens: unknown; fonts: unknown; revision: strin
 jest.mock("../../../../sites/planApi", () => ({ useBrandSitePlanHeartbeat: () => ({ mutate: jest.fn() }) }));
 jest.mock("../../../../hooks/useAgentChat", () => ({ useAgentChat: () => mockChat }));
 jest.mock("../../../../hooks/useConfirmPendingAction", () => ({ useConfirmPendingAction: () => ({ confirm: mockConfirm, cancel: mockCancel, isExecuting: false }) }));
+// Ari's hooks reach the workspace through the Ari chat chunk (workspace/ariRuntime.ts),
+// never a static import; here that chunk is the three stand-ins above.
+jest.mock("../workspace/ariRuntime", () => ({
+  loadAriRuntime: async () => ({
+    useAgentChat: () => mockChat,
+    useConfirmPendingAction: () => ({ confirm: mockConfirm, cancel: mockCancel, isExecuting: false }),
+    buildChoiceSubmission: jest.requireActual("../../../ari/agentChoices").buildChoiceSubmission,
+    fetchAriTurnStatus: jest.fn(async () => ({ events: [] })),
+  }),
+}));
 jest.mock("../../../../sites/ariRunActivity", () => ({
   followAriRun: jest.fn((_id: string, onEvents: typeof mockEmit) => {
     mockEmit = onEvents;

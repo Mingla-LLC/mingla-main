@@ -11,7 +11,7 @@
  */
 import { createContext, useContext } from "react";
 
-import type { WorkspaceRouteParams } from "../../config/workspaceBrandRoutes";
+import type { WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
 
 export interface WorkspaceRoute {
   pathname: string | null;

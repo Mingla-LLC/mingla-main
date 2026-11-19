@@ -5288,7 +5288,9 @@
         "supabase/functions/agent-confirm-action/siteStepActivity.ts",
         "supabase/functions/brand-site-control/siteWorkspace.ts",
         "supabase/migrations/20281119004453_issue_4453_website_team_requests.sql",
-        "supabase/migrations/20281119014453_issue_4453_workspace_content_ranks.sql"
+        "supabase/migrations/20281119014453_issue_4453_workspace_content_ranks.sql",
+        "mingla-business/src/components/sites/website/workspace/AriRunHost.tsx",
+        "mingla-business/src/components/sites/website/workspace/ariRuntime.ts"
       ]
     },
     {
@@ -5302,7 +5304,9 @@
         "mingla-business/src/hooks/useWorkspaceBrand.ts",
         "mingla-business/src/hooks/useWorkspaceBrandRouteSync.ts",
         "mingla-business/src/hooks/useWorkspaceBrandSwitch.ts",
-        "mingla-business/src/utils/brandSearch.ts"
+        "mingla-business/src/utils/brandSearch.ts",
+        "mingla-business/src/config/workspaceBrandRoute.ts",
+        "mingla-business/src/hooks/pendingBrandSwitch.ts"
       ]
     },
     {
