@@ -400,7 +400,9 @@
         "label": "Filtrează reclamele",
         "all": "Toate",
         "running": "Active",
-        "ended": "Încheiate"
+        "ended": "Încheiate",
+        "review": "În verificare",
+        "drafts": "Ciorne"
       },
       "credit": {
         "label": "Credit pentru reclame",
@@ -461,7 +463,18 @@
         "colResults": "Rezultate",
         "colEach": "Fiecare",
         "open": "Deschide {{name}}",
-        "draftLine": "Ciornă salvată · continuă de unde ai rămas"
+        "draftLine": "Ciornă salvată · continuă de unde ai rămas",
+        "reviewLine": "Fiecare aplicație îți verifică întâi reclama. Nu se cheltuie nimic până nu apare.",
+        "appShowing": "{{app}}: afișată",
+        "appChecking": "{{app}}: în verificare",
+        "appNotApproved": "{{app}}: neaprobată",
+        "deleteDraftA11y": "Șterge ciorna {{name}}",
+        "deleteTitle": "Ștergi această ciornă?",
+        "deleteBody": "„{{name}}” va fi ștearsă definitiv. Nu se taxează nimic, iar creditul pentru reclame rămâne la fel.",
+        "deleteConfirm": "Șterge ciorna",
+        "deleteKeep": "Păstreaz-o",
+        "draftDeleted": "Ciornă ștearsă",
+        "deleteFailed": "Nu am putut șterge ciorna. Trage în jos pentru a reîmprospăta și încearcă din nou."
       },
       "unit": {
         "sales": "bilete",
@@ -482,7 +495,8 @@
         "partRejected": "Activă · {{count}} neaprobate",
         "draft": "Ciornă",
         "attention": "Necesită atenție",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Activă · {{apps}} în verificare"
       },
       "reason": {
         "soldOut": "Sold out",

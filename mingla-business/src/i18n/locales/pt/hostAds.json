@@ -400,7 +400,9 @@
         "label": "Filtrar anúncios",
         "all": "Todos",
         "running": "Ativos",
-        "ended": "Encerrados"
+        "ended": "Encerrados",
+        "review": "Em análise",
+        "drafts": "Rascunhos"
       },
       "credit": {
         "label": "Crédito de anúncios",
@@ -461,7 +463,18 @@
         "colResults": "Resultados",
         "colEach": "Cada",
         "open": "Abrir {{name}}",
-        "draftLine": "Rascunho salvo · continue de onde parou"
+        "draftLine": "Rascunho salvo · continue de onde parou",
+        "reviewLine": "Cada app analisa seu anúncio primeiro. Nada é gasto até ele aparecer.",
+        "appShowing": "{{app}}: exibindo",
+        "appChecking": "{{app}}: em análise",
+        "appNotApproved": "{{app}}: não aprovado",
+        "deleteDraftA11y": "Excluir rascunho {{name}}",
+        "deleteTitle": "Excluir este rascunho?",
+        "deleteBody": "“{{name}}” será excluído para sempre. Nada é cobrado e seu crédito de anúncios continua o mesmo.",
+        "deleteConfirm": "Excluir rascunho",
+        "deleteKeep": "Manter",
+        "draftDeleted": "Rascunho excluído",
+        "deleteFailed": "Não foi possível excluir o rascunho. Puxe para baixo para atualizar e tente de novo."
       },
       "unit": {
         "sales": "ingressos",
@@ -482,7 +495,8 @@
         "partRejected": "Ativo · {{count}} não aprovados",
         "draft": "Rascunho",
         "attention": "Precisa de atenção",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Ativo · {{apps}} em análise"
       },
       "reason": {
         "soldOut": "Esgotado",

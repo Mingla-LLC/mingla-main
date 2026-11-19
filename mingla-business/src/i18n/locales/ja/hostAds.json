@@ -400,7 +400,9 @@
         "label": "広告を絞り込む",
         "all": "すべて",
         "running": "配信中",
-        "ended": "終了"
+        "ended": "終了",
+        "review": "審査中",
+        "drafts": "下書き"
       },
       "credit": {
         "label": "広告クレジット",
@@ -461,7 +463,18 @@
         "colResults": "成果",
         "colEach": "1件あたり",
         "open": "{{name}} を開く",
-        "draftLine": "下書きを保存しました · 続きから再開できます"
+        "draftLine": "下書きを保存しました · 続きから再開できます",
+        "reviewLine": "各アプリがまず広告を審査します。表示されるまで費用はかかりません。",
+        "appShowing": "{{app}}：表示中",
+        "appChecking": "{{app}}：審査中",
+        "appNotApproved": "{{app}}：承認されませんでした",
+        "deleteDraftA11y": "下書き「{{name}}」を削除",
+        "deleteTitle": "この下書きを削除しますか？",
+        "deleteBody": "「{{name}}」は完全に削除されます。料金はかからず、広告クレジットもそのままです。",
+        "deleteConfirm": "下書きを削除",
+        "deleteKeep": "残す",
+        "draftDeleted": "下書きを削除しました",
+        "deleteFailed": "下書きを削除できませんでした。下に引いて更新し、もう一度お試しください。"
       },
       "unit": {
         "sales": "枚",
@@ -482,7 +495,8 @@
         "partRejected": "配信中 · {{count}} 件未承認",
         "draft": "下書き",
         "attention": "確認が必要",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "配信中 · {{apps}}は審査中"
       },
       "reason": {
         "soldOut": "完売",

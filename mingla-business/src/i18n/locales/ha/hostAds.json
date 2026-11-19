@@ -400,7 +400,9 @@
         "label": "Tace tallace-tallace",
         "all": "Duka",
         "running": "Ana gudana",
-        "ended": "Sun ƙare"
+        "ended": "Sun ƙare",
+        "review": "Ana dubawa",
+        "drafts": "Zayyanai"
       },
       "credit": {
         "label": "Kuɗin talla",
@@ -461,7 +463,18 @@
         "colResults": "Sakamako",
         "colEach": "Kowanne",
         "open": "Buɗe {{name}}",
-        "draftLine": "An ajiye daftari · ci gaba daga inda ka tsaya"
+        "draftLine": "An ajiye daftari · ci gaba daga inda ka tsaya",
+        "reviewLine": "Kowace manhaja tana fara duba tallarka. Ba a kashe komai sai an nuna shi.",
+        "appShowing": "{{app}}: ana nunawa",
+        "appChecking": "{{app}}: ana dubawa",
+        "appNotApproved": "{{app}}: ba a amince ba",
+        "deleteDraftA11y": "Goge zayyana {{name}}",
+        "deleteTitle": "A goge wannan zayyanar?",
+        "deleteBody": "Za a goge “{{name}}” gaba ɗaya. Ba za a caje komai ba kuma kuɗin talla naka zai kasance yadda yake.",
+        "deleteConfirm": "Goge zayyana",
+        "deleteKeep": "A bar ta",
+        "draftDeleted": "An goge zayyana",
+        "deleteFailed": "Ba a iya goge wannan zayyanar ba. Ja ƙasa don sabuntawa ka sake gwadawa."
       },
       "unit": {
         "sales": "tikiti",
@@ -482,7 +495,8 @@
         "partRejected": "Yana gudana · {{count}} ba a amince ba",
         "draft": "Daftari",
         "attention": "Yana buƙatar dubawa",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Yana gudana · ana duba {{apps}}"
       },
       "reason": {
         "soldOut": "An sayar da duka",

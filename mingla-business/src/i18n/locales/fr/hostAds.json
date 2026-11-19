@@ -400,7 +400,9 @@
         "label": "Filtrer les pubs",
         "all": "Toutes",
         "running": "En cours",
-        "ended": "Terminées"
+        "ended": "Terminées",
+        "review": "En vérification",
+        "drafts": "Brouillons"
       },
       "credit": {
         "label": "Crédit pub",
@@ -461,7 +463,18 @@
         "colResults": "Résultats",
         "colEach": "Chacun",
         "open": "Ouvrir {{name}}",
-        "draftLine": "Brouillon enregistré · reprenez là où vous étiez"
+        "draftLine": "Brouillon enregistré · reprenez là où vous étiez",
+        "reviewLine": "Chaque app vérifie d’abord votre pub. Rien n’est dépensé avant sa diffusion.",
+        "appShowing": "{{app}} : diffusée",
+        "appChecking": "{{app}} : en vérification",
+        "appNotApproved": "{{app}} : non approuvée",
+        "deleteDraftA11y": "Supprimer le brouillon {{name}}",
+        "deleteTitle": "Supprimer ce brouillon ?",
+        "deleteBody": "« {{name}} » sera supprimé définitivement. Rien n’est facturé et votre crédit pub reste inchangé.",
+        "deleteConfirm": "Supprimer le brouillon",
+        "deleteKeep": "Le garder",
+        "draftDeleted": "Brouillon supprimé",
+        "deleteFailed": "Impossible de supprimer ce brouillon. Tirez vers le bas pour actualiser et réessayez."
       },
       "unit": {
         "sales": "billets",
@@ -482,7 +495,8 @@
         "partRejected": "En cours · {{count}} non approuvées",
         "draft": "Brouillon",
         "attention": "À vérifier",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "En cours · {{apps}} en vérification"
       },
       "reason": {
         "soldOut": "Complet",

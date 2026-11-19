@@ -400,7 +400,9 @@
         "label": "סינון מודעות",
         "all": "הכול",
         "running": "פעילות",
-        "ended": "הסתיימו"
+        "ended": "הסתיימו",
+        "review": "בבדיקה",
+        "drafts": "טיוטות"
       },
       "credit": {
         "label": "קרדיט למודעות",
@@ -461,7 +463,18 @@
         "colResults": "תוצאות",
         "colEach": "ליחידה",
         "open": "פתיחת {{name}}",
-        "draftLine": "הטיוטה נשמרה · אפשר להמשיך מאיפה שהפסקת"
+        "draftLine": "הטיוטה נשמרה · אפשר להמשיך מאיפה שהפסקת",
+        "reviewLine": "כל אפליקציה בודקת קודם את המודעה שלך. שום דבר לא מוצא עד שהיא מוצגת.",
+        "appShowing": "{{app}}: מוצגת",
+        "appChecking": "{{app}}: בבדיקה",
+        "appNotApproved": "{{app}}: לא אושרה",
+        "deleteDraftA11y": "מחיקת הטיוטה {{name}}",
+        "deleteTitle": "למחוק את הטיוטה הזו?",
+        "deleteBody": "”{{name}}“ תימחק לתמיד. לא יחויב דבר וקרדיט המודעות שלך יישאר כפי שהוא.",
+        "deleteConfirm": "מחיקת טיוטה",
+        "deleteKeep": "להשאיר",
+        "draftDeleted": "הטיוטה נמחקה",
+        "deleteFailed": "לא הצלחנו למחוק את הטיוטה. משכו למטה לרענון ונסו שוב."
       },
       "unit": {
         "sales": "כרטיסים",
@@ -482,7 +495,8 @@
         "partRejected": "פעילה · {{count}} לא אושרו",
         "draft": "טיוטה",
         "attention": "כדאי לבדוק",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "פעילה · {{apps}} בבדיקה"
       },
       "reason": {
         "soldOut": "אזלו הכרטיסים",

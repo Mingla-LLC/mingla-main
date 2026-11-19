@@ -94,6 +94,7 @@ jest.mock("../../../services/hostAdLifecycle", () => ({
     },
   ],
   hostAdRowIdentity: () => "Facebook & Instagram",
+  hostAdInListTab: () => true,
 }));
 jest.mock("../../../wrappers/SmartScrollView", () => {
   const { View } = jest.requireActual("react-native") as { View: unknown };
@@ -122,6 +123,9 @@ jest.mock("../../../components/marketing/ads/HostAdBuilderBits", () => {
     ValueRow: () => null,
   };
 });
+// #4238 Ads list: the draft delete confirm and its bin icon.
+jest.mock("../../../components/ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
+jest.mock("../../../components/ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../components/marketing/ads/HostAdTopUpSheet", () => ({ HostAdTopUpSheet: () => null }));
 jest.mock("../../../components/ui/GlassCard", () => ({
   GlassCard: (props: { children?: React.ReactNode; testID?: string }) => {

@@ -420,7 +420,9 @@
         "label": "تصفية الإعلانات",
         "all": "الكل",
         "running": "قيد العرض",
-        "ended": "انتهت"
+        "ended": "انتهت",
+        "review": "قيد المراجعة",
+        "drafts": "المسودات"
       },
       "credit": {
         "label": "رصيد الإعلانات",
@@ -481,7 +483,18 @@
         "colResults": "النتائج",
         "colEach": "للواحد",
         "open": "افتح {{name}}",
-        "draftLine": "تم حفظ المسودة · أكمل من حيث توقفت"
+        "draftLine": "تم حفظ المسودة · أكمل من حيث توقفت",
+        "reviewLine": "كل تطبيق يراجع إعلانك أولًا. لا يُنفق شيء حتى يظهر.",
+        "appShowing": "{{app}}: يُعرض",
+        "appChecking": "{{app}}: قيد المراجعة",
+        "appNotApproved": "{{app}}: لم تتم الموافقة",
+        "deleteDraftA11y": "حذف المسودة {{name}}",
+        "deleteTitle": "حذف هذه المسودة؟",
+        "deleteBody": "ستُحذف «{{name}}» نهائيًا. لا يتم خصم أي مبلغ ويبقى رصيد الإعلانات كما هو.",
+        "deleteConfirm": "حذف المسودة",
+        "deleteKeep": "الاحتفاظ بها",
+        "draftDeleted": "تم حذف المسودة",
+        "deleteFailed": "تعذّر حذف هذه المسودة. اسحب للأسفل للتحديث وحاول مرة أخرى."
       },
       "unit": {
         "sales": "تذاكر",
@@ -502,7 +515,8 @@
         "partRejected": "قيد العرض · {{count}} لم تتم الموافقة عليها",
         "draft": "مسودة",
         "attention": "يحتاج إلى نظرة",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "قيد التشغيل · {{apps}} قيد المراجعة"
       },
       "reason": {
         "soldOut": "نفدت التذاكر",

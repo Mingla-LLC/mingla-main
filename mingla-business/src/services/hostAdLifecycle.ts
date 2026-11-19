@@ -48,7 +48,38 @@ export type HostAdListItem = {
   pauseReason?: string | null;
   /** #4238 wave D: when the ad started (for "still learning"). */
   startedAt?: string | null;
+  /** #4238: each app's own review of a launched ad. */
+  appReviews?: HostAppReview[];
+  /** #4238: a draft's revision, which deleting it must name. */
+  draftRevision?: number;
 };
+
+export type HostAppReviewState = "in_review" | "showing" | "not_approved";
+export type HostAppReview = { platform: string; state: HostAppReviewState };
+
+/** #4238: the Ads list tabs. */
+export type HostAdListTab = "all" | "running" | "review" | "drafts" | "ended";
+
+function appReviews(campaign: HostAdCampaign): HostAppReview[] {
+  return (campaign.app_reviews ?? []).flatMap((row) =>
+    typeof row?.platform === "string" &&
+    (row.state === "in_review" || row.state === "showing" || row.state === "not_approved")
+      ? [{ platform: row.platform, state: row.state }]
+      : [],
+  );
+}
+
+/** #4238: which tab a row belongs to. */
+export function hostAdListTab(item: HostAdListItem): Exclude<HostAdListTab, "all"> {
+  if (item.lifecycle === "ended") return "ended";
+  if (item.lifecycle === "in_review") return "review";
+  if (item.lifecycle === "draft") return "drafts";
+  return "running";
+}
+
+export function hostAdInListTab(item: HostAdListItem, tab: HostAdListTab): boolean {
+  return tab === "all" || hostAdListTab(item) === tab;
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -133,6 +164,7 @@ function draftItem(draft: HostAdDraft): HostAdListItem {
     route: `/(tabs)/marketing/ads/create?draft_id=${draft.id}`,
     reason: `Saved at: ${hostAdStepLabel(draft.current_step)}`,
     updatedAt: draft.updated_at,
+    draftRevision: draft.revision,
   };
 }
 
@@ -214,6 +246,7 @@ function campaignItem(campaign: HostAdCampaign): HostAdListItem {
         ? ((campaign as { pause_reason?: string }).pause_reason as string)
         : null,
     startedAt: campaign.starts_at ?? campaign.created_at,
+    appReviews: appReviews(campaign),
   };
 }
 

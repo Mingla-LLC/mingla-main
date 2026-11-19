@@ -400,7 +400,9 @@
         "label": "Filtrera annonser",
         "all": "Alla",
         "running": "Pågår",
-        "ended": "Avslutade"
+        "ended": "Avslutade",
+        "review": "Granskas",
+        "drafts": "Utkast"
       },
       "credit": {
         "label": "Annonskredit",
@@ -461,7 +463,18 @@
         "colResults": "Resultat",
         "colEach": "Styck",
         "open": "Öppna {{name}}",
-        "draftLine": "Utkast sparat · fortsätt där du slutade"
+        "draftLine": "Utkast sparat · fortsätt där du slutade",
+        "reviewLine": "Varje app granskar annonsen först. Inget spenderas förrän den visas.",
+        "appShowing": "{{app}}: visas",
+        "appChecking": "{{app}}: granskas",
+        "appNotApproved": "{{app}}: inte godkänd",
+        "deleteDraftA11y": "Radera utkastet {{name}}",
+        "deleteTitle": "Radera det här utkastet?",
+        "deleteBody": "”{{name}}” raderas för gott. Inget debiteras och din annonskredit är oförändrad.",
+        "deleteConfirm": "Radera utkast",
+        "deleteKeep": "Behåll",
+        "draftDeleted": "Utkastet raderades",
+        "deleteFailed": "Det gick inte att radera utkastet. Dra nedåt för att uppdatera och försök igen."
       },
       "unit": {
         "sales": "biljetter",
@@ -482,7 +495,8 @@
         "partRejected": "Pågår · {{count}} inte godkända",
         "draft": "Utkast",
         "attention": "Behöver kollas",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Pågår · {{apps}} granskas"
       },
       "reason": {
         "soldOut": "Slutsålt",
