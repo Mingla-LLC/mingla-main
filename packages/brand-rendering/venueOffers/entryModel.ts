@@ -282,12 +282,14 @@ export function venueClock(iso: string, timeZone: string | null): string | null 
   }
 }
 
-/** "12:00 to 24:00" for a day window (an end at midnight reads 24:00). */
+/**
+ * "12:00 to 00:00" for a day window. #4490 N34: midnight reads 00:00, the
+ * same as the session line ("12:00–00:00"), never 24:00.
+ */
 export function windowText(row: Pick<EntryDayRow, "startsAt" | "endsAt">, timeZone: string | null): string | null {
   const from = venueClock(row.startsAt, timeZone);
-  let to = venueClock(row.endsAt, timeZone);
+  const to = venueClock(row.endsAt, timeZone);
   if (from === null || to === null) return null;
-  if (to === "00:00") to = "24:00";
   return `${from} to ${to}`;
 }
 
@@ -1051,7 +1053,7 @@ export function passHeadline(booking: EntryBooking): string {
   return date === null ? guestsText(admits) : `${guestsText(admits)} · ${entryDateLabel(date)}`;
 }
 
-/** "Show this at the gate, any time from 12:00 to 24:00." */
+/** "Show this at the gate, any time from 12:00 to 00:00." */
 export function passWindowLine(booking: EntryBooking): string | null {
   if (booking.window === null) return null;
   const text = windowText(booking.window, booking.venue.timezone);

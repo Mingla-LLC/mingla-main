@@ -1154,12 +1154,19 @@ export function deriveVenuePage(
       }
       case "groups": {
         const min = minFrom(groupOffers) as number;
-        const perGuest = groupOffers.some((o) => o.unit !== "booking");
+        // #4490 N50: the line and the price come from the same package (the
+        // cheapest), and the price says "from" when there is more than one.
+        const cheapest =
+          [...groupOffers].sort((a, b) => (a.fromMinor ?? Infinity) - (b.fromMinor ?? Infinity))[0] ?? null;
+        const perGuest = cheapest !== null && cheapest.unit !== "booking";
+        const several = groupOffers.length > 1;
         ways.push({
           tab,
           title: "Groups & parties",
-          line: groupOffers[0]?.summary ?? null,
-          price: perGuest ? `${money(min)} a guest` : `from ${money(min)}`,
+          line: several
+            ? `${groupOffers.length} packages: ${groupOffers.slice(0, 3).map((o) => o.name).join(", ")}`
+            : cheapest?.summary ?? null,
+          price: `${several || !perGuest ? "from " : ""}${money(min)}${perGuest ? " a guest" : ""}`,
         });
         break;
       }
@@ -1210,6 +1217,12 @@ export function deriveVenuePage(
       default:
         break;
     }
+  }
+  // #4490 N50: what the venue leads with comes first (a restaurant's tables
+  // were listed last).
+  if (lead !== null) {
+    const at = ways.findIndex((w) => w.tab === lead.tab);
+    if (at > 0) ways.unshift(...ways.splice(at, 1));
   }
   const showWays =
     !stays && ways.length > 0 && WAYS_FEATURES.some((key) => on.has(key));

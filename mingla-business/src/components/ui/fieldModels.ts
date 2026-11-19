@@ -83,6 +83,19 @@ export function formatMoneyInput(minor: number | null, currency: string): string
   return `${grouped}.${String(rest).padStart(2, "0")}`;
 }
 
+/**
+ * #4490 N4: group thousands while a host types ("10000" → "10,000",
+ * "1234567.5" → "1,234,567.5"). Only plain digits with commas and at most one
+ * point are regrouped; anything else is left as typed so the parse error shows.
+ */
+export function groupMoneyTyping(text: string): string {
+  const m = /^(\d[\d,]*)(\.\d*)?$/.exec(text.trim());
+  if (m === null) return text;
+  const digits = m[1].replace(/,/g, "").replace(/^0+(?=\d)/, "");
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${grouped}${m[2] ?? ""}`;
+}
+
 export function moneyErrorCopy(reason: "format" | "precision" | "range", currency: string): string {
   if (reason === "precision") {
     return moneyFractionDigits(currency) === 0

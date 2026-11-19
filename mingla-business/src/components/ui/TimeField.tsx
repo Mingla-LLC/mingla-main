@@ -16,8 +16,9 @@
  * typed in, so a saved value that comes back from the server always shows.
  *
  * The picker for the older programs screens stays at `programs/TimeField.tsx`
- * (its #3872 pins); `timeLabel` / `timePickerPresentation` are re-exported
- * from there for callers that used this path before.
+ * (its #3872 pins). #4490 fix1: this file no longer re-exports its helpers
+ * (no caller used them, and the re-export pulled the native date picker and
+ * expo-router into every screen that uses this field).
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -30,8 +31,6 @@ import { Icon } from "./Icon";
 import { PickerSheetHead } from "./PickerSheetHead";
 import { Sheet } from "./Sheet";
 import { normalizeTime24, timeOptions } from "./fieldModels";
-
-export { timeLabel, timePickerPresentation } from "../programs/TimeField";
 
 const OPTIONS = timeOptions(30);
 /** One list row: its 44 height plus the 4 gap. */
@@ -110,7 +109,7 @@ export function TimeField({
 
   return (
     <View style={styles.host} testID={testID}>
-      <Text style={styles.label}>{label}</Text>
+      {label.length > 0 ? <Text style={styles.label}>{label}</Text> : null}
       <View style={[styles.field, showError && styles.fieldError, disabled && styles.disabled]}>
         <TextInput
           value={text}

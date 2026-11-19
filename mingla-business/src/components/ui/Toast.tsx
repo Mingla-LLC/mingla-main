@@ -26,7 +26,7 @@
  *      pauses while the card is pressed or hovered.
  *
  * # Placement
- * Phone: top, under the status bar. Web >= 1024: bottom-right stack of at
+ * Phone: top, under the status bar. Web >= 1024: top-centre stack of at
  * most 3, 380 wide.
  */
 
@@ -254,7 +254,8 @@ const ToastWeb: React.FC<ToastItemProps> = ({ entry, placement }) => {
     };
   }, []);
 
-  const from = placement === "stack" ? -TRANSLATE_FROM / 2 : TRANSLATE_FROM;
+  // #4490: the desktop stack is top-centre too, so it drops in from above.
+  const from = placement === "stack" ? TRANSLATE_FROM / 2 : TRANSLATE_FROM;
   const webStyle = {
     transition: `transform ${ENTRY_DURATION}ms ${TOAST_OPEN_EASE_CSS}, opacity ${ENTRY_DURATION}ms ${TOAST_OPEN_EASE_CSS}`,
     transform: open ? "translateY(0px)" : `translateY(${from}px)`,

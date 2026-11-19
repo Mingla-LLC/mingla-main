@@ -94,7 +94,7 @@ export const ToastHost: React.FC<ToastHostProps> = ({ layer = "overlay", open = 
     >
       <View
         pointerEvents="box-none"
-        style={stacked ? [styles.stack, Platform.OS === "web" ? webStackBottom : null] : [styles.top, { top: topOffset }]}
+        style={stacked ? styles.stack : [styles.top, { top: topOffset }]}
       >
         {shown.map((entry) => (
           <ToastItem key={entry.id} entry={entry} placement={stacked ? "stack" : "top"} />
@@ -109,11 +109,6 @@ const webFixed = {
   zIndex: 2147483647,
 } as unknown as ViewStyle;
 
-// I-PRIVACY-BAR-NEVER-OCCLUDES: a bottom-pinned layer sits above the privacy bar.
-const webStackBottom = {
-  bottom: `calc(var(--mingla-privacy-inset, 0px) + ${space[6]}px)`,
-} as unknown as ViewStyle;
-
 const styles = StyleSheet.create({
   top: {
     position: "absolute",
@@ -122,12 +117,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     alignItems: "center",
   },
+  // #4490 N2/N13: the desktop stack sits top-centre. Bottom-right put every
+  // success toast on top of the primary button (wizard Continue, sheet footer
+  // Add / Save) for its whole four seconds. Top-centre covers no action: page
+  // headers keep their buttons at the edges, and sheets open from the right.
   stack: {
     position: "absolute",
-    right: space[6],
-    bottom: space[6],
+    top: space[6],
+    left: 0,
+    right: 0,
     gap: space[2],
-    alignItems: "flex-end",
+    alignItems: "center",
   },
 });
 

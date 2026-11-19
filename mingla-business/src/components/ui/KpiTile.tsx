@@ -56,7 +56,8 @@ export const KpiTile: React.FC<KpiTileProps> = ({
   return (
     <GlassCard variant="base" testID={testID} style={style}>
       <View style={styles.stack}>
-        <Text style={styles.label} numberOfLines={1}>
+        {/* #4490 N60: a label wraps rather than "KEPT FOR WALK-I…". */}
+        <Text style={styles.label} numberOfLines={2}>
           {label.toUpperCase()}
         </Text>
         {loading ? (

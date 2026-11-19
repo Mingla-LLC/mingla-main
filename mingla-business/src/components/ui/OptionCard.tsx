@@ -72,6 +72,12 @@ export interface OptionCardProps {
   disabled?: boolean;
   testID: string;
   style?: StyleProp<ViewStyle>;
+  /**
+   * #4490 N44/N64: one of several that can be on together (spaces for a
+   * hire). Read as a checkbox, and draws a box on every card (empty when
+   * off, ticked when on) so "on" never depends on a border colour alone.
+   */
+  multiple?: boolean;
 }
 
 export const OptionCard: React.FC<OptionCardProps> = ({
@@ -84,11 +90,12 @@ export const OptionCard: React.FC<OptionCardProps> = ({
   disabled = false,
   testID,
   style,
+  multiple = false,
 }) => {
   const hint = example ? `${helper} For example: ${example}` : helper;
   return (
     <Pressable
-      accessibilityRole="radio"
+      accessibilityRole={multiple ? "checkbox" : "radio"}
       accessibilityState={{ checked: selected, disabled }}
       accessibilityLabel={label}
       accessibilityHint={hint}
@@ -113,7 +120,14 @@ export const OptionCard: React.FC<OptionCardProps> = ({
         <Text style={styles.label} numberOfLines={2}>
           {label}
         </Text>
-        {selected ? (
+        {multiple ? (
+          <View
+            style={[styles.checkWrap, styles.box, selected ? styles.boxOn : null]}
+            testID={selected ? `${testID}-check` : `${testID}-box`}
+          >
+            {selected ? <Icon name="check" size={12} color={color.ink} /> : null}
+          </View>
+        ) : selected ? (
           <View style={styles.checkWrap} testID={`${testID}-check`}>
             <Icon name="check" size={14} color={color.text1} />
           </View>
@@ -192,6 +206,16 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   checkWrap: { marginLeft: "auto" },
+  box: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    borderColor: color.lineStrong,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  boxOn: { backgroundColor: color.paper, borderColor: color.paper },
   helper: { ...type.caption, color: color.text2 },
   example: { ...type.caption, color: color.text3 },
 });

@@ -13,6 +13,7 @@ import { Input } from "./Input";
 import {
   currencySymbol,
   formatMoneyInput,
+  groupMoneyTyping,
   moneyErrorCopy,
   parseMoneyInput,
 } from "./fieldModels";
@@ -71,7 +72,9 @@ export function MoneyField({
     );
   }
 
-  const handleChange = (next: string): void => {
+  const handleChange = (raw: string): void => {
+    // #4490 N4: thousands are grouped as the host types, and again on blur.
+    const next = groupMoneyTyping(raw);
     setText(next);
     const parsed = parseMoneyInput(next, code);
     if (parsed.kind === "blank") {
@@ -96,6 +99,10 @@ export function MoneyField({
       <Input
         value={text}
         onChangeText={handleChange}
+        onBlur={() => {
+          const parsed = parseMoneyInput(text, code);
+          if (parsed.kind === "valid") setText(formatMoneyInput(parsed.minor, code));
+        }}
         variant="number"
         placeholder={placeholder}
         disabled={disabled}

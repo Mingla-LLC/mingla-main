@@ -19,6 +19,10 @@ export interface WeekdayChipsProps {
   /** Show "Mon to Thu" under the chips. */
   showSummary?: boolean;
   testID?: string;
+  /** A test id per chip (default `${testID}-${day}`). */
+  dayTestID?: (day: number) => string;
+  /** Draw each chip at the full 44 target (sheets whose contract pins it). */
+  fullTarget?: boolean;
 }
 
 export function WeekdayChips({
@@ -28,6 +32,8 @@ export function WeekdayChips({
   disabled = false,
   showSummary = true,
   testID,
+  dayTestID,
+  fullTarget = false,
 }: WeekdayChipsProps): React.ReactElement {
   // #4490: hitSlop does nothing in a phone browser, so the 34 chip is drawn 44 there.
   const touchFloor = useTouchFloor();
@@ -45,9 +51,10 @@ export function WeekdayChips({
               hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: on, disabled }}
+              aria-checked={on}
               accessibilityLabel={WEEKDAY_NAMES[day]}
-              style={[styles.chip, touchFloor > 0 ? { height: touchFloor, minWidth: touchFloor } : null, on && styles.chipOn, disabled && styles.disabled]}
-              testID={testID !== undefined ? `${testID}-${day}` : undefined}
+              style={[styles.chip, touchFloor > 0 ? { height: touchFloor, minWidth: touchFloor } : null, fullTarget && styles.chipFull, on && styles.chipOn, disabled && styles.disabled]}
+              testID={dayTestID !== undefined ? dayTestID(day) : testID !== undefined ? `${testID}-${day}` : undefined}
             >
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{short.slice(0, 2)}</Text>
             </Pressable>
@@ -63,6 +70,7 @@ const styles = StyleSheet.create({
   host: { gap: space[1] },
   label: { ...type.small, color: color.text2 },
   row: { flexDirection: "row", flexWrap: "wrap", gap: space[1] },
+  chipFull: { minHeight: 44, height: 44, minWidth: 44 },
   chip: {
     minWidth: 40,
     height: 34,

@@ -40,6 +40,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Platform,
+  useWindowDimensions,
+  type LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -137,6 +139,42 @@ const reselectOnWebPointer = (
   });
 };
 
+/**
+ * #4490 (N3/N49): below this own width the label takes its own line above the
+ * − / value / + controls. Side by side, the controls need about 184 and the
+ * row padding 32, so under ~360 the label column was squeezed until it broke
+ * inside words ("Smalles/t group") or, at 390, printed one letter per line and
+ * pushed + off the edge.
+ */
+export const NUMBER_STEPPER_STACK_BELOW = 360;
+
+/** Before the first layout, guess from the window so a phone never flashes the squeezed row. */
+const STACK_GUESS_WINDOW_BELOW = 600;
+
+/**
+ * #4490 (N3/N49): two steppers that belong together (smallest / largest group,
+ * how many times / fee, from / to). Each cell asks for 280 and wraps onto its
+ * own line when the pair has less than ~572, so neither stepper is ever
+ * squeezed. Use this instead of a hand-rolled two-column row.
+ */
+export const NumberStepperPair: React.FC<{
+  children: React.ReactNode;
+  testID?: string;
+}> = ({ children, testID }) => (
+  <View style={pairStyles.row} testID={testID}>
+    {React.Children.toArray(children).map((child, i) => (
+      <View key={i} style={pairStyles.cell}>
+        {child}
+      </View>
+    ))}
+  </View>
+);
+
+const pairStyles = StyleSheet.create({
+  row: { flexDirection: "row", flexWrap: "wrap", columnGap: space[3] },
+  cell: { flexGrow: 1, flexShrink: 1, flexBasis: 280, minWidth: 0 },
+});
+
 export interface NumberStepperProps {
   label: string;
   value: number;
@@ -145,6 +183,8 @@ export interface NumberStepperProps {
   onChange: (next: number) => void;
   /** Suffixed: `-adjust` (label), `-dec`, `-value` (field), `-inc`. */
   testID?: string;
+  /** Force the label onto its own line. Default: by the stepper's own width. */
+  stacked?: boolean;
 }
 
 export const NumberStepper: React.FC<NumberStepperProps> = ({
@@ -154,7 +194,19 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
   max,
   onChange,
   testID,
+  stacked: stackedProp,
 }) => {
+  const { width: windowWidth } = useWindowDimensions();
+  const [rowWidth, setRowWidth] = useState<number | null>(null);
+  const onRowLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    setRowWidth((prev) => (prev === w ? prev : w));
+  }, []);
+  const stacked =
+    stackedProp ??
+    (rowWidth !== null
+      ? rowWidth < NUMBER_STEPPER_STACK_BELOW
+      : windowWidth < STACK_GUESS_WINDOW_BELOW);
   const maxDigits = String(Math.max(0, Math.trunc(max))).length;
 
   // Non-null only while the field is being edited; mirrored in a ref so the
@@ -262,7 +314,11 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
   const fieldLabel = `Type ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
 
   return (
-    <View style={styles.row}>
+    <View
+      style={[styles.row, stacked && styles.rowStacked]}
+      onLayout={onRowLayout}
+      testID={testID ? `${testID}-row` : undefined}
+    >
       <View
         accessible={isNative}
         accessibilityRole={isNative ? "adjustable" : undefined}
@@ -274,12 +330,12 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           isNative ? [{ name: "increment" }, { name: "decrement" }] : undefined
         }
         onAccessibilityAction={isNative ? handleAccessibilityAction : undefined}
-        style={styles.labelCol}
+        style={stacked ? styles.labelStacked : styles.labelCol}
         testID={testID ? `${testID}-adjust` : undefined}
       >
         <Text style={styles.label}>{label}</Text>
       </View>
-      <View style={styles.controls}>
+      <View style={[styles.controls, stacked && styles.controlsStacked]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Decrease ${label}`}
@@ -346,7 +402,15 @@ const styles = StyleSheet.create({
     borderColor: color.line,
     marginBottom: space[2],
   },
-  labelCol: { flex: 1, marginRight: space[2] },
+  rowStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    gap: space[2],
+  },
+  labelCol: { flex: 1, minWidth: 0, marginRight: space[2] },
+  labelStacked: { alignSelf: "stretch" },
+  controlsStacked: { alignSelf: "flex-start" },
   label: {
     fontSize: type.small.fontSize,
     fontWeight: "500",

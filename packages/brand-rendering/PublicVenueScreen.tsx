@@ -976,9 +976,12 @@ const VenueLocationSection: VenueSectionRenderer = ({
         <Text style={[styles.addressCardValue, { color: palette.primaryText }]}>
           {venue.address ?? `${venue.lat}, ${venue.lng}`}
         </Text>
-        <Text style={[styles.addressCardHint, { color: palette.accent }]}>
-          Open in maps →
-        </Text>
+        {/* #4490 N34: drawn as a button (the whole card opens maps), not a text link. */}
+        <View style={[styles.addressCardButton, { borderColor: palette.panelBorder }]}>
+          <Text style={[styles.addressCardHint, { color: palette.primaryText }]}>
+            Open in maps
+          </Text>
+        </View>
       </Pressable>
     ) : null;
 
@@ -1728,8 +1731,28 @@ export const PublicVenueScreen = ({
   // ── Issue #1793 — the guest-ordering slot, resolved ONCE. ────────────────
   const [orderingOwnsBar, setOrderingOwnsBar] = useState<boolean>(false);
   // #4420 D-V3 — the inline booking body's live bar (Reservations tab only).
-  const [liveReservationBar, setLiveReservationBar] =
-    useState<PublicVenueReservationBar | null>(null);
+  // #4490 N29: each tab's bar is tagged with the tab that reported it, so a
+  // tab never shows the bar another tab left behind ("Buy entry" on Groups).
+  const [liveBar, setLiveBar] = useState<{
+    tab: string;
+    bar: PublicVenueReservationBar;
+  } | null>(null);
+  const barReporters = React.useMemo(() => {
+    const make =
+      (tab: string) =>
+      (bar: PublicVenueReservationBar | null): void =>
+        setLiveBar((prev) =>
+          bar === null ? (prev !== null && prev.tab === tab ? null : prev) : { tab, bar },
+        );
+    return {
+      inline: make("inline"),
+      entry: make("entry"),
+      groups: make("groups"),
+      hire: make("hire"),
+      by_the_hour: make("by_the_hour"),
+      plans: make("plans"),
+    };
+  }, []);
   const orderingSlotContext: PublicVenueOrderingSlotContext = {
     palette,
     surface,
@@ -1788,8 +1811,13 @@ export const PublicVenueScreen = ({
       normalizedReservationUiState.activeTab === "by_the_hour" ||
       // #4490 P6 — and the Plans tab (Join the cheapest open plan).
       normalizedReservationUiState.activeTab === "plans") &&
-    !normalizedReservationUiState.reservationSheetOpen
-      ? liveReservationBar
+    !normalizedReservationUiState.reservationSheetOpen &&
+    liveBar !== null &&
+    (liveBar.tab === normalizedReservationUiState.activeTab ||
+      (liveBar.tab === "inline" &&
+        (normalizedReservationUiState.activeTab === "reservations" ||
+          normalizedReservationUiState.activeTab === "rooms")))
+      ? liveBar.bar
       : null;
   const showReserveBar = showPersistentReserveCta || reservationTabBar !== null;
 
@@ -2385,7 +2413,7 @@ export const PublicVenueScreen = ({
       >
         {bookingBody({
           ...bookingSlotBase,
-          ...(inline ? { onReservationBarChange: setLiveReservationBar } : {}),
+          ...(inline ? { onReservationBarChange: barReporters.inline } : {}),
           kind: "stay",
           venueId: venue.id,
           brandId: venue.brandId,
@@ -2420,7 +2448,7 @@ export const PublicVenueScreen = ({
       ) : reservable?.reservable === true && reservable.venueId !== null ? (
         bookingBody({
           ...bookingSlotBase,
-          ...(inline ? { onReservationBarChange: setLiveReservationBar } : {}),
+          ...(inline ? { onReservationBarChange: barReporters.inline } : {}),
           kind: "table",
           venueId: reservable.venueId,
           brandId: venue.brandId,
@@ -2469,7 +2497,7 @@ export const PublicVenueScreen = ({
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
             verb: page.lead?.kind === "entry" ? page.lead.ctaLabel : "Buy entry",
-            onBookingBarChange: setLiveReservationBar,
+            onBookingBarChange: barReporters.entry,
           })
         : (
             <View style={styles.reservationState} testID="issue-4490-entry-not-online">
@@ -2491,7 +2519,7 @@ export const PublicVenueScreen = ({
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
             verb: "Book for a group",
-            onBookingBarChange: setLiveReservationBar,
+            onBookingBarChange: barReporters.groups,
           })
         : (
             <View style={styles.reservationState} testID="issue-4490-groups-not-online">
@@ -2513,7 +2541,7 @@ export const PublicVenueScreen = ({
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
             verb: "Ask for a date",
-            onBookingBarChange: setLiveReservationBar,
+            onBookingBarChange: barReporters.hire,
           })
         : (
             <View style={styles.reservationState} testID="issue-4490-hire-not-online">
@@ -2535,7 +2563,7 @@ export const PublicVenueScreen = ({
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
             verb: "Book",
-            onBookingBarChange: setLiveReservationBar,
+            onBookingBarChange: barReporters.by_the_hour,
           })
         : (
             <View style={styles.reservationState} testID="issue-4490-hour-not-online">
@@ -2557,7 +2585,7 @@ export const PublicVenueScreen = ({
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
             verb: "Join",
-            onBookingBarChange: setLiveReservationBar,
+            onBookingBarChange: barReporters.plans,
           })
         : (
             <View style={styles.reservationState} testID="issue-4490-plans-not-online">
@@ -3203,7 +3231,15 @@ const styles = StyleSheet.create({
   addressCardHint: {
     fontSize: 13,
     fontWeight: "600",
-    marginTop: 4,
+  },
+  addressCardButton: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
   },
   // ---- hours (§6.5) ----
   hoursCard: {
