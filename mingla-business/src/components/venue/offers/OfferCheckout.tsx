@@ -31,16 +31,8 @@ import {
 import { neutralHair, statusOn } from "@mingla/offering-rendering/themePalette";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
-import {
-  PhoneInput,
-  getCountryByCode,
-  type PhoneInputIconName,
-  type PhoneInputTheme,
-} from "@mingla/phone-input";
-import { parsePhoneEntry, resolvePhoneStartCountry } from "@mingla/phone-input/phoneNumber";
 import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 import {
-  ENTRY_EMAIL_PATTERN,
   bookingVat,
   countdownText,
   entryDateLabel,
@@ -62,9 +54,6 @@ import {
   venueOfferGuestService,
 } from "../../../services/venueOfferGuestService";
 import { useThemeFont } from "../../../theme/useThemeFont";
-import { devicePhoneRegion } from "../../../utils/devicePhoneRegion";
-import { composeE164 } from "../../../utils/phone";
-import { phoneStartCountryForCurrency } from "../../../utils/phoneStartCountryForCurrency";
 import { randomId } from "../../../utils/randomId";
 import {
   readVenueOfferBookingToken,
@@ -77,7 +66,6 @@ import {
 import { ScrollView } from "../../../wrappers/SmartScrollView";
 import { SecurePaymentHandoff } from "../../offering/LazyPublicParts";
 import { Icon } from "../../ui/Icon";
-import { Input } from "../../ui/Input";
 import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 import { EntryPicker } from "./EntryPicker";
 import {
@@ -89,18 +77,11 @@ import {
   entryStyles,
 } from "./EntryUi";
 import { useEntrySelection } from "./useEntrySelection";
+import { GuestDetailsCard, useGuestDetails } from "./GuestDetails";
 import { revealFocusedField } from "./revealFocusedField";
 
 const WIDE = 1024;
 const BAR_CLEARANCE = 68 + space[6];
-
-const phoneCountryKnown = (iso: string): boolean => {
-  try {
-    return getCountryByCode(iso) !== undefined;
-  } catch {
-    return false;
-  }
-};
 
 export interface OfferCheckoutProps {
   brandSlug: string;
@@ -143,58 +124,10 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
   const money = (minor: number): string =>
     formatVenueMoney(minor, offer?.currencyCode ?? "NGN", offer?.exponent ?? 2);
 
-  // ── your details ──────────────────────────────────────────────────────
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phoneLocal, setPhoneLocal] = useState("");
-  const [phoneCountry, setPhoneCountry] = useState<string>(() =>
-    resolvePhoneStartCountry(
-      [phoneStartCountryForCurrency("NGN"), devicePhoneRegion()],
-      phoneCountryKnown,
-    ) ?? "NG",
-  );
-  const countryChosen = useRef(false);
-  useEffect(() => {
-    if (countryChosen.current || offer === null) return;
-    const start = resolvePhoneStartCountry(
-      [offer.venue.countryCode, phoneStartCountryForCurrency(offer.currencyCode), devicePhoneRegion()],
-      phoneCountryKnown,
-    );
-    if (start !== null) setPhoneCountry(start);
-  }, [offer]);
-  const [touched, setTouched] = useState({ name: false, email: false, phone: false });
-  const [emailServerInvalid, setEmailServerInvalid] = useState(false);
+  // ── your details (shared with the group package checkout) ─────────────
+  const details = useGuestDetails({ countryCode: offer?.venue.countryCode ?? null, currencyCode: offer?.currencyCode ?? null });
+  const { nameOk, emailOk, phoneOk } = details;
   const [focused, setFocused] = useState(false);
-
-  const nameOk = name.trim().length >= 1 && name.trim().length <= 120;
-  const emailOk = ENTRY_EMAIL_PATTERN.test(email.trim()) && !emailServerInvalid;
-  const dial = getCountryByCode(phoneCountry)?.dialCode ?? "+234";
-  const phoneDigits = phoneLocal.replace(/\D/g, "");
-  const phoneCheck = parsePhoneEntry(phoneLocal, { countryIso: phoneCountry, dialCode: dial, mode: "mobile" });
-  const phoneOk = phoneDigits.length === 0 || phoneCheck.ok;
-  const suggestedCountry =
-    !phoneCheck.ok && phoneCheck.suggestedCountryIso != null
-      ? getCountryByCode(phoneCheck.suggestedCountryIso)
-      : undefined;
-
-  const phoneTheme = useMemo<PhoneInputTheme>(
-    () => ({
-      backgroundPrimary: palette.page,
-      textPrimary: palette.primaryText,
-      textTertiary: palette.tertiaryText,
-      borderDefault: palette.panelBorder,
-      borderFocused: palette.accent,
-      borderError: color.danger,
-      searchBackground: palette.card,
-      rowPressedBackground: palette.accentWash,
-      divider: palette.panelBorder,
-      accessoryBackground: palette.page,
-      accessoryBorder: palette.panelBorder,
-      accent: palette.accent,
-      errorText: color.errorText,
-    }),
-    [palette],
-  );
 
   // ── hold, countdown, pay ──────────────────────────────────────────────
   const [held, setHeld] = useState<HeldBooking | null>(null);
@@ -256,7 +189,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
 
   const pay = async (): Promise<void> => {
     if (busy) return;
-    setTouched({ name: true, email: true, phone: true });
+    details.setTouched({ name: true, email: true, phone: true });
     if (blocker !== null) return;
     setBusy(true);
     setErrorCode(null);
@@ -268,14 +201,9 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
           setBusy(false);
           return;
         }
-        const phone = phoneDigits.length > 0 ? composeE164(dial, phoneLocal) : null;
         const result = await venueOfferGuestService.hold({
           quoteId: fresh.quoteId,
-          guest: {
-            name: name.trim(),
-            email: email.trim(),
-            ...(phone !== null ? { phone, phoneCountryIso: phoneCountry } : {}),
-          },
+          guest: details.guest(),
           cartKey,
           idempotencyKey: `venue-offer:hold:${randomId()}`,
         });
@@ -298,7 +226,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
       const error =
         caught instanceof VenueOfferGuestError ? caught : new VenueOfferGuestError("offer_request_failed", null);
       if (error.code === "offer_guest_invalid" || error.code === "offer_payment_details_rejected") {
-        setEmailServerInvalid(true);
+        details.setEmailServerInvalid(true);
       }
       if (error.code === "offer_payment_already_pending" && held !== null) {
         router.replace(`/visit/${held.booking.groupId}` as never);
@@ -426,119 +354,15 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
     </EntryNote>
   ) : null;
 
-  const details = (
-    <View
-      style={[entryStyles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
-      testID="issue-4490-checkout-details"
-    >
-      <EntrySectionLabel palette={palette}>Your details</EntrySectionLabel>
-      <View style={styles.field}>
-        <Text style={[styles.fieldLabel, { color: palette.secondaryText }]}>Name</Text>
-        <Input
-          value={name}
-          onChangeText={setName}
-          onFocus={onFieldFocus}
-          onBlur={() => {
-            setFocused(false);
-            setTouched((t) => ({ ...t, name: true }));
-          }}
-          placeholder="Your name"
-          accessibilityLabel="Name, required"
-          editable={!holdLive && !busy}
-          testID="issue-4490-checkout-name"
-        />
-        {touched.name && !nameOk ? <Text style={styles.fieldError}>Add your name.</Text> : null}
-      </View>
-      <View style={styles.field}>
-        <Text style={[styles.fieldLabel, { color: palette.secondaryText }]}>Email</Text>
-        <Input
-          value={email}
-          onChangeText={(next: string) => {
-            setEmail(next);
-            setEmailServerInvalid(false);
-          }}
-          onFocus={onFieldFocus}
-          onBlur={() => {
-            setFocused(false);
-            setTouched((t) => ({ ...t, email: true }));
-          }}
-          variant="email"
-          placeholder="you@example.com"
-          accessibilityLabel="Email, required"
-          editable={!holdLive && !busy}
-          testID="issue-4490-checkout-email"
-        />
-        {touched.email && !emailOk ? (
-          <Text style={styles.fieldError} accessibilityRole="alert">
-            {emailServerInvalid
-              ? "The payment page didn't accept this email. Check it and try again."
-              : "That email looks unfinished. Your pass is sent there."}
-          </Text>
-        ) : null}
-      </View>
-      <View style={styles.field}>
-        <Text style={[styles.fieldLabel, { color: palette.secondaryText }]}>Phone (optional)</Text>
-        <PhoneInput
-          smartEntry
-          value={phoneLocal}
-          countryCode={phoneCountry}
-          onChangePhone={(next: string) => {
-            if (next.length > 0) countryChosen.current = true;
-            setPhoneLocal(next);
-          }}
-          onChangeCountry={(next: string) => {
-            countryChosen.current = true;
-            setPhoneCountry(next);
-          }}
-          onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
-          error={touched.phone && !phoneOk ? phoneCheck.message ?? "Check the phone number." : null}
-          disabled={holdLive || busy}
-          iconRenderer={(iconName: PhoneInputIconName, iconProps: { size: number; color: string }) => (
-            <Icon
-              name={
-                iconName === "chevronDown"
-                  ? "chevD"
-                  : iconName === "checkmark"
-                    ? "check"
-                    : iconName === "close"
-                      ? "close"
-                      : "search"
-              }
-              size={iconProps.size}
-              color={iconProps.color}
-            />
-          )}
-          labels={{
-            phonePlaceholder: "Phone number",
-            countryButtonAccessibilityLabel: (countryName: string) =>
-              `Country code, ${countryName}, tap to change`,
-            phoneInputAccessibilityLabel: "Phone number, optional",
-            doneButton: "Done",
-            pickerTitle: "Select country",
-            pickerSearchPlaceholder: "Search country or dial code",
-            pickerCloseAccessibilityLabel: "Close country picker",
-          }}
-          theme={phoneTheme}
-        />
-        {touched.phone && suggestedCountry !== undefined ? (
-          <Pressable
-            onPress={() => {
-              countryChosen.current = true;
-              setPhoneCountry(suggestedCountry.code);
-            }}
-            accessibilityRole="button"
-            hitSlop={8}
-          >
-            <Text style={[styles.small, { color: palette.accent }]}>
-              {`Switch to ${suggestedCountry.name} (${suggestedCountry.dialCode})`}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-      <Text style={[styles.caption, { color: palette.tertiaryText }]}>
-        No account needed. Your pass and receipt go to this email.
-      </Text>
-    </View>
+  const detailsCard = (
+    <GuestDetailsCard
+      details={details}
+      palette={palette}
+      theme={theme}
+      disabled={holdLive || busy}
+      onFieldFocus={onFieldFocus}
+      onFieldBlur={() => setFocused(false)}
+    />
   );
 
   const errorBlock =
@@ -627,7 +451,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
       ) : (
         changeHeld
       )}
-      {details}
+      {detailsCard}
       {errorBlock}
       {wide ? payBlock : null}
     </View>

@@ -1,6 +1,7 @@
 // orch-strict-grep-allow safearea-on-fullscreen-routes — route applies insets directly
 /**
- * /b/{brandSlug}/v/{venueSlug}/book/{offerId} — #4490 P2 entry checkout.
+ * /b/{brandSlug}/v/{venueSlug}/book/{offerId} — #4490 P2 entry checkout, and
+ * (P3, `?k=group…`) the group package checkout.
  *
  * ANON ROUTE under the `/b/` public prefix: buying never needs an account and
  * this chain never calls useAuth. The address carries the day and the counts
@@ -12,7 +13,9 @@ import { useLocalSearchParams } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { parsePackageCheckoutParams } from "@mingla/brand-rendering/venueOffers/packageModel";
 import { OfferCheckout } from "../../../../../../src/components/venue/offers/OfferCheckout";
+import { PackageCheckout } from "../../../../../../src/components/venue/offers/PackageCheckout";
 import { parseEntryCheckoutParams } from "../../../../../../src/components/venue/offers/entryCheckoutPath";
 import { PublicVenueNotFound } from "../../../../../../src/components/venue/PublicVenueNotFound";
 
@@ -29,7 +32,16 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
     offerId?: string | string[];
     date?: string | string[];
     q?: string | string[];
+    // #4490 P3 — a group package choice (`k=group&d=&w=&g=&x=&a=&pay=`).
+    k?: string | string[];
+    d?: string | string[];
+    w?: string | string[];
+    g?: string | string[];
+    x?: string | string[];
+    a?: string | string[];
+    pay?: string | string[];
   }>();
+  const packageChoice = parsePackageCheckoutParams(params);
   const brandSlug = one(params.brandSlug);
   const venueSlug = one(params.venueSlug);
   const offerId = one(params.offerId);
@@ -44,6 +56,16 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
         <title>Checkout · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
+      {packageChoice !== null ? (
+        <PackageCheckout
+          brandSlug={brandSlug}
+          venueSlug={venueSlug}
+          offerId={offerId.toLowerCase()}
+          choice={packageChoice}
+          safeTop={insets.top}
+          safeBottom={insets.bottom}
+        />
+      ) : (
       <OfferCheckout
         brandSlug={brandSlug}
         venueSlug={venueSlug}
@@ -53,6 +75,7 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
         safeTop={insets.top}
         safeBottom={insets.bottom}
       />
+      )}
     </>
   );
 }

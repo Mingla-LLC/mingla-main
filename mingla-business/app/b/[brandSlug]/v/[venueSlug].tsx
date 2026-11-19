@@ -142,6 +142,13 @@ const VenueEntryPane = React.lazy(() =>
   ),
 );
 
+// #4490 P3 — the Groups tab's booking flow, lazy for the same reason.
+const VenueGroupsPane = React.lazy(() =>
+  import("../../../../src/components/venue/offers/VenueGroupsPane").then(
+    (module) => ({ default: module.VenueGroupsPane }),
+  ),
+);
+
 /**
  * #1793 (#1767 Phase 4) — the ordering renderers, behind a lazy boundary that
  * lives HERE, in the host.
@@ -612,6 +619,32 @@ function PublicVenueRouteBody(): React.ReactElement {
     [brandSlug, venueSlug],
   );
 
+  // #4490 P3 — the Groups tab: pick a package, a day and time, the group, then checkout.
+  const renderGroupsBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueGroupsPane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
   // #4490 — "What's on": events held at the venue open their public page.
   const handleOpenEvent = useCallback(
     (href: string): void => {
@@ -727,6 +760,7 @@ function PublicVenueRouteBody(): React.ReactElement {
       features={features}
       onOpenEvent={handleOpenEvent}
       entryBody={renderEntryBody}
+      groupsBody={renderGroupsBody}
       refreshState={
         routeState === "populated-error"
           ? "error"

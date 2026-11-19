@@ -21,7 +21,7 @@ import { entryDateLabel, guestsText } from "@mingla/brand-rendering/venueOffers/
 import { space, type } from "../../../constants/designSystem";
 import { venueOfferCartKey } from "../../../utils/venueOfferBookingTokens";
 import { EntryPicker } from "./EntryPicker";
-import { EntryButton } from "./EntryUi";
+import { EntryButton, EntryNote } from "./EntryUi";
 import { entryCheckoutPath } from "./entryCheckoutPath";
 import { useEntrySelection } from "./useEntrySelection";
 
@@ -98,7 +98,9 @@ function EntryOfferBody({
     quote !== null && offer !== null
       ? formatVenueMoney(quote.totalMinor, quote.currencyCode, offer.exponent)
       : null;
-  const ready = selection.problem === null && quote !== null && selection.selectedDate !== null;
+  // #4490 F4 — a venue that can't take payments online sells entry at the gate only.
+  const gateOnly = offer !== null && offer.canCollectOnline === false;
+  const ready = !gateOnly && selection.problem === null && quote !== null && selection.selectedDate !== null;
 
   const go = (): void => {
     if (!ready || selection.selectedDate === null) return;
@@ -117,7 +119,7 @@ function EntryOfferBody({
   const barKey = `${selection.selectedDate}|${JSON.stringify(selection.counts)}|${total}|${ready}|${selection.problem}`;
   useEffect(() => {
     if (onBookingBarChange === undefined) return undefined;
-    if (selection.offerState !== "ready" || selection.selectedDate === null) {
+    if (selection.offerState !== "ready" || selection.selectedDate === null || gateOnly) {
       onBookingBarChange(null);
       return undefined;
     }
@@ -145,8 +147,14 @@ function EntryOfferBody({
 
   return (
     <View style={styles.wrap}>
-      <EntryPicker selection={selection} palette={palette} theme={theme} />
-      {selection.offerState === "ready" && selection.selectedTile?.soldOnline ? (
+      {gateOnly ? (
+        <EntryNote palette={palette} icon="ticket" tone="warning" testID="issue-4490-entry-gate-only">
+          Entry is sold at the gate only right now. Come along and pay when you arrive.
+        </EntryNote>
+      ) : (
+        <EntryPicker selection={selection} palette={palette} theme={theme} />
+      )}
+      {selection.offerState === "ready" && selection.selectedTile?.soldOnline && !gateOnly ? (
         <>
           <EntryButton
             palette={palette}

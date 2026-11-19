@@ -23,6 +23,14 @@ import {
   type EntryOfferDetail,
   type EntryQuote,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
+import {
+  parseGuestChangeSummary,
+  parsePackageOfferDetail,
+  parsePackageQuote,
+  type GuestChangeSummary,
+  type PackageOfferDetail,
+  type PackageQuote,
+} from "@mingla/brand-rendering/venueOffers/packageModel";
 
 import { supabase } from "./supabase";
 
@@ -80,6 +88,71 @@ export const venueOfferGuestService = {
     return parsed;
   },
 
+  /** #4490 P3 — a group package's public detail (inclusions, extras, deposit, start times). */
+  async packageOffer(input: { brandSlug: string; venueSlug: string; offeringId: string }): Promise<PackageOfferDetail> {
+    const parsed = parsePackageOfferDetail(await invoke({ action: "offer", ...input }));
+    if (parsed === null) throw new VenueOfferGuestError("offer_not_found", 404);
+    return parsed;
+  },
+
+  /** #4490 P3 — a package quote: one line, extras, answers and the pay plan. */
+  async packageQuote(input: {
+    offeringId: string;
+    windowId: string;
+    lines: Array<{ priceOptionId: string; guests: number }>;
+    extras: Array<{ id: string; qty?: number }>;
+    answers: Record<string, string>;
+    cartKey: string;
+    idempotencyKey: string;
+  }): Promise<PackageQuote> {
+    const parsed = parsePackageQuote(await invoke({ action: "quote", ...input }));
+    if (parsed === null) throw new VenueOfferGuestError("offer_request_failed", null);
+    return parsed;
+  },
+
+  /** #4490 P3 — what a change costs before the guest confirms it. */
+  async changePreview(input: {
+    groupId: string;
+    token: string | null;
+    change: "change_guests" | "move_date" | "add_extras";
+    payload: Record<string, unknown>;
+  }): Promise<GuestChangeSummary> {
+    const parsed = parseGuestChangeSummary(
+      await invoke({
+        action: "change_preview",
+        groupId: input.groupId,
+        ...(input.token ? { token: input.token } : {}),
+        change: input.change,
+        payload: input.payload,
+      }),
+    );
+    if (parsed === null) throw new VenueOfferGuestError("offer_request_failed", null);
+    return parsed;
+  },
+
+  async change(input: {
+    groupId: string;
+    token: string | null;
+    change: "change_guests" | "move_date" | "add_extras";
+    payload: Record<string, unknown>;
+    expectedVersion: number;
+    idempotencyKey: string;
+  }): Promise<GuestChangeSummary> {
+    const parsed = parseGuestChangeSummary(
+      await invoke({
+        action: "change",
+        groupId: input.groupId,
+        ...(input.token ? { token: input.token } : {}),
+        change: input.change,
+        payload: input.payload,
+        expectedVersion: input.expectedVersion,
+        idempotencyKey: input.idempotencyKey,
+      }),
+    );
+    if (parsed === null) throw new VenueOfferGuestError("offer_request_failed", null);
+    return parsed;
+  },
+
   async availability(input: {
     offeringId: string;
     from: string;
@@ -129,6 +202,8 @@ export const venueOfferGuestService = {
     token: string | null;
     expectedVersion: number;
     idempotencyKey: string;
+    /** #4490 P3 — "deposit" pays the deposit now; omitted = the full amount (or the balance once confirmed). */
+    payMode?: "deposit" | "full";
   }): Promise<EntryPaymentRedirect> {
     const raw = (await invoke({
       action: "pay",
@@ -136,6 +211,7 @@ export const venueOfferGuestService = {
       ...(input.token ? { token: input.token } : {}),
       expectedVersion: input.expectedVersion,
       idempotencyKey: input.idempotencyKey,
+      ...(input.payMode !== undefined ? { payMode: input.payMode } : {}),
     })) as Record<string, unknown>;
     if (raw?.kind === "requires_redirect" && typeof raw.authorizationUrl === "string") {
       return {
@@ -153,7 +229,11 @@ export const venueOfferGuestService = {
   async confirmReturn(input: {
     groupId: string;
     token: string | null;
-  }): Promise<{ outcome: "confirmed" | "pending" | "failed" | "nothing_to_confirm"; booking: EntryBooking | null }> {
+  }): Promise<{
+    outcome: "confirmed" | "pending" | "failed" | "not_paid" | "nothing_to_confirm";
+    booking: EntryBooking | null;
+    raw: unknown;
+  }> {
     const raw = (await invoke({
       action: "confirm_return",
       groupId: input.groupId,
@@ -162,23 +242,28 @@ export const venueOfferGuestService = {
     const outcome = raw?.outcome;
     return {
       outcome:
-        outcome === "confirmed" || outcome === "pending" || outcome === "failed"
+        outcome === "confirmed" || outcome === "pending" || outcome === "failed" || outcome === "not_paid"
           ? outcome
           : "nothing_to_confirm",
       booking: parseEntryBooking(raw?.booking),
+      raw: raw?.booking ?? null,
     };
   },
 
   async get(input: { groupId: string; token: string | null }): Promise<EntryBooking> {
-    const booking = parseEntryBooking(
-      await invoke({
-        action: "get",
-        groupId: input.groupId,
-        ...(input.token ? { token: input.token } : {}),
-      }),
-    );
+    return (await venueOfferGuestService.getWithRaw(input)).booking;
+  },
+
+  /** The booking and its raw read (the P3 money and change fields are parsed by the caller). */
+  async getWithRaw(input: { groupId: string; token: string | null }): Promise<{ booking: EntryBooking; raw: unknown }> {
+    const raw = await invoke({
+      action: "get",
+      groupId: input.groupId,
+      ...(input.token ? { token: input.token } : {}),
+    });
+    const booking = parseEntryBooking(raw);
     if (booking === null) throw new VenueOfferGuestError("offer_booking_not_found", 404);
-    return booking;
+    return { booking, raw };
   },
 
   async cancelPreview(input: { groupId: string; token: string | null }): Promise<EntryCancelPreview> {

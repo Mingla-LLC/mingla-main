@@ -368,7 +368,8 @@ describe("the null payload is today's page", () => {
 describe("this release builds only some tabs", () => {
   // TEST-MOD-APPROVED #4490: P2-6 builds Entry, so the unbuilt example is now
   // Groups only; Entry is a built tab with its lead.
-  test("a feature whose flow is not built shows no tab and no lead; Entry is built from P2", () => {
+  // TEST-MOD-APPROVED #4490 P3-3: Groups is built from P3, so its tab shows (hire stays unbuilt).
+  test("a feature whose flow is not built shows no tab and no lead; Entry is built from P2, Groups from P3", () => {
     const v = view(["entry", "group_packages", "events_here", "menu"], {
       offers: [
         offer({ kind: "entry", name: "Walk-in", fromMinor: naira(4000) }),
@@ -378,12 +379,11 @@ describe("this release builds only some tabs", () => {
     });
     const page = deriveVenuePage(v, { menuTabVisible: true, tablesGate: "ready" });
     expect(BUILT_VENUE_TABS.has("entry")).toBe(true);
-    expect(BUILT_VENUE_TABS.has("groups")).toBe(false);
-    expect(page.tabs).toEqual(["overview", "entry", "whats_on", "menu"]);
+    expect(BUILT_VENUE_TABS.has("groups")).toBe(true);
+    expect(BUILT_VENUE_TABS.has("hire")).toBe(false);
+    expect(page.tabs).toEqual(["overview", "entry", "groups", "whats_on", "menu"]);
     expect(page.lead?.kind).toBe("entry");
     expect(page.lead?.ctaLabel).toBe("Buy entry");
-    // Groups is not built yet: no tab, and its clause stays out of the entry row.
-    expect(page.lead?.row?.detail).toBeNull();
   });
 });
 

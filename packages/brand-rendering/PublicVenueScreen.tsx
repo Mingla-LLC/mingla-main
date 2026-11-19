@@ -627,6 +627,12 @@ export interface PublicVenueScreenProps {
    */
   entryBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
   /**
+   * #4490 P3 — the Groups tab's flow (pick a package, a day and start time,
+   * the group size, extras and how to pay). Host-injected like `entryBody`;
+   * absent = the tab says group bookings are not taken online.
+   */
+  groupsBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
+  /**
    * #4490 — a Host preview of a venue that is not public yet: every tab the
    * venue will have, with the booking button and event buttons disabled.
    */
@@ -1281,6 +1287,7 @@ export const PublicVenueScreen = ({
   features = null,
   onOpenEvent,
   entryBody,
+  groupsBody,
   preview = null,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
@@ -1754,7 +1761,8 @@ export const PublicVenueScreen = ({
   const reservationTabBar =
     (normalizedReservationUiState.activeTab === "reservations" ||
       normalizedReservationUiState.activeTab === "rooms" ||
-      normalizedReservationUiState.activeTab === "entry") &&
+      normalizedReservationUiState.activeTab === "entry" ||
+      normalizedReservationUiState.activeTab === "groups") &&
     !normalizedReservationUiState.reservationSheetOpen
       ? liveReservationBar
       : null;
@@ -2446,6 +2454,28 @@ export const PublicVenueScreen = ({
             </View>
           )
     : null;
+  // #4490 P3 — the Groups tab ("Groups & parties"), same rules as Entry.
+  const groupOffers = (featuresView?.offers ?? []).filter((o) => o.kind === "group_package");
+  const groupsBlock = page.tabs.includes("groups")
+    ? previewing
+      ? previewBookingNote
+      : groupsBody !== undefined && page.currency !== null
+        ? groupsBody({
+            ...themedSlotContext,
+            offers: groupOffers,
+            currencyCode: page.currency.code,
+            exponent: page.currency.exponent,
+            verb: "Book for a group",
+            onBookingBarChange: setLiveReservationBar,
+          })
+        : (
+            <View style={styles.reservationState} testID="issue-4490-groups-not-online">
+              <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+                Group bookings aren&apos;t taken online here yet. Contact the venue to book.
+              </Text>
+            </View>
+          )
+    : null;
   const whatsOnBlock =
     page.events.length > 0 && page.currency !== null ? (
       <VenueWhatsOnPane
@@ -2749,7 +2779,7 @@ export const PublicVenueScreen = ({
           : {
               tabs: page.tabs,
               labels: page.labels,
-              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock },
+              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock, groups: groupsBlock },
             })}
         palette={palette}
         surface={surface}

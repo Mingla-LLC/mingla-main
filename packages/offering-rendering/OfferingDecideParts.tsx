@@ -557,7 +557,8 @@ const styles = StyleSheet.create({
   },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
-    minHeight: 42,
+    // #4490 P3: the 44 px touch floor (start times and choices are chips).
+    minHeight: 44,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,

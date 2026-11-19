@@ -690,6 +690,7 @@ export function venueEventWhen(
 export const BUILT_VENUE_TABS: ReadonlySet<PublicVenueTab> = new Set<PublicVenueTab>([
   "overview",
   "entry",
+  "groups",
   "whats_on",
   "menu",
   "reservations",

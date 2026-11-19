@@ -59,6 +59,7 @@ import {
   type EntryBooking,
   type EntryCancelPreview,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
+import { parsePackageBooking } from "@mingla/brand-rendering/venueOffers/packageModel";
 
 import { radius, size, space, type } from "../../../constants/designSystem";
 import { usePublicVenueBySlug } from "../../../hooks/usePublicEvents";
@@ -88,6 +89,8 @@ import {
   entryStyles,
 } from "./EntryUi";
 import { VenueOfferPassQr } from "./VenueOfferPassQr";
+import { PayModeChoice } from "./PayModeChoice";
+import { VisitBalanceCard, VisitChanges, VisitPackageFacts } from "./VisitPackageParts";
 
 const POLL_MS = 2000;
 const POLL_WINDOW_MS = 30_000;
@@ -97,7 +100,7 @@ type Load =
   | { status: "loading" }
   | { status: "not_found" }
   | { status: "error"; code: string }
-  | { status: "ready"; booking: EntryBooking };
+  | { status: "ready"; booking: EntryBooking; raw: unknown };
 
 export interface VisitBookingProps {
   groupId: string;
@@ -112,7 +115,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
   const wide = width >= WIDE;
   const [token, setToken] = useState<string | null | undefined>(undefined);
   const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [confirm, setConfirm] = useState<"idle" | "polling" | "timed_out" | "failed">(
+  const [confirm, setConfirm] = useState<"idle" | "polling" | "timed_out" | "failed" | "not_paid">(
     paidReturn ? "polling" : "idle",
   );
   const [now, setNow] = useState(() => Date.now());
@@ -135,8 +138,8 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
   const read = useCallback(async (): Promise<void> => {
     if (token === undefined) return;
     try {
-      const booking = await venueOfferGuestService.get({ groupId, token });
-      setLoad({ status: "ready", booking });
+      const { booking, raw } = await venueOfferGuestService.getWithRaw({ groupId, token });
+      setLoad({ status: "ready", booking, raw });
     } catch (caught) {
       const code = caught instanceof VenueOfferGuestError ? caught.code : "offer_request_failed";
       setLoad(
@@ -153,9 +156,11 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
     if (token === undefined) return "pending";
     try {
       const result = await venueOfferGuestService.confirmReturn({ groupId, token });
-      if (result.booking !== null) setLoad({ status: "ready", booking: result.booking });
+      if (result.booking !== null) setLoad({ status: "ready", booking: result.booking, raw: result.raw });
       if (result.outcome === "pending") return "pending";
       if (result.outcome === "failed") setConfirm("failed");
+      // #4490 P3 — the payment page was left unpaid: that attempt is closed, pay again at once.
+      else if (result.outcome === "not_paid") setConfirm("not_paid");
       else setConfirm("idle");
       return "done";
     } catch (caught) {
@@ -200,6 +205,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
   }, [token, paidReturn]);
 
   const booking = load.status === "ready" ? load.booking : null;
+  const pkg = useMemo(() => parsePackageBooking(load.status === "ready" ? load.raw : null), [load]);
+  const [payMode, setPayMode] = useState<"deposit" | "full">("deposit");
+  const [changeNote, setChangeNote] = useState<string | null>(null);
 
   // ── theme from the venue ───────────────────────────────────────────────
   const venueQuery = usePublicVenueBySlug(booking?.venue.brandSlug ?? null, booking?.venue.slug ?? null);
@@ -260,7 +268,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
       ? `/b/${booking.venue.brandSlug}/v/${booking.venue.slug}`
       : null;
 
-  const pay = async (): Promise<void> => {
+  const pay = async (mode?: "deposit" | "full"): Promise<void> => {
     if (booking === null || paying) return;
     setPaying(true);
     setActionError(null);
@@ -270,6 +278,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         token: token ?? null,
         expectedVersion: booking.version,
         idempotencyKey: `venue-offer:pay:${randomId()}`,
+        ...(mode !== undefined ? { payMode: mode } : {}),
       });
       rememberVenueOfferPayUrl(groupId, payment.authorizationUrl);
       setInFlight(null);
@@ -279,6 +288,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
       if (code === "offer_payment_already_pending") {
         // Only one payment may be open at a time: continue that one, or check it.
         setInFlight({ resumeUrl: recallVenueOfferPayUrl(groupId) });
+      } else if (code === "offer_payment_already_paid" || code === "offer_nothing_to_pay") {
+        setConfirm("idle");
+        setActionError(venueOfferErrorCopy(code));
       } else {
         setActionError(venueOfferErrorCopy(code));
       }
@@ -484,19 +496,22 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         <Text style={[styles.small, { color: palette.secondaryText }]}>{entryDateLabel(booking.window.localDate)}</Text>
       ) : null}
       <View style={[styles.rule, { backgroundColor: hair }]} />
-      <EntrySummaryRows
-        palette={palette}
-        theme={theme}
-        lines={summaryLines(orderLinesByOptions(booking.lines, optionOrder), {
-          currencyCode: booking.currencyCode,
-          exponent,
-          taxMinor: bookingVat(booking, offerVatRatePct).taxMinor,
-          feeMinor: booking.feeMinor,
-          totalMinor: booking.totalMinor,
-          vatMode: booking.vatMode,
-          vatRatePct: bookingVat(booking, offerVatRatePct).ratePct,
-        })}
-      />
+      {pkg.offerKind === "group_package" ? null : (
+        <EntrySummaryRows
+          palette={palette}
+          theme={theme}
+          lines={summaryLines(orderLinesByOptions(booking.lines, optionOrder), {
+            currencyCode: booking.currencyCode,
+            exponent,
+            taxMinor: bookingVat(booking, offerVatRatePct).taxMinor,
+            feeMinor: booking.feeMinor,
+            totalMinor: booking.totalMinor,
+            vatMode: booking.vatMode,
+            vatRatePct: bookingVat(booking, offerVatRatePct).ratePct,
+          })}
+        />
+      )}
+      <VisitPackageFacts booking={booking} pkg={pkg} palette={palette} exponent={exponent} />
       {view.kind === "confirmed" && booking.paidMinor > 0 && booking.guest.email !== null ? (
         <Text style={[styles.small, { color: palette.secondaryText }]} testID="issue-4490-visit-receipt">
           {`Paid · receipt sent to ${booking.guest.email}`}
@@ -523,9 +538,11 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
           <Text style={[styles.title, themeBoldFace(theme), { color: palette.primaryText }]} accessibilityRole="header">
             {confirm === "failed" ? "Your payment didn't go through" : "Pay to confirm"}
           </Text>
-          {confirm === "failed" ? (
+          {confirm === "failed" || confirm === "not_paid" ? (
             <EntryNote palette={palette} icon="flag" tone="error" testID="issue-4490-visit-payment-failed">
-              Nothing was taken. Your places are still held, so you can try again.
+              {confirm === "not_paid"
+                ? "You left the payment page before paying. Nothing was taken, and your places are still held. Pay again below."
+                : "Nothing was taken. Your places are still held, so you can try again."}
             </EntryNote>
           ) : null}
           <EntryNote palette={palette} icon="clock" tone="warning" testID="issue-4490-visit-hold">
@@ -562,14 +579,39 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               />
             </View>
           ) : (
-            <EntryButton
-              palette={palette}
-              theme={theme}
-              label={paying ? "Opening payment…" : `Pay ${money(view.amountMinor)}`}
-              onPress={() => void pay()}
-              busy={paying}
-              testID="issue-4490-visit-pay-button"
-            />
+            <>
+              {pkg.payModes.some((m) => m.mode === "deposit") ? (
+                <PayModeChoice
+                  palette={palette}
+                  value={payMode}
+                  onChange={setPayMode}
+                  depositLabel="Deposit now"
+                  depositAmount={money(pkg.payModes.find((m) => m.mode === "deposit")?.amountMinor ?? 0)}
+                  fullAmount={money(pkg.payModes.find((m) => m.mode === "full")?.amountMinor ?? view.amountMinor)}
+                  laterLine={(() => {
+                    const dep = pkg.payModes.find((m) => m.mode === "deposit")?.amountMinor ?? 0;
+                    const due = pkg.balanceDueAt;
+                    return `Then ${money(view.amountMinor - dep)}${due !== null ? " before your visit" : " later"}`;
+                  })()}
+                  fontFamily={themeBoldFace(theme).fontFamily}
+                  testID="issue-4490-visit-pay-mode"
+                />
+              ) : null}
+              <EntryButton
+                palette={palette}
+                theme={theme}
+                label={
+                  paying
+                    ? "Opening payment…"
+                    : pkg.payModes.some((m) => m.mode === "deposit") && payMode === "deposit"
+                      ? `Pay ${money(pkg.payModes.find((m) => m.mode === "deposit")?.amountMinor ?? 0)} now`
+                      : `Pay ${money(view.amountMinor)}`
+                }
+                onPress={() => void pay(pkg.payModes.some((m) => m.mode === "deposit") ? payMode : undefined)}
+                busy={paying}
+                testID="issue-4490-visit-pay-button"
+              />
+            </>
           )}
           <Text style={[styles.caption, { color: palette.tertiaryText }]}>
             Card, bank transfer or USSD on the secure payment page.
@@ -592,7 +634,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               palette={palette}
               theme={theme}
               label="Start again"
-              onPress={() => router.replace(`${venuePath}?tab=entry` as never)}
+              onPress={() => router.replace(`${venuePath}?tab=${pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
             />
           ) : null}
         </View>
@@ -631,6 +673,41 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
           <Text style={[styles.title, themeBoldFace(theme), { color: palette.primaryText }]} accessibilityRole="header">
             You&apos;re in
           </Text>
+          {changeNote !== null ? (
+            <EntryNote palette={palette} icon="check" tone="success" testID="issue-4490-visit-change-done">
+              {changeNote}
+            </EntryNote>
+          ) : null}
+          <VisitBalanceCard
+            booking={booking}
+            pkg={pkg}
+            palette={palette}
+            theme={theme}
+            exponent={exponent}
+            now={now}
+            paying={paying}
+            onPay={() => void pay()}
+            note={
+              confirm === "not_paid"
+                ? "You left the payment page before paying. Nothing was taken. Pay again whenever you're ready."
+                : confirm === "failed"
+                  ? "That payment didn't go through. Nothing was taken. Try again."
+                  : null
+            }
+          />
+          {inFlight !== null && pkg.balanceDueMinor > 0 ? (
+            <View style={styles.column} testID="issue-4490-visit-balance-in-flight">
+              <EntryNote palette={palette} icon="clock">
+                {inFlight.resumeUrl !== null
+                  ? "You've already started paying the rest. Carry on with that payment, or check whether it went through."
+                  : "A payment for this booking was started somewhere else. If you finished it, check now."}
+              </EntryNote>
+              {inFlight.resumeUrl !== null ? (
+                <EntryButton palette={palette} theme={theme} label="Continue your payment" onPress={() => setHandoffUrl(inFlight.resumeUrl)} />
+              ) : null}
+              <EntryButton palette={palette} theme={theme} variant="secondary" label="I've paid: check now" onPress={() => void checkPayment()} busy={paying} />
+            </View>
+          ) : null}
           <View
             style={[entryStyles.card, styles.passCard, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
           >
@@ -664,7 +741,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               <ActionRow palette={palette} icon="calendarPlus" label="Add to calendar" detail={null} onPress={addToCalendar} testID="issue-4490-visit-calendar" />
             ) : null}
             <ActionRow palette={palette} icon="share" label="Tell your guests" detail="One pass for everyone" onPress={() => void tellGuests()} testID="issue-4490-visit-share" />
-            {booking.paymentCollection === "mingla" && !allIn ? (
+            {booking.paymentCollection === "mingla" && (pass?.admittedCount ?? 0) === 0 ? (
               <ActionRow
                 palette={palette}
                 icon="refund"
@@ -676,6 +753,19 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
             ) : null}
           </View>
           {shared !== null ? <Text style={[styles.caption, { color: palette.secondaryText }]}>{shared}</Text> : null}
+          <VisitChanges
+            booking={booking}
+            pkg={pkg}
+            palette={palette}
+            theme={theme}
+            exponent={exponent}
+            token={token ?? null}
+            onChanged={(message) => {
+              setChangeNote(message);
+              setConfirm("idle");
+              void read();
+            }}
+          />
           {preview !== null ? (
             <View
               style={[entryStyles.card, { backgroundColor: palette.card, borderColor: tones.warning.line }]}
@@ -731,7 +821,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               theme={theme}
               variant="secondary"
               label={`Book ${booking.venue.name} again`}
-              onPress={() => router.push(`${venuePath}?tab=entry` as never)}
+              onPress={() => router.push(`${venuePath}?tab=${pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
             />
           ) : null}
         </View>

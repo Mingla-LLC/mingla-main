@@ -48,6 +48,8 @@ export interface EntryPriceOption {
   /** "Student or NYSC ID" when the gate checks an ID for this price. */
   idCheckLabel: string | null;
   priceMinor: number;
+  /** #4490 P3 — "booking" = one price for the whole group. */
+  unit?: "guest" | "booking";
 }
 
 export interface EntryRefundRung {
@@ -78,6 +80,8 @@ export interface EntryOfferDetail {
     countryCode: string | null;
     timezone: string | null;
   };
+  /** #4490 F4 — false while the venue can't take payments online (sold at the gate only). */
+  canCollectOnline?: boolean;
 }
 
 export function parseEntryOfferDetail(raw: unknown): EntryOfferDetail | null {
@@ -108,6 +112,7 @@ export function parseEntryOfferDetail(raw: unknown): EntryOfferDetail | null {
       endTime: asText(row.endTime),
       idCheckLabel: isJson(row.eligibility) ? asText(row.eligibility.label) : null,
       priceMinor,
+      unit: row.unit === "booking" ? "booking" : "guest",
     });
   }
   const policy = isJson(raw.policy) ? raw.policy : null;
@@ -153,6 +158,7 @@ export function parseEntryOfferDetail(raw: unknown): EntryOfferDetail | null {
       countryCode: asText(venue.countryCode),
       timezone: asText(venue.timezone),
     },
+    canCollectOnline: raw.canCollectOnline !== false,
   };
 }
 
@@ -1157,6 +1163,15 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   auth_invalid: "Your session ended. Reload the page and try again.",
   invalid_request: "Something went wrong with that request. Reload and try again.",
   availability_range_invalid: "We couldn't load those days. Try again.",
+  // #4490 P3 — group packages, deposits, the balance and changes.
+  offer_answer_required: "Choose an option for each question before you pay.",
+  offer_extra_unavailable: "One of those extras isn't offered any more. Check your extras.",
+  offer_pay_mode_unavailable: "This booking has to be paid in full now.",
+  offer_nothing_to_pay: "There's nothing left to pay on this booking.",
+  offer_payment_already_paid: "That payment went through already. We've refreshed your booking.",
+  offer_change_not_allowed: "This booking can't be changed that way.",
+  offer_change_too_late: "It's too late to change this booking online. Contact the venue.",
+  offer_change_nothing: "That's the same as your booking now.",
 };
 
 /** Plain words for a server code. Unknown codes never show a raw code. */
