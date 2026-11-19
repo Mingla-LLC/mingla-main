@@ -3391,7 +3391,8 @@ BEGIN
      OR v_def NOT LIKE '%issue_3524_grade_marketing_consent%' THEN
     RAISE EXCEPTION 'issue_4508_s2_patch_failed';
   END IF;
-  EXECUTE v_def;
+  EXECUTE format('CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source%s',
+    substr(v_def, length('CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source') + 1));
 END
 $s2_patch$;
 REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source(

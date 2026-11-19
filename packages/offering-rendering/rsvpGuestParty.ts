@@ -326,9 +326,9 @@ export type RsvpGuestPayload =
  */
 export const buildGuestPayload = (party: ReadonlyArray<RsvpPartyGuest>): RsvpGuestPayload[] =>
   party.map((g) =>
-    g.source === "friend" && g.userId !== null
-      ? { userId: g.userId }
-      : { phone: g.phone as string, phoneCountryIso: g.phoneCountryIso },
+    g.source !== "friend" && g.phone !== null
+      ? { phone: g.phone, phoneCountryIso: g.phoneCountryIso }
+      : { userId: g.userId as string },
   );
 
 /** Confirm dialog row: name when known, else the number (1.7). */
