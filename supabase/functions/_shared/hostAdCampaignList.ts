@@ -77,6 +77,45 @@ function lifecycle(
   return "paused";
 }
 
+export type HostAppReviewState = "in_review" | "showing" | "not_approved";
+
+const REVIEW_PENDING = new Set([
+  "PENDING",
+  "PENDING_REVIEW",
+  "IN_PROCESS",
+  "PENDING_APPROVAL",
+  "PROCESSING",
+]);
+
+function reviewRejected(status: string): boolean {
+  return status.includes("REJECT") || status.includes("DISAPPROV");
+}
+
+/**
+ * #4238 (Tinoe's Yard launch, 19 Nov 2026): one app's review, from its ads.
+ * The sync writes each app's own ad status into ads.review_status (Meta
+ * IN_PROCESS / PENDING_REVIEW / ACTIVE / DISAPPROVED, Snap PENDING /
+ * APPROVED / REJECTED); a fresh ad has none yet. Delivery settles it: an app
+ * that has shown the ad is showing it.
+ */
+export function appReviewState(
+  reviewStatuses: Array<string | null>,
+  impressions: number,
+): HostAppReviewState {
+  const statuses = reviewStatuses.map((status) =>
+    (status ?? "").trim().toUpperCase()
+  );
+  if (statuses.length > 0 && statuses.every(reviewRejected)) {
+    return "not_approved";
+  }
+  if (impressions > 0) return "showing";
+  const live = statuses.filter((status) => !reviewRejected(status));
+  if (live.some((status) => status === "" || REVIEW_PENDING.has(status))) {
+    return "in_review";
+  }
+  return "showing";
+}
+
 function nextAction(state: string): string {
   const labels: Record<string, string> = {
     in_review: "Track review",
@@ -180,13 +219,35 @@ export function buildHostCampaignList(input: HostCampaignListInput) {
       String(row.status ?? "").toUpperCase()
     );
     const startsAt = text(first.starts_at);
-    const state = lifecycle(
+    const appReviews = campaigns.map((campaign) => {
+      const id = String(campaign.id);
+      const shown = groupSpend
+        .filter((row) => String(row.campaign_id) === id)
+        .reduce((sum, row) => sum + (integer(row.impressions) ?? 0), 0);
+      return {
+        platform: String(campaign.platform ?? ""),
+        state: appReviewState(
+          (adsByCampaignId.get(id) ?? []).map((ad) => text(ad.review_status)),
+          shown,
+        ),
+      };
+    });
+    let state = lifecycle(
       text(plan?.state),
       campaignStatuses,
       reviewStatuses,
       startsAt,
       input.nowIso,
     );
+    // #4238: a launched ad is In review until an app shows it, and needs a
+    // look when every app turned it down.
+    if (state === "live" && appReviews.length > 0) {
+      if (appReviews.every((app) => app.state === "in_review")) {
+        state = "in_review";
+      } else if (appReviews.every((app) => app.state === "not_approved")) {
+        state = "needs_attention";
+      }
+    }
     const creativeAd = ads[0] ?? null;
     const creative = record(creativeAd?.ad_creatives);
     const cap = integer(version?.host_budget_cents) ??
@@ -202,6 +263,7 @@ export function buildHostCampaignList(input: HostCampaignListInput) {
       next_action: nextAction(state),
       plan_state: text(plan?.state),
       platforms: unique(campaigns.map((row) => row.platform)),
+      app_reviews: appReviews,
       destination: {
         page_type: text(first.dest_page_type),
         url: text(first.dest_url),

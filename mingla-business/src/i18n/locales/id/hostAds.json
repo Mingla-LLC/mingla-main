@@ -400,7 +400,9 @@
         "label": "Filter iklan",
         "all": "Semua",
         "running": "Berjalan",
-        "ended": "Selesai"
+        "ended": "Selesai",
+        "review": "Sedang ditinjau",
+        "drafts": "Draf"
       },
       "credit": {
         "label": "Kredit iklan",
@@ -461,7 +463,18 @@
         "colResults": "Hasil",
         "colEach": "Per unit",
         "open": "Buka {{name}}",
-        "draftLine": "Draf tersimpan · lanjutkan dari terakhir kali"
+        "draftLine": "Draf tersimpan · lanjutkan dari terakhir kali",
+        "reviewLine": "Setiap aplikasi memeriksa iklanmu dulu. Tidak ada biaya sampai iklan tampil.",
+        "appShowing": "{{app}}: tampil",
+        "appChecking": "{{app}}: sedang diperiksa",
+        "appNotApproved": "{{app}}: tidak disetujui",
+        "deleteDraftA11y": "Hapus draf {{name}}",
+        "deleteTitle": "Hapus draf ini?",
+        "deleteBody": "“{{name}}” akan dihapus selamanya. Tidak ada biaya dan kredit iklanmu tetap sama.",
+        "deleteConfirm": "Hapus draf",
+        "deleteKeep": "Simpan saja",
+        "draftDeleted": "Draf dihapus",
+        "deleteFailed": "Draf tidak bisa dihapus. Tarik ke bawah untuk memuat ulang lalu coba lagi."
       },
       "unit": {
         "sales": "tiket",
@@ -482,7 +495,8 @@
         "partRejected": "Berjalan · {{count}} tidak disetujui",
         "draft": "Draf",
         "attention": "Perlu dicek",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Berjalan · {{apps}} sedang ditinjau"
       },
       "reason": {
         "soldOut": "Habis terjual",

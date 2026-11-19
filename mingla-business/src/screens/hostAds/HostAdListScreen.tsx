@@ -36,7 +36,17 @@ import {
   HOST_AD_STATUS_COL_MIN,
   hostAdListUsesTable,
 } from "../../components/marketing/ads/hostAdListLayout";
-import { buildHostAdList, hostAdRowIdentity, type HostAdListItem } from "../../services/hostAdLifecycle";
+import {
+  buildHostAdList,
+  hostAdInListTab,
+  hostAdRowIdentity,
+  type HostAdListItem,
+  type HostAdListTab,
+} from "../../services/hostAdLifecycle";
+import { discardHostAdDraft } from "../../services/hostAdPlanService";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { Icon } from "../../components/ui/Icon";
+import { platformName } from "../../components/marketing/ads/hostAdCopy";
 import { AdListSummaryCard } from "../../components/marketing/ads/results/AdListSummaryCard";
 import { hostAdScrollBottomPadding } from "../../components/marketing/ads/hostAdBuilderRules";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
@@ -72,11 +82,41 @@ function firstParam(value: string | string[] | undefined): string | null {
   return null;
 }
 
-type Filter = "all" | "running" | "ended";
 type Overlay = "topUp" | "withdraw" | "receipts" | "compare" | null;
+
+/**
+ * #4238: how each app is treating a launched ad ("Facebook & Instagram:
+ * showing · Snapchat: checking"). Null when every app is showing it.
+ */
+export function hostAdAppsLine(item: HostAdListItem): string | null {
+  const reviews = item.appReviews ?? [];
+  if (reviews.length === 0 || reviews.every((app) => app.state === "showing")) return null;
+  return reviews
+    .map((app) =>
+      hm(
+        app.state === "showing" ? "list.appShowing" : app.state === "in_review" ? "list.appChecking" : "list.appNotApproved",
+        { app: platformName(app.platform) },
+      ),
+    )
+    .join(" · ");
+}
 
 /** The status chip's words and tone for one row (true reason when paused). */
 export function hostAdRowStatus(item: HostAdListItem): { label: string; tone: string } {
+  // #4238: a launched ad that only some apps show yet says which are still checking.
+  if (item.lifecycle === "live" && item.appReviews && item.appReviews.length > 0) {
+    const notApproved = item.appReviews.filter((app) => app.state === "not_approved").length;
+    if (notApproved > 0) {
+      return { label: hm("status.partRejected", { count: notApproved }), tone: color.warningText };
+    }
+    const checking = item.appReviews.filter((app) => app.state === "in_review");
+    if (checking.length > 0) {
+      return {
+        label: hm("status.runningPartReview", { apps: checking.map((app) => platformName(app.platform)).join(", ") }),
+        tone: color.successText,
+      };
+    }
+  }
   const reason = item.lifecycle === "paused" ? hostAdReasonFromCode(item.pauseReason ?? null) : null;
   // A plainer server-side label ("Ready to start") wins, except where a pause has its true reason.
   if (item.statusLabel && reason === null && item.lifecycle !== "paused") {
@@ -152,7 +192,11 @@ export default function MarketingAdsRoute(): React.ReactElement {
     setOverlay(null);
   }, [brandId]);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<HostAdListTab>("all");
+  // #4238: the draft waiting for "Delete this draft?", and that delete's state.
+  const [deleting, setDeleting] = useState<HostAdListItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const params = useLocalSearchParams<{
     ad_credit_top_up?: string | string[];
     session_id?: string | string[];
@@ -227,13 +271,23 @@ export default function MarketingAdsRoute(): React.ReactElement {
       }),
     [campaignsQuery.campaigns, plansQuery.drafts, plansQuery.launchedPlanIds, plansQuery.planIdByVersionId, plansQuery.plans],
   );
-  const shown = useMemo(
-    () =>
-      adItems.filter((item) =>
-        filter === "all" ? true : filter === "ended" ? item.lifecycle === "ended" : item.lifecycle !== "ended" && item.lifecycle !== "draft",
-      ),
-    [adItems, filter],
-  );
+  const shown = useMemo(() => adItems.filter((item) => hostAdInListTab(item, filter)), [adItems, filter]);
+
+  const confirmDelete = useCallback(async () => {
+    if (deleting === null || deleting.draftRevision === undefined) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await discardHostAdDraft({ draftId: deleting.id, expectedRevision: deleting.draftRevision });
+      setDeleting(null);
+      setReturnNotice(hm("list.draftDeleted"));
+      await plansQuery.refetch();
+    } catch {
+      setDeleteError(hm("list.deleteFailed"));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [deleting, plansQuery]);
 
   if (brandId === null) {
     return (
@@ -362,6 +416,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
 
   const rowLine = (item: HostAdListItem): string => {
     if (item.kind === "draft") return hm("list.draftLine");
+    if (item.kind === "campaign" && item.lifecycle === "in_review") return hm("list.reviewLine");
     if (item.kind !== "campaign" || !item.spendCents) return item.nextAction;
     const spent = money(hostAdPayFromCredit(item.spendCents));
     const goal = hostAdGoalFromResult(item.primaryResultLabel);
@@ -374,6 +429,24 @@ export default function MarketingAdsRoute(): React.ReactElement {
         })
       : hm("list.spentLine", { spent });
   };
+
+  // #4238: a saved draft can be deleted (only your own drafts are listed).
+  const deleteButton = (item: HostAdListItem): React.ReactElement | null =>
+    item.kind === "draft" && item.draftRevision !== undefined && !offline ? (
+      <Pressable
+        style={({ pressed }) => [styles.deleteButton, pressed && styles.rowPressed]}
+        onPress={() => {
+          setDeleteError(null);
+          setDeleting(item);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={hm("list.deleteDraftA11y", { name: item.name })}
+        hitSlop={4}
+        testID={`ads-draft-delete-${item.id}`}
+      >
+        <Icon name="trash" size={18} color={color.text2} />
+      </Pressable>
+    ) : null;
 
   const list = loading ? (
     <View style={bs.stack} testID="ads-list-loading">
@@ -414,14 +487,16 @@ export default function MarketingAdsRoute(): React.ReactElement {
         <Text style={[styles.td, styles.tdNum, styles.thText]}>{hm("list.colSpent")}</Text>
         <Text style={[styles.td, styles.thText]}>{hm("list.colResults")}</Text>
         <Text style={[styles.td, styles.tdNum, styles.thText]}>{hm("list.colEach")}</Text>
+        <View style={styles.tdAction} />
       </View>
       {shown.map((item) => {
         const status = hostAdRowStatus(item);
         const spentPay = item.spendCents ? hostAdPayFromCredit(item.spendCents) : 0;
+        const apps = hostAdAppsLine(item);
         return (
+          <View key={`${item.kind}:${item.id}`} style={styles.trWrap}>
           <Pressable
-            key={`${item.kind}:${item.id}`}
-            style={({ pressed }) => [styles.tr, pressed && styles.rowPressed]}
+            style={({ pressed }) => [styles.tr, styles.trInner, pressed && styles.rowPressed]}
             onPress={() => router.push(item.route as never)}
             accessibilityRole="button"
             accessibilityLabel={hm("list.open", { name: item.name })}
@@ -434,6 +509,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
                   {hostAdRowIdentity(item)}
                 </Text>
               ) : null}
+              {apps ? (
+                <Text style={bs.caption} testID={`ads-row-apps-${item.id}`}>{apps}</Text>
+              ) : null}
             </View>
             <View style={[styles.td, styles.tdStatus]}>
               <Chip label={status.label} tone={status.tone} />
@@ -444,6 +522,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
             </Text>
             <Text style={[styles.td, styles.tdNum]} numberOfLines={1}>{item.primaryResultCount && spentPay ? money(Math.round(spentPay / item.primaryResultCount)) : "—"}</Text>
           </Pressable>
+          <View style={styles.tdAction}>{deleteButton(item)}</View>
+          </View>
         );
       })}
     </View>
@@ -451,21 +531,27 @@ export default function MarketingAdsRoute(): React.ReactElement {
     <BuilderList testID="ads-list">
       {shown.map((item, index) => {
         const status = hostAdRowStatus(item);
+        const apps = hostAdAppsLine(item);
         return (
-          <Pressable
-            key={`${item.kind}:${item.id}`}
-            style={({ pressed }) => [styles.row, index > 0 && styles.rowDivider, pressed && styles.rowPressed]}
-            onPress={() => router.push(item.route as never)}
-            accessibilityRole="button"
-            accessibilityLabel={`${item.name}, ${status.label}, ${rowLine(item)}`}
-            testID={`ads-${item.kind}-row-${item.id}`}
-          >
-            <View style={styles.grow}>
-              <Text style={styles.rowTitle} numberOfLines={1}>{item.name}</Text>
-              <Chip label={status.label} tone={status.tone} />
-              <Text style={bs.caption} testID={`ads-row-line-${item.id}`}>{rowLine(item)}</Text>
-            </View>
-          </Pressable>
+          <View key={`${item.kind}:${item.id}`} style={[styles.rowWrap, index > 0 && styles.rowDivider]}>
+            <Pressable
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              onPress={() => router.push(item.route as never)}
+              accessibilityRole="button"
+              accessibilityLabel={[item.name, status.label, rowLine(item), apps].filter(Boolean).join(", ")}
+              testID={`ads-${item.kind}-row-${item.id}`}
+            >
+              <View style={styles.grow}>
+                <Text style={styles.rowTitle} numberOfLines={1}>{item.name}</Text>
+                <Chip label={status.label} tone={status.tone} />
+                <Text style={bs.caption} testID={`ads-row-line-${item.id}`}>{rowLine(item)}</Text>
+                {apps ? (
+                  <Text style={bs.caption} testID={`ads-row-apps-${item.id}`}>{apps}</Text>
+                ) : null}
+              </View>
+            </Pressable>
+            {deleteButton(item)}
+          </View>
         );
       })}
     </BuilderList>
@@ -502,6 +588,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
         options={[
           { id: "all", label: hm("filter.all") },
           { id: "running", label: hm("filter.running") },
+          { id: "review", label: hm("filter.review") },
+          { id: "drafts", label: hm("filter.drafts") },
           { id: "ended", label: hm("filter.ended") },
         ]}
         onChange={setFilter}
@@ -603,6 +691,23 @@ export default function MarketingAdsRoute(): React.ReactElement {
         </>
       ) : null}
       <HostAdCompareSheet visible={overlay === "compare"} rows={compareRows} money={money} onClose={() => setOverlay(null)} />
+      <ConfirmDialog
+        visible={deleting !== null}
+        title={hm("list.deleteTitle")}
+        description={hm("list.deleteBody", { name: deleting?.name ?? "" })}
+        confirmLabel={hm("list.deleteConfirm")}
+        cancelLabel={hm("list.deleteKeep")}
+        destructive
+        confirmLoading={deleteBusy}
+        closeDisabled={deleteBusy}
+        errorMessage={deleteError}
+        initialFocus="cancel"
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        confirmTestID="ads-draft-delete-confirm"
+        cancelTestID="ads-draft-delete-keep"
+        testID="ads-draft-delete-dialog"
+      />
     </View>
   );
 }
@@ -618,7 +723,20 @@ const styles = StyleSheet.create({
   h2: { ...type.h2, color: color.text1 },
   creditStack: { gap: space[2] },
   grow: { flex: 1, minWidth: 0, gap: space[2] },
-  row: { flexDirection: "row", alignItems: "center", gap: space[4], paddingVertical: space[4], paddingHorizontal: space[5], minHeight: 72 },
+  row: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: space[4], paddingVertical: space[4], paddingHorizontal: space[5], minHeight: 72 },
+  rowWrap: { flexDirection: "row", alignItems: "center" },
+  // #4238: the draft bin; 44pt touch target beside the row, never inside it.
+  deleteButton: {
+    width: 44,
+    height: 44,
+    marginRight: space[3],
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trWrap: { flexDirection: "row", alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  trInner: { flex: 1, minWidth: 0, borderTopWidth: 0 },
+  tdAction: { width: 52, alignItems: "center", justifyContent: "center" },
   rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
   rowPressed: { backgroundColor: color.fill.rowHover },
   rowTitle: { ...type.row, color: color.text1 },

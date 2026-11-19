@@ -492,6 +492,21 @@ export async function saveHostAdDraft(input: {
   return result.draft;
 }
 
+/**
+ * #4238: delete one of your own saved drafts. The server only lets the person
+ * who started it do this, and only at the revision the list showed.
+ */
+export async function discardHostAdDraft(input: {
+  draftId: string;
+  expectedRevision: number;
+}): Promise<void> {
+  await invoke<{ draft: HostAdDraft }>("ad-plan", {
+    action: "discard_draft",
+    draft_id: input.draftId,
+    expected_revision: input.expectedRevision,
+  });
+}
+
 const HOST_PLAN_IN_PROGRESS_STATES = new Set([
   "validating",
   "ready_for_funding",

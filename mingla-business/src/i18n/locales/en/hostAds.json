@@ -400,7 +400,9 @@
         "label": "Filter ads",
         "all": "All",
         "running": "Running",
-        "ended": "Ended"
+        "ended": "Ended",
+        "review": "In review",
+        "drafts": "Drafts"
       },
       "credit": {
         "label": "Ads credit",
@@ -461,7 +463,18 @@
         "colResults": "Results",
         "colEach": "Each",
         "open": "Open {{name}}",
-        "draftLine": "Saved draft · pick up where you left off"
+        "draftLine": "Saved draft · pick up where you left off",
+        "reviewLine": "Each app checks your ad first. Nothing is spent until it shows.",
+        "appShowing": "{{app}}: showing",
+        "appChecking": "{{app}}: checking",
+        "appNotApproved": "{{app}}: not approved",
+        "deleteDraftA11y": "Delete draft {{name}}",
+        "deleteTitle": "Delete this draft?",
+        "deleteBody": "“{{name}}” goes away for good. Nothing is charged and your Ads credit stays as it is.",
+        "deleteConfirm": "Delete draft",
+        "deleteKeep": "Keep it",
+        "draftDeleted": "Draft deleted",
+        "deleteFailed": "Couldn't delete this draft. Pull down to refresh and try again."
       },
       "unit": {
         "sales": "tickets",
@@ -482,7 +495,8 @@
         "partRejected": "Running · {{count}} not approved",
         "draft": "Draft",
         "attention": "Needs a look",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Running · {{apps}} in review"
       },
       "reason": {
         "soldOut": "Sold out",
