@@ -3,6 +3,7 @@ import { DraftReviewCard } from "./DraftReviewCard";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useWebsite } from "../WebsiteContext";
+import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard";
 import { Body, Card, CardTitle, Chip, Field, Hint, ListBox, MiniButton, Row, RowText, SectionHead, Toggle, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
 import {
@@ -305,6 +306,12 @@ function AriDraftPageCard({ row, readOnly, ariAddPage }: { row: SitePageRow; rea
   const ctx = useWebsite();
   const action = useAriPageAction(ctx.controller.siteId);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  // #4453 — an answer typed and not yet saved holds a brand switch.
+  useUnsavedChangesGuard({
+    dirty: !readOnly && Object.values(answers).some((text) => text.trim() !== ""),
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const [confirming, setConfirming] = useState<"publish" | "remove" | null>(null);
   useWebEscapeClose(confirming !== null, () => setConfirming(null));
   const questions = row.owner_questions ?? [];

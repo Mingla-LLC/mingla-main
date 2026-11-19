@@ -6,6 +6,7 @@ import { useWebsite } from "../WebsiteContext";
 import { Banner, Card, CardTitle, Skeleton, WButton, ui } from "../ui";
 import { ColoursCard, CoverCard, DesignCard, FontsCard, ShapeRow } from "../sections/DesignSection";
 import { useBrandSiteLook } from "../../../../hooks/useBrandSite";
+import { unsavedWork } from "../../../../hooks/useUnsavedChangesGuard";
 import { BrandSiteContentConflict, setSiteLook, type SiteWorkspace } from "../../../../sites/contentApi";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 import { BrandSitesError } from "../../../../services/brandSitesService";
@@ -82,6 +83,9 @@ export function DesignPanel({ ws, onAskAri }: { ws: Workspace; onAskAri: (reques
   latest.current = { ...latest.current, draft, storedLook, ws };
   const busy = useRef(false);
   const lastSent = useRef<string | null>(null);
+  // #4453 — the save on the wire (or the last one), and whether it landed.
+  const inFlight = useRef<Promise<void> | null>(null);
+  const lastSaveLanded = useRef(true);
   const save = useCallback(async () => {
     const { draft: want, storedLook: have, ws: workspace, label } = latest.current;
     // The same look is never sent twice in a row: a save that changed nothing
@@ -90,7 +94,10 @@ export function DesignPanel({ ws, onAskAri }: { ws: Workspace; onAskAri: (reques
     if (busy.current || !want || !have || same(want, have) || lastSent.current === wanted) return;
     lastSent.current = wanted;
     const revision = workspace.workspace?.look_revision ?? (typeof stored?.revision === "string" ? stored.revision : null);
-    if (!revision) return;
+    if (!revision) {
+      lastSaveLanded.current = false;
+      return;
+    }
     busy.current = true;
     setSaving(true);
     try {
@@ -107,8 +114,10 @@ export function DesignPanel({ ws, onAskAri }: { ws: Workspace; onAskAri: (reques
       }, null);
       client.setQueryData<SiteWorkspace>(brandSiteKeys.siteData(workspace.siteId, "workspace"), (value) => (value ? { ...value, look_revision: result.look_revision } : value));
       workspace.afterChange({ look: true });
+      lastSaveLanded.current = true;
       void label;
     } catch (error) {
+      lastSaveLanded.current = false;
       // Put the panel back to what is saved: a refused look never lingers on screen.
       setDraft(null);
       workspace.afterChange({ look: true });
@@ -124,9 +133,31 @@ export function DesignPanel({ ws, onAskAri }: { ws: Workspace; onAskAri: (reques
   // Autosave: a moment after the last pick; a pick made mid-save is saved next.
   useEffect(() => {
     if (!dirty || saving) return undefined;
-    const timer = setTimeout(() => { void save(); }, AUTOSAVE_IDLE_MS);
+    const timer = setTimeout(() => { inFlight.current = save(); }, AUTOSAVE_IDLE_MS);
     return () => clearTimeout(timer);
   }, [dirty, draft, save, saving, storedLook]);
+
+  // #4453 — a pick saves a moment later, and nothing saved it if the panel
+  // closed first. The brand switcher asks first: a save on the wire is waited
+  // for, a pick not yet sent is sent now, and the switch is held when the
+  // save did not land (the panel has then already said why).
+  const brandSwitchFlushRef = useRef<() => Promise<boolean>>(async () => true);
+  brandSwitchFlushRef.current = async (): Promise<boolean> => {
+    await inFlight.current;
+    const { draft: want, storedLook: have } = latest.current;
+    if (!want || !have || same(want, have)) return true;
+    inFlight.current = save();
+    await inFlight.current;
+    return lastSaveLanded.current;
+  };
+  useEffect(() => {
+    const flush = (): Promise<boolean> => brandSwitchFlushRef.current();
+    const flushers = (unsavedWork.flushers ??= new Set());
+    flushers.add(flush);
+    return (): void => {
+      flushers.delete(flush);
+    };
+  }, []);
 
   const change = (next: Partial<Look>, what: string) => {
     if (!current) return;
