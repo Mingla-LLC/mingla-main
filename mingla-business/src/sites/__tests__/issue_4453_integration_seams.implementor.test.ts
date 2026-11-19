@@ -200,7 +200,10 @@ describe("#4453 the preview bridge: Host sends only what the frame accepts", () 
     expect(hidden![1]).toContain('visibility: "hidden"');
     expect(hidden![1]).not.toContain("display");
     const web = read("mingla-business/src/components/sites/website/workspace/LivePreview.web.tsx");
-    expect(web).toContain("opacity: visible ? 1 : 0");
+    // The frame still loading sits UNDER the one shown (never see-through: a see-through page
+    // holds its entrance motion back and would play it in front of the owner on the swap).
+    expect(web).toContain('zIndex: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none"');
+    expect(web).not.toContain("opacity: visible ? 1 : 0");
     expect(web).not.toMatch(/display:\s*["']none["']/);
     const native = read("mingla-business/src/components/sites/website/workspace/LivePreview.tsx");
     expect(native).toContain("hidden: { opacity: 0 }");
