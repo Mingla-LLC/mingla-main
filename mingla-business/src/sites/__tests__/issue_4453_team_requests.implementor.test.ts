@@ -1,9 +1,8 @@
 /* eslint-disable import/first */
+// MINGLA-INVARIANT: I-4453-WEBSITE-REQUEST-ONE-TICKET-PER-SEND | issue #4453 | Pressing Send again on the same website change request (same brand, site and words) reuses the first press's client request id, so the database files one ticket; a changed request gets a new id, and an id is never reused after a send succeeded.
  
 /*
  * #4453 — Website workspace, "Ask the Mingla team": the Host data layer.
- *
- * MINGLA-INVARIANT: I-4453-WEBSITE-REQUEST-ONE-TICKET-PER-SEND | issue #4453 | Pressing Send again on the same website change request (same brand, site and words) reuses the first press's client request id, so the database files one ticket; a changed request gets a new id, and an id is never reused after a send succeeded.
  *
  * Fails-on-revert: generate a fresh id on every mutation call → "a second press
  * reuses the id" goes red. Keep the id after success → "a new request after a

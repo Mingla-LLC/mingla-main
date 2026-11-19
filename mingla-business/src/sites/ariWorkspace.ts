@@ -195,7 +195,7 @@ export const STEP_STATUS_WORDS: Readonly<Record<StepStatus, string>> = {
 
 /* ── The end of a run ────────────────────────────────────────────────────── */
 /*
- * As built (ARI-AS-BUILT.md): `agent-confirm-action` answers `executed` with
+ * As built (the Ari build notes): `agent-confirm-action` answers `executed` with
  * { group_id, status: "applied" | "rolled_back" | "partly_applied", total,
  *   applied: [{index,label,op,page_id,section_id}], failed?: {index,label,reason},
  *   checks: {passed, warnings: string[]} | null, checks_note?, couldnt: [{what,why}] }.
