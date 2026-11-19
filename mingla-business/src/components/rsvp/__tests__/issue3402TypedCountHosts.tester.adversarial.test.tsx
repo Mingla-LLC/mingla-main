@@ -9,6 +9,8 @@ jest.mock("react-native", () => ({
   StyleSheet: { create: (styles: unknown) => styles, absoluteFillObject: {} },
   Platform: { OS: "ios", select: (choices: any) => choices.ios ?? choices.default },
   View: "View", Text: "Text", Pressable: "Pressable", TextInput: "TextInput", Image: "Image",
+  // TEST-MOD-APPROVED #4490 — NumberStepper reads the window width to stack on a phone.
+  useWindowDimensions: () => ({ width: 1024, height: 800, scale: 1, fontScale: 1 }),
 }));
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true, default: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined },

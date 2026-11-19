@@ -30,8 +30,10 @@ describe("#2331 privacy bar / reserve composition", () => {
     const screen = read("packages/brand-rendering/PublicVenueScreen.tsx");
     // [TEST-MOD-APPROVED #4420 D-V2] — still no consent gate: the one added
     // condition is the ordering basket owning the bottom edge on the Menu tab.
+    // [TEST-MOD-APPROVED #4490] fix 2 (N87): the bar also speaks for another booking tab only,
+    // never behind a consent gate; the composition is still just these conditions.
     expect(screen).toContain(
-      "const showPersistentReserveCta =\n    showReserveCta &&\n    !(orderingOwnsBar && normalizedReservationUiState.activeTab === \"menu\");",
+      "const showPersistentReserveCta =\n    showReserveCta &&\n    !activeIsOtherBookingTab &&\n    !(orderingOwnsBar && normalizedReservationUiState.activeTab === \"menu\");",
     );
     expect(screen).not.toContain("consentActionMayCollide");
     expect(screen).not.toContain("PUBLIC_VENUE_CONSENT_SAFE_DESKTOP_MIN_WIDTH");

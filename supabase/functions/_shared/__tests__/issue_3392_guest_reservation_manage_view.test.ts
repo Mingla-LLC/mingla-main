@@ -109,6 +109,8 @@ Deno.test("M1: a valid token opens a free upcoming booking, scoped to id + token
     reservedForUtc: "2026-09-20T19:30:00.000Z",
     partySize: 4,
     venueName: "Rooftop Kitchen",
+    // TEST-MOD-APPROVED #4490 — N119: the view now carries the venue zone (null when the client cannot read it).
+    timezone: null,
     canCancel: true,
   });
   const sessionLookup = client.calls.find((c) =>
@@ -185,6 +187,7 @@ Deno.test("M5: the view carries booking facts only — no contact or payment ide
     "paymentStatus",
     "reservedForUtc",
     "status",
+    "timezone", // TEST-MOD-APPROVED #4490 (N119)
     "venueName",
   ]);
   assertEquals(view.paymentStatus, "paid");

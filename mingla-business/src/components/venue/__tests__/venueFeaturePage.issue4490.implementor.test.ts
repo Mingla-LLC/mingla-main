@@ -149,7 +149,8 @@ describe("the worked table", () => {
       },
     );
     const page = deriveVenuePage(v, ctx());
-    expect(page.tabs.join(" · ")).toBe("overview · groups · hire · menu · reservations");
+    // TEST-MOD-APPROVED #4490 (N117): when tables lead, Tables comes right after Overview.
+    expect(page.tabs.join(" · ")).toBe("overview · reservations · groups · hire · menu");
     expect(page.labels.reservations).toBe("Tables");
     expect(page.lead?.ctaLabel).toBe("Book a table");
     expect(page.lead?.row).toMatchObject({
