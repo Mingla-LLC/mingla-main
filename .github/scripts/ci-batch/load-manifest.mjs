@@ -371,7 +371,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 P4 follow-up: hours you set, hire changes, damage deposit; re-sealed.
 // issue #4490 P3 follow-up money fixes; re-sealed.
 // issue #4490 P5 test pins follow the new guest writer; re-sealed.
-export const BOOTSTRAP_SHA256 = "fd965fae4bb41fd25e529d1b77dea3cdebc391f96f615989b97e263d628c8b5d";
+// issue #4490 P5 follow-ups: hour pricing contract, flexible too-soon, calendar party; re-sealed.
+export const BOOTSTRAP_SHA256 = "a772ada9f21b0f7dd05e8aefbee1040c00094acd1a3d37ffaf7ecd95f55abacb";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
