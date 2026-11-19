@@ -9,8 +9,6 @@ import { useSegments } from "expo-router";
 import { Platform } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { postHogService } from "../services/postHogService";
-import { recordHostSignupSourceOnce } from "../services/peopleJourneyService";
-import { screenNameForRoute } from "../services/screenTracking";
 import { useAnalyticsPrefsStore } from "../store/analyticsPrefsStore";
 
 /** A host whose account is younger than this is treated as signing up now. */
@@ -21,11 +19,12 @@ export function useRouteScreenTracking(): void {
   const segments = useSegments();
   const key = segments.join("/");
   useEffect(() => {
-    try {
-      postHogService.screen(screenNameForRoute(segments));
-    } catch (e) {
-      console.warn("[peopleJourney] screen view failed:", e);
-    }
+    // Web page views are owned by webAnalytics; native only. Loaded on use so the
+    // tracking code stays out of the web boot bundle.
+    if (Platform.OS === "web") return;
+    void import("../services/screenTracking")
+      .then(({ screenNameForRoute }) => postHogService.screen(screenNameForRoute(segments)))
+      .catch((e: unknown) => console.warn("[peopleJourney] screen view failed:", e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }
@@ -41,10 +40,11 @@ export function useHostSignupSourceTracking(): void {
   useEffect(() => {
     if (!userId || Number.isNaN(createdAt)) return;
     if (Date.now() - createdAt > NEW_HOST_WINDOW_MS) return;
-    void recordHostSignupSourceOnce({
-      userId,
-      platform: Platform.OS,
-      optedOut: useAnalyticsPrefsStore.getState().analyticsOptOut === true,
-    });
+    const optedOut = useAnalyticsPrefsStore.getState().analyticsOptOut === true;
+    void import("../services/peopleJourneyService")
+      .then(({ recordHostSignupSourceOnce }) =>
+        recordHostSignupSourceOnce({ userId, platform: Platform.OS, optedOut }),
+      )
+      .catch((e: unknown) => console.warn("[peopleJourney] signup source failed:", e));
   }, [userId, createdAt]);
 }
