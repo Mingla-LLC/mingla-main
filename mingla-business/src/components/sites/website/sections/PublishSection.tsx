@@ -7,7 +7,8 @@ import { OfflineBanner } from "./OverviewSection";
 import { Banner, Card, CardTitle, CheckCircle, Chip, Hint, ListBox, Row, SectionHead, Spinner, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
 import { ConfirmDialog } from "../../../ui/ConfirmDialog";
-import { useDesignChecks, useDraftChanges, useSitePages, useWorkLog, type DesignCheck, type WorkLogEntry } from "../../../../sites/contentApi";
+import { useDesignChecks, useDraftChanges, useReviewStatus, useSitePages, useWorkLog, type DesignCheck, type WorkLogEntry } from "../../../../sites/contentApi";
+import { unreviewedSectionCount } from "../../../../sites/setupStatus";
 import { publishFindings, publishFindingsCount, type PublishFinding } from "../../../../../../packages/site-contracts/src/publishChecks.ts";
 import { BrandSitesError, SITES_ERROR_MESSAGES } from "../../../../services/brandSitesService";
 import { formatWebsiteDateTime } from "../../../../sites/websiteCopy";
@@ -94,7 +95,10 @@ export function PublishSection({ variant, onFix }: {
   const designChecks = useDesignChecks(site.id);
   const firstPublish = site.last_successful_publication_id === null;
   const checksRan = designChecks.data !== undefined && !designChecks.isFetching;
-  const readyToPublish = validation.data !== undefined && blocker === null && (!firstPublish || checksRan);
+  // #4453 — Draft sections block a publish (UNREVIEWED_SECTIONS), which Core
+  // only reports as "Publishing failed": wait for them here and say so.
+  const unreviewed = unreviewedSectionCount(useReviewStatus(site.id).data);
+  const readyToPublish = validation.data !== undefined && blocker === null && (!firstPublish || checksRan) && unreviewed === 0;
   // #2830 — a finding names a page; Fix opens that page in the editor.
   const setupPages = useSitePages(site.id, variant === "setup");
 
@@ -287,6 +291,7 @@ export function PublishSection({ variant, onFix }: {
           <WButton label="Preview draft" icon="eye" onPress={ctx.openFullScreenPreview} testID="publish-preview" />
         </View>
         {blocker ? <Text style={styles.blockerNote}>Fix the item marked ✕ to publish</Text> : null}
+        {!blocker && unreviewed > 0 ? <View testID="publish-needs-review"><Hint style={styles.mmNote}>{`Review the ${unreviewed === 1 ? "section" : `${unreviewed} sections`} above to publish.`}</Hint></View> : null}
         {!blocker && firstPublish && !checksRan ? <Hint style={styles.mmNote}>Your first publish waits for the design checks to finish on this draft.</Hint> : null}
         {!canPublish ? <Hint style={styles.mmNote}>Marketing managers can change the draft. Publishing needs a brand admin or the owner; they get a notification with a link here.</Hint> : null}
       </Card>

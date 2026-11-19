@@ -14,6 +14,11 @@ import type { CoverRenditionDeps } from "./offeringCoverRenditions";
  * a quarantine copy, then the checks, the re-encode to WebP, the stripped
  * metadata and the renditions. Nothing reads a third-party host.
  *
+ * #4453 — imported ONCE: the pipeline records the source's SHA-256 as the
+ * media `checksum`, and a READY image of this site with the same checksum is
+ * reused instead of importing again (every "Rebuild my pages" imported the
+ * same cover again; Gameland Lagos held four identical READY copies).
+ *
  * Returns the READY media id, or null (the colour panel is used instead) when
  * the cover can't be read, isn't a JPEG/PNG/WebP picture, or the pipeline
  * refuses it. Never throws: a cover is a nicety, never a failed draft.
@@ -22,6 +27,7 @@ const PICTURE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export async function importBrandCover(
   scoped: PayloadRequest,
+  tenantId: string,
   coverPath: string,
   deps: Pick<CoverRenditionDeps, "fetchCover">,
 ): Promise<string | null> {
@@ -32,6 +38,20 @@ export async function importBrandCover(
       observe("cover_read->skipped", "VALIDATION_FAILED");
       return null;
     }
+    const digest = await sha256(fetched.bytes);
+    const existing = await scoped.payload.find({
+      collection: "media",
+      overrideAccess: true,
+      depth: 0,
+      limit: 1,
+      where: { and: [
+        { tenant: { equals: tenantId } },
+        { state: { equals: "READY" } },
+        { kind: { equals: "image" } },
+        { checksum: { equals: digest } },
+      ] },
+    });
+    if (existing.docs[0]) return String(existing.docs[0].id);
     const filename = `brand-cover.${type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg"}`;
     const grant = await createUploadGrant(scoped, { filename, content_type: type, bytes: fetched.bytes.byteLength });
     const media = await scoped.payload.findByID({
@@ -43,7 +63,7 @@ export async function importBrandCover(
     }) as { quarantine_key?: unknown };
     if (typeof media.quarantine_key !== "string") throw new Error("INVALID_STATE");
     await writeObject(cmsConfig().quarantineBucket, media.quarantine_key, fetched.bytes, type);
-    const done = await completeUpload(scoped, String(grant.media_id), await sha256(fetched.bytes), fetched.bytes.byteLength) as { state?: unknown } | null;
+    const done = await completeUpload(scoped, String(grant.media_id), digest, fetched.bytes.byteLength) as { state?: unknown } | null;
     if (done?.state !== "READY") {
       observe("cover_import->refused", "MEDIA_REJECTED");
       return null;

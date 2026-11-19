@@ -52,10 +52,10 @@ export async function writeComposition(
     created.push(page.key);
   }
   const updates = [
-    ...(result.fillHome ? [{ id: idBySlug.get(""), page: result.fillHome }] : []),
-    ...result.replace,
+    ...(result.fillHome ? [{ id: idBySlug.get(""), page: result.fillHome, filled: true }] : []),
+    ...result.replace.map((entry) => ({ ...entry, filled: false })),
   ];
-  for (const { id, page } of updates) {
+  for (const { id, page, filled } of updates) {
     const stored = pages.find((candidate) => String(candidate.id) === id);
     if (!id || !stored) continue;
     await req.payload.update({
@@ -66,7 +66,8 @@ export async function writeComposition(
       draft: true,
       data: { blocks: page.blocks, title: page.title, revision: stored.revision } as never,
     });
-    (page.key === "home" ? created : replaced).push(page.key);
+    // An empty Home filled is created; any page whose Drafts were replaced (Home included) is replaced.
+    (filled ? created : replaced).push(page.key);
   }
 
   const navigation = (await req.payload.find({

@@ -94,7 +94,7 @@ describe("#4453 booking-first Home — a Gameland-shaped brand", () => {
     ]);
     const [hero, sessions, times, nextUp, tickets] = home;
     expect(hero).toMatchObject({ blockType: "hero", media: "media-imported-experience-cover", heading: "Play more. Worry less.", subheading: "Play is how grown-ups make friends." });
-    expect(hero!.ctas).toEqual([{ label: "Book a session", href: "/sessions" }]);
+    expect(hero!.ctas).toEqual([{ label: "Book now", href: "/sessions" }]);
     expect(hero).toMatchObject({ booking_bar: "experience", booking_target_id: EXPERIENCE });
     expect(sessions).toMatchObject({ kind: "experience", limit: 3 });
     expect(times).toMatchObject({ source: "experience_slots", offering_id: EXPERIENCE });
