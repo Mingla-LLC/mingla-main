@@ -60,6 +60,7 @@ import {
   type EntryCancelPreview,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
 import { parsePackageBooking } from "@mingla/brand-rendering/venueOffers/packageModel";
+import { hireErrorCopy, hireStateCard, parseHireBooking } from "@mingla/brand-rendering/venueOffers/hireModel";
 
 import { radius, size, space, type } from "../../../constants/designSystem";
 import { usePublicVenueBySlug } from "../../../hooks/usePublicEvents";
@@ -91,6 +92,7 @@ import {
 import { VenueOfferPassQr } from "./VenueOfferPassQr";
 import { PayModeChoice } from "./PayModeChoice";
 import { VisitBalanceCard, VisitChanges, VisitPackageFacts } from "./VisitPackageParts";
+import { HireFacts, HireStateMain, HireTracker } from "./VisitHireParts";
 
 const POLL_MS = 2000;
 const POLL_WINDOW_MS = 30_000;
@@ -206,6 +208,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
 
   const booking = load.status === "ready" ? load.booking : null;
   const pkg = useMemo(() => parsePackageBooking(load.status === "ready" ? load.raw : null), [load]);
+  // #4490 P4 — the private hire part (null for other kinds).
+  const hire = useMemo(() => parseHireBooking(load.status === "ready" ? load.raw : null), [load]);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [payMode, setPayMode] = useState<"deposit" | "full">("deposit");
   const [changeNote, setChangeNote] = useState<string | null>(null);
 
@@ -252,10 +257,10 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
 
   const view = booking === null ? null : visitViewFor(booking, now);
   useEffect(() => {
-    if (view?.kind !== "pay") return undefined;
+    if (view?.kind !== "pay" && booking?.state !== "approved_payment_required") return undefined;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [view?.kind]);
+  }, [view?.kind, booking?.state]);
   // A confirming booking refreshes itself for a short while too.
   useEffect(() => {
     if (view?.kind !== "confirming" || confirm === "polling") return undefined;
@@ -354,6 +359,21 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
       if (code === "offer_cancel_preview_invalid") setPreview(null);
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const withdraw = async (): Promise<void> => {
+    if (withdrawing) return;
+    setWithdrawing(true);
+    setActionError(null);
+    try {
+      await venueOfferGuestService.withdraw({ groupId, token: token ?? null });
+      await read();
+    } catch (caught) {
+      setActionError(hireErrorCopy(caught instanceof VenueOfferGuestError ? caught.code : null));
+      void read();
+    } finally {
+      setWithdrawing(false);
     }
   };
 
@@ -496,7 +516,18 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         <Text style={[styles.small, { color: palette.secondaryText }]}>{entryDateLabel(booking.window.localDate)}</Text>
       ) : null}
       <View style={[styles.rule, { backgroundColor: hair }]} />
-      {pkg.offerKind === "group_package" ? null : (
+      {hire !== null ? (
+        <HireFacts
+          hire={hire}
+          palette={palette}
+          currencyCode={booking.currencyCode}
+          exponent={exponent}
+          totalDueMinor={hire.totalDueMinor}
+          paidMinor={booking.paidMinor}
+          balanceDueMinor={hire.balanceDueMinor}
+          showMoney={booking.state !== "declined" && booking.state !== "request_expired"}
+        />
+      ) : pkg.offerKind === "group_package" ? null : (
         <EntrySummaryRows
           palette={palette}
           theme={theme}
@@ -511,7 +542,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
           })}
         />
       )}
-      <VisitPackageFacts booking={booking} pkg={pkg} palette={palette} exponent={exponent} />
+      {hire === null ? <VisitPackageFacts booking={booking} pkg={pkg} palette={palette} exponent={exponent} /> : null}
       {view.kind === "confirmed" && booking.paidMinor > 0 && booking.guest.email !== null ? (
         <Text style={[styles.small, { color: palette.secondaryText }]} testID="issue-4490-visit-receipt">
           {`Paid · receipt sent to ${booking.guest.email}`}
@@ -634,7 +665,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               palette={palette}
               theme={theme}
               label="Start again"
-              onPress={() => router.replace(`${venuePath}?tab=${pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
+              onPress={() => router.replace(`${venuePath}?tab=${hire !== null ? "hire" : pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
             />
           ) : null}
         </View>
@@ -821,7 +852,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               theme={theme}
               variant="secondary"
               label={`Book ${booking.venue.name} again`}
-              onPress={() => router.push(`${venuePath}?tab=${pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
+              onPress={() => router.push(`${venuePath}?tab=${hire !== null ? "hire" : pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
             />
           ) : null}
         </View>
@@ -836,6 +867,65 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
           <EntryButton palette={palette} theme={theme} variant="secondary" label="Check again" onPress={() => void read()} />
         </View>
       );
+  }
+
+  // #4490 P4 — a private hire's own states (request sent, declined, timed out,
+  // withdrawn, said yes with the hold clock, the hold ran out, checking).
+  if (hire !== null) {
+    const card = hireStateCard({
+      state: booking.state,
+      venueName: booking.venue.name,
+      hire,
+      amountDueNowMinor: booking.amountDueNowMinor,
+      holdUntil: booking.holdUntil,
+      localDate: booking.window?.localDate ?? null,
+      timeZone: booking.venue.timezone,
+      currencyCode: booking.currencyCode,
+      exponent,
+      now,
+    });
+    const owns = ["request_sent", "declined", "expired", "withdrawn", "pay_deposit", "hold_ran_out", "checking"].includes(card.kind);
+    if (owns) {
+      main = (
+        <HireStateMain
+          card={card}
+          hire={hire}
+          palette={palette}
+          theme={theme}
+          currencyCode={booking.currencyCode}
+          exponent={exponent}
+          timeZone={booking.venue.timezone}
+          holdUntil={booking.holdUntil}
+          now={now}
+          venueName={booking.venue.name}
+          payModes={pkg.payModes}
+          paying={paying}
+          onPay={(mode) => void pay(mode)}
+          inFlight={inFlight}
+          onResume={() => setHandoffUrl(inFlight?.resumeUrl ?? null)}
+          onCheck={() => void checkPayment()}
+          failedNote={
+            confirm === "not_paid"
+              ? "You left the payment page before paying. Nothing was taken, and the space is still held. Pay again below."
+              : confirm === "failed"
+                ? "Your payment didn't go through. Nothing was taken. Try again."
+                : null
+          }
+          withdrawing={withdrawing}
+          onWithdraw={() => void withdraw()}
+          onAskAgain={venuePath !== null ? () => router.push(`${venuePath}?tab=hire` as never) : null}
+          onAskDate={venuePath !== null ? () => router.push(`${venuePath}?tab=hire` as never) : null}
+          onCheckAgain={() => void read()}
+          errorNote={errorNote}
+        />
+      );
+    }
+    main = (
+      <View style={styles.column}>
+        <HireTracker state={booking.state} venueName={booking.venue.name} hire={hire} palette={palette} />
+        {main}
+      </View>
+    );
   }
 
   if (confirm === "timed_out" && view.kind !== "confirmed" && view.kind !== "cancelled") {

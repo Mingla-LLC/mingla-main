@@ -691,6 +691,8 @@ export const BUILT_VENUE_TABS: ReadonlySet<PublicVenueTab> = new Set<PublicVenue
   "overview",
   "entry",
   "groups",
+  // #4490 P4 — private hire.
+  "hire",
   "whats_on",
   "menu",
   "reservations",

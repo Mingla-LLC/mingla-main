@@ -3,7 +3,7 @@
 // A separate file from offeringsService.js, which the ORCH-1273 gate holds to
 // its own RPC list.
 import { supabase } from "../lib/supabase";
-import { venueOfferAdminError } from "../lib/venueOffersAdmin";
+import { bookingAdminError, venueOfferAdminError } from "../lib/venueOffersAdmin";
 
 export async function listAdminVenueOffers({ search, filters = {}, page = 0, pageSize = 25 }) {
   const { data, error } = await supabase.rpc("admin_list_venue_offers", {
@@ -23,5 +23,22 @@ export async function setAdminVenueOfferStatus({ offeringId, status, reason }) {
     p_reason: reason,
   });
   if (error) throw new Error(venueOfferAdminError(error.message));
+  return data;
+}
+
+// #4490 P4-3 — request disputes: one venue booking (timeline, money, the terms
+// saved on it, space claims) and an audited force-expire of a hold.
+export async function getAdminVenueBooking(groupId) {
+  const { data, error } = await supabase.rpc("issue_4490_admin_booking", { p_group_id: groupId });
+  if (error) throw new Error(bookingAdminError(error.message));
+  return data;
+}
+
+export async function forceExpireVenueHold({ groupId, reason }) {
+  const { data, error } = await supabase.rpc("issue_4490_admin_force_expire_hold", {
+    p_group_id: groupId,
+    p_reason: reason,
+  });
+  if (error) throw new Error(bookingAdminError(error.message));
   return data;
 }

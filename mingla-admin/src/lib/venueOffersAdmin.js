@@ -80,3 +80,101 @@ export function venueOfferAdminError(message) {
   }
   return "That didn't save. Try again.";
 }
+
+// ---------------------------------------------------------------------------
+// #4490 P4-3 — request disputes: one venue booking (private hire included).
+// ---------------------------------------------------------------------------
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+/** The booking id from a pasted guest link (`…/visit/<id>#t=…`) or a bare id; null otherwise. */
+export function bookingIdFromInput(text) {
+  if (typeof text !== "string") return null;
+  const match = UUID.exec(text.trim());
+  return match ? match[0].toLowerCase() : null;
+}
+
+export const BOOKING_STATE_LABELS = {
+  request_pending: { label: "Request to answer", variant: "info" },
+  approved_payment_required: { label: "Approved · waiting for deposit", variant: "warning" },
+  instant_payment_pending: { label: "Paying now", variant: "warning" },
+  finalizing: { label: "Confirming payment", variant: "warning" },
+  confirmed: { label: "Confirmed", variant: "success" },
+  partially_cancelled: { label: "Part cancelled", variant: "warning" },
+  cancelled: { label: "Cancelled", variant: "default" },
+  declined: { label: "Declined", variant: "default" },
+  request_expired: { label: "Closed", variant: "default" },
+  reconciliation_required: { label: "Needs checking", variant: "error" },
+};
+
+export function bookingStateLabel(state) {
+  return BOOKING_STATE_LABELS[state] ?? { label: "Unknown", variant: "default" };
+}
+
+const TIMELINE_WORDS = {
+  stay_offer_request_created: "Guest asked",
+  stay_offer_request_approved: "Venue approved and sent a quote",
+  stay_offer_request_declined: "Venue declined",
+  stay_offer_request_queued: "Put next in line",
+  stay_offer_request_released: "Next in line: the space freed up",
+  stay_offer_hold_extended: "Venue gave more time to pay",
+  stay_offer_hold_released: "Venue released the hold",
+  stay_offer_request_withdrawn: "Guest withdrew",
+  stay_offer_hold_force_expired: "Admin ended the hold",
+  stay_offer_hold_created: "Booked, waiting for payment",
+  stay_payment_prepared: "Payment page opened",
+  stay_reservation_confirmed: "Confirmed",
+  stay_offer_balance_paid: "Balance paid",
+  stay_offer_balance_due: "Payment reminder sent",
+  stay_reservation_cancelled: "Cancelled",
+  stay_refund_submitted: "Refund sent",
+  stay_refund_succeeded: "Refund completed",
+  stay_hold_expired: "Hold ran out",
+  stay_request_expired: "Request timed out",
+};
+
+/** "Venue declined (by staff)" etc.; unknown events read as plain words, never the raw key. */
+export function timelineLabel(type, actorType) {
+  const words =
+    TIMELINE_WORDS[type] ??
+    String(type || "event")
+      .replace(/^stay_(offer_)?/, "")
+      .replace(/_/g, " ")
+      .replace(/^\w/, (c) => c.toUpperCase());
+  const by = actorType === "admin" ? "admin" : actorType === "staff" ? "venue" : actorType === "guest" ? "guest" : null;
+  return by ? `${words} · ${by}` : words;
+}
+
+/** Plain words for a refund ladder saved on the booking. */
+export function ladderWords(ladder) {
+  if (!Array.isArray(ladder) || ladder.length === 0) return "No refunds";
+  return [...ladder]
+    .map((r) => ({
+      mins: Number(r?.minMinutesBefore ?? r?.min_minutes_before ?? 0),
+      bps: Number(r?.refundBps ?? r?.refund_bps ?? 0),
+    }))
+    .sort((a, b) => b.mins - a.mins)
+    .map(({ mins, bps }) => {
+      const back = bps >= 10000 ? "Full refund" : bps <= 0 ? "No refund" : `${bps / 100}% back`;
+      if (mins <= 0) return `${back} until it starts`;
+      const days = mins / 1440;
+      return `${back} up to ${Number.isInteger(days) ? `${days} ${days === 1 ? "day" : "days"}` : `${Math.round(mins / 60)} hours`} before`;
+    })
+    .join(", then ");
+}
+
+/** Force-expiring a hold is possible only before any payment. */
+export function canForceExpire(booking) {
+  return Boolean(booking) && (booking.state === "request_pending" || booking.state === "approved_payment_required");
+}
+
+/** Plain words for the dispute view's RPC failures. */
+export function bookingAdminError(message) {
+  const text = typeof message === "string" ? message : "";
+  if (text.includes("not_authorized")) return "Active Admin access is required.";
+  if (text.includes("offer_booking_not_found")) return "No venue booking has that id. Paste the guest's booking link or the booking id.";
+  if (text.includes("invalid_payload")) return "Add a reason of at least 3 characters.";
+  if (text.includes("offer_invalid_transition")) return "This booking isn't waiting on a request or a deposit any more. Reload it.";
+  if (text.includes("offer_payment_already_pending")) return "A payment was started on this booking, so the hold can't be ended here. Check the payments below.";
+  return "That didn't load. Try again.";
+}

@@ -1,7 +1,8 @@
 // orch-strict-grep-allow safearea-on-fullscreen-routes — route applies insets directly
 /**
- * /b/{brandSlug}/v/{venueSlug}/book/{offerId} — #4490 P2 entry checkout, and
- * (P3, `?k=group…`) the group package checkout.
+ * /b/{brandSlug}/v/{venueSlug}/book/{offerId} — #4490 P2 entry checkout,
+ * (P3, `?k=group…`) the group package checkout, and (P4, `?k=hire…`) the
+ * private hire request.
  *
  * ANON ROUTE under the `/b/` public prefix: buying never needs an account and
  * this chain never calls useAuth. The address carries the day and the counts
@@ -14,6 +15,8 @@ import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { parsePackageCheckoutParams } from "@mingla/brand-rendering/venueOffers/packageModel";
+import { parseHireRequestParams } from "@mingla/brand-rendering/venueOffers/hireModel";
+import { HireRequest } from "../../../../../../src/components/venue/offers/HireRequest";
 import { OfferCheckout } from "../../../../../../src/components/venue/offers/OfferCheckout";
 import { PackageCheckout } from "../../../../../../src/components/venue/offers/PackageCheckout";
 import { parseEntryCheckoutParams } from "../../../../../../src/components/venue/offers/entryCheckoutPath";
@@ -40,7 +43,10 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
     x?: string | string[];
     a?: string | string[];
     pay?: string | string[];
+    // #4490 P4 — a private hire choice (`k=hire&d=&w=&g=&o=`).
+    o?: string | string[];
   }>();
+  const hireChoice = parseHireRequestParams(params);
   const packageChoice = parsePackageCheckoutParams(params);
   const brandSlug = one(params.brandSlug);
   const venueSlug = one(params.venueSlug);
@@ -56,7 +62,16 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
         <title>Checkout · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
-      {packageChoice !== null ? (
+      {hireChoice !== null ? (
+        <HireRequest
+          brandSlug={brandSlug}
+          venueSlug={venueSlug}
+          offerId={offerId.toLowerCase()}
+          choice={hireChoice}
+          safeTop={insets.top}
+          safeBottom={insets.bottom}
+        />
+      ) : packageChoice !== null ? (
         <PackageCheckout
           brandSlug={brandSlug}
           venueSlug={venueSlug}

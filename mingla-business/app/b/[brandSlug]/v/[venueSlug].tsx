@@ -142,6 +142,12 @@ const VenueEntryPane = React.lazy(() =>
   ),
 );
 
+// #4490 P4 — the Private hire tab's flow, lazy for the same reason.
+const VenueHirePane = React.lazy(() =>
+  import("../../../../src/components/venue/offers/VenueHirePane").then(
+    (module) => ({ default: module.VenueHirePane }),
+  ),
+);
 // #4490 P3 — the Groups tab's booking flow, lazy for the same reason.
 const VenueGroupsPane = React.lazy(() =>
   import("../../../../src/components/venue/offers/VenueGroupsPane").then(
@@ -645,6 +651,32 @@ function PublicVenueRouteBody(): React.ReactElement {
     [brandSlug, venueSlug],
   );
 
+  // #4490 P4 — the Private hire tab: group size, day, session, space, then the request.
+  const renderHireBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueHirePane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
   // #4490 — "What's on": events held at the venue open their public page.
   const handleOpenEvent = useCallback(
     (href: string): void => {
@@ -761,6 +793,7 @@ function PublicVenueRouteBody(): React.ReactElement {
       onOpenEvent={handleOpenEvent}
       entryBody={renderEntryBody}
       groupsBody={renderGroupsBody}
+      hireBody={renderHireBody}
       refreshState={
         routeState === "populated-error"
           ? "error"

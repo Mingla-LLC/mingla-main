@@ -380,7 +380,9 @@ describe("this release builds only some tabs", () => {
     const page = deriveVenuePage(v, { menuTabVisible: true, tablesGate: "ready" });
     expect(BUILT_VENUE_TABS.has("entry")).toBe(true);
     expect(BUILT_VENUE_TABS.has("groups")).toBe(true);
-    expect(BUILT_VENUE_TABS.has("hire")).toBe(false);
+    // TEST-MOD-APPROVED #4490 P4-3: private hire is built now; by the hour stays unbuilt.
+    expect(BUILT_VENUE_TABS.has("hire")).toBe(true);
+    expect(BUILT_VENUE_TABS.has("by_the_hour")).toBe(false);
     expect(page.tabs).toEqual(["overview", "entry", "groups", "whats_on", "menu"]);
     expect(page.lead?.kind).toBe("entry");
     expect(page.lead?.ctaLabel).toBe("Buy entry");

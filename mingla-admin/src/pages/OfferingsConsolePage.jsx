@@ -18,6 +18,7 @@ import { OfferingDetailView } from "./OfferingDetailView";
 // #4490 P2-7 — venue offers (entry and later kinds) live in their own list with
 // the audited pause / resume; its reads and writes sit in its own service.
 import { VenueOffersAdminList } from "../components/offerings/VenueOffersAdminList";
+import { VenueBookingLookup } from "../components/offerings/VenueBookingLookup";
 import { formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
 import {
@@ -237,7 +238,10 @@ export function OfferingsConsolePage() {
       </div>
 
       {view === VENUE_OFFERS_VIEW ? (
-        <VenueOffersAdminList />
+        <div className="flex flex-col gap-6">
+          <VenueOffersAdminList />
+          <VenueBookingLookup />
+        </div>
       ) : (
       <EntityListView
         key={view}

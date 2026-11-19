@@ -32,7 +32,25 @@ import {
   type PackageQuote,
 } from "@mingla/brand-rendering/venueOffers/packageModel";
 
+import {
+  parseHireDayRows,
+  parseHireOfferDetail,
+  parseHirePlaces,
+  parseHireQuote,
+  type HireDayRow,
+  type HireOfferDetail,
+  type HirePlaceOption,
+  type HireQuote,
+} from "@mingla/brand-rendering/venueOffers/hireModel";
+
 import { supabase } from "./supabase";
+
+/** #4490 P4 — a space's public photos and its outline on the venue's site plan. */
+export interface HireSpaceMedia {
+  id: string;
+  photoUrls: string[];
+  planShape: { x: number; y: number; w: number; h: number } | null;
+}
 
 export class VenueOfferGuestError extends Error {
   readonly code: string;
@@ -78,6 +96,106 @@ export interface EntryPaymentRedirect {
 }
 
 export const venueOfferGuestService = {
+  /** #4490 P4 — a private hire's public detail (places, price rows, sessions, deposits). */
+  async hireOffer(input: { brandSlug: string; venueSlug: string; offeringId: string }): Promise<HireOfferDetail> {
+    const parsed = parseHireOfferDetail(await invoke({ action: "offer", ...input }));
+    if (parsed === null) throw new VenueOfferGuestError("offer_not_found", 404);
+    return parsed;
+  },
+
+  /** #4490 P4 — one row per hire session window (free / on hold / taken / closed …). */
+  async hireDays(input: { offeringId: string; from: string; to: string; guests: number | null }): Promise<HireDayRow[]> {
+    return parseHireDayRows(
+      await invoke({
+        action: "availability",
+        offeringId: input.offeringId,
+        from: input.from,
+        to: input.to,
+        ...(input.guests !== null ? { guests: input.guests } : {}),
+      }),
+    );
+  },
+
+  /** #4490 P4 — the places for one session, each with its status for this group. */
+  async hireOptions(input: { offeringId: string; windowId: string; guests: number | null }): Promise<HirePlaceOption[]> {
+    return parseHirePlaces(
+      await invoke({
+        action: "hire_options",
+        offeringId: input.offeringId,
+        windowId: input.windowId,
+        ...(input.guests !== null ? { guests: input.guests } : {}),
+      }),
+    );
+  },
+
+  /** #4490 P4 — a hire quote: one place, the group, extra hours and the answers. */
+  async hireQuote(input: {
+    offeringId: string;
+    windowId: string;
+    priceOptionId: string;
+    guests: number;
+    overtimeHours: number;
+    answers: Record<string, string | boolean>;
+    cartKey: string;
+    idempotencyKey: string;
+  }): Promise<HireQuote> {
+    const parsed = parseHireQuote(
+      await invoke({
+        action: "quote",
+        offeringId: input.offeringId,
+        windowId: input.windowId,
+        lines: [
+          {
+            priceOptionId: input.priceOptionId,
+            guests: input.guests,
+            ...(input.overtimeHours > 0 ? { overtimeHours: input.overtimeHours } : {}),
+          },
+        ],
+        extras: [],
+        answers: input.answers,
+        cartKey: input.cartKey,
+        idempotencyKey: input.idempotencyKey,
+      }),
+    );
+    if (parsed === null) throw new VenueOfferGuestError("offer_request_failed", null);
+    return parsed;
+  },
+
+  /** #4490 P4 — the guest withdraws a request (or an approved hold not yet paid). */
+  async withdraw(input: { groupId: string; token: string | null }): Promise<void> {
+    await invoke({ action: "withdraw", groupId: input.groupId, ...(input.token ? { token: input.token } : {}) });
+  },
+
+  /** #4490 P4 — the spaces' photos and site-plan outlines from the public page read (anon). */
+  async hireSpaceMedia(input: { brandSlug: string; venueSlug: string }): Promise<HireSpaceMedia[]> {
+    const { data, error } = await supabase.rpc("pg_public_venue_page", {
+      p_brand_slug: input.brandSlug,
+      p_venue_slug: input.venueSlug,
+    });
+    if (error !== null) throw new VenueOfferGuestError("offer_request_failed", null);
+    const spaces = data !== null && typeof data === "object" && Array.isArray((data as { spaces?: unknown }).spaces)
+      ? ((data as { spaces: unknown[] }).spaces)
+      : [];
+    const out: HireSpaceMedia[] = [];
+    for (const raw of spaces) {
+      if (raw === null || typeof raw !== "object") continue;
+      const s = raw as Record<string, unknown>;
+      if (typeof s.id !== "string") continue;
+      const plan = s.planShape !== null && typeof s.planShape === "object" ? (s.planShape as Record<string, unknown>) : null;
+      const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      const shape =
+        plan !== null && n(plan.x) !== null && n(plan.y) !== null && n(plan.w) !== null && n(plan.h) !== null
+          ? { x: n(plan.x) as number, y: n(plan.y) as number, w: n(plan.w) as number, h: n(plan.h) as number }
+          : null;
+      out.push({
+        id: s.id,
+        photoUrls: Array.isArray(s.photoUrls) ? s.photoUrls.filter((u): u is string => typeof u === "string" && u.length > 0) : [],
+        planShape: shape,
+      });
+    }
+    return out;
+  },
+
   async offer(input: {
     brandSlug: string;
     venueSlug: string;

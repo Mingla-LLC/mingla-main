@@ -633,6 +633,12 @@ export interface PublicVenueScreenProps {
    */
   groupsBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
   /**
+   * #4490 P4 — the Private hire tab's flow (group size, day, session, space,
+   * then the request). Host-injected like `entryBody`; absent = the tab says
+   * private hire is booked with the venue directly.
+   */
+  hireBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
+  /**
    * #4490 — a Host preview of a venue that is not public yet: every tab the
    * venue will have, with the booking button and event buttons disabled.
    */
@@ -1288,6 +1294,7 @@ export const PublicVenueScreen = ({
   onOpenEvent,
   entryBody,
   groupsBody,
+  hireBody,
   preview = null,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
@@ -1762,7 +1769,8 @@ export const PublicVenueScreen = ({
     (normalizedReservationUiState.activeTab === "reservations" ||
       normalizedReservationUiState.activeTab === "rooms" ||
       normalizedReservationUiState.activeTab === "entry" ||
-      normalizedReservationUiState.activeTab === "groups") &&
+      normalizedReservationUiState.activeTab === "groups" ||
+      normalizedReservationUiState.activeTab === "hire") &&
     !normalizedReservationUiState.reservationSheetOpen
       ? liveReservationBar
       : null;
@@ -2476,6 +2484,28 @@ export const PublicVenueScreen = ({
             </View>
           )
     : null;
+  // #4490 P4 — the Private hire tab, same rules as Entry.
+  const hireOffers = (featuresView?.offers ?? []).filter((o) => o.kind === "private_hire");
+  const hireBlock = page.tabs.includes("hire")
+    ? previewing
+      ? previewBookingNote
+      : hireBody !== undefined && page.currency !== null
+        ? hireBody({
+            ...themedSlotContext,
+            offers: hireOffers,
+            currencyCode: page.currency.code,
+            exponent: page.currency.exponent,
+            verb: "Ask for a date",
+            onBookingBarChange: setLiveReservationBar,
+          })
+        : (
+            <View style={styles.reservationState} testID="issue-4490-hire-not-online">
+              <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+                Private hire is booked with the venue directly. Message them to ask for a date.
+              </Text>
+            </View>
+          )
+    : null;
   const whatsOnBlock =
     page.events.length > 0 && page.currency !== null ? (
       <VenueWhatsOnPane
@@ -2779,7 +2809,7 @@ export const PublicVenueScreen = ({
           : {
               tabs: page.tabs,
               labels: page.labels,
-              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock, groups: groupsBlock },
+              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock, groups: groupsBlock, hire: hireBlock },
             })}
         palette={palette}
         surface={surface}
