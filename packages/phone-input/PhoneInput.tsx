@@ -210,6 +210,10 @@ export const PhoneInput = ({
   onSubmitEditing,
 }: PhoneInputProps): React.ReactElement => {
   const [focused, setFocused] = useState(false);
+  const dismissAndSubmit = (): void => {
+    Keyboard.dismiss();
+    onSubmitEditing?.();
+  };
   // Issue #4508 — a field with its own done action gets its own toolbar, so
   // "Done" on one field never runs another field's action.
   const accessoryId =
@@ -515,10 +519,7 @@ export const PhoneInput = ({
             setFocused(false);
             onBlur?.();
           }}
-          onSubmitEditing={() => {
-            Keyboard.dismiss();
-            onSubmitEditing?.();
-          }}
+          onSubmitEditing={dismissAndSubmit}
           blurOnSubmit
           inputAccessoryViewID={
             Platform.OS === "ios" && showDoneAccessory ? accessoryId : undefined
@@ -571,10 +572,7 @@ export const PhoneInput = ({
         <InputAccessoryView nativeID={accessoryId}>
           <View style={accessoryBarStyle}>
             <TouchableOpacity
-              onPress={() => {
-                Keyboard.dismiss();
-                onSubmitEditing?.();
-              }}
+              onPress={dismissAndSubmit}
               style={styles.doneButton}
               accessibilityRole="button"
               accessibilityLabel={labels.doneButton}

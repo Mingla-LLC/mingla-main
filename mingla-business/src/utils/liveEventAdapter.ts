@@ -208,7 +208,7 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   rsvpCapacity: e.rsvpCapacity ?? null,
   rsvpAllowPlusOnes: e.rsvpAllowPlusOnes ?? false,
   rsvpPlusOnesMax: e.rsvpPlusOnesMax ?? 0,
-  rsvpGuestsCanBring: e.rsvpGuestsCanBring ?? false,
+  rsvpGuestsCanBring: e.rsvpGuestsCanBring,
   rsvpWaitlistEnabled: e.rsvpWaitlistEnabled ?? false,
   rsvpApprovalMode: e.rsvpApprovalMode ?? "auto",
   rsvpDiscoverable: e.rsvpDiscoverable ?? false,
@@ -644,8 +644,7 @@ export const editableDraftToPatch = (
   if (origRsvpPlusOnesMax !== edited.rsvpPlusOnesMax) {
     patch.rsvpPlusOnesMax = edited.rsvpPlusOnesMax;
   }
-  const origRsvpGuestsCanBring = original.rsvpGuestsCanBring ?? false;
-  if (origRsvpGuestsCanBring !== (edited.rsvpGuestsCanBring === true)) {
+  if (!original.rsvpGuestsCanBring !== !edited.rsvpGuestsCanBring) {
     patch.rsvpGuestsCanBring = edited.rsvpGuestsCanBring === true;
   }
   const origRsvpWaitlistEnabled = original.rsvpWaitlistEnabled ?? false;
@@ -834,7 +833,7 @@ export const computeRichFieldDiffs = (
     } else if (key === "rsvpGuestsCanBring") {
       // #4508 — mirror editableDraftToPatch: absent = off, so an event saved
       // before the switch existed never shows a phantom change row.
-      if ((a ?? false) === (b ?? false)) continue;
+      if (!a === !b) continue;
     } else if (key === "coverGallery") {
       // #3288 — mirror editableDraftToPatch: no diff row against an UNKNOWN
       // original, so the summary never promises a change the save won't send.

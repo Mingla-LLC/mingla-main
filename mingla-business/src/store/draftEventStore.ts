@@ -607,7 +607,6 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   rsvpCapacity: null,
   rsvpAllowPlusOnes: false,
   rsvpPlusOnesMax: 0,
-  rsvpGuestsCanBring: false,
   rsvpWaitlistEnabled: false,
   rsvpApprovalMode: "auto",
   rsvpDiscoverable: false,
@@ -865,7 +864,6 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   rsvpCapacity: null,
   rsvpAllowPlusOnes: false,
   rsvpPlusOnesMax: 0,
-  rsvpGuestsCanBring: false,
   rsvpWaitlistEnabled: false,
   rsvpApprovalMode: "auto",
   rsvpDiscoverable: false,
@@ -890,7 +888,6 @@ const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
   rsvpCapacity: draft.rsvpCapacity ?? null,
   rsvpAllowPlusOnes: draft.rsvpAllowPlusOnes ?? false,
   rsvpPlusOnesMax: draft.rsvpPlusOnesMax ?? 0,
-  rsvpGuestsCanBring: draft.rsvpGuestsCanBring ?? false,
   rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled ?? false,
   rsvpApprovalMode: draft.rsvpApprovalMode ?? "auto",
   rsvpDiscoverable: draft.rsvpDiscoverable ?? false,
@@ -1029,7 +1026,6 @@ function migrateDraftsToV13(persistedState: unknown, version: number): Persisted
           | "rsvpCapacity"
           | "rsvpAllowPlusOnes"
           | "rsvpPlusOnesMax"
-          | "rsvpGuestsCanBring"
           | "rsvpWaitlistEnabled"
           | "rsvpApprovalMode"
           | "rsvpDiscoverable"
@@ -1043,7 +1039,6 @@ function migrateDraftsToV13(persistedState: unknown, version: number): Persisted
         rsvpCapacity: null,
         rsvpAllowPlusOnes: false,
         rsvpPlusOnesMax: 0,
-        rsvpGuestsCanBring: false,
         rsvpWaitlistEnabled: false,
         rsvpApprovalMode: "auto",
         rsvpDiscoverable: false,

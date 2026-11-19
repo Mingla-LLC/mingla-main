@@ -145,7 +145,6 @@ const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 const MultiDateDayChooser = React.lazy(() => import("./MultiDateDayChooser"));
 import {
   submitPublicRsvp,
-  lookupPublicRsvpGuest,
   submitRsvpContribution,
 } from "../../services/rsvpEvents";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
@@ -1672,7 +1671,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // issue #4508 1.2a / 1.8 — the live match under the guest number field. A
   // signed-out visitor learns only whether the number is on Mingla.
   const rsvpGuestLookup = useCallback(
-    (phone: string) => lookupPublicRsvpGuest(event.id, phone),
+    (phone: string) =>
+      import("../../services/rsvpGuestLookup").then((m) =>
+        m.lookupPublicRsvpGuest(event.id, phone),
+      ),
     [event.id],
   );
 

@@ -24,8 +24,8 @@ import type {
 } from "@mingla/offering-rendering";
 // issue #4508 — the pure guest model by subpath (no barrel, so partial jest
 // mocks of the barrel are unaffected).
+import { parseSubmittedGuests } from "@mingla/offering-rendering/rsvpGuestParse";
 import {
-  parseSubmittedGuests,
   type RsvpGuestLookupResult,
   type RsvpGuestPayload,
   type RsvpSubmittedGuest,

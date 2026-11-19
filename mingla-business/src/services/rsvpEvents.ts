@@ -11,8 +11,6 @@
 
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
-// issue #4508 — the pure guest model by subpath (keeps the barrel out of this service).
-import { parseSubmittedGuests } from "@mingla/offering-rendering/rsvpGuestCopy";
 import {
   getStoredAdMatchData,
   getStoredClickAttribution,
@@ -259,45 +257,10 @@ export const submitPublicRsvp = async (
             shortUrl: res.claim.shortUrl ?? null,
             code: res.claim.code ?? null,
           },
-    guests: parseSubmittedGuests(res.guests),
-  };
-};
-
-/**
- * issue #4508 1.2a / 1.8 — the live match under the RSVP guest number field
- * (public-submit-rsvp op `guest_lookup`). A signed-out visitor learns only
- * whether the number is on Mingla. Throws Error(code) on failure.
- */
-export const lookupPublicRsvpGuest = async (
-  eventId: string,
-  phone: string,
-): Promise<import("@mingla/offering-rendering").RsvpGuestLookupResult> => {
-  const { data, error } = await supabase.functions.invoke(
-    "public-submit-rsvp",
-    { body: { op: "guest_lookup", eventId, phone } },
-  );
-  if (error !== null) {
-    throw new Error(await readRsvpErrorCode(error as RsvpInvokeError));
-  }
-  const row = (data ?? {}) as Record<string, unknown>;
-  const user = row.user as Record<string, unknown> | null | undefined;
-  const text = (v: unknown): string | null =>
-    typeof v === "string" && v.trim().length > 0 ? v : null;
-  return {
-    valid: row.valid === true,
-    isYou: row.isYou === true,
-    onMingla: row.onMingla === true,
-    alreadyOnList: row.alreadyOnList === true,
-    released: row.released === true,
-    user:
-      user !== null && user !== undefined && typeof user.id === "string"
-        ? {
-            id: user.id,
-            displayName: text(user.displayName),
-            username: text(user.username),
-            avatarUrl: text(user.avatarUrl),
-          }
-        : null,
+    // On demand: the parser loads on demand, not with the boot payload.
+    guests: (
+      await import("@mingla/offering-rendering/rsvpGuestParse")
+    ).parseSubmittedGuests(res.guests),
   };
 };
 

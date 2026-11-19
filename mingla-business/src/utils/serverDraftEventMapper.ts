@@ -719,7 +719,7 @@ export const buildRsvpUpdatePayloadDiff = (
   if ((original.rsvpPlusOnesMax ?? 0) !== edited.rsvpPlusOnesMax) {
     payload.rsvpPlusOnesMax = edited.rsvpPlusOnesMax;
   }
-  if ((original.rsvpGuestsCanBring ?? false) !== (edited.rsvpGuestsCanBring === true)) {
+  if (!original.rsvpGuestsCanBring !== !edited.rsvpGuestsCanBring) {
     payload.rsvpGuestsCanBring = edited.rsvpGuestsCanBring === true;
   }
   if ((original.rsvpWaitlistEnabled ?? false) !== edited.rsvpWaitlistEnabled) {
@@ -1128,9 +1128,7 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     // #4508 — the events column is the truth (business_update_rsvp_graph writes
     // it there); the draft copy is only a fallback for a row read without it.
     rsvpGuestsCanBring:
-      typeof row.rsvp_guests_can_bring === "boolean"
-        ? row.rsvp_guests_can_bring
-        : asBoolean(businessDraft.rsvpGuestsCanBring, false),
+      row.rsvp_guests_can_bring ?? asBoolean(businessDraft.rsvpGuestsCanBring, false),
     rsvpWaitlistEnabled: asBoolean(businessDraft.rsvpWaitlistEnabled, false),
     rsvpApprovalMode:
       businessDraft.rsvpApprovalMode === "manual" ? "manual" : "auto",
