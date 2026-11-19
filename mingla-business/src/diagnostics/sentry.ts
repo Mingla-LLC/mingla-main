@@ -36,25 +36,19 @@ function isBrowser(): boolean {
 // #4514 — a guest form link carries its personal token in the URL fragment
 // (`/form/{id}#t=…`, web only). The link page removes it after reading; this
 // keeps any copy out of error reports and navigation or request breadcrumbs.
-const FORM_LINK_TOKEN = /([#&]t=)[0-9a-f]{64}/g;
-const scrubToken = (v: unknown): unknown =>
-  typeof v === "string" ? v.replace(FORM_LINK_TOKEN, "$1[redacted]") : v;
-type Crumb = { message?: unknown; data?: Record<string, unknown> | null };
-function scrubCrumb(crumb: Crumb): Crumb {
-  if (crumb.message !== undefined) crumb.message = scrubToken(crumb.message);
-  if (crumb.data) for (const k of Object.keys(crumb.data)) crumb.data[k] = scrubToken(crumb.data[k]);
-  return crumb;
-}
-function scrubEvent(event: {
-  request?: { url?: unknown } | null;
-  transaction?: unknown;
-  breadcrumbs?: Crumb[] | null;
-}): typeof event {
-  if (event.request && event.request.url !== undefined) event.request.url = scrubToken(event.request.url);
-  if (event.transaction !== undefined) event.transaction = scrubToken(event.transaction);
-  if (Array.isArray(event.breadcrumbs)) event.breadcrumbs.forEach(scrubCrumb);
-  return event;
-}
+const T = /([#&]t=)[0-9a-f]{64}/g;
+const s = (v: any): any => (typeof v === "string" ? v.replace(T, "$1[redacted]") : v);
+const c = (b: any): any => {
+  if (b.message) b.message = s(b.message);
+  for (const k in b.data) b.data[k] = s(b.data[k]);
+  return b;
+};
+const scrubEvent = (e: any): any => {
+  if (e.request) e.request.url = s(e.request.url);
+  if (e.transaction) e.transaction = s(e.transaction);
+  e.breadcrumbs?.forEach(c);
+  return e;
+};
 
 export function init(options?: unknown): void {
   if (!isBrowser()) return; // Node static-export: never load the web SDK
@@ -64,7 +58,7 @@ export function init(options?: unknown): void {
   void import("@sentry/browser")
     .then((mod) => {
       sdk = mod;
-      mod.init({ ...opts, beforeSend: scrubEvent, beforeBreadcrumb: scrubCrumb } as any);
+      mod.init({ ...opts, beforeSend: scrubEvent, beforeBreadcrumb: c } as any);
     })
     .catch(() => {
       /* never surface a diagnostics-loader failure to the user */
