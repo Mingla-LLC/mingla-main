@@ -57,8 +57,7 @@ const DIGEST = "d".repeat(64);
 const KEY = `publications/${SITE}/${PREVIEW_ID}/${DIGEST}.json`;
 const SECTIONS_KEY = `publications/${SITE}/${PREVIEW_ID}/${DIGEST}.sections`;
 const TOKEN = "T".repeat(43);
-const BOUNDARY = /<!--\/?\$-->/g;
-const OPEN = /<!--\$-->/g;
+const MARKER = /(?:<!-- -->)?\n\t\n/g;
 
 const asPreview = (artifact: unknown) => ({ ...(artifact as Record<string, unknown>), site_id: SITE, publication_id: PREVIEW_ID }) as unknown as SiteArtifact;
 const ids = (count: number, tag = "a") => Array.from({ length: count }, (_, index) => `${tag}${String(index).padStart(23, "0")}`);
@@ -76,7 +75,7 @@ beforeEach(() => {
 
 describe("#4453 D: the owner's preview marks its sections from Studio's list", () => {
   it.each([["haven (gallery page)", () => asPreview(galleryArtifact("haven"))], ["voyage (its own page)", () => asPreview(voyageSyntheticArtifact())]])(
-    "%s: every block gets a boundary and the bridge gets the ids in block order",
+    "%s: every block gets a marker and the bridge gets the ids in block order",
     async (_name, make) => {
       const artifact = make();
       const home = sitePages(artifact).find((page) => page.path === "")!;
@@ -86,7 +85,7 @@ describe("#4453 D: the owner's preview marks its sections from Studio's list", (
       stored(buildPreviewSections(DIGEST, [{ path: "", ids: homeIds }, { path: about.path, ids: ids(about.blocks.length, "b") }]));
       const html = await team(artifact, "");
       expect(readPrivateObject).toHaveBeenCalledWith("artifact-bucket", SECTIONS_KEY, "no-store");
-      expect(html.match(OPEN)!.length).toBeGreaterThanOrEqual(home.blocks.length);
+      expect(html.match(MARKER)).toHaveLength(home.blocks.length);
       expect(bridgeProps(html)).toEqual([{
         localMode: false,
         pagePath: "",
@@ -118,13 +117,17 @@ describe("#4453 D: the owner's preview marks its sections from Studio's list", (
     for (const [name, arrange] of cases) {
       arrange();
       const html = await team(artifact, "");
-      expect(html, name).not.toMatch(BOUNDARY);
+      expect(html, name).not.toMatch(MARKER);
       expect(bridgeProps(html), name).toEqual([{ localMode: false, pagePath: "", sections: [] }]);
       plain ??= html;
       expect(html, name).toBe(plain);
     }
-    // And the marked page is that same page plus comments (and the bridge's list).
-    const strip = (html: string) => html.replace(BOUNDARY, "").replace(/data-test-bridge="[^"]*"/g, "");
+    // And the marked page is that same page plus the markers (and the bridge's list).
+    // React's generated ids are renumbered by a marker (opaque labels); everything else is compared as it is.
+    const strip = (html: string) => {
+      const names = new Map<string, string>();
+      return html.replace(MARKER, "").replace(/data-test-bridge="[^"]*"/g, "").replace(/_R_[A-Za-z0-9]*_/g, (id) => names.get(id) ?? (names.set(id, `_R_${names.size}_`), names.get(id)!));
+    };
     expect(strip(marked)).toBe(strip(plain!));
   });
 
@@ -150,7 +153,7 @@ describe("#4453 D: nobody but the owner's preview gets section marks", () => {
     sharedPreviewForRequest.mockResolvedValue({ artifact, key: KEY, expiresAt: null });
     const html = renderToString(await SharedPreviewPage({ params: Promise.resolve({ token: TOKEN }), searchParams: Promise.resolve({ path: "" }) }) as ReactElement);
     expect(readPrivateObject).not.toHaveBeenCalled();
-    expect(html).not.toMatch(BOUNDARY);
+    expect(html).not.toMatch(MARKER);
     expect(html).not.toContain("data-test-bridge");
     expect(html).not.toContain("data-mingla-section");
   });

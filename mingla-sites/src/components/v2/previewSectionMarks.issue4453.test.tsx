@@ -8,20 +8,23 @@
  * The proof has three parts, each run against the real `SiteDocument`:
  *   1. Without a section list (the public site, a share link, the plan
  *      preview) the HTML carries no mark of any kind.
- *   2. With a section list, the HTML is THE SAME HTML plus React boundary
- *      comments: delete the comments and the two documents are equal,
- *      character for character. A comment has no box and no selector sees it
- *      (`>`, `+`, `:first-child`, `:nth-child`), so equal-minus-comments means
- *      equal pixels. (Before this change shipped, the unmarked HTML of all 93
- *      fixture pages was also compared, hash for hash, with the HTML the
- *      previous commit produced: identical.)
- *   3. The comments pair with the page's blocks one for one, including a
- *      block that draws nothing, so the n-th boundary IS the n-th section.
- * And the marks survive React taking over the page (hydration), which is
- * when the bridge reads them.
+ *   2. With a section list, the HTML is THE SAME HTML plus one whitespace
+ *      text marker before each section: delete the markers and the two
+ *      documents are equal, character for character. No selector sees a text
+ *      node (`>`, `+`, `:first-child`, `:nth-child`) and whitespace between
+ *      block-level sections makes no box, which the real-browser check
+ *      (e2e/preview-bridge) confirms pixel for pixel in every design.
+ *      (Before this change shipped, the unmarked HTML of all 93 fixture
+ *      pages was also compared, hash for hash, with the HTML the previous
+ *      commit produced: identical.)
+ *   3. The markers pair with the page's blocks one for one, including a
+ *      block that draws nothing, so the n-th marker IS the n-th section.
+ * And the marks are there both when React takes over the server's HTML
+ * (hydration) and when it draws the page again in the browser (what it does
+ * when the two disagree), which is when the bridge reads them.
  */
 import { act, type ReactElement } from "react";
-import { hydrateRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -37,7 +40,7 @@ import { galleryArtifact } from "../../designs/shared/galleryDesigns.fixture";
 import { groupReels } from "../../designs/atelier/AtelierPage";
 import { findSectionSlots } from "../../lib/previewBridge";
 import { sitePages, type ArtifactPage } from "../../lib/pageRouting";
-import { PreviewSection } from "./PreviewSection";
+import { PREVIEW_SECTION_MARKER, PreviewSection } from "./PreviewSection";
 import { SiteDocument } from "./SiteDocument";
 
 declare global {
@@ -55,7 +58,17 @@ const idsFor = (page: ArtifactPage): string[] => page.blocks.map((_, index) => `
 const marked = (page: ArtifactPage): ArtifactPage => ({ ...page, previewSectionIds: idsFor(page) });
 const draw = (artifact: ArtifactV2, page: ArtifactPage, render: (element: ReactElement) => string = renderToString): string =>
   render(<SiteDocument artifact={artifact} page={page} nonce="n" />);
-const BOUNDARY = /<!--\/?\$-->/g;
+/** A marker as the server writes it (React separates two text nodes in a row with an empty comment). */
+const MARKER = /(?:<!-- -->)?\n\t\n/g;
+/**
+ * The page without its markers. React's generated ids (`useId`, e.g. `_R_ilm_`) are opaque labels that
+ * tie a control to its description; a marker renumbers them, so they are renamed here in order of first
+ * appearance. Every element, attribute, class and text is compared as it is.
+ */
+const unmarked = (html: string): string => {
+  const names = new Map<string, string>();
+  return html.replace(MARKER, "").replace(/_R_[A-Za-z0-9]*_/g, (id) => names.get(id) ?? (names.set(id, `_R_${names.size}_`), names.get(id)!));
+};
 
 describe("#4453 D: section marks change nothing a visitor or an owner can see", () => {
   it("covers every design", () => {
@@ -70,21 +83,22 @@ describe("#4453 D: section marks change nothing a visitor or an owner can see", 
       expect(pages.length).toBeGreaterThan(0);
     });
 
-    it.each(pages.map((page) => [page.path || "(home)", page.path] as const))("/%s: no list, no marks; with a list, the same HTML plus comments", (_label, path) => {
+    it.each(pages.map((page) => [page.path || "(home)", page.path] as const))("/%s: no list, no marks; with a list, the same HTML plus markers", (_label, path) => {
       const artifact = make();
       const page = sitePages(artifact).find((candidate) => candidate.path === path)!;
       const plain = draw(artifact, page);
       // 1. A page with no section list carries nothing of the workspace.
-      expect(plain).not.toMatch(BOUNDARY);
+      expect(plain).not.toMatch(MARKER);
+      expect(plain).not.toContain("\t");
       expect(plain).not.toContain("data-mingla-section");
       // 2. The marked page is the same page: only comments were added.
       const withMarks = draw(artifact, marked(page));
       expect(withMarks).not.toContain("data-mingla-section");
-      expect(withMarks.replace(BOUNDARY, "")).toBe(plain);
-      expect(withMarks.length).toBeGreaterThan(plain.length);
-      // The static render (the design goldens' input) is the same document either way.
-      expect(draw(artifact, marked(page), renderToStaticMarkup)).toBe(draw(artifact, page, renderToStaticMarkup));
-      // 3. One boundary per block, in block order, where the bridge looks for them.
+      expect(unmarked(withMarks)).toBe(unmarked(plain));
+      expect(withMarks.match(MARKER)).toHaveLength(page.blocks.length);
+      // The static render (the design goldens' input) is the same document too.
+      expect(unmarked(draw(artifact, marked(page), renderToStaticMarkup))).toBe(unmarked(draw(artifact, page, renderToStaticMarkup)));
+      // 3. One marker per block, in block order, where the bridge looks for them.
       document.body.innerHTML = withMarks;
       const slots = findSectionSlots(document, page.blocks.length);
       expect(slots).not.toBeNull();
@@ -102,7 +116,7 @@ describe("#4453 D: section marks change nothing a visitor or an owner can see", 
     });
   });
 
-  it("pairs each boundary with its own block on a gallery Home (a block that draws nothing keeps its place)", () => {
+  it("pairs each marker with its own block on a gallery Home (a block that draws nothing keeps its place)", () => {
     const artifact = galleryArtifact("haven");
     const home = sitePages(artifact).find((page) => page.path === "")!;
     document.body.innerHTML = draw(artifact, marked(home));
@@ -129,7 +143,7 @@ describe("#4453 D: section marks change nothing a visitor or an owner can see", 
     expect(groupReels(page.blocks).some((group) => group.kind === "reels")).toBe(true);
     const plain = draw(artifact, page);
     const withMarks = draw(artifact, marked(page));
-    expect(withMarks.replace(BOUNDARY, "")).toBe(plain);
+    expect(unmarked(withMarks)).toBe(unmarked(plain));
     document.body.innerHTML = withMarks;
     const slots = findSectionSlots(document, page.blocks.length)!;
     expect(slots).toHaveLength(page.blocks.length);
@@ -149,33 +163,55 @@ describe("#4453 D: section marks change nothing a visitor or an owner can see", 
     expect(findSectionSlots(document, 0)).toBeNull();
   });
 
-  it("the marks are still in the page after React takes it over (they are what the bridge reads)", async () => {
-    const tree = (
-      <main id="main">
-        <PreviewSection marked><section id="one"><h2>One</h2></section></PreviewSection>
-        <PreviewSection marked>{null}</PreviewSection>
-        <PreviewSection marked><section id="three"><p>Three</p></section><aside id="three-b" /></PreviewSection>
-      </main>
-    );
+  const tree = (isMarked: boolean) => (
+    <main id="main">
+      <PreviewSection marked={isMarked}><section id="one"><h2>One</h2></section></PreviewSection>
+      <PreviewSection marked={isMarked}>{null}</PreviewSection>
+      <PreviewSection marked={isMarked}><section id="three"><p>Three</p></section><aside id="three-b" /></PreviewSection>
+    </main>
+  );
+  const slotIds = () => findSectionSlots(document, 3)!.map((roots) => roots.map((root) => root.id));
+
+  it("the marker is whitespace only, and the exact HTML is pinned", () => {
+    expect(PREVIEW_SECTION_MARKER).toBe("\n\t\n");
+    expect(PREVIEW_SECTION_MARKER.trim()).toBe("");
+    expect(renderToString(tree(true))).toBe('<main id="main">\n\t\n<section id="one"><h2>One</h2></section>\n\t\n<!-- -->\n\t\n<section id="three"><p>Three</p></section><aside id="three-b"></aside></main>');
+    expect(renderToString(tree(false))).toBe('<main id="main"><section id="one"><h2>One</h2></section><section id="three"><p>Three</p></section><aside id="three-b"></aside></main>');
+    // The static render joins neighbouring markers into one text node; the bridge still counts both.
+    document.body.innerHTML = renderToStaticMarkup(tree(true));
+    expect(slotIds()).toEqual([["one"], [], ["three", "three-b"]]);
+  });
+
+  it("the marks are in the page after React takes over the server's HTML, with no hydration error", async () => {
     const host = document.createElement("div");
     document.body.replaceChildren(host);
-    host.innerHTML = renderToString(tree);
-    // This pins the exact markers React writes: if a React upgrade changes them, this fails before a preview does.
-    expect(host.innerHTML).toBe('<main id="main"><!--$--><section id="one"><h2>One</h2></section><!--/$--><!--$--><!--/$--><!--$--><section id="three"><p>Three</p></section><aside id="three-b"></aside><!--/$--></main>');
+    host.innerHTML = renderToString(tree(true));
     const errors: unknown[] = [];
-    const root = await act(async () => hydrateRoot(host, tree, { onRecoverableError: (error) => errors.push(error) }));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    const root = await act(async () => hydrateRoot(host, tree(true), { onRecoverableError: (error) => errors.push(error) }));
     expect(errors).toEqual([]);
-    const slots = findSectionSlots(document, 3)!;
-    expect(slots.map((roots) => roots.map((root) => root.id))).toEqual([["one"], [], ["three", "three-b"]]);
-    // Unmarked, the same tree is the same elements with no comments at all.
-    expect(renderToString(
-      <main id="main">
-        <PreviewSection marked={false}><section id="one"><h2>One</h2></section></PreviewSection>
-        <PreviewSection marked={false}>{null}</PreviewSection>
-        <PreviewSection marked={false}><section id="three"><p>Three</p></section><aside id="three-b" /></PreviewSection>
-      </main>,
-    )).toBe('<main id="main"><section id="one"><h2>One</h2></section><section id="three"><p>Three</p></section><aside id="three-b"></aside></main>');
+    expect(slotIds()).toEqual([["one"], [], ["three", "three-b"]]);
+    // No element was added: the sections are still the container's only element children.
+    expect(Array.from(document.getElementById("main")!.children).map((child) => child.id)).toEqual(["one", "three", "three-b"]);
     act(() => root.unmount());
+  });
+
+  it("the marks are in the page when React draws it again in the browser (a disagreement with the server's HTML)", async () => {
+    // What React does after a hydration mismatch anywhere on the page: it throws the server's DOM away and renders afresh.
+    const host = document.createElement("div");
+    document.body.replaceChildren(host);
+    const root = createRoot(host);
+    await act(async () => root.render(tree(true)));
+    expect(slotIds()).toEqual([["one"], [], ["three", "three-b"]]);
+    expect(Array.from(document.getElementById("main")!.children).map((child) => child.id)).toEqual(["one", "three", "three-b"]);
+    // And a real mismatch recovers to a marked page.
+    const mismatched = document.createElement("div");
+    document.body.replaceChildren(mismatched);
+    mismatched.innerHTML = renderToString(tree(true)).replace("<h2>One</h2>", "<h2>Server said something else</h2>");
+    const errors: unknown[] = [];
+    const recovered = await act(async () => hydrateRoot(mismatched, tree(true), { onRecoverableError: (error) => errors.push(error) }));
+    expect(errors.length).toBeGreaterThan(0);
+    expect(document.getElementById("one")!.textContent).toBe("One");
+    expect(slotIds()).toEqual([["one"], [], ["three", "three-b"]]);
+    act(() => { root.unmount(); recovered.unmount(); });
   });
 });

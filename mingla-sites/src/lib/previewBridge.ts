@@ -1,4 +1,5 @@
 import { businessPreviewFrameAncestor, MINGLA_BUSINESS_ORIGIN, MINGLA_STUDIO_ORIGIN } from "./origins";
+import { PREVIEW_SECTION_MARKER } from "../components/v2/PreviewSection";
 import { previewParentAllowed, previewTokenDeclarations } from "./previewTokens";
 import {
   parsePreviewParentMessage,
@@ -63,24 +64,29 @@ type NativeBridge = { postMessage: (message: string) => void };
 type BridgeWindow = Window & { ReactNativeWebView?: NativeBridge };
 
 const NOT_SECTION_ROOTS = new Set(["SCRIPT", "TEMPLATE", "STYLE", "LINK", "META", "TITLE"]);
-const OPEN_BOUNDARY = new Set(["$", "$?", "$!", "$~"]);
+/** The text node the page writes before each section. */
+const SECTION_MARKER = PREVIEW_SECTION_MARKER;
 /** Room left above a section brought into view (a design's fixed header). */
 const SCROLL_HEADROOM = 88;
+/** "Ready" is said after two animation frames, or after this long when the browser gives the frame none. */
+const READY_FALLBACK_MS = 400;
 /** Above anything a design draws (its header, a sheet), below nothing. */
 const OVERLAY_Z = "2147483000";
 
-/** The elements between the top-level React boundaries of `container`, one list per boundary. */
-function boundarySlots(container: Element): Element[][] {
+/** How many section markers a text node holds (0 for any other text; adjacent markers may share one node). */
+function markersIn(text: string): number {
+  if (text.length === 0 || text.length % SECTION_MARKER.length !== 0) return 0;
+  const count = text.length / SECTION_MARKER.length;
+  return text === SECTION_MARKER.repeat(count) ? count : 0;
+}
+
+/** The elements after each section marker of `container`, one list per marker. */
+function markerSlots(container: Element): Element[][] {
   const slots: Element[][] = [];
-  let depth = 0;
   for (let node = container.firstChild; node; node = node.nextSibling) {
-    if (node.nodeType === 8) {
-      const data = (node as Comment).data;
-      if (OPEN_BOUNDARY.has(data)) {
-        if (depth === 0) slots.push([]);
-        depth += 1;
-      } else if (data === "/$" && depth > 0) depth -= 1;
-    } else if (node.nodeType === 1 && depth > 0 && !NOT_SECTION_ROOTS.has((node as Element).tagName)) {
+    if (node.nodeType === 3) {
+      for (let count = markersIn((node as Text).data); count > 0; count -= 1) slots.push([]);
+    } else if (node.nodeType === 1 && slots.length > 0 && !NOT_SECTION_ROOTS.has((node as Element).tagName)) {
       slots[slots.length - 1]!.push(node as Element);
     }
   }
@@ -90,8 +96,8 @@ function boundarySlots(container: Element): Element[][] {
 /**
  * The outermost element(s) of each section of the page, in block order, or
  * null when the page's sections cannot be told apart with certainty: the page
- * writes exactly one boundary per block (components/v2/PreviewSection.tsx),
- * so any other count means the markup is not what this code understands and
+ * writes exactly one marker per block (components/v2/PreviewSection.tsx), so
+ * any other count means the markup is not what this code understands and
  * NOTHING is marked (a wrong section is worse than none).
  */
 export function findSectionSlots(doc: Document, count: number): Element[][] | null {
@@ -101,7 +107,7 @@ export function findSectionSlots(doc: Document, count: number): Element[][] | nu
   // Gallery and Voyage pages hold their sections in <main>; Atelier in its `.page-content`.
   const containers = [main, ...Array.from(main.children).filter((child) => child.classList.contains("page-content"))];
   for (const container of containers) {
-    const slots = boundarySlots(container);
+    const slots = markerSlots(container);
     if (slots.length === count) return slots;
   }
   return null;
@@ -158,9 +164,27 @@ export function startPreviewBridge(options: PreviewBridgeOptions): () => void {
   const scrollX = (): number => Math.max(0, Math.round(win.scrollX || doc.documentElement.scrollLeft || 0));
   const docHeight = (): number => Math.round(Math.max(doc.documentElement.scrollHeight || 0, doc.body?.scrollHeight || 0));
 
+  /**
+   * The page's own box, in document pixels. A section can be wider than the
+   * page (a ticker, a full-bleed row the design clips), and a mark drawn at
+   * that size would give the page a sideways scroll it never had. So every
+   * section's box is cut to the page: what is reported and drawn is the part
+   * of the section that is on the page.
+   */
+  function pageBox(offsetX: number, offsetY: number): { left: number; top: number; right: number; bottom: number } | null {
+    const wrapper = doc.querySelector('[data-preview="1"]');
+    const width = doc.documentElement.clientWidth;
+    if (wrapper) {
+      const rect = wrapper.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) return { left: rect.left + offsetX, top: rect.top + offsetY, right: rect.right + offsetX, bottom: rect.bottom + offsetY };
+    }
+    return width > 0 ? { left: 0, top: 0, right: width, bottom: Infinity } : null;
+  }
+
   function measure(): Measured[] {
     const offsetY = win.scrollY || doc.documentElement.scrollTop || 0;
     const offsetX = win.scrollX || doc.documentElement.scrollLeft || 0;
+    const bounds = pageBox(offsetX, offsetY);
     return sectionRoots().map(({ id, type, roots }) => {
       let top = Infinity, left = Infinity, bottom = -Infinity, right = -Infinity;
       let drawn = false;
@@ -178,12 +202,20 @@ export function startPreviewBridge(options: PreviewBridgeOptions): () => void {
         const first = rects[0]!;
         top = first.top; left = first.left; bottom = first.bottom; right = first.right;
       }
+      let boxTop = top + offsetY, boxLeft = left + offsetX, boxBottom = bottom + offsetY, boxRight = right + offsetX;
+      if (bounds && boxRight > boxLeft && boxBottom > boxTop) {
+        const cutLeft = Math.max(boxLeft, bounds.left), cutRight = Math.min(boxRight, bounds.right);
+        const cutTop = Math.max(boxTop, bounds.top), cutBottom = Math.min(boxBottom, bounds.bottom);
+        // A section wholly off the page keeps its own box (nothing sensible to cut it to).
+        if (cutRight > cutLeft) { boxLeft = cutLeft; boxRight = cutRight; }
+        if (cutBottom > cutTop) { boxTop = cutTop; boxBottom = cutBottom; }
+      }
       return {
         id, type, roots,
-        top: Math.round(top + offsetY),
-        left: Math.round(left + offsetX),
-        width: Math.round(right - left),
-        height: Math.round(bottom - top),
+        top: Math.round(boxTop),
+        left: Math.round(boxLeft),
+        width: Math.round(boxRight - boxLeft),
+        height: Math.round(boxBottom - boxTop),
       };
     });
   }
@@ -657,16 +689,29 @@ export function startPreviewBridge(options: PreviewBridgeOptions): () => void {
     void doc.fonts?.ready?.then(onLayoutEvent, () => undefined);
   } catch { /* no font loading API */ }
 
-  // Two frames after mount, so the first numbers are of the laid-out page.
-  let readyHandle: number | null = raf(() => {
+  /*
+   * Two frames after mount, so the first numbers are of the laid-out page. A
+   * frame the browser is not painting (the workspace loads a rebuilt preview
+   * out of sight before it swaps it in) may get no animation frames at all,
+   * so a short timer says "ready" if they do not come.
+   */
+  let readyHandle: number | null = null;
+  const readyOnce = (): void => {
+    if (stopped || readySent) return;
+    win.clearTimeout(readyTimer);
+    sendReady();
+  };
+  const readyTimer = win.setTimeout(readyOnce, READY_FALLBACK_MS);
+  readyHandle = raf(() => {
     readyHandle = raf(() => {
       readyHandle = null;
-      if (!stopped) sendReady();
+      readyOnce();
     });
   });
 
   return () => {
     stopped = true;
+    win.clearTimeout(readyTimer);
     if (readyHandle !== null) cancelRaf(readyHandle);
     if (pending !== null) cancelRaf(pending);
     for (const stop of stops) stop();

@@ -33,14 +33,15 @@ let scroll = 0;
 let parent: { postMessage: ReturnType<typeof vi.fn> };
 let stop: (() => void) | null = null;
 
-/** The page as the server writes it: one boundary per block; the second block drew nothing; the third drew two elements. */
+/** The page as the server writes it: one marker per block; the second block drew nothing; the third drew two elements. */
+const M = "\n\t\n";
 function page(): void {
   document.body.innerHTML = `
     <div data-preview="1" data-page="home">
       <p class="preview-banner" role="status">Private preview</p>
       <div id="mg-scope">
         <header id="site-header"><a id="nav-link" href="#elsewhere">About</a></header>
-        <main id="main"><!--$--><section id="hero"><h1 id="hero-title">Wake up over the bay.</h1><p id="hero-sub">Wake up</p><a id="hero-link" href="#book">Book a stay</a><form id="hero-form" action="#search"><input id="hero-input" name="q"><button id="hero-submit" type="submit">Search</button></form><script>var x = "Wake up";</script></section><!--/$--><!--$--><!--/$--><!--$--><section id="faq"><h2 id="faq-title">Before you come</h2><!--$--><p id="faq-answer">A longtail from the pier.</p><!--/$--></section><aside id="faq-aside"><span id="faq-more">More</span></aside><!--/$--></main>
+        <main id="main">${M}<section id="hero"><h1 id="hero-title">Wake up over the bay.</h1><p id="hero-sub">Wake up</p><a id="hero-link" href="#book">Book a stay</a><form id="hero-form" action="#search"><input id="hero-input" name="q"><button id="hero-submit" type="submit">Search</button></form><script>var x = "Wake up";</script></section>${M}<!-- -->${M}<section id="faq"><h2 id="faq-title">Before you come</h2>${M}<p id="faq-answer">A longtail from the pier.</p></section><aside id="faq-aside"><span id="faq-more">More</span></aside></main>
         <footer id="site-footer"><a id="footer-link" href="#legal">Legal</a></footer>
       </div>
     </div>`;
@@ -159,6 +160,23 @@ describe("#4453 D frame → parent: mingla:preview-ready", () => {
   it("a page with no sections (an offering page) still answers", () => {
     ready({ pagePath: "trips/rome", sections: [] });
     expect(lastSent("mingla:preview-ready")).toEqual({ type: "mingla:preview-ready", page_path: "trips/rome", sections: [], scroll_y: 0, doc_height: 1300 });
+  });
+
+  it("a frame the browser is not painting (no animation frames) still says ready, once", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 0);
+    start();
+    vi.advanceTimersByTime(399);
+    expect(parent.postMessage).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(sent("mingla:preview-ready").map(([, origin]) => origin)).toEqual([HOST, STUDIO]);
+    vi.advanceTimersByTime(5_000);
+    expect(sent("mingla:preview-ready")).toHaveLength(2);
+  });
+
+  it("with animation frames, ready is said once (the fallback timer does not say it again)", () => {
+    ready();
+    vi.advanceTimersByTime(5_000);
+    expect(sent("mingla:preview-ready").map(([, origin]) => origin)).toEqual([HOST, STUDIO]);
   });
 
   it("when the browser did not name the parent, a parent that speaks later gets 'ready' then", () => {
@@ -506,6 +524,26 @@ describe("#4453 D parent → frame: mingla:preview-marks", () => {
     fromParent({ type: "mingla:preview-marks", selected: null, ari: A, unread: [] });
     expect(animate).toHaveBeenCalledTimes(1);
     expect(chip(A)).toBe("Ari is changing this");
+  });
+
+  it("a section wider or taller than the page is cut to the page: a mark never gives the page a scroll it did not have", () => {
+    Object.defineProperty(document.documentElement, "clientWidth", { value: 1000, configurable: true });
+    const wrapper = document.querySelector<HTMLElement>('[data-preview="1"]')!;
+    wrapper.id = "wrapper";
+    rects.set("wrapper", { top: 0, left: 0, width: 1000, height: 1300 });
+    // A ticker 2400 px wide that the design clips, starting left of the page; and a last section that runs past the page's end.
+    rects.set("hero", { top: 80, left: -700, width: 2400, height: 600 });
+    rects.set("faq-aside", { top: 980, left: 40, width: 400, height: 900 });
+    ready();
+    expect(lastSent("mingla:preview-ready")!.sections).toEqual([{ id: A, type: "hero", top: 80, height: 600 }, { id: C, type: "faq", top: 680, height: 620 }]);
+    fromParent({ type: "mingla:preview-marks", selected: A, ari: null, unread: [{ id: C, by: "ari" }] });
+    expect([mark(A)!.style.left, mark(A)!.style.width]).toEqual(["0px", "1000px"]);
+    expect([mark(C)!.style.top, mark(C)!.style.height]).toEqual(["680px", "620px"]);
+    fromParent({ type: "mingla:preview-mode", edit: true });
+    click($("hero-title"));
+    expect(lastSent("mingla:preview-select")!.rect).toEqual({ top: 80, left: 0, width: 1000, height: 600 });
+    expect(buttons().map((button) => [button.style.left, button.style.width])).toEqual([["0px", "1000px"], ["40px", "920px"]]);
+    delete (document.documentElement as unknown as { clientWidth?: unknown }).clientWidth;
   });
 
   it("marks follow their section when the layout moves", () => {
