@@ -152,11 +152,14 @@ export async function fetchPublicVenueSlots(
   venueId: string,
   date: string,
   partySize: number,
+  spaceId: string | null = null,
 ): Promise<AvailableSlot[]> {
   const { data, error } = await supabase.rpc("pg_venue_available_slots", {
     p_venue_id: venueId,
     p_date: date,
     p_party_size: partySize,
+    // #4490 P5 — a seating area narrows the times (sent only when chosen).
+    ...(spaceId !== null ? { p_space_id: spaceId } : {}),
   });
   if (error !== null) throw error;
   return (
@@ -207,6 +210,9 @@ export async function createGuestVenueReservation(
           organicJourneyToken: input.organicJourneyToken ?? null,
           discountCode: input.discountCode ?? null,
           quoteDigest: input.quoteDigest ?? null,
+          ...(input.tableIds != null && input.tableIds.length > 0 ? { tableIds: input.tableIds } : {}),
+          ...(input.spaceId != null ? { spaceId: input.spaceId } : {}),
+          ...(input.requestLargeParty === true ? { requestLargeParty: true } : {}),
         },
       },
     );

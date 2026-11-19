@@ -54,6 +54,7 @@ import {
   orderLinesByOptions,
   summaryLines,
   venueAddressLine,
+  venueClock,
   venueOfferErrorCopy,
   visitViewFor,
   type EntryBooking,
@@ -93,6 +94,7 @@ import { VenueOfferPassQr } from "./VenueOfferPassQr";
 import { PayModeChoice } from "./PayModeChoice";
 import { VisitBalanceCard, VisitChanges, VisitPackageFacts } from "./VisitPackageParts";
 import { HireFacts, HireStateMain, HireTracker } from "./VisitHireParts";
+import { parseHourFacts, releaseLine } from "./hourGuestModel";
 
 const POLL_MS = 2000;
 const POLL_WINDOW_MS = 30_000;
@@ -210,6 +212,8 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
   const pkg = useMemo(() => parsePackageBooking(load.status === "ready" ? load.raw : null), [load]);
   // #4490 P4 — the private hire part (null for other kinds).
   const hire = useMemo(() => parseHireBooking(load.status === "ready" ? load.raw : null), [load]);
+  // #4490 P5 — the by-the-hour part (null for other kinds).
+  const hourFacts = useMemo(() => parseHourFacts(load.status === "ready" ? load.raw : null), [load]);
   const [withdrawing, setWithdrawing] = useState(false);
   const [payMode, setPayMode] = useState<"deposit" | "full">("deposit");
   const [changeNote, setChangeNote] = useState<string | null>(null);
@@ -546,6 +550,23 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
           })}
         />
       )}
+      {hourFacts !== null ? (
+        <View style={styles.hourFacts} testID="issue-4490-visit-hour">
+          {hourFacts.placeName !== null ? (
+            <Text style={[styles.small, { color: palette.primaryText }]}>{hourFacts.placeName}</Text>
+          ) : null}
+          {hourFacts.bookedFrom !== null && hourFacts.bookedTo !== null ? (
+            <Text style={[styles.small, { color: palette.primaryText }]}>
+              {`${venueClock(hourFacts.bookedFrom, booking.venue.timezone) ?? ""}–${venueClock(hourFacts.bookedTo, booking.venue.timezone) ?? ""}${hourFacts.minutes !== null ? ` · ${hourFacts.minutes % 60 === 0 ? `${hourFacts.minutes / 60} ${hourFacts.minutes === 60 ? "hour" : "hours"}` : `${hourFacts.minutes} minutes`}` : ""}`}
+            </Text>
+          ) : null}
+          {hourFacts.released ? (
+            <Text style={[styles.small, { color: palette.secondaryText }]}>Nobody checked in, so this time went back on sale.</Text>
+          ) : releaseLine(hourFacts.noShowReleaseMinutes) !== null ? (
+            <Text style={[styles.small, { color: palette.secondaryText }]}>{releaseLine(hourFacts.noShowReleaseMinutes)}</Text>
+          ) : null}
+        </View>
+      ) : null}
       {hire === null ? <VisitPackageFacts booking={booking} pkg={pkg} palette={palette} exponent={exponent} /> : null}
       {view.kind === "confirmed" && booking.paidMinor > 0 && booking.guest.email !== null ? (
         <Text style={[styles.small, { color: palette.secondaryText }]} testID="issue-4490-visit-receipt">
@@ -669,7 +690,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               palette={palette}
               theme={theme}
               label="Start again"
-              onPress={() => router.replace(`${venuePath}?tab=${hire !== null ? "hire" : pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
+              onPress={() => router.replace(`${venuePath}?tab=${hire !== null ? "hire" : hourFacts !== null ? "by_the_hour" : pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
             />
           ) : null}
         </View>
@@ -856,7 +877,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               theme={theme}
               variant="secondary"
               label={`Book ${booking.venue.name} again`}
-              onPress={() => router.push(`${venuePath}?tab=${hire !== null ? "hire" : pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
+              onPress={() => router.push(`${venuePath}?tab=${hire !== null ? "hire" : hourFacts !== null ? "by_the_hour" : pkg.offerKind === "group_package" ? "groups" : "entry"}` as never)}
             />
           ) : null}
         </View>
@@ -1006,6 +1027,7 @@ function ActionRow({
 }
 
 const styles = StyleSheet.create({
+  hourFacts: { gap: space[1] },
   host: { flex: 1 },
   content: { width: "100%", maxWidth: 1040, alignSelf: "center", paddingHorizontal: space[4], gap: space[4] },
   eyebrow: { ...type.label },

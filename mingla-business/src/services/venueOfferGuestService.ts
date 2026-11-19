@@ -180,6 +180,52 @@ export const venueOfferGuestService = {
     );
   },
 
+  /** #4490 P5 — a by-the-hour day line: the hour day plus its price per hour. */
+  async hourDay(input: { offeringId: string; date: string; guests: number | null }): Promise<{ day: HireHourDay; priceMinor: number | null } | null> {
+    const raw = await invoke({
+      action: "hour_day",
+      offeringId: input.offeringId,
+      date: input.date,
+      ...(input.guests !== null ? { guests: input.guests } : {}),
+    });
+    const day = parseHireHourDay(raw);
+    if (day === null) return null;
+    const price = raw !== null && typeof raw === "object" ? (raw as { priceMinor?: unknown }).priceMinor : null;
+    return { day, priceMinor: typeof price === "number" && Number.isFinite(price) ? price : null };
+  },
+
+  /** #4490 P5 — quote a by-the-hour booking by its start and length (the server makes its window). */
+  async hourQuote(input: {
+    offeringId: string;
+    startsAt: string;
+    minutes: number;
+    guests: number;
+    priceOptionId: string | null;
+    cartKey: string;
+    idempotencyKey: string;
+  }): Promise<{ quote: EntryQuote; placeName: string | null; hoursMinor: number | null; pricePerHourMinor: number | null }> {
+    const raw = await invoke({
+      action: "quote",
+      offeringId: input.offeringId,
+      startsAt: input.startsAt,
+      minutes: input.minutes,
+      lines: [{ guests: input.guests, ...(input.priceOptionId !== null ? { priceOptionId: input.priceOptionId } : {}) }],
+      extras: [],
+      cartKey: input.cartKey,
+      idempotencyKey: input.idempotencyKey,
+    });
+    const quote = parseEntryQuote(raw);
+    if (quote === null) throw new VenueOfferGuestError("offer_request_failed", null);
+    const hour = raw !== null && typeof raw === "object" ? (raw as { hour?: Record<string, unknown> }).hour ?? null : null;
+    const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    return {
+      quote,
+      placeName: hour !== null && typeof hour.placeName === "string" ? hour.placeName : null,
+      hoursMinor: hour !== null ? num(hour.hoursMinor) : null,
+      pricePerHourMinor: hour !== null ? num(hour.pricePerHourMinor) : null,
+    };
+  },
+
   /** #4490 P4 — the guest withdraws a request (or an approved hold not yet paid). */
   async withdraw(input: { groupId: string; token: string | null }): Promise<void> {
     await invoke({ action: "withdraw", groupId: input.groupId, ...(input.token ? { token: input.token } : {}) });

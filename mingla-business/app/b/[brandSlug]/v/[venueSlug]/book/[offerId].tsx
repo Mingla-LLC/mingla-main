@@ -19,6 +19,8 @@ import { parseHireRequestParams } from "@mingla/brand-rendering/venueOffers/hire
 import { HireRequest } from "../../../../../../src/components/venue/offers/HireRequest";
 import { OfferCheckout } from "../../../../../../src/components/venue/offers/OfferCheckout";
 import { PackageCheckout } from "../../../../../../src/components/venue/offers/PackageCheckout";
+import { HourCheckout } from "../../../../../../src/components/venue/offers/HourCheckout";
+import { parseHourCheckoutParams } from "../../../../../../src/components/venue/offers/hourGuestModel";
 import { parseEntryCheckoutParams } from "../../../../../../src/components/venue/offers/entryCheckoutPath";
 import { PublicVenueNotFound } from "../../../../../../src/components/venue/PublicVenueNotFound";
 
@@ -45,7 +47,11 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
     pay?: string | string[];
     // #4490 P4 — a private hire choice (`k=hire&d=&w=&g=&o=`).
     o?: string | string[];
+    // #4490 P5 — a by-the-hour choice (`k=hour&d=&s=&m=&g=`).
+    s?: string | string[];
+    m?: string | string[];
   }>();
+  const hourChoice = parseHourCheckoutParams(params);
   const hireChoice = parseHireRequestParams(params);
   const packageChoice = parsePackageCheckoutParams(params);
   const brandSlug = one(params.brandSlug);
@@ -62,7 +68,16 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
         <title>Checkout · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
-      {hireChoice !== null ? (
+      {hourChoice !== null ? (
+        <HourCheckout
+          brandSlug={brandSlug}
+          venueSlug={venueSlug}
+          offerId={offerId.toLowerCase()}
+          choice={hourChoice}
+          safeTop={insets.top}
+          safeBottom={insets.bottom}
+        />
+      ) : hireChoice !== null ? (
         <HireRequest
           brandSlug={brandSlug}
           venueSlug={venueSlug}

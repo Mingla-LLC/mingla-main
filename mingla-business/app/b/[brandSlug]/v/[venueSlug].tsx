@@ -98,6 +98,7 @@ import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
+import { tablesBlockChangesFlow } from "../../../../src/components/venue/offers/tablePickModel";
 import { ShareModal } from "../../../../src/components/ui/ShareModal";
 import { useThemeFont } from "../../../../src/theme/useThemeFont";
 import { OptionalFeatureBoundary } from "../../../../src/components/brandContact/OptionalFeatureBoundary";
@@ -146,6 +147,12 @@ const VenueEntryPane = React.lazy(() =>
 const VenueHirePane = React.lazy(() =>
   import("../../../../src/components/venue/offers/VenueHirePane").then(
     (module) => ({ default: module.VenueHirePane }),
+  ),
+);
+// #4490 P5 — the By the hour tab's flow, lazy for the same reason.
+const VenueHourPane = React.lazy(() =>
+  import("../../../../src/components/venue/offers/VenueHourPane").then(
+    (module) => ({ default: module.VenueHourPane }),
   ),
 );
 // #4490 P3 — the Groups tab's booking flow, lazy for the same reason.
@@ -593,9 +600,20 @@ function PublicVenueRouteBody(): React.ReactElement {
           palette={context.palette}
           // issue #4420 wave 2 (D-V3) — the Reservations tab's live bar.
           onReservationBarChange={context.onReservationBarChange}
+          // #4490 P5 — the venue's tables block (party cap, pick a table,
+          // waitlist). Sent only when the venue has one, so a venue without
+          // it renders byte-for-byte as before (#1559 parity).
+          {...(features?.tables != null && tablesBlockChangesFlow(features.tables)
+            ? {
+                tables: features.tables,
+                brandSlug: typeof brandSlug === "string" ? brandSlug : null,
+                venueSlug: typeof venueSlug === "string" ? venueSlug : null,
+                venueName: venue?.name ?? null,
+              }
+            : {})}
         />
       ),
-    [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room],
+    [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room, features?.tables, brandSlug, venueSlug, venue?.name],
   );
 
   // #4490 P2 — the Entry tab: pick a day and guests, then checkout.
@@ -663,6 +681,32 @@ function PublicVenueRouteBody(): React.ReactElement {
           }
         >
           <VenueHirePane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
+  // #4490 P5 — the By the hour tab: place, day, start, length, then checkout.
+  const renderHourBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueHourPane
             brandSlug={brandSlug}
             venueSlug={venueSlug}
             offers={context.offers}
@@ -794,6 +838,7 @@ function PublicVenueRouteBody(): React.ReactElement {
       entryBody={renderEntryBody}
       groupsBody={renderGroupsBody}
       hireBody={renderHireBody}
+      hourBody={renderHourBody}
       refreshState={
         routeState === "populated-error"
           ? "error"

@@ -19,6 +19,12 @@ import {
 import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { Button } from "../../../src/components/ui/Button";
 import { BuyerClaimCard } from "../../../src/components/offering/LazyPublicParts";
+import {
+  clearPending,
+  readPendingForDraft,
+  type PendingTableBooking,
+} from "../../../src/components/venue/offers/tablePendingReturn";
+import { useRouter } from "expo-router";
 
 type State = "loading" | "completed" | "pending" | "error";
 
@@ -40,6 +46,12 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
   const [state, setState] = useState<State>("loading");
   const [completedResult, setCompletedResult] =
     useState<GuestReservationConfirmResult | null>(null);
+  const router = useRouter();
+  // #4490 P5 — the table, hold and minimum spend this device booked with
+  // (kept before the payment page; read once, before the address is scrubbed).
+  const [pending] = useState<PendingTableBooking | null>(() =>
+    typeof reservationDraftId === "string" ? readPendingForDraft(reservationDraftId) : null,
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -71,6 +83,7 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
       );
       if (result.status === "completed") {
         setCompletedResult(result);
+        if (pending !== null) clearPending(pending);
         captureWeb("venue_reservation_completed", {
           surface: "buyer_web",
           brand_id: typeof brandId === "string" ? brandId : null,
@@ -85,7 +98,7 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
         result_class: "confirm_failed",
       });
     }
-  }, [brandId, buyerStatusToken, reservationDraftId]);
+  }, [brandId, buyerStatusToken, pending, reservationDraftId]);
 
   useEffect(() => {
     void confirm();
@@ -115,6 +128,11 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
         ) : state === "completed" ? (
           <>
             <Text style={styles.title}>{BUYER_CLAIM_COPY.venue.title}</Text>
+            {pending !== null && pending.summary.length > 0 ? (
+              <Text style={styles.body} testID="reserve-confirm-table">{pending.summary}</Text>
+            ) : null}
+            {pending?.holdLine != null ? <Text style={styles.body}>{pending.holdLine}</Text> : null}
+            {pending?.minSpendLine != null ? <Text style={styles.body}>{pending.minSpendLine}</Text> : null}
             {completedResult !== null ? (
               <BuyerClaimCard
                 kind="booking"
@@ -155,6 +173,18 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
               check the payment.
             </Text>
             <Button label="Try again" onPress={() => void confirm()} />
+            {/* #4490 P5 — never a dead end: the venue page finishes it on this device. */}
+            <Text style={styles.body}>
+              Your confirmation also comes by email. You can check the payment again from the venue page on this device.
+            </Text>
+            {pending?.venuePath != null ? (
+              <Button
+                label={`Back to ${pending.venueName ?? "the venue"}`}
+                variant="secondary"
+                onPress={() => router.replace(pending.venuePath as never)}
+                testID="reserve-confirm-back"
+              />
+            ) : null}
           </>
         )}
       </ScrollView>
