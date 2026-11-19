@@ -1401,7 +1401,7 @@ DECLARE
 BEGIN
   SELECT * INTO v_f FROM public.brand_forms WHERE id = p_form_id AND status IN ('live', 'closed');
   IF NOT FOUND THEN RAISE EXCEPTION 'form_not_found' USING ERRCODE = 'P0002'; END IF;
-  IF v_kind NOT IN ('rsvp', 'order', 'user') OR (p_subject->>'id') !~ '^[0-9a-fA-F-]{36}$' THEN
+  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order', 'user') OR COALESCE(p_subject->>'id', '') !~ '^[0-9a-fA-F-]{36}$' THEN
     RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
   END IF;
   v_id := (p_subject->>'id')::uuid;
@@ -1539,7 +1539,7 @@ DECLARE
   v_uuid constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 BEGIN
   IF public.brand_forms_switched_off() THEN RAISE EXCEPTION 'forms_paused' USING ERRCODE = '55000'; END IF;
-  IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR (p->>'formId') !~ v_uuid
+  IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR COALESCE(p->>'formId', '') !~ v_uuid
      OR jsonb_typeof(v_cred) IS DISTINCT FROM 'object' THEN
     RAISE EXCEPTION 'credential_invalid' USING ERRCODE = '22023';
   END IF;
@@ -1592,7 +1592,7 @@ BEGIN
   ELSE
     RAISE EXCEPTION 'credential_invalid' USING ERRCODE = '22023';
   END IF;
-  IF v_kind NOT IN ('rsvp', 'order', 'user') THEN
+  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order', 'user') THEN
     -- [TRANSITIONAL] plus-ones (rsvp_guest) answer after claiming: needs #4508's
     -- claimed_at; lifted in wave 5 once #4508 is on main.
     RAISE EXCEPTION 'subject_unavailable' USING ERRCODE = '22023';
@@ -1693,7 +1693,7 @@ DECLARE
   v_added boolean := false;
 BEGIN
   PERFORM public.brand_form_door_authority(p_actor_id, p_event_id);
-  IF v_kind NOT IN ('rsvp', 'order') OR (p_subject->>'id') !~ '^[0-9a-fA-F-]{36}$' THEN
+  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ '^[0-9a-fA-F-]{36}$' THEN
     RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
   END IF;
   v_sid := (p_subject->>'id')::uuid;
@@ -1751,7 +1751,7 @@ DECLARE
   v_out jsonb;
 BEGIN
   v_rank := public.brand_form_door_authority(p_actor_id, p_event_id);
-  IF v_kind NOT IN ('rsvp', 'order') OR (p_subject->>'id') !~ '^[0-9a-fA-F-]{36}$'
+  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ '^[0-9a-fA-F-]{36}$'
      OR COALESCE(p_via, '') NOT IN ('scan', 'search') THEN
     RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
   END IF;
