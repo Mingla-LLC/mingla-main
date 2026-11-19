@@ -13,6 +13,9 @@ import {
   parseGuestMessageContext,
   resolveGuestMessage,
 } from "../guestInvite.ts";
+import { alertFriendGoingFailures } from "../friendGoingFailureAlert.ts";
+import { buildRsvpPassMessage } from "../../_shared/rsvpPassMessage.ts";
+import type { OpsAlertEmailInput } from "../../_shared/stripeOpsAlertEmail.ts";
 
 const assert: (condition: unknown, message: string) => asserts condition = (
   condition,
@@ -286,11 +289,135 @@ Deno.test("S3: the reminder email to a guest with an email reads as a reminder w
   );
 });
 
-Deno.test("P3-5: rsvp-notify reports friend-going enqueue failures", async () => {
+// R-5: a friend-going enqueue failure raises ONE ops alert through the shared
+// helper, and is marked reported only after the alert went out.
+function alertClient(rows: unknown[]) {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  return {
+    calls,
+    client: {
+      rpc: (name: string, args: Record<string, unknown>) => {
+        calls.push({ name, args });
+        return Promise.resolve(
+          name === "issue_4508_list_friend_going_failures"
+            ? { data: rows, error: null }
+            : { data: rows.length, error: null },
+        );
+      },
+    },
+  };
+}
+const FAILURES = [
+  { failure_id: 7, event_id: "45080000-1111-4111-8111-111111111111", sql_state: "23505" },
+  { failure_id: 3, event_id: null, sql_state: "XX000" },
+];
+
+Deno.test("R-5: a failure raises one ops alert, then is marked reported", async () => {
+  const { calls, client } = alertClient(FAILURES);
+  const sent: OpsAlertEmailInput[] = [];
+  const outcome = await alertFriendGoingFailures(client, {
+    send: (input) => {
+      sent.push(input);
+      return Promise.resolve({ attempted: 1, succeeded: 1, failed: 0 });
+    },
+    recipients: () => ["ops@example.test"],
+  });
+  assert(outcome === "sent", outcome);
+  assert(sent.length === 1 && sent[0].recipients[0] === "ops@example.test",
+    "one alert to the existing recipients");
+  assert(
+    sent[0].paragraphs.some((p) => p.includes("SQLSTATE 23505")) &&
+      !sent[0].paragraphs.join(" ").includes("@") &&
+      /^issue4508:friend-going:[0-9a-f]{64}$/.test(sent[0].idempotencyKey ?? ""),
+    "ids and SQL states only, with an idempotency key",
+  );
+  const mark = calls.find((c) => c.name === "issue_4508_mark_friend_going_failures_reported");
+  assert(
+    mark !== undefined && JSON.stringify(mark.args.p_ids) === "[3,7]" &&
+      calls.indexOf(mark) === calls.length - 1,
+    "marked after the alert, every listed id: " + JSON.stringify(calls),
+  );
+});
+
+Deno.test("R-5: a failed alert leaves the failures unreported for the next tick", async () => {
+  for (const send of [
+    () => Promise.resolve({ attempted: 1, succeeded: 0, failed: 1 }),
+    () => Promise.reject(new Error("resend down")),
+  ]) {
+    const { calls, client } = alertClient(FAILURES);
+    const outcome = await alertFriendGoingFailures(client, {
+      send,
+      recipients: () => ["ops@example.test"],
+    });
+    assert(outcome === "send_failed", outcome);
+    assert(
+      !calls.some((c) => c.name === "issue_4508_mark_friend_going_failures_reported"),
+      "nothing is marked when the alert did not go out",
+    );
+  }
+  const quiet = alertClient([]);
+  let sends = 0;
+  assert(
+    await alertFriendGoingFailures(quiet.client, {
+      send: () => {
+        sends += 1;
+        return Promise.resolve({ attempted: 1, succeeded: 1, failed: 0 });
+      },
+    }) === "none" && sends === 0,
+    "no failures, no alert",
+  );
+});
+
+Deno.test("R-5 wiring: the tick raises the alert instead of only logging", async () => {
   const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   assert(
-    /"issue_4508_take_friend_going_failures"/.test(src) &&
-      /friend-going enqueue failed/.test(src),
-    "each recorded failure is reported once",
+    /await alertFriendGoingFailures\(admin\);/.test(src) &&
+      !/friend-going enqueue failed/.test(src),
+    "rsvp-notify calls the ops-alert path",
+  );
+});
+
+// R-11: the guest pass email (and its text) names the lead only through the
+// inviter-name rule, never the raw name a signed-out inviter typed.
+Deno.test("R-11: the guest pass message uses the safe inviter name", () => {
+  const base = {
+    reason: "going" as const,
+    title: "Rooftop Night",
+    brandName: "Host",
+    recipientName: null,
+    recipientEmail: "guest@example.test",
+    recipientPhoneLast4: "4502",
+    claimed: false,
+    buttonUrl: "https://usemingla.com/c/ABCDEFGHJK",
+    smsLink: "usemingla.com/c/ABCDEFGHJK",
+    date: "Fri 4 Dec",
+    time: "8:00 PM",
+    when: "Fri 4 Dec, 8:00 PM",
+    place: null,
+  };
+  const hostile = buildRsvpPassMessage({
+    ...base,
+    guest: true,
+    leadName: "Ann <a href=x.co>visit evil.co</a> 9 Zed",
+  });
+  const line = hostile.body.details?.lines?.[0] ?? "";
+  assert(
+    line.endsWith(" added you to the list.") &&
+      /^[\p{L} '\-]{1,24}( [A-Z]\.)? added you to the list\.$/u.test(line),
+    "letters only, at most 24, in the email line: " + line,
+  );
+  assert(
+    !/<|>|x\.co|evil\.co/.test(hostile.sms),
+    "no markup or link in the text: " + hostile.sms,
+  );
+  const empty = buildRsvpPassMessage({ ...base, guest: true, leadName: "!!! 123 ???" });
+  assert(
+    empty.body.details?.lines?.[0] === "A friend added you to the list.",
+    "nothing safe left reads A friend: " + JSON.stringify(empty.body.details?.lines),
+  );
+  const plain = buildRsvpPassMessage({ ...base, guest: true, leadName: "Ada Obi" });
+  assert(
+    plain.body.details?.lines?.[0] === "Ada Obi added you to the list.",
+    "a normal name is unchanged",
   );
 });

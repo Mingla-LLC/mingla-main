@@ -10,6 +10,7 @@
 // The link is the guest's short claim link (usemingla.com/c/<code>).
 
 import { fitTitleToSegment, toGsm7Text } from "../_shared/sms/buyerSms.ts";
+import { inviterForText } from "../_shared/rsvpInviterName.ts";
 import { formatMessageTime } from "../_shared/messageTime.ts";
 
 export interface GuestCopy {
@@ -33,28 +34,9 @@ export interface GuestMessageContext {
   smsHold?: string | null;
 }
 
-const INVITER_LIMIT = 24;
-
-/**
- * "Ada O." made safe for one GSM-7 segment; "A friend" when unknown. P2-2:
- * whatever reaches a Mingla-branded text is letters, spaces, hyphens and
- * apostrophes, plus one trailing last initial ("O."), at most 24 characters,
- * so no link, number or markup can ride in a name (the database applies the
- * same rule; this is the second line).
- */
-export function inviterForText(label: string | null | undefined): string {
-  const raw = toGsm7Text(label ?? "").trim();
-  const initial = /\s([A-Za-z])\.$/.exec(raw);
-  const head = (initial ? raw.slice(0, initial.index) : raw)
-    .replace(/[^\p{L} '\-]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (head.length === 0) return "A friend";
-  const withInitial = initial ? `${head} ${initial[1].toUpperCase()}.` : head;
-  const bounded = Array.from(withInitial).slice(0, INVITER_LIMIT).join("")
-    .trim();
-  return bounded.length > 0 ? bounded : "A friend";
-}
+// R-11: the inviter-name rule lives in _shared so the guest pass email uses
+// the very same one.
+export { inviterForText };
 
 export function parseGuestMessageContext(
   data: unknown,

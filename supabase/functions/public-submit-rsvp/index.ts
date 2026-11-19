@@ -44,8 +44,14 @@ import {
   mapGuestRpcError,
   parseGuests,
   rsvpClientKey,
+  shapeSubmitGuest,
+  signedOutGuestGate,
 } from "./guestPayload.ts";
 import { handleGuestOp, isGuestOp } from "./guestOps.ts";
+// #4508 R-4 — the caller's address, read the one way the repo reads it.
+import { requestClientIp } from "../_shared/ticketLinkToken.ts";
+// #4508 R-9 — a plus-one's pass name follows the 1.11 rule.
+import { rsvpGuestDisplayName } from "../_shared/rsvpGuestName.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -124,8 +130,9 @@ serve(async (req: Request): Promise<Response> => {
     return json(500, { error: "server_misconfigured" });
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "unknown";
+  // #4508 R-4: the same address rule as _shared/ticketLinkToken.ts (the
+  // platform's connecting-IP header first), never a second rule.
+  const ip = requestClientIp(req);
   if (rateLimited(ip)) {
     return json(429, { error: "rate_limited" });
   }
@@ -375,6 +382,25 @@ serve(async (req: Request): Promise<Response> => {
   // a salted hash of their network address (never the number they typed);
   // the database reads it from this request header.
   const inviterClient = await rsvpClientKey(ip);
+  // Issue #4508 R-1: count a signed-out caller's guest numbers first, in a
+  // transaction of their own, so a refused submit still counts.
+  const gate = await signedOutGuestGate({
+    signedIn: userId !== null,
+    guests: normalizedGuests,
+    attempt: async (count) => {
+      const { data: attemptData, error: attemptError } = await admin.rpc(
+        "rsvp_guest_signed_out_attempt",
+        { p_event_id: eventId, p_guest_count: count },
+      ).setHeader("x-mingla-rsvp-client", inviterClient);
+      return {
+        data: attemptData,
+        error: attemptError
+          ? { message: attemptError.message, code: attemptError.code }
+          : null,
+      };
+    },
+  });
+  if (gate !== null) return json(gate.status, gate.body);
   const { data, error } = await admin.rpc("submit_event_rsvp_with_delivery", {
     p_event_id: eventId,
     p_user_id: userId,
@@ -552,26 +578,9 @@ serve(async (req: Request): Promise<Response> => {
     const link = typeof guest.guestId === "string"
       ? await mintClaimLink(admin, "rsvp_guest", guest.guestId)
       : null;
-    guestsOut.push({
-      guestId: guest.guestId ?? null,
-      phoneLast4: guest.phoneLast4 ?? null,
-      // A signed-out inviter learns only yes/no about an account (amendment 4).
-      onMingla: guest.onMingla === true,
-      displayName: userId !== null ? guest.displayName ?? null : null,
-      claimed: guest.claimed === true,
-      inviteUrl: link?.url ?? null,
-      inviteCode: link?.code ?? null,
-      // C1: a friend picked from the list; the server never returns their
-      // number or its last four.
-      addedFromFriend: guest.addedFromFriend === true,
-      // C3: sending is asynchronous, so no send status is claimed. A guest
-      // who will never be texted says so (no number, opted out, or the number
-      // had its guest invites for today); everyone else's text is on its way.
-      willText: guest.willText !== false,
-      notTextedReason: guest.willText === false
-        ? guest.notTextedReason ?? null
-        : null,
-    });
+    // C1 / C3 / R-2: a signed-out caller sees willText only, never whether a
+    // number has an account or why it will not be texted.
+    guestsOut.push(shapeSubmitGuest(guest, link, userId !== null));
   }
 
   return json(200, {
@@ -679,15 +688,22 @@ async function provisionPassEntities(
       createdAt: primaryRaw.pass_recovery_token_created_at as string | null,
       table: "event_rsvps",
     },
-    ...((guestsRaw ?? []) as Array<Record<string, unknown>>).map((g) => ({
-      entityId: String(g.id),
-      guestId: String(g.id),
-      role: "guest" as const,
-      displayName: String(g.name ?? "Guest"),
-      qrCode: g.qr_code as string | null,
-      createdAt: g.pass_recovery_token_created_at as string | null,
-      table: "event_rsvp_guests",
-    })),
+    // #4508 R-9: a guest's pass name follows the 1.11 rule.
+    ...(await Promise.all(
+      ((guestsRaw ?? []) as Array<Record<string, unknown>>).map(async (g) => ({
+        entityId: String(g.id),
+        guestId: String(g.id),
+        role: "guest" as const,
+        displayName: await rsvpGuestDisplayName(
+          admin,
+          String(g.id),
+          typeof g.name === "string" ? g.name : null,
+        ),
+        qrCode: g.qr_code as string | null,
+        createdAt: g.pass_recovery_token_created_at as string | null,
+        table: "event_rsvp_guests",
+      })),
+    )),
   ];
   const output: PassEntityResponse[] = [];
   for (const row of rows) {
