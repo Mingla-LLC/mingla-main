@@ -157,7 +157,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // #3355 Wave B: search_mingla_guide; #4389: start_payments_onboarding + start_door_sale; 185→188.
   // #4453 milestone 7: the three design-pass tools; 188→191.
   // #4453 milestone 11: the two add-a-page tools; 191→193; plus #4238 W5 (2) and #3281 get_experience (1) from main; 196.
-  assert(rows.length === 196, `expected 196 ledger rows, got ${rows.length}`);
+  // #4453 Website workspace: three tools; 196→199.
+  assert(rows.length === 199, `expected 199 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

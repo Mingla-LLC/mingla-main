@@ -186,6 +186,10 @@ const ARI_TOOL_ROLES = {
   // #4453 milestone 11 — "Add a page with Ari" (on-path only; Core checks SITES_ARI_ADD_PAGE).
   propose_site_page: "marketing_manager",
   answer_site_page_question: "marketing_manager",
+  // #4453 Website workspace — the snapshot, the one plan, the team request (on-path only; Core re-checks rank 20).
+  get_site_workspace: "marketing_manager",
+  propose_site_change_set: "marketing_manager",
+  propose_website_team_request: "marketing_manager",
   confirm_site_review: "brand_admin",
   propose_trip_guide_update: "event_manager",
   create_site_preview: "marketing_manager",

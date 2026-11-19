@@ -65,10 +65,7 @@ import {
 } from "./siteContracts/limits.ts";
 import {
   assertSiteWorkspaceToolArgs,
-  buildSiteWorkspaceTools,
-  GET_SITE_WORKSPACE_TOOL,
-  SITE_CHANGE_SET_TOOL,
-  SITE_TEAM_REQUEST_TOOL,
+  siteWorkspaceToolParts,
 } from "./agentSiteWorkspaceTools.ts";
 
 const UUID = { type: "string", format: "uuid" };
@@ -2036,11 +2033,32 @@ const rollbackSite = publicationTool("rollback_site");
 
 // #4453 Website workspace — one snapshot read, one plan (a change set applied
 // as one undoable group) and the written-up request to the Mingla team.
-const SITE_WORKSPACE_TOOLS = buildSiteWorkspaceTools({
-  tool,
+// The schemas, checks and executors live in agentSiteWorkspaceTools.ts.
+const SITE_WORKSPACE_PARTS = siteWorkspaceToolParts({
   cmsCall: cmsTool,
   resolveSiteId: authoritativeSiteId,
 });
+const getSiteWorkspace = tool(
+  "get_site_workspace",
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.description,
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.properties,
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.required,
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.executor,
+);
+const proposeSiteChangeSet = tool(
+  "propose_site_change_set",
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.description,
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.properties,
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.required,
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.executor,
+);
+const proposeWebsiteTeamRequest = tool(
+  "propose_website_team_request",
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.description,
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.properties,
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.required,
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.executor,
+);
 
 export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getBrandSite,
@@ -2079,7 +2097,9 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   listVersions,
   rollbackSite,
   // #4453 Website workspace — on-path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS).
-  ...SITE_WORKSPACE_TOOLS,
+  getSiteWorkspace,
+  proposeSiteChangeSet,
+  proposeWebsiteTeamRequest,
 ];
 
 export const SITE_AGENT_READ_ONLY = new Set([
@@ -2098,7 +2118,7 @@ export const SITE_AGENT_READ_ONLY = new Set([
   "list_site_versions",
   "get_site_design_brief",
   // #4453 Website workspace — the planning snapshot.
-  GET_SITE_WORKSPACE_TOOL,
+  "get_site_workspace",
 ]);
 
 /** The Sites tools that write (each one a confirmed proposal). */
@@ -2132,8 +2152,8 @@ export function assertSiteToolArgs(
     "create_site_preview",
     "publish_site",
     "rollback_site",
-    SITE_CHANGE_SET_TOOL,
-    SITE_TEAM_REQUEST_TOOL,
+    "propose_site_change_set",
+    "propose_website_team_request",
   ].includes(toolName);
   if (needsLog) {
     const problem = workLogCitesProblem(args.cites);

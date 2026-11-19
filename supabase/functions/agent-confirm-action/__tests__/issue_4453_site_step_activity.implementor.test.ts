@@ -65,7 +65,12 @@ function client(options: {
 
 const started: SiteStepActivity = {
   type: "site_step_started",
-  detail: { group_id: PENDING, index: 0, total: 2, label: "Shorten the heading" },
+  detail: {
+    group_id: PENDING,
+    index: 0,
+    total: 2,
+    label: "Shorten the heading",
+  },
 };
 const failed: SiteStepActivity = {
   type: "site_step_failed",
@@ -103,7 +108,12 @@ Deno.test("#4453 each step is one activity row on the proposing turn, with its d
     p_attempt_number: 2,
     p_event_type: "site_step_started",
     p_now: "2026-11-19T10:00:00.000Z",
-    p_detail: { group_id: PENDING, index: 0, total: 2, label: "Shorten the heading" },
+    p_detail: {
+      group_id: PENDING,
+      index: 0,
+      total: 2,
+      label: "Shorten the heading",
+    },
   });
   assertEquals(db.rpcCalls[2].p_detail, failed.detail);
   // The proposing turn is looked up once for the whole plan.
@@ -114,7 +124,9 @@ Deno.test("#4453 a function without p_detail still gets every row (kind only), d
   const db = client({
     rpc: (args) =>
       "p_detail" in args
-        ? { error: { code: "PGRST202", message: "Could not find the function" } }
+        ? {
+          error: { code: "PGRST202", message: "Could not find the function" },
+        }
         : { error: null },
   });
   const write = siteStepActivityWriter({
@@ -144,7 +156,9 @@ Deno.test("#4453 a row that cannot be written never throws into the executor", a
   try {
     // The kind is not allowed yet (22023), the table is down, or it throws.
     const refused = client({
-      rpc: () => ({ error: { code: "22023", message: "unsupported activity event" } }),
+      rpc: () => ({
+        error: { code: "22023", message: "unsupported activity event" },
+      }),
     });
     await siteStepActivityWriter({
       client: refused,
@@ -186,7 +200,11 @@ Deno.test("#4453 a row that cannot be written never throws into the executor", a
   }
   assert(logged.some((line) => line.includes("ari_activity_write_failed")));
   // Never an id, a label or a reason in the log line.
-  assert(logged.every((line) => !line.includes(PENDING) && !line.includes("Shorten")));
+  assert(
+    logged.every((line) =>
+      !line.includes(PENDING) && !line.includes("Shorten")
+    ),
+  );
 });
 
 Deno.test("#4453 agent-confirm-action wires the plan: writer for the change set only, the server's follow-up, no receipt for a plan put back, no re-run", () => {
@@ -197,14 +215,29 @@ Deno.test("#4453 agent-confirm-action wires the plan: writer for the change set 
     /\.\.\.\(tool\.name === SITE_CHANGE_SET_TOOL\s*\?\s*\{\s*onSiteStep: siteStepActivityWriter\(\{/,
   );
   // The plan's group is the approval's own id; a retry is flagged.
-  assertMatch(source, /operationId: pending\.id,\s*retry: pending\.status === "executing",/);
+  assertMatch(
+    source,
+    /operationId: pending\.id,\s*retry: pending\.status === "executing",/,
+  );
   // What happened is said from the result, not by a model continuation.
-  assertMatch(source, /const siteWorkspaceFollowup = siteWorkspaceFollowupText\(tool\.name, result\);/);
-  assertMatch(source, /!websiteSetupFollowup && !siteWorkspaceFollowup && !liveRun/);
+  assertMatch(
+    source,
+    /const siteWorkspaceFollowup = siteWorkspaceFollowupText\(tool\.name, result\);/,
+  );
+  assertMatch(
+    source,
+    /!websiteSetupFollowup && !siteWorkspaceFollowup && !liveRun/,
+  );
   // A plan that was not applied gets no "Saved in Mingla" receipt, and its
   // copy-gate fallback never says "saved".
-  assertMatch(source, /const rendition = siteChangeSetNotApplied \? null : buildToolReceiptRendition\(/);
-  assertMatch(source, /fallback: siteChangeSetNotApplied\s*\? "That change could not be applied to your draft\."/);
+  assertMatch(
+    source,
+    /const rendition = siteChangeSetNotApplied \? null : buildToolReceiptRendition\(/,
+  );
+  assertMatch(
+    source,
+    /fallback: siteChangeSetNotApplied\s*\? "That change could not be applied to your draft\."/,
+  );
   // An approval already `executing` is only re-entered for receipt-backed
   // tools; the change set is not one, so a second confirm never re-runs it.
   const receiptSet = source.slice(

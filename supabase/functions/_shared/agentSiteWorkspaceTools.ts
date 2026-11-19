@@ -32,10 +32,7 @@ import {
   workLogCitesSchema,
 } from "./siteContracts/ariToolSchemas.ts";
 import { STYLE_KEYS } from "./siteContracts/formats.ts";
-import {
-  MAX_NAV_ITEMS,
-  MAX_NAV_LABEL_LENGTH,
-} from "./siteContracts/limits.ts";
+import { MAX_NAV_ITEMS, MAX_NAV_LABEL_LENGTH } from "./siteContracts/limits.ts";
 import {
   BUTTON_SHAPES,
   MOTION_PRESETS,
@@ -100,7 +97,8 @@ export interface SiteFocus {
 }
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-const PAGE_PATH_PATTERN = /^(?:[a-z0-9]+(?:-[a-z0-9]+)*)(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
+const PAGE_PATH_PATTERN =
+  /^(?:[a-z0-9]+(?:-[a-z0-9]+)*)(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 const TYPE_PATTERN = /^[a-z][a-z0-9_-]{0,59}$/;
 const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*$/;
 // Letters, digits, spaces and everyday punctuation: a label is shown to the
@@ -178,7 +176,8 @@ export function siteWorkspaceContextText(input: {
 }
 
 /** The rules the system prompt carries for a Website workspace turn. */
-export const SITE_WORKSPACE_PROMPT_RULES = `WEBSITE WORKSPACE RULES (only when the turn's context says WEBSITE WORKSPACE)
+export const SITE_WORKSPACE_PROMPT_RULES =
+  `WEBSITE WORKSPACE RULES (only when the turn's context says WEBSITE WORKSPACE)
 - The owner is looking at their live draft. Read get_site_workspace first (it is usually already in this turn's results) and plan from what it shows: real page ids, section ids, field keys, layouts, colours and approved photos. Never invent an id, a field or a layout.
 - One request becomes ONE plan: call propose_site_change_set once, with one to eight steps in the order they should happen. Never send several separate website proposals for one request, and never use the older propose_site_* tools here.
 - Change only what was asked. Do not tidy, rewrite or restyle anything the owner did not mention.
@@ -315,7 +314,11 @@ const STEP = {
         additionalProperties: false,
         properties: {
           page_id: ID,
-          label: { type: "string", minLength: 1, maxLength: MAX_NAV_LABEL_LENGTH },
+          label: {
+            type: "string",
+            minLength: 1,
+            maxLength: MAX_NAV_LABEL_LENGTH,
+          },
         },
         required: ["page_id", "label"],
       },
@@ -473,7 +476,9 @@ function editsProblem(value: unknown, path: string): string | null {
     if (
       typeof raw.key !== "string" || raw.key.length > 120 ||
       !FIELD_KEY_PATTERN.test(raw.key)
-    ) return `${path}[${index}].key must be a field key from get_site_workspace`;
+    ) {
+      return `${path}[${index}].key must be a field key from get_site_workspace`;
+    }
     if (
       typeof raw.value !== "string" || raw.value.length > SITE_EDIT_VALUE_MAX
     ) return `${path}[${index}].value must be text`;
@@ -499,7 +504,9 @@ const shortText = (value: unknown, max: number) =>
 export function siteStepProblem(step: unknown, path = "step"): string | null {
   if (!isRecord(step)) return `${path} must be an object`;
   const op = step.op;
-  if (typeof op !== "string" || !(SITE_STEP_OPS as readonly string[]).includes(op)) {
+  if (
+    typeof op !== "string" || !(SITE_STEP_OPS as readonly string[]).includes(op)
+  ) {
     return `${path}.op must be one of ${SITE_STEP_OPS.join(", ")}`;
   }
   const allowed = STEP_FIELDS[op as SiteStepOp];
@@ -537,12 +544,17 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
         idProblem(step.section_id, at("section_id"));
     case "add_section":
       if (typeof step.type !== "string" || !TYPE_PATTERN.test(step.type)) {
-        return `${at("type")} must be a section type the workspace says may be added`;
+        return `${
+          at("type")
+        } must be a section type the workspace says may be added`;
       }
       if (
         step.after_section_id !== undefined && step.after_section_id !== null
       ) {
-        const problem = idProblem(step.after_section_id, at("after_section_id"));
+        const problem = idProblem(
+          step.after_section_id,
+          at("after_section_id"),
+        );
         if (problem) return problem;
       }
       if (step.edits !== undefined) {
@@ -610,10 +622,15 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
         if (!isRecord(raw) || unknownKeys(raw, ["page_id", "label"]).length) {
           return `${at("items")}[${index}] must be a page_id and a label`;
         }
-        const problem = idProblem(raw.page_id, `${at("items")}[${index}].page_id`);
+        const problem = idProblem(
+          raw.page_id,
+          `${at("items")}[${index}].page_id`,
+        );
         if (problem) return problem;
         if (!shortText(raw.label, MAX_NAV_LABEL_LENGTH)) {
-          return `${at("items")}[${index}].label must be 1 to ${MAX_NAV_LABEL_LENGTH} characters`;
+          return `${
+            at("items")
+          }[${index}].label must be 1 to ${MAX_NAV_LABEL_LENGTH} characters`;
         }
       }
       return null;
@@ -627,7 +644,9 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
 }
 
 /** The first problem with a whole change set, or null. */
-export function siteChangeSetProblem(args: Record<string, unknown>): string | null {
+export function siteChangeSetProblem(
+  args: Record<string, unknown>,
+): string | null {
   const extra = unknownKeys(args, Object.keys(CHANGE_SET_PROPERTIES));
   if (extra.length) return `unknown field ${extra.slice(0, 4).join(", ")}`;
   if (!isUuid(args.brand_id) || !isUuid(args.site_id)) {
@@ -663,7 +682,9 @@ export function siteChangeSetProblem(args: Record<string, unknown>): string | nu
     if (step) return step;
   }
   if (args.couldnt !== undefined) {
-    if (!Array.isArray(args.couldnt) || args.couldnt.length > SITE_COULDNT_MAX) {
+    if (
+      !Array.isArray(args.couldnt) || args.couldnt.length > SITE_COULDNT_MAX
+    ) {
       return `couldnt must be a list of at most ${SITE_COULDNT_MAX}`;
     }
     for (const [index, raw] of args.couldnt.entries()) {
@@ -1018,11 +1039,17 @@ export function siteStepFailureReason(error: unknown): string {
 /** Did this failure possibly land? (No answer is not a "no".) */
 function mayHaveLanded(error: unknown): boolean {
   return !(error instanceof ToolError) ||
-    [TIMEOUT_CODE, "SITE_SERVICE_UNAVAILABLE", "SERVICE_TEMPORARILY_UNAVAILABLE"]
+    [
+      TIMEOUT_CODE,
+      "SITE_SERVICE_UNAVAILABLE",
+      "SERVICE_TEMPORARILY_UNAVAILABLE",
+    ]
       .includes(error.code);
 }
 
-function normalizedStep(step: Record<string, unknown>): Record<string, unknown> {
+function normalizedStep(
+  step: Record<string, unknown>,
+): Record<string, unknown> {
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(step)) {
     if (value !== undefined) clean[key] = value;
@@ -1036,7 +1063,9 @@ function normalizedStep(step: Record<string, unknown>): Record<string, unknown> 
   return clean;
 }
 
-function checksFrom(raw: unknown): { passed: boolean; warnings: string[] } | null {
+function checksFrom(
+  raw: unknown,
+): { passed: boolean; warnings: string[] } | null {
   if (!isRecord(raw) || !Array.isArray(raw.checks)) return null;
   const warnings: string[] = [];
   for (const check of raw.checks) {
@@ -1210,7 +1239,8 @@ export async function runSiteChangeSet(input: {
           "The design checks did not run. Run them before you publish.";
       }
     } catch {
-      checksNote = "The design checks did not run. Run them before you publish.";
+      checksNote =
+        "The design checks did not run. Run them before you publish.";
     }
   }
   return {
@@ -1239,10 +1269,14 @@ export function siteWorkspaceFollowupText(
   const failed = isRecord(result.failed) ? result.failed : null;
   const total = typeof result.total === "number" ? result.total : 0;
   if (result.status === "rolled_back" && failed) {
-    return `Step ${Number(failed.index) + 1} of ${total}, “${failed.label}”, could not be applied: ${failed.reason} Nothing was changed.`;
+    return `Step ${
+      Number(failed.index) + 1
+    } of ${total}, “${failed.label}”, could not be applied: ${failed.reason} Nothing was changed.`;
   }
   if (result.status === "partly_applied" && failed) {
-    return `Step ${Number(failed.index) + 1} of ${total}, “${failed.label}”, could not be applied: ${failed.reason} Some of this may still be on your draft. Check it, and use Undo to remove it.`;
+    return `Step ${
+      Number(failed.index) + 1
+    } of ${total}, “${failed.label}”, could not be applied: ${failed.reason} Some of this may still be on your draft. Check it, and use Undo to remove it.`;
   }
   if (result.status !== "applied") return null;
   const count = Array.isArray(result.applied) ? result.applied.length : total;
@@ -1252,18 +1286,24 @@ export function siteWorkspaceFollowupText(
     : 0;
   const left = Array.isArray(result.couldnt) ? result.couldnt.length : 0;
   const parts = [
-    `${count === 1 ? "That change is" : `All ${count} changes are`} on your draft, ready for you to read. Nothing is published.`,
+    `${
+      count === 1 ? "That change is" : `All ${count} changes are`
+    } on your draft, ready for you to read. Nothing is published.`,
   ];
   if (warnings > 0) {
     parts.push(
-      `The design checks found ${warnings} thing${warnings === 1 ? "" : "s"} to look at.`,
+      `The design checks found ${warnings} thing${
+        warnings === 1 ? "" : "s"
+      } to look at.`,
     );
   } else if (!checks && typeof result.checks_note === "string") {
     parts.push(result.checks_note);
   }
   if (left > 0) {
     parts.push(
-      `I could not do ${left === 1 ? "one part" : `${left} parts`} of what you asked.`,
+      `I could not do ${
+        left === 1 ? "one part" : `${left} parts`
+      } of what you asked.`,
     );
   }
   return parts.join(" ");
@@ -1275,13 +1315,6 @@ export function siteWorkspaceFollowupText(
 
 /** What agentSiteTools.ts lends this file (no import cycle). */
 export interface SiteWorkspaceToolDeps {
-  tool: (
-    name: string,
-    description: string,
-    properties: Record<string, unknown>,
-    required: string[],
-    executor: AgentToolDefinition["executor"],
-  ) => AgentToolDefinition;
   /** POST /v1/sites/{id}/ari with the action and args (re-addressed once on a wrong site id). */
   cmsCall: (
     action: string,
@@ -1297,7 +1330,8 @@ export interface SiteWorkspaceToolDeps {
 }
 
 /** Progress rows for a confirmed plan: set by agent-confirm-action only. */
-export interface SiteWorkspaceExecutionContext extends AgentToolExecutionContext {
+export interface SiteWorkspaceExecutionContext
+  extends AgentToolExecutionContext {
   onSiteStep?: (event: SiteStepActivity) => Promise<void>;
 }
 
@@ -1325,11 +1359,27 @@ export function boundSiteWorkspace(
   return bounded;
 }
 
-export function buildSiteWorkspaceTools(
-  deps: SiteWorkspaceToolDeps,
-): AgentToolDefinition[] {
-  const getSiteWorkspace = deps.tool(
-    GET_SITE_WORKSPACE_TOOL,
+/** One tool's description, schema and executor; agentSiteTools.ts registers it by name. */
+export interface SiteWorkspaceToolPart {
+  description: string;
+  properties: Record<string, unknown>;
+  required: string[];
+  executor: AgentToolDefinition["executor"];
+}
+
+const part = (
+  description: string,
+  properties: Record<string, unknown>,
+  required: string[],
+  executor: AgentToolDefinition["executor"],
+): SiteWorkspaceToolPart => ({ description, properties, required, executor });
+
+export function siteWorkspaceToolParts(deps: SiteWorkspaceToolDeps): {
+  getSiteWorkspace: SiteWorkspaceToolPart;
+  proposeSiteChangeSet: SiteWorkspaceToolPart;
+  proposeWebsiteTeamRequest: SiteWorkspaceToolPart;
+} {
+  const getSiteWorkspace = part(
     "Read the website draft as one planning snapshot: every page with its sections (ids, order, type, plain label, layout and the layouts on offer, text field keys with their current words, photo spots, review state), the look (design, colours, fonts, readability warnings), the menu, the section types that may be added, the owner's approved photos, and the facts Mingla holds. Read this before planning any website change. Leave site_id out when you do not have it.",
     { brand_id: UUID, site_id: UUID },
     ["brand_id"],
@@ -1359,8 +1409,7 @@ export function buildSiteWorkspaceTools(
     },
   );
 
-  const proposeSiteChangeSet = deps.tool(
-    SITE_CHANGE_SET_TOOL,
+  const proposeSiteChangeSet = part(
     "Propose ONE plan for a website request: one to eight typed steps applied to the draft in order as a single change the owner can undo in one tap. Each step has a plain label, a why and what it is based on (cites). Steps may edit a section's words or layout, move, remove or add a section, set a section's photo, change the look, set the menu, or turn a page on or off. If a step cannot be applied the whole plan is put back, and the answer says which step and why. Draft only; never publishes.",
     CHANGE_SET_PROPERTIES,
     ["brand_id", "site_id", "request", "summary", "steps"],
@@ -1389,8 +1438,7 @@ export function buildSiteWorkspaceTools(
     },
   );
 
-  const proposeWebsiteTeamRequest = deps.tool(
-    SITE_TEAM_REQUEST_TOOL,
+  const proposeWebsiteTeamRequest = part(
     "Write up a website change the workspace cannot make, as a request to the Mingla team: what the owner wants, where on the site, why, and what the website cannot do yet. The owner reads and edits it on the card; sending it opens a request the team answers within 24 hours. Use this when no step can do what was asked. Never use it for something a change set can do.",
     TEAM_REQUEST_PROPERTIES,
     ["brand_id", "site_id", "what", "where", "why", "missing_capability"],
@@ -1468,5 +1516,5 @@ export function buildSiteWorkspaceTools(
     },
   );
 
-  return [getSiteWorkspace, proposeSiteChangeSet, proposeWebsiteTeamRequest];
+  return { getSiteWorkspace, proposeSiteChangeSet, proposeWebsiteTeamRequest };
 }

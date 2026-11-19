@@ -18,6 +18,7 @@
 // Run: deno test --no-check --allow-read --allow-env --allow-net \
 //   supabase/functions/_shared/__tests__/issue_4453_website_workspace_replay.implementor.test.ts
 
+// deno-lint-ignore-file no-explicit-any -- fixtures are plain ES module data
 import {
   assert,
   assertEquals,
@@ -86,9 +87,10 @@ Deno.test("#4453 replay: the grader fails a plan that claims success, publishes 
   const { gradeTurn } = await import(
     "../../../../scripts/ari/eval/replay/grade.mjs"
   );
-  const expect = WEBSITE_WORKSPACE_FIXTURES.find((item) =>
-    item.id === "ws_failing_step_full_rollback"
-  )!.turns[0].expect;
+  const expect =
+    WEBSITE_WORKSPACE_FIXTURES.find((item) =>
+      item.id === "ws_failing_step_full_rollback"
+    )!.turns[0].expect;
   const lied = gradeTurn(expect, {
     route: "proposal:propose_site_change_set",
     tool: "propose_site_change_set",

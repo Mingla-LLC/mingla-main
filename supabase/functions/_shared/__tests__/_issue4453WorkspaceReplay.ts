@@ -13,11 +13,11 @@ import {
   GET_SITE_WORKSPACE_TOOL,
   parseSiteFocus,
   SITE_CHANGE_SET_TOOL,
+  SITE_WORKSPACE_TURN_TOOLS,
   type SiteChangeSetResult,
   type SiteFocus,
   type SiteQuestionChoices,
   type SiteStepActivity,
-  SITE_WORKSPACE_TURN_TOOLS,
   siteWorkspaceContextText,
   siteWorkspaceFollowupText,
   siteWorkspaceProposalIssue,
@@ -316,14 +316,12 @@ export async function replayWorkspaceTurn(
       const next = script.shift();
       if (!next) throw new Error(`stub model ran out of answers: ${turn.say}`);
       return Promise.resolve(
-        "text" in next
-          ? { textResponse: next.text, toolCalls: [] }
-          : {
-            toolCalls: [{
-              name: next.call.tool,
-              args: structuredClone(next.call.args),
-            }],
-          },
+        "text" in next ? { textResponse: next.text, toolCalls: [] } : {
+          toolCalls: [{
+            name: next.call.tool,
+            args: structuredClone(next.call.args),
+          }],
+        },
       );
     },
     classifyTool: (call) =>
@@ -455,15 +453,21 @@ export function gradeWorkspaceTurn(
     GET_SITE_WORKSPACE_TOOL,
     run.core.calls[0]?.action ?? null,
   );
-  add("only workspace tools are offered", [
-    GET_SITE_WORKSPACE_TOOL,
-    SITE_CHANGE_SET_TOOL,
-    "propose_website_team_request",
-  ].sort(), [...run.offeredTools].sort());
+  add(
+    "only workspace tools are offered",
+    [
+      GET_SITE_WORKSPACE_TOOL,
+      SITE_CHANGE_SET_TOOL,
+      "propose_website_team_request",
+    ].sort(),
+    [...run.offeredTools].sort(),
+  );
   add(
     "nothing is published",
     [],
-    run.core.calls.filter((call) => /publish|preview|rollback/.test(call.action))
+    run.core.calls.filter((call) =>
+      /publish|preview|rollback/.test(call.action)
+    )
       .map((call) => call.action),
   );
   add(
@@ -528,7 +532,11 @@ export function gradeWorkspaceTurn(
     add("progress rows", expect.events, run.events.length);
   }
   if (expect.last_event) {
-    add("last progress row", expect.last_event, run.events.at(-1)?.type ?? null);
+    add(
+      "last progress row",
+      expect.last_event,
+      run.events.at(-1)?.type ?? null,
+    );
   }
   if (expect.one_group) {
     add(
