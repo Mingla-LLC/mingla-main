@@ -1,12 +1,7 @@
+// MINGLA-INVARIANT: I-FAILED-READ-IS-NOT-A-NO | issue #4518 | on a buyer page paid supply is closed only when the server answered that the brand cannot collect; a request that never got an answer is retried and then resolves bookable, with the checkout re-check as the backstop.
 /**
  * issue #4518 N2 — a failed read is not "the organizer is finishing payment
  * setup".
- *
- * MINGLA-INVARIANT: I-FAILED-READ-IS-NOT-A-NO | issue #4518 | On a buyer page,
- * paid supply is closed ("Booking unavailable") only when the server ANSWERED
- * that the brand cannot collect; a request that never got an answer is
- * retried and then resolves bookable, with the server's checkout re-check as
- * the backstop.
  *
  * FAILS ON REVERT: restore `if (error !== null) return false` and B-1, B-2 and
  * B-7 fail (a dropped connection closes the sale and blames the host).

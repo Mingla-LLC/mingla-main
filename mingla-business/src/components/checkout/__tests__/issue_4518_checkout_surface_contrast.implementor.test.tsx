@@ -1,11 +1,6 @@
+// MINGLA-INVARIANT: I-CHECKOUT-TEXT-READABLE-ON-ITS-SURFACE | issue #4518 | inside a checkout flow every piece of text and every field outline is measured against the colour painted behind it, on light host themes, dark host themes and Graphite; under 4.5:1 for text or 3:1 for an outline fails the build.
 /**
  * issue #4518 — checkout must be READABLE on every host theme.
- *
- * MINGLA-INVARIANT: I-CHECKOUT-TEXT-READABLE-ON-ITS-SURFACE | issue #4518 |
- * Inside a checkout flow, every piece of text and every field outline is
- * measured against the colour ACTUALLY PAINTED behind it, on a light host
- * theme, a dark host theme and Graphite; under 4.5:1 for text (3:1 for an
- * outline) fails the build.
  *
  * THE DEFECT. #4466 pointed checkout TEXT at the host palette while the shared
  * parts it is built from (cards, fields, buttons, the dock) kept their

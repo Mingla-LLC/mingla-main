@@ -1,11 +1,7 @@
+// MINGLA-INVARIANT: I-HOST-WEB-HAS-A-SECOND-ROAD-TO-THE-DATABASE | issue #4518 | on Host web a read that cannot connect to the database host is answered through the same-origin road, the rest of the visit stays on that road, and a write is never sent twice.
 /**
  * issue #4518 N3 / N5 — a phone that cannot reach the database host can still
  * buy: the "database host is down" rehearsal.
- *
- * MINGLA-INVARIANT: I-HOST-WEB-HAS-A-SECOND-ROAD-TO-THE-DATABASE | issue #4518 |
- * On Host web a read that cannot connect to the database host is answered
- * through the same-origin road, the rest of the visit stays on that road, and
- * a write is never sent twice.
  *
  * FAILS ON REVERT: make `createResilientFetch` a pass-through and R-1, R-2 and
  * R-6 fail (the read rejects instead of being answered). Replay writes and
