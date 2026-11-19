@@ -10,6 +10,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type { ItemRouteRef } from "../config/workspaceBrandRoute";
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 
 export interface ItemRouteBrand {
@@ -23,10 +24,12 @@ export const itemRouteBrandKey = (ref: ItemRouteRef | null) =>
   ["item-route-brand", ref?.table ?? "none", ref?.id ?? "none"] as const;
 
 export function useItemRouteBrand(ref: ItemRouteRef | null, enabled: boolean): ItemRouteBrand {
+  const { isAuthReady } = useAuth();
   const active = enabled && ref !== null;
   const query = useQuery({
     queryKey: itemRouteBrandKey(ref),
-    enabled: active,
+    // The rows are readable to a signed-in team member only: wait for the session.
+    enabled: isAuthReady && active,
     // An item never moves to another brand.
     staleTime: Infinity,
     queryFn: async (): Promise<string | null> => {
