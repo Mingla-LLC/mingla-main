@@ -202,7 +202,8 @@ export async function signedOutGuestGate(input: {
 }
 
 export interface SubmitGuestRow {
-  guestId?: string;
+  /** R-1: null for a signed-out caller (the database returns no guest id). */
+  guestId?: string | null;
   phoneLast4?: string | null;
   onMingla?: boolean;
   displayName?: string | null;

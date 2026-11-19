@@ -494,7 +494,7 @@ serve(async (req: Request): Promise<Response> => {
     capacityFull?: boolean;
     confirmationToken?: string | null;
     guests?: Array<{
-      guestId?: string;
+      guestId?: string | null;
       phoneLast4?: string | null;
       onMingla?: boolean;
       displayName?: string;

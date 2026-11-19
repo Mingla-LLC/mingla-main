@@ -60,7 +60,10 @@ export async function alertSignedOutCeilingHits(
 ): Promise<CeilingAlertOutcome> {
   let rows: HitRow[];
   try {
-    const { data, error } = await client.rpc("issue_4508_list_ceiling_hits", {});
+    const { data, error } = await client.rpc(
+      "issue_4508_list_ceiling_hits",
+      {},
+    );
     if (error) {
       log("rsvp_guest_ceiling_list_failed", {
         code: String(error.code ?? "unknown"),
@@ -78,10 +81,13 @@ export async function alertSignedOutCeilingHits(
   for (const row of rows) {
     try {
       const result = await (deps.send ?? sendOpsAlertEmail)({
-        subject: `RSVP guest texts paused for signed-out inviters (${row.hit_day})`,
+        subject:
+          `RSVP guest texts paused for signed-out inviters (${row.hit_day})`,
         paragraphs: [
           "The daily ceiling on texts to plus-ones added by signed-out inviters (300 in a rolling 24 hours, all events together) was reached. Guests added by signed-out inviters are still saved, but they are not texted until the count drops below the ceiling, and held guests are not texted later.",
-          `First guest held: ${row.first_hit_at ?? row.hit_day} (UTC day ${row.hit_day}).`,
+          `First guest held: ${
+            row.first_hit_at ?? row.hit_day
+          } (UTC day ${row.hit_day}).`,
           "Check rsvp_guest_invite_log for keys starting ip: in the last 24 hours to see whether this is real demand or abuse.",
         ],
         recipients: (deps.recipients ?? apiHealthAlertRecipients)(),
@@ -118,7 +124,10 @@ export async function alertSignedOutCeilingHits(
         continue;
       }
     } catch {
-      log("rsvp_guest_ceiling_mark_failed", { day: row.hit_day, code: "threw" });
+      log("rsvp_guest_ceiling_mark_failed", {
+        day: row.hit_day,
+        code: "threw",
+      });
       if (outcome === "sent") outcome = "mark_failed";
       continue;
     }
