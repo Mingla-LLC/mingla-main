@@ -308,8 +308,14 @@ BEGIN
     v_err := NULL;
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
   END;
+  IF v_err IS NULL THEN RESET ROLE; RAISE EXCEPTION 'S10 FAIL: service_role deleted a snapshot'; END IF;
+  BEGIN
+    TRUNCATE public.payout_release_claim_snapshots;
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
   RESET ROLE;
-  IF v_err IS NULL THEN RAISE EXCEPTION 'S10 FAIL: service_role deleted a snapshot'; END IF;
+  IF v_err IS NULL THEN RAISE EXCEPTION 'S10 FAIL: service_role truncated the snapshots'; END IF;
   RAISE NOTICE 'ISSUE-3645-2E1 S10 PASS: snapshots cannot be changed or deleted';
 
   -- ── S11 only the brand's finance managers read; nobody else writes ────────

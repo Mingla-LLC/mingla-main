@@ -108,7 +108,9 @@ REVOKE ALL ON public.payout_release_claim_snapshots FROM PUBLIC, anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
   ON public.payout_release_claim_snapshots FROM authenticated;
 GRANT SELECT ON public.payout_release_claim_snapshots TO authenticated;
-GRANT ALL ON public.payout_release_claim_snapshots TO service_role;
+GRANT SELECT, INSERT ON public.payout_release_claim_snapshots TO service_role;
+-- Append-only: the row trigger refuses UPDATE/DELETE; TRUNCATE is never granted.
+REVOKE UPDATE, DELETE, TRUNCATE ON public.payout_release_claim_snapshots FROM service_role;
 
 ALTER TABLE public.brand_payout_releases
   ADD COLUMN IF NOT EXISTS paid_snapshot_id uuid
