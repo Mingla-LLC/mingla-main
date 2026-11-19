@@ -1,4 +1,3 @@
-// @ts-nocheck - Deno-runnable test (Deno global and deno.land imports are not known to the app type check)
 /**
  * #4508 1.11 / 1.25 / 1.26 (Host side): plus-one guests never render an empty
  * name or "null", show "Invited by", a Claimed pill, and the door scanner names

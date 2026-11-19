@@ -10,6 +10,10 @@ export interface RsvpScanResponse {
   attendeeDisplayName: string | null;
   // #4508 1.25 — who brought a guest-pass holder; absent for primary guests.
   invitedByName?: string | null;
+  // #4508 N-5 — a guest pass: whether it is claimed, and (only while it is
+  // not) the last four digits of the number it was sent to.
+  claimed?: boolean | null;
+  phoneLast4?: string | null;
   entityType: "primary" | "guest" | null;
   nextStartAt: string | null;
   lastEndAt: string | null;

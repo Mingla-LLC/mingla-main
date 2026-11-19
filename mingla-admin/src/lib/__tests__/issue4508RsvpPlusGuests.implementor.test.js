@@ -13,10 +13,25 @@ import { describePlusGuest, plusGuestSummary } from "../rsvpPlusGuests.js";
 
 test("a guest with no name and no email still reads as a person", () => {
   const d = describePlusGuest({ name: null, email: null, phone: "+2348012345678", invitedByName: "Ada O.", claimed: false });
-  assert.equal(d.name, "Ada's guest");
+  assert.equal(d.name, "Ada's guest · 5678");
   assert.equal(d.invitedBy, "Invited by Ada O.");
   assert.equal(d.claimLabel, "Not claimed");
   assert.equal(d.contact, "+2348012345678");
+});
+
+// N-5: the server's neutral name for an unclaimed guest gets the last four
+// digits; a claimed guest's own name shows as it is.
+test("N-5: unclaimed reads \"Ada's guest · 0199\", claimed reads the guest's own name", () => {
+  assert.equal(
+    describePlusGuest({ name: "Ada's guest", phone: "+15550100199", invitedByName: "Ada O.", claimed: false }).name,
+    "Ada's guest · 0199",
+  );
+  assert.equal(
+    describePlusGuest({ name: "Kim Kerr", phone: "+15550100199", invitedByName: "Ada O.", claimed: true }).name,
+    "Kim Kerr",
+  );
+  // A friend picked from a list may have no number: the name alone.
+  assert.equal(describePlusGuest({ name: "Ada's guest", phone: null, claimed: false }).name, "Ada's guest");
 });
 
 test("claimed guests and the Guest fallback", () => {

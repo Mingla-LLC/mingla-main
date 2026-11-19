@@ -112,11 +112,37 @@ export const cleanPhoneLast4 = (value: unknown): string | null => {
   return t !== null && /^\d{4}$/.test(t) ? t : null;
 };
 
-/** "Number ending 0199", or null when the server gave no usable digits. */
-export const phoneLast4Line = (value: unknown): string | null => {
-  const digits = cleanPhoneLast4(value);
-  return digits === null ? null : `Number ending ${digits}`;
+/**
+ * #4508 N-5: the name a host sees for a plus-one. Until the guest claims the
+ * pass the server sends a neutral name (what the inviter typed, else
+ * "{Inviter first name}'s guest") and never the account a number matched;
+ * the last four digits tell two such guests apart: "Ada's guest · 0199".
+ * Once claimed, the server's name is the guest's own and shows as it is.
+ */
+export const hostPlusGuestLabel = (
+  guest: { name: unknown; claimed?: boolean | null; phoneLast4?: unknown },
+  invitedByName?: unknown,
+): string => {
+  const name = guestDisplayName(guest.name, invitedByName);
+  if (guest.claimed === true) return name;
+  const digits = cleanPhoneLast4(guest.phoneLast4);
+  return digits === null ? name : `${name} · ${digits}`;
 };
+
+/** #4508 N-5: the door scanner's name for what was scanned (same rule). */
+export const scanAttendeeName = (result: {
+  attendeeDisplayName?: unknown;
+  invitedByName?: unknown;
+  entityType?: "primary" | "guest" | null;
+  claimed?: boolean | null;
+  phoneLast4?: unknown;
+}): string =>
+  result.entityType === "guest"
+    ? hostPlusGuestLabel(
+      { name: result.attendeeDisplayName, claimed: result.claimed, phoneLast4: result.phoneLast4 },
+      result.invitedByName,
+    )
+    : guestDisplayName(result.attendeeDisplayName, result.invitedByName);
 
 /** A plus-one the host may admit by hand: has not claimed and is not in yet. */
 export const canCheckInByHand = (
@@ -157,6 +183,9 @@ export const manualCheckInOutcome = (
       return { kind: "refused", message: "Check-in isn't open yet for this event." };
     case "event_ended":
       return { kind: "refused", message: "This event has ended, so check-in is closed." };
+    case "claimed":
+      // #4508 N-9: a guest who claimed the pass is checked in by scanning it.
+      return { kind: "refused", message: "This guest has their own pass. Scan it at the door to check them in." };
     default:
       return { kind: "refused", message: "We couldn't check this guest in. Try again." };
   }

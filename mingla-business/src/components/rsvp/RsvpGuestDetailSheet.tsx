@@ -38,7 +38,7 @@ import {
   claimStatusLabel,
   invitedByLine,
   manualCheckInLabel,
-  phoneLast4Line,
+  hostPlusGuestLabel,
   type RsvpPlusGuest,
 } from "../../utils/rsvpGuestDisplay";
 import type {
@@ -280,32 +280,26 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                 // admitted by hand; a claimed guest scans their own pass.
                 const byHand =
                   onCheckInGuest !== undefined && canCheckInByHand(pg);
-                const lastFour = byHand ? phoneLast4Line(pg.phoneLast4) : null;
+                // #4508 N-5: "Ada's guest · 0199" until the guest claims.
+                const label = hostPlusGuestLabel(pg, pg.invitedByName);
                 const checkingIn = checkingInGuestId === pg.id;
                 return (
                   <View key={pg.id} style={styles.plusGroup}>
                   <View
                     style={styles.plusRow}
                     accessible
-                    accessibilityLabel={`${pg.name}, ${claimStatusLabel(pg.claimed).toLowerCase()}${
+                    accessibilityLabel={`${label}, ${claimStatusLabel(pg.claimed).toLowerCase()}${
                       invited !== null ? `. ${invited}` : ""
-                    }${lastFour !== null ? `. ${lastFour}` : ""}${
-                      pg.checkedInAt !== null ? ". Checked in" : ""
-                    }`}
+                    }${pg.checkedInAt !== null ? ". Checked in" : ""}`}
                     testID={`rsvp-plus-guest-${pg.id}`}
                   >
                     <View style={styles.plusRowText}>
                       <Text style={styles.value} numberOfLines={1}>
-                        {pg.name}
+                        {label}
                       </Text>
                       {invited !== null ? (
                         <Text style={styles.meta} numberOfLines={1}>
                           {invited}
-                        </Text>
-                      ) : null}
-                      {lastFour !== null ? (
-                        <Text style={styles.meta} numberOfLines={1}>
-                          {lastFour}
                         </Text>
                       ) : null}
                     </View>
@@ -336,7 +330,7 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                       loading={checkingIn}
                       disabled={checkingInGuestId !== null}
                       onPress={() => onCheckInGuest?.(pg)}
-                      accessibilityLabel={`${manualCheckInLabel(pg.invitedByName)} to check in ${pg.name}`}
+                      accessibilityLabel={`${manualCheckInLabel(pg.invitedByName)} to check in ${label}`}
                       testID={`rsvp-plus-checkin-${pg.id}`}
                     />
                   ) : null}

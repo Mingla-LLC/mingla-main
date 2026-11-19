@@ -54,7 +54,7 @@ import {
 import { postHogService } from "../../services/postHogService";
 import {
   cleanText,
-  guestDisplayName,
+  scanAttendeeName,
   invitedByLine,
   scanDetailLine,
 } from "../../utils/rsvpGuestDisplay";
@@ -362,7 +362,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
           setSessionScans((current) => [{
             id: result.scanId ?? `${Date.now()}`,
             result: kind,
-            guestName: guestDisplayName(result.attendeeDisplayName, result.invitedByName),
+            guestName: scanAttendeeName(result),
             invitedByName: cleanText(result.invitedByName),
             role: result.entityType ?? "primary",
             scannedAt: new Date().toISOString(),
@@ -371,7 +371,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             void summary.refetch();
             showResult({
               kind,
-              message: `${guestDisplayName(result.attendeeDisplayName, result.invitedByName)} checked in`,
+              message: `${scanAttendeeName(result)} checked in`,
               detail: scanDetailLine(result.entityType, result.invitedByName),
             });
             void Haptics.notificationAsync(
@@ -382,10 +382,12 @@ export default function ScannerCameraRoute(): React.ReactElement {
           // ORCH-0793 — explicit branches so the time-window cases can
           // pull nextStartAt / lastEndAt off the server response.
           let message: string;
-          let detail: string | undefined = result.attendeeDisplayName ?? undefined;
+          let detail: string | undefined = typeof result.attendeeDisplayName === "string"
+            ? scanAttendeeName(result)
+            : undefined;
           const invitedBy = invitedByLine(result.invitedByName);
           if (invitedBy !== null && kind === "duplicate") {
-            detail = `${result.attendeeDisplayName ?? "Guest"} · ${invitedBy}`;
+            detail = `${scanAttendeeName(result)} · ${invitedBy}`;
           }
           if (kind === "duplicate") {
             message = "Already checked in";
