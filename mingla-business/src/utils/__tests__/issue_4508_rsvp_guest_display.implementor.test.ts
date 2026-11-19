@@ -1,9 +1,9 @@
+// MINGLA-INVARIANT: I-4508-HOST-GUEST-DISPLAY-NULL-SAFE | issue #4508 | Host guest list and scanner render a guest name that is never empty, null or undefined, plus Invited by and Claimed status
 /**
  * #4508 1.11 / 1.25 / 1.26 (Host side): plus-one guests never render an empty
  * name or "null", show "Invited by", a Claimed pill, and the door scanner names
  * the inviter.
  *
- * MINGLA-INVARIANT: I-4508-HOST-GUEST-DISPLAY-NULL-SAFE | issue #4508 | Host guest list and scanner render a guest name that is never empty, null or undefined, plus Invited by and Claimed status
  * FAILS-ON-REVERT: delete the guestDisplayName fallback or the scanDetailLine call and these fail.
  */
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";

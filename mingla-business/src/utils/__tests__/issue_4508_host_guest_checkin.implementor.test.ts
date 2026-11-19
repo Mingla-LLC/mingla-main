@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4508-HOST-MANUAL-CHECKIN-LAST4-ONLY | issue #4508 | Host shows only the last four digits of a plus-one's number, names an unclaimed plus-one with the server's neutral name plus those digits, and checks them in by hand only while unclaimed and not yet in
 /**
  * #4508 C7 / C8 / N-5 / N-9 (Host side): an unclaimed plus-one can be admitted
  * by hand from the guest sheet, is named "{Inviter}'s guest · NNNN" (never a
@@ -5,7 +6,6 @@
  * refused by hand (their pass is scanned), and the host can switch "Guests can
  * bring guests" on in RSVP setup.
  *
- * MINGLA-INVARIANT: I-4508-HOST-MANUAL-CHECKIN-LAST4-ONLY | issue #4508 | Host shows only the last four digits of a plus-one's number, names an unclaimed plus-one with the server's neutral name plus those digits, and checks them in by hand only while unclaimed and not yet in
  * FAILS-ON-REVERT: delete the cleanPhoneLast4 four-digit guard, the claimed branch of hostPlusGuestLabel, the canCheckInByHand rule or the manualCheckInOutcome mapping (claimed included) and these fail.
  */
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
