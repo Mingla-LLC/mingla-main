@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BrandSitesError,
@@ -113,7 +114,7 @@ export function useBrandSiteOperation(
   pollWindowMs: number = PROVISION_POLL_WINDOW_MS,
 ) {
   const { isAuthReady } = useAuth();
-  return useQuery({
+  const query = useQuery({
     queryKey: brandSiteKeys.operation(siteId, operationId),
     enabled: isAuthReady && siteId !== null && operationId !== null,
     queryFn: () => getBrandSiteOperation(siteId!, operationId!),
@@ -126,6 +127,19 @@ export function useBrandSiteOperation(
         : false;
     },
   });
+  // #4453 — `refetch` runs even while the query is disabled. A publish that had
+  // just been accepted called the refetch of the render before it (no operation
+  // yet) and asked Core for operation "null", three times. With nothing to
+  // track there is nothing to ask; the query starts by itself once it has an id.
+  const { refetch: refetchQuery } = query;
+  const tracking = siteId !== null && operationId !== null;
+  const refetch = useCallback(
+    async (): Promise<void> => {
+      if (tracking) await refetchQuery();
+    },
+    [refetchQuery, tracking],
+  );
+  return { ...query, refetch };
 }
 
 export function useStudioExchange(brandId: string) {
