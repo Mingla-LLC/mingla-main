@@ -17,6 +17,10 @@
 --      prove it: released, not claimed; the person is counted once.
 --   E. Plus-ones off: "Guests can bring guests" cannot survive on a published
 --      event for any writer, and a claimed guest cannot bring while it is off.
+--   F. (fix round 6) A current signed-in caller sending the old guest shape
+--      {name, email, phone} for another person's proven number and verified
+--      email: the consequences of a claim must not appear (host label from the
+--      account, brand Guest chat, own RSVP refused), on submit and re-submit.
 --
 -- FAILS-ON-REVERT (verified by the tester on the #4508 branch):
 --   drop the signed-out refusal in submit_event_rsvp      -> "A: signed-out ... refused"
@@ -26,6 +30,8 @@
 --   issue_4508_sweep_guest_yields leaves it green, so C is a regression net,
 --   not a single-line proof.)
 --   drop trigger issue_4508_guests_bring_needs_plus_ones  -> "E: published event"
+--   claim at submit restored in submit_event_rsvp (claimed_at = now() when the
+--   matched account owns the typed email)                 -> "F: the host sees the typed name"
 -- Invariants exercised: I-4508-SIGNED-OUT-SUBMIT-NO-ORACLE, I-4508-ONE-PLACE-PER-PERSON,
 -- I-4508-ONE-PLACE-ON-CLAIM-PATHS, I-4508-GUEST-ACCOUNT-COLUMNS-CLOSED, I-4508-HOST-SETTING-QUIET.
 \set ON_ERROR_STOP on
@@ -75,6 +81,8 @@ DECLARE
   v_cat   uuid := '45086000-0000-4000-8000-000000000013'; -- guest (C)
   v_dan   uuid := '45086000-0000-4000-8000-000000000014'; -- account with a proven number (A)
   v_eve   uuid := '45086000-0000-4000-8000-000000000015'; -- own RSVP first (D)
+  v_fay   uuid := '45086000-0000-4000-8000-000000000016'; -- old-shape guest (F)
+  v_ev3   uuid := '45086000-0000-4000-8000-000000000005'; -- F
   v_res jsonb; v_rsvp uuid; v_gid uuid; v_gid_b uuid; v_code text; v_before text; v_going bigint; e text;
   v_num text;
 BEGIN
@@ -186,6 +194,63 @@ BEGIN
   v_res := public.rsvp_guest_bring(v_cat, v_gid, '+15550801077', 'US', NULL);
   PERFORM pg_temp.ok(coalesce(v_res->>'outcome', v_res->>'error', v_res::text) ILIKE '%not_allowed%',
     'E: a claimed guest cannot bring someone while plus-ones are off (got ' || v_res::text || ')');
+
+  -- ===================== F. old payload shape never claims (fix round 6) =====================
+  -- A current signed-in caller sends every guest as {name, email, phone}
+  -- naming another person's proven number AND verified email. The
+  -- implementor suite checks the row's claimed flag; F checks what the
+  -- person and the host would see if it were claimed: the host label, the
+  -- brand Guest chat, giving the pass back, a re-submit, and their own RSVP.
+  INSERT INTO auth.users(id, email) VALUES (v_fay, 'rt-fay@example.test');
+  INSERT INTO public.profiles(id,email,display_name,first_name,last_name,phone) VALUES
+    (v_fay,'rt-fay@example.test','Fay Ford','Fay','Ford','+15550801066')
+  ON CONFLICT (id) DO UPDATE SET display_name=EXCLUDED.display_name, first_name=EXCLUDED.first_name,
+    last_name=EXCLUDED.last_name, phone=EXCLUDED.phone;
+  INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES (v_fay,'+15550801066');
+  INSERT INTO auth.identities(user_id, provider, provider_id, identity_data) VALUES
+    (v_fay, 'email', v_fay::text, jsonb_build_object('email', 'rt-fay@example.test', 'email_verified', true));
+  INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,currency,rsvp_capacity,
+    rsvp_waitlist_enabled,rsvp_approval_mode,rsvp_allow_plus_ones,rsvp_plus_ones_max,rsvp_guests_can_bring,published_at)
+  VALUES (v_ev3,v_brand,v_owner,'Retest Three','retest-three-4508t','rsvp','scheduled','public','America/New_York','USD',NULL,
+          false,'auto',true,3,true,now());
+  INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master) VALUES
+    (v_ev3, now()+interval '7 days', now()+interval '7 days 3 hours','America/New_York',true);
+  v_res := public.submit_event_rsvp(v_ev3, v_bob, 'Bob Baker','rt-bob@example.test','+15550801002','going',2,
+    jsonb_build_array(
+      jsonb_build_object('name','Fay Ford','email','rt-fay@example.test','phone','+15550801066','phoneCountryIso','US'),
+      jsonb_build_object('name','Gil Gray','email','rt-gil@example.test','phone','+15550801067','phoneCountryIso','US')),
+    NULL, 'US');
+  v_rsvp := (v_res->>'rsvpId')::uuid;
+  SELECT id INTO v_gid FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550801066';
+  PERFORM pg_temp.ok(v_gid IS NOT NULL AND (SELECT matched_user_id FROM public.event_rsvp_guests WHERE id = v_gid) = v_fay,
+    'F setup: the old-shape guest row exists and is matched to Fay by number');
+  -- The host label must not come from the account: rename the typed name so
+  -- the account name can only appear through a claim.
+  UPDATE public.event_rsvp_guests SET name = 'Typed By Bob' WHERE id = v_gid;
+  PERFORM pg_temp.ok(public.rsvp_guest_host_label(v_gid) = 'Typed By Bob',
+    'F: the host sees the typed name, never the matched account (got ' || coalesce(public.rsvp_guest_host_label(v_gid), 'NULL') || ')');
+  PERFORM pg_temp.ok(public.issue_4459_brand_guest_eligible(v_brand, v_fay) IS NOT TRUE,
+    'F: the matched account is not put in the brand Guest chat by someone else''s submit');
+  -- A re-submit of the same party keeps the row unclaimed.
+  v_res := public.submit_event_rsvp(v_ev3, v_bob, 'Bob Baker','rt-bob@example.test','+15550801002','going',2,
+    jsonb_build_array(
+      jsonb_build_object('name','Fay Ford','email','rt-fay@example.test','phone','+15550801066','phoneCountryIso','US'),
+      jsonb_build_object('name','Gil Gray','email','rt-gil@example.test','phone','+15550801067','phoneCountryIso','US')),
+    NULL, 'US');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.event_rsvp_guests g WHERE g.rsvp_id = v_rsvp AND g.claimed_at IS NOT NULL),
+    'F: a re-submit of the old shape claims nobody');
+  -- Fay's own RSVP is not refused, and she then holds one place.
+  e := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L,%L,'Fay Ford','rt-fay@example.test','+15550801066','going',0,'[]'::jsonb,NULL,'US')$s$,
+                          v_ev3, v_fay));
+  PERFORM pg_temp.ok(e = '', 'F: the matched person''s own RSVP is not refused (got ' || e || ')');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.event_rsvp_guests g WHERE g.rsvp_id = v_rsvp AND g.matched_user_id = v_fay) = 0
+                     AND (SELECT count(*) FROM public.event_rsvps WHERE event_id = v_ev3 AND user_id = v_fay AND rsvp_status = 'going') = 1,
+    'F: Fay holds one place, her own');
+  -- Gil (no account) can still give his invite back from the link.
+  SELECT id INTO v_gid FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550801067';
+  v_code := public.mint_claim_link('rsvp_guest', v_gid)->>'code';
+  PERFORM pg_temp.ok(public.rsvp_guest_release(v_code)->>'outcome' = 'released',
+    'F: an old-shape guest can still say "This isn''t me"');
 END
 $retest$;
 
