@@ -148,10 +148,15 @@ BEGIN
   v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, %L, 'Ada Obi', 'i4508-ada@example.test',
     '+15550204501', 'going', 3, '[{"phone":"+15550204561"},{"phone":"+15550204562"},{"phone":"+15550204563"}]'::jsonb, NULL, 'US')$s$, v_event, v_ada));
   PERFORM pg_temp.ok(v_err = 'rsvp_plus_ones_exceeded', 'the host limit is enforced on the server: ' || v_err);
-  v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Other', 'other-4508@example.test',
-    '+15550204700', 'going', 1, '[{"phone":"+15550204777"}]'::jsonb, NULL, 'US')$s$, v_event));
-  -- R-1: a signed-out caller gets the one code that does not say why.
-  PERFORM pg_temp.ok(v_err = 'rsvp_guest_unavailable', 'a number already on the list refused (signed out): ' || v_err);
+  -- R-1: signed out, a number already on the list is answered like a new one
+  -- (no refusal) and is not added a second time.
+  v_res := public.submit_event_rsvp(v_event, NULL, 'Other', 'other-4508@example.test',
+    '+15550204700', 'going', 1, '[{"phone":"+15550204777"}]'::jsonb, NULL, 'US');
+  PERFORM pg_temp.ok(v_res->'guests'->0->>'phoneLast4' = '4777'
+    AND v_res->'guests'->0->'guestId' = 'null'::jsonb
+    AND (SELECT count(*) FROM public.event_rsvp_guests WHERE phone = '+15550204777') = 1
+    AND NOT EXISTS (SELECT 1 FROM public.event_rsvp_guests WHERE rsvp_id = (v_res->>'rsvpId')::uuid),
+    'a number already on the list is answered like a new one and not re-added (signed out): ' || v_res::text);
   v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, %L, 'Hal Hart', 'i4508-hal@example.test',
     '+15550204599', 'going', 1, '[{"phone":"+15550204777"}]'::jsonb, NULL, 'US')$s$, v_event, v_hal));
   PERFORM pg_temp.ok(v_err = 'rsvp_guest_already_listed', 'a number already on the list refused (signed in): ' || v_err);
@@ -845,6 +850,7 @@ DECLARE
   v_seen_phone text;
   v_seen_own integer;
   v_key text;
+  v_i integer;
 BEGIN
   INSERT INTO auth.users(id, email) SELECT u, 'i4508s-' || right(u::text, 2) || '@example.test'
     FROM unnest(ARRAY[v_own, v_amy, v_fae, v_gia]) u;
@@ -889,34 +895,66 @@ BEGIN
   PERFORM public.submit_event_rsvp(v_ev, v_gia, 'Gia Gold', 'i4508s-13@example.test',
     '+15550407399', 'going', 0, '[]'::jsonb, NULL, 'US');
 
-  -- ---- R-1: signed out, listed / released / account listed read the same --
+  -- ---- R-1: signed out, listed / released / account listed read exactly
+  -- like a new number: same response, field by field; no row, no text -------
+  -- A fresh number first (the baseline answer), then the three probes.
   PERFORM set_config('request.headers', json_build_object('x-mingla-rsvp-client', repeat('e', 64))::text, true);
-  v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Pat Probe', 'probe1-4508s@example.test',
-    '+15550407901', 'going', 1, '[{"phone":"+15550407500"}]'::jsonb, NULL, 'US')$s$, v_ev));
-  PERFORM pg_temp.ok(v_err = 'rsvp_guest_unavailable', 'R-1: a listed number reads unavailable: ' || v_err);
+  v_res := public.submit_event_rsvp(v_ev, NULL, 'Pat Probe', 'probe0-4508s@example.test',
+    '+15550407900', 'going', 1, '[{"phone":"+15550407520"}]'::jsonb, NULL, 'US');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.event_rsvp_guests
+                       WHERE rsvp_id = (v_res->>'rsvpId')::uuid AND phone = '+15550407520') = 1,
+    'fixture: a fresh number is added');
   INSERT INTO public.rsvp_guest_releases(event_id, phone_digits, release_count, inviter_keys)
   VALUES (v_ev, '15550407600', 2, ARRAY['user:' || v_amy]);
-  v_err2 := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Pat Probe', 'probe2-4508s@example.test',
-    '+15550407902', 'going', 1, '[{"phone":"+15550407600"}]'::jsonb, NULL, 'US')$s$, v_ev));
-  PERFORM pg_temp.ok(v_err2 = v_err, 'R-1: a released number reads exactly the same: ' || v_err2);
-  v_err2 := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Pat Probe', 'probe3-4508s@example.test',
-    '+15550407903', 'going', 1, '[{"phone":"+15550407300"}]'::jsonb, NULL, 'US')$s$, v_ev));
-  PERFORM pg_temp.ok(v_err2 = v_err, 'R-1: a number whose account is going reads the same: ' || v_err2);
+  FOR v_i IN 1..3 LOOP
+    v_res2 := public.submit_event_rsvp(v_ev, NULL, 'Pat Probe', 'probe' || v_i || '-4508s@example.test',
+      '+1555040790' || v_i, 'going', 1,
+      jsonb_build_array(jsonb_build_object('phone',
+        (ARRAY['+15550407500', '+15550407600', '+15550407300'])[v_i])), NULL, 'US');
+    -- Field by field: every key and value of the guest entry equals the fresh
+    -- number's, except the last four digits the caller typed themselves.
+    PERFORM pg_temp.ok(
+      (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v_res2->'guests'->0) k)
+        = (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v_res->'guests'->0) k)
+      AND (v_res2->'guests'->0) - 'phoneLast4' = (v_res->'guests'->0) - 'phoneLast4'
+      AND v_res2->'guests'->0->>'phoneLast4'
+        = right((ARRAY['15550407500', '15550407600', '15550407300'])[v_i], 4)
+      AND (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v_res2) k)
+        = (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v_res) k)
+      AND v_res2 - 'rsvpId' - 'guests' = v_res - 'rsvpId' - 'guests',
+      'R-1: probe ' || v_i || ' (listed / released / account listed) reads exactly like a new number: '
+        || v_res2::text || ' vs ' || v_res::text);
+    PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.event_rsvp_guests
+                                    WHERE rsvp_id = (v_res2->>'rsvpId')::uuid),
+      'R-1: probe ' || v_i || ' wrote no guest row (so nothing is texted)');
+    PERFORM pg_temp.ok((SELECT plus_count FROM public.event_rsvps WHERE id = (v_res2->>'rsvpId')::uuid) = 0,
+      'R-1: probe ' || v_i || ' holds no seat for the quiet guest');
+  END LOOP;
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.rsvp_guest_invite_log
+                       WHERE inviter_key = 'ip:' || repeat('e', 64) AND event_id = v_ev) = 4,
+    'R-1: the quiet guests count against the caps like new ones');
   v_err2 := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, %L, 'Fae Fern', 'i4508s-12@example.test',
     '+15550407200', 'going', 1, '[{"phone":"+15550407600"}]'::jsonb, NULL, 'US')$s$, v_ev, v_fae));
   PERFORM pg_temp.ok(v_err2 = 'rsvp_guest_released', 'R-1: a signed-in caller keeps the specific code: ' || v_err2);
+  v_err2 := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, %L, 'Fae Fern', 'i4508s-12@example.test',
+    '+15550407200', 'going', 1, '[{"phone":"+15550407500"}]'::jsonb, NULL, 'US')$s$, v_ev, v_fae));
+  PERFORM pg_temp.ok(v_err2 = 'rsvp_guest_already_listed', 'R-1: signed in, a listed number is named: ' || v_err2);
+  v_err2 := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, %L, 'Fae Fern', 'i4508s-12@example.test',
+    '+15550407200', 'going', 1, '[{"phone":"+15550407300"}]'::jsonb, NULL, 'US')$s$, v_ev, v_fae));
+  PERFORM pg_temp.ok(v_err2 = 'rsvp_guest_already_listed', 'R-1: signed in, an account on the list is named: ' || v_err2);
 
-  -- R-1: the count happens before the submit and survives its rollback.
+  -- R-1 / N-2: the count happens before the submit and survives its rollback,
+  -- against the caller only.
   PERFORM set_config('request.headers', json_build_object('x-mingla-rsvp-client', repeat('0', 64))::text, true);
   v_res := public.rsvp_guest_signed_out_attempt(v_ev, 1);
   PERFORM pg_temp.ok((v_res->>'allowed')::boolean AND (v_res->>'counted')::boolean,
     'R-1: a signed-out attempt is counted: ' || v_res::text);
   v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Pat Probe', 'probe4-4508s@example.test',
-    '+15550407904', 'going', 1, '[{"phone":"+15550407500"}]'::jsonb, NULL, 'US')$s$, v_ev));
-  PERFORM pg_temp.ok(v_err = 'rsvp_guest_unavailable'
+    '+15550407904', 'going', 1, '[{"phone":"+15550407904"}]'::jsonb, NULL, 'US')$s$, v_ev));
+  PERFORM pg_temp.ok(v_err = 'rsvp_guest_own_number'
     AND (SELECT sum(guest_count) FROM public.rsvp_guest_signed_out_attempts
           WHERE inviter_key = 'ip:' || repeat('0', 64)) = 1,
-    'R-1: the refused submit rolled back, the attempt it used did not');
+    'R-1: the refused submit rolled back, the attempt it used did not: ' || v_err);
   INSERT INTO public.rsvp_guest_signed_out_attempts(inviter_key, event_id, guest_count)
   VALUES ('ip:' || repeat('0', 64), v_ev2, 19);
   v_res := public.rsvp_guest_signed_out_attempt(v_ev, 1);
@@ -924,12 +962,22 @@ BEGIN
     AND (SELECT sum(guest_count) FROM public.rsvp_guest_signed_out_attempts
           WHERE inviter_key = 'ip:' || repeat('0', 64)) = 20,
     'R-1: past 20 numbers an address is refused (across events) and nothing is written: ' || v_res::text);
+  -- N-2: 30 refused attempts on one event from other callers do not use up
+  -- that event's allowance for a new caller.
   INSERT INTO public.rsvp_guest_signed_out_attempts(inviter_key, event_id, guest_count)
   SELECT 'ip:' || md5('s' || i) || md5('t' || i), v_ev3, 1 FROM generate_series(1, 30) i;
   PERFORM set_config('request.headers', json_build_object('x-mingla-rsvp-client', repeat('1', 64))::text, true);
   v_res := public.rsvp_guest_signed_out_attempt(v_ev3, 1);
-  PERFORM pg_temp.ok(NOT (v_res->>'allowed')::boolean,
-    'R-1: an event takes 30 signed-out guest numbers a day, refused ones included: ' || v_res::text);
+  PERFORM pg_temp.ok((v_res->>'allowed')::boolean AND (v_res->>'counted')::boolean,
+    'N-2: refused attempts by others do not use up an event''s allowance: ' || v_res::text);
+  -- N-2: the event's 30 a day counts accepted invites inside the submit.
+  INSERT INTO public.rsvp_guest_invite_log(inviter_key, event_id, phone_digits)
+  SELECT 'ip:' || md5('u' || i) || md5('v' || i), v_ev3, '1555077' || lpad(i::text, 4, '0')
+    FROM generate_series(1, 30) i;
+  v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Pat Late', 'probe5-4508s@example.test',
+    '+15550407905', 'going', 1, '[{"phone":"+15550407955"}]'::jsonb, NULL, 'US')$s$, v_ev3));
+  PERFORM pg_temp.ok(v_err = 'rsvp_guest_daily_cap',
+    'N-2: past 30 accepted signed-out invites an event refuses the next one: ' || v_err);
   v_res := public.rsvp_guest_signed_out_attempt(gen_random_uuid(), 1);
   PERFORM pg_temp.ok((v_res->>'allowed')::boolean AND NOT (v_res->>'counted')::boolean,
     'R-1: an unknown event is not counted (the submit refuses it): ' || v_res::text);
@@ -958,16 +1006,15 @@ BEGIN
     'R-2: a signed-in inviter still sees the account: ' || (v_res->'guests')::text);
   PERFORM set_config('request.headers', '', true);
 
-  -- ---- R-3: the inviter cannot read a picked friend's number --------------
+  -- ---- R-3: the inviter cannot read a picked friend's row ---------------
   PERFORM pg_temp.as_user(v_amy);
   EXECUTE 'SET LOCAL ROLE authenticated';
-  SELECT count(*) FILTER (WHERE id = v_fid), count(*) FILTER (WHERE id = v_tid),
-         max(phone) FILTER (WHERE id = v_fid)
-    INTO v_seen_friend, v_seen_typed, v_seen_phone
+  SELECT count(*) FILTER (WHERE id = v_fid), count(*) FILTER (WHERE id = v_tid)
+    INTO v_seen_friend, v_seen_typed
     FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp;
   EXECUTE 'RESET ROLE';
-  PERFORM pg_temp.ok(v_seen_friend = 0 AND v_seen_phone IS NULL AND v_seen_typed = 1,
-    'R-3: as the inviter, the picked friend''s row (and number) is not readable; the typed guest is: '
+  PERFORM pg_temp.ok(v_seen_friend = 0 AND v_seen_typed = 1,
+    'R-3: as the inviter, the picked friend''s row is not readable; the typed guest is: '
       || v_seen_friend || '/' || v_seen_typed);
   PERFORM pg_temp.as_user(v_fae);
   EXECUTE 'SET LOCAL ROLE authenticated';
@@ -977,6 +1024,43 @@ BEGIN
   PERFORM pg_temp.ok((SELECT phone FROM public.event_rsvp_guests WHERE id = v_fid) = '+15550407200'
     AND public.rsvp_guest_message_context(v_fid) IS NOT NULL,
     'R-3: the number is still stored for texting and claiming');
+
+  -- ---- N-3: no app role reads a guest's number or email directly ---------
+  -- As the brand owner (host read policy) and as the inviter (owner read).
+  PERFORM pg_temp.ok(NOT has_column_privilege('authenticated', 'public.event_rsvp_guests', 'phone', 'SELECT')
+    AND NOT has_column_privilege('authenticated', 'public.event_rsvp_guests', 'email', 'SELECT')
+    AND NOT has_column_privilege('anon', 'public.event_rsvp_guests', 'phone', 'SELECT')
+    AND NOT has_column_privilege('anon', 'public.event_rsvp_guests', 'email', 'SELECT')
+    AND has_column_privilege('authenticated', 'public.event_rsvp_guests', 'rsvp_id', 'SELECT')
+    AND has_column_privilege('service_role', 'public.event_rsvp_guests', 'phone', 'SELECT'),
+    'N-3: phone and email are not readable by app roles; other columns and service_role are');
+  FOREACH v_key IN ARRAY ARRAY['phone', 'email'] LOOP
+    PERFORM pg_temp.as_user(v_own);
+    EXECUTE 'SET LOCAL ROLE authenticated';
+    v_err := pg_temp.err(format('SELECT %I FROM public.event_rsvp_guests WHERE rsvp_id = %L', v_key, v_rsvp));
+    EXECUTE 'RESET ROLE';
+    PERFORM pg_temp.ok(v_err LIKE 'permission denied%',
+      'N-3: the host cannot select ' || v_key || ': ' || v_err);
+    PERFORM pg_temp.as_user(v_amy);
+    EXECUTE 'SET LOCAL ROLE authenticated';
+    v_err := pg_temp.err(format('SELECT %I FROM public.event_rsvp_guests WHERE id = %L', v_key, v_tid));
+    EXECUTE 'RESET ROLE';
+    PERFORM pg_temp.ok(v_err LIKE 'permission denied%',
+      'N-3: the inviter cannot select ' || v_key || ': ' || v_err);
+  END LOOP;
+  PERFORM pg_temp.as_user(v_own);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT count(*) INTO v_seen_typed FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp;
+  EXECUTE 'RESET ROLE';
+  PERFORM pg_temp.ok(v_seen_typed = 2, 'N-3: the host still reads the rows (no number): ' || v_seen_typed);
+  PERFORM pg_temp.as_user(v_own);
+  PERFORM pg_temp.ok((SELECT bool_and(x->>'phoneLast4' ~ '^[0-9]{4}$')
+                        FROM public.host_list_rsvp_guests(v_ev) h,
+                             jsonb_array_elements(h.plus_checkins) x
+                       WHERE h.id = v_rsvp),
+    'N-3: the host list still gives the last four digits');
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
 
   -- ---- R-6: an unclaimed matched guest is not offered "Bring someone too" -
   UPDATE public.event_rsvp_guests SET qr_code = 'mingla-rsvp:4508s-' || left(id::text, 8) WHERE rsvp_id = v_rsvp;
@@ -1076,4 +1160,275 @@ BEGIN
 END
 $lookup_day$;
 
+-- ===========================================================================
+-- Third rework (#4508): N-1, N-5, N-8, N-9 and claim sweeps.
+-- MINGLA-INVARIANT: I-4508-GUEST-CHAT-AFTER-CLAIM | issue #4508 | a plus-one is a member of the brand Guest chat (#4459) only once the pass is claimed (rsvp_guest_claim or a proven-contact claim sweep): a number matched at submit, a friend picked from a list and any signed-out RSVP add nobody; claiming joins; leaving the party removes.
+-- MINGLA-INVARIANT: I-4508-HOST-LABEL-BEFORE-CLAIM | issue #4508 | host_list_rsvp_guests, biz_rsvp_scan, host_check_in_rsvp_guest and admin_list_event_rsvps name an unclaimed plus-one by the typed name or "<Inviter first name>'s guest" (rsvp_guest_host_label), never the matched account, and onMingla is false until the claim; after the claim the account name shows.
+-- MINGLA-INVARIANT: I-4508-CEILING-ATOMIC-ALERT | issue #4508 | a signed-out submit with guests holds one transaction lock (45084, 0) while the signed-out text ceiling is counted, and the first ceiling hold of a UTC day records one row for a single ops alert, marked only after the alert went out.
+-- MINGLA-INVARIANT: I-4508-CHECKIN-CLAIMED-REFUSED | issue #4508 | host_check_in_rsvp_guest answers result claimed for a guest who has claimed the pass and checks nobody in (the pass is scanned instead).
+-- FAILS-ON-REVERT: drop "AND g.claimed_at IS NOT NULL" from the guest arm -> N-1 "not in the Guest chat" fails; use rsvp_guest_display_name in host_list_rsvp_guests -> N-5 fails; remove the rsvp_guest_lock_signed_out_ceiling call -> N-8 lock fails; remove the claimed branch of host_check_in_rsvp_guest -> N-9 fails.
+-- ===========================================================================
+DO $rework3$
+DECLARE
+  v_own  uuid := '45084000-0000-4000-8000-000000000001';
+  v_brand uuid := '45084000-0000-4000-8000-000000000002';
+  v_ev   uuid := '45084000-0000-4000-8000-000000000003';
+  v_amy  uuid := '45084000-0000-4000-8000-000000000011'; -- signed-in inviter
+  v_kim  uuid := '45084000-0000-4000-8000-000000000012'; -- proves +15550408200
+  v_lia  uuid := '45084000-0000-4000-8000-000000000013'; -- proves +15550408300
+  v_mo   uuid := '45084000-0000-4000-8000-000000000014'; -- proves +15550408400 later, claims by a sweep
+  v_nia  uuid := '45084000-0000-4000-8000-000000000015'; -- proves +15550408500
+  v_conv uuid;
+  v_res jsonb;
+  v_rsvp uuid;
+  v_gk uuid;
+  v_gl uuid;
+  v_gm uuid;
+  v_def text;
+BEGIN
+  INSERT INTO auth.users(id, email) SELECT u, 'i4508t-' || right(u::text, 2) || '@example.test'
+    FROM unnest(ARRAY[v_own, v_amy, v_kim, v_lia, v_mo, v_nia]) u;
+  INSERT INTO public.profiles(id, email, display_name, first_name, last_name, phone)
+  SELECT u, 'i4508t-' || right(u::text, 2) || '@example.test', n, split_part(n, ' ', 1), split_part(n, ' ', 2), NULL
+    FROM (VALUES (v_amy, 'Amy Ames'), (v_kim, 'Kim Kerr'), (v_lia, 'Lia Lane'), (v_mo, 'Mo Moss'),
+                 (v_nia, 'Nia Nash')) x(u, n)
+  ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name,
+    first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, phone = NULL;
+  INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES
+    (v_amy, '+15550408100'), (v_kim, '+15550408200'), (v_lia, '+15550408300'), (v_nia, '+15550408500');
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_own, 'i4508t-owner@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, payment_provider, pricing_region,
+    pricing_currency, default_currency, contact_email)
+  VALUES (v_brand, v_own, 'Issue 4508 Third', 'issue-4508-third', 'stripe', 'US', 'USD', 'USD',
+    'host-4508t@example.test');
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility,
+    timezone, currency, rsvp_capacity, rsvp_waitlist_enabled, rsvp_approval_mode,
+    rsvp_allow_plus_ones, rsvp_plus_ones_max, published_at)
+  VALUES (v_ev, v_brand, v_own, 'Third Party', 'third-4508t', 'rsvp', 'scheduled', 'public',
+    'UTC', 'USD', NULL, false, 'auto', true, 3, now());
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master) VALUES
+    (v_ev, now() + interval '6 days', now() + interval '6 days 4 hours', 'UTC', true);
+
+  -- ---- N-1: the Guest chat needs a claimed pass ---------------------------
+  v_def := pg_get_functiondef('public.issue_4459_brand_guest_eligible(uuid,uuid)'::regprocedure);
+  PERFORM pg_temp.ok(v_def LIKE '%AND g.matched_user_id = p_user_id%AND g.claimed_at IS NOT NULL%'
+    AND v_def LIKE '%public.issue_4473_shared_brand_guest(p_brand_id, p_user_id) OR%'
+    AND v_def LIKE '%pending_trip_chat_claims%',
+    'N-1: eligibility keeps every #4459 / #4473 arm and the guest arm needs a claim');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM pg_trigger t
+      WHERE t.tgrelid = 'public.event_rsvp_guests'::regclass
+        AND t.tgname = 'issue_4459_brand_guest_chat_rsvp_party'
+        AND pg_get_triggerdef(t.oid) LIKE '%UPDATE OF matched_user_id, rsvp_id, claimed_at%'),
+    'N-1: the party trigger also fires on a claim');
+
+  v_res := public.submit_event_rsvp(v_ev, v_amy, 'Amy Ames', 'i4508t-11@example.test',
+    '+15550408100', 'going', 3,
+    '[{"phone":"+15550408200"},{"phone":"+15550408300"},{"phone":"+15550408400"}]'::jsonb, NULL, 'US');
+  v_rsvp := (v_res->>'rsvpId')::uuid;
+  SELECT id INTO v_gk FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550408200';
+  SELECT id INTO v_gl FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550408300';
+  SELECT id INTO v_gm FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550408400';
+  v_conv := public.issue_4459_ensure_brand_guest_chat(v_brand);
+  PERFORM pg_temp.ok(v_conv IS NOT NULL
+    AND (SELECT matched_user_id = v_kim AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE id = v_gk)
+    AND EXISTS (SELECT 1 FROM public.conversation_participants
+                 WHERE conversation_id = v_conv AND user_id = v_amy),
+    'fixture: Kim''s number matched (unclaimed); Amy is in the Guest chat');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.conversation_participants
+                                  WHERE conversation_id = v_conv AND user_id IN (v_kim, v_lia)),
+    'N-1: an unclaimed matched plus-one is not in the Guest chat');
+  PERFORM set_config('request.headers', json_build_object('x-mingla-rsvp-client', repeat('9', 64))::text, true);
+  PERFORM public.submit_event_rsvp(v_ev, NULL, 'Ola Out', 'out-4508t@example.test',
+    '+15550408900', 'going', 1, '[{"phone":"+15550408500"}]'::jsonb, NULL, 'US');
+  PERFORM pg_temp.ok((SELECT matched_user_id FROM public.event_rsvp_guests WHERE phone = '+15550408500') = v_nia
+    AND NOT EXISTS (SELECT 1 FROM public.conversation_participants
+                     WHERE conversation_id = v_conv AND user_id = v_nia),
+    'N-1: a signed-out RSVP cannot drop an account into the Guest chat');
+  -- N-8: that signed-out submit held the ceiling lock until commit.
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM pg_locks l
+      WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid() AND l.granted
+        AND l.classid = 45084::oid AND l.objid = 0::oid AND l.objsubid = 2),
+    'N-8: a signed-out submit with guests counts the ceiling under its lock');
+  PERFORM set_config('request.headers', '', true);
+
+  PERFORM pg_temp.ok(public.rsvp_guest_claim(v_kim,
+      public.mint_claim_link('rsvp_guest', v_gk)->>'code', NULL)->>'outcome' = 'claimed',
+    'fixture: Kim claims');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.conversation_participants
+                              WHERE conversation_id = v_conv AND user_id = v_kim),
+    'N-1: claiming the pass joins the Guest chat');
+  -- A proven-contact claim sweep (#4063 / #4459) matching an unmatched row to
+  -- the account that proved its number is a claim too (an email-only match is
+  -- not: P2-1 above).
+  INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES (v_mo, '+15550408400');
+  UPDATE public.event_rsvp_guests SET matched_user_id = v_mo WHERE id = v_gm AND matched_user_id IS NULL;
+  PERFORM pg_temp.ok((SELECT claimed_at IS NOT NULL FROM public.event_rsvp_guests WHERE id = v_gm)
+    AND EXISTS (SELECT 1 FROM public.conversation_participants
+                 WHERE conversation_id = v_conv AND user_id = v_mo),
+    'N-1: a claim sweep that matches the row records the claim and joins');
+
+  -- ---- N-5: hosts never see the matched account before the claim ----------
+  PERFORM pg_temp.ok(public.rsvp_guest_host_label(v_gl) = 'Amy''s guest'
+    AND public.rsvp_guest_display_name(v_gl) = 'Lia Lane',
+    'N-5: the host label of an unclaimed matched guest is neutral: ' || public.rsvp_guest_host_label(v_gl));
+  PERFORM pg_temp.as_user(v_own);
+  PERFORM pg_temp.ok((SELECT x->>'name' = 'Amy''s guest' AND NOT (x->>'onMingla')::boolean
+                             AND NOT (x->>'claimed')::boolean AND x->>'phoneLast4' = '8300'
+                        FROM public.host_list_rsvp_guests(v_ev) h, jsonb_array_elements(h.plus_checkins) x
+                       WHERE h.id = v_rsvp AND x->>'id' = v_gl::text)
+    AND (SELECT h.plus_checkins::text NOT LIKE '%Lia%' FROM public.host_list_rsvp_guests(v_ev) h
+          WHERE h.id = v_rsvp),
+    'N-5: the host list names an unclaimed guest "Amy''s guest", onMingla false');
+  PERFORM pg_temp.ok((SELECT x->>'name' = 'Kim Kerr' AND (x->>'onMingla')::boolean
+                        FROM public.host_list_rsvp_guests(v_ev) h, jsonb_array_elements(h.plus_checkins) x
+                       WHERE h.id = v_rsvp AND x->>'id' = v_gk::text),
+    'N-5: after the claim the host sees the account name');
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM pg_temp.ok(
+    (SELECT bool_and(pg_get_functiondef(f) LIKE '%rsvp_guest_host_label(%'
+                     AND pg_get_functiondef(f) NOT LIKE '%rsvp_guest_display_name(%')
+       FROM unnest(ARRAY['public.biz_rsvp_scan(uuid,text)'::regprocedure,
+                         'public.host_check_in_rsvp_guest(uuid)'::regprocedure,
+                         'public.admin_list_event_rsvps(uuid,integer,integer)'::regprocedure,
+                         'public.host_list_rsvp_guests(uuid)'::regprocedure]) f),
+    'N-5: the scanner, check-in by hand, Admin and host list all use the host label');
+
+  -- ---- N-9: a claimed guest is checked in by scanning the pass -----------
+  PERFORM pg_temp.as_user(v_own);
+  v_res := public.host_check_in_rsvp_guest(v_gk);
+  PERFORM pg_temp.ok(v_res->>'result' = 'claimed' AND NOT (v_res ? 'checkedInAt')
+    AND (SELECT checked_in_at IS NULL FROM public.event_rsvp_guests WHERE id = v_gk)
+    AND EXISTS (SELECT 1 FROM public.rsvp_scan_events e
+                 WHERE e.guest_id = v_gk AND e.outcome = 'not_eligible'
+                   AND e.metadata->>'reason' = 'claimed' AND e.metadata->>'source' = 'host-manual'),
+    'N-9: check-in by hand refuses a claimed guest (audited): ' || v_res::text);
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  -- ---- N-8: one ops alert per UTC day the ceiling holds a guest ----------
+  -- The second rework block already took the ceiling past 300 and held one
+  -- signed-out guest today; a second hold the same day adds no second row.
+  PERFORM set_config('request.headers', json_build_object('x-mingla-rsvp-client', repeat('8', 64))::text, true);
+  v_res := public.submit_event_rsvp(v_ev, NULL, 'Ola Two', 'out2-4508t@example.test',
+    '+15550408901', 'going', 1, '[{"phone":"+15550408600"}]'::jsonb, NULL, 'US');
+  PERFORM set_config('request.headers', '', true);
+  PERFORM pg_temp.ok(NOT (v_res->'guests'->0->>'willText')::boolean
+    AND (SELECT count(*) FROM public.rsvp_guest_signed_out_ceiling_hits
+          WHERE hit_day = (now() AT TIME ZONE 'UTC')::date) = 1
+    AND (SELECT count(*) FROM public.issue_4508_list_ceiling_hits()) = 1,
+    'N-8: the ceiling day is recorded once for one alert: ' || v_res::text);
+  PERFORM pg_temp.ok(public.issue_4508_mark_ceiling_hit_reported((now() AT TIME ZONE 'UTC')::date) = 1,
+    'N-8: the day is marked reported after the alert');
+  PERFORM pg_temp.ok(public.issue_4508_mark_ceiling_hit_reported((now() AT TIME ZONE 'UTC')::date) = 0,
+    'N-8: marking twice changes nothing');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.issue_4508_list_ceiling_hits()),
+    'N-8: a reported day is no longer listed');
+  PERFORM pg_temp.ok(NOT has_table_privilege('authenticated', 'public.rsvp_guest_signed_out_ceiling_hits', 'SELECT')
+    AND NOT has_function_privilege('authenticated', 'public.issue_4508_list_ceiling_hits()', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.issue_4508_mark_ceiling_hit_reported(date)', 'EXECUTE'),
+    'N-8: the ceiling record is service-role only');
+
+  -- ---- N-1: leaving the party leaves the chat ----------------------------
+  PERFORM public.submit_event_rsvp(v_ev, v_amy, 'Amy Ames', 'i4508t-11@example.test',
+    '+15550408100', 'going', 1, '[{"phone":"+15550408300"}]'::jsonb, NULL, 'US');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.conversation_participants
+                                  WHERE conversation_id = v_conv AND user_id IN (v_kim, v_mo)),
+    'N-1: a claimed guest dropped from the party leaves the Guest chat');
+  PERFORM pg_temp.ok(public.rsvp_guest_release(public.mint_claim_link('rsvp_guest', v_gl)->>'code')->>'outcome' = 'released'
+    AND NOT EXISTS (SELECT 1 FROM public.conversation_participants
+                     WHERE conversation_id = v_conv AND user_id = v_lia),
+    'N-1: a released guest is not in the Guest chat');
+
+  RAISE NOTICE '#4508 third rework: all cases passed';
+END
+$rework3$;
+
 ROLLBACK;
+
+-- ===========================================================================
+-- N-6 (#4508): the first apply marks guest rows matched before #4508 as
+-- claimed (created_at), so existing Guest chat members keep their place; a
+-- re-apply never does, and re-syncs away a member who is there only through
+-- an unclaimed match. Needs committed rows and a re-run of the migration, so
+-- it runs after the transactional blocks (the suite owns its database).
+-- MINGLA-INVARIANT: I-4508-LEGACY-MATCH-IS-CLAIMED | issue #4508 | on its first apply the bring-a-friend migration sets claimed_at = created_at on every guest row already matched to an account, keeping those accounts in the brand Guest chat; a later apply never backfills, and removes from the Guest chat an account whose only claim to it is an unclaimed match.
+-- FAILS-ON-REVERT: drop the N-6 backfill -> "N-6: a legacy matched guest reads as claimed" fails; drop the re-sync -> "N-6: an unclaimed-only member is removed" fails.
+-- ===========================================================================
+CREATE FUNCTION pg_temp.ok(p_ok boolean, p_message text) RETURNS void LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF p_ok IS NOT TRUE THEN RAISE EXCEPTION '#4508 FAIL: %', p_message; END IF;
+END
+$fn$;
+INSERT INTO auth.users(id, email) VALUES
+  ('45085000-0000-4000-8000-000000000001', 'i4508u-own@example.test'),
+  ('45085000-0000-4000-8000-000000000011', 'i4508u-pri@example.test'),
+  ('45085000-0000-4000-8000-000000000012', 'i4508u-leg@example.test'),
+  ('45085000-0000-4000-8000-000000000013', 'i4508u-new@example.test');
+INSERT INTO public.creator_accounts(id, email)
+VALUES ('45085000-0000-4000-8000-000000000001', 'i4508u-own@example.test');
+INSERT INTO public.brands(id, account_id, name, slug, payment_provider, pricing_region,
+  pricing_currency, default_currency, contact_email)
+VALUES ('45085000-0000-4000-8000-000000000002', '45085000-0000-4000-8000-000000000001',
+  'Issue 4508 Legacy', 'issue-4508-legacy', 'stripe', 'US', 'USD', 'USD', 'host-4508u@example.test');
+INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility,
+  timezone, currency, rsvp_capacity, rsvp_waitlist_enabled, rsvp_approval_mode,
+  rsvp_allow_plus_ones, rsvp_plus_ones_max, published_at)
+VALUES ('45085000-0000-4000-8000-000000000003', '45085000-0000-4000-8000-000000000002',
+  '45085000-0000-4000-8000-000000000001', 'Legacy Night', 'legacy-4508u', 'rsvp', 'scheduled',
+  'public', 'UTC', 'USD', NULL, false, 'auto', true, 2, now());
+INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+VALUES ('45085000-0000-4000-8000-000000000003', now() + interval '6 days',
+  now() + interval '6 days 4 hours', 'UTC', true);
+INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, rsvp_status, approval_status)
+VALUES ('45085000-0000-4000-8000-000000000004', '45085000-0000-4000-8000-000000000003',
+  '45085000-0000-4000-8000-000000000011', 'Pri', 'going', 'approved');
+-- A plus-one matched before #4508, already a Guest chat member.
+INSERT INTO public.event_rsvp_guests(id, rsvp_id, name, email, phone, matched_user_id, created_at)
+VALUES ('45085000-0000-4000-8000-000000000005', '45085000-0000-4000-8000-000000000004',
+  'Leg', 'leg-4508u@example.test', '+15550409200', '45085000-0000-4000-8000-000000000012',
+  now() - interval '30 days');
+INSERT INTO public.conversation_participants(conversation_id, user_id)
+VALUES (public.issue_4459_ensure_brand_guest_chat('45085000-0000-4000-8000-000000000002'),
+  '45085000-0000-4000-8000-000000000012')
+ON CONFLICT (conversation_id, user_id) DO NOTHING;
+-- The state before #4508: no claimed_at column at all.
+ALTER TABLE public.event_rsvp_guests DROP COLUMN claimed_at CASCADE;
+\ir ../20281119014508_issue_4508_bring_a_friend.sql
+DO $n6$
+BEGIN
+  PERFORM pg_temp.ok((SELECT claimed_at = created_at FROM public.event_rsvp_guests
+                       WHERE id = '45085000-0000-4000-8000-000000000005'),
+    'N-6: a legacy matched guest reads as claimed, at its created_at');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.conversation_participants
+      WHERE conversation_id = public.issue_4459_ensure_brand_guest_chat('45085000-0000-4000-8000-000000000002')
+        AND user_id = '45085000-0000-4000-8000-000000000012'),
+    'N-6: a legacy matched guest keeps their Guest chat place');
+END
+$n6$;
+-- A later apply: a member there only through an unclaimed match is removed,
+-- and nothing is backfilled.
+INSERT INTO public.event_rsvp_guests(id, rsvp_id, phone, matched_user_id)
+VALUES ('45085000-0000-4000-8000-000000000006', '45085000-0000-4000-8000-000000000004',
+  '+15550409300', '45085000-0000-4000-8000-000000000013');
+INSERT INTO public.conversation_participants(conversation_id, user_id)
+VALUES (public.issue_4459_ensure_brand_guest_chat('45085000-0000-4000-8000-000000000002'),
+  '45085000-0000-4000-8000-000000000013')
+ON CONFLICT (conversation_id, user_id) DO NOTHING;
+\ir ../20281119014508_issue_4508_bring_a_friend.sql
+DO $n6b$
+BEGIN
+  PERFORM pg_temp.ok((SELECT claimed_at IS NULL FROM public.event_rsvp_guests
+                       WHERE id = '45085000-0000-4000-8000-000000000006'),
+    'N-6: a re-apply never marks a #4508 guest as claimed');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.conversation_participants
+      WHERE conversation_id = public.issue_4459_ensure_brand_guest_chat('45085000-0000-4000-8000-000000000002')
+        AND user_id = '45085000-0000-4000-8000-000000000013'),
+    'N-6: an unclaimed-only member is removed by the re-sync');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.conversation_participants
+      WHERE conversation_id = public.issue_4459_ensure_brand_guest_chat('45085000-0000-4000-8000-000000000002')
+        AND user_id = '45085000-0000-4000-8000-000000000012'),
+    'N-6: the legacy member stays');
+  RAISE NOTICE '#4508 legacy matches: all cases passed';
+END
+$n6b$;

@@ -245,8 +245,8 @@ BEGIN
   PERFORM pg_temp.ok('H-RSVP-CLAIM an anonymous RSVP joins on claim', pg_temp.in_one('b1', 'hal'));
 
   -- Matched plus-one.
-  INSERT INTO public.event_rsvp_guests(rsvp_id, name, email, phone, matched_user_id)
-    VALUES (v_rsvp, 'Ivy', 'ivy@example.test', '+15550000001', pg_temp.u('ivy'));
+  INSERT INTO public.event_rsvp_guests(rsvp_id, name, email, phone, matched_user_id, claimed_at)
+    VALUES (v_rsvp, 'Ivy', 'ivy@example.test', '+15550000001', pg_temp.u('ivy'), now());
   PERFORM pg_temp.ok('H-PLUS-ONE a matched plus-one joins', pg_temp.in_one('b1', 'ivy'));
 
   -- Anonymous order, then claim_attendance_internal_v2 binds buyer_user_id.
