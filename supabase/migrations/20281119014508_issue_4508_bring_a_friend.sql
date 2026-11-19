@@ -4061,7 +4061,8 @@ BEGIN
   IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.ad_list_audience_refresh(%' THEN
     RAISE EXCEPTION 'issue_4508_j_patch_failed';
   END IF;
-  EXECUTE v_def;
+  EXECUTE format('CREATE OR REPLACE FUNCTION public.ad_list_audience_refresh%s',
+    substr(v_def, length('CREATE OR REPLACE FUNCTION public.ad_list_audience_refresh') + 1));
 END
 $j_patch$;
 REVOKE ALL ON FUNCTION public.ad_list_audience_refresh(uuid) FROM PUBLIC, anon, authenticated;
