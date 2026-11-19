@@ -42,6 +42,8 @@ const SILENT_AFTER_MS = 4_000;
  * and fade back in on every saved change. Another page is shown at once.
  */
 export const SWAP_SETTLE_MS = 650;
+/** A rebuilt page that is ready but still fetching (its pictures) is waited for this long before it takes over anyway. */
+const LOAD_WAIT_MS = 4_000;
 /** A rebuilt page that has not finished loading after this long is given up on (the page on screen stays). */
 const UNLOADED_AFTER_MS = 20_000;
 /** The plain line shown when the page on screen could not be rebuilt after a change. */
@@ -97,6 +99,8 @@ export function usePreviewFrames(options: {
   const readyFrames = useRef(new Map<number, readonly FrameSection[]>());
   /** The scroll a rebuilt frame takes over, sent once its bridge is listening. */
   const pendingRestore = useRef<{ key: number; scrollY: number } | null>(null);
+  /** Frames whose document has finished loading (pictures included). */
+  const loadedFrames = useRef(new Set<number>());
   /** Rebuilt frames already put in place while out of sight, with the scroll each was given. */
   const presettled = useRef(new Map<number, number>());
   /** A section the workspace asked to show while its page was not on screen yet. */
@@ -189,6 +193,9 @@ export function usePreviewFrames(options: {
     for (const key of [...nudges.current.keys()]) {
       if (key !== shownKey && key !== loadingKey) stopNudging(key);
     }
+    for (const key of [...loadedFrames.current]) {
+      if (key !== shownKey && key !== loadingKey) loadedFrames.current.delete(key);
+    }
     if (shownKey === null) {
       previousShown.current = null;
       pendingRestore.current = null;
@@ -240,6 +247,15 @@ export function usePreviewFrames(options: {
     return () => clearTimeout(timer);
   }, [options.tokenDeclarations, shownKey]);
 
+  const takeOverSoon = useCallback((key: number) => {
+    const waiting = timers.current.get(key);
+    if (waiting) clearTimeout(waiting);
+    timers.current.set(key, setTimeout(() => {
+      timers.current.delete(key);
+      dispatch({ type: "ready", key });
+    }, SWAP_SETTLE_MS));
+  }, []);
+
   const onMessage = useCallback((key: number, raw: unknown) => {
     const message = parsePreviewMessage(raw);
     if (!message) return;
@@ -268,10 +284,9 @@ export function usePreviewFrames(options: {
           pendingRestore.current = { key, scrollY: state.scrollY };
           presettled.current.set(key, state.scrollY);
           settle(key);
-          timers.current.set(key, setTimeout(() => {
-            timers.current.delete(key);
-            dispatch({ type: "ready", key });
-          }, SWAP_SETTLE_MS));
+          // It takes over once its pictures are in too (or after a wait, if they are slow).
+          if (loadedFrames.current.has(key)) takeOverSoon(key);
+          else timers.current.set(key, setTimeout(() => takeOverSoon(key), LOAD_WAIT_MS));
         }
       } else {
         sync(key);
@@ -291,7 +306,7 @@ export function usePreviewFrames(options: {
       setGeometry((current) => (current.scrollY === message.scrollY ? current : { ...current, scrollY: message.scrollY }));
       latest.current.onSelect(message.sectionId, message.rect);
     }
-  }, [settle, stopNudging, sync]);
+  }, [settle, stopNudging, sync, takeOverSoon]);
 
   /**
    * Some browsers (Firefox on localhost) only tell the frame who its parent
@@ -324,7 +339,15 @@ export function usePreviewFrames(options: {
       }
       return;
     }
-    if (state.loading?.key !== key || timers.current.has(key)) return;
+    if (state.loading?.key !== key) return;
+    const first = !loadedFrames.current.has(key);
+    loadedFrames.current.add(key);
+    if (readyFrames.current.has(key)) {
+      // Ready and now fully loaded: it can take over.
+      if (first && presettled.current.has(key)) takeOverSoon(key);
+      return;
+    }
+    if (timers.current.has(key)) return;
     latest.current.send(key, { type: PREVIEW_MODE, edit: latest.current.editMode });
     nudge(key);
     timers.current.set(key, setTimeout(() => {
@@ -335,7 +358,7 @@ export function usePreviewFrames(options: {
         giveUp(key, true);
       }, SILENT_AFTER_MS - AFTER_LOAD_MS));
     }, AFTER_LOAD_MS));
-  }, [giveUp, nudge, sync]);
+  }, [giveUp, nudge, sync, takeOverSoon]);
 
   const commands = useMemo<PreviewCommands>(() => ({
     post: (message) => {

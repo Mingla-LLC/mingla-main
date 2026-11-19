@@ -82,6 +82,7 @@ describe("the live preview's frames", () => {
     expect(selected).toEqual([]);
     sent.length = 0;
     await act(async () => { api.onMessage(2, ready(0)); });
+    await act(async () => { api.onLoaded(2); });
     // Out of sight it is given the state and its place; it takes over a moment later, settled.
     expect(api.swap.shown!.key).toBe(1);
     expect(sent.filter((entry) => entry.message.type === "mingla:preview-restore-scroll")).toEqual([{ key: 2, message: { type: "mingla:preview-restore-scroll", scroll_y: 640 } }]);
@@ -187,6 +188,7 @@ describe("the live preview's frames", () => {
     await act(async () => { api.onMessage(1, ready(0)); });
     await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [], scroll_y: 500 }); });
     await act(async () => { tree.update(<Harness url="https://x/2" page="home" />); });
+    await act(async () => { api.onLoaded(2); });
     sent.length = 0;
     await act(async () => { api.onMessage(2, ready(0)); });
     await act(async () => { jest.advanceTimersByTime(600); });
@@ -199,12 +201,37 @@ describe("the live preview's frames", () => {
     await act(async () => { tree.update(<Harness url="https://x/3" page="home" />); });
     sent.length = 0;
     await act(async () => { api.onMessage(3, ready(0)); });
+    await act(async () => { api.onLoaded(3); });
     await act(async () => { api.onMessage(2, { type: "mingla:preview-rects", sections: [], scroll_y: 900 }); });
     await act(async () => { jest.advanceTimersByTime(700); });
     expect(sent.filter((entry) => entry.key === 3 && entry.message.type === "mingla:preview-restore-scroll").map((entry) => entry.message)).toEqual([
       { type: "mingla:preview-restore-scroll", scroll_y: 500 },
       { type: "mingla:preview-restore-scroll", scroll_y: 900 },
     ]);
+  });
+
+  it("a rebuilt page that is ready waits for its pictures before it takes over, but not for ever", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/1" page="home" />); });
+    await act(async () => { api.onMessage(1, ready(0)); });
+    await act(async () => { tree.update(<Harness url="https://x/2" page="home" />); });
+    await act(async () => { api.onMessage(2, ready(0)); });
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    expect(api.swap.shown!.key).toBe(1);
+    // Its pictures arrive: a moment to settle, then it takes over.
+    await act(async () => { api.onLoaded(2); });
+    await act(async () => { jest.advanceTimersByTime(600); });
+    expect(api.swap.shown!.key).toBe(1);
+    await act(async () => { jest.advanceTimersByTime(100); });
+    expect(api.swap.shown!.key).toBe(2);
+    // Pictures that never finish do not hold the page back for long.
+    await act(async () => { tree.update(<Harness url="https://x/3" page="home" />); });
+    await act(async () => { api.onMessage(3, ready(0)); });
+    await act(async () => { jest.advanceTimersByTime(4000); });
+    expect(api.swap.shown!.key).toBe(2);
+    await act(async () => { jest.advanceTimersByTime(700); });
+    expect(api.swap.shown!.key).toBe(3);
+    expect(api.stale).toBe(false);
   });
 
   it("a rebuilt page that never loads is not shown as a blank page: the page on screen stays, and the owner is told", async () => {
@@ -227,6 +254,7 @@ describe("the live preview's frames", () => {
     await act(async () => { tree.update(<Harness url="https://x/3" />); });
     expect(api.stale).toBe(true);
     await act(async () => { api.onMessage(3, ready(0)); });
+    await act(async () => { api.onLoaded(3); });
     await act(async () => { jest.advanceTimersByTime(700); });
     expect(api.swap.shown!.url).toBe("https://x/3");
     expect(api.stale).toBe(false);
