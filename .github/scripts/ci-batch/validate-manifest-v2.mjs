@@ -613,7 +613,8 @@ export function phase3dContractDigest(manifest) {
 // #3645 payout gaps PR checks: skipped 20280809003645 by exact filename in the #1931 and #2117 filtered template replays (the #2492 closure gate: it re-emits payout readers over occurrence_key / provider_fee_minor, which only skipped migrations create); re-sealed.
 // #3645 merge of main after #4389: kept main's #4453 and #4389 rows and skip lines, listed 20280809003645 after them and kept its #1931 and #2117 skip lines; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 merge of main after #4238: kept main's two #4238 rows after 20280809003645; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "43e07f9c1b285d43ff240d7d8344414338cf4ac340e2934f4a42f04d91978435";
+// #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ef476404188030dab48e9cc5414573fd769d8af435a5f65f564de070a935cf7a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
