@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard";
 import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { color, radius, space } from "../../../../constants/designSystem";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
@@ -43,6 +44,12 @@ export function AriPanel({ run, disabledReason, draftText, onDraftText, onUndoRu
   onOpenFullAri: () => void;
 }): React.ReactElement {
   const [note, setNote] = useState<string | null>(null);
+  // #4453 — words typed for Ari and not yet sent hold a brand switch.
+  useUnsavedChangesGuard({
+    dirty: draftText.trim() !== "",
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const scrollRef = useRef<{ scrollToEnd?: (options?: { animated?: boolean }) => void } | null>(null);
   const inputRef = useRef<TextInput | null>(null);
   const last = run.turns[run.turns.length - 1];

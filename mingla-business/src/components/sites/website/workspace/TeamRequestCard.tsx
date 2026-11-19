@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard";
 import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { radius, space } from "../../../../constants/designSystem";
 import { Field, WButton, ui } from "../ui";
@@ -26,6 +27,12 @@ export function TeamRequestCard({ draft, onSend, onCancel, disabledReason, byAri
   disabledReason?: string | null;
 }): React.ReactElement {
   const [what, setWhat] = useState(draft.what);
+  // #4453 — a request the owner wrote or changed, not yet sent, holds a brand switch.
+  useUnsavedChangesGuard({
+    dirty: what.trim() !== draft.what.trim(),
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<TextInput | null>(null);

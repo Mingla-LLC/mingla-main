@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard";
 import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { color, radius, scrim, space } from "../../../../constants/designSystem";
 import { WButton, ui } from "../ui";
@@ -24,6 +25,12 @@ export function SectionAriCard({ section, onAsk, onEditByHand, onAskTeam, onClos
   sheet?: boolean;
 }): React.ReactElement {
   const [text, setText] = useState("");
+  // #4453 — a request typed for Ari and not yet sent holds a brand switch.
+  useUnsavedChangesGuard({
+    dirty: text.trim() !== "",
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const [note, setNote] = useState<string | null>(null);
   const inputRef = useRef<TextInput | null>(null);
   useEffect(() => {
