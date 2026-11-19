@@ -39,6 +39,12 @@
  * and ended up over the cover photo); it is in the flyer column under Share and
  * Directions. Only that one case changed; the six others are byte for byte the same.
  *
+ * [TEST-MOD-APPROVED #4490 fix 3] — re-recorded with MINGLA_1559_WRITE_BASELINE=1
+ * for fix round 1's intended look: theme faces carry a system fallback stack
+ * (N39: "Inter_700Bold, system-ui, …") and the address card has an "Open in
+ * maps →" button (N34). Measured: every changed line in all seven cases is one
+ * of those two; nothing else moved.
+ *
  * ---------------------------------------------------------------------------
  * [TEST-MOD-APPROVED #1595] — THE BASELINE MOVES BY 22 CHARACTERS, IN ONE PLACE
  * ---------------------------------------------------------------------------

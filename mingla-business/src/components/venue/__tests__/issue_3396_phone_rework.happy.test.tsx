@@ -15,6 +15,8 @@ jest.mock("react-native", () => ({
 jest.mock("../../../hooks/useVenueListings", () => ({ useVenueListing: () => ({ data: mockVenueCountry ? { countryCode: mockVenueCountry } : null }) }));
 jest.mock("../../../hooks/useCurrentBrand", () => ({ useCurrentBrand: () => ({ countryCode: "US" }) }));
 jest.mock("../../../hooks/useVenueAvailability", () => ({ useAvailableSlots: () => ({ data: [{ slotStartUtc: "2026-09-20T18:00:00.000Z", slotLocalLabel: "6 PM", isFull: false }] }) }));
+// TEST-MOD-APPROVED #4490 fix 3 (N112): the waitlist reads the venue's own spaces for its seating chips.
+jest.mock("../../../hooks/useVenueSpaces", () => ({ useVenueSpaces: () => ({ data: [] }) }));
 jest.mock("../../../hooks/useVenueTables", () => ({ useVenueTables: () => ({ data: [] }) }));
 jest.mock("../../../hooks/useJoinWaitlistMutation", () => ({ useJoinWaitlistMutation: () => ({ isPending: false, mutateAsync: mockJoin }) }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));

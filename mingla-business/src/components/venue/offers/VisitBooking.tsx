@@ -95,6 +95,7 @@ import { PayModeChoice } from "./PayModeChoice";
 import { VisitBalanceCard, VisitChanges, VisitPackageFacts } from "./VisitPackageParts";
 import { HireFacts, HireStateMain, HireTracker } from "./VisitHireParts";
 import { hourSummaryLabel, parseHourFacts, releaseLine } from "./hourGuestModel";
+import { shortBookingReference } from "../../../utils/venueBookingReference";
 
 const POLL_MS = 2000;
 const POLL_WINDOW_MS = 30_000;
@@ -383,7 +384,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
 
   const tellGuests = async (): Promise<void> => {
     if (booking === null) return;
-    const message = `${booking.venue.name}: ${passHeadline(booking)}. Booking ${booking.reference}. We go in together with one pass.`;
+    const message = `${booking.venue.name}: ${passHeadline(booking)}. Booking ${shortBookingReference(booking.reference)}. We go in together with one pass.`;
     try {
       if (Platform.OS === "web" && typeof navigator !== "undefined") {
         const nav = navigator as Navigator & { share?: (data: { text: string }) => Promise<void> };
@@ -428,7 +429,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         endMs,
         location: venueAddressLine(booking.venue.address, booking.venue.city),
         url: null,
-        details: `Booking ${booking.reference}. Show your pass at the gate.`,
+        details: `Booking ${shortBookingReference(booking.reference)}. Show your pass at the gate.`,
       },
       `venue-booking-${booking.groupId}`,
     );
@@ -446,7 +447,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
       >
         {booking !== null ? (
           <Text style={[styles.eyebrow, { color: palette.tertiaryText }]}>
-            {`${booking.venue.name}${booking.reference ? ` · ${booking.reference}` : ""}`.toUpperCase()}
+            {`${booking.venue.name}${booking.reference ? ` · ${shortBookingReference(booking.reference)}` : ""}`.toUpperCase()}
           </Text>
         ) : null}
         {children}

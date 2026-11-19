@@ -429,6 +429,10 @@ export interface CalendarEvent {
   eventId: string;
   title: string;
   spaceId: string | null;
+  /** #4490 fix 3 — the combination the event uses (null: one space or the whole venue). */
+  combinationId?: string | null;
+  /** #4490 fix 3 — every space the event sits in (whole venue: all of them); absent from older servers. */
+  spaceIds?: string[];
   spaceUse: string | null;
   status: string;
   startsAt: string;

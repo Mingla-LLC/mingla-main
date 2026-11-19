@@ -157,6 +157,8 @@ import {
 } from "../../utils/publishedExperienceEditGuards";
 import {
   brandPaymentOnboardingRoute,
+  EVENT_SPACE_TAKEN_COPY,
+  isEventSpaceTakenRefusal,
   isOrganiserTermsRefusalMessage,
   organiserTermsUnresolvedCopy,
   paidPriceHasMinorUnits,
@@ -1550,6 +1552,13 @@ export const ExperienceCreatorWizard: React.FC<
           // ORCH-1075 — paid-publish integrity guards (Stripe readiness /
           // past date) get actionable copy + a route, not a raw error.
           if (handlePaidPublishGuard(code)) {
+            return;
+          }
+          // #4490 fix 3 (N101) — the experience takes a venue space that is
+          // already hired or blocked then: say so and open Where (step 2).
+          if (isEventSpaceTakenRefusal(code)) {
+            setToast(EVENT_SPACE_TAKEN_COPY);
+            setStep(2);
             return;
           }
           const mapped = RPC_ERROR_COPY[code];

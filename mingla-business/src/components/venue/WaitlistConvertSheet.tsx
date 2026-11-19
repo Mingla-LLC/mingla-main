@@ -18,30 +18,10 @@ import {
 import { useAvailableSlots } from "../../hooks/useVenueAvailability";
 import { useVenueTables } from "../../hooks/useVenueTables";
 import { Button } from "../ui/Button";
+import { PickerSheetHead } from "../ui/PickerSheetHead";
 import { Sheet } from "../ui/Sheet";
+import { NOW_SLOT, nextDates, venueOpenNow } from "./waitlistSeatModel";
 import type { WaitlistEntry } from "../../types/venueReservation";
-
-function nextDates(count: number): { iso: string; label: string }[] {
-  const out: { iso: string; label: string }[] = [];
-  const base = new Date();
-  for (let i = 0; i < count; i += 1) {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const label =
-      i === 0
-        ? "Today"
-        : i === 1
-          ? "Tomorrow"
-          : d.toLocaleDateString(undefined, {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-            });
-    out.push({ iso, label });
-  }
-  return out;
-}
 
 export interface WaitlistConvertSheetProps {
   visible: boolean;
@@ -52,6 +32,10 @@ export interface WaitlistConvertSheetProps {
   entry: WaitlistEntry | null;
   onConvert: (reservedFor: string, tableId: string | null) => void;
   converting: boolean;
+  /** #4490 fix 3 — a refused seat, said in the sheet. */
+  error?: string | null;
+  /** The venue's time zone, for "Today" and the day chips. */
+  timeZone?: string;
   testID?: string;
 }
 
@@ -63,13 +47,16 @@ export function WaitlistConvertSheet({
   entry,
   onConvert,
   converting,
+  error = null,
+  timeZone,
   testID,
 }: WaitlistConvertSheetProps): React.ReactElement | null {
   const [date, setDate] = useState<string | null>(null);
   const [slotIso, setSlotIso] = useState<string | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
 
-  const dates = useMemo(() => nextDates(7), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dates = useMemo(() => nextDates(7, timeZone), [timeZone, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -84,9 +71,14 @@ export function WaitlistConvertSheet({
   const tablesQuery = useVenueTables(brandId, venueId);
   const tables = (tablesQuery.data ?? []).filter((t) => t.isActive);
 
+  const isToday = date !== null && date === dates[0]?.iso;
+  const openNow = isToday && venueOpenNow(slots);
+
   const handleConvert = useCallback((): void => {
     if (slotIso === null) return;
-    onConvert(slotIso, tableId);
+    // "Now": a walk-in seated at once is booked for this minute.
+    const at = slotIso === NOW_SLOT ? new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString() : slotIso;
+    onConvert(at, tableId);
   }, [slotIso, tableId, onConvert]);
 
   if (entry === null) return null;
@@ -99,7 +91,7 @@ export function WaitlistConvertSheet({
       testID={testID ?? "waitlist-convert-sheet"}
     >
       <View style={styles.body}>
-        <Text style={styles.heading}>Seat {entry.guestName ?? "guest"}</Text>
+        <PickerSheetHead title={`Seat ${entry.guestName ?? "guest"}`} onClose={onClose} testID="waitlist-convert-head" />
         <Text style={styles.sub}>Party of {entry.partySize}</Text>
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -143,6 +135,18 @@ export function WaitlistConvertSheet({
             <Text style={styles.helper}>No open times for this date.</Text>
           ) : (
             <View style={styles.slotGrid}>
+              {openNow ? (
+                <Pressable
+                  onPress={() => setSlotIso(NOW_SLOT)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: slotIso === NOW_SLOT }}
+                  accessibilityLabel="Seat them now"
+                  style={[styles.slot, slotIso === NOW_SLOT ? styles.slotActive : null]}
+                  testID="waitlist-convert-slot-now"
+                >
+                  <Text style={[styles.slotLabel, slotIso === NOW_SLOT ? styles.slotLabelActive : null]}>Now</Text>
+                </Pressable>
+              ) : null}
               {slots.map((s) => {
                 const active = s.slotStartUtc === slotIso;
                 return (
@@ -202,6 +206,11 @@ export function WaitlistConvertSheet({
             </>
           ) : null}
 
+          {error !== null ? (
+            <Text style={styles.error} accessibilityLiveRegion="polite" testID="waitlist-convert-error">
+              {error}
+            </Text>
+          ) : null}
           <Button
             label="Seat as reservation"
             onPress={handleConvert}
@@ -224,10 +233,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: space[4],
     paddingTop: space[2],
-  },
-  heading: {
-    ...type.h1,
-    color: color.text1,
   },
   sub: {
     ...type.small,
@@ -312,6 +317,11 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: space[6],
+  },
+  error: {
+    ...type.small,
+    color: color.errorText,
+    marginTop: space[4],
   },
 });
 

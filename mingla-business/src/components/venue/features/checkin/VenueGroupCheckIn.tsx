@@ -24,6 +24,7 @@ import { OFFLINE_METHODS } from "../bookings/bookingModel";
 import { money, offerErrorCopy } from "../offers/offersModel";
 import { VenuePayQr } from "./VenuePayQr";
 import { toVenuePayUrl } from "./venuePayLink";
+import { shortBookingReference } from "../../../../utils/venueBookingReference";
 export { needsGroupStep, passIdFromCode } from "./venueCheckInResult";
 
 export interface VenueGroupCheckInProps {
@@ -81,7 +82,7 @@ export function VenueGroupCheckIn({
     <View style={styles.host} testID="venue-checkin-group">
       <Text style={styles.title} accessibilityRole="header">{pass.holderName}</Text>
       <Text style={styles.meta}>
-        {pass.offerName} · {pass.admittedCount} of {pass.admits} in{pass.reference !== null ? ` · ${pass.reference}` : ""}
+        {pass.offerName} · {pass.admittedCount} of {pass.admits} in{pass.reference !== null ? ` · ${shortBookingReference(pass.reference)}` : ""}
       </Text>
 
       {balance > 0 ? (

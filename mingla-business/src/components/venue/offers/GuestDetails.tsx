@@ -38,9 +38,9 @@ const phoneCountryKnown = (iso: string): boolean => {
 
 export interface GuestDetailsState {
   name: string;
-  setName: (v: string) => void;
+  setName: React.Dispatch<React.SetStateAction<string>>;
   email: string;
-  setEmail: (v: string) => void;
+  setEmail: React.Dispatch<React.SetStateAction<string>>;
   phoneLocal: string;
   setPhoneLocal: (v: string) => void;
   phoneCountry: string;

@@ -57,6 +57,7 @@ import {
 import { shortDateLabel, windowsSummary } from "./hoursModel";
 import { SpecialDaySheet, type SpecialDayDraft } from "./SpecialDaySheet";
 import { venueWriteErrorCopy } from "./venueFeaturesCopy";
+import { shortBookingReference } from "../../../utils/venueBookingReference";
 
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../../ui/ConfirmDialog");
@@ -444,7 +445,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
               <View style={styles.dayText}>
                 <Text style={styles.dayTitle}>{b.guestName} · {b.guests} {b.guests === 1 ? "guest" : "guests"}</Text>
                 <Text style={styles.cardBody}>
-                  {b.offerName} · {b.reference}
+                  {b.offerName} · {shortBookingReference(b.reference)}
                   {b.paidMinor > 0 ? ` · paid ${money(b.paidMinor, currency)}` : ""}
                 </Text>
               </View>

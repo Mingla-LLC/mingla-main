@@ -116,7 +116,7 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
       if (access.canManageBookings) setUnblock({ claimId: block.claimId, name: row.name });
       return;
     }
-    if (block.tone === "event" && block.eventId !== null) {
+    if ((block.tone === "event" || block.tone === "part") && block.eventId !== null) {
       router.push(`/event/${block.eventId}` as never);
       return;
     }
@@ -514,6 +514,7 @@ function Legend({ hireOn }: { hireOn: boolean }): React.ReactElement {
     { tone: "hold", label: "On hold" },
     { tone: "event", label: "Event" },
     ...(hireOn ? [{ tone: "inside" as const, label: "Blocked by a bigger hire" }] : []),
+    { tone: "part", label: "Part in use (shared event)" },
     { tone: "block", label: "Blocked" },
     { tone: "request", label: "Asked, not held" },
   ];
@@ -644,6 +645,7 @@ const TONE_STYLE = {
   event: StyleSheet.create({ box: { backgroundColor: color.infoTint, borderColor: color.info }, text: { color: color.infoText }, sub: { color: color.text2 } }),
   block: StyleSheet.create({ box: { backgroundColor: color.fill.tile, borderColor: color.line, borderStyle: "dashed" }, text: { color: color.text1 }, sub: { color: color.text3 } }),
   inside: StyleSheet.create({ box: { backgroundColor: color.fill.tile, borderColor: color.line, borderStyle: "dashed" }, text: { color: color.text2 }, sub: { color: color.text3 } }),
+  part: StyleSheet.create({ box: { backgroundColor: color.fill.quiet, borderColor: color.info, borderStyle: "dashed" }, text: { color: color.infoText }, sub: { color: color.text3 } }),
   group: StyleSheet.create({ box: { backgroundColor: color.fill.tile, borderColor: color.line }, text: { color: color.text1 }, sub: { color: color.text3 } }),
   request: StyleSheet.create({ box: { backgroundColor: color.fill.quiet, borderColor: color.line, borderStyle: "dotted" }, text: { color: color.text2 }, sub: { color: color.text3 } }),
 };

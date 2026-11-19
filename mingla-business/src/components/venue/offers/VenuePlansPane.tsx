@@ -55,7 +55,8 @@ export function VenuePlansPane({
     }
     onBookingBarChange({
       title: open.length === 1 ? `${cheapest.name} · ${money(cheapest.priceMinor)} a month` : `Plans from ${money(cheapest.priceMinor)} a month`,
-      subtitle: "First month today · nothing renews by itself",
+      // #4490 fix 3 (N87) — short enough for the docked bar's one line.
+      subtitle: "Starts today · no auto-renew",
       ctaLabel: open.length === 1 ? "Join" : `Join ${cheapest.name}`,
       enabled: true,
       onPress: () => router.push(planJoinPath(brandSlug, venueSlug, cheapest.id) as never),

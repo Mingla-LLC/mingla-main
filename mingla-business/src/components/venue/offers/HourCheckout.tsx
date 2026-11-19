@@ -45,6 +45,7 @@ import { SecurePaymentHandoff } from "../../offering/LazyPublicParts";
 import { Icon } from "../../ui/Icon";
 import { EntryButton, EntryNote, EntryProblem, entryStyles } from "./EntryUi";
 import { GuestDetailsCard, useGuestDetails } from "./GuestDetails";
+import { useMemberPrefill } from "./useMemberPrefill";
 import { hourGuestErrorCopy, type HourChoice } from "./hourGuestModel";
 import { memberGuestErrorCopy, memberUseLine, parseMemberQuote, readVenueMember } from "./memberGuestModel";
 import { revealFocusedField } from "./revealFocusedField";
@@ -121,6 +122,8 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
   }, [memberErr]);
   const money = (m: number): string => formatVenueMoney(m, offer?.currencyCode ?? "NGN", offer?.exponent ?? 2);
   const details = useGuestDetails({ countryCode: offer?.venue.countryCode ?? null, currencyCode: offer?.currencyCode ?? null });
+  // #4490 fix 3 (N87) — a member starts with their own name and email.
+  useMemberPrefill(member, details);
   const [focused, setFocused] = useState(false);
   const [held, setHeld] = useState<{ booking: EntryBooking; token: string | null } | null>(null);
   const [busy, setBusy] = useState(false);

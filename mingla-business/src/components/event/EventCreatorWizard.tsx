@@ -94,6 +94,8 @@ import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
   describeUnmappedPublishGuard,
+  EVENT_SPACE_TAKEN_COPY,
+  isEventSpaceTakenRefusal,
   eventPublishCarriesMoney,
   isOrganiserTermsRefusalMessage,
   organiserTermsUnresolvedCopy,
@@ -1141,6 +1143,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
           () => resumePublishRef.current(),
           (reason) => handleShowToast(organiserTermsUnresolvedCopy(reason)),
         );
+        return;
+      }
+      // #4490 fix 3 (N101) — the event takes a venue space that is already
+      // hired or blocked then: say so and open the Where step (index 2).
+      if (isEventSpaceTakenRefusal(code)) {
+        handleShowToast(EVENT_SPACE_TAKEN_COPY);
+        setCurrentStep(2);
         return;
       }
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);

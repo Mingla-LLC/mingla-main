@@ -529,17 +529,31 @@ export async function clearVenueSpecialDay(venueId: string, localDate: string): 
 // Event / experience venue link
 // ---------------------------------------------------------------------------
 
+/**
+ * #4490 fix 3 (N101) — "takes" = the event holds its space (or every part of
+ * its combination, or every space of the venue) while it runs, so no hire,
+ * by-the-hour booking or block can use it; "shared" = the space stays open to
+ * others. The server enforces it once the event is scheduled or live.
+ */
+export type EventSpaceUse = "exclusive" | "shared";
+
 export async function setEventVenue(input: {
   eventId: string;
   venueId: string | null;
   spaceId: string | null;
+  /** #4490 fix 3 (N106): a combination of the venue instead of one space. */
+  combinationId?: string | null;
+  spaceUse?: EventSpaceUse;
 }): Promise<void> {
+  const atVenue = input.venueId !== null;
+  const combinationId = atVenue && input.spaceId === null ? input.combinationId ?? null : null;
   const { error } = await supabase.rpc("issue_4490_set_event_venue", {
     p_event_id: input.eventId,
     p_venue_id: input.venueId,
-    p_space_id: input.venueId === null ? null : input.spaceId,
-    p_space_use: "shared",
+    p_space_id: atVenue ? input.spaceId : null,
+    p_space_use: atVenue ? input.spaceUse ?? "shared" : "shared",
     p_expected_updated_at: null,
+    p_combination_id: combinationId,
   });
   if (error !== null) throw toVenueFeatureError(error);
 }
@@ -587,14 +601,21 @@ export function eventVenueLinkTypes(kind: "event" | "experience"): readonly stri
   return kind === "experience" ? ["experience"] : ["event", "rsvp"];
 }
 
+export interface EventVenueLink {
+  venueId: string | null;
+  spaceId: string | null;
+  combinationId: string | null;
+  spaceUse: EventSpaceUse;
+}
+
 export async function fetchEventVenueLink(
   eventId: string,
   kind: "event" | "experience" = "event",
-): Promise<{ venueId: string | null; spaceId: string | null }> {
+): Promise<EventVenueLink> {
   const { data, error } = await supabase
     // orch-strict-grep-allow events-type-filter — #4490: event_type IS filtered with .in(eventVenueLinkTypes(kind)): the event creator's row is "event" or "rsvp", the experience creator's is "experience"; trips never reach the venue picker.
     .from("events")
-    .select("venue_id, space_id")
+    .select("venue_id, space_id, combination_id, space_use")
     .eq("id", eventId)
     .in("event_type", [...eventVenueLinkTypes(kind)])
     .maybeSingle();
@@ -603,5 +624,7 @@ export async function fetchEventVenueLink(
   return {
     venueId: typeof row.venue_id === "string" ? row.venue_id : null,
     spaceId: typeof row.space_id === "string" ? row.space_id : null,
+    combinationId: typeof row.combination_id === "string" ? row.combination_id : null,
+    spaceUse: row.space_use === "exclusive" ? "exclusive" : "shared",
   };
 }

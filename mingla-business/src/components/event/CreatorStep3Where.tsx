@@ -197,6 +197,9 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
         locationProviderPlaceId: venue.placeId,
         coordinatePrecision: complete ? "approximate" : null,
         timezone: venueTimezone(venue.countryCode, draft.timezone),
+        // #4490 fix 3 (N103) — the venue's own page already shows its
+        // address, so hiding it until a ticket is bought starts off.
+        hideAddressUntilTicket: false,
       });
     },
     [draft.timezone, updateDraft],

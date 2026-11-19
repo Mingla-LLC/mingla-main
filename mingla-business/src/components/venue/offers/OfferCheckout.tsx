@@ -80,6 +80,7 @@ import {
 } from "./EntryUi";
 import { useEntrySelection } from "./useEntrySelection";
 import { GuestDetailsCard, useGuestDetails } from "./GuestDetails";
+import { useMemberPrefill } from "./useMemberPrefill";
 import { memberGuestErrorCopy, memberUseLine, readVenueMember } from "./memberGuestModel";
 import { revealFocusedField } from "./revealFocusedField";
 
@@ -140,6 +141,8 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
 
   // ── your details (shared with the group package checkout) ─────────────
   const details = useGuestDetails({ countryCode: offer?.venue.countryCode ?? null, currencyCode: offer?.currencyCode ?? null });
+  // #4490 fix 3 (N87) — a member starts with their own name and email.
+  useMemberPrefill(member, details);
   const { nameOk, emailOk, phoneOk } = details;
   const [focused, setFocused] = useState(false);
 

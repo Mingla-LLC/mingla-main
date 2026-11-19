@@ -34,6 +34,7 @@ interface WaitlistRow {
   guest_email: string | null;
   party_size: number;
   preferred_zone: WaitlistEntry["preferredZone"];
+  preferred_space_id?: string | null;
   quoted_wait_minutes: number | null;
   status: WaitlistEntry["status"];
   notify_via: WaitlistEntry["notifyVia"];
@@ -51,7 +52,7 @@ interface WaitlistRow {
 }
 
 const WAITLIST_COLUMNS =
-  "id, brand_id, venue_id, guest_name, guest_phone_e164, guest_email, party_size, preferred_zone, quoted_wait_minutes, status, notify_via, notified_at, expires_at, converted_reservation_id, consumer_user_id, created_at, source, desired_date, desired_from, desired_to, left_by_guest_at, offered_slot_at";
+  "id, brand_id, venue_id, guest_name, guest_phone_e164, guest_email, party_size, preferred_zone, preferred_space_id, quoted_wait_minutes, status, notify_via, notified_at, expires_at, converted_reservation_id, consumer_user_id, created_at, source, desired_date, desired_from, desired_to, left_by_guest_at, offered_slot_at";
 
 const mapRow = (row: WaitlistRow): WaitlistEntry => ({
   id: row.id,
@@ -62,6 +63,7 @@ const mapRow = (row: WaitlistRow): WaitlistEntry => ({
   guestEmail: row.guest_email,
   partySize: row.party_size,
   preferredZone: row.preferred_zone,
+  preferredSpaceId: row.preferred_space_id ?? null,
   quotedWaitMinutes: row.quoted_wait_minutes,
   status: row.status,
   notifyVia: row.notify_via,
@@ -208,6 +210,7 @@ export function useAddToWaitlist(
         guest_email: input.guestEmail,
         party_size: input.partySize,
         preferred_zone: input.preferredZone,
+        ...(input.preferredSpaceId != null ? { preferred_space_id: input.preferredSpaceId } : {}),
         quoted_wait_minutes: input.quotedWaitMinutes,
         status: "waiting",
       });

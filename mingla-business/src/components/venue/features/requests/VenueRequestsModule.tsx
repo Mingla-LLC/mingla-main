@@ -66,6 +66,7 @@ import {
   staffErrorCopy,
 } from "./requestsModel";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { shortBookingReference } from "../../../../utils/venueBookingReference";
 
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../../../ui/ConfirmDialog");
@@ -425,7 +426,7 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
   if (r.siteVisit) facts.push({ key: "visit", label: "Site visit", value: `${first} would like to see the space first` });
   const contact = [r.guestPhone, r.guestEmail].filter(Boolean).join(" · ");
   if (contact.length > 0) facts.push({ key: "contact", label: "Contact", value: contact });
-  facts.push({ key: "ref", label: "Reference", value: r.reference });
+  facts.push({ key: "ref", label: "Reference", value: shortBookingReference(r.reference) });
 
   const quoteRows: Array<{ key: string; label: string; value: string; strong?: boolean; muted?: boolean }> = [];
   if (b !== undefined && b.hire !== null && preview !== null) {
@@ -646,7 +647,7 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
               variant="secondary"
               size="md"
               leadingIcon="mail"
-              onPress={() => void Linking.openURL(`mailto:${r.guestEmail}?subject=${encodeURIComponent(`${venueName}: your request ${r.reference}`)}`).catch(() => setError("Couldn't open your email app."))}
+              onPress={() => void Linking.openURL(`mailto:${r.guestEmail}?subject=${encodeURIComponent(`${venueName}: your request ${shortBookingReference(r.reference)}`)}`).catch(() => setError("Couldn't open your email app."))}
               testID="venue-request-email"
             />
           ) : null}

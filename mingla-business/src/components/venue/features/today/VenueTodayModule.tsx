@@ -27,6 +27,7 @@ import { RequestsWaitingCard } from "../requests/RequestsWaitingCard";
 import { clockIn } from "../bookings/bookingModel";
 import { entryStyleLabel, money } from "../offers/offersModel";
 import { bookingSourceLabel, bookingStateLabel, dayBalances, dayHeadline, dayNumbers, shiftDay } from "./todayModel";
+import { shortBookingReference } from "../../../../utils/venueBookingReference";
 
 export interface VenueTodayModuleProps {
   brandId: string | null;
@@ -224,7 +225,7 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
                   <Text style={styles.rowTitle} numberOfLines={1}>{b.guestName}</Text>
                   <Text style={styles.meta} numberOfLines={2}>
                     {b.offerName ? `${b.offerName} · ` : ""}
-                    {b.reference} · {bookingSourceLabel(b)} · {money(b.totalMinor, b.currencyCode ?? cur)}
+                    {shortBookingReference(b.reference)} · {bookingSourceLabel(b)} · {money(b.totalMinor, b.currencyCode ?? cur)}
                     {owed ? ` · ${money(b.balanceDueMinor ?? 0, b.currencyCode ?? cur)} to pay` : ""}
                   </Text>
                 </View>

@@ -69,6 +69,7 @@ import {
   staffCancelWords,
   whenLine,
 } from "./bookingModel";
+import { shortBookingReference } from "../../../../utils/venueBookingReference";
 
 const LazyToast = React.lazy(async () => {
   const mod = await import("../../../ui/Toast");
@@ -226,7 +227,7 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
       }`,
     },
     { key: "by", label: "Booked by", value: [b.guest.name, b.guest.phone, b.guest.email].filter(Boolean).join(" · ") },
-    { key: "ref", label: "Reference", value: b.reference },
+    { key: "ref", label: "Reference", value: shortBookingReference(b.reference) },
     ...(b.hire !== null ? hireFacts(b) : answers.map(([q, a]) => ({ key: `a-${q}`, label: q, value: a }))),
   ];
   const historyItems = [

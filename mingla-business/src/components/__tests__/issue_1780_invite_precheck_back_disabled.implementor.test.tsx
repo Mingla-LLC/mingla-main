@@ -346,6 +346,7 @@ import {
   ExperienceCreatorWizard,
   type ExperienceWizardInitialDraft,
 } from "../experience/ExperienceCreatorWizard";
+import { emptyPriceOption } from "../experience/experienceWizardTypes";
 
 // ---------------------------------------------------------------------------
 // compiled-creator loader (Event, RSVP, Trip)
@@ -822,6 +823,10 @@ describe("#1780 A1 — on-screen Back waits for the invite pre-check", () => {
       isFree: true,
       capacity: "20",
       unlimited: false,
+      // TEST-MOD-APPROVED #4490 fix 3 — #4490 P1 dropped the forced "Standard"
+      // price name (the host names the price; a blank name blocks Continue), so
+      // this free draft brings its one named price, as a saved draft would.
+      priceOptions: [emptyPriceOption({ name: "Entry" })],
       pricingSwitches: { passTax: null, passMinglaFee: null, passServiceFee: null },
       when: {
         whenMode: "single",

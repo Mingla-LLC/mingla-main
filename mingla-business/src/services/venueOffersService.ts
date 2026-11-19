@@ -642,6 +642,8 @@ export function mapVenueCalendar(v: unknown): VenueCalendar {
         eventId: str(e.eventId),
         title: str(e.title),
         spaceId: strOrNull(e.spaceId),
+        combinationId: strOrNull(e.combinationId),
+        spaceIds: arr(e.spaceIds).filter((x): x is string => typeof x === "string"),
         spaceUse: strOrNull(e.spaceUse),
         status: str(e.status),
         startsAt: str(e.startsAt),

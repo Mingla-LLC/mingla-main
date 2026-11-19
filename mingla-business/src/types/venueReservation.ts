@@ -428,6 +428,8 @@ export interface WaitlistEntry {
   guestEmail: string | null;
   partySize: number;
   preferredZone: VenueTableZone | null;
+  /** #4490 fix 3 (N112) — one of the venue's own spaces, when it has them. */
+  preferredSpaceId?: string | null;
   quotedWaitMinutes: number | null;
   status: WaitlistStatus;
   notifyVia: "push" | "sms" | "none";
@@ -455,5 +457,7 @@ export interface WaitlistAddInput {
   guestEmail: string | null;
   partySize: number;
   preferredZone: VenueTableZone | null;
+  /** #4490 fix 3 (N112) — one of the venue's own spaces, when it has them. */
+  preferredSpaceId?: string | null;
   quotedWaitMinutes: number | null;
 }

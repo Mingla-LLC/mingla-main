@@ -90,6 +90,8 @@ jest.mock("../../../hooks/useVenueWaitlist", () => {
 });
 
 // TEST-MOD-APPROVED #4490 P5-2 — the waitlist reads the Waitlist feature (guests joining online).
+// TEST-MOD-APPROVED #4490 fix 3 (N112): the waitlist reads the venue's own spaces for its seating chips.
+jest.mock("../../../hooks/useVenueSpaces", () => ({ useVenueSpaces: () => ({ data: [] }) }));
 jest.mock("../../../hooks/useVenueFeatures", () => ({
   __esModule: true,
   useVenueFeatures: () => ({ data: undefined }),

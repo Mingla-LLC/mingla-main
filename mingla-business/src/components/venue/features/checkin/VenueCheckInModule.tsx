@@ -47,6 +47,7 @@ import { VenueGateSale } from "./VenueGateSale";
 import { VenueGroupCheckIn, needsGroupStep, passIdFromCode } from "./VenueGroupCheckIn";
 import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
 import { money } from "../offers/offersModel";
+import { shortBookingReference } from "../../../../utils/venueBookingReference";
 
 const LazyToast = React.lazy(async () => {
   const mod = await import("../../../ui/Toast");
@@ -596,7 +597,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
                 <Text style={styles.rowTitle} numberOfLines={1}>{p.holderName}</Text>
                 <Text style={styles.meta} numberOfLines={2}>
                   {p.offerKind === "by_the_hour" ? `${p.offerName}${timeOf(p.time, list.timezone) !== null ? ` · from ${timeOf(p.time, list.timezone)}` : ""}` : `${p.offerName} × ${p.admits}`}
-                  {p.reference !== null ? ` · ${p.reference}` : ""}
+                  {p.reference !== null ? ` · ${shortBookingReference(p.reference)}` : ""}
                   {p.source === "gate" || p.source === "gate_sale" ? " · gate sale" : ""}
                   {p.idCheckLabel !== null ? ` · ${p.idCheckLabel}` : ""}
                   {(p.balanceDueMinor ?? 0) > 0 ? ` · Balance due ${money(p.balanceDueMinor ?? 0, p.currencyCode ?? currency)}` : ""}

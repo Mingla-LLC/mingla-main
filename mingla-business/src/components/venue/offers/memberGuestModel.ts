@@ -20,6 +20,8 @@ export interface GuestMember {
   subscriptionId: string;
   status: GuestMemberStatus;
   memberName: string;
+  /** #4490 fix 3 (N87) — the member's own email (their own view only). */
+  memberEmail?: string | null;
   plan: {
     id: string;
     name: string;
@@ -102,6 +104,7 @@ export function parseGuestMember(raw: unknown): GuestMember | null {
     subscriptionId: m.subscriptionId,
     status: STATUSES.includes(status) ? status : "pending",
     memberName: str(m.memberName, "Member"),
+    memberEmail: typeof m.memberEmail === "string" && m.memberEmail.length > 0 ? m.memberEmail : null,
     plan: {
       id: str(plan.id),
       name: str(plan.name, "Membership"),

@@ -14,6 +14,13 @@
  * "Add an event here" inside a venue preselects the venue through
  * `eventVenueIntent`. Each save says so; a refusal says why and keeps the
  * previous link.
+ *
+ * fix 3 (N101, N106) — a combination of spaces can be picked too, and once a
+ * place is picked the host says whether the event takes it ("This event
+ * takes the space", the default) or leaves it open to others. Taking it
+ * holds the space (every part of a combination, every space for the whole
+ * venue) from publish, so no hire, by-the-hour booking or block can use it;
+ * the server refuses a publish or a change over a space already hired.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -23,12 +30,13 @@ import { color, radius, space, type } from "../../../constants/designSystem";
 import { useAuth } from "../../../context/AuthContext";
 import { venueFeatureKeys } from "../../../hooks/venueFeatureKeys";
 import { useVenueListings } from "../../../hooks/useVenueListings";
-import { useVenueSpaces } from "../../../hooks/useVenueSpaces";
+import { useVenueSpaceCombinations, useVenueSpaces } from "../../../hooks/useVenueSpaces";
 import {
   VenueFeatureError,
   fetchEventVenueLink,
   fetchVenueLocation,
   setEventVenue,
+  type EventSpaceUse,
   type VenueLocation,
 } from "../../../services/venueFeaturesService";
 import {
@@ -36,13 +44,29 @@ import {
   readEventVenueIntent,
 } from "../../../utils/eventVenueIntent";
 import { GlassCard } from "../../ui/GlassCard";
+import { OptionCard } from "../../ui/OptionCard";
 import { SpacePicker } from "../../ui/SpacePicker";
-import { venueWriteErrorCopy } from "./venueFeaturesCopy";
-import { initialWhereMode, type EventWhereMode } from "./eventWhereModel";
 
-export { initialWhereMode, type EventWhereMode };
+
+import {
+  DEFAULT_EVENT_SPACE_USE,
+  eventVenueErrorCopy,
+  initialWhereMode,
+  spaceUseChoices,
+  type EventWhereMode,
+} from "./eventWhereModel";
+
+export { DEFAULT_EVENT_SPACE_USE, eventVenueErrorCopy, initialWhereMode, spaceUseChoices, type EventWhereMode };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** What is saved: the venue, one space OR one combination (or neither = whole venue), and whether the event takes it. */
+interface PlaceLink {
+  venueId: string | null;
+  spaceId: string | null;
+  combinationId: string | null;
+  spaceUse: EventSpaceUse;
+}
 
 export interface EventVenueSpacePickerProps {
   brandId: string | null;
@@ -87,6 +111,8 @@ export function EventVenueSpacePicker({
   const [mode, setMode] = useState<EventWhereMode | null>(null);
   const [venueId, setVenueId] = useState<string | null>(null);
   const [spaceId, setSpaceId] = useState<string | null>(null);
+  const [combinationId, setCombinationId] = useState<string | null>(null);
+  const [spaceUse, setSpaceUse] = useState<EventSpaceUse>(DEFAULT_EVENT_SPACE_USE);
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const seededRef = useRef(false);
@@ -114,6 +140,8 @@ export function EventVenueSpacePicker({
     if (linked !== null) {
       setVenueId(linked);
       setSpaceId(linkQuery.data?.spaceId ?? null);
+      setCombinationId(linkQuery.data?.combinationId ?? null);
+      setSpaceUse(linkQuery.data?.spaceUse ?? "shared");
       if (addressMissing) void prefill(linked);
     } else if (intentVenue !== null) {
       setVenueId(intentVenue);
@@ -124,6 +152,15 @@ export function EventVenueSpacePicker({
 
   const spacesQuery = useVenueSpaces(brandId, venueId);
   const spaces = spacesQuery.data ?? [];
+  const combinationsQuery = useVenueSpaceCombinations(brandId, venueId);
+  const combinations = combinationsQuery.data ?? [];
+  const current: PlaceLink = { venueId, spaceId, combinationId, spaceUse };
+  const placeName =
+    spaceId !== null
+      ? spaces.find((s) => s.id === spaceId)?.name ?? "this space"
+      : combinationId !== null
+        ? combinations.find((c) => c.id === combinationId)?.name ?? "these spaces"
+        : null;
 
   async function prefill(id: string): Promise<void> {
     if (onPlaceRef.current === undefined) return;
@@ -135,55 +172,102 @@ export function EventVenueSpacePicker({
     }
   }
 
-  const persist = (nextVenue: string | null, nextSpace: string | null, previous: { venueId: string | null; spaceId: string | null }): void => {
+  const restore = (previous: PlaceLink): void => {
+    setVenueId(previous.venueId);
+    setSpaceId(previous.spaceId);
+    setCombinationId(previous.combinationId);
+    setSpaceUse(previous.spaceUse);
+  };
+
+  const persist = (next: PlaceLink, previous: PlaceLink, takenPlace: string | null = placeName): void => {
     if (validEventId === null) {
       setStatus({ text: `Saved with this ${noun} once it has its first save.`, error: false });
       return;
     }
     setSaving(true);
     setStatus({ text: "Saving…", error: false });
-    setEventVenue({ eventId: validEventId, venueId: nextVenue, spaceId: nextSpace })
+    setEventVenue({
+      eventId: validEventId,
+      venueId: next.venueId,
+      spaceId: next.spaceId,
+      combinationId: next.combinationId,
+      spaceUse: next.spaceUse,
+    })
       .then(() => {
-        setStatus({ text: nextVenue === null ? "Saved · not at a venue" : "Saved", error: false });
+        setStatus({ text: next.venueId === null ? "Saved · not at a venue" : "Saved", error: false });
         if (intent !== null) clearEventVenueIntent();
         void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.eventVenue(validEventId) });
       })
       .catch((error: unknown) => {
-        setVenueId(previous.venueId);
-        setSpaceId(previous.spaceId);
+        restore(previous);
         const e = error instanceof VenueFeatureError ? error : null;
-        setStatus({ text: venueWriteErrorCopy("event_venue", e?.code ?? "unknown", e?.detail ?? null), error: true });
+        setStatus({ text: eventVenueErrorCopy(e?.code ?? "unknown", e?.detail ?? null, takenPlace, noun), error: true });
       })
       .finally(() => setSaving(false));
   };
 
   // A pick made before the draft had a server id is saved once the id arrives.
-  const serverVenue = linkQuery.data?.venueId ?? null;
-  const serverSpace = linkQuery.data?.spaceId ?? null;
+  const server = linkQuery.data;
+  const serverLink: PlaceLink = {
+    venueId: server?.venueId ?? null,
+    spaceId: server?.spaceId ?? null,
+    combinationId: server?.combinationId ?? null,
+    spaceUse: server?.spaceUse ?? "shared",
+  };
   useEffect(() => {
     if (validEventId === null || linkQuery.data === undefined || saving) return;
     if (mode !== "venue" || venueId === null) return;
-    if (venueId === serverVenue && spaceId === serverSpace) {
+    if (
+      venueId === serverLink.venueId &&
+      spaceId === serverLink.spaceId &&
+      combinationId === serverLink.combinationId &&
+      spaceUse === serverLink.spaceUse
+    ) {
       if (intent !== null) clearEventVenueIntent();
       return;
     }
-    persist(venueId, spaceId, { venueId: serverVenue, spaceId: serverSpace });
+    persist(current, serverLink);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [validEventId, linkQuery.data, mode]);
 
   const pickVenue = (id: string): void => {
     if (id === venueId) return;
-    const previous = { venueId, spaceId };
+    const previous = current;
     setVenueId(id);
     setSpaceId(null);
+    setCombinationId(null);
+    setSpaceUse(DEFAULT_EVENT_SPACE_USE);
     void prefill(id);
-    persist(id, null, previous);
+    persist({ venueId: id, spaceId: null, combinationId: null, spaceUse: DEFAULT_EVENT_SPACE_USE }, previous, null);
   };
 
-  const pickSpace = (id: string | null): void => {
-    const previous = { venueId, spaceId };
-    setSpaceId(id);
-    persist(venueId, id, previous);
+  const pickPlace = (id: string | null): void => {
+    const previous = current;
+    const isCombination = id !== null && combinations.some((c) => c.id === id);
+    const nextSpace = id !== null && !isCombination ? id : null;
+    const nextCombination = isCombination ? id : null;
+    // A new pick takes its place by default; the host can let it stay open.
+    setSpaceId(nextSpace);
+    setCombinationId(nextCombination);
+    setSpaceUse(DEFAULT_EVENT_SPACE_USE);
+    const name =
+      nextSpace !== null
+        ? spaces.find((s) => s.id === nextSpace)?.name ?? null
+        : nextCombination !== null
+          ? combinations.find((c) => c.id === nextCombination)?.name ?? null
+          : null;
+    persist(
+      { venueId, spaceId: nextSpace, combinationId: nextCombination, spaceUse: DEFAULT_EVENT_SPACE_USE },
+      previous,
+      name,
+    );
+  };
+
+  const pickSpaceUse = (next: EventSpaceUse): void => {
+    if (next === spaceUse) return;
+    const previous = current;
+    setSpaceUse(next);
+    persist({ ...current, spaceUse: next }, previous);
   };
 
   const chooseMode = (next: EventWhereMode): void => {
@@ -191,12 +275,13 @@ export function EventVenueSpacePicker({
     setMode(next);
     if (next === "other") {
       if (intent !== null) clearEventVenueIntent();
-      const previous = { venueId, spaceId };
+      const previous = current;
       setVenueId(null);
       setSpaceId(null);
+      setCombinationId(null);
       onPlaceRef.current?.(null);
-      if (previous.venueId !== null && validEventId !== null && serverVenue !== null) {
-        persist(null, null, previous);
+      if (previous.venueId !== null && validEventId !== null && serverLink.venueId !== null) {
+        persist({ venueId: null, spaceId: null, combinationId: null, spaceUse: "shared" }, previous);
       } else {
         setStatus(null);
       }
@@ -272,16 +357,38 @@ export function EventVenueSpacePicker({
               This {noun} uses the whole venue. Add spaces in the venue&apos;s Spaces to place it in one room.
             </Text>
           ) : (
-            <SpacePicker
-              label="Space"
-              spaces={spaces}
-              value={spaceId !== null ? [spaceId] : []}
-              onChange={(ids) => pickSpace(ids[0] ?? null)}
-              mode="single"
-              noneLabel="The whole venue"
-              disabled={saving}
-              testID="event-space-picker"
-            />
+            <>
+              <SpacePicker
+                label="Space"
+                spaces={spaces}
+                combinations={combinations}
+                value={spaceId !== null ? [spaceId] : combinationId !== null ? [combinationId] : []}
+                onChange={(ids) => pickPlace(ids[0] ?? null)}
+                mode="single"
+                noneLabel="The whole venue"
+                disabled={saving}
+                testID="event-space-picker"
+              />
+              <Text style={styles.label}>Does it take {placeName ?? "the venue"}?</Text>
+              <View style={styles.useRow} accessibilityRole="radiogroup" accessibilityLabel={`Does this ${noun} take ${placeName ?? "the venue"}?`}>
+                {spaceUseChoices(noun, placeName).map((choice) => (
+                  <OptionCard
+                    key={choice.value}
+                    label={choice.label}
+                    helper={choice.helper}
+                    selected={spaceUse === choice.value}
+                    onPress={() => pickSpaceUse(choice.value)}
+                    disabled={saving}
+                    testID={`event-space-use-${choice.value}`}
+                  />
+                ))}
+              </View>
+              {spaceUse === "exclusive" ? (
+                <Text style={styles.note}>
+                  Held from when it&apos;s published. If {placeName ?? "a space"} is already hired or blocked then, publishing says so.
+                </Text>
+              ) : null}
+            </>
           )}
           <Text style={styles.note}>
             It shows on the venue&apos;s page under What&apos;s on and on its Calendar when Events here is on.
@@ -302,6 +409,7 @@ export default EventVenueSpacePicker;
 const styles = StyleSheet.create({
   wrap: { gap: space[3], marginBottom: space[4] },
   choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  useRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   choice: {
     flexGrow: 1,
     flexBasis: 200,

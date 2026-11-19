@@ -31,7 +31,8 @@ import {
 import { useSetVenueFeature, useVenueFeatures } from "../../hooks/useVenueFeatures";
 import { useVenueEditAccess } from "../../hooks/useVenueEditAccess";
 import { useVenueAvailabilityConfig } from "../../hooks/useVenueAvailability";
-import { BrandSwitch } from "../ui/BrandSwitch";
+import { Switch } from "../ui/Switch";
+import { useVenueSpaces } from "../../hooks/useVenueSpaces";
 import { Pill } from "../ui/Pill";
 import { waitlistWantsLine } from "./features/floor/waitlistHostModel";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
@@ -41,6 +42,11 @@ import { GlassCard } from "../ui/GlassCard";
 import { WaitlistAddSheet } from "./WaitlistAddSheet";
 import { WaitlistConvertSheet } from "./WaitlistConvertSheet";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
+
+const LazyToast = React.lazy(async () => {
+  const mod = await import("../ui/Toast");
+  return { default: mod.Toast };
+});
 import type {
   VenueTableZone,
   WaitlistAddInput,
@@ -103,6 +109,12 @@ export function VenueWaitlistModule({
 
   const [addOpen, setAddOpen] = useState<boolean>(false);
   const [converting, setConverting] = useState<WaitlistEntry | null>(null);
+  // #4490 fix 3 (N111) — every add and seat says it worked.
+  const [toast, setToast] = useState<string | null>(null);
+  // #4490 fix 3 (N112) — the venue's own spaces name a walk-in's seating.
+  const spaces = useVenueSpaces(brandId, venueId).data ?? [];
+  const spaceName = (id: string | null | undefined): string | null =>
+    id == null ? null : spaces.find((s) => s.id === id)?.name ?? null;
 
   // The ACTIVE queue (waiting + notified), FIFO by created order. #4490 P5 —
   // a guest who asked for a later day sorts by that day.
@@ -123,7 +135,12 @@ export function VenueWaitlistModule({
 
   const handleAdd = useCallback(
     (input: WaitlistAddInput): void => {
-      add.mutate(input, { onSuccess: () => setAddOpen(false) });
+      add.mutate(input, {
+        onSuccess: () => {
+          setAddOpen(false);
+          setToast(`${input.guestName ?? "Guest"} is on the waitlist`);
+        },
+      });
     },
     [add],
   );
@@ -131,9 +148,15 @@ export function VenueWaitlistModule({
   const handleConvert = useCallback(
     (reservedFor: string, tableId: string | null): void => {
       if (converting === null) return;
+      const name = converting.guestName ?? "Guest";
       convert.mutate(
         { waitlistId: converting.id, reservedFor, tableId },
-        { onSuccess: () => setConverting(null) },
+        {
+          onSuccess: () => {
+            setConverting(null);
+            setToast(`${name} is seated. They're in Reservations now.`);
+          },
+        },
       );
     },
     [convert, converting],
@@ -151,6 +174,7 @@ export function VenueWaitlistModule({
           </Text>
         </View>
         {canMutate ? (
+          // #4490 fix 3 (N111) — the one add button (the empty state has none).
           <Button
             label="Add"
             onPress={() => setAddOpen(true)}
@@ -172,7 +196,7 @@ export function VenueWaitlistModule({
                 : "Only your staff add people to the waitlist."}
             </Text>
           </View>
-          <BrandSwitch
+          <Switch
             value={guestJoinOn}
             onValueChange={toggleGuestJoin}
             disabled={setFeature.isPending}
@@ -192,9 +216,11 @@ export function VenueWaitlistModule({
         <VenueHubEmptyState
           icon="waitlist"
           title="Nobody's waiting"
-          body="When you're full, add walk-ins here and notify them when a table opens."
-          actionLabel={canMutate ? "Add to waitlist" : undefined}
-          onAction={canMutate ? () => setAddOpen(true) : undefined}
+          body={
+            canMutate
+              ? "When you're full, use Add to put walk-ins here and tell them when a table opens."
+              : "When the venue is full, walk-ins wait here until a table opens."
+          }
           testID="venue-waitlist-empty"
           wrapTestID="venue-waitlist-empty-wrap"
           actionTestID="venue-waitlist-empty-add"
@@ -204,7 +230,9 @@ export function VenueWaitlistModule({
           {queue.map((w, i) => {
             const parts: string[] = [`Party ${w.partySize}`];
             if (w.quotedWaitMinutes != null) parts.push(`~${w.quotedWaitMinutes}m`);
-            if (w.preferredZone != null) parts.push(ZONE_LABEL[w.preferredZone]);
+            const wantsSpace = spaceName(w.preferredSpaceId);
+            if (wantsSpace !== null) parts.push(wantsSpace);
+            else if (w.preferredZone != null) parts.push(ZONE_LABEL[w.preferredZone]);
             const notified = w.status === "notified";
             const online = w.source === "guest";
             const wants = waitlistWantsLine(w);
@@ -323,6 +351,8 @@ export function VenueWaitlistModule({
         onSave={handleAdd}
         saving={add.isPending}
         venueId={venueId}
+        brandId={brandId}
+        error={add.isError ? "Couldn't add them. Check the details and try again." : null}
       />
       <WaitlistConvertSheet
         venueId={venueId}
@@ -332,7 +362,14 @@ export function VenueWaitlistModule({
         entry={converting}
         onConvert={handleConvert}
         converting={convert.isPending}
+        error={convert.isError ? "Couldn't seat them. Pick the time again and retry." : null}
+        timeZone={venueTimeZone}
       />
+      {toast !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyToast visible kind="success" message={toast} onDismiss={() => setToast(null)} testID="venue-waitlist-toast" />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }

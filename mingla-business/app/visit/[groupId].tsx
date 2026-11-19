@@ -13,6 +13,7 @@ import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { VisitBooking } from "../../src/components/venue/offers/VisitBooking";
+import { useWebDocumentTitle } from "../../src/hooks/useWebDocumentTitle";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -24,6 +25,8 @@ export default function VisitBookingRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ groupId?: string | string[]; paid?: string | string[] }>();
   const raw = one(params.groupId);
   const groupId = raw !== null && UUID.test(raw) ? raw.toLowerCase() : "00000000-0000-4000-8000-000000000000";
+  // #4490 fix 3 (N109) — the tab said "Mingla Host" after a fresh load.
+  useWebDocumentTitle("Your booking · Mingla");
   return (
     <>
       <Head>

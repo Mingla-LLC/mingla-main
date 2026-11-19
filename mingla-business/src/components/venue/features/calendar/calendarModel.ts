@@ -65,7 +65,18 @@ export function rangeTitle(view: CalendarView, from: string, to: string): string
 
 // --------------------------------------------------------------- blocks
 
-export type BlockTone = "hire" | "hold" | "event" | "block" | "inside" | "group" | "request";
+export type BlockTone = "hire" | "hold" | "event" | "block" | "inside" | "part" | "group" | "request";
+
+/**
+ * #4490 fix 3 — the spaces an event sits in: the server's list when it sends
+ * one, else its space, else (whole venue) every space.
+ */
+export function eventSpaceIds(cal: VenueCalendar, e: VenueCalendar["events"][number]): string[] {
+  if (e.spaceIds !== undefined && e.spaceIds.length > 0) return e.spaceIds;
+  if (e.spaceId !== null) return [e.spaceId];
+  if (e.combinationId) return cal.combinations.find((c) => c.id === e.combinationId)?.spaceIds ?? [];
+  return cal.spaces.map((s) => s.id);
+}
 
 export interface CalendarBlock {
   key: string;
@@ -198,19 +209,24 @@ export function blocksFor(cal: VenueCalendar, row: CalendarRow, date: string): C
     const claimed = new Set(cal.claims.filter((c) => c.eventId !== null && c.spaceId === row.id).map((c) => c.eventId));
     const seenDates = new Set<string>();
     for (const e of cal.events ?? []) {
-      if (e.spaceId !== null && e.spaceId !== row.id) continue;
+      if (!eventSpaceIds(cal, e).includes(row.id)) continue;
       if (claimed.has(e.eventId) || !touchesDay(e.startsAt, e.endsAt, date, tz)) continue;
       const dateKey = `${e.eventId}|${e.startsAt}`;
       if (seenDates.has(dateKey)) continue;
       seenDates.add(dateKey);
       const times = timesWords(e.startsAt, e.endsAt, tz);
-      const where = e.spaceId === null ? "Whole venue" : null;
+      const where =
+        e.spaceId !== null
+          ? null
+          : e.combinationId
+            ? cal.combinations.find((c) => c.id === e.combinationId)?.name ?? null
+            : "Whole venue";
       out.push({
         key: `ev-${e.eventId}-${e.startsAt}-${row.id}`,
         tone: "event",
         title: e.title,
         detail: [times, where].filter(Boolean).join(" · ") || null,
-        label: `Event: ${e.title}${times !== null ? `, ${times}` : ""}${where !== null ? ", whole venue" : ""}`,
+        label: `Event: ${e.title}${times !== null ? `, ${times}` : ""}${where !== null ? `, ${where === "Whole venue" ? "whole venue" : where}` : ""}`,
         groupId: null,
         claimId: null,
         eventId: e.eventId,
@@ -225,6 +241,26 @@ export function blocksFor(cal: VenueCalendar, row: CalendarRow, date: string): C
       if (seenGroups.has(key)) continue;
       seenGroups.add(key);
       out.push(claimBlock({ ...c, viaCombinationId: null }, tz, false));
+    }
+    // #4490 fix 3 (N101, N106) — an event on this combination shows here.
+    const seenEventDates = new Set<string>();
+    for (const e of cal.events ?? []) {
+      if (e.combinationId !== row.id || !touchesDay(e.startsAt, e.endsAt, date, tz)) continue;
+      const dateKey = `${e.eventId}|${e.startsAt}`;
+      if (seenEventDates.has(dateKey)) continue;
+      seenEventDates.add(dateKey);
+      const times = timesWords(e.startsAt, e.endsAt, tz);
+      out.push({
+        key: `ev-${e.eventId}-${e.startsAt}-${row.id}`,
+        tone: "event",
+        title: e.title,
+        detail: [times, e.spaceUse === "exclusive" ? "Takes these spaces" : "Shared"].filter(Boolean).join(" · "),
+        label: `Event: ${e.title}${times !== null ? `, ${times}` : ""}`,
+        groupId: null,
+        claimId: null,
+        eventId: e.eventId,
+        at: e.startsAt,
+      });
     }
     const seenBlockers = new Set<string>();
     for (const b of cal.combinationBlocks) {
@@ -242,6 +278,33 @@ export function blocksFor(cal: VenueCalendar, row: CalendarRow, date: string): C
         claimId: null,
         eventId: null,
         at: b.from,
+      });
+    }
+    // #4490 fix 3 (N102) — an event that shares a part of this combination
+    // (it holds nothing, so it is not a block): "Part in use".
+    for (const e of cal.events ?? []) {
+      if (e.combinationId === row.id || e.spaceUse === "exclusive") continue;
+      if (!touchesDay(e.startsAt, e.endsAt, date, tz)) continue;
+      const parts = eventSpaceIds(cal, e).filter((id) => row.spaceIds.includes(id));
+      if (parts.length === 0) continue;
+      const dateKey = `${e.eventId}|${e.startsAt}`;
+      if (seenEventDates.has(dateKey)) continue;
+      seenEventDates.add(dateKey);
+      const times = timesWords(e.startsAt, e.endsAt, tz);
+      const partNames = parts
+        .map((id) => cal.spaces.find((s) => s.id === id)?.name)
+        .filter((n): n is string => typeof n === "string");
+      const partWords = parts.length === row.spaceIds.length ? "every part" : partNames.join(", ") || "a part";
+      out.push({
+        key: `pu-${e.eventId}-${e.startsAt}-${row.id}`,
+        tone: "part",
+        title: `Part in use · ${e.title}`,
+        detail: [times, partWords].filter(Boolean).join(" · "),
+        label: `Part in use: ${e.title} on ${partWords}${times !== null ? `, ${times}` : ""}`,
+        groupId: null,
+        claimId: null,
+        eventId: e.eventId,
+        at: e.startsAt,
       });
     }
   }
