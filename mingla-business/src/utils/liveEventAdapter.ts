@@ -208,6 +208,7 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   rsvpCapacity: e.rsvpCapacity ?? null,
   rsvpAllowPlusOnes: e.rsvpAllowPlusOnes ?? false,
   rsvpPlusOnesMax: e.rsvpPlusOnesMax ?? 0,
+  rsvpGuestsCanBring: e.rsvpGuestsCanBring ?? false,
   rsvpWaitlistEnabled: e.rsvpWaitlistEnabled ?? false,
   rsvpApprovalMode: e.rsvpApprovalMode ?? "auto",
   rsvpDiscoverable: e.rsvpDiscoverable ?? false,
@@ -349,6 +350,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   rsvpCapacity: "Guest limit",
   rsvpAllowPlusOnes: "Allow extras",
   rsvpPlusOnesMax: "Max extras per guest",
+  rsvpGuestsCanBring: "Guests can bring guests",
   rsvpWaitlistEnabled: "Waitlist",
   rsvpApprovalMode: "Approval mode",
   rsvpDiscoverable: "Discoverable",
@@ -426,6 +428,7 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "rsvpCapacity",
   "rsvpAllowPlusOnes",
   "rsvpPlusOnesMax",
+  "rsvpGuestsCanBring",
   "rsvpWaitlistEnabled",
   "rsvpApprovalMode",
   "rsvpDiscoverable",
@@ -641,6 +644,10 @@ export const editableDraftToPatch = (
   if (origRsvpPlusOnesMax !== edited.rsvpPlusOnesMax) {
     patch.rsvpPlusOnesMax = edited.rsvpPlusOnesMax;
   }
+  const origRsvpGuestsCanBring = original.rsvpGuestsCanBring ?? false;
+  if (origRsvpGuestsCanBring !== (edited.rsvpGuestsCanBring === true)) {
+    patch.rsvpGuestsCanBring = edited.rsvpGuestsCanBring === true;
+  }
   const origRsvpWaitlistEnabled = original.rsvpWaitlistEnabled ?? false;
   if (origRsvpWaitlistEnabled !== edited.rsvpWaitlistEnabled) {
     patch.rsvpWaitlistEnabled = edited.rsvpWaitlistEnabled;
@@ -824,6 +831,10 @@ export const computeRichFieldDiffs = (
       // issue #3827 going-box — mirror editableDraftToPatch: absent = 0, so an
       // event saved before the field existed never shows a phantom change row.
       if ((a ?? 0) === (b ?? 0)) continue;
+    } else if (key === "rsvpGuestsCanBring") {
+      // #4508 — mirror editableDraftToPatch: absent = off, so an event saved
+      // before the switch existed never shows a phantom change row.
+      if ((a ?? false) === (b ?? false)) continue;
     } else if (key === "coverGallery") {
       // #3288 — mirror editableDraftToPatch: no diff row against an UNKNOWN
       // original, so the summary never promises a change the save won't send.

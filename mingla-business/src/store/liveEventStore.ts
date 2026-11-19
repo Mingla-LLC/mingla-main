@@ -129,6 +129,7 @@ export type EditableLiveEventFields = Pick<
   | "rsvpCapacity"
   | "rsvpAllowPlusOnes"
   | "rsvpPlusOnesMax"
+  | "rsvpGuestsCanBring"
   | "rsvpWaitlistEnabled"
   | "rsvpApprovalMode"
   | "rsvpDiscoverable"
@@ -216,6 +217,8 @@ export interface LiveEvent {
   rsvpCapacity?: number | null;
   rsvpAllowPlusOnes?: boolean;
   rsvpPlusOnesMax?: number;
+  /** #4508 — plus-ones may add their own guests (events.rsvp_guests_can_bring). */
+  rsvpGuestsCanBring?: boolean;
   rsvpWaitlistEnabled?: boolean;
   rsvpApprovalMode?: "auto" | "manual";
   rsvpDiscoverable?: boolean;

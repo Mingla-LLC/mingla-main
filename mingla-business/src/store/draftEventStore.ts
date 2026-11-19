@@ -476,6 +476,8 @@ export interface DraftEvent {
   rsvpAllowPlusOnes: boolean;
   /** ORCH-1150 — max extra guests per RSVP when plus-ones allowed; 0 when off. */
   rsvpPlusOnesMax: number;
+  /** #4508 — a plus-one may add their own guests once they claim their pass. Off by default (matches events.rsvp_guests_can_bring). */
+  rsvpGuestsCanBring?: boolean;
   /** ORCH-1150 — start a waitlist when capacity is hit. */
   rsvpWaitlistEnabled: boolean;
   /** ORCH-1150 — auto-approve vs approve-each. */
@@ -605,6 +607,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   rsvpCapacity: null,
   rsvpAllowPlusOnes: false,
   rsvpPlusOnesMax: 0,
+  rsvpGuestsCanBring: false,
   rsvpWaitlistEnabled: false,
   rsvpApprovalMode: "auto",
   rsvpDiscoverable: false,
@@ -862,6 +865,7 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   rsvpCapacity: null,
   rsvpAllowPlusOnes: false,
   rsvpPlusOnesMax: 0,
+  rsvpGuestsCanBring: false,
   rsvpWaitlistEnabled: false,
   rsvpApprovalMode: "auto",
   rsvpDiscoverable: false,
@@ -886,6 +890,7 @@ const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
   rsvpCapacity: draft.rsvpCapacity ?? null,
   rsvpAllowPlusOnes: draft.rsvpAllowPlusOnes ?? false,
   rsvpPlusOnesMax: draft.rsvpPlusOnesMax ?? 0,
+  rsvpGuestsCanBring: draft.rsvpGuestsCanBring ?? false,
   rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled ?? false,
   rsvpApprovalMode: draft.rsvpApprovalMode ?? "auto",
   rsvpDiscoverable: draft.rsvpDiscoverable ?? false,
@@ -1024,6 +1029,7 @@ function migrateDraftsToV13(persistedState: unknown, version: number): Persisted
           | "rsvpCapacity"
           | "rsvpAllowPlusOnes"
           | "rsvpPlusOnesMax"
+          | "rsvpGuestsCanBring"
           | "rsvpWaitlistEnabled"
           | "rsvpApprovalMode"
           | "rsvpDiscoverable"
@@ -1037,6 +1043,7 @@ function migrateDraftsToV13(persistedState: unknown, version: number): Persisted
         rsvpCapacity: null,
         rsvpAllowPlusOnes: false,
         rsvpPlusOnesMax: 0,
+        rsvpGuestsCanBring: false,
         rsvpWaitlistEnabled: false,
         rsvpApprovalMode: "auto",
         rsvpDiscoverable: false,
