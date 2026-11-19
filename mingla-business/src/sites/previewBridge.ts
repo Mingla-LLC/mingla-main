@@ -5,10 +5,12 @@
  * component sees it, and nothing here sends more than ids, colours and the
  * owner's own words back in.
  *
- * Geometry: `preview-ready` and `preview-rects` give each section's top in
- * DOCUMENT pixels plus the frame's scroll; `preview-select` gives the clicked
- * section's rect in the frame's VIEWPORT pixels. The frame is drawn scaled,
- * so every rect is multiplied by the scale before it meets Host pixels.
+ * Geometry (preview-protocol.d.ts, as built): every `top` / `left` the frame
+ * sends is in DOCUMENT pixels of the frame's own page, before any scaling;
+ * inside the frame a section sits at `top - scroll_y`. The frame is drawn
+ * scaled, so a rect is moved by the scroll and multiplied by the scale
+ * before it meets Host pixels. `ready` may arrive more than once for one
+ * load (treat it as idempotent), and lists only sections that drew something.
  */
 import type { WorkspaceSection } from "./contentApi";
 
@@ -26,7 +28,7 @@ export type FrameRect = { top: number; left: number; width: number; height: numb
 
 export type PreviewInbound =
   | { type: typeof PREVIEW_READY; pagePath: string; sections: FrameSection[]; scrollY: number; docHeight: number }
-  | { type: typeof PREVIEW_SELECT; sectionId: string; rect: FrameRect }
+  | { type: typeof PREVIEW_SELECT; sectionId: string; /** Document pixels. */ rect: FrameRect; scrollY: number }
   | { type: typeof PREVIEW_RECTS; sections: FrameSection[]; scrollY: number };
 
 export type MarkBy = "ari" | "team" | "composer";
@@ -94,7 +96,7 @@ export function parsePreviewMessage(raw: unknown): PreviewInbound | null {
     const height = num(rect?.height);
     if (typeof data.section_id !== "string" || !SECTION_ID.test(data.section_id)) return null;
     if (top === null || left === null || width === null || height === null || width < 0 || height < 0) return null;
-    return { type: PREVIEW_SELECT, sectionId: data.section_id, rect: { top, left, width, height } };
+    return { type: PREVIEW_SELECT, sectionId: data.section_id, rect: { top, left, width, height }, scrollY: num(data.scroll_y) ?? 0 };
   }
   return null;
 }
@@ -117,6 +119,11 @@ export function previewOriginOf(frameUrl: string): string | null {
 export function messageFromFrame(source: unknown, frameWindows: readonly unknown[]): number {
   if (source === null || source === undefined) return -1;
   return frameWindows.findIndex((candidate) => candidate !== null && candidate !== undefined && candidate === source);
+}
+
+/** A document rect as it sits in the frame's viewport at this scroll. */
+export function viewportRect(rect: FrameRect, scrollY: number): FrameRect {
+  return { ...rect, top: rect.top - scrollY };
 }
 
 /** A section's rect in the frame's viewport, from its document position and the scroll. */
@@ -235,14 +242,12 @@ export function swapReducer(state: SwapState, event: SwapEvent): SwapState {
 export const SWAP_FALLBACK_MS = 6_000;
 
 /**
- * Injected into the native WebView so the bridge's `window.postMessage`
- * commands arrive: Host calls `window.__minglaPreview(json)` and the page
- * re-dispatches it as a message event (the bridge listens for those).
+ * Native (react-native-webview): the preview is the WebView's top document,
+ * so a command is delivered by dispatching a message event on its window, as
+ * the bridge's protocol asks. The data travels as JSON text.
  */
-export const NATIVE_BRIDGE_LISTENER = `(function(){if(window.__minglaPreview)return;window.__minglaPreview=function(json){try{var data=JSON.parse(json);window.dispatchEvent(new MessageEvent("message",{data:data,origin:window.location.origin,source:window}));}catch(e){}};})();true;`;
-
 export function nativeBridgeCall(message: PreviewOutbound | { type: string; declarations: readonly string[] }): string {
-  return `window.__minglaPreview&&window.__minglaPreview(${JSON.stringify(JSON.stringify(message))});true;`;
+  return `window.dispatchEvent(new MessageEvent("message",{data:${JSON.stringify(JSON.stringify(message))}}));true;`;
 }
 
 /**

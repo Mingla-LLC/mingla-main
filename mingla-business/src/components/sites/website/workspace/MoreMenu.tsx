@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     position: "absolute", top: 52, right: space[4], zIndex: 31, width: 300, padding: 6, borderRadius: radius.md,
     backgroundColor: color.card3, borderWidth: 1, borderColor: ui.border2, boxShadow: `0 12px 40px ${scrim.modal}`,
   } as object,
-  sheet: { padding: space[4], gap: 2 },
+  sheet: { gap: 2 },
   item: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: space[3], paddingHorizontal: 12, borderRadius: radius.xs },
   itemHover: { backgroundColor: color.fill.railOn },
   itemText: { flex: 1, fontSize: 15, color: ui.t1 },

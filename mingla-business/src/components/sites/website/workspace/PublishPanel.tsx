@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { color, radius, space } from "../../../../constants/designSystem";
+import { space } from "../../../../constants/designSystem";
 import { Sheet } from "../../../ui/Sheet";
-import { ScrollView } from "../../../../wrappers/SmartScrollView";
+import { SheetScrollLayout } from "../../../ui/SheetScrollLayout";
 import { useWebsite } from "../WebsiteContext";
 import { NoticeBanner } from "../NoticeBanner";
 import { Banner, CheckCircle, Chip, Spinner, WButton, ui } from "../ui";
@@ -80,7 +80,7 @@ export function PublishPanel({ ws, visible, onClose, unreadablePairs, onOpenDesi
   const firstPublish = site?.last_successful_publication_id === null;
   const blocker = validation.error instanceof BrandSitesError && BLOCKER_CODES.includes(validation.error.code) ? validation.error : null;
   const checkFailed = validation.isError && !blocker;
-  const checking = validation.isFetching || validation.data === undefined && !validation.isError || (firstPublish && (designChecks.isFetching || (designChecks.data === undefined && !designChecks.isError)));
+  const checking = validation.isFetching || (validation.data === undefined && !validation.isError) || (firstPublish && (designChecks.isFetching || (designChecks.data === undefined && !designChecks.isError)));
   const count = changes.data ? changes.data.changes.length : null;
   const rows = unreadRows(ws.review.data, (pageId, sectionId) => (pageId === ws.page?.id ? ws.sections.find((entry) => entry.id === sectionId)?.label ?? null : null));
   const unread = Math.max(ws.unread, rows.length);
@@ -122,12 +122,30 @@ export function PublishPanel({ ws, visible, onClose, unreadablePairs, onOpenDesi
 
   return (
     <Sheet visible={visible} onClose={onClose} presentation="panel" snapPoint="full" testID="publish-panel">
-      <View style={styles.panel} accessibilityLabel="Publish">
-        <View style={styles.head}>
-          <Text ref={headingRef} style={styles.title} role="heading" aria-level={2} {...({ tabIndex: -1 } as object)}>Publish</Text>
-          <IconButton icon="close" label="Close" onPress={onClose} testID="publish-close" />
-        </View>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* The sheet's own scroll layout: the list scrolls, the button stays in reach. */}
+      <SheetScrollLayout
+        testID="publish-layout"
+        contentStyle={styles.content}
+        footer={(
+          <>
+            <WButton
+              label={gate.label}
+              variant="primary"
+              onPress={() => { void act(); }}
+              disabled={gate.blocked}
+              loading={starting && !gate.blocked}
+              accessibilityLabel={gate.reason ? `${gate.label}. ${gate.reason}` : gate.label}
+              testID="publish-final"
+            />
+            {gate.reason ? <Text style={styles.reason} testID="publish-reason">{gate.reason}</Text> : null}
+            <Text style={styles.promise}>{PUBLISH_PROMISE}</Text>
+          </>
+        )}
+      >
+          <View style={styles.head}>
+            <Text ref={headingRef} style={styles.title} role="heading" aria-level={2} {...({ tabIndex: -1 } as object)}>Publish</Text>
+            <IconButton icon="close" label="Close" onPress={onClose} testID="publish-close" />
+          </View>
           <NoticeBanner />
           {tracking ? (
             <View style={parts.box} role="status" accessibilityLiveRegion="polite" testID="publish-progress">
@@ -244,31 +262,15 @@ export function PublishPanel({ ws, visible, onClose, unreadablePairs, onOpenDesi
               </View>
             ) : null}
           </View>
-        </ScrollView>
-        <View style={styles.foot}>
-          <WButton
-            label={gate.label}
-            variant="primary"
-            onPress={() => { void act(); }}
-            disabled={gate.blocked}
-            loading={starting && !gate.blocked}
-            accessibilityLabel={gate.reason ? `${gate.label}. ${gate.reason}` : gate.label}
-            testID="publish-final"
-          />
-          {gate.reason ? <Text style={styles.reason} testID="publish-reason">{gate.reason}</Text> : null}
-          <Text style={styles.promise}>{PUBLISH_PROMISE}</Text>
-        </View>
-      </View>
+      </SheetScrollLayout>
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  panel: { flex: 1, minHeight: 0 },
-  head: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[5], paddingTop: space[4], paddingBottom: space[2] },
+  head: { flexDirection: "row", alignItems: "center", gap: space[2] },
   title: { flex: 1, fontSize: 24, lineHeight: 32, fontWeight: "700", color: ui.t1 },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: space[5], paddingBottom: space[5], gap: space[5] },
+  content: { gap: space[5] },
   group: { fontSize: 13, lineHeight: 18, fontWeight: "600", color: ui.t2, marginBottom: 6 },
   change: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
   changeTitle: { fontSize: 15, lineHeight: 20, fontWeight: "600", color: ui.t1 },
@@ -279,7 +281,6 @@ const styles = StyleSheet.create({
   soft: { color: ui.t3 },
   tipItem: { fontSize: 13, lineHeight: 18, color: ui.t2, marginLeft: 30, marginBottom: 2 },
   start: { alignSelf: "flex-start" },
-  foot: { paddingHorizontal: space[5], paddingTop: space[3], paddingBottom: space[5], gap: space[2], borderTopWidth: 1, borderTopColor: ui.cardBorder, backgroundColor: color.canvas, borderBottomLeftRadius: radius.md, borderBottomRightRadius: radius.md },
   reason: { fontSize: 13, lineHeight: 18, color: ui.t2 },
   promise: { fontSize: 12, lineHeight: 16, color: ui.t3 },
 });

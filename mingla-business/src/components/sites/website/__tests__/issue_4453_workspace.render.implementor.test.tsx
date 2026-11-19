@@ -58,6 +58,10 @@ jest.mock("../../../ui/Sheet", () => {
   const { View } = jest.requireActual("react-native");
   return { Sheet: ({ visible, children, testID }: { visible: boolean; children: React.ReactNode; testID?: string }) => (visible ? <View testID={testID}>{children}</View> : null) };
 });
+jest.mock("../../../ui/SheetScrollLayout", () => {
+  const { View } = jest.requireActual("react-native");
+  return { SheetScrollLayout: ({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) => <View>{children}{footer}</View> };
+});
 jest.mock("../../../ui/Toast", () => {
   const { Pressable, Text, View } = jest.requireActual("react-native");
   return {
@@ -458,6 +462,23 @@ describe("Edit mode", () => {
     await press(root, "workspace-undo");
     expect(called("undo")).toHaveLength(1);
     expect(words(root)).toContain("Undone: Move Pick a time");
+  });
+
+  it("pages: pick another, turn one off (Home never), rename in the menu through Ari", async () => {
+    const { root } = await open({ segments: ["pages"] });
+    await press(root, "page-picker-toggle");
+    await press(root, "page-toggle-enabled");
+    expect(words(root)).toContain("Your home page is always on.");
+    expect(called("set_page_enabled")).toHaveLength(0);
+    await press(root, "page-option-about");
+    expect(called("page_sections").at(-1)!.args).toEqual({ page_id: "p2" });
+    await press(root, "page-picker-toggle");
+    await press(root, "page-toggle-enabled");
+    expect(called("set_page_enabled")[0]!.args).toEqual({ page_id: "p2", expected_revision: "3", enabled: false });
+    expect(words(root)).toContain("“About” is off and out of your menu. Undo puts it back.");
+    await press(root, "page-rename-menu");
+    expect(has(root, "ari-panel")).toBe(true);
+    expect(byId(root, "ari-input")[0]!.props.value).toBe("Rename “About” in the menu to ");
   });
 
   it("loading, empty and error each have their own state", async () => {

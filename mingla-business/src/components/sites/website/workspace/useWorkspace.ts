@@ -103,7 +103,7 @@ export function useWorkspace(input: {
 
   /* ── Sections ──────────────────────────────────────────────────────── */
   const sectionsQuery = usePageSections(siteId, activePageId);
-  const sections: WorkspaceSection[] = sectionsQuery.data?.sections ?? [];
+  const sections: WorkspaceSection[] = useMemo(() => sectionsQuery.data?.sections ?? [], [sectionsQuery.data]);
   const sectionsState: LoadState = sectionsQuery.data ? "ready" : sectionsQuery.isError ? "error" : "loading";
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);

@@ -104,8 +104,16 @@ export function usePreviewFrames(options: {
     latest.current.send(shownKey, { type: PREVIEW_MARKS, ...latest.current.marks });
   }, [marksKey, options.editMode, shownKey]);
 
+  // Each tokens message replaces the last; an empty one clears unsaved colours.
+  const hadTokens = useRef(false);
   useEffect(() => {
-    if (shownKey === null || !options.tokenDeclarations) return undefined;
+    if (shownKey === null) return undefined;
+    if (!options.tokenDeclarations) {
+      if (hadTokens.current) latest.current.send(shownKey, { type: PREVIEW_TOKENS_MESSAGE, declarations: [] });
+      hadTokens.current = false;
+      return undefined;
+    }
+    hadTokens.current = true;
     const timer = setTimeout(() => {
       const declarations = latest.current.tokenDeclarations;
       if (declarations) latest.current.send(shownKey, { type: PREVIEW_TOKENS_MESSAGE, declarations: [...declarations] });
@@ -134,7 +142,11 @@ export function usePreviewFrames(options: {
       dispatch({ type: "scroll", key, scrollY: message.scrollY });
       return;
     }
-    if (message.type === PREVIEW_SELECT) latest.current.onSelect(message.sectionId, message.rect);
+    if (message.type === PREVIEW_SELECT) {
+      // The rect is in document pixels, measured at this scroll.
+      setGeometry((current) => (current.scrollY === message.scrollY ? current : { ...current, scrollY: message.scrollY }));
+      latest.current.onSelect(message.sectionId, message.rect);
+    }
   }, [sync]);
 
   const onLoaded = useCallback((key: number) => {
@@ -144,6 +156,9 @@ export function usePreviewFrames(options: {
       return;
     }
     if (state.loading?.key !== key || timers.current.has(key)) return;
+    // Some browsers only tell the frame who its parent is once the parent
+    // speaks: a first message lets a silent frame answer with `ready`.
+    latest.current.send(key, { type: PREVIEW_MODE, edit: latest.current.editMode });
     timers.current.set(key, setTimeout(() => {
       timers.current.delete(key);
       dispatch({ type: "timeout", key });

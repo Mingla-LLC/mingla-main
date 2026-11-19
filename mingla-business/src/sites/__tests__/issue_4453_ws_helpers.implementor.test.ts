@@ -8,7 +8,7 @@ import { detailSection, sectionJump, workspaceTarget, workspaceTargetKey } from 
 import { publishBarButton, publishGate, workspaceStatus, type PublishGateInput } from "../workspaceStatus";
 import {
   ariCardPosition, buildMarks, EMPTY_SWAP, markLabel, messageFromFrame, nativeBridgeCall, parsePreviewMessage,
-  PREVIEW_READY, PREVIEW_RECTS, PREVIEW_SELECT, scaleRect, sectionViewportRect, swapReducer,
+  PREVIEW_READY, PREVIEW_RECTS, PREVIEW_SELECT, scaleRect, sectionViewportRect, stageFrame, swapReducer, viewportRect,
 } from "../previewBridge";
 import { addRowBlocked, applyFieldEdits, applyLayout, applyMove, applyRemove, changeLabel, moveBlocked, removeBlocked, removeRowBlocked, splitRows, undoTooltip, unreadCount } from "../sectionEdits";
 import { createDraftWriter, saveStateLine, type DraftJob, type SaveState } from "../draftWriter";
@@ -133,7 +133,9 @@ describe("the preview bridge", () => {
     expect(parsePreviewMessage(ready)).toEqual({ type: PREVIEW_READY, pagePath: "about", sections: [{ id: "s1", type: "hero", top: 0, height: 400 }], scrollY: 12, docHeight: 2000 });
     expect(parsePreviewMessage(JSON.stringify(ready))).not.toBeNull();
     expect(parsePreviewMessage({ type: PREVIEW_RECTS, sections: [{ id: "s1", top: 5, height: 9 }], scroll_y: 0 })).toMatchObject({ type: PREVIEW_RECTS, scrollY: 0 });
-    expect(parsePreviewMessage({ type: PREVIEW_SELECT, section_id: "s1", rect: { top: 1, left: 2, width: 3, height: 4 } })).toEqual({ type: PREVIEW_SELECT, sectionId: "s1", rect: { top: 1, left: 2, width: 3, height: 4 } });
+    expect(parsePreviewMessage({ type: PREVIEW_SELECT, section_id: "s1", rect: { top: 1, left: 2, width: 3, height: 4 } })).toEqual({ type: PREVIEW_SELECT, sectionId: "s1", rect: { top: 1, left: 2, width: 3, height: 4 }, scrollY: 0 });
+    expect(parsePreviewMessage({ type: PREVIEW_SELECT, section_id: "s1", rect: { top: 900, left: 0, width: 3, height: 4 }, scroll_y: 800 })).toMatchObject({ scrollY: 800 });
+    expect(viewportRect({ top: 900, left: 0, width: 3, height: 4 }, 800)).toEqual({ top: 100, left: 0, width: 3, height: 4 });
     for (const bad of [null, 4, "hello", "{", { type: "other" }, { type: PREVIEW_SELECT, section_id: "<script>", rect: {} },
       { type: PREVIEW_SELECT, section_id: "s1", rect: { top: 1, left: 2, width: -3, height: 4 } },
       { type: PREVIEW_READY, sections: [{ id: "s1", top: "0", height: 1 }], scroll_y: 0, doc_height: 1 },
@@ -192,10 +194,18 @@ describe("the preview bridge", () => {
     expect(swapReducer(timed, { type: "url", url: null }).shown).toBeNull();
   });
 
-  it("native commands are one safe script call", () => {
+  it("native commands are delivered as a message event carrying JSON text", () => {
     const call = nativeBridgeCall({ type: "mingla:preview-text", section_id: "s1", from: "a\"b", to: "</script>" });
-    expect(call.startsWith("window.__minglaPreview&&window.__minglaPreview(\"")).toBe(true);
-    expect(call.endsWith(");true;")).toBe(true);
+    expect(call.startsWith("window.dispatchEvent(new MessageEvent(\"message\",{data:\"")).toBe(true);
+    expect(call.endsWith("}));true;")).toBe(true);
+    const literal = call.slice(call.indexOf("{data:") + 6, call.lastIndexOf("}));true;"));
+    expect(JSON.parse(JSON.parse(literal))).toEqual({ type: "mingla:preview-text", section_id: "s1", from: "a\"b", to: "</script>" });
+  });
+
+  it("draws the frame at the device's width, never scaled up, as tall as the stage", () => {
+    expect(stageFrame({ width: 720, height: 600 }, 1440)).toEqual({ scale: 0.5, width: 1440, height: 1200, left: 0 });
+    expect(stageFrame({ width: 800, height: 600 }, 390)).toEqual({ scale: 1, width: 390, height: 600, left: 205 });
+    expect(stageFrame({ width: 0, height: 600 }, 390).scale).toBe(0);
   });
 });
 

@@ -3,15 +3,15 @@ import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { WebView } from "react-native-webview";
 import { color } from "../../../../constants/designSystem";
 import { previewDimensions, PREVIEW_DEVICE_LABELS } from "../../../../sites/previewDevice";
-import { NATIVE_BRIDGE_LISTENER, nativeBridgeCall, stageFrame } from "../../../../sites/previewBridge";
+import { nativeBridgeCall, stageFrame } from "../../../../sites/previewBridge";
 import { usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
 import type { LivePreviewProps } from "./LivePreview.types";
 
 /*
  * #4453 — the live draft on iOS and Android: a WebView at the device's CSS
  * width, scaled to the stage. The bridge talks through
- * `window.ReactNativeWebView.postMessage`; Host's commands are delivered by
- * a small injected listener. A saved change loads in a second WebView and
+ * `window.ReactNativeWebView.postMessage`; Host's commands are delivered as
+ * message events on the page's window. A saved change loads in a second WebView and
  * swaps in when ready (the same rule as web). A tapped section opens the Ari
  * card as a sheet, so nothing is drawn over the page here.
  */
@@ -60,7 +60,6 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
                 }}
                 source={{ uri: slot.url }}
                 style={styles.web}
-                injectedJavaScript={NATIVE_BRIDGE_LISTENER}
                 onMessage={(event) => preview.onMessage(slot.key, event.nativeEvent.data)}
                 onLoadEnd={() => preview.onLoaded(slot.key)}
                 sharedCookiesEnabled={false}

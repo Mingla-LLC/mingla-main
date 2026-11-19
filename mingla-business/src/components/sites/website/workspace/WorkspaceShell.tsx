@@ -256,6 +256,10 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
     go,
     back: route.kind === "editor" ? baseBack : closeDetail,
     toast: (message, kind = "info") => notify({ message, kind }),
+    editPage: (pageId) => {
+      ws.selectPage(pageId);
+      ws.setMode("edit");
+    },
     setStickyBar,
     setTopbarSave,
   };
@@ -386,6 +390,10 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
             if (phone) setPanelSheet(false);
           }}
           onManagePages={() => { setPanelSheet(false); ws.openDetail("pages"); }}
+          onRenameInMenu={(title) => {
+            setAriDraft(`Rename “${title}” in the menu to `);
+            showMode("ari");
+          }}
         />
       ) : (
         <DesignPanel ws={ws} onAskAri={(request) => { const refused = askAri(request, null); if (refused) say(refused); }} />
@@ -626,5 +634,5 @@ const styles = StyleSheet.create({
   phoneDock: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[3], paddingVertical: space[2], borderTopWidth: 1, borderTopColor: ui.cardBorder, backgroundColor: color.canvas },
   dockModes: { flex: 1, flexDirection: "row", gap: 6 },
   sheetPanel: { flex: 1, minHeight: 420 },
-  cardSheet: { padding: space[5] },
+  cardSheet: { paddingBottom: space[2] },
 });

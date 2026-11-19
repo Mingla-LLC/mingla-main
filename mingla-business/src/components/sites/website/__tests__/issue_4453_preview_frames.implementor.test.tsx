@@ -59,12 +59,12 @@ describe("the live preview's frames", () => {
   it("passes a section click on, follows scrolling, and drops anything malformed or from a frame it does not own", async () => {
     await act(async () => { create(<Harness url="https://x/1" />); });
     await act(async () => {
-      api.onMessage(1, { type: "mingla:preview-select", section_id: "s2", rect: { top: 10, left: 0, width: 1440, height: 300 } });
+      api.onMessage(1, { type: "mingla:preview-select", section_id: "s2", rect: { top: 410, left: 0, width: 1440, height: 300 }, scroll_y: 400 });
       api.onMessage(1, JSON.stringify({ type: "mingla:preview-rects", sections: [{ id: "s1", top: 0, height: 400 }], scroll_y: 250 }));
       api.onMessage(1, { type: "mingla:preview-select", section_id: "<bad>", rect: {} });
       api.onMessage(9, { type: "mingla:preview-select", section_id: "s1", rect: { top: 0, left: 0, width: 1, height: 1 } });
     });
-    expect(selected).toEqual([{ id: "s2", rect: { top: 10, left: 0, width: 1440, height: 300 } }]);
+    expect(selected).toEqual([{ id: "s2", rect: { top: 410, left: 0, width: 1440, height: 300 } }]);
     expect(api.geometry.scrollY).toBe(250);
     expect(api.swap.scrollY).toBe(250);
   });
@@ -92,7 +92,10 @@ describe("the live preview's frames", () => {
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<Harness url="https://x/1" />); });
     await act(async () => { tree.update(<Harness url="https://x/2" />); });
+    sent.length = 0;
     await act(async () => { api.onLoaded(2); });
+    // A first word from the parent lets a silent frame (Firefox on localhost) answer.
+    expect(sent).toEqual([{ key: 2, message: { type: "mingla:preview-mode", edit: true } }]);
     expect(api.swap.shown!.key).toBe(1);
     await act(async () => { jest.advanceTimersByTime(1300); });
     expect(api.swap.shown!.key).toBe(2);
@@ -115,6 +118,9 @@ describe("the live preview's frames", () => {
     sent.length = 0;
     api.commands.post({ type: "mingla:preview-scroll-to", section_id: "s2" });
     expect(sent).toEqual([{ key: 1, message: { type: "mingla:preview-scroll-to", section_id: "s2" } }]);
+    sent.length = 0;
+    await act(async () => { tree.update(<Harness url="https://x/1" tokens={null} />); });
+    expect(sent).toEqual([{ key: 1, message: { type: "mingla:preview-tokens", declarations: [] } }]);
     await act(async () => { tree.update(<Harness url={null} />); });
     expect(api.swap.shown).toBeNull();
     expect(api.bridged).toBe(false);

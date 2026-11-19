@@ -29,9 +29,11 @@ export function SectionAriCard({ section, onAsk, onEditByHand, onAskTeam, onClos
   useEffect(() => {
     setText("");
     setNote(null);
+    // In a phone sheet the keyboard would cover the suggestions: focus on desktop only.
+    if (sheet) return undefined;
     const timer = setTimeout(() => inputRef.current?.focus(), 80);
     return () => clearTimeout(timer);
-  }, [section.id]);
+  }, [section.id, sheet]);
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined" || sheet) return undefined;
     const onKey = (event: KeyboardEvent) => {

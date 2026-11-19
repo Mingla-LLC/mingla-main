@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { radius, space } from "../../../../constants/designSystem";
 import { Field, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
@@ -25,6 +25,7 @@ export function TeamRequestCard({ draft, onSend, onCancel, disabledReason }: {
   useEffect(() => {
     setWhat(draft.what);
     setError(null);
+    if (Platform.OS !== "web") return undefined;
     const timer = setTimeout(() => inputRef.current?.focus(), 80);
     return () => clearTimeout(timer);
   }, [draft]);

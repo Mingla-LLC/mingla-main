@@ -171,7 +171,7 @@ export function PagesSection(): React.ReactElement {
                   {target ? (
                     <WButton label="Manage" size="sm" onPress={() => ctx.go({ kind: "section", section: target })} testID={`page-manage-${row.path}`} />
                   ) : (
-                    <WButton label="Edit" size="sm" onPress={() => controller.actions.openStudio(row.id)} loading={controller.isOpeningStudio} testID={`page-edit-${row.path || "home"}`} />
+                    <WButton label="Edit" size="sm" onPress={() => (ctx.editPage ? ctx.editPage(row.id) : controller.actions.openStudio(row.id))} loading={controller.isOpeningStudio} testID={`page-edit-${row.path || "home"}`} />
                   )}
                 </Row>
               );
@@ -197,7 +197,7 @@ export function PagesSection(): React.ReactElement {
               </ListBox>
             </>
           ) : null}
-          <Text style={styles.help}>&quot;Edit&quot; opens the page editor for that page&apos;s words and photos. Trip and event cards always link to their Mingla pages and checkout.</Text>
+          <Text style={styles.help}>{ctx.editPage ? "\u201cEdit\u201d opens that page\u2019s sections here, beside your draft." : "\u201cEdit\u201d opens the page editor for that page\u2019s words and photos."} Trip and event cards always link to their Mingla pages and checkout.</Text>
         </>
       )}
       <AddPageDialog visible={adding} onClose={() => setAdding(false)} />
@@ -372,7 +372,7 @@ function AriDraftPageCard({ row, readOnly, ariAddPage }: { row: SitePageRow; rea
       ) : null}
       <View style={styles.cardActions}>
         <WButton label="Remove" size="sm" onPress={() => setConfirming("remove")} disabled={readOnly} testID={`ari-remove-${row.path}`} />
-        <WButton label="Edit" size="sm" onPress={() => ctx.controller.actions.openStudio(row.id)} loading={ctx.controller.isOpeningStudio} />
+        <WButton label="Edit" size="sm" onPress={() => (ctx.editPage ? ctx.editPage(row.id) : ctx.controller.actions.openStudio(row.id))} loading={ctx.controller.isOpeningStudio} />
         <WButton label="Publish this page" size="sm" onPress={() => setConfirming("publish")} disabled={readOnly} testID={`ari-publish-${row.path}`} />
       </View>
       <Modal visible={confirming !== null} transparent animationType="fade" onRequestClose={() => setConfirming(null)}>

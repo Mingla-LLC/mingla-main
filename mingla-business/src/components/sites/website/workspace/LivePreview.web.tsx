@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } 
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { color, scrim } from "../../../../constants/designSystem";
 import { previewDimensions, PREVIEW_DEVICE_LABELS } from "../../../../sites/previewDevice";
-import { ariCardPosition, messageFromFrame, scaleRect, sectionViewportRect, stageFrame } from "../../../../sites/previewBridge";
+import { ariCardPosition, messageFromFrame, scaleRect, sectionViewportRect, stageFrame, viewportRect } from "../../../../sites/previewBridge";
 import { usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
 import type { LivePreviewProps } from "./LivePreview.types";
 
@@ -71,7 +71,7 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
   const known = selectedId ? preview.geometry.sections.find((section) => section.id === selectedId) : undefined;
   const frameRect = known
     ? sectionViewportRect(known, preview.geometry.scrollY, frame.width)
-    : clicked && clicked.id === selectedId ? clicked : null;
+    : clicked && clicked.id === selectedId ? viewportRect(clicked, preview.geometry.scrollY) : null;
   const cardAt = selectedId && renderCard && frame.scale > 0
     ? ariCardPosition(
       frameRect ? scaleRect(frameRect, frame.scale, { left: frame.left, top: 0 }) : { top: 0, left: frame.left, width: frame.width * frame.scale, height: stage.height },

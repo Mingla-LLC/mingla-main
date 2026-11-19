@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { color, radius, space } from "../../../../constants/designSystem";
 import { Sheet } from "../../../ui/Sheet";
 import { Banner, Chip, Field, MiniButton, Skeleton, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
 import { PhotoChooser } from "../PhotoField";
-import { useSectionCatalog, type WorkspacePage, type WorkspaceSection } from "../../../../sites/contentApi";
+import { useSectionCatalog, type SectionField, type WorkspacePage, type WorkspaceSection } from "../../../../sites/contentApi";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { markByOf, markLabel } from "../../../../sites/previewBridge";
 import { addRowBlocked, feedNote, moveBlocked, removeBlocked, removeRowBlocked, splitRows } from "../../../../sites/sectionEdits";
-import type { SectionField } from "../../../../sites/contentApi";
 import type { Workspace } from "./useWorkspace";
 import { GroupLabel, PanelNote, parts } from "./parts";
 
@@ -19,16 +18,18 @@ import { GroupLabel, PanelNote, parts } from "./parts";
  * layouts, its photos, "Looks good" while it is still a draft, move and
  * remove. Nothing here has a Save button; Undo puts any change back.
  */
-export function EditPanel({ ws, onAskAri, onManagePages }: {
+export function EditPanel({ ws, onAskAri, onManagePages, onRenameInMenu }: {
   ws: Workspace;
   onAskAri: (section: WorkspaceSection) => void;
   onManagePages: () => void;
+  /** Menu names are changed by Ari: this puts the request in Ari's box, ready to finish. */
+  onRenameInMenu: (pageTitle: string) => void;
 }): React.ReactElement {
   const [adding, setAdding] = useState(false);
   const blocked = ws.readOnlyReason;
   return (
     <View style={parts.panelPad} testID="edit-panel">
-      <PagePicker ws={ws} onManagePages={onManagePages} />
+      <PagePicker ws={ws} onManagePages={onManagePages} onRenameInMenu={onRenameInMenu} />
       <View style={parts.row}>
         <Text style={[styles.listTitle, parts.grow]} role="heading" aria-level={2}>Sections, top to bottom</Text>
         <WButton
@@ -71,7 +72,14 @@ function pageNote(page: WorkspacePage): string | null {
   return null;
 }
 
-function PagePicker({ ws, onManagePages }: { ws: Workspace; onManagePages: () => void }): React.ReactElement {
+/** Why this page cannot be turned off (null: it can). */
+export function pageOffBlocked(page: WorkspacePage): string | null {
+  if (!page.path) return "Your home page is always on.";
+  if (page.ari_draft) return "This is a draft page from Ari. Publish or remove it under Manage pages and menu.";
+  return null;
+}
+
+function PagePicker({ ws, onManagePages, onRenameInMenu }: { ws: Workspace; onManagePages: () => void; onRenameInMenu: (pageTitle: string) => void }): React.ReactElement {
   const [open, setOpen] = useState(false);
   if (ws.pagesState === "loading") return <Skeleton height={44} />;
   if (ws.pagesState === "error" || !ws.page) {
@@ -82,6 +90,7 @@ function PagePicker({ ws, onManagePages }: { ws: Workspace; onManagePages: () =>
     );
   }
   const current = ws.page;
+  const offBlocked = pageOffBlocked(current);
   return (
     <View testID="page-picker">
       <Text style={styles.label} nativeID="page-picker-label">Page</Text>
@@ -122,7 +131,22 @@ function PagePicker({ ws, onManagePages }: { ws: Workspace; onManagePages: () =>
               </Pressable>
             );
           })}
-          <WButton label="Manage pages and menu" icon="pages" size="sm" onPress={() => { setOpen(false); onManagePages(); }} style={styles.manage} testID="page-picker-manage" />
+          <View style={styles.pageActions}>
+            <WButton
+              label={current.enabled ? `Turn ${current.title} off` : `Turn ${current.title} on`}
+              size="sm"
+              accessibilityLabel={offBlocked && current.enabled ? `Turn ${current.title} off. ${offBlocked}` : undefined}
+              onPress={() => {
+                if (ws.readOnlyReason) ws.notify({ message: ws.readOnlyReason, kind: "info" });
+                else if (current.enabled && offBlocked) ws.notify({ message: offBlocked, kind: "info" });
+                else void ws.togglePage(current, !current.enabled);
+              }}
+              testID="page-toggle-enabled"
+            />
+            {current.path ? <WButton label="Rename in menu" icon="spark" size="sm" onPress={() => { setOpen(false); onRenameInMenu(current.title); }} testID="page-rename-menu" /> : null}
+            <WButton label="Manage pages and menu" icon="pages" size="sm" onPress={() => { setOpen(false); onManagePages(); }} testID="page-picker-manage" />
+          </View>
+          <Text style={[parts.small, styles.pageHelp]}>Manage pages and menu is where you add a page, change the menu’s order and take a page out of the menu.</Text>
         </View>
       ) : null}
     </View>
@@ -178,7 +202,9 @@ function SectionEditor({ ws, section, onAskAri, madeByTeam }: { ws: Workspace; s
   const firstField = useRef<React.ElementRef<typeof Field> | null>(null);
   const readOnly = ws.readOnly;
   // Focus moves into the section that was just opened (keyboard and screen readers).
+  // (Web only: on a phone this would throw the keyboard up over the page.)
   useEffect(() => {
+    if (Platform.OS !== "web") return undefined;
     const timer = setTimeout(() => firstField.current?.focus?.(), 80);
     return () => clearTimeout(timer);
   }, [section.id]);
@@ -384,7 +410,8 @@ const styles = StyleSheet.create({
   pageRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 10, borderRadius: radius.xs },
   pageRowOn: { backgroundColor: color.fill.railOn },
   pageTitle: { fontSize: 15, color: ui.t1 },
-  manage: { alignSelf: "flex-start", margin: 6 },
+  pageActions: { flexDirection: "row", flexWrap: "wrap", gap: 6, margin: 6 },
+  pageHelp: { marginHorizontal: 6, marginBottom: 6 },
   listTitle: { fontSize: 13, lineHeight: 18, fontWeight: "600", color: ui.t2 },
   skeleton: { marginBottom: 8 },
   empty: { gap: space[2] },
@@ -406,7 +433,7 @@ const styles = StyleSheet.create({
   rows: { gap: space[2] },
   row: { gap: 6, padding: space[2], borderRadius: radius.xs, borderWidth: 1, borderColor: ui.cardBorder },
   editorActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[2] },
-  sheet: { padding: space[5], gap: space[3] },
+  sheet: { gap: space[3] },
   sheetTitle: { fontSize: 20, lineHeight: 28, fontWeight: "700", color: ui.t1 },
   catalogRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: space[3], paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: ui.cardBorder, backgroundColor: ui.card },
 });
