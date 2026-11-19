@@ -25,6 +25,22 @@
 --          no enumeration; full answers only when the form allows it or the caller is a manager;
 --          every full read is logged; rate limited.
 --
+-- Wave 1 review fixes ("Independent review of wave 1: FAIL" on #4514):
+-- T-PERSON  1/2  a signed-in answer, then a personal-link submit without the code is refused, one
+--                row, the scan line unchanged; user then RSVP id, RSVP then user, user then order
+--                id: one row, the right edit count; the lock is on the person.
+-- T-HOSTILE 3    every answer type with hostile input returns a validation error and never raises.
+-- T-CLOSE   2/4  closing keeps the scan line; a not-going, denied RSVP and a refunded order get
+--                nothing from the full read.
+-- T-HEADER  10   another ticket of the order carries "From {name}'s order"; a transferred ticket
+--                shows none of the order's answers.
+-- T-DOORX   5    another event's scanner gets nothing; the per-actor lock; repeated calls hit 60.
+-- T-VERS    7    no truncate, delete or update on versions for the service role; the truncate trigger.
+-- T-CODE    8    the address throttle counts form codes only; the per-phone limit applies.
+-- T-NOPAGE  6    a signed-in submit with no page carrying the form is refused.
+-- T-PUBVIS / T-MINE 10  page visibility on the public read; who gets a form's questions.
+--
+-- MINGLA-INVARIANT: I-4514-ONE-PERSON-ONE-RESPONSE | issue #4514 | one person has one response per form across link, RSVP, order and sign-in, and a link edit of any existing answer needs the one-time code (T-PERSON here; helper in the migration).
 -- MINGLA-INVARIANT: I-4514-FORM-RESPONSES-BRAND-SCOPED | issue #4514 | a host of another brand, anon and a signed-in guest read no brand form responses through any RPC or table (T-GRANT, T-RESP here).
 -- MINGLA-INVARIANT: I-4514-FORM-VERSIONS-IMMUTABLE | issue #4514 | published versions are never updated or deleted (T-IMM here; trigger in the migration).
 -- MINGLA-INVARIANT: I-4514-DOOR-READ-ONE-GUEST-OF-THIS-EVENT | issue #4514 | scanner-role staff read answers only for one guest of the scanned event per call, only the marked line (both versions) when the host switch is off (T-DOOR here).
@@ -33,6 +49,11 @@
 -- dropping the link.form_id check in brand_form_submit_core fails T-LINK-1; dropping the
 -- show_if visibility in brand_form_check_answers fails T-SUB-3; dropping the brand rank check in
 -- biz_brand_form_responses fails T-RESP-3; dropping the versions trigger fails T-IMM.
+-- Review fixes (each tried, each red, then restored): the subject-only existing-answer lookup
+-- fails T-PERSON-1; live-only door line fails T-CLOSE-1; to_date in the date check fails T-HOSTILE
+-- (22008); dropping the current-guest check fails T-CLOSE-4; dropping the per-actor lock fails
+-- T-DOORX-5; dropping the no-page check fails T-NOPAGE; dropping the truncate trigger fails T-VERS;
+-- dropping the purpose filter fails T-CODE-8; dropping the page-visibility check fails T-PUBVIS-10.
 
 CREATE OR REPLACE FUNCTION pg_temp.f_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $a$
@@ -457,11 +478,22 @@ BEGIN
   PERFORM pg_temp.f_assert((SELECT order_id FROM public.brand_form_responses WHERE id = (v->>'responseId')::uuid) = v_o1,
     'T-SUB the order subject is recorded');
 
-  -- User subject with no page.
+  -- User subject with no page: no page, no answer (review fix 6); nothing is written.
+  SELECT count(*) INTO v_n FROM public.brand_form_responses;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_form,
+           'answers', c_yes, 'credential', jsonb_build_object('kind', 'user', 'userId', v_s))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:form_not_on_event%' AND (SELECT count(*) FROM public.brand_form_responses) = v_n,
+    'T-NOPAGE a signed-in submit with no page is refused and writes nothing (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_form,
+           'eventId', (SELECT id FROM f4514 WHERE k = 'e3'), 'answers', c_yes,
+           'credential', jsonb_build_object('kind', 'user', 'userId', v_s))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:form_not_on_event%', 'T-NOPAGE a signed-in submit for a page without this form is refused');
+  -- User subject on a page that carries the form.
   v := public.brand_form_submit_core(jsonb_build_object('formId', v_form, 'answers', c_yes,
+         'eventId', (SELECT id FROM f4514 WHERE k = 'e2'),
          'credential', jsonb_build_object('kind', 'user', 'userId', v_s)));
   PERFORM pg_temp.f_assert((SELECT user_id FROM public.brand_form_responses WHERE id = (v->>'responseId')::uuid) = v_s,
-    'T-SUB the user subject is recorded');
+    'T-SUB the user subject is recorded (on a page that carries the form)');
   -- Form X's answers sent to event Y (which carries form Y).
   v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_form,
            'eventId', v_e5, 'answers', c_yes, 'expectedEditCount', 0, 'credential', jsonb_build_object('kind', 'user', 'userId', v_s))));
@@ -569,7 +601,7 @@ DECLARE
   v_form uuid := (SELECT id FROM f4514 WHERE k = 'form');
   v_e1 uuid := (SELECT id FROM f4514 WHERE k = 'e1');
   v_e2 uuid := (SELECT id FROM f4514 WHERE k = 'e2');
-  v jsonb;
+  v jsonb; v_r text;
 BEGIN
   PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'g1'));
   SET LOCAL ROLE authenticated;
@@ -588,9 +620,12 @@ BEGIN
   PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'owner_b'));
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.f_assert(public.brand_forms_my_pending() = '[]'::jsonb, 'T-READ SC-39 nothing for events the caller does not hold');
-  v := public.brand_form_my_response(v_form, v_e1);
-  PERFORM pg_temp.f_assert(v->>'state' = 'unanswered' AND v->'response' = 'null'::jsonb,
-    'T-READ another signed-in person sees no one else''s answer');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_my_response(%L, %L)$$, v_form, v_e1));
+  PERFORM pg_temp.f_assert(v_r LIKE 'P0002:form_not_found%',
+    'T-READ another signed-in person with no relation to the form gets nothing (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_my_response(%L)$$, v_form));
+  PERFORM pg_temp.f_assert(v_r LIKE 'P0002:form_not_found%',
+    'T-MINE a live form''s id alone does not hand its questions to any signed-in caller');
   RESET ROLE;
 END
 $t$;
@@ -777,6 +812,493 @@ BEGIN
   SELECT v_evscan, v_e1, 'rsvp', (SELECT id FROM f4514 WHERE k = 'r1'), 'scan', 'full' FROM generate_series(1, 60);
   v := public.brand_form_door_full_answers(v_evscan, v_e1, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'r1')), 'scan');
   PERFORM pg_temp.f_assert(v->>'state' = 'rate_limited', 'T-DOOR C4 full reads are rate limited');
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ Wave 1 review fixes (#4514 "Independent review of wave 1: FAIL") ═════════
+-- Fixtures: form P (the sample definition) on e6 (RSVP, required), e7 (ticketed,
+-- after purchase), e8 (unlisted, optional on page) and e9 (private, optional on page).
+DO $f$
+DECLARE
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_up uuid := pg_temp.f_user('p-person');
+  v_ur uuid := pg_temp.f_user('r-person');
+  v_uc uuid := pg_temp.f_user('c-person');
+  v_uq uuid := pg_temp.f_user('q-buyer');
+  v_uq2 uuid := pg_temp.f_user('q2-buyer');
+  v_uh uuid := pg_temp.f_user('t-holder');
+  v_sc6 uuid := pg_temp.f_user('scan-e6');
+  v_e6 uuid := gen_random_uuid(); v_e7 uuid := gen_random_uuid(); v_e8 uuid := gen_random_uuid(); v_e9 uuid := gen_random_uuid();
+  v_rp uuid := gen_random_uuid(); v_rr uuid := gen_random_uuid(); v_rc uuid := gen_random_uuid(); v_ru uuid := gen_random_uuid();
+  v_oq uuid := gen_random_uuid(); v_oq2 uuid := gen_random_uuid(); v_ox uuid := gen_random_uuid();
+  v_t1 uuid := gen_random_uuid(); v_t2 uuid := gen_random_uuid(); v_t3 uuid := gen_random_uuid(); v_tx uuid := gen_random_uuid();
+BEGIN
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_e6, v_ba, 'RSVP six', 'f4514-e6', 'rsvp', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_e7, v_ba, 'Ticketed seven', 'f4514-e7', 'event', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_e8, v_ba, 'Unlisted eight', 'f4514-e8', 'rsvp', 'scheduled', 'hidden', 'UTC', 'USD'),
+         (v_e9, v_ba, 'Private nine', 'f4514-e9', 'rsvp', 'scheduled', 'private', 'UTC', 'USD');
+  INSERT INTO public.event_scanners(event_id, user_id) VALUES (v_e6, v_sc6);
+  INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_rp, v_e6, v_up, 'Pat Person', 'f4514-p@example.test', '+12025550601', 'going', 'approved'),
+         (v_rr, v_e6, v_ur, 'Rae Reverse', 'f4514-r@example.test', '+12025550602', 'going', 'approved'),
+         (v_rc, v_e6, v_uc, 'Cam Cancel', 'f4514-c@example.test', '+12025550603', 'going', 'approved'),
+         (v_ru, v_e6, NULL, 'Una Unanswered', 'f4514-u@example.test', '+12025550604', 'going', 'approved');
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale)
+  VALUES (v_oq, v_e7, v_uq, 'Quinn Buyer', 'f4514-q@example.test', '+12025550701', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false),
+         (v_oq2, v_e7, v_uq2, 'Quill Refund', 'f4514-q2@example.test', '+12025550702', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false),
+         (v_ox, v_e7, NULL, 'Other Order', 'f4514-x@example.test', '+12025550703', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false);
+  -- t1 the buyer's own (attendee is the buyer), t2 a friend's, t3 moved by the older transfer, tx another order's.
+  INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, attendee_name, attendee_email, qr_code, status, created_at, transferred_at, holder_user_id)
+  VALUES (v_t1, v_oq, gen_random_uuid(), v_e7, 'Quinn Buyer', 'f4514-q@example.test', 'f4514-qr-1', 'valid', now() - interval '3 minutes', NULL, NULL),
+         (v_t2, v_oq, gen_random_uuid(), v_e7, 'Fran Friend', 'f4514-fran@example.test', 'f4514-qr-2', 'valid', now() - interval '2 minutes', NULL, v_uh),
+         (v_t3, v_oq, gen_random_uuid(), v_e7, 'Moved On', 'f4514-moved@example.test', 'f4514-qr-3', 'transferred', now() - interval '1 minute', now(), NULL),
+         (v_tx, v_ox, gen_random_uuid(), v_e7, 'Other', NULL, 'f4514-qr-x', 'valid', now(), NULL, NULL);
+  PERFORM set_config('session_replication_role', 'origin', true);
+  INSERT INTO f4514 VALUES ('up', v_up), ('ur', v_ur), ('uc', v_uc), ('uq', v_uq), ('uq2', v_uq2), ('uh', v_uh), ('sc6', v_sc6),
+    ('e6', v_e6), ('e7', v_e7), ('e8', v_e8), ('e9', v_e9), ('rp', v_rp), ('rr', v_rr), ('rc', v_rc), ('ru', v_ru),
+    ('oq', v_oq), ('oq2', v_oq2), ('ox', v_ox), ('t1', v_t1), ('t2', v_t2), ('t3', v_t3), ('tx', v_tx);
+END
+$f$;
+
+DO $t$
+DECLARE v jsonb; v_p uuid; v_a uuid;
+BEGIN
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_create((SELECT id FROM f4514 WHERE k = 'ba'), 'Form P', pg_temp.f_def());
+  v_p := (v->>'formId')::uuid;
+  v := public.biz_brand_form_publish(v_p, 1);
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  PERFORM public.biz_brand_form_attach(v_p, (SELECT id FROM f4514 WHERE k = 'e6'), 'required_step');
+  PERFORM public.biz_brand_form_attach(v_p, (SELECT id FROM f4514 WHERE k = 'e7'), 'after_purchase');
+  PERFORM public.biz_brand_form_attach(v_p, (SELECT id FROM f4514 WHERE k = 'e8'), 'optional_on_page');
+  PERFORM public.biz_brand_form_attach(v_p, (SELECT id FROM f4514 WHERE k = 'e9'), 'optional_on_page');
+  RESET ROLE;
+  INSERT INTO f4514 VALUES ('form_p', v_p);
+END
+$t$;
+
+-- ═══ T-PERSON (review 1, 2): one person, one response; the code gate holds ═════
+DO $t$
+DECLARE
+  v_p uuid := (SELECT id FROM f4514 WHERE k = 'form_p');
+  v_e6 uuid := (SELECT id FROM f4514 WHERE k = 'e6');
+  v_e7 uuid := (SELECT id FROM f4514 WHERE k = 'e7');
+  v_up uuid := (SELECT id FROM f4514 WHERE k = 'up');
+  v_ur uuid := (SELECT id FROM f4514 WHERE k = 'ur');
+  v_uq uuid := (SELECT id FROM f4514 WHERE k = 'uq');
+  v_rp uuid := (SELECT id FROM f4514 WHERE k = 'rp');
+  v_rr uuid := (SELECT id FROM f4514 WHERE k = 'rr');
+  v_oq uuid := (SELECT id FROM f4514 WHERE k = 'oq');
+  v jsonb; v_r text; v_token text; v_line jsonb; v_line2 jsonb; v_resp uuid;
+  c_yes constant jsonb := '{"11111111-1111-4111-8111-111111111111":"yes","22222222-2222-4222-8222-222222222222":"Juggling"}';
+  c_no constant jsonb := '{"11111111-1111-4111-8111-111111111111":"no"}';
+BEGIN
+  SET LOCAL ROLE service_role;
+  -- Pat answers signed in on page e6 (no RSVP id sent): a user row.
+  v := public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'eventId', v_e6, 'answers', c_yes,
+         'credential', jsonb_build_object('kind', 'user', 'userId', v_up)));
+  v_resp := (v->>'responseId')::uuid;
+  PERFORM pg_temp.f_assert(v->>'created' = 'true'
+    AND (SELECT user_id FROM public.brand_form_responses WHERE id = v_resp) = v_up,
+    'T-PERSON a signed-in answer on the page is stored for the person');
+  -- The same advisory lock key for Pat's RSVP and Pat signed in, and the submit holds it.
+  PERFORM pg_temp.f_assert(public.brand_form_person_lock_key(v_p, 'rsvp', v_rp) = public.brand_form_person_lock_key(v_p, 'user', v_up)
+    AND public.brand_form_person_lock_key(v_p, 'rsvp', v_rp) <> public.brand_form_person_lock_key(v_p, 'rsvp', v_rr),
+    'T-PERSON the lock is taken on the person, not on the subject kind');
+  PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid()
+      AND ((l.classid::bigint << 32) | l.objid::bigint) = public.brand_form_person_lock_key(v_p, 'user', v_up)),
+    'T-PERSON the submit took the person lock');
+  v_line := public.brand_form_door_answers((SELECT id FROM f4514 WHERE k = 'sc6'), v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rp));
+
+  -- A personal link for Pat's RSVP, used without the one-time code: refused.
+  v := public.brand_form_link_issue(v_p, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rp));
+  v_token := v->>'token';
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_p,
+           'answers', c_no, 'credential', jsonb_build_object('kind', 'link', 'token', v_token))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:code_required%',
+    'T-PERSON-1 signed-in answer, then a personal-link submit without the code is refused (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_p,
+           'answers', c_no, 'expectedEditCount', 0, 'credential', jsonb_build_object('kind', 'link', 'token', v_token))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:code_required%', 'T-PERSON-1 ... also when it sends the right edit count');
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_responses
+                             WHERE form_id = v_p AND (user_id = v_up OR rsvp_id = v_rp)) = 1
+    AND (SELECT answers FROM public.brand_form_responses WHERE id = v_resp) = c_yes,
+    'T-PERSON-1 the form still has one row for the person, unchanged');
+  v_line2 := public.brand_form_door_answers((SELECT id FROM f4514 WHERE k = 'sc6'), v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rp));
+  PERFORM pg_temp.f_assert(v_line2 = v_line AND v_line->>'state' = 'answered' AND v_line->'items'->0->>'value' = 'Yes',
+    'T-PERSON-1 the scan line is unchanged (' || COALESCE(v_line2::text, 'null') || ')');
+  RESET ROLE;
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v := public.brand_form_my_response(v_p, NULL, v_token, NULL);
+  PERFORM pg_temp.f_assert(v->>'state' = 'code_required' AND v->>'answered' = 'true' AND NOT (v ? 'response'),
+    'T-PERSON-1 seeing it through the link needs the code too (read and write agree)');
+  RESET ROLE;
+
+  SET LOCAL ROLE service_role;
+  -- Pat (signed in) sends the RSVP id: the same row is edited, edit count 1.
+  v := public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'answers', c_no, 'expectedEditCount', 0,
+         'credential', jsonb_build_object('kind', 'user', 'userId', v_up, 'rsvpId', v_rp)));
+  PERFORM pg_temp.f_assert((v->>'responseId')::uuid = v_resp AND (v->>'editCount')::integer = 1 AND v->>'created' = 'false'
+    AND (SELECT count(*) FROM public.brand_form_responses WHERE form_id = v_p AND (user_id = v_up OR rsvp_id = v_rp)) = 1,
+    'T-PERSON-2 answer as user, then with the RSVP id: still one row, edit count 1');
+  -- And back as the signed-in user on the page: still that row, edit count 2.
+  v := public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'eventId', v_e6, 'answers', c_yes, 'expectedEditCount', 1,
+         'credential', jsonb_build_object('kind', 'user', 'userId', v_up)));
+  PERFORM pg_temp.f_assert((v->>'responseId')::uuid = v_resp AND (v->>'editCount')::integer = 2,
+    'T-PERSON-2 then as the signed-in user again: the same row, edit count 2');
+  -- Reverse order: Rae answers with the RSVP id first, then signed in on the page.
+  v := public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'answers', c_no,
+         'credential', jsonb_build_object('kind', 'user', 'userId', v_ur, 'rsvpId', v_rr)));
+  v_resp := (v->>'responseId')::uuid;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_p,
+           'eventId', v_e6, 'answers', c_no, 'credential', jsonb_build_object('kind', 'user', 'userId', v_ur))));
+  PERFORM pg_temp.f_assert(v_r LIKE 'PT409:response_stale%', 'T-PERSON-2 a signed-in save that has not seen the RSVP answer is stale, not a second row');
+  v := public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'eventId', v_e6, 'answers', c_yes, 'expectedEditCount', 0,
+         'credential', jsonb_build_object('kind', 'user', 'userId', v_ur)));
+  PERFORM pg_temp.f_assert((v->>'responseId')::uuid = v_resp AND (v->>'editCount')::integer = 1
+    AND (SELECT count(*) FROM public.brand_form_responses WHERE form_id = v_p AND (user_id = v_ur OR rsvp_id = v_rr)) = 1,
+    'T-PERSON-2 RSVP first, then signed in on the page: one row, edit count 1');
+  -- An order: Quinn answers signed in on e7, then with the order id.
+  v := public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'eventId', v_e7, 'answers', c_yes,
+         'credential', jsonb_build_object('kind', 'user', 'userId', v_uq)));
+  v_resp := (v->>'responseId')::uuid;
+  v := public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'answers', c_yes, 'expectedEditCount', 0,
+         'credential', jsonb_build_object('kind', 'user', 'userId', v_uq, 'orderId', v_oq)));
+  PERFORM pg_temp.f_assert((v->>'responseId')::uuid = v_resp AND (v->>'editCount')::integer = 1
+    AND (SELECT count(*) FROM public.brand_form_responses WHERE form_id = v_p AND (user_id = v_uq OR order_id = v_oq)) = 1,
+    'T-PERSON-2 answer as user, then with the order id: still one row, edit count 1');
+  RESET ROLE;
+  -- The signed-in read finds the same row the writes used.
+  PERFORM pg_temp.f_as(v_up);
+  SET LOCAL ROLE authenticated;
+  v := public.brand_form_my_response(v_p, v_e6);
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND (v->'response'->>'editCount')::integer = 2,
+    'T-PERSON a signed-in Explorer user sees their own answer with no code');
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ T-HOSTILE (review 3): bad input is a validation error, never a server error ══
+DO $t$
+DECLARE
+  v_p uuid := (SELECT id FROM f4514 WHERE k = 'form_p');
+  v_up uuid := (SELECT id FROM f4514 WHERE k = 'up');
+  v_def jsonb := pg_temp.f_def();
+  v jsonb; v_r text; v_case record; v_n integer;
+  q1 constant text := '11111111-1111-4111-8111-111111111111';
+  q2 constant text := '22222222-2222-4222-8222-222222222222';
+  q3 constant text := '33333333-3333-4333-8333-333333333333';
+  q4 constant text := '44444444-4444-4444-8444-444444444444';
+  q5 constant text := '55555555-5555-4555-8555-555555555555';
+BEGIN
+  -- A multi choice question for the hostile multi cases.
+  v_def := jsonb_set(v_def, '{questions,4}', pg_temp.f_q(v_def, 4) || '{"type":"multi_choice","options":[{"id":"a","label":"A"},{"id":"b","label":"B"}]}');
+  FOR v_case IN SELECT * FROM (VALUES
+      ('date 2026-02-30',        jsonb_build_object(q1, 'no', q4, '2026-02-30'), 'type'),
+      ('date 2025-02-29',        jsonb_build_object(q1, 'no', q4, '2025-02-29'), 'type'),
+      ('date 1900-02-29',        jsonb_build_object(q1, 'no', q4, '1900-02-29'), 'type'),
+      ('date 0000-01-01',        jsonb_build_object(q1, 'no', q4, '0000-01-01'), 'type'),
+      ('date 2026-13-01',        jsonb_build_object(q1, 'no', q4, '2026-13-01'), 'type'),
+      ('date 2026-04-31',        jsonb_build_object(q1, 'no', q4, '2026-04-31'), 'type'),
+      ('date 99999-01-01',       jsonb_build_object(q1, 'no', q4, '99999-01-01'), 'type'),
+      ('date as a number',       jsonb_build_object(q1, 'no', q4, 20260101), 'type'),
+      ('date as an object',      jsonb_build_object(q1, 'no', q4, '{"y":2026}'::jsonb), 'type'),
+      ('date with time',         jsonb_build_object(q1, 'no', q4, '2026-01-01T00:00:00Z'), 'type'),
+      ('number as text',         jsonb_build_object(q1, 'no', q3, 'abc'), 'type'),
+      ('number too big',         jsonb_build_object(q1, 'no', q3, '1e400'::jsonb), 'type'),
+      ('number 13 digits',       jsonb_build_object(q1, 'no', q3, 1234567890123), 'type'),
+      ('number as an array',     jsonb_build_object(q1, 'no', q3, '[1]'::jsonb), 'type'),
+      ('number as a bool',       jsonb_build_object(q1, 'no', q3, true), 'type'),
+      ('short text as a number', jsonb_build_object(q1, 'yes', q2, 42), 'type'),
+      ('short text oversize',    jsonb_build_object(q1, 'yes', q2, repeat('é', 201)), 'too_long'),
+      ('short text as object',   jsonb_build_object(q1, 'yes', q2, '{"a":1}'::jsonb), 'type'),
+      ('single choice number',   jsonb_build_object(q1, 1), 'option'),
+      ('single choice array',    jsonb_build_object(q1, '["yes"]'::jsonb), 'option'),
+      ('single choice unknown',  jsonb_build_object(q1, 'maybe'), 'option'),
+      ('multi choice a string',  jsonb_build_object(q1, 'no', q5, 'a'), 'type'),
+      ('multi choice numbers',   jsonb_build_object(q1, 'no', q5, '[1,2]'::jsonb), 'option'),
+      ('multi choice repeated',  jsonb_build_object(q1, 'no', q5, '["a","a"]'::jsonb), 'option'),
+      ('multi choice nested',    jsonb_build_object(q1, 'no', q5, '[["a"]]'::jsonb), 'option'),
+      ('unknown question key',   jsonb_build_object(q1, 'no', 'not-a-question', 'x'), 'unknown_question')
+    ) c(label, answers, code) LOOP
+    v_r := pg_temp.f_err(format($$SELECT public.brand_form_check_answers(%L::jsonb, %L::jsonb)$$, v_def, v_case.answers));
+    PERFORM pg_temp.f_assert(v_r = 'ok', 'T-HOSTILE ' || v_case.label || ': the validator does not raise (' || v_r || ')');
+    v := public.brand_form_check_answers(v_def, v_case.answers);
+    PERFORM pg_temp.f_assert(v->>'ok' = 'false' AND EXISTS (SELECT 1 FROM jsonb_array_elements(v->'errors') e WHERE e.value->>'code' = v_case.code),
+      'T-HOSTILE ' || v_case.label || ': refused with ' || v_case.code || ' (' || (v->'errors')::text || ')');
+  END LOOP;
+  -- Real dates still pass, leap days included.
+  v := public.brand_form_check_answers(v_def, jsonb_build_object(q1, 'no', q4, '2024-02-29'));
+  PERFORM pg_temp.f_assert(v->>'ok' = 'true' AND v->'answers'->>q4 = '2024-02-29', 'T-HOSTILE 2024-02-29 is a real date');
+  v := public.brand_form_check_answers(v_def, jsonb_build_object(q1, 'no', q4, '2000-02-29', q3, '-12.5'));
+  PERFORM pg_temp.f_assert(v->>'ok' = 'true' AND (v->'answers'->>q3)::numeric = -12.5, 'T-HOSTILE 2000-02-29 and a decimal string pass');
+  -- A hostile definition handed to the client-callable validator never raises either.
+  v_r := pg_temp.f_err($$SELECT public.brand_form_check_answers('{"questions":[{"id":"x","position":"not a number","type":"date"}]}'::jsonb, '{}'::jsonb)$$);
+  PERFORM pg_temp.f_assert(v_r = 'ok' AND public.brand_form_check_answers('{"questions":[{"position":"x"}]}', '{}')->'errors'->0->>'code' = 'definition_invalid',
+    'T-HOSTILE a hostile definition is refused, not raised (' || v_r || ')');
+
+  -- Through the submit core: an impossible date and an absurd edit count are 22023 / PT409, never 22008 / 22003.
+  SET LOCAL ROLE service_role;
+  SELECT count(*) INTO v_n FROM public.brand_form_responses;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_p,
+           'eventId', (SELECT id FROM f4514 WHERE k = 'e8'), 'answers', jsonb_build_object(q1, 'no', q4, '2026-02-30'),
+           'credential', jsonb_build_object('kind', 'user', 'userId', (SELECT id FROM f4514 WHERE k = 'g1')))));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_invalid%' AND (SELECT count(*) FROM public.brand_form_responses) = v_n,
+    'T-HOSTILE an impossible date through the core is form_answers_invalid and writes nothing (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_p,
+           'eventId', (SELECT id FROM f4514 WHERE k = 'e6'), 'answers', jsonb_build_object(q1, 'no'), 'expectedEditCount', 1e12,
+           'credential', jsonb_build_object('kind', 'user', 'userId', v_up))));
+  PERFORM pg_temp.f_assert(v_r LIKE 'PT409:response_stale%', 'T-HOSTILE an absurd edit count is stale, not a cast error (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_p,
+           'eventId', (SELECT id FROM f4514 WHERE k = 'e6'), 'answers', jsonb_build_object(q1, 'no'), 'expectedEditCount', 2.5,
+           'credential', jsonb_build_object('kind', 'user', 'userId', v_up))));
+  PERFORM pg_temp.f_assert(v_r LIKE 'PT409:response_stale%', 'T-HOSTILE a fractional edit count is stale, not a cast error (' || v_r || ')');
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ T-CLOSE (review 2, 4): closing keeps the scan line; only current guests read in full ═
+DO $t$
+DECLARE
+  v_p uuid := (SELECT id FROM f4514 WHERE k = 'form_p');
+  v_e6 uuid := (SELECT id FROM f4514 WHERE k = 'e6');
+  v_e7 uuid := (SELECT id FROM f4514 WHERE k = 'e7');
+  v_sc6 uuid := (SELECT id FROM f4514 WHERE k = 'sc6');
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_rc uuid := (SELECT id FROM f4514 WHERE k = 'rc');
+  v_oq2 uuid := (SELECT id FROM f4514 WHERE k = 'oq2');
+  v jsonb; v_before jsonb; v_r text; v_n integer;
+  c_yes constant jsonb := '{"11111111-1111-4111-8111-111111111111":"yes","22222222-2222-4222-8222-222222222222":"Juggling"}';
+BEGIN
+  SET LOCAL ROLE service_role;
+  -- Cam (RSVP) and Quill (order) answer while current.
+  PERFORM public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'answers', c_yes,
+         'credential', jsonb_build_object('kind', 'user', 'userId', (SELECT id FROM f4514 WHERE k = 'uc'), 'rsvpId', v_rc)));
+  PERFORM public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'answers', c_yes,
+         'credential', jsonb_build_object('kind', 'user', 'userId', (SELECT id FROM f4514 WHERE k = 'uq2'), 'orderId', v_oq2)));
+  v := public.brand_form_door_full_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rc), 'scan');
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered', 'T-CLOSE a current guest reads in full');
+  v_before := public.brand_form_door_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'rp')));
+  PERFORM pg_temp.f_assert(public.brand_form_door_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'ru')))->>'state' = 'not_answered',
+    'T-CLOSE live: an unanswered guest shows "Questions not answered"');
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  PERFORM public.biz_brand_form_close(v_p);
+  RESET ROLE;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_door_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'rp')));
+  PERFORM pg_temp.f_assert(v IS NOT NULL AND v = v_before AND v->>'state' = 'answered',
+    'T-CLOSE-1 closing the form keeps the marked answers on the scan line (' || COALESCE(v::text, 'null') || ')');
+  PERFORM pg_temp.f_assert(public.brand_form_door_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'ru'))) IS NULL,
+    'T-CLOSE closed: "Questions not answered" needs a live form');
+  -- Cam cancels; Quill is refunded: the full read gives them nothing, and logs nothing.
+  UPDATE public.event_rsvps SET rsvp_status = 'not_going' WHERE id = v_rc;
+  UPDATE public.orders SET payment_status = 'refunded' WHERE id = v_oq2;
+  SELECT count(*) INTO v_n FROM public.brand_form_door_reads;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_full_answers(%L, %L, %L::jsonb, 'scan')$$, v_em, v_e6,
+           jsonb_build_object('kind', 'rsvp', 'id', v_rc)));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:subject_not_current%', 'T-CLOSE-4 a not-going RSVP gets nothing from the full read (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_full_answers(%L, %L, %L::jsonb, 'search')$$, v_em, v_e7,
+           jsonb_build_object('kind', 'order', 'id', v_oq2)));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:subject_not_current%', 'T-CLOSE-4 a refunded order gets nothing from the full read (' || v_r || ')');
+  UPDATE public.event_rsvps SET rsvp_status = 'going', approval_status = 'denied' WHERE id = v_rc;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_full_answers(%L, %L, %L::jsonb, 'scan')$$, v_em, v_e6,
+           jsonb_build_object('kind', 'rsvp', 'id', v_rc)));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:subject_not_current%' AND (SELECT count(*) FROM public.brand_form_door_reads) = v_n,
+    'T-CLOSE-4 a denied RSVP gets nothing either');
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  PERFORM public.biz_brand_form_reopen(v_p);
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ T-HEADER (review 10): the "From {name}'s order" header on another ticket ═══
+DO $t$
+DECLARE
+  v_e7 uuid := (SELECT id FROM f4514 WHERE k = 'e7');
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_oq uuid := (SELECT id FROM f4514 WHERE k = 'oq');
+  v jsonb; v_r text;
+BEGIN
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_door_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't1')));
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND NOT (v ? 'fromOrderOf'), 'T-HEADER the buyer''s own ticket has no header');
+  v := public.brand_form_door_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't2')));
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND v->>'fromOrderOf' = 'Quinn B.',
+    'T-HEADER another ticket of the order is headed "From Quinn B.''s order" (' || COALESCE(v::text, 'null') || ')');
+  v := public.brand_form_door_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq));
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND NOT (v ? 'fromOrderOf'), 'T-HEADER no ticket named: the order line as before');
+  v := public.brand_form_door_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't3')));
+  PERFORM pg_temp.f_assert(v->>'state' = 'not_answered', 'T-HEADER a ticket moved by transfer never shows the order''s answers');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_answers(%L, %L, %L::jsonb)$$, v_em, v_e7,
+           jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 'tx'))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:subject_other_event%', 'T-HEADER a ticket of another order is refused');
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ T-DOORX (review 5): the door read limit holds under a lock; other events get nothing ═
+DO $t$
+DECLARE
+  v_e6 uuid := (SELECT id FROM f4514 WHERE k = 'e6');
+  v_e7 uuid := (SELECT id FROM f4514 WHERE k = 'e7');
+  v_sc6 uuid := (SELECT id FROM f4514 WHERE k = 'sc6');
+  v_rp uuid := (SELECT id FROM f4514 WHERE k = 'rp');
+  v jsonb; v_r text; i integer; v_states text[] := '{}';
+BEGIN
+  SET LOCAL ROLE service_role;
+  -- A scanner of e6 reads nothing at e7.
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_full_answers(%L, %L, %L::jsonb)$$, v_sc6, v_e7,
+           jsonb_build_object('kind', 'order', 'id', (SELECT id FROM f4514 WHERE k = 'oq'))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:forbidden%', 'T-DOORX a scanner from another event gets nothing');
+  -- The read takes this actor's lock before counting (a second session blocks on it).
+  PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid()
+      AND ((l.classid::bigint << 32) | l.objid::bigint) = hashtextextended('brand_form_door_reads:' || v_sc6::text, 0)),
+    'T-DOORX-5 the full read holds the per-actor lock (taken before counting)');
+  -- Repeated real calls: 60 pass (one was logged above), then the limit.
+  FOR i IN 1..60 LOOP
+    v := public.brand_form_door_full_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rp), 'search');
+    v_states := v_states || (v->>'state');
+  END LOOP;
+  PERFORM pg_temp.f_assert(v_states[59] = 'answered' AND v_states[60] = 'rate_limited'
+    AND (SELECT count(*) FROM public.brand_form_door_reads WHERE actor_id = v_sc6 AND result <> 'rate_limited') = 60,
+    'T-DOORX repeated calls hit the limit at 60 per 10 minutes (' || array_to_string(v_states[58:60], ',') || ')');
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ T-VERS (review 7): versions cannot be wiped; audit log append-only ══════════
+DO $t$
+DECLARE v_t text; v_r text;
+BEGIN
+  PERFORM pg_temp.f_assert(NOT has_table_privilege('service_role', 'public.brand_form_versions', 'DELETE')
+    AND NOT has_table_privilege('service_role', 'public.brand_form_versions', 'TRUNCATE')
+    AND NOT has_table_privilege('service_role', 'public.brand_form_versions', 'UPDATE')
+    AND has_table_privilege('service_role', 'public.brand_form_versions', 'SELECT')
+    AND has_table_privilege('service_role', 'public.brand_form_versions', 'INSERT'),
+    'T-VERS the service role keeps only SELECT and INSERT on versions');
+  SET LOCAL ROLE service_role;
+  v_r := pg_temp.f_err($$TRUNCATE public.brand_form_versions CASCADE$$);
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-VERS truncate on versions is refused for the service role (' || v_r || ')');
+  v_r := pg_temp.f_err($$DELETE FROM public.brand_form_versions$$);
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:permission denied%', 'T-VERS delete on versions is refused for the service role (' || v_r || ')');
+  v_r := pg_temp.f_err($$DELETE FROM public.brand_form_door_reads$$);
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:permission denied%', 'T-VERS the door-read log cannot be deleted by the service role');
+  RESET ROLE;
+  -- Even the owner's TRUNCATE hits the statement trigger.
+  v_r := pg_temp.f_err($$TRUNCATE public.brand_form_versions CASCADE$$);
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:brand_form_version_immutable%', 'T-VERS the BEFORE TRUNCATE trigger refuses a wipe (' || v_r || ')');
+  FOREACH v_t IN ARRAY ARRAY['brand_forms','brand_form_versions','brand_form_attachments','brand_form_responses',
+                             'brand_form_links','brand_form_submit_attempts','brand_form_door_reads'] LOOP
+    PERFORM pg_temp.f_assert(NOT has_table_privilege('service_role', 'public.' || v_t, 'TRUNCATE'),
+      'T-VERS no TRUNCATE for the service role on ' || v_t);
+  END LOOP;
+  PERFORM pg_temp.f_assert(NOT has_table_privilege('service_role', 'public.brand_form_door_reads', 'UPDATE')
+    AND NOT has_table_privilege('service_role', 'public.brand_form_door_reads', 'DELETE'),
+    'T-VERS the door-read log is append-only for the service role');
+END
+$t$;
+
+-- ═══ T-CODE (review 8): purpose-filtered address throttle; the per-phone limit ════
+DO $t$
+DECLARE
+  v_p uuid := (SELECT id FROM f4514 WHERE k = 'form_p');
+  v_e6 uuid := (SELECT id FROM f4514 WHERE k = 'e6');
+  v_ru uuid := (SELECT id FROM f4514 WHERE k = 'ru');
+  v_rr uuid := (SELECT id FROM f4514 WHERE k = 'rr');
+  v_g1 uuid := (SELECT id FROM f4514 WHERE k = 'g1');
+  v jsonb; v_tok_u text; v_tok_r text; v_link_u uuid; v_ip text := repeat('c', 64); i integer;
+BEGIN
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_link_issue(v_p, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_ru));
+  v_tok_u := v->>'token'; v_link_u := (v->>'linkId')::uuid;
+  v := public.brand_form_link_issue(v_p, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rr));
+  v_tok_r := v->>'token';
+  RESET ROLE;
+  -- Ten add-contact challenges from the same address (another purpose) in the last 10 minutes.
+  INSERT INTO public.contact_challenges (purpose, channel, user_id, target_value, code_hash, ip_hash)
+  SELECT 'add_contact', 'email', v_g1, 'f4514-other' || g || '@example.test', repeat('d', 64), v_ip FROM generate_series(1, 10) g;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_u, 'email', repeat('e', 64), v_ip);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'started',
+    'T-CODE-8 another purpose''s challenges from the same address do not throttle form codes (' || (v->>'outcome') || ')');
+  RESET ROLE;
+  -- Ten form-code challenges from that address (other links): the address limit.
+  INSERT INTO public.contact_challenges (purpose, channel, target_value, code_hash, ip_hash, brand_form_link_id)
+  SELECT 'brand_form_access', 'email', 'f4514-form' || g || '@example.test', repeat('d', 64), v_ip, v_link_u FROM generate_series(1, 9) g;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_r, 'email', repeat('e', 64), v_ip);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'rate_limited', 'T-CODE form codes from one address are limited to 10 per 10 minutes');
+  -- The per-phone limit: two texts to Rae's number (any purpose) in 10 minutes.
+  RESET ROLE;
+  INSERT INTO public.contact_challenges (purpose, channel, user_id, target_value, ip_hash)
+  VALUES ('add_contact', 'phone', v_g1, '+12025550602', NULL), ('add_contact', 'phone', v_g1, '+12025550602', NULL);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_r, 'phone', NULL, repeat('f', 64));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'rate_limited', 'T-CODE-8 the existing per-phone limit applies to form codes');
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_r, 'email', repeat('e', 64), repeat('f', 64));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'started', 'T-CODE the same person can still get an email code');
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ T-PUBVIS and T-MINE (review 10): page visibility; who gets a form's questions ═
+DO $t$
+DECLARE
+  v_p uuid := (SELECT id FROM f4514 WHERE k = 'form_p');
+  v_e6 uuid := (SELECT id FROM f4514 WHERE k = 'e6');
+  v_e7 uuid := (SELECT id FROM f4514 WHERE k = 'e7');
+  v_e8 uuid := (SELECT id FROM f4514 WHERE k = 'e8');
+  v_e9 uuid := (SELECT id FROM f4514 WHERE k = 'e9');
+  v jsonb; v_r text;
+BEGIN
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  PERFORM pg_temp.f_assert(public.public_brand_form_for_event(v_e9)->>'active' = 'false' AND NOT (public.public_brand_form_for_event(v_e9) ? 'definition'),
+    'T-PUBVIS-10 a private page returns no form');
+  v := public.public_brand_form_for_event(v_e8);
+  PERFORM pg_temp.f_assert(v->>'active' = 'true' AND v->>'mode' = 'optional_on_page', 'T-PUBVIS an unlisted page opened by its link returns its form');
+  RESET ROLE;
+  UPDATE public.events SET visibility = 'draft' WHERE id = v_e8;
+  SET LOCAL ROLE anon;
+  PERFORM pg_temp.f_assert(public.public_brand_form_for_event(v_e8)->>'active' = 'false', 'T-PUBVIS a draft page returns no form');
+  RESET ROLE;
+  UPDATE public.events SET visibility = 'hidden' WHERE id = v_e8;
+
+  -- A stranger: nothing on a required page they do not hold, nothing on a private page,
+  -- the questions on a public page that offers the form as optional.
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 's'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_my_response(%L, %L)$$, v_p, v_e6));
+  PERFORM pg_temp.f_assert(v_r LIKE 'P0002:form_not_found%', 'T-MINE-10 a stranger gets no questions on a page they do not hold');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_my_response(%L, %L)$$, v_p, v_e9));
+  PERFORM pg_temp.f_assert(v_r LIKE 'P0002:form_not_found%', 'T-MINE a stranger gets no questions on a private page');
+  v := public.brand_form_my_response(v_p, v_e8);
+  PERFORM pg_temp.f_assert(v->>'state' = 'unanswered' AND jsonb_array_length(v->'form'->'definition'->'questions') = 5,
+    'T-MINE a public page offering the form as optional hands out its questions');
+  RESET ROLE;
+  -- A ticket holder (a friend the buyer sent a ticket to) gets the questions on that page.
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'uh'));
+  SET LOCAL ROLE authenticated;
+  v := public.brand_form_my_response(v_p, v_e7);
+  PERFORM pg_temp.f_assert(v->>'state' = 'unanswered' AND v->'form' ? 'definition', 'T-MINE a ticket holder at the page gets the questions');
+  RESET ROLE;
+  -- A going RSVP who has not answered gets them too.
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'g1'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_my_response(%L, %L)$$, v_p, v_e6));
+  PERFORM pg_temp.f_assert(v_r LIKE 'P0002:form_not_found%', 'T-MINE a guest of another page gets nothing here');
   RESET ROLE;
 END
 $t$;

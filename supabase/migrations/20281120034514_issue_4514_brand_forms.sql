@@ -275,10 +275,20 @@ DECLARE
   v_txt text;
   v_elem jsonb;
   v_seen text[];
+  v_y integer;
+  v_m integer;
+  v_d integer;
+  v_dim integer;
 BEGIN
   IF p_answers IS NULL OR jsonb_typeof(p_answers) <> 'object' THEN
     RETURN jsonb_build_object('ok', false, 'answers', '{}'::jsonb,
       'errors', jsonb_build_array(jsonb_build_object('questionId', NULL, 'code', 'answers_not_object')));
+  END IF;
+  -- Callers may pass any definition (the builder checks drafts); only a valid one
+  -- is walked, so nothing below can raise on a hostile definition either.
+  IF NOT public.validate_brand_form_definition(p_definition) THEN
+    RETURN jsonb_build_object('ok', false, 'answers', '{}'::jsonb,
+      'errors', jsonb_build_array(jsonb_build_object('questionId', NULL, 'code', 'definition_invalid')));
   END IF;
   -- Every key must be a question of this version.
   FOR v_key IN SELECT jsonb_object_keys(p_answers) LOOP
@@ -337,12 +347,24 @@ BEGIN
           v_out := v_out || jsonb_build_object(v_id, v_txt::numeric);
         END IF;
       WHEN 'date' THEN
-        v_txt := v_val #>> '{}';
-        IF jsonb_typeof(v_val) <> 'string' OR v_txt !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-           OR to_char(to_date(v_txt, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> v_txt THEN
+        -- A real calendar date, checked with arithmetic only: nothing here can
+        -- raise (to_date / make_date on 2026-02-30 or year 0 would, as 22008).
+        v_txt := CASE WHEN jsonb_typeof(v_val) = 'string' THEN v_val #>> '{}' END;
+        IF v_txt IS NULL OR v_txt !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$' THEN
           v_errors := v_errors || jsonb_build_object('questionId', v_id, 'code', 'type');
         ELSE
-          v_out := v_out || jsonb_build_object(v_id, v_txt);
+          v_y := substr(v_txt, 1, 4)::integer;
+          v_m := substr(v_txt, 6, 2)::integer;
+          v_d := substr(v_txt, 9, 2)::integer;
+          v_dim := CASE
+               WHEN v_m = 2 THEN CASE WHEN (v_y % 4 = 0 AND v_y % 100 <> 0) OR v_y % 400 = 0 THEN 29 ELSE 28 END
+               WHEN v_m IN (4, 6, 9, 11) THEN 30
+               ELSE 31 END;
+          IF v_y < 1 OR v_d > v_dim THEN
+            v_errors := v_errors || jsonb_build_object('questionId', v_id, 'code', 'type');
+          ELSE
+            v_out := v_out || jsonb_build_object(v_id, v_txt);
+          END IF;
         END IF;
       WHEN 'single_choice' THEN
         IF jsonb_typeof(v_val) <> 'string' OR NOT ((v_val #>> '{}') = ANY (v_opts)) THEN
@@ -401,9 +423,10 @@ CREATE TABLE public.brand_forms (
 );
 CREATE INDEX brand_forms_brand_idx ON public.brand_forms (brand_id, updated_at DESC);
 ALTER TABLE public.brand_forms ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_forms FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.brand_forms FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.brand_forms TO authenticated;
-GRANT ALL ON public.brand_forms TO service_role;
+-- No TRUNCATE for anyone but the owner (default privileges would grant it).
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.brand_forms TO service_role;
 COMMENT ON TABLE public.brand_forms IS '#4514: one row per host-built form (BUILD CONTRACT v2 §3.1). Writes only through the biz_brand_form_* RPCs; brand members at marketing_manager and up read their brand''s rows.';
 
 CREATE TABLE public.brand_form_versions (
@@ -418,7 +441,10 @@ CREATE TABLE public.brand_form_versions (
   UNIQUE (form_id, version)
 );
 ALTER TABLE public.brand_form_versions ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_form_versions FROM PUBLIC, anon, authenticated;
+-- The platform's default privileges hand every new table ALL to service_role; a
+-- published version is append-only, so the service role keeps SELECT and INSERT
+-- only (no UPDATE, DELETE or TRUNCATE).
+REVOKE ALL ON public.brand_form_versions FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.brand_form_versions TO authenticated;
 GRANT SELECT, INSERT ON public.brand_form_versions TO service_role;
 ALTER TABLE public.brand_forms ADD CONSTRAINT brand_forms_live_version_fk
@@ -431,6 +457,9 @@ BEGIN RAISE EXCEPTION 'brand_form_version_immutable' USING ERRCODE = '42501'; EN
 REVOKE ALL ON FUNCTION public.brand_form_versions_immutable() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER brand_form_versions_no_change BEFORE UPDATE OR DELETE ON public.brand_form_versions
   FOR EACH ROW EXECUTE FUNCTION public.brand_form_versions_immutable();
+-- A row trigger never fires for TRUNCATE; this statement trigger covers it.
+CREATE TRIGGER brand_form_versions_no_truncate BEFORE TRUNCATE ON public.brand_form_versions
+  FOR EACH STATEMENT EXECUTE FUNCTION public.brand_form_versions_immutable();
 
 CREATE FUNCTION public.brand_forms_live_version_same_form() RETURNS trigger
 LANGUAGE plpgsql SET search_path = '' AS $fn$
@@ -466,9 +495,10 @@ CREATE UNIQUE INDEX brand_form_attachments_one_active ON public.brand_form_attac
   WHERE detached_at IS NULL;
 CREATE INDEX brand_form_attachments_form_idx ON public.brand_form_attachments (form_id) WHERE detached_at IS NULL;
 ALTER TABLE public.brand_form_attachments ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_form_attachments FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.brand_form_attachments FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.brand_form_attachments TO authenticated;
-GRANT ALL ON public.brand_form_attachments TO service_role;
+-- No TRUNCATE for anyone but the owner (default privileges would grant it).
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.brand_form_attachments TO service_role;
 
 CREATE FUNCTION public.brand_form_attachments_guard() RETURNS trigger
 LANGUAGE plpgsql SET search_path = '' AS $fn$
@@ -528,8 +558,9 @@ CREATE INDEX brand_form_responses_rsvp_idx ON public.brand_form_responses (rsvp_
 CREATE INDEX brand_form_responses_order_idx ON public.brand_form_responses (order_id) WHERE order_id IS NOT NULL;
 CREATE INDEX brand_form_responses_user_idx ON public.brand_form_responses (user_id) WHERE user_id IS NOT NULL;
 ALTER TABLE public.brand_form_responses ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_form_responses FROM PUBLIC, anon, authenticated;
-GRANT ALL ON public.brand_form_responses TO service_role;
+REVOKE ALL ON public.brand_form_responses FROM PUBLIC, anon, authenticated, service_role;
+-- No TRUNCATE for anyone but the owner (default privileges would grant it).
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.brand_form_responses TO service_role;
 COMMENT ON TABLE public.brand_form_responses IS '#4514: one response per person per form (one partial unique per subject column). No client grants: hosts read through biz_brand_form_responses, guests through brand_form_my_response.';
 
 CREATE FUNCTION public.brand_form_responses_guard() RETURNS trigger
@@ -574,8 +605,9 @@ CREATE TABLE public.brand_form_links (
 );
 CREATE INDEX brand_form_links_form_idx ON public.brand_form_links (form_id, created_at DESC);
 ALTER TABLE public.brand_form_links ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_form_links FROM PUBLIC, anon, authenticated;
-GRANT ALL ON public.brand_form_links TO service_role;
+REVOKE ALL ON public.brand_form_links FROM PUBLIC, anon, authenticated, service_role;
+-- No TRUNCATE for anyone but the owner (default privileges would grant it).
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.brand_form_links TO service_role;
 
 CREATE TABLE public.brand_form_submit_attempts (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -586,8 +618,9 @@ CREATE TABLE public.brand_form_submit_attempts (
 );
 CREATE INDEX brand_form_submit_attempts_ip_idx ON public.brand_form_submit_attempts (ip_hash, created_at DESC);
 ALTER TABLE public.brand_form_submit_attempts ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_form_submit_attempts FROM PUBLIC, anon, authenticated;
-GRANT ALL ON public.brand_form_submit_attempts TO service_role;
+REVOKE ALL ON public.brand_form_submit_attempts FROM PUBLIC, anon, authenticated, service_role;
+-- No TRUNCATE for anyone but the owner (default privileges would grant it).
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.brand_form_submit_attempts TO service_role;
 
 -- C4: every full-answer read at the door, with who, which guest and when.
 CREATE TABLE public.brand_form_door_reads (
@@ -603,8 +636,9 @@ CREATE TABLE public.brand_form_door_reads (
 );
 CREATE INDEX brand_form_door_reads_actor_idx ON public.brand_form_door_reads (actor_id, created_at DESC);
 ALTER TABLE public.brand_form_door_reads ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_form_door_reads FROM PUBLIC, anon, authenticated;
-GRANT ALL ON public.brand_form_door_reads TO service_role;
+-- C4 audit log: append-only for the service role (no UPDATE, DELETE or TRUNCATE).
+REVOKE ALL ON public.brand_form_door_reads FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT, INSERT ON public.brand_form_door_reads TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 5. RLS: hosts read their own brand's forms, versions and attachments
@@ -689,6 +723,24 @@ AS $fn$
     ELSE NULL END;
 $fn$;
 
+-- A page anyone may open by its link: the same rule the existing public event
+-- reads apply (#1929/#1931 exact-link readers): public or unlisted ('hidden'),
+-- not deleted, its brand not deleted, not blocked by private-event access, and
+-- (for forms) still taking answers: scheduled or live.
+-- (plpgsql so the filtered historical replay lanes that omit #1931 still create it.)
+CREATE FUNCTION public.brand_form_event_public(p_event_id uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+BEGIN
+  RETURN COALESCE((
+    SELECT e.visibility IN ('public', 'hidden') AND e.deleted_at IS NULL AND b.deleted_at IS NULL
+       AND e.status IN ('scheduled', 'live')
+       AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
+      FROM public.events e JOIN public.brands b ON b.id = e.brand_id
+     WHERE e.id = p_event_id), false);
+END;
+$fn$;
+
 -- One response of a form for a subject; for an RSVP or an order it also finds
 -- the holder's own signed-in response (OP-5: the same person meets the same form).
 CREATE FUNCTION public.brand_form_find_response(p_form_id uuid, p_kind text, p_id uuid)
@@ -718,6 +770,54 @@ BEGIN
   END IF;
   RETURN v;
 END;
+$fn$;
+
+-- MINGLA-INVARIANT: I-4514-ONE-PERSON-ONE-RESPONSE | issue #4514 | the write path (brand_form_submit_core) and every read path find a person's existing answer with this one rule, lock on the person, and update that row rather than insert a second one (pg17 T-PERSON).
+-- The same person's existing response to a form, for every path (read and write):
+-- an RSVP or order finds its own row, else its holder's signed-in row
+-- (brand_form_find_response); a signed-in user on a page finds, in order, their
+-- RSVP's row at that page, their paid order's row at that page, then their own row.
+CREATE FUNCTION public.brand_form_person_response(p_form_id uuid, p_kind text, p_id uuid, p_event_id uuid)
+RETURNS public.brand_form_responses
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v public.brand_form_responses;
+  v_rsvp uuid;
+  v_order uuid;
+BEGIN
+  IF p_kind <> 'user' OR p_event_id IS NULL THEN
+    RETURN public.brand_form_find_response(p_form_id, p_kind, p_id);
+  END IF;
+  SELECT r.id INTO v_rsvp FROM public.event_rsvps r WHERE r.event_id = p_event_id AND r.user_id = p_id
+   ORDER BY r.created_at DESC LIMIT 1;
+  IF v_rsvp IS NOT NULL THEN
+    SELECT * INTO v FROM public.brand_form_responses WHERE form_id = p_form_id AND rsvp_id = v_rsvp;
+    IF FOUND THEN RETURN v; END IF;
+  END IF;
+  SELECT o.id INTO v_order FROM public.orders o WHERE o.event_id = p_event_id AND o.buyer_user_id = p_id
+     AND o.payment_status IN ('paid', 'partial_refund') ORDER BY o.created_at DESC LIMIT 1;
+  IF v_order IS NOT NULL THEN
+    SELECT * INTO v FROM public.brand_form_responses WHERE form_id = p_form_id AND order_id = v_order;
+    IF FOUND THEN RETURN v; END IF;
+  END IF;
+  RETURN public.brand_form_find_response(p_form_id, 'user', p_id);
+END;
+$fn$;
+
+-- The advisory-lock key for one person and one form: the signed-in user behind
+-- the subject when there is one (so an RSVP, an order and a signed-in answer by
+-- the same user serialise), else the subject itself.
+CREATE FUNCTION public.brand_form_person_lock_key(p_form_id uuid, p_kind text, p_id uuid) RETURNS bigint
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  SELECT hashtextextended('brand_form_person:' || p_form_id::text || ':' || COALESCE(
+    'user:' || (CASE p_kind
+      WHEN 'user' THEN p_id
+      WHEN 'rsvp' THEN (SELECT r.user_id FROM public.event_rsvps r WHERE r.id = p_id)
+      WHEN 'order' THEN (SELECT o.buyer_user_id FROM public.orders o WHERE o.id = p_id)
+      ELSE NULL END)::text,
+    p_kind || ':' || p_id::text), 0);
 $fn$;
 
 -- The event's active attachment with its form, when that form has a live version.
@@ -1188,9 +1288,9 @@ DECLARE
   v_a record;
   v_def jsonb;
 BEGIN
-  SELECT e.id, e.brand_id INTO v_e FROM public.events e
-   WHERE e.id = p_event_id AND e.deleted_at IS NULL AND e.status IN ('scheduled', 'live');
-  IF NOT FOUND THEN RETURN jsonb_build_object('active', false); END IF;
+  -- Nothing for a page that is not publicly visible (private, draft, deleted, ended).
+  IF NOT public.brand_form_event_public(p_event_id) THEN RETURN jsonb_build_object('active', false); END IF;
+  SELECT e.id, e.brand_id INTO v_e FROM public.events e WHERE e.id = p_event_id;
   -- OP-7 / C8: switched off, nothing is asked and nothing blocks.
   IF public.brand_forms_switched_off() THEN
     RETURN jsonb_build_object('active', false, 'switchedOff', true);
@@ -1282,8 +1382,6 @@ DECLARE
   v_state text;
   v_identity text;
   v_uid uuid := auth.uid();
-  v_rsvp uuid;
-  v_order uuid;
   v_event uuid := p_event_id;
 BEGIN
   SELECT * INTO v_f FROM public.brand_forms WHERE id = p_form_id AND status IN ('live', 'closed');
@@ -1298,7 +1396,8 @@ BEGIN
     IF v_link.revoked_at IS NOT NULL THEN RAISE EXCEPTION 'link_revoked' USING ERRCODE = '42501'; END IF;
     v_subject := public.brand_form_link_subject(v_link);
     IF v_subject IS NULL THEN RAISE EXCEPTION 'link_invalid' USING ERRCODE = '42501'; END IF;
-    v_resp := public.brand_form_find_response(p_form_id, v_subject->>'kind', (v_subject->>'id')::uuid);
+    -- The same person rule as the write path (I-4514-ONE-PERSON-ONE-RESPONSE).
+    v_resp := public.brand_form_person_response(p_form_id, v_subject->>'kind', (v_subject->>'id')::uuid, v_link.event_id);
     v_identity := public.brand_form_short_name(public.brand_form_subject_contact(v_subject->>'kind', (v_subject->>'id')::uuid)->>'name');
     v_event := COALESCE(v_link.event_id, v_event);
     IF (v_resp.id IS NOT NULL OR v_link.expires_at <= now())
@@ -1310,15 +1409,23 @@ BEGIN
         'brand', public.brand_form_brand_header(v_f.brand_id));
     END IF;
   ELSIF v_uid IS NOT NULL THEN
-    IF v_event IS NOT NULL THEN
-      SELECT r.id INTO v_rsvp FROM public.event_rsvps r WHERE r.event_id = v_event AND r.user_id = v_uid
-       ORDER BY r.created_at DESC LIMIT 1;
-      SELECT o.id INTO v_order FROM public.orders o WHERE o.event_id = v_event AND o.buyer_user_id = v_uid
-         AND o.payment_status IN ('paid', 'partial_refund') ORDER BY o.created_at DESC LIMIT 1;
+    v_resp := public.brand_form_person_response(p_form_id, 'user', v_uid, v_event);
+    -- The questions go only to a caller with a real relation to this form: their
+    -- own answer; or a page that carries the form where they hold an RSVP, a paid
+    -- order or a ticket; or a publicly visible page offering it as optional.
+    IF v_resp.id IS NULL AND NOT (v_event IS NOT NULL AND EXISTS (
+         SELECT 1 FROM public.brand_form_attachments a
+          WHERE a.event_id = v_event AND a.form_id = p_form_id AND a.detached_at IS NULL
+            AND (EXISTS (SELECT 1 FROM public.event_rsvps r
+                          WHERE r.event_id = v_event AND r.user_id = v_uid AND r.rsvp_status = 'going')
+              OR EXISTS (SELECT 1 FROM public.orders o
+                          WHERE o.event_id = v_event AND o.buyer_user_id = v_uid
+                            AND o.payment_status IN ('paid', 'partial_refund'))
+              OR EXISTS (SELECT 1 FROM public.tickets t
+                          WHERE t.event_id = v_event AND t.holder_user_id = v_uid AND t.status IN ('valid', 'used'))
+              OR (a.mode = 'optional_on_page' AND public.brand_form_event_public(v_event))))) THEN
+      RAISE EXCEPTION 'form_not_found' USING ERRCODE = 'P0002';
     END IF;
-    IF v_rsvp IS NOT NULL THEN v_resp := public.brand_form_find_response(p_form_id, 'rsvp', v_rsvp); END IF;
-    IF v_resp.id IS NULL AND v_order IS NOT NULL THEN v_resp := public.brand_form_find_response(p_form_id, 'order', v_order); END IF;
-    IF v_resp.id IS NULL THEN v_resp := public.brand_form_find_response(p_form_id, 'user', v_uid); END IF;
   ELSE
     RAISE EXCEPTION 'not_signed_in' USING ERRCODE = '42501';
   END IF;
@@ -1449,7 +1556,7 @@ BEGIN
   IF v_link.revoked_at IS NOT NULL THEN RETURN jsonb_build_object('outcome', 'revoked'); END IF;
   v_subject := public.brand_form_link_subject(v_link);
   v_contact := public.brand_form_subject_contact(v_subject->>'kind', (v_subject->>'id')::uuid);
-  v_resp := public.brand_form_find_response(v_link.form_id, v_subject->>'kind', (v_subject->>'id')::uuid);
+  v_resp := public.brand_form_person_response(v_link.form_id, v_subject->>'kind', (v_subject->>'id')::uuid, v_link.event_id);
   RETURN jsonb_build_object('outcome', 'ok', 'linkId', v_link.id, 'formId', v_link.form_id,
     'eventId', v_link.event_id, 'attachmentId', v_link.attachment_id, 'kind', v_link.kind,
     'subject', v_subject, 'recognized', v_link.expires_at > now(), 'answered', v_resp.id IS NOT NULL,
@@ -1485,13 +1592,21 @@ BEGIN
   IF v_target IS NULL THEN
     RETURN jsonb_build_object('outcome', CASE WHEN p_channel = 'email' THEN 'no_email' ELSE 'no_phone' END);
   END IF;
+  -- Per link, per address (form codes only, so form codes and the #4063 claim
+  -- sign-ins never throttle each other), per contact per day, and the existing
+  -- #4063 per-phone limit (2 texts to one number per 10 minutes, every purpose:
+  -- it protects the number, whoever asks).
   IF (SELECT count(*) FROM public.contact_challenges c
        WHERE c.brand_form_link_id = v_link.id AND c.created_at > now() - interval '10 minutes') >= 3
      OR (p_ip_hash IS NOT NULL AND (SELECT count(*) FROM public.contact_challenges c
-       WHERE c.ip_hash = p_ip_hash AND c.created_at > now() - interval '10 minutes') >= 10)
+       WHERE c.ip_hash = p_ip_hash AND c.purpose = 'brand_form_access'
+         AND c.created_at > now() - interval '10 minutes') >= 10)
      OR (SELECT count(*) FROM public.contact_challenges c
        WHERE c.target_value = v_target AND c.purpose = 'brand_form_access'
-         AND c.created_at > now() - interval '24 hours') >= 20 THEN
+         AND c.created_at > now() - interval '24 hours') >= 20
+     OR (p_channel = 'phone' AND (SELECT count(*) FROM public.contact_challenges c
+       WHERE c.channel = 'phone' AND c.target_value = v_target
+         AND c.created_at > now() - interval '10 minutes') >= 2) THEN
     RETURN jsonb_build_object('outcome', 'rate_limited');
   END IF;
   IF p_channel = 'email' AND NULLIF(btrim(COALESCE(p_code_hash, '')), '') IS NULL THEN
@@ -1515,7 +1630,10 @@ $fn$;
 -- Raises (message = code): forms_paused, form_not_found, form_not_live, form_closed,
 -- form_changed (PT409), response_stale (PT409), form_answers_invalid (DETAIL errors),
 -- link_invalid, link_wrong_form, link_revoked, code_required, not_holder,
--- form_not_on_event, subject_unavailable, credential_invalid.
+-- form_not_on_event (also: a signed-in answer with no page that carries the form),
+-- subject_unavailable, credential_invalid. The existing answer is found by the
+-- person rule (brand_form_person_response), so a link and a sign-in by the same
+-- person edit one row, and a link edit of any existing answer needs the code.
 CREATE FUNCTION public.brand_form_submit_core(p jsonb) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
@@ -1536,6 +1654,7 @@ DECLARE
   v_via_link boolean := false;
   v_id uuid;
   v_edit integer;
+  v_expected integer;
   v_uuid constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 BEGIN
   IF public.brand_forms_switched_off() THEN RAISE EXCEPTION 'forms_paused' USING ERRCODE = '55000'; END IF;
@@ -1598,22 +1717,22 @@ BEGIN
     RAISE EXCEPTION 'subject_unavailable' USING ERRCODE = '22023';
   END IF;
 
+  -- A signed-in answer is always for a page that carries this form: no page, no answer.
+  IF NOT v_via_link AND v_event IS NULL THEN
+    RAISE EXCEPTION 'form_not_on_event' USING ERRCODE = '42501';
+  END IF;
   -- The answers must be for this event's form (form X's answers to event Y are refused).
+  -- A personal link answers through its own page's attachment.
   IF v_event IS NOT NULL THEN
     SELECT a.id INTO v_att FROM public.brand_form_attachments a
      WHERE a.event_id = v_event AND a.form_id = v_form_id AND a.detached_at IS NULL;
     IF v_att IS NULL THEN RAISE EXCEPTION 'form_not_on_event' USING ERRCODE = '42501'; END IF;
   END IF;
 
-  -- One response per person per form; lock the subject's row while we decide.
-  PERFORM pg_advisory_xact_lock(hashtextextended('brand_form:' || v_form_id::text || ':' || v_kind || ':' || v_sid::text, 0));
-  IF v_kind = 'rsvp' THEN
-    SELECT * INTO v_existing FROM public.brand_form_responses WHERE form_id = v_form_id AND rsvp_id = v_sid;
-  ELSIF v_kind = 'order' THEN
-    SELECT * INTO v_existing FROM public.brand_form_responses WHERE form_id = v_form_id AND order_id = v_sid;
-  ELSE
-    SELECT * INTO v_existing FROM public.brand_form_responses WHERE form_id = v_form_id AND user_id = v_sid;
-  END IF;
+  -- One response per person per form (I-4514-ONE-PERSON-ONE-RESPONSE): lock on the
+  -- person, then find their existing answer with the same rule every read path uses.
+  PERFORM pg_advisory_xact_lock(public.brand_form_person_lock_key(v_form_id, v_kind, v_sid));
+  v_existing := public.brand_form_person_response(v_form_id, v_kind, v_sid, v_event);
 
   -- C2: through a link, an existing answer (or a link past recognition) needs the code.
   IF v_via_link AND (v_existing.id IS NOT NULL OR v_link.expires_at <= now())
@@ -1621,16 +1740,26 @@ BEGIN
            CASE WHEN (v_cred->>'challengeId') ~ v_uuid THEN (v_cred->>'challengeId')::uuid END) THEN
     RAISE EXCEPTION 'code_required' USING ERRCODE = '42501';
   END IF;
-  -- Two devices: the edit must start from what is stored now.
-  IF (p ? 'expectedEditCount' AND jsonb_typeof(p->'expectedEditCount') = 'number'
-        AND v_existing.id IS NOT NULL AND v_existing.edit_count <> (p->>'expectedEditCount')::integer)
-     OR (p ? 'expectedEditCount' AND jsonb_typeof(p->'expectedEditCount') = 'number' AND v_existing.id IS NULL)
-     OR ((NOT (p ? 'expectedEditCount') OR jsonb_typeof(p->'expectedEditCount') = 'null') AND v_existing.id IS NOT NULL) THEN
+  -- Two devices: the edit must start from what is stored now (an expected count that
+  -- is not a small whole number never matches, so it can never raise a cast error).
+  v_expected := CASE WHEN jsonb_typeof(p->'expectedEditCount') = 'number'
+                          AND (p->>'expectedEditCount') ~ '^[0-9]{1,9}$'
+                     THEN (p->>'expectedEditCount')::integer
+                     WHEN jsonb_typeof(p->'expectedEditCount') = 'number' THEN -1 END;
+  IF (v_expected IS NOT NULL AND (v_existing.id IS NULL OR v_existing.edit_count <> v_expected))
+     OR (v_expected IS NULL AND v_existing.id IS NOT NULL) THEN
     RAISE EXCEPTION 'response_stale' USING ERRCODE = 'PT409',
       DETAIL = jsonb_build_object('editCount', v_existing.edit_count)::text;
   END IF;
 
-  v_check := public.brand_form_validate_answers(v_version, p->'answers');
+  -- Bad input is a validation error, never a server error: anything the
+  -- validator could still raise on (a data exception) becomes form_answers_invalid.
+  BEGIN
+    v_check := public.brand_form_validate_answers(v_version, p->'answers');
+  EXCEPTION WHEN data_exception THEN
+    v_check := jsonb_build_object('ok', false,
+      'errors', jsonb_build_array(jsonb_build_object('questionId', NULL, 'code', 'type')));
+  END;
   IF NOT (v_check->>'ok')::boolean THEN
     RAISE EXCEPTION 'form_answers_invalid' USING ERRCODE = '22023', DETAIL = (v_check->'errors')::text;
   END IF;
@@ -1685,32 +1814,55 @@ AS $fn$
 DECLARE
   v_kind text := p_subject->>'kind';
   v_sid uuid;
+  v_ticket uuid;
   v_a record;
   v_resp public.brand_form_responses;
   v_answered jsonb;
   v_live jsonb;
   v_items jsonb;
   v_added boolean := false;
+  v_from text;
+  v_uuid constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 BEGIN
   PERFORM public.brand_form_door_authority(p_actor_id, p_event_id);
-  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ '^[0-9a-fA-F-]{36}$' THEN
+  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ v_uuid
+     OR (p_subject ? 'ticketId' AND jsonb_typeof(p_subject->'ticketId') <> 'null'
+         AND (v_kind <> 'order' OR COALESCE(p_subject->>'ticketId', '') !~ v_uuid)) THEN
     RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
   END IF;
   v_sid := (p_subject->>'id')::uuid;
   IF public.brand_form_subject_event(v_kind, v_sid) IS DISTINCT FROM p_event_id THEN
     RAISE EXCEPTION 'subject_other_event' USING ERRCODE = '42501';
   END IF;
+  -- The scanned ticket (optional): it must be a ticket of this order at this event.
+  IF v_kind = 'order' AND (p_subject->>'ticketId') ~ v_uuid THEN
+    v_ticket := (p_subject->>'ticketId')::uuid;
+    IF NOT EXISTS (SELECT 1 FROM public.tickets t
+                    WHERE t.id = v_ticket AND t.order_id = v_sid AND t.event_id = p_event_id) THEN
+      RAISE EXCEPTION 'subject_other_event' USING ERRCODE = '42501';
+    END IF;
+  END IF;
   IF public.brand_forms_switched_off() THEN RETURN NULL; END IF;
+  -- A closed form keeps its answered line (hosts close before the event); only
+  -- "Questions not answered" needs a live form.
   SELECT * INTO v_a FROM public.brand_form_active_for_event(p_event_id);
-  IF NOT FOUND OR v_a.form_status <> 'live' THEN RETURN NULL; END IF;
+  IF NOT FOUND THEN RETURN NULL; END IF;
   v_resp := public.brand_form_find_response(v_a.form_id, v_kind, v_sid);
+  -- A transferred ticket never shows the previous holder's (the order's) answer;
+  -- its own holder's answer arrives with the ticket subject (OP-6, slice 2).
+  IF v_ticket IS NOT NULL AND EXISTS (SELECT 1 FROM public.tickets t
+       WHERE t.id = v_ticket AND (t.transferred_at IS NOT NULL OR t.status = 'transferred')) THEN
+    v_resp := NULL;
+  END IF;
   IF v_resp.id IS NULL THEN
     IF v_kind = 'order' THEN
       SELECT o.source IN ('door_sale', 'manual_import') OR COALESCE(o.is_door_sale, false) INTO v_added
         FROM public.orders o WHERE o.id = v_sid;
     END IF;
-    -- "Questions not answered" only for required or after-purchase forms, never for guests added by the host.
-    IF v_a.mode IN ('required_step', 'after_purchase') AND NOT COALESCE(v_added, false) THEN
+    -- "Questions not answered" only for a live required or after-purchase form,
+    -- never for guests added by the host.
+    IF v_a.form_status = 'live' AND v_a.mode IN ('required_step', 'after_purchase')
+       AND NOT COALESCE(v_added, false) THEN
       RETURN jsonb_build_object('state', 'not_answered', 'formName', v_a.form_name);
     END IF;
     RETURN NULL;
@@ -1728,12 +1880,31 @@ BEGIN
                   WHERE l.value->>'id' = q.value->>'id' AND COALESCE((l.value->>'show_at_door')::boolean, false))
      AND public.brand_form_answer_text(q.value, v_resp.answers->(q.value->>'id')) IS NOT NULL;
   IF jsonb_array_length(v_items) = 0 THEN RETURN NULL; END IF;
-  RETURN jsonb_build_object('state', 'answered', 'formName', v_a.form_name,
-    'items', (SELECT jsonb_agg(x.value) FROM jsonb_array_elements(v_items) WITH ORDINALITY x WHERE x.ordinality <= 3));
+  -- §6: another ticket of the same order shows the buyer's answers under
+  -- "From {first name} {initial}.'s order". The buyer's own ticket is the one whose
+  -- holder is the buyer (by user, else by holder or attendee email); with no holder
+  -- on the ticket, the order's first ticket. A ticket sent to a friend (#4063,
+  -- transfer_state 'claimed') is another ticket of the order; a ticket moved by the
+  -- older transfer (status 'transferred' or transferred_at) shows none of the order's answers.
+  IF v_ticket IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM public.tickets t JOIN public.orders o ON o.id = t.order_id
+        WHERE t.id = v_ticket
+          AND CASE
+                WHEN t.holder_user_id IS NOT NULL THEN t.holder_user_id = o.buyer_user_id
+                WHEN NULLIF(btrim(COALESCE(t.holder_email, t.attendee_email)), '') IS NOT NULL
+                  THEN lower(btrim(COALESCE(t.holder_email, t.attendee_email))) = lower(btrim(COALESCE(o.buyer_email, '')))
+                ELSE t.id = (SELECT t2.id FROM public.tickets t2 WHERE t2.order_id = o.id
+                              ORDER BY t2.created_at, t2.id LIMIT 1)
+              END) THEN
+    SELECT public.brand_form_short_name(o.buyer_name) INTO v_from FROM public.orders o WHERE o.id = v_sid;
+  END IF;
+  RETURN jsonb_strip_nulls(jsonb_build_object('state', 'answered', 'formName', v_a.form_name,
+    'fromOrderOf', v_from,
+    'items', (SELECT jsonb_agg(x.value) FROM jsonb_array_elements(v_items) WITH ORDINALITY x WHERE x.ordinality <= 3)));
 END;
 $fn$;
 
--- "See all answers" (C4): one guest of this event per call, rate limited, logged.
+-- "See all answers" (C4): one current guest of this event per call, rate limited, logged.
 -- Full answers when the form allows it or the caller is event_manager+; else the marked line.
 CREATE FUNCTION public.brand_form_door_full_answers(p_actor_id uuid, p_event_id uuid, p_subject jsonb, p_via text DEFAULT 'scan')
 RETURNS jsonb
@@ -1749,9 +1920,11 @@ DECLARE
   v_questions jsonb;
   v_result text;
   v_out jsonb;
+  v_current boolean;
+  v_uuid constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 BEGIN
   v_rank := public.brand_form_door_authority(p_actor_id, p_event_id);
-  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ '^[0-9a-fA-F-]{36}$'
+  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ v_uuid
      OR COALESCE(p_via, '') NOT IN ('scan', 'search') THEN
     RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
   END IF;
@@ -1759,6 +1932,21 @@ BEGIN
   IF public.brand_form_subject_event(v_kind, v_sid) IS DISTINCT FROM p_event_id THEN
     RAISE EXCEPTION 'subject_other_event' USING ERRCODE = '42501';
   END IF;
+  -- Current guests only, by the door's own admission rule (biz_rsvp_scan: going and
+  -- approved), or an order that is paid or partly refunded. A not-going, waitlisted,
+  -- maybe or denied RSVP and a refunded, cancelled or unpaid order read nothing.
+  -- (Plus-ones are not a door subject here; they arrive after claim, wave 5.)
+  v_current := CASE v_kind
+       WHEN 'rsvp' THEN EXISTS (SELECT 1 FROM public.event_rsvps r
+                                 WHERE r.id = v_sid AND r.rsvp_status = 'going' AND r.approval_status = 'approved')
+       ELSE EXISTS (SELECT 1 FROM public.orders o WHERE o.id = v_sid AND o.payment_status IN ('paid', 'partial_refund'))
+     END;
+  IF NOT v_current THEN
+    RAISE EXCEPTION 'subject_not_current' USING ERRCODE = '42501';
+  END IF;
+  -- One counter per actor: serialise this actor's reads before counting, so
+  -- parallel calls cannot all pass the limit.
+  PERFORM pg_advisory_xact_lock(hashtextextended('brand_form_door_reads:' || p_actor_id::text, 0));
   IF (SELECT count(*) FROM public.brand_form_door_reads d
        WHERE d.actor_id = p_actor_id AND d.created_at > now() - interval '10 minutes') >= 60 THEN
     INSERT INTO public.brand_form_door_reads (actor_id, event_id, subject_kind, subject_id, via, result)
@@ -1814,6 +2002,9 @@ REVOKE ALL ON FUNCTION
   public.brand_form_short_name(text),
   public.brand_form_subject_event(text, uuid),
   public.brand_form_find_response(uuid, text, uuid),
+  public.brand_form_person_response(uuid, text, uuid, uuid),
+  public.brand_form_person_lock_key(uuid, text, uuid),
+  public.brand_form_event_public(uuid),
   public.brand_form_active_for_event(uuid),
   public.brand_form_answer_text(jsonb, jsonb),
   public.brand_form_cut(text, integer),
@@ -1878,6 +2069,9 @@ GRANT EXECUTE ON FUNCTION
   public.brand_form_short_name(text),
   public.brand_form_subject_event(text, uuid),
   public.brand_form_find_response(uuid, text, uuid),
+  public.brand_form_person_response(uuid, text, uuid, uuid),
+  public.brand_form_person_lock_key(uuid, text, uuid),
+  public.brand_form_event_public(uuid),
   public.brand_form_active_for_event(uuid),
   public.brand_form_answer_text(jsonb, jsonb),
   public.brand_form_cut(text, integer),
@@ -1899,6 +2093,6 @@ TO service_role;
 
 COMMENT ON FUNCTION public.brand_form_submit_core(jsonb) IS '#4514: the only writer of brand_form_responses (service role; brand-form-submit). See BUILD CONTRACT v2 §3.5 and the wave 1 implementation report on #4514 for codes.';
 COMMENT ON FUNCTION public.brand_form_door_answers(uuid, uuid, jsonb) IS '#4514 §6: the door line (marked questions in both the answered and the live version), at most 3; null when there is nothing to show.';
-COMMENT ON FUNCTION public.brand_form_door_full_answers(uuid, uuid, jsonb, text) IS '#4514 C4: one guest of this event per call, logged in brand_form_door_reads, 60 per actor per 10 minutes.';
+COMMENT ON FUNCTION public.brand_form_door_full_answers(uuid, uuid, jsonb, text) IS '#4514 C4: one current guest (going RSVP, paid or partly refunded order) of this event per call, logged in brand_form_door_reads, 60 per actor per 10 minutes under a per-actor lock.';
 
 COMMIT;
