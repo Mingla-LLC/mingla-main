@@ -8,17 +8,18 @@
  *
  * No React here: the workspace hook owns one writer per site.
  */
-import type { SectionEdit } from "./contentApi";
+import type { SectionEdit, SectionListOp } from "./contentApi";
 
 export const AUTOSAVE_IDLE_MS = 600;
 
 export type DraftJob =
   | { kind: "edit"; pageId: string; sectionId: string; edits: SectionEdit[]; label: string }
+  | { kind: "list"; pageId: string; sectionId: string; ops: SectionListOp[]; label: string }
   | { kind: "layout"; pageId: string; sectionId: string; layout: string; label: string }
   | { kind: "move"; pageId: string; sectionId: string; toIndex: number; label: string }
   | { kind: "remove"; pageId: string; sectionId: string; label: string }
-  | { kind: "add"; pageId: string; type: string; afterSectionId: string | null; label: string }
-  | { kind: "media"; pageId: string; sectionId: string; slot: string; mediaId: string; label: string }
+  | { kind: "add"; pageId: string; type: string; afterSectionId: string | null; mediaId?: string | null; label: string }
+  | { kind: "media"; pageId: string; sectionId: string; slot: string; mediaId: string | null; label: string }
   | { kind: "reviewed"; pageId: string; sectionIds: string[] | "all"; label: string };
 
 export type SaveState = "idle" | "waiting" | "saving" | "saved" | "error";
@@ -37,8 +38,8 @@ export type DraftWriterDeps = {
 export type DraftWriter = {
   /** A keystroke: coalesced per section and key, sent after the idle delay. */
   typeField: (pageId: string, sectionId: string, key: string, value: string, label: string) => void;
-  /** Any other change: typing waiting on the same page is sent first, in order. */
-  enqueue: (job: DraftJob) => Promise<void>;
+  /** Any other change: typing waiting on the same page is sent first, in order. Resolves true only when it was saved. */
+  enqueue: (job: DraftJob) => Promise<boolean>;
   /** Send everything now (leaving the panel, opening Publish). */
   flush: () => Promise<void>;
   pending: () => number;
@@ -50,7 +51,7 @@ type Typing = { pageId: string; sectionId: string; label: string; edits: Map<str
 export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
   const idleMs = deps.idleMs ?? AUTOSAVE_IDLE_MS;
   const typing = new Map<string, Typing>();
-  const queues = new Map<string, DraftJob[]>();
+  const queues = new Map<string, { job: DraftJob; done: (saved: boolean) => void }[]>();
   const running = new Map<string, Promise<void>>();
   let disposed = false;
   let failed = false;
@@ -69,30 +70,39 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
     const run = (async () => {
       for (;;) {
         const queue = queues.get(pageId);
-        const job = queue?.shift();
-        if (!job) break;
+        const entry = queue?.shift();
+        if (!entry) break;
+        const { job, done } = entry;
+        const dropRest = (): number => {
+          const rest = queue ?? [];
+          queues.delete(pageId);
+          rest.forEach((waiting) => waiting.done(false));
+          return rest.length;
+        };
         const revision = deps.getRevision(pageId);
         if (revision === null) {
-          const dropped = queue?.length ?? 0;
-          queues.delete(pageId);
           failed = true;
-          deps.onError(new Error("PAGE_NOT_LOADED"), job, dropped);
+          done(false);
+          deps.onError(new Error("PAGE_NOT_LOADED"), job, dropRest());
           break;
         }
         try {
           const next = await deps.send(job, revision);
-          if (disposed) return;
+          if (disposed) {
+            done(true);
+            return;
+          }
           if (typeof next === "string" && next.length > 0) deps.setRevision(pageId, next);
           failed = false;
           deps.onSaved(job);
+          done(true);
         } catch (error) {
+          done(false);
           if (disposed) return;
           // Whatever was queued behind it was made against a draft that no
           // longer exists: drop it rather than write over a teammate.
-          const dropped = queue?.length ?? 0;
-          queues.delete(pageId);
           failed = true;
-          deps.onError(error, job, dropped);
+          deps.onError(error, job, dropRest());
           break;
         }
       }
@@ -105,16 +115,16 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
     return run;
   };
 
-  const push = (job: DraftJob): Promise<void> => {
+  const push = (job: DraftJob): Promise<boolean> => new Promise<boolean>((resolve) => {
     const queue = queues.get(job.pageId) ?? [];
-    queue.push(job);
+    queue.push({ job, done: resolve });
     queues.set(job.pageId, queue);
-    return drain(job.pageId);
-  };
+    void drain(job.pageId);
+  });
 
-  const sendTyping = (id: string): Promise<void> => {
+  const sendTyping = (id: string): Promise<boolean> => {
     const entry = typing.get(id);
-    if (!entry) return Promise.resolve();
+    if (!entry) return Promise.resolve(true);
     if (entry.timer) clearTimeout(entry.timer);
     typing.delete(id);
     const edits = [...entry.edits.entries()].map(([key, value]) => ({ key, value }));
@@ -138,7 +148,7 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
       report();
     },
     enqueue(job) {
-      if (disposed) return Promise.resolve();
+      if (disposed) return Promise.resolve(false);
       void flushPage(job.pageId);
       return push(job);
     },
@@ -149,6 +159,7 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
     pending: waitingCount,
     dispose() {
       disposed = true;
+      queues.forEach((queue) => queue.forEach((waiting) => waiting.done(false)));
       for (const entry of typing.values()) if (entry.timer) clearTimeout(entry.timer);
       typing.clear();
       queues.clear();

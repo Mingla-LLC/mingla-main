@@ -3,7 +3,7 @@
  * the server answers (optimistic), and the plain label each change carries
  * into history ("Undo: Move Pick a time"). Pure.
  */
-import type { SectionEdit, WorkspaceSection } from "./contentApi";
+import type { SectionEdit, SectionField, SectionList, WorkspaceSection } from "./contentApi";
 
 const reindex = (sections: WorkspaceSection[]): WorkspaceSection[] => sections.map((section, index) => (section.index === index ? section : { ...section, index }));
 
@@ -42,7 +42,7 @@ export function applyRemove(sections: readonly WorkspaceSection[], sectionId: st
   return reindex(sections.filter((section) => section.id !== sectionId));
 }
 
-export function applyMedia(sections: readonly WorkspaceSection[], sectionId: string, slot: string, media: { id: string; thumbUrl: string | null }): WorkspaceSection[] {
+export function applyMedia(sections: readonly WorkspaceSection[], sectionId: string, slot: string, media: { id: string | null; thumbUrl: string | null }): WorkspaceSection[] {
   return sections.map((section) => (section.id === sectionId
     ? stampedByPerson({ ...section, media: section.media.map((entry) => (entry.slot === slot ? { ...entry, media_id: media.id, thumb_url: media.thumbUrl } : entry)) })
     : section));
@@ -69,6 +69,7 @@ export const changeLabel = {
   remove: (label: string) => `Remove ${label}`,
   add: (label: string) => `Add ${label}`,
   photo: (label: string) => `Change a photo in ${label}`,
+  row: (label: string) => `Edit ${label}`,
   look: (what: string) => `Change ${what}`,
   page: (title: string, enabled: boolean) => `${enabled ? "Turn on" : "Turn off"} ${title}`,
 } as const;
@@ -86,4 +87,39 @@ export function feedNote(section: Pick<WorkspaceSection, "feed" | "label">): str
 
 export function unreadCount(sections: readonly Pick<WorkspaceSection, "review">[]): number {
   return sections.filter((section) => section.review?.state === "draft").length;
+}
+
+/* ── Rows inside a section (questions, features) ─────────────────────────── */
+export type SectionRows = { list: SectionList; rows: { index: number; fields: SectionField[] }[] };
+
+/**
+ * A section's fields split into its own words and the rows of each list the
+ * owner can add to or remove from. A row's values are the fields keyed
+ * `<list>.<index>.<field>`.
+ */
+export function splitRows(section: Pick<WorkspaceSection, "fields" | "lists">): { own: SectionField[]; lists: SectionRows[] } {
+  const lists = section.lists ?? [];
+  const owned = new Set<string>();
+  const out = lists.map((list): SectionRows => {
+    const byIndex = new Map<number, SectionField[]>();
+    const prefix = `${list.name}.`;
+    for (const field of section.fields) {
+      if (!field.key.startsWith(prefix)) continue;
+      const index = Number(field.key.slice(prefix.length).split(".")[0]);
+      if (!Number.isInteger(index) || index < 0) continue;
+      owned.add(field.key);
+      byIndex.set(index, [...(byIndex.get(index) ?? []), field]);
+    }
+    const count = Math.max(list.count, byIndex.size ? Math.max(...byIndex.keys()) + 1 : 0);
+    return { list, rows: Array.from({ length: count }, (_unused, index) => ({ index, fields: byIndex.get(index) ?? [] })) };
+  });
+  return { own: section.fields.filter((field) => !owned.has(field.key)), lists: out };
+}
+
+export function addRowBlocked(list: Pick<SectionList, "max" | "count" | "item_label">): string | null {
+  return list.count >= list.max ? `This holds up to ${list.max}. Remove one to add another.` : null;
+}
+
+export function removeRowBlocked(list: Pick<SectionList, "min" | "count" | "item_label">): string | null {
+  return list.count <= list.min ? `This needs at least ${list.min}, so this one stays.` : null;
 }

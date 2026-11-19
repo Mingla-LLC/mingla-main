@@ -35,13 +35,17 @@ export function workspaceStatus(input: WorkspaceStatusInput): WorkspaceStatus {
 
 export type PublishButton = { label: string; primary: boolean; opensPanel: boolean };
 
-/** The top bar's button: it only ever opens the Publish panel. */
-export function publishBarButton(input: WorkspaceStatusInput & { canPublish: boolean }): PublishButton {
+/**
+ * The top bar's button: it only ever opens the Publish panel. `compact` is
+ * the phone's top bar, where the count lives in the status line instead.
+ */
+export function publishBarButton(input: WorkspaceStatusInput & { canPublish: boolean }, compact = false): PublishButton {
   if (input.publishing) return { label: "Publishing…", primary: false, opensPanel: true };
-  if (input.failed) return { label: "See what went wrong", primary: true, opensPanel: true };
+  if (input.failed) return { label: compact ? "Didn’t go live" : "See what went wrong", primary: true, opensPanel: true };
   if (!input.live) return { label: input.canPublish ? "Go live" : "Review", primary: true, opensPanel: true };
   const waiting = input.unpublished ?? 0;
   if (waiting === 0 && input.unread === 0) return { label: "Published", primary: false, opensPanel: true };
+  if (compact) return { label: "Publish", primary: true, opensPanel: true };
   return { label: waiting > 0 ? `Publish ${changes(waiting)}` : "Review and publish", primary: true, opensPanel: true };
 }
 

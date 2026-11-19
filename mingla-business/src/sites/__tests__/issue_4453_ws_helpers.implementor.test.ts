@@ -10,10 +10,10 @@ import {
   ariCardPosition, buildMarks, EMPTY_SWAP, markLabel, messageFromFrame, nativeBridgeCall, parsePreviewMessage,
   PREVIEW_READY, PREVIEW_RECTS, PREVIEW_SELECT, scaleRect, sectionViewportRect, swapReducer,
 } from "../previewBridge";
-import { applyFieldEdits, applyLayout, applyMove, applyRemove, changeLabel, moveBlocked, removeBlocked, undoTooltip, unreadCount } from "../sectionEdits";
+import { addRowBlocked, applyFieldEdits, applyLayout, applyMove, applyRemove, changeLabel, moveBlocked, removeBlocked, removeRowBlocked, splitRows, undoTooltip, unreadCount } from "../sectionEdits";
 import { createDraftWriter, saveStateLine, type DraftJob, type SaveState } from "../draftWriter";
 import {
-  doneLine, failedLine, planFromProposal, runResultFrom, sectionSuggestions, stepStatuses, teamRequestBlocked,
+  adjustedColoursLine, doneLine, failedLine, planFromProposal, questionFrom, runResultFrom, sectionSuggestions, stepStatuses, teamRequestBlocked,
   teamRequestFromCouldnt, teamRequestFromProposal, teamRequestFromSection, teamRequestStatusLine,
 } from "../ariWorkspace";
 import type { WorkspaceSection } from "../contentApi";
@@ -229,6 +229,33 @@ describe("optimistic section edits", () => {
   });
 });
 
+describe("rows inside a section", () => {
+  const faq = section("faq", {
+    fields: [
+      { key: "heading", label: "Heading", kind: "text", value: "Good to know", max: 80 },
+      { key: "items.0.question", label: "Question", kind: "text", value: "Parking?", max: 120 },
+      { key: "items.0.answer", label: "Answer", kind: "multiline", value: "Free", max: 400 },
+      { key: "items.1.question", label: "Question", kind: "text", value: "Food?", max: 120 },
+      { key: "items.1.answer", label: "Answer", kind: "multiline", value: "Yes", max: 400 },
+    ],
+    lists: [{ name: "items", label: "Questions", item_label: "question", min: 1, max: 2, count: 2, fields: [{ key: "question", label: "Question", kind: "text", max: 120 }, { key: "answer", label: "Answer", kind: "multiline", max: 400 }] }],
+  });
+  it("splits a section's own words from each list's rows", () => {
+    const split = splitRows(faq);
+    expect(split.own.map((field) => field.key)).toEqual(["heading"]);
+    expect(split.lists[0]!.rows.map((row) => row.fields.map((field) => field.key))).toEqual([["items.0.question", "items.0.answer"], ["items.1.question", "items.1.answer"]]);
+    expect(splitRows(section("plain")).lists).toEqual([]);
+    expect(splitRows({ fields: [], lists: [{ ...faq.lists![0]!, count: 1 }] }).lists[0]!.rows).toHaveLength(1);
+  });
+  it("says why a row cannot be added or removed at the limits", () => {
+    const list = faq.lists![0]!;
+    expect(addRowBlocked(list)).toBe("This holds up to 2. Remove one to add another.");
+    expect(addRowBlocked({ ...list, count: 1 })).toBeNull();
+    expect(removeRowBlocked({ ...list, count: 1 })).toBe("This needs at least 1, so this one stays.");
+    expect(removeRowBlocked(list)).toBeNull();
+  });
+});
+
 describe("autosave", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
@@ -334,21 +361,38 @@ describe("Ari's plan as data", () => {
     expect(stepStatuses(2, [], "failed", 1)).toEqual(["waiting", "failed"]);
   });
 
-  it("reads the end of a run: applied, checks, what it could not do", () => {
-    const done = runResultFrom({ kind: "executed", result: { group_id: "g1", applied: [{ touched: { page_id: "p1", section_id: "s3" } }, { look_revision: "l2" }], checks: { passed: true, warnings: ["A photo is small"] }, couldnt: [{ what: "a tour", why: "no section" }] } });
-    expect(done).toEqual({ ok: true, groupId: "g1", applied: 2, touched: [{ pageId: "p1", sectionId: "s3" }], lookChanged: true, warnings: ["A photo is small"], checksPassed: true, couldnt: [{ what: "a tour", why: "no section" }] });
+  it("reads the end of a run as built: applied, checks, adjusted colours, what it could not do", () => {
+    const done = runResultFrom({ kind: "executed", result: {
+      group_id: "g1", status: "applied", total: 2,
+      applied: [{ index: 0, label: "Move", op: "move_section", page_id: "p1", section_id: "s3" }, { index: 1, label: "Navy", op: "set_look", page_id: null, section_id: null, adjusted_colours: [{ from: "#111111", to: "#ffffff" }] }],
+      checks: { passed: true, warnings: ["A photo is small"] }, couldnt: [{ what: "a tour", why: "no section" }],
+    } });
+    expect(done).toEqual({ ok: true, adjustedColours: 1, groupId: "g1", applied: 2, touched: [{ pageId: "p1", sectionId: "s3" }], lookChanged: true, warnings: ["A photo is small"], checksPassed: true, checksNote: null, couldnt: [{ what: "a tour", why: "no section" }], alreadyDone: false });
+    expect(adjustedColoursLine(1)).toBe("Ari used the nearest readable shade for one colour.");
+    expect(adjustedColoursLine(0)).toBeNull();
     expect(doneLine(2, 0)).toBe("2 changes are on your draft. Nothing is live until you publish.");
     expect(doneLine(1, 0)).toMatch(/^1 change is/);
     expect(doneLine(0, 1)).toBe("I can’t do this one myself yet, but the Mingla team can.");
+    const noChecks = runResultFrom({ kind: "executed", result: { group_id: "g", status: "applied", applied: [], checks: null, couldnt: [] } });
+    expect(noChecks.ok && noChecks.checksNote).toMatch(/couldn’t run/);
   });
 
-  it("a failed step is a rollback message, never a claim of change", () => {
-    const failed = runResultFrom({ kind: "executed", result: { ok: false, failed_step: { index: 1, label: "New headline", why: "That photo is still processing." } } });
-    expect(failed).toEqual({ ok: false, failedIndex: 1, failedLabel: "New headline", reason: "That photo is still processing." });
+  it("a failed step is a rollback result, never a claim of change; a re-run refusal means already done", () => {
+    const failed = runResultFrom({ kind: "executed", result: { group_id: "g1", status: "rolled_back", applied: [], failed: { index: 1, label: "New headline", reason: "That photo is still processing." } } });
+    expect(failed).toEqual({ ok: false, groupId: "g1", partly: false, failedIndex: 1, failedLabel: "New headline", reason: "That photo is still processing." });
     expect(failedLine(failed as never)).toBe("“New headline” didn’t work. That photo is still processing. I put everything back, so your draft is exactly as it was.");
-    const refused = runResultFrom({ kind: "error", code: "X", message: "" });
-    expect(refused.ok).toBe(false);
-    expect(failedLine(refused as never)).toMatch(/put everything back/);
+    const partly = runResultFrom({ kind: "executed", result: { group_id: "g2", status: "partly_applied", applied: [{}], failed: { index: 0, label: "X", reason: "It timed out" } } });
+    expect(partly).toMatchObject({ ok: false, partly: true, groupId: "g2" });
+    expect(failedLine(partly as never)).toMatch(/It timed out\. I couldn’t confirm everything was put back.*Undo this/);
+    expect(runResultFrom({ kind: "error", code: "RPC_FAILED", message: "" }).ok).toBe(false);
+    expect(runResultFrom({ kind: "error", code: "DOMAIN_ACTION_REFUSED", message: "x" })).toMatchObject({ ok: true, alreadyDone: true });
+  });
+
+  it("reads Ari's one question only when it is well formed", () => {
+    expect(questionFrom({ prompt: "Is parking free?", options: ["Free", "Paid"] })).toEqual({ prompt: "Is parking free?", options: ["Free", "Paid"] });
+    expect(questionFrom({ prompt: "Q", options: ["only one"] })).toBeNull();
+    expect(questionFrom({ options: ["a", "b"] })).toBeNull();
+    expect(questionFrom({ prompt: "Q", options: ["a", "b", "c", "d", "e"] })!.options).toHaveLength(4);
   });
 
   it("writes the team request three ways and guards sending", () => {

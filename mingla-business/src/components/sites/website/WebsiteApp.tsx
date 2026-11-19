@@ -77,6 +77,7 @@ import { AddressesSection } from "./sections/AddressesSection";
 import { SettingsSection } from "./sections/SettingsSection";
 import { WebsiteSetupScreen } from "../setup/WebsiteSetupScreen";
 import { isSetupReturn } from "../../../utils/brandEditReturn";
+import { WorkspaceShell } from "./workspace/WorkspaceShell";
 
 // #4453 — Ari's page plan sheet (web) loads through this chunk; see
 // components/ari/LazySitePagePlanSheet.web.tsx.
@@ -205,11 +206,12 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   useEffect(() => {
     // #2830 — the setup screen owns its own heartbeat: a heartbeat creates the
     // plan row its first state keys on, and an idle tab must not keep the lock.
-    if (!canManage || section !== "design") return undefined;
+    // #4453 — a site that exists is edited in the workspace, which holds the lock itself.
+    if (!canManage || section !== "design" || hasSite) return undefined;
     heartbeatRef.current();
     const timer = setInterval(() => heartbeatRef.current(), HEARTBEAT_MS);
     return () => clearInterval(timer);
-  }, [canManage, section]);
+  }, [canManage, hasSite, section]);
   const [confirmTakeOver, setConfirmTakeOver] = useState(false);
 
   const designKey = plan.data?.site?.designKey ?? null;
@@ -431,6 +433,28 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
         />
         {dialogs}
       </WebsiteProvider>
+    );
+  }
+
+  /*
+   * #4453 — a site that exists opens in the ONE Website workspace (left panel
+   * Ari · Edit · Design, the live draft, one Publish). Every old address lands
+   * in it (sites/workspaceRoute.ts). The shells below remain for a brand with
+   * no site yet, a draft still being created, and a site that failed to load.
+   */
+  if (hasSite && !controller.site.isError && controller.publicationCacheChecked && shown.kind !== "preview" && shown.kind !== "setup") {
+    const inNav = new Set<string>(groups.flatMap((group) => group.items.map((entry) => entry.key)));
+    const contentDetails = (["destinations", "stories", "reviews", "past"] as const).filter((key) => inNav.has(key));
+    return (
+      <WorkspaceShell
+        base={value}
+        route={shown}
+        search={search}
+        segments={segments}
+        contentDetails={contentDetails}
+        dialogs={dialogs}
+        offlineDevice={controller.notice?.kind === "offline"}
+      />
     );
   }
 

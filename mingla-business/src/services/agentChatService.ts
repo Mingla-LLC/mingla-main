@@ -148,6 +148,8 @@ export type AgentChatResponse =
       handoff_route?: string;
       flow?: AriFlowArtefact;
       flow_state?: AriFlowState | null;
+      /** #4453 Website workspace — Ari's one question with tappable answers. */
+      site_question?: AriSiteQuestion;
     }
   | {
       // #3355 P3: the answered card was no longer current; nothing changed.
@@ -213,6 +215,26 @@ export type AgentConfirmResponse =
     }
   | { kind: "error"; code: string; message: string };
 
+/** #4453 — where a turn comes from when it is not the main Ari chat. */
+export type AriWorkflowContext = "website_setup" | "website_workspace";
+
+/** #4453 Website workspace — the section the owner opened Ari from. */
+export interface AriSiteFocus {
+  page_id: string;
+  /** "" is the home page. */
+  page_path: string;
+  section_id: string;
+  section_type: string;
+  /** The section's plain name, at most 80 characters. */
+  section_label: string;
+}
+
+/** #4453 Website workspace — a question Ari asks with two to four answers to tap. */
+export interface AriSiteQuestion {
+  prompt: string;
+  options: string[];
+}
+
 export interface SendMessageArgs {
   conversation_id: string | null;
   message?: string;
@@ -223,7 +245,9 @@ export interface SendMessageArgs {
   brand_id?: string | null;
   attachment_ids?: string[];
   ari_ui?: AriUiCapabilitiesV2;
-  workflow_context?: "website_setup";
+  workflow_context?: AriWorkflowContext;
+  /** #4453 — only with workflow_context "website_workspace". */
+  site_focus?: AriSiteFocus;
   flow_answer?: AriFlowAnswer;
   /** #2830 P4 — opening Website setup (structured, never owner words). */
   website_setup_kickoff?: { part?: string };
@@ -254,7 +278,7 @@ export interface ConfirmActionArgs {
   pending_action_id: string;
   edited_args?: Record<string, unknown>;
   /** #3355 P3: the server returns the next Website setup gap with the receipt. */
-  workflow_context?: "website_setup";
+  workflow_context?: AriWorkflowContext;
   ari_ui?: AriUiCapabilitiesV2;
   /** #4389 AR-13: the brand the card is shown under; the server refuses a mismatch. */
   brand_id?: string;

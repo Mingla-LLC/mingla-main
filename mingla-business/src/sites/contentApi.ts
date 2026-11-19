@@ -123,13 +123,30 @@ const CONTENT_MESSAGES: Readonly<Record<string, string>> = {
   OFFERING_NOT_FOUND: "That isn't one of your public Mingla trips.",
   TRIP_NOT_ENDED: "Only trips that have ended can be hidden here.",
   NOT_FOUND: "That isn't on your website any more. It may have been deleted.",
-  // #4453 workspace — undo / redo refused because the thing changed afterwards.
-  CHANGED_SINCE: "That part of your website changed afterwards, so this step can't be put back on its own.",
+  // #4453 workspace — every refusal the section, look and history actions can
+  // give (STUDIO-AS-BUILT.md), in the owner's words.
+  CHANGED_SINCE: "That part of your website changed afterwards, so this step can’t be put back on its own.",
   NOTHING_TO_UNDO: "There is nothing to undo.",
   NOTHING_TO_REDO: "There is nothing to redo.",
   HOME_ALWAYS_ON: "Your home page is always on.",
-  SECTION_REQUIRED: "Your website needs this section, so it can't be removed.",
-  UNREADABLE_PAIR: "That colour makes some text hard to read. Pick the suggested shade instead.",
+  SECTION_NOT_FOUND: "That section isn’t on this page any more. Showing the latest.",
+  FIELD_NOT_EDITABLE: "Those words fill themselves from Mingla, so they can’t be typed over here.",
+  FIELD_REQUIRED: "That can’t be left empty.",
+  VALUE_TOO_LONG: "That is too long for this spot. Shorten it a little.",
+  LAYOUT_NOT_IN_DESIGN: "Your design doesn’t have that layout for this section.",
+  SECTION_TYPE_NOT_AVAILABLE: "Your design doesn’t have that kind of section.",
+  SECTION_LIMIT_REACHED: "This page has as many sections as it can hold. Remove one first.",
+  SECTION_CANNOT_BE_REMOVED: "Your website needs this section, so it can’t be removed.",
+  MEDIA_REQUIRED: "This section needs a photo. Choose one first.",
+  MEDIA_NOT_FOUND: "That photo isn’t in your website’s photos any more. Choose another.",
+  MEDIA_WRONG_KIND: "That spot needs a different kind of file. Choose a photo (or a video where it says video).",
+  PAGE_NOT_FOUND: "That page isn’t on your website any more.",
+  LIST_NOT_EDITABLE: "Rows in that list can’t be added or removed here. Its words can still be edited.",
+  LIST_LIMIT_REACHED: "That list is full. Remove a row before adding another.",
+  LIST_ROW_REQUIRED: "That list needs at least this many rows, so this one stays.",
+  VIDEO_TOO_LONG: "That video is too long. Choose one up to 15 seconds.",
+  STEP_IN_PROGRESS: "That change is still being made. Give it a moment.",
+  UNREADABLE_COLOURS: "That colour makes some text hard to read. Pick the suggested shade instead.",
 };
 
 async function contentCall<T>(siteId: string, action: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -777,6 +794,22 @@ export type SectionReview = { state: "draft" | "reviewed"; source: "ari" | "comp
 export type SectionField = { key: string; label: string; kind: "text" | "multiline" | "richtext"; value: string; max: number | null };
 export type SectionMedia = { slot: string; label: string; media_id: string | null; thumb_url: string | null };
 export type SectionLayout = { key: string; label: string };
+/** A list inside a section whose rows the owner can add, remove and reorder (a question, a feature). */
+export type SectionList = {
+  name: string;
+  label: string;
+  /** One row, in words: "question". */
+  item_label: string;
+  min: number;
+  max: number;
+  count: number;
+  fields: { key: string; label: string; kind: SectionField["kind"]; max: number | null }[];
+};
+export type SectionListOp =
+  | { list: string; op: "add"; after_index: number | null; values?: Record<string, string> }
+  | { list: string; op: "remove"; index: number }
+  | { list: string; op: "move"; index: number; to_index: number };
+
 export type WorkspaceSection = {
   id: string;
   index: number;
@@ -788,9 +821,12 @@ export type WorkspaceSection = {
   review: SectionReview | null;
   /** Fills itself from Mingla listings. */
   feed: boolean;
+  /** Row values are keyed `<list>.<index>.<field>` (see `lists`). */
   fields: SectionField[];
   media: SectionMedia[];
   can_remove: boolean;
+  /** Lists whose rows can be added or removed; absent or empty when there are none. */
+  lists?: SectionList[];
 };
 export type WorkspacePage = {
   id: string;
@@ -812,7 +848,8 @@ export type SiteWorkspace = {
   history: WorkspaceHistoryState;
 };
 export type PageSections = { page: { id: string; title: string; path: string | null; revision: string }; sections: WorkspaceSection[] };
-export type SectionCatalogType = { type: string; label: string; description: string };
+/** `needs_photo`: the section starts from one of the owner's photos (sent as `media_id`). */
+export type SectionCatalogType = { type: string; label: string; description: string; needs_photo: boolean };
 export type SiteHistoryEntry = {
   group_id: string;
   label: string;
@@ -825,6 +862,10 @@ export type SiteUndoResult = { group_id: string; label: string; pages: string[];
 export type ChangeGroup = { groupId: string; groupLabel: string };
 export type SectionEdit = { key: string; value: string };
 export type LookWarning = { pair?: string; message?: string; suggestion?: string | null };
+/**
+ * As built: an owner's `tokens` REPLACE the stored colours whole (send the
+ * full set), and corners, button shape and movement travel beside them.
+ */
 export type SiteLookInput = {
   expectedRevision: string;
   design?: string;
@@ -841,13 +882,15 @@ const groupArgs = (group?: ChangeGroup | null): Record<string, unknown> =>
 export const getSiteWorkspace = (siteId: string) => contentCall<SiteWorkspace>(siteId, "workspace");
 export const getPageSections = (siteId: string, pageId: string) => contentCall<PageSections>(siteId, "page_sections", { page_id: pageId });
 
-export function editSection(siteId: string, input: { pageId: string; expectedRevision: string; sectionId: string; edits?: SectionEdit[]; layout?: string }, group?: ChangeGroup | null) {
+export function editSection(siteId: string, input: { pageId: string; expectedRevision: string; sectionId: string; edits?: SectionEdit[]; layout?: string; listOps?: SectionListOp[] }, group?: ChangeGroup | null) {
   return contentCall<{ page_revision: string }>(siteId, "edit_section", {
     page_id: input.pageId,
     expected_revision: input.expectedRevision,
     section_id: input.sectionId,
     ...(input.edits && input.edits.length ? { edits: input.edits } : {}),
     ...(input.layout !== undefined ? { layout: input.layout } : {}),
+    // Rows are applied first, in order, then `edits`.
+    ...(input.listOps && input.listOps.length ? { list_ops: input.listOps } : {}),
     ...groupArgs(group),
   });
 }
@@ -864,20 +907,21 @@ export function removeSection(siteId: string, input: { pageId: string; expectedR
   });
 }
 
-export function addSection(siteId: string, input: { pageId: string; expectedRevision: string; type: string; afterSectionId: string | null }, group?: ChangeGroup | null) {
+export function addSection(siteId: string, input: { pageId: string; expectedRevision: string; type: string; afterSectionId: string | null; mediaId?: string | null }, group?: ChangeGroup | null) {
   return contentCall<{ page_revision: string; section_id: string }>(siteId, "add_section", {
-    page_id: input.pageId, expected_revision: input.expectedRevision, type: input.type, after_section_id: input.afterSectionId, ...groupArgs(group),
+    page_id: input.pageId, expected_revision: input.expectedRevision, type: input.type, after_section_id: input.afterSectionId,
+    ...(input.mediaId ? { media_id: input.mediaId } : {}), ...groupArgs(group),
   });
 }
 
-export function setSectionMedia(siteId: string, input: { pageId: string; expectedRevision: string; sectionId: string; slot: string; mediaId: string }, group?: ChangeGroup | null) {
+export function setSectionMedia(siteId: string, input: { pageId: string; expectedRevision: string; sectionId: string; slot: string; /** null clears the slot (or removes that photo from a list). */ mediaId: string | null }, group?: ChangeGroup | null) {
   return contentCall<{ page_revision: string }>(siteId, "set_section_media", {
     page_id: input.pageId, expected_revision: input.expectedRevision, section_id: input.sectionId, slot: input.slot, media_id: input.mediaId, ...groupArgs(group),
   });
 }
 
 export function setSiteLook(siteId: string, input: SiteLookInput, group?: ChangeGroup | null) {
-  return contentCall<{ look_revision: string; warnings: LookWarning[] }>(siteId, "set_look", {
+  return contentCall<{ look_revision: string; warnings: LookWarning[]; design?: string }>(siteId, "set_look", {
     expected_revision: input.expectedRevision,
     ...(input.design !== undefined ? { design: input.design } : {}),
     ...(input.tokens !== undefined ? { tokens: input.tokens } : {}),
@@ -890,7 +934,7 @@ export function setSiteLook(siteId: string, input: SiteLookInput, group?: Change
 }
 
 export function setPageEnabled(siteId: string, input: { pageId: string; expectedRevision: string; enabled: boolean }, group?: ChangeGroup | null) {
-  return contentCall<{ page_revision: string }>(siteId, "set_page_enabled", {
+  return contentCall<{ page_revision: string; menu_changed?: boolean }>(siteId, "set_page_enabled", {
     page_id: input.pageId, expected_revision: input.expectedRevision, enabled: input.enabled, ...groupArgs(group),
   });
 }

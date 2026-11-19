@@ -10,6 +10,7 @@ export const CHANGE_SET_TOOL = "propose_site_change_set";
 export const TEAM_REQUEST_TOOL = "propose_website_team_request";
 export const WORKSPACE_CONTEXT = "website_workspace" as const;
 
+/** The same five fields the server accepts (anything else is a 400); the label is cut to its 80. */
 export type AriSiteFocus = {
   page_id: string;
   page_path: string;
@@ -17,6 +18,7 @@ export type AriSiteFocus = {
   section_type: string;
   section_label: string;
 };
+export const SITE_FOCUS_LABEL_MAX = 80;
 
 type Loose = Record<string, unknown>;
 const isRecord = (value: unknown): value is Loose => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -173,50 +175,71 @@ export const STEP_STATUS_WORDS: Readonly<Record<StepStatus, string>> = {
 };
 
 /* ── The end of a run ────────────────────────────────────────────────────── */
+/*
+ * As built (ARI-AS-BUILT.md): `agent-confirm-action` answers `executed` with
+ * { group_id, status: "applied" | "rolled_back" | "partly_applied", total,
+ *   applied: [{index,label,op,page_id,section_id}], failed?: {index,label,reason},
+ *   checks: {passed, warnings: string[]} | null, checks_note?, couldnt: [{what,why}] }.
+ * A failed step is a RESULT, not an error. A 409 DOMAIN_ACTION_REFUSED on a
+ * re-run means the change set already ran: refresh, never retry.
+ */
 export type AriRunResult =
-  | { ok: true; groupId: string | null; applied: number; touched: { pageId: string; sectionId: string }[]; lookChanged: boolean; warnings: string[]; checksPassed: boolean; couldnt: AriCouldnt[] }
-  | { ok: false; failedIndex: number | null; failedLabel: string | null; reason: string };
+  | { ok: true; /** Colours Ari moved to the nearest readable shade. */ adjustedColours: number; groupId: string | null; applied: number; touched: { pageId: string; sectionId: string }[]; lookChanged: boolean; warnings: string[]; checksPassed: boolean; checksNote: string | null; couldnt: AriCouldnt[]; alreadyDone: boolean }
+  | { ok: false; groupId: string | null; partly: boolean; failedIndex: number | null; failedLabel: string | null; reason: string };
 
-const FAILED_FALLBACK = "One step didn’t work, so I put everything back. Nothing on your draft changed.";
+const FAILED_FALLBACK = "One step didn’t work.";
+export const ALREADY_DONE_CODE = "DOMAIN_ACTION_REFUSED";
+
+function appliedOf(result: Loose): { count: number; touched: { pageId: string; sectionId: string }[]; lookChanged: boolean; adjusted: number } {
+  const applied = Array.isArray(result.applied) ? result.applied : [];
+  const touched: { pageId: string; sectionId: string }[] = [];
+  let lookChanged = false;
+  let adjusted = 0;
+  for (const entry of applied) {
+    if (!isRecord(entry)) continue;
+    if (Array.isArray(entry.adjusted_colours)) adjusted += entry.adjusted_colours.length;
+    if (str(entry.page_id) && str(entry.section_id)) touched.push({ pageId: str(entry.page_id), sectionId: str(entry.section_id) });
+    if (entry.op === "set_look") lookChanged = true;
+  }
+  return { count: applied.length, touched, lookChanged, adjusted };
+}
 
 /** What `agent-confirm-action` returned for a change set, in the panel's terms. */
 export function runResultFrom(response: { kind: string; result?: unknown; message?: string; code?: string }): AriRunResult {
   if (response.kind !== "executed") {
-    return { ok: false, failedIndex: null, failedLabel: null, reason: str(response.message) || FAILED_FALLBACK };
+    if (response.code === ALREADY_DONE_CODE) {
+      return { ok: true, adjustedColours: 0, groupId: null, applied: 0, touched: [], lookChanged: true, warnings: [], checksPassed: true, checksNote: null, couldnt: [], alreadyDone: true };
+    }
+    return { ok: false, groupId: null, partly: false, failedIndex: null, failedLabel: null, reason: str(response.message) || FAILED_FALLBACK };
   }
   const result = isRecord(response.result) ? response.result : {};
-  const failed = isRecord(result.failed_step) ? result.failed_step : isRecord(result.failed) ? result.failed : null;
-  if (result.ok === false || failed) {
-    const index = typeof failed?.index === "number" ? failed.index : null;
+  const groupId = str(result.group_id) || null;
+  const failed = isRecord(result.failed) ? result.failed : null;
+  if (result.status === "rolled_back" || result.status === "partly_applied" || failed) {
     return {
       ok: false,
-      failedIndex: index,
+      groupId,
+      partly: result.status === "partly_applied",
+      failedIndex: typeof failed?.index === "number" ? failed.index : null,
       failedLabel: str(failed?.label) || null,
-      reason: str(failed?.why) || str(failed?.reason) || str(result.reason) || str(result.message) || FAILED_FALLBACK,
+      reason: str(failed?.reason) || FAILED_FALLBACK,
     };
   }
-  const applied = Array.isArray(result.applied) ? result.applied : [];
-  const touched: { pageId: string; sectionId: string }[] = [];
-  let lookChanged = false;
-  for (const entry of applied) {
-    if (!isRecord(entry)) continue;
-    const mark = isRecord(entry.touched) ? entry.touched : entry;
-    if (str(mark.page_id) && str(mark.section_id)) touched.push({ pageId: str(mark.page_id), sectionId: str(mark.section_id) });
-    if ("look_revision" in entry || entry.op === "set_look") lookChanged = true;
-  }
-  const checks = isRecord(result.checks) ? result.checks : {};
-  const warnings = Array.isArray(checks.warnings)
-    ? checks.warnings.flatMap((entry) => (typeof entry === "string" ? [entry] : isRecord(entry) && str(entry.message) ? [str(entry.message)] : []))
-    : [];
+  const applied = appliedOf(result);
+  const checks = isRecord(result.checks) ? result.checks : null;
+  const warnings = Array.isArray(checks?.warnings) ? checks.warnings.filter((entry): entry is string => typeof entry === "string" && entry.length > 0) : [];
   return {
     ok: true,
-    groupId: str(result.group_id) || null,
-    applied: applied.length,
-    touched,
-    lookChanged,
+    adjustedColours: applied.adjusted,
+    groupId,
+    applied: applied.count,
+    touched: applied.touched,
+    lookChanged: applied.lookChanged,
     warnings,
-    checksPassed: checks.passed !== false,
+    checksPassed: checks ? checks.passed !== false : true,
+    checksNote: str(result.checks_note) || (checks ? null : "The checks couldn’t run this time. Publish runs them again."),
     couldnt: couldntOf(result.couldnt),
+    alreadyDone: false,
   };
 }
 
@@ -225,9 +248,25 @@ export function doneLine(applied: number, couldnt: number): string {
   return `${applied} ${applied === 1 ? "change is" : "changes are"} on your draft. Nothing is live until you publish.`;
 }
 
+export function adjustedColoursLine(count: number): string | null {
+  if (count <= 0) return null;
+  return count === 1 ? "Ari used the nearest readable shade for one colour." : `Ari used the nearest readable shade for ${count} colours.`;
+}
+
 export function failedLine(result: Extract<AriRunResult, { ok: false }>): string {
   const step = result.failedLabel ? `“${result.failedLabel}” didn’t work. ` : "";
-  return `${step}${result.reason} I put everything back, so your draft is exactly as it was.`;
+  const reason = /[.!?]$/.test(result.reason) ? result.reason : `${result.reason}.`;
+  return result.partly
+    ? `${step}${reason} I couldn’t confirm everything was put back, so part of this may still be on your draft. Undo this puts it all back.`
+    : `${step}${reason} I put everything back, so your draft is exactly as it was.`;
+}
+
+/** Ari's one question (as built: `site_question` on a text reply; answers go back as ordinary messages). */
+export type AriQuestion = { prompt: string; options: string[] };
+export function questionFrom(value: unknown): AriQuestion | null {
+  if (!isRecord(value) || !str(value.prompt) || !Array.isArray(value.options)) return null;
+  const options = value.options.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).slice(0, 4);
+  return options.length >= 2 ? { prompt: str(value.prompt), options } : null;
 }
 
 export function planIntro(state: "running" | "done" | "failed", focusLabel: string | null): string {

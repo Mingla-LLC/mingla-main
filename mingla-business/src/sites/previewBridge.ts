@@ -244,3 +244,14 @@ export const NATIVE_BRIDGE_LISTENER = `(function(){if(window.__minglaPreview)ret
 export function nativeBridgeCall(message: PreviewOutbound | { type: string; declarations: readonly string[] }): string {
   return `window.__minglaPreview&&window.__minglaPreview(${JSON.stringify(JSON.stringify(message))});true;`;
 }
+
+/**
+ * The workspace draws the draft at the device's real CSS width, scaled down
+ * to the stage's width (never up) and as tall as the stage, so the page
+ * fills the space and its own breakpoints still apply.
+ */
+export function stageFrame(stage: { width: number; height: number }, deviceWidth: number): { scale: number; width: number; height: number; left: number } {
+  if (stage.width <= 0 || stage.height <= 0 || deviceWidth <= 0) return { scale: 0, width: deviceWidth, height: 0, left: 0 };
+  const scale = Math.min(stage.width / deviceWidth, 1);
+  return { scale, width: deviceWidth, height: Math.ceil(stage.height / scale), left: Math.max(0, (stage.width - deviceWidth * scale) / 2) };
+}

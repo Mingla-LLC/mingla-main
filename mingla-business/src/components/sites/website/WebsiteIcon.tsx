@@ -12,7 +12,8 @@ export type WebsiteIconName =
   | "home" | "pages" | "palette" | "pin" | "book" | "quote" | "clock" | "globe" | "plan" | "upload" | "cog"
   | "right" | "left" | "up" | "down" | "eye" | "eyeoff" | "plus" | "check" | "alert" | "lock" | "copy"
   | "ext" | "spark" | "image" | "video" | "trash" | "search" | "x" | "close" | "pause" | "drag" | "download" | "power"
-  | "msg" | "edit" | "monitor" | "tablet" | "phone" | "rotate" | "history";
+  | "msg" | "edit" | "monitor" | "tablet" | "phone" | "rotate" | "history"
+  | "undo" | "redo" | "more" | "send" | "team";
 
 function shapes(name: WebsiteIconName): React.ReactNode {
   switch (name) {
@@ -56,6 +57,11 @@ function shapes(name: WebsiteIconName): React.ReactNode {
     case "tablet": return <><Rect x={5} y={2} width={14} height={20} rx={2} /><Path d="M11 18h2" /></>;
     case "phone": return <><Rect x={7} y={2} width={10} height={20} rx={2} /><Path d="M11 18h2" /></>;
     case "rotate": return <><Path d="M21 12a9 9 0 11-3-6.7L21 8" /><Path d="M21 3v5h-5" /></>;
+    case "undo": return <><Path d="M9 14L4 9l5-5" /><Path d="M4 9h10a6 6 0 010 12h-3" /></>;
+    case "redo": return <><Path d="M15 14l5-5-5-5" /><Path d="M20 9H10a6 6 0 000 12h3" /></>;
+    case "more": return <><Circle cx={5} cy={12} r={1.4} /><Circle cx={12} cy={12} r={1.4} /><Circle cx={19} cy={12} r={1.4} /></>;
+    case "send": return <Path d="M5 12h14M13 6l6 6-6 6" />;
+    case "team": return <><Circle cx={9} cy={8} r={3} /><Path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><Path d="M16 5a3 3 0 010 6M18 14c1.8.8 3 2.6 3 4.7" /></>;
     case "history": return <><Path d="M3 12a9 9 0 103-6.7L3 8" /><Path d="M3 3v5h5M12 7v5l3 2" /></>;
   }
 }

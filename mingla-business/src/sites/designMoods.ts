@@ -24,6 +24,9 @@ import {
   type ReadabilityWarning,
 } from "../../../packages/site-contracts/src/readability.ts";
 
+import { setSwatch, swatchWarnings } from "./siteLook";
+import { designSwatches } from "../../../packages/site-contracts/src/designs.ts";
+
 export const MOOD_KEYS = ["playful", "premium", "night"] as const;
 export type MoodKey = (typeof MOOD_KEYS)[number];
 
@@ -241,4 +244,51 @@ export function fixAllContrast(design: DesignDefinition, tokens: OwnerTokenOverr
     current = first.fixed;
   }
   return contrastFixes(design, current).length === 0 ? current : null;
+}
+
+/* ── The guard on colours the design actually draws ──────────────────────── */
+export type DrawnContrastIssue = { role: string; sentence: string; suggestion: string | null };
+
+/**
+ * Hard-to-read pairs among the colours THIS design draws, in the owner's
+ * words, each with the nearest readable shade. This is the list the Design
+ * panel shows and the list that blocks Publish.
+ */
+export function drawnContrastIssues(design: DesignDefinition, tokens: OwnerTokenOverrides): DrawnContrastIssue[] {
+  let resolved: ResolvedTokens;
+  try {
+    resolved = resolveTokens(design.tokens, tokens);
+  } catch {
+    return [];
+  }
+  return [...swatchWarnings(design, resolved).entries()].map(([role, entry]) => ({
+    role,
+    sentence: `${entry.warning.where} is hard to read (${entry.warning.ratio.toFixed(1)}:1).`,
+    suggestion: entry.suggestion,
+  }));
+}
+
+/** One tap: every drawn pair moved to its nearest readable shade. Null when one has no readable shade. */
+export function fixDrawnContrast(design: DesignDefinition, tokens: OwnerTokenOverrides): OwnerTokenOverrides | null {
+  let current = tokens;
+  const swatches = designSwatches(design);
+  for (let pass = 0; pass < MAX_REPAIR_PASSES; pass += 1) {
+    const issues = drawnContrastIssues(design, current);
+    if (issues.length === 0) return current;
+    const issue = issues[0]!;
+    const swatch = swatches.find((entry) => entry.role === issue.role);
+    const next = swatch && issue.suggestion ? setSwatch(current, swatch, issue.suggestion) : null;
+    if (!next) return null;
+    current = next;
+  }
+  return drawnContrastIssues(design, current).length === 0 ? current : null;
+}
+
+/**
+ * How many hard-to-read pairs block Publish. Only the owner's own colour
+ * choices can block: a design's untouched colours never do.
+ */
+export function publishBlockingPairs(design: DesignDefinition, tokens: OwnerTokenOverrides): number {
+  if (!tokens.colors || Object.keys(tokens.colors).length === 0) return 0;
+  return drawnContrastIssues(design, tokens).length;
 }
