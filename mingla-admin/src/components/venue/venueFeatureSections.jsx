@@ -4,6 +4,7 @@ import { Badge } from "../ui/Badge";
 import {
   buildFeatureRows,
   buildOfferRows,
+  buildPlanRows,
   buildSpaceRows,
   countFeaturesOn,
 } from "../../lib/venueFeaturesAdmin";
@@ -35,6 +36,7 @@ export function buildVenueFeatureSections(features) {
   const featureRows = buildFeatureRows(features);
   const spaceRows = buildSpaceRows(features);
   const offerRows = buildOfferRows(features);
+  const planRows = buildPlanRows(features);
 
   return [
     {
@@ -93,5 +95,20 @@ export function buildVenueFeatureSections(features) {
               )),
             ),
     },
+    ...(planRows.length > 0
+      ? [
+          {
+            label: `Membership plans (${planRows.length})`,
+            fields: planRows.map((p) =>
+              field(p.name, p, (pl) => (
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-sm">{pl.price}</span>
+                  <Badge variant={pl.status === "Full" ? "warning" : "success"} dot>{pl.status}</Badge>
+                </span>
+              )),
+            ),
+          },
+        ]
+      : []),
   ];
 }

@@ -73,6 +73,9 @@ export function VenueOffersAdminList() {
       label: "",
       render: (_val, row) => {
         const next = venueOfferAction(row);
+        if (!next && row.kind === "membership") {
+          return <span className="text-xs text-[var(--color-text-tertiary)]">Run from the venue&apos;s plans</span>;
+        }
         if (!next) return null;
         return (
           <Button

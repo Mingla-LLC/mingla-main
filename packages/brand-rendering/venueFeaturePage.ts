@@ -163,6 +163,27 @@ export interface VenueFeatureTablesView {
   seatingAreas?: Array<{ spaceId: string; name: string }>;
 }
 
+/** #4490 P6 — one monthly plan on the public page (`pg_public_venue_page.memberships.plans`). */
+export interface VenueFeaturePlanView {
+  id: string;
+  name: string;
+  summary: string | null;
+  priceMinor: number;
+  /** What's included, as the host wrote it (≤ 6 lines). */
+  inclusions: string[];
+  entryIncluded: boolean;
+  roomHours: number;
+  guestPasses: number;
+  discountBps: number;
+  discountKinds: string[];
+  minMonths: number;
+  noticeDays: number;
+  graceDays: number;
+  renewalNoticeDays: number;
+  /** No places left: shown, not joinable. */
+  full: boolean;
+}
+
 export interface PublicVenueFeaturesView {
   version: number;
   /** Enabled, dependencies met, and shipped: the only features the page may use. */
@@ -171,13 +192,41 @@ export interface PublicVenueFeaturesView {
   minorUnitExponent: number;
   offers: VenueFeatureOfferView[];
   tables: VenueFeatureTablesView | null;
-  memberships: { fromMinor: number; interval: "month" } | null;
+  memberships: { fromMinor: number; interval: "month"; plans?: VenueFeaturePlanView[] } | null;
+  /** #4490 P6 — the venue's VAT (for showing a plan's monthly total before joining). */
+  vat?: { mode: "added" | "included" | "none"; ratePct: number } | null;
   events: VenueFeatureEventView[];
   hours: { weekly: VenueHoursWindowRow[]; specialDays: VenueSpecialDayView[] };
   spaces: VenueFeatureSpaceView[];
 }
 
 // ── parsing: wire → read model, fail closed ────────────────────────────────
+
+/** #4490 P6 — a plan row; a row without an id, name or price is dropped. */
+export function parsePlan(raw: unknown): VenueFeaturePlanView | null {
+  if (!isRecord(raw) || typeof raw.id !== "string" || typeof raw.name !== "string") return null;
+  const price = asInt(raw.priceMinor);
+  if (price === null || price <= 0) return null;
+  const n = (v: unknown, fallback: number): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : fallback;
+  return {
+    id: raw.id,
+    name: raw.name,
+    summary: typeof raw.summary === "string" && raw.summary.length > 0 ? raw.summary : null,
+    priceMinor: price,
+    inclusions: (Array.isArray(raw.inclusions) ? raw.inclusions : []).filter((l): l is string => typeof l === "string" && l.length > 0).slice(0, 6),
+    entryIncluded: raw.entryIncluded === true,
+    roomHours: n(raw.roomHours, 0),
+    guestPasses: n(raw.guestPasses, 0),
+    discountBps: n(raw.discountBps, 0),
+    discountKinds: (Array.isArray(raw.discountKinds) ? raw.discountKinds : []).filter((k): k is string => typeof k === "string"),
+    minMonths: n(raw.minMonths, 1),
+    noticeDays: n(raw.noticeDays, 0),
+    graceDays: n(raw.graceDays, 7),
+    renewalNoticeDays: n(raw.renewalNoticeDays, 7),
+    full: raw.full === true,
+  };
+}
 
 type JsonRecord = Record<string, unknown>;
 
@@ -401,7 +450,20 @@ export function parsePublicVenueFeatures(
           },
     memberships:
       memberships !== null && asInt(memberships.fromMinor) !== null
-        ? { fromMinor: memberships.fromMinor as number, interval: "month" }
+        ? {
+            fromMinor: memberships.fromMinor as number,
+            interval: "month",
+            plans: (Array.isArray(memberships.plans) ? memberships.plans : [])
+              .map(parsePlan)
+              .filter((p): p is VenueFeaturePlanView => p !== null),
+          }
+        : null,
+    vat:
+      isRecord(raw.vat) && (raw.vat.mode === "added" || raw.vat.mode === "included" || raw.vat.mode === "none")
+        ? {
+            mode: raw.vat.mode,
+            ratePct: typeof raw.vat.ratePct === "number" && Number.isFinite(raw.vat.ratePct) ? raw.vat.ratePct : Number(raw.vat.ratePct) || 0,
+          }
         : null,
     events: (Array.isArray(eventsBlock.upcoming) ? eventsBlock.upcoming : [])
       .map(parseEvent)
@@ -703,6 +765,8 @@ export const BUILT_VENUE_TABS: ReadonlySet<PublicVenueTab> = new Set<PublicVenue
   "hire",
   // #4490 P5 — by the hour.
   "by_the_hour",
+  // #4490 P6 — monthly plans.
+  "plans",
   "whats_on",
   "menu",
   "reservations",
@@ -1119,7 +1183,10 @@ export function deriveVenuePage(
         ways.push({
           tab,
           title: "Plans",
-          line: null,
+          line:
+            (view.memberships?.plans ?? []).length > 0
+              ? (view.memberships?.plans ?? []).slice(0, 3).map((p) => p.name).join(" · ")
+              : null,
           price:
             view.memberships === null
               ? null

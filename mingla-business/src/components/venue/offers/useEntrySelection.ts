@@ -33,6 +33,7 @@ import {
   venueOfferGuestService,
 } from "../../../services/venueOfferGuestService";
 import { randomId } from "../../../utils/randomId";
+import { parseMemberQuote, type MemberQuoteBlock } from "./memberGuestModel";
 
 /** How many days the strip offers (the availability read allows 62). */
 export const ENTRY_STRIP_DAYS = 60;
@@ -73,6 +74,8 @@ export interface EntrySelection {
   retryQuote: () => void;
   /** Ask for a fresh quote now (used right before holding). */
   refreshQuote: () => Promise<EntryQuote | null>;
+  /** #4490 P6 — the member's price block of the current quote (null when not quoting as a member). */
+  member: MemberQuoteBlock | null;
 }
 
 export function useEntrySelection(input: {
@@ -84,6 +87,8 @@ export function useEntrySelection(input: {
   initialCounts?: EntryCounts | null;
   /** The checkout keeps quoting; the venue pane quotes too, for its total. */
   enabled?: boolean;
+  /** #4490 P6 — quote at this member's price (their free entry and guest passes first). */
+  membership?: { subscriptionId: string; token: string } | null;
 }): EntrySelection {
   const { brandSlug, venueSlug, offeringId, cartKey } = input;
   const enabled = input.enabled !== false;
@@ -179,7 +184,9 @@ export function useEntrySelection(input: {
   const [quoteNonce, setQuoteNonce] = useState(0);
   const lines = useMemo(() => quoteLinesFor(optionRows, counts), [optionRows, counts]);
   const windowId = selectedTile?.row?.windowId ?? null;
-  const quoteKey = `${windowId ?? ""}|${JSON.stringify(lines)}|${quoteNonce}`;
+  const membership = input.membership ?? null;
+  const [member, setMember] = useState<MemberQuoteBlock | null>(null);
+  const quoteKey = `${windowId ?? ""}|${JSON.stringify(lines)}|${quoteNonce}|${membership?.subscriptionId ?? ""}`;
   const latest = useRef(quoteKey);
   latest.current = quoteKey;
 
@@ -191,6 +198,21 @@ export function useEntrySelection(input: {
     const asked = latest.current;
     setQuote({ status: "loading" });
     try {
+      if (membership !== null) {
+        const priced = await venueOfferGuestService.memberQuote({
+          offeringId,
+          windowId,
+          lines,
+          cartKey,
+          idempotencyKey: `venue-offer:quote:${randomId()}`,
+          membership,
+        });
+        if (latest.current === asked) {
+          setQuote({ status: "ready", quote: priced.quote });
+          setMember(parseMemberQuote(priced.raw));
+        }
+        return priced.quote;
+      }
       const next = await venueOfferGuestService.quote({
         offeringId,
         windowId,
@@ -198,7 +220,10 @@ export function useEntrySelection(input: {
         cartKey,
         idempotencyKey: `venue-offer:quote:${randomId()}`,
       });
-      if (latest.current === asked) setQuote({ status: "ready", quote: next });
+      if (latest.current === asked) {
+        setQuote({ status: "ready", quote: next });
+        setMember(null);
+      }
       return next;
     } catch (caught) {
       const error =
@@ -256,5 +281,6 @@ export function useEntrySelection(input: {
     quote,
     retryQuote: () => setQuoteNonce((n) => n + 1),
     refreshQuote: askQuote,
+    member: membership !== null ? member : null,
   };
 }

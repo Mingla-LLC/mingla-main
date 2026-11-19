@@ -46,6 +46,7 @@ import { Icon } from "../../ui/Icon";
 import { EntryButton, EntryNote, EntryProblem, entryStyles } from "./EntryUi";
 import { GuestDetailsCard, useGuestDetails } from "./GuestDetails";
 import { hourGuestErrorCopy, type HourChoice } from "./hourGuestModel";
+import { memberGuestErrorCopy, memberUseLine, parseMemberQuote, readVenueMember } from "./memberGuestModel";
 import { revealFocusedField } from "./revealFocusedField";
 
 const WIDE = 1024;
@@ -61,6 +62,7 @@ export interface HourCheckoutProps {
 }
 
 function errorWords(code: string, remaining: number | null): string {
+  if (code.startsWith("member") || code.startsWith("membership")) return memberGuestErrorCopy(code);
   return hourGuestErrorCopy(code) ?? venueOfferErrorCopy(code, remaining);
 }
 
@@ -83,9 +85,16 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
   const offer = offerQuery.data ?? null;
   const tz = offer?.venue.timezone ?? null;
   const priceOptionId = offer?.options[0]?.id ?? null;
+  // #4490 P6 — a member on this device (opened their member page here) gets their price.
+  const [member, setMember] = useState<{ subscriptionId: string; token: string } | null>(null);
+  const [useMember, setUseMember] = useState(true);
+  useEffect(() => {
+    setMember(readVenueMember(brandSlug, venueSlug));
+  }, [brandSlug, venueSlug]);
+  const asMember = member !== null && useMember;
   const quoteKey = useRef(`venue-offer:quote:${randomId()}`);
   const quoteQuery = useQuery({
-    queryKey: ["venueHourQuote", offerId, choice.startsAt, choice.minutes, choice.guests, priceOptionId],
+    queryKey: ["venueHourQuote", offerId, choice.startsAt, choice.minutes, choice.guests, priceOptionId, asMember ? member?.subscriptionId ?? "" : ""],
     enabled: offer !== null,
     retry: false,
     staleTime: 60_000,
@@ -97,9 +106,19 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
         guests: choice.guests,
         priceOptionId,
         cartKey,
-        idempotencyKey: quoteKey.current,
+        idempotencyKey: `venue-offer:quote:${randomId()}`,
+        membership: asMember && member !== null ? { subscriptionId: member.subscriptionId, token: member.token } : null,
       }),
   });
+  const memberBlock = asMember ? parseMemberQuote(quoteQuery.data?.raw) : null;
+  // A membership that can't price this (ended, lapsed, another venue) falls back to the usual price.
+  const [memberNote, setMemberNote] = useState<string | null>(null);
+  const memberErr = asMember && quoteQuery.error instanceof VenueOfferGuestError && /^member/.test(quoteQuery.error.code) ? quoteQuery.error.code : null;
+  useEffect(() => {
+    if (memberErr === null) return;
+    setMemberNote(memberGuestErrorCopy(memberErr));
+    setUseMember(false);
+  }, [memberErr]);
   const money = (m: number): string => formatVenueMoney(m, offer?.currencyCode ?? "NGN", offer?.exponent ?? 2);
   const details = useGuestDetails({ countryCode: offer?.venue.countryCode ?? null, currencyCode: offer?.currencyCode ?? null });
   const [focused, setFocused] = useState(false);
@@ -147,6 +166,7 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
           priceOptionId,
           cartKey,
           idempotencyKey: quoteKey.current,
+          membership: asMember && member !== null ? { subscriptionId: member.subscriptionId, token: member.token } : null,
         });
         const result = await venueOfferGuestService.hold({
           quoteId: fresh.quote.quoteId,
@@ -158,6 +178,11 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
         rememberLastHold(offerId, result.booking.groupId);
         current = { booking: result.booking, token: result.bookingToken };
         setHeld(current);
+        // #4490 P6 — a member's booking that owes nothing is confirmed at once.
+        if (result.booking.state === "confirmed" || result.booking.totalMinor === 0) {
+          router.replace(`/visit/${result.booking.groupId}` as never);
+          return;
+        }
       }
       const payment = await venueOfferGuestService.pay({
         groupId: current.booking.groupId,
@@ -176,6 +201,7 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
         return;
       }
       if (error.code === "offer_hold_expired") setHeld(null);
+      if (error.code === "member_credits_used_up" || error.code === "member_not_active") void quoteQuery.refetch();
       setErrorCode({ code: error.code, remaining: error.remaining });
     } finally {
       setBusy(false);
@@ -225,10 +251,17 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
   const lines: Array<{ label: string; value: string; total?: boolean }> = [];
   if (quote !== null) {
     const hourMinor = quoteQuery.data?.pricePerHourMinor ?? null;
+    const memberOff = memberBlock !== null && memberBlock.applied ? memberBlock.includedMinor + memberBlock.discountMinor : 0;
     lines.push({
       label: hourMinor !== null ? `${hourLengthWords(choice.minutes)} × ${money(hourMinor)} an hour` : hourLengthWords(choice.minutes),
-      value: money(quoteQuery.data?.hoursMinor ?? quote.subtotalMinor),
+      value: money(memberOff > 0 ? quote.subtotalMinor + memberOff : quoteQuery.data?.hoursMinor ?? quote.subtotalMinor),
     });
+    if (memberBlock !== null && memberBlock.applied && memberBlock.includedMinor > 0) {
+      lines.push({ label: "Included in your plan", value: `−${money(memberBlock.includedMinor)}` });
+    }
+    if (memberBlock !== null && memberBlock.applied && memberBlock.discountMinor > 0) {
+      lines.push({ label: "Member price", value: `−${money(memberBlock.discountMinor)}` });
+    }
     if (quote.vatMode === "added" && quote.taxMinor > 0) lines.push({ label: `VAT ${quote.vatRatePct}%`, value: money(quote.taxMinor) });
     if (quote.feeMinor > 0) lines.push({ label: "Booking fee", value: money(quote.feeMinor) });
     lines.push({ label: "Total", value: money(quote.totalMinor), total: true });
@@ -258,7 +291,7 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
   );
 
   const nowText = quote !== null ? money(quote.totalMinor) : null;
-  const payLabel = busy ? "Opening payment…" : nowText !== null ? `Pay ${nowText}` : "Pay";
+  const payLabel = busy ? "Opening payment…" : quote !== null && quote.totalMinor === 0 ? "Book it" : nowText !== null ? `Pay ${nowText}` : "Pay";
   const left = (
     <View style={styles.column}>
       {holdLive ? (
@@ -280,6 +313,30 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
           <Text style={[styles.small, { color: palette.accent }]}>Change the time</Text>
         </Pressable>
       </View>
+      {member !== null ? (
+        <Pressable
+          onPress={() => setUseMember((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: useMember }}
+          accessibilityLabel="I'm a member"
+          style={[entryStyles.card, styles.memberChoice, { backgroundColor: palette.card, borderColor: useMember ? palette.primaryText : palette.panelBorder }]}
+          testID="issue-4490-hour-checkout-member"
+        >
+          <Icon name={useMember ? "check" : "star"} size={20} color={palette.primaryText} />
+          <View style={styles.grow}>
+            <Text style={[styles.memberTitle, themeBoldFace(theme), { color: palette.primaryText }]}>I&apos;m a member</Text>
+            <Text style={[styles.small, { color: palette.secondaryText }]}>
+              {!useMember
+                ? memberNote ?? "Tap to use your plan's hours and member price."
+                : memberBlock !== null
+                  ? memberUseLine(memberBlock, money) ?? "Your plan's price."
+                  : quoteQuery.isError
+                    ? errorWords(quoteErr?.code ?? "membership_request_failed", null)
+                    : "Checking your plan…"}
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
       {!wide ? summaryCard : null}
       <GuestDetailsCard
         details={details}
@@ -355,7 +412,7 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
             theme={theme}
             title={nowText}
             subtitle={holdLive ? countdownText(secondsLeft) : when}
-            ctaLabel={busy ? "Opening…" : "Pay"}
+            ctaLabel={busy ? "Opening…" : quote !== null && quote.totalMinor === 0 ? "Book" : "Pay"}
             onPress={() => void pay()}
             enabled={blocker === null && !busy}
             ctaAccessibilityLabel={payLabel}
@@ -389,6 +446,9 @@ const styles = StyleSheet.create({
   line: { flexDirection: "row", justifyContent: "space-between", gap: space[3] },
   change: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
   payBlock: { gap: space[2] },
+  memberChoice: { flexDirection: "row", alignItems: "center", gap: space[3], borderWidth: 1 },
+  memberTitle: { ...type.row },
+  grow: { flex: 1, minWidth: 0, gap: 2 },
   barDock: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: space[4] },
   bar: { width: "100%", maxWidth: 620, alignSelf: "center" },
 });

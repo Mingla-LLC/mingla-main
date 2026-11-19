@@ -203,7 +203,9 @@ export const venueOfferGuestService = {
     priceOptionId: string | null;
     cartKey: string;
     idempotencyKey: string;
-  }): Promise<{ quote: EntryQuote; placeName: string | null; hoursMinor: number | null; pricePerHourMinor: number | null }> {
+    /** #4490 P6 — price it for a member (their included hours first, then the member price). */
+    membership?: { subscriptionId: string; token: string | null; useCredits?: boolean } | null;
+  }): Promise<{ quote: EntryQuote; placeName: string | null; hoursMinor: number | null; pricePerHourMinor: number | null; raw: unknown }> {
     const raw = await invoke({
       action: "quote",
       offeringId: input.offeringId,
@@ -213,6 +215,15 @@ export const venueOfferGuestService = {
       extras: [],
       cartKey: input.cartKey,
       idempotencyKey: input.idempotencyKey,
+      ...(input.membership !== undefined && input.membership !== null
+        ? {
+            membership: {
+              subscriptionId: input.membership.subscriptionId,
+              ...(input.membership.token !== null ? { token: input.membership.token } : {}),
+              useCredits: input.membership.useCredits !== false,
+            },
+          }
+        : {}),
     });
     const quote = parseEntryQuote(raw);
     if (quote === null) throw new VenueOfferGuestError("offer_request_failed", null);
@@ -223,6 +234,7 @@ export const venueOfferGuestService = {
       placeName: hour !== null && typeof hour.placeName === "string" ? hour.placeName : null,
       hoursMinor: hour !== null ? num(hour.hoursMinor) : null,
       pricePerHourMinor: hour !== null ? num(hour.pricePerHourMinor) : null,
+      raw,
     };
   },
 
@@ -363,6 +375,26 @@ export const venueOfferGuestService = {
     const parsed = parseEntryQuote(await invoke({ action: "quote", ...input }));
     if (parsed === null) throw new VenueOfferGuestError("offer_request_failed", null);
     return parsed;
+  },
+
+  /** #4490 P6 — an entry quote at the member's price (their free entry and guest passes first). */
+  async memberQuote(input: {
+    offeringId: string;
+    windowId: string;
+    lines: Array<{ priceOptionId: string; guests: number }>;
+    cartKey: string;
+    idempotencyKey: string;
+    membership: { subscriptionId: string; token: string | null };
+  }): Promise<{ quote: EntryQuote; raw: unknown }> {
+    const { membership, ...rest } = input;
+    const raw = await invoke({
+      action: "quote",
+      ...rest,
+      membership: { subscriptionId: membership.subscriptionId, ...(membership.token !== null ? { token: membership.token } : {}), useCredits: true },
+    });
+    const parsed = parseEntryQuote(raw);
+    if (parsed === null) throw new VenueOfferGuestError("offer_request_failed", null);
+    return { quote: parsed, raw };
   },
 
   async hold(input: {

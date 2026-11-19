@@ -95,3 +95,25 @@ test("the read is wired on the venue page with a visible failure state and no wr
   // The Offerings console gate keeps venuesService read-only: this read lives beside it.
   assert.doesNotMatch(read("services/venuesService.js"), /admin_venue_features/);
 });
+
+// #4490 P6 — labels, never raw keys: offer kinds (membership included), space
+// settings, and the venue's monthly plans.
+test("P6: offer kinds and space settings are labels; plans list with a monthly price", async () => {
+  const mod = await import("../venueFeaturesAdmin.js");
+  assert.equal(mod.offerKindLabel("membership"), "Membership plan");
+  assert.equal(mod.offerKindLabel("by_the_hour"), "By the hour");
+  assert.equal(mod.offerKindLabel("some_new_kind"), "Some new kind");
+  const payload = {
+    page: {
+      currencyCode: "NGN",
+      minorUnitExponent: 2,
+      spaces: [{ id: "s", name: "Boardroom", setting: "indoor", capacitySeated: 10 }],
+      memberships: { plans: [{ id: "p", name: "Hot desk", priceMinor: 8500000, full: false }, { id: "q", name: "Office", priceMinor: 52000000, full: true }] },
+    },
+  };
+  assert.equal(mod.buildSpaceRows(payload)[0].setting, "Indoor");
+  assert.deepEqual(
+    mod.buildPlanRows(payload).map((p) => [p.name, p.price, p.status]),
+    [["Hot desk", "₦85,000 a month", "On sale"], ["Office", "₦520,000 a month", "Full"]],
+  );
+});

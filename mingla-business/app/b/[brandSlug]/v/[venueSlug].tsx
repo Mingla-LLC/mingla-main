@@ -42,7 +42,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // (ORCH-1083 bundle-budget breach). Enforced by i-1047-biz-bundle-budget-deferral.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
 // #4490 — pure and import-light: what the venue sells decides the page.
-import { venueTabFromParam } from "@mingla/brand-rendering/venueFeaturePage";
+import { venueTabFromParam, type VenueFeaturePlanView } from "@mingla/brand-rendering/venueFeaturePage";
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import {
   classifyPublicVenueRouteState,
@@ -153,6 +153,12 @@ const VenueHirePane = React.lazy(() =>
 const VenueHourPane = React.lazy(() =>
   import("../../../../src/components/venue/offers/VenueHourPane").then(
     (module) => ({ default: module.VenueHourPane }),
+  ),
+);
+// #4490 P6 — the Plans tab (monthly plans and Join), lazy for the same reason.
+const VenuePlansPane = React.lazy(() =>
+  import("../../../../src/components/venue/offers/VenuePlansPane").then(
+    (module) => ({ default: module.VenuePlansPane }),
   ),
 );
 // #4490 P3 — the Groups tab's booking flow, lazy for the same reason.
@@ -721,6 +727,32 @@ function PublicVenueRouteBody(): React.ReactElement {
     [brandSlug, venueSlug],
   );
 
+  // #4490 P6 — the Plans tab: monthly plans, then Join.
+  const renderPlansBody = useCallback(
+    (context: PublicVenueEntrySlotContext & { plans: readonly VenueFeaturePlanView[] }): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenuePlansPane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            plans={context.plans}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
   // #4490 — "What's on": events held at the venue open their public page.
   const handleOpenEvent = useCallback(
     (href: string): void => {
@@ -839,6 +871,7 @@ function PublicVenueRouteBody(): React.ReactElement {
       groupsBody={renderGroupsBody}
       hireBody={renderHireBody}
       hourBody={renderHourBody}
+      plansBody={renderPlansBody}
       refreshState={
         routeState === "populated-error"
           ? "error"

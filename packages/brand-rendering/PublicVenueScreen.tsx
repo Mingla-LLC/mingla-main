@@ -157,6 +157,7 @@ import {
   type VenuePageModel,
   type VenueSpecialDayRow,
   type VenueFeatureOfferView,
+  type VenueFeaturePlanView,
   type VenueTablesGate,
 } from "./venueFeaturePage";
 import {
@@ -643,6 +644,11 @@ export interface PublicVenueScreenProps {
    * checkout). Host-injected like `entryBody`; absent = a plain line.
    */
   hourBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
+  /**
+   * #4490 P6 — the Plans tab (monthly plans with price and what's included,
+   * then Join). Host-injected like `entryBody`; absent = a plain line.
+   */
+  plansBody?: (context: PublicVenueEntrySlotContext & { plans: readonly VenueFeaturePlanView[] }) => BrandRenderingReactNode;
   /**
    * #4490 — a Host preview of a venue that is not public yet: every tab the
    * venue will have, with the booking button and event buttons disabled.
@@ -1301,6 +1307,7 @@ export const PublicVenueScreen = ({
   groupsBody,
   hireBody,
   hourBody,
+  plansBody,
   preview = null,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
@@ -1778,7 +1785,9 @@ export const PublicVenueScreen = ({
       normalizedReservationUiState.activeTab === "groups" ||
       normalizedReservationUiState.activeTab === "hire" ||
       // #4490 P5 — the By the hour tab too.
-      normalizedReservationUiState.activeTab === "by_the_hour") &&
+      normalizedReservationUiState.activeTab === "by_the_hour" ||
+      // #4490 P6 — and the Plans tab (Join the cheapest open plan).
+      normalizedReservationUiState.activeTab === "plans") &&
     !normalizedReservationUiState.reservationSheetOpen
       ? liveReservationBar
       : null;
@@ -2536,6 +2545,28 @@ export const PublicVenueScreen = ({
             </View>
           )
     : null;
+  // #4490 P6 — the Plans tab, same rules as Entry.
+  const plansBlock = page.tabs.includes("plans")
+    ? previewing
+      ? previewBookingNote
+      : plansBody !== undefined && page.currency !== null
+        ? plansBody({
+            ...themedSlotContext,
+            offers: [],
+            plans: featuresView?.memberships?.plans ?? [],
+            currencyCode: page.currency.code,
+            exponent: page.currency.exponent,
+            verb: "Join",
+            onBookingBarChange: setLiveReservationBar,
+          })
+        : (
+            <View style={styles.reservationState} testID="issue-4490-plans-not-online">
+              <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+                Memberships aren&apos;t sold online here yet. Ask the venue how to join.
+              </Text>
+            </View>
+          )
+    : null;
   const whatsOnBlock =
     page.events.length > 0 && page.currency !== null ? (
       <VenueWhatsOnPane
@@ -2839,7 +2870,7 @@ export const PublicVenueScreen = ({
           : {
               tabs: page.tabs,
               labels: page.labels,
-              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock, groups: groupsBlock, hire: hireBlock, by_the_hour: hourBlock },
+              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock, groups: groupsBlock, hire: hireBlock, by_the_hour: hourBlock, plans: plansBlock },
             })}
         palette={palette}
         surface={surface}

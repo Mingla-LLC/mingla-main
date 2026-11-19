@@ -78,6 +78,7 @@ import {
 } from "./EntryUi";
 import { useEntrySelection } from "./useEntrySelection";
 import { GuestDetailsCard, useGuestDetails } from "./GuestDetails";
+import { memberGuestErrorCopy, memberUseLine, readVenueMember } from "./memberGuestModel";
 import { revealFocusedField } from "./revealFocusedField";
 
 const WIDE = 1024;
@@ -112,11 +113,19 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
   const tones = statusOn(palette);
 
   const [cartKey] = useState(venueOfferCartKey);
+  // #4490 P6 — a member on this device (opened their member page here) gets their price.
+  const [member, setMember] = useState<{ subscriptionId: string; token: string } | null>(null);
+  const [useMember, setUseMember] = useState(true);
+  useEffect(() => {
+    setMember(readVenueMember(brandSlug, venueSlug));
+  }, [brandSlug, venueSlug]);
+  const [memberNote, setMemberNote] = useState<string | null>(null);
   const selection = useEntrySelection({
     brandSlug,
     venueSlug,
     offeringId: offerId,
     cartKey,
+    membership: member !== null && useMember ? member : null,
     initialDate: props.initialDate,
     initialCounts: props.initialCounts,
   });
@@ -166,6 +175,14 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
   const secondsLeft = held === null ? 0 : holdSecondsLeft(held.booking.holdUntil, now);
   const holdLive = held !== null && secondsLeft > 0;
 
+  // A membership that can't price this (ended, lapsed, another venue) falls back to the usual price.
+  const memberQuoteError =
+    member !== null && useMember && selection.quote.status === "error" && /^member/.test(selection.quote.code) ? selection.quote.code : null;
+  useEffect(() => {
+    if (memberQuoteError === null) return;
+    setMemberNote(memberGuestErrorCopy(memberQuoteError));
+    setUseMember(false);
+  }, [memberQuoteError]);
   const quote = selection.quote.status === "ready" ? selection.quote.quote : null;
   const totalMinor = holdLive ? held.booking.amountDueNowMinor || held.booking.totalMinor : quote?.totalMinor ?? null;
   const totalText = totalMinor === null ? null : money(totalMinor);
@@ -185,7 +202,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
                 ? "Check the phone number, or leave it empty."
                 : null);
 
-  const payLabel = busy ? "Opening payment…" : totalText !== null ? `Pay ${totalText}` : "Pay";
+  const payLabel = busy ? "Opening payment…" : totalMinor === 0 ? "Get my pass" : totalText !== null ? `Pay ${totalText}` : "Pay";
 
   const pay = async (): Promise<void> => {
     if (busy) return;
@@ -213,6 +230,11 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
         rememberLastHold(offerId, result.booking.groupId);
         current = { booking: result.booking, token: result.bookingToken };
         setHeld(current);
+        // #4490 P6 — a member's booking that owes nothing is confirmed at once.
+        if (result.booking.state === "confirmed" || result.booking.totalMinor === 0) {
+          router.replace(`/visit/${result.booking.groupId}` as never);
+          return;
+        }
       }
       const payment = await venueOfferGuestService.pay({
         groupId: current.booking.groupId,
@@ -451,6 +473,30 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
       ) : (
         changeHeld
       )}
+      {member !== null && !holdLive ? (
+        <Pressable
+          onPress={() => setUseMember((v) => !v)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: useMember }}
+          accessibilityLabel="I'm a member"
+          style={[entryStyles.card, styles.memberChoice, { backgroundColor: palette.card, borderColor: useMember ? palette.primaryText : palette.panelBorder }]}
+          testID="issue-4490-checkout-member"
+        >
+          <Icon name={useMember ? "check" : "star"} size={20} color={palette.primaryText} />
+          <View style={styles.memberText}>
+            <Text style={[styles.memberTitle, themeBoldFace(theme), { color: palette.primaryText }]}>I&apos;m a member</Text>
+            <Text style={[styles.small, { color: palette.secondaryText }]}>
+              {!useMember
+                ? memberNote ?? "Tap to use your plan: free entry and guest passes."
+                : selection.member !== null
+                  ? memberUseLine(selection.member, money) ?? "Your plan's price."
+                  : selection.quote.status === "error"
+                    ? memberGuestErrorCopy(selection.quote.code)
+                    : "Checking your plan…"}
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
       {detailsCard}
       {errorBlock}
       {wide ? payBlock : null}
@@ -546,6 +592,9 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  memberChoice: { flexDirection: "row", alignItems: "center", gap: space[3], borderWidth: 1 },
+  memberText: { flex: 1, minWidth: 0, gap: 2 },
+  memberTitle: { ...type.row },
   host: { flex: 1 },
   centered: { alignItems: "center", justifyContent: "center", padding: space[6] },
   narrow: { width: "100%", maxWidth: 480 },

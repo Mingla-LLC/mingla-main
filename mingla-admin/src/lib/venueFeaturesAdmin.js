@@ -34,7 +34,15 @@ export const OFFER_KIND_LABELS = {
   group_package: "Group package",
   private_hire: "Private hire",
   by_the_hour: "By the hour",
+  // #4490 P6 — a monthly plan's own (hidden) offering.
+  membership: "Membership plan",
 };
+
+/** "Group package", "Membership plan"; an unknown kind is made readable, never shown raw. */
+export function offerKindLabel(kind) {
+  if (typeof kind !== "string" || kind.length === 0) return "Offer";
+  return OFFER_KIND_LABELS[kind] ?? kind.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -85,6 +93,8 @@ export function buildFeatureRows(payload) {
   });
 }
 
+const SETTING_LABELS = { indoor: "Indoor", covered: "Covered", outdoor: "Outdoor" };
+
 export function buildSpaceRows(payload) {
   return asArray(payload?.page?.spaces).map((s) => {
     const parts = [];
@@ -93,7 +103,7 @@ export function buildSpaceRows(payload) {
     return {
       id: s.id,
       name: s.name,
-      setting: s.setting,
+      setting: SETTING_LABELS[s.setting] ?? "Space",
       capacity: parts.length > 0 ? parts.join(" · ") : null,
     };
   });
@@ -105,13 +115,26 @@ export function buildOfferRows(payload) {
   const exponent = Number.isInteger(page.minorUnitExponent) ? page.minorUnitExponent : 2;
   return asArray(page.offers).map((o) => ({
     id: o.id,
-    kind: OFFER_KIND_LABELS[o.kind] ?? o.kind,
+    kind: offerKindLabel(o.kind),
     name: o.name,
     from: adminMoney(o.fromMinor, currency, exponent),
     mode: o.confirmationMode === "request" ? "On request" : "Instant",
     // The page lists only offers that are on sale; the other states are not
     // part of this read yet.
     status: "On sale",
+  }));
+}
+
+/** #4490 P6 — the monthly plans on sale (from the public page block). */
+export function buildPlanRows(payload) {
+  const page = payload?.page ?? {};
+  const currency = page.currencyCode ?? null;
+  const exponent = Number.isInteger(page.minorUnitExponent) ? page.minorUnitExponent : 2;
+  return asArray(page.memberships?.plans).map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: `${adminMoney(p.priceMinor, currency, exponent)} a month`,
+    status: p.full === true ? "Full" : "On sale",
   }));
 }
 

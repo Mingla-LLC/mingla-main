@@ -57,3 +57,11 @@ test("the console page holds no write; the audited RPC sits in the venue offers 
   const list = read("components/offerings/VenueOffersAdminList.jsx");
   assert.match(list, /HighRiskActionModal/);
 });
+
+// #4490 P6 — a membership plan's hidden offering is labelled, and is run from
+// the venue's plans (no pause / resume here).
+test("P6: membership offerings read 'Membership plan' and have no moderation action", () => {
+  assert.equal(venueOfferKindLabel("membership", null), "Membership plan");
+  assert.equal(venueOfferAction({ kind: "membership", status: "live" }), null);
+  assert.equal(venueOfferAction({ kind: "entry", status: "live" })?.kind, "pause");
+});

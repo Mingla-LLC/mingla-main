@@ -384,7 +384,8 @@ describe("this release builds only some tabs", () => {
     // TEST-MOD-APPROVED #4490 P5-3: by the hour is built now; plans stay unbuilt.
     expect(BUILT_VENUE_TABS.has("hire")).toBe(true);
     expect(BUILT_VENUE_TABS.has("by_the_hour")).toBe(true);
-    expect(BUILT_VENUE_TABS.has("plans")).toBe(false);
+    // TEST-MOD-APPROVED #4490 P6-3: plans are built now.
+    expect(BUILT_VENUE_TABS.has("plans")).toBe(true);
     expect(page.tabs).toEqual(["overview", "entry", "groups", "whats_on", "menu"]);
     expect(page.lead?.kind).toBe("entry");
     expect(page.lead?.ctaLabel).toBe("Buy entry");

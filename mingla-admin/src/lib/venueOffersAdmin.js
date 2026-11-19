@@ -17,6 +17,9 @@ export const VENUE_OFFER_KIND_LABELS = {
   group_package: "Group package",
   private_hire: "Private hire",
   by_the_hour: "By the hour",
+  // #4490 P6 — each monthly plan owns a hidden offering; it is run from the
+  // venue's Members (plans), not paused here.
+  membership: "Membership plan",
 };
 
 const ENTRY_STYLE_LABELS = { walk_in: "Walk-in", day_pass: "Day pass", timed_session: "Timed session" };
@@ -53,6 +56,8 @@ export function venueOfferFromPrice(fromMinor, currency) {
 
 /** The one moderation action a row offers: pause a live offer, resume a paused one. */
 export function venueOfferAction(row) {
+  // A membership plan's offering is managed with its plan (Members › Plans).
+  if (row?.kind === "membership") return null;
   if (row?.status === "live") return { kind: "pause", label: "Pause", next: "paused" };
   if (row?.status === "paused") return { kind: "resume", label: "Resume", next: "live" };
   return null;

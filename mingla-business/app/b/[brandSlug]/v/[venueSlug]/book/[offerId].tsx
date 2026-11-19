@@ -2,7 +2,8 @@
 /**
  * /b/{brandSlug}/v/{venueSlug}/book/{offerId} — #4490 P2 entry checkout,
  * (P3, `?k=group…`) the group package checkout, and (P4, `?k=hire…`) the
- * private hire request.
+ * private hire request, and (P6, `?k=plan`) joining a monthly plan (the id is
+ * the plan's).
  *
  * ANON ROUTE under the `/b/` public prefix: buying never needs an account and
  * this chain never calls useAuth. The address carries the day and the counts
@@ -20,6 +21,7 @@ import { HireRequest } from "../../../../../../src/components/venue/offers/HireR
 import { OfferCheckout } from "../../../../../../src/components/venue/offers/OfferCheckout";
 import { PackageCheckout } from "../../../../../../src/components/venue/offers/PackageCheckout";
 import { HourCheckout } from "../../../../../../src/components/venue/offers/HourCheckout";
+import { PlanJoin } from "../../../../../../src/components/venue/offers/PlanJoin";
 import { parseHourCheckoutParams } from "../../../../../../src/components/venue/offers/hourGuestModel";
 import { parseEntryCheckoutParams } from "../../../../../../src/components/venue/offers/entryCheckoutPath";
 import { PublicVenueNotFound } from "../../../../../../src/components/venue/PublicVenueNotFound";
@@ -68,7 +70,15 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
         <title>Checkout · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
-      {hourChoice !== null ? (
+      {one(params.k) === "plan" ? (
+        <PlanJoin
+          brandSlug={brandSlug}
+          venueSlug={venueSlug}
+          planId={offerId.toLowerCase()}
+          safeTop={insets.top}
+          safeBottom={insets.bottom}
+        />
+      ) : hourChoice !== null ? (
         <HourCheckout
           brandSlug={brandSlug}
           venueSlug={venueSlug}
