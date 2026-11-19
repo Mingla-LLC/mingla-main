@@ -712,6 +712,17 @@ describe("Ari mode", () => {
     expect(has(root, "ari-question")).toBe(false);
   });
 
+  it("shows the question once when Ari's reply ends with it (the server sends both)", async () => {
+    const prompt = "What time do you open on Sundays?";
+    mockChat.sendMessage.mockResolvedValueOnce({ kind: "text", text: `I don't have your Sunday opening time on record. ${prompt}`, site_question: { prompt, options: ["9am", "10am"] }, client_turn_id: "t1" });
+    const { root } = await open();
+    await type(root, "ari-input", "Add our Sunday opening hours");
+    await press(root, "ari-send");
+    const all = String(words(root));
+    expect(all.split(prompt).length - 1).toBe(1);
+    expect(all).toContain("I don't have your Sunday opening time on record.");
+  });
+
   it("a failed step is a rollback message: no change is claimed and nothing is offered to keep", async () => {
     mockChat.sendMessage.mockResolvedValue(plan);
     mockConfirm.mockResolvedValue({ kind: "executed", result: { group_id: "g8", status: "rolled_back", total: 2, applied: [], failed: { index: 1, label: "New headline", reason: "That claim isn’t backed by your listings." }, checks: null, couldnt: [] } });

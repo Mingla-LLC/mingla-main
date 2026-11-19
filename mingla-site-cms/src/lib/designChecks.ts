@@ -153,7 +153,7 @@ function pageTexts(pages: readonly AnyDoc[], paths: Map<string, string>): TextHi
     if (typeof page.title === "string") hits.push({ text: page.title, page_path, where: "page title" });
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const type = String(block?.blockType ?? "");
-      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} block ${index + 1}`;
+      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} section ${index + 1}`;
       const fields = isBlockType(type) ? BLOCK_CATALOG[type].fields as Readonly<Record<string, FieldSpec>> : null;
       blockWords((block ?? {}) as AnyDoc, fields, (text) => hits.push({ text, page_path, where }));
     }
@@ -191,7 +191,7 @@ function pageLinks(pages: readonly AnyDoc[], paths: Map<string, string>): Array<
     const page_path = paths.get(String(page.id)) ?? null;
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const type = String(block?.blockType ?? "");
-      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} block ${index + 1}`;
+      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} section ${index + 1}`;
       const visit = (value: unknown, key: string) => {
         if (typeof value === "string" && /(?:^href$|_href$|^url$|directions_url|map_url)/.test(key) && value.trim()) links.push({ href: value.trim(), page_path, where });
         else if (Array.isArray(value)) value.forEach((row) => visit(row, key));
@@ -245,7 +245,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
       if (!isBlockType(type)) continue;
       const headingSpec = (BLOCK_CATALOG[type].fields as Record<string, FieldSpec>).heading;
       if (headingSpec && "required" in headingSpec && headingSpec.required && !(typeof block.heading === "string" && block.heading.trim())) {
-        words.push({ message: `${placeLabel({ page_path: paths.get(String(page.id)) ?? null, where: `${BLOCK_CATALOG[type].label} block ${index + 1}` })} has an empty heading`, page_path: paths.get(String(page.id)) ?? null, section: "pages" });
+        words.push({ message: `${placeLabel({ page_path: paths.get(String(page.id)) ?? null, where: `${BLOCK_CATALOG[type].label} section ${index + 1}` })} has an empty heading`, page_path: paths.get(String(page.id)) ?? null, section: "pages" });
       }
     }
   }
@@ -275,7 +275,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
     const page_path = paths.get(String(page.id)) ?? null;
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const type = String(block?.blockType ?? "") as BlockType;
-      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} block ${index + 1}`;
+      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} section ${index + 1}`;
       if (type === "hero") checkPicture(relationId(block.media), page_path, where, "hero", false, null);
       if (type === "media_feature") checkPicture(relationId(block.media), page_path, where, "media_feature", true, block.alt);
       if (type === "video_feature") checkPicture(relationId(block.poster), page_path, where, "video_feature", false, null);
@@ -355,7 +355,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
     const page_path = paths.get(String(page.id)) ?? null;
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       if (block?.blockType !== "hero") continue;
-      const where = `Hero block ${index + 1}`;
+      const where = `Top of the page, section ${index + 1}`;
       const lines = (Array.isArray(block.heading_lines) ? block.heading_lines : []).map((row: AnyDoc) => String(row?.text ?? "")).filter(Boolean);
       const headline = lines.length ? lines.join(" ") : String(block.heading ?? "");
       if (headline.length > headlineMax) phone.push({ message: `${placeLabel({ page_path, where })}: the headline is ${headline.length} characters; on a phone this design fits about ${headlineMax}`, page_path, section: "pages" });
@@ -367,7 +367,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
     }
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const label = typeof block?.cta_label === "string" ? block.cta_label : typeof block?.label === "string" && /(?:cta|menu_link|contact_handoff)/.test(String(block?.blockType)) ? block.label : null;
-      if (label && label.length > PHONE_BUTTON_LABEL_MAX) phone.push({ message: `${placeLabel({ page_path, where: `${String(block.blockType)} block ${index + 1}` })}: the button “${label}” is too long to tap easily on a phone`, page_path, section: "pages" });
+      if (label && label.length > PHONE_BUTTON_LABEL_MAX) phone.push({ message: `${placeLabel({ page_path, where: `${String(block.blockType)} section ${index + 1}` })}: the button “${label}” is too long to tap easily on a phone`, page_path, section: "pages" });
     }
   }
   const menuItems = Array.isArray(input.navigation?.items) ? input.navigation!.items.length : 0;

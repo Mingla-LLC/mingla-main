@@ -167,7 +167,7 @@ function TurnView({ turn, run, disabledReason, onUndoRun, onKeepRun, onAskTeam, 
       ) : null}
       {turn.phase === "asking" && (turn.question || turn.choices) ? (
         <View style={[parts.box, styles.question]} testID="ari-question" role="group" accessibilityLabel={turn.question?.prompt ?? turn.reply ?? turn.choices?.prompt}>
-          {turn.question && turn.reply && turn.reply !== turn.question.prompt ? <Text style={parts.body}>{turn.reply}</Text> : null}
+          {questionLead(turn.reply, turn.question?.prompt ?? null) ? <Text style={parts.body}>{questionLead(turn.reply, turn.question?.prompt ?? null)}</Text> : null}
           <Text style={parts.title}>{turn.question?.prompt ?? (turn.reply || turn.choices?.prompt)}</Text>
           <Text style={parts.small}>I won’t guess facts about your venue.</Text>
           <View style={parts.wrap}>
@@ -253,6 +253,14 @@ function TurnView({ turn, run, disabledReason, onUndoRun, onKeepRun, onAskTeam, 
       ) : null}
     </View>
   );
+}
+
+/** What Ari said before its question; the question itself is shown once, as the card's title. */
+export function questionLead(reply: string | null, prompt: string | null): string | null {
+  if (!reply || !prompt) return null;
+  const text = reply.trim();
+  const lead = text.endsWith(prompt) ? text.slice(0, text.length - prompt.length).trim() : text === prompt ? "" : text;
+  return lead || null;
 }
 
 function StepRow({ index, label, why, status }: { index: number; label: string; why: string; status: StepStatus }): React.ReactElement {
