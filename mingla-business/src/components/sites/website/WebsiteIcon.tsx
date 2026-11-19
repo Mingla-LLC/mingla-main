@@ -1,4 +1,5 @@
 import React from "react";
+import { Platform } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 
@@ -66,6 +67,15 @@ function shapes(name: WebsiteIconName): React.ReactNode {
   }
 }
 
+/**
+ * Icons are decoration: the control they sit in carries the name. On the web
+ * that is `aria-hidden` (React Native's own two props are not DOM attributes;
+ * passed through, React reports them as errors on every screen that draws an icon).
+ */
+const DECORATIVE: object = Platform.OS === "web"
+  ? { "aria-hidden": true }
+  : { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" };
+
 export function WebsiteIcon({ name, size = 18, color = colorTokens.text1 }: {
   name: WebsiteIconName;
   size?: number;
@@ -81,8 +91,7 @@ export function WebsiteIcon({ name, size = 18, color = colorTokens.text1 }: {
       strokeWidth={1.8}
       strokeLinecap="round"
       strokeLinejoin="round"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      {...DECORATIVE}
     >
       {shapes(name)}
     </Svg>

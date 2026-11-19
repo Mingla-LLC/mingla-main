@@ -83,3 +83,14 @@ describe("the website service being down is not the same as having no Website", 
     expect(app).toContain("if (canCheckAvailability && websiteAvailable === false) {");
   });
 });
+
+describe("the workspace draws without console errors on the web", () => {
+  it("icons are hidden from assistive tech with a DOM attribute on web, React Native's props elsewhere", () => {
+    const icon = readFileSync(resolve(__dirname, "../../components/sites/website/WebsiteIcon.tsx"), "utf8");
+    expect(icon).toContain('const DECORATIVE: object = Platform.OS === "web"');
+    expect(icon).toContain('? { "aria-hidden": true }');
+    expect(icon).toContain("{...DECORATIVE}");
+    // Never straight onto the <Svg>: on web they reach the DOM and React reports each as an error.
+    expect(icon).not.toMatch(/<Svg[^>]*accessibilityElementsHidden/);
+  });
+});
