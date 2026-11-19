@@ -75,7 +75,11 @@ BEGIN
   -- mutate search_path inside a subtransaction, prove the guard fails, then
   -- let the exception handler roll the mutation back before the next case.
   FOR v_expected IN SELECT * FROM (VALUES
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '7bc2a30ab5d3e7a790f6695381b96b4d'),
+    -- #4508 last-writes submit_event_rsvp (20281119014508): number-only plus-ones,
+    -- the server plus-one limit, own/duplicate/listed/released refusals, the
+    -- 24-hour inviter cap, and guest rows kept across a re-submit. The #1857
+    -- phone authority lines are unchanged.
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'ac1fe8db3a2151d6476844e67228af66'),
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
