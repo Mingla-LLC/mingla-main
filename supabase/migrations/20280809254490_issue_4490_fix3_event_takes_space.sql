@@ -19,13 +19,16 @@
 --   * issue_4490_set_event_venue takes p_combination_id (DEFAULT NULL; old
 --     callers unchanged).
 --   * issue_4490_venue_calendar events carry combinationId and spaceIds.
+--   * issue_4490_member_projection's guest view carries memberEmail (the
+--     member reading their own membership), so member checkout prefills.
 --   * venue_waitlist.preferred_space_id: a walk-in can ask for one of the
 --     venue's own spaces (N112); the generic seating words stay for venues
 --     without spaces. The space must belong to the waitlist row's venue.
 --
 -- Conflicts raise PT409 (never 40001). Static SQL. Local stack only.
 -- Reverse (local only): restore issue_4490_assert_event_venue and
--- issue_4490_set_event_venue from 20280809024490, the event claim functions
+-- issue_4490_set_event_venue from 20280809024490, issue_4490_member_projection
+-- from 20280809234490, the event claim functions
 -- and triggers from 20280809164490, issue_4490_venue_calendar from
 -- 20280809214490; drop issue_4490_event_space_ids(uuid); ALTER TABLE
 -- public.events DROP CONSTRAINT events_one_place, DROP CONSTRAINT
@@ -456,6 +459,146 @@ REVOKE ALL ON FUNCTION public.issue_4490_assert_waitlist_space() FROM PUBLIC, an
 CREATE TRIGGER issue_4490_waitlist_space
   BEFORE INSERT OR UPDATE OF preferred_space_id, venue_id ON public.venue_waitlist
   FOR EACH ROW EXECUTE FUNCTION public.issue_4490_assert_waitlist_space();
+
+-- ---------------------------------------------------------------------------
+-- Member projection (from 20280809234490): the guest view carries the
+-- member's own email (N87: a booking made as the member starts filled in).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_4490_member_projection(p_subscription_id uuid, p_view text, p_qr_pepper text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_sub public.venue_membership_subscriptions%ROWTYPE;
+  v_plan public.venue_membership_plans%ROWTYPE;
+  v_venue record;
+  v_tz text;
+  v_open public.venue_membership_periods%ROWTYPE;
+  v_today date;
+  v_result jsonb;
+  v_can_enter boolean;
+BEGIN
+  SELECT * INTO v_sub FROM public.venue_membership_subscriptions WHERE id = p_subscription_id;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO v_plan FROM public.venue_membership_plans WHERE id = v_sub.plan_id;
+  SELECT v.id, v.name, v.slug, b.slug AS brand_slug, b.name AS brand_name INTO v_venue
+  FROM public.stay_offerings o JOIN public.venue_listings v ON v.id = o.venue_id
+  JOIN public.brands b ON b.id = v.brand_id WHERE o.id = v_plan.offering_id;
+  v_tz := public.issue_4490_venue_timezone(v_venue.id);
+  v_today := (now() AT TIME ZONE v_tz)::date;
+  SELECT * INTO v_open FROM public.venue_membership_periods
+  WHERE id = public.issue_4490_member_open_period(v_sub.id);
+  v_can_enter := v_sub.status IN ('active', 'payment_due', 'grace') AND v_sub.start_on <= v_today;
+  v_result := jsonb_build_object(
+    'subscriptionId', v_sub.id,
+    'status', v_sub.status,
+    'memberName', v_sub.member_name,
+    'plan', jsonb_build_object(
+      'id', v_plan.id, 'name', v_plan.name, 'priceMinor', v_plan.price_minor, 'currencyCode', v_plan.currency_code,
+      'interval', v_plan.period, 'inclusions', v_plan.inclusions, 'entryIncluded', v_plan.entry_included,
+      'roomHours', v_plan.room_hours_per_period, 'guestPasses', v_plan.guest_passes_per_period,
+      'discountBps', v_plan.discount_bps, 'discountKinds', to_jsonb(v_plan.discount_kinds),
+      'hourOfferingIds', to_jsonb(v_plan.hour_offering_ids), 'entryOfferingId', v_plan.entry_offering_id),
+    'terms', v_sub.terms,
+    'venue', jsonb_build_object('id', v_venue.id, 'name', v_venue.name, 'slug', v_venue.slug,
+      'brandSlug', v_venue.brand_slug, 'brandName', v_venue.brand_name, 'timezone', v_tz),
+    'startOn', v_sub.start_on,
+    'startedAt', v_sub.started_at,
+    'activeUntil', v_sub.current_period_end,
+    'currentPeriod', CASE WHEN v_sub.current_period_start IS NULL THEN NULL ELSE jsonb_build_object(
+      'start', v_sub.current_period_start, 'end', v_sub.current_period_end) END,
+    'renewsOn', CASE WHEN v_sub.status IN ('active', 'payment_due', 'grace', 'lapsed')
+                      AND NOT v_sub.pause_at_period_end
+                      AND (v_sub.cancel_at IS NULL OR v_sub.cancel_at > v_sub.current_period_end)
+                     THEN v_sub.current_period_end END,
+    'renewalEmailOn', CASE WHEN v_sub.status IN ('active') AND NOT v_sub.pause_at_period_end
+                            AND (v_sub.cancel_at IS NULL OR v_sub.cancel_at > v_sub.current_period_end)
+                           THEN v_sub.current_period_end - make_interval(days => v_plan.renewal_notice_days) END,
+    'canCheckIn', v_can_enter,
+    'paymentDue', CASE WHEN v_open.id IS NULL THEN NULL ELSE jsonb_build_object(
+      'periodId', v_open.id, 'amountMinor', v_open.amount_minor, 'currencyCode', v_open.currency_code,
+      'periodStart', v_open.period_start, 'periodEnd', v_open.period_end, 'dueAt', v_open.due_at,
+      'status', v_open.status, 'graceEndsAt', v_open.due_at + make_interval(days => COALESCE((v_sub.terms->>'graceDays')::integer, 7)),
+      'paying', EXISTS (SELECT 1 FROM public.stay_payment_attempts a WHERE a.group_id = v_open.group_id
+                        AND a.state IN ('pending', 'ambiguous'))) END,
+    'leaving', CASE WHEN v_sub.cancel_at IS NOT NULL AND v_sub.status <> 'cancelled'
+                    THEN jsonb_build_object('endsAt', v_sub.cancel_at, 'by', v_sub.cancel_requested_by) END,
+    'pausing', CASE WHEN v_sub.pause_at_period_end THEN jsonb_build_object('from', v_sub.current_period_end,
+                    'by', v_sub.pause_requested_by) END,
+    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_at, 'by', v_sub.pause_reason) END,
+    'endedAt', v_sub.cancelled_at,
+    'endReason', v_sub.end_reason,
+    'credits', jsonb_build_object(
+      'roomHoursLeft', public.issue_4490_member_credit_left(v_sub.id, 'room_hours', now()),
+      'roomHoursPerMonth', v_plan.room_hours_per_period,
+      'guestPassesLeft', public.issue_4490_member_credit_left(v_sub.id, 'guest_passes', now()),
+      'guestPassesPerMonth', v_plan.guest_passes_per_period),
+    'inToday', EXISTS (SELECT 1 FROM public.venue_member_visits x WHERE x.subscription_id = v_sub.id
+                       AND x.local_date = v_today AND x.undone_at IS NULL),
+    'canLeave', v_sub.status IN ('pending', 'active', 'payment_due', 'grace', 'lapsed', 'paused') AND v_sub.cancel_at IS NULL,
+    'canStay', v_sub.cancel_at IS NOT NULL AND v_sub.status <> 'cancelled' AND v_sub.cancel_requested_by = 'member',
+    'canPause', v_sub.status IN ('active') AND NOT v_sub.pause_at_period_end AND v_sub.cancel_at IS NULL,
+    'canResume', v_sub.status = 'paused' OR v_sub.pause_at_period_end,
+    -- #4490 fix round 1 (B5): the months paid, newest first (the member, and
+    -- staff who may see members; never a stranger: every caller checks first).
+    'payments', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'periodId', pp.id, 'start', pp.period_start, 'end', pp.period_end,
+        'amountMinor', pp.amount_minor, 'currencyCode', pp.currency_code,
+        'paidMinor', CASE WHEN pp.paid_via = 'online' THEN (SELECT NULLIF(sum(a.amount_minor), 0) FROM public.stay_payment_attempts a
+                                                             WHERE a.group_id = pp.group_id AND a.state = 'succeeded') END,
+        'paidAt', pp.paid_at, 'paidVia', pp.paid_via)
+        ORDER BY pp.period_start DESC)
+      FROM public.venue_membership_periods pp
+      WHERE pp.subscription_id = v_sub.id AND pp.status = 'paid'), '[]'::jsonb),
+    'memberPath', '/visit/plan/' || v_sub.id,
+    'version', v_sub.version,
+    'createdAt', v_sub.created_at);
+  IF p_view = 'guest' AND p_qr_pepper IS NOT NULL AND v_sub.status <> 'cancelled' THEN
+    v_result := v_result || jsonb_build_object('pass', jsonb_build_object(
+      'qrPayload', public.issue_4490_member_qr_payload(v_sub.id, v_sub.qr_token_hash, p_qr_pepper),
+      'valid', v_can_enter));
+  END IF;
+  -- #4490 fix 3 (N87): the member's own email, so a booking made as this
+  -- member starts with their name and email filled in (the guest view is
+  -- read only with the member's own token).
+  IF p_view = 'guest' THEN
+    v_result := v_result || jsonb_build_object('memberEmail', v_sub.member_email);
+  END IF;
+  IF p_view = 'host' THEN
+    v_result := v_result || jsonb_build_object(
+      'email', v_sub.member_email,
+      'phone', v_sub.member_phone,
+      'signedIn', v_sub.user_id IS NOT NULL,
+      'periods', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+          'periodId', p.id, 'sequence', p.sequence, 'start', p.period_start, 'end', p.period_end,
+          'amountMinor', p.amount_minor, 'currencyCode', p.currency_code, 'dueAt', p.due_at, 'status', p.status,
+          'paidAt', p.paid_at, 'paidVia', p.paid_via, 'paidMethod', p.paid_method, 'remindersSent', to_jsonb(p.reminder_steps))
+          ORDER BY p.period_start DESC)
+        FROM public.venue_membership_periods p WHERE p.subscription_id = v_sub.id), '[]'::jsonb),
+      'timeline', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+          'type', e.event_type, 'by', e.actor_type, 'at', e.created_at, 'periodId', e.period_id, 'detail', e.detail)
+          ORDER BY e.created_at, e.id)
+        FROM public.venue_membership_events e WHERE e.subscription_id = v_sub.id), '[]'::jsonb),
+      'visits', COALESCE((SELECT jsonb_agg(jsonb_build_object('localDate', x.local_date, 'guests', x.guests,
+          'at', x.created_at, 'undone', x.undone_at IS NOT NULL) ORDER BY x.created_at DESC)
+        FROM (SELECT * FROM public.venue_member_visits WHERE subscription_id = v_sub.id ORDER BY created_at DESC LIMIT 20) x),
+        '[]'::jsonb),
+      'credits', (v_result->'credits') || jsonb_build_object(
+        'ledger', COALESCE((SELECT jsonb_agg(jsonb_build_object('credit', l.credit, 'entry', l.entry, 'amount', l.amount,
+            'at', l.created_at, 'groupId', l.group_id) ORDER BY l.created_at DESC)
+          FROM (SELECT * FROM public.venue_credit_ledger WHERE subscription_id = v_sub.id ORDER BY created_at DESC LIMIT 40) l),
+          '[]'::jsonb)),
+      'canManage', public.issue_4490_user_can_manage_members(v_venue.id, auth.uid()),
+      'canManageMoney', public.issue_4490_can_manage_money(v_venue.id, auth.uid()));
+  END IF;
+  RETURN v_result;
+END;
+$function$;
 
 -- Existing exclusive events that now claim more (a combination or the whole
 -- venue). None are expected: the Host app only ever saved 'shared'.

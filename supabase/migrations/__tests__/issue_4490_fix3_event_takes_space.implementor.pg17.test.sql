@@ -314,6 +314,9 @@ SELECT public.t4490_expect(format($$INSERT INTO public.venue_waitlist (brand_id,
   '23514', 'waitlist_space_not_in_venue', 'Q-2 another venue''s space is refused');
 SELECT public.t4490_reset();
 
+SELECT public.t4490_ok(pg_get_functiondef('public.issue_4490_member_projection(uuid,text,text)'::regprocedure) ~ $re$IF p_view = 'guest' THEN\s+v_result := v_result \|\| jsonb_build_object\('memberEmail', v_sub.member_email\)$re$,
+  'M-1 the member''s own view carries their email (member checkout fills it in)');
+
 SELECT public.t4490_as('44907000-0000-4000-8000-000000000005');
 SELECT public.t4490_expect(format($$SELECT public.issue_4490_set_event_venue(%L, %L, %L, 'exclusive', NULL)$$,
     public.t4490_id('karaoke'), '44907000-0000-4000-9000-0000000000a1', public.t4490_id('lounge')),
