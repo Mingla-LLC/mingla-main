@@ -41,12 +41,14 @@ import {
   inkWash,
   neutralControl,
   neutralHair,
+  paletteIsDark,
   statusOn,
   themeTextAccent,
   type ThemePalette,
 } from "@mingla/offering-rendering/themePalette";
 
 import { color as graphite } from "../../constants/designSystem";
+import { contrastRatio, mixHex, normalizeHex } from "../../utils/buttonAccentContrast";
 import {
   color as surfaceColor,
   materials as surfaceMaterials,
@@ -71,6 +73,27 @@ export type CheckoutColor = Widen<typeof graphite>;
 
 const wash = inkWash;
 
+/** WCAG 1.4.11: a field outline needs 3:1 against the page it sits on. */
+export const CHECKOUT_OUTLINE_MIN_CONTRAST = 3;
+
+/**
+ * #4518 — the outline of a field, a stepper ring or a quiet button, as an
+ * opaque colour that reaches 3:1 on THIS host page. `neutralControl` is one
+ * fixed 34 % wash; on a near-black host page that measured 2.16:1, so a
+ * buyer could not see where the name and email fields were. Here the page's
+ * ink is mixed in until the boundary is met.
+ */
+export function checkoutOutlineFor(palette: ThemePalette): string {
+  const page = normalizeHex(palette.page);
+  if (page === null) return neutralControl(palette);
+  const ink = paletteIsDark(palette) ? "#ffffff" : "#10141f";
+  for (let amount = 0.34; amount < 1; amount += 0.04) {
+    const candidate = mixHex(page, ink, amount);
+    if (contrastRatio(candidate, page) >= CHECKOUT_OUTLINE_MIN_CONTRAST) return candidate;
+  }
+  return ink;
+}
+
 /**
  * The Graphite token set, re-pointed at a host palette. Text accents take the
  * theme's first colour (never the gradient, #1023); status colours come from
@@ -86,7 +109,7 @@ export function checkoutColorFor(palette: ThemePalette): CheckoutColor {
     card2: palette.panelStrong,
     card3: palette.panelStrong,
     line: neutralHair(palette),
-    lineStrong: neutralControl(palette),
+    lineStrong: checkoutOutlineFor(palette),
     text1: palette.primaryText,
     text2: palette.secondaryText,
     text3: palette.tertiaryText,

@@ -24,6 +24,7 @@
  */
 
 import { supabase } from "./supabase";
+import { resolveOfferingBookable } from "./brandCanCollect";
 import type { RecurrenceRule } from "../store/draftEventStore";
 // ORCH-1147 — reuse the SINGLE owner of pg_public_event_tier_pricing (no
 // duplicated RPC / fee math here). The trip + event paths use the same helper.
@@ -350,16 +351,13 @@ function ticketsArePaidOnline(tickets: any[]): boolean {
  * Returns true (bookable) immediately when the offering is FREE. On RPC error
  * fail CLOSED for paid supply; free never reaches this RPC.
  */
-async function resolveBookable(
+function resolveBookable(
   brandId: string,
   isPaid: boolean,
 ): Promise<boolean> {
-  if (!isPaid) return true;
-  const { data, error } = await supabase.rpc("pg_brand_can_collect", {
-    p_brand_id: brandId,
-  });
-  if (error !== null) return false;
-  return data === true;
+  // #4518 — one owner (`brandCanCollect.ts`): a failed read is retried and is
+  // never shown as "the organizer is finishing payment setup".
+  return resolveOfferingBookable(brandId, isPaid);
 }
 
 function parsePriceBasis(raw: unknown): PublicExperiencePriceBasis | undefined {

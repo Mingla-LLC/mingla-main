@@ -7,6 +7,7 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { getNativeAppVersionHeaders } from "./appVersionIdentity";
 import { createTrackedFetch } from "./reloadNetworkFence";
+import { createResilientFetch } from "./resilientFetch";
 
 const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
 
@@ -161,12 +162,30 @@ export const laneEdgeEndpoint: {
  * global fetch is read at call time, exactly like supabase-js's default. On web
  * Metro resolves reloadNetworkFence.web.ts, a plain pass-through.
  */
+/**
+ * #4518 — the fetch every database call on Host web goes through, including
+ * the ones that do not use the client (`laneEdgeInvoke`).
+ */
+export const supabaseFetch = createResilientFetch(() => fetch, {
+  directOrigin: supabaseUrl,
+  enabled:
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    // The second road exists only where the `/_sb` rewrite does.
+    /(^|\.)usemingla\.com$/.test(window.location?.hostname ?? ""),
+});
+
 function withRestartFence<O extends { global: { headers: Record<string, string> } }>(
   options: O,
 ): O & { global: O["global"] & { fetch: typeof fetch } } {
   return {
     ...options,
-    global: { ...options.global, fetch: createTrackedFetch(() => fetch) },
+    global: {
+      ...options.global,
+      // #4518 — on web, a request that cannot reach the database host is
+      // retried through our own origin (`/_sb`). Native: a pass-through.
+      fetch: createTrackedFetch(() => supabaseFetch),
+    },
   };
 }
 

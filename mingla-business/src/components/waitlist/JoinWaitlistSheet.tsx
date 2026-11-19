@@ -12,9 +12,8 @@ import {
   radius as radiusTokens,
   space,
   type,
-  materials,
 } from "../../constants/designSystem";
-import { color, themedStyles } from "../../theme/surfaceTokens";
+import { color, materials, themedStyles } from "../../theme/surfaceTokens";
 import { useJoinWaitlistMutation } from "../../hooks/useJoinWaitlistMutation";
 import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
 import { Button } from "../ui/Button";
