@@ -1603,6 +1603,14 @@ BEGIN
     RETURN jsonb_build_object('outcome', 'invalid');
   END IF;
   v_subject := public.brand_form_link_subject(v_link);
+  -- A code is needed only to see or change an existing answer, or after the
+  -- link's recognition period ends (C2). Otherwise no code is sent; the refusal
+  -- has the same shape as every other one, so nothing is enumerable.
+  IF v_link.expires_at > now()
+     AND (public.brand_form_person_response(v_link.form_id, v_subject->>'kind',
+            (v_subject->>'id')::uuid, v_link.event_id)).id IS NULL THEN
+    RETURN jsonb_build_object('outcome', 'invalid');
+  END IF;
   v_target := public.brand_form_subject_contact(v_subject->>'kind', (v_subject->>'id')::uuid)->>p_channel;
   IF v_target IS NULL THEN
     RETURN jsonb_build_object('outcome', CASE WHEN p_channel = 'email' THEN 'no_email' ELSE 'no_phone' END);
@@ -2008,16 +2016,22 @@ $fn$;
 -- ---------------------------------------------------------------------------
 -- Guests of one page who have not answered: going RSVPs and paid or partly
 -- refunded orders with no response by the person rule (the Responses page's
--- "Not answered" list, counted).
+-- "Not answered" list, counted). One set-based anti-join per kind, the same rule
+-- as brand_form_find_response: the RSVP's or order's own row, else a row of its
+-- holder's signed-in user.
 CREATE FUNCTION public.brand_form_unanswered_count(p_form_id uuid, p_event_id uuid) RETURNS integer
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
   SELECT (SELECT count(*) FROM public.event_rsvps x
            WHERE x.event_id = p_event_id AND x.rsvp_status = 'going'
-             AND (public.brand_form_find_response(p_form_id, 'rsvp', x.id)).id IS NULL)::integer
+             AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses r
+                              WHERE r.form_id = p_form_id
+                                AND (r.rsvp_id = x.id OR (x.user_id IS NOT NULL AND r.user_id = x.user_id))))::integer
        + (SELECT count(*) FROM public.orders o
            WHERE o.event_id = p_event_id AND o.payment_status IN ('paid', 'partial_refund')
-             AND (public.brand_form_find_response(p_form_id, 'order', o.id)).id IS NULL)::integer;
+             AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses r
+                              WHERE r.form_id = p_form_id
+                                AND (r.order_id = o.id OR (o.buyer_user_id IS NOT NULL AND r.user_id = o.buyer_user_id))))::integer;
 $fn$;
 
 -- The link page's one-time code (C2, decision 12): the challenge behind a code
@@ -2124,10 +2138,12 @@ $fn$;
 
 -- The roster export's answer columns (§4.9: "the existing roster CSV plus one
 -- column per question and version"). Service role: the export worker calls it for
--- an offering_guest_roster job, whose rank gate (event_manager+, C5) already ran
--- when the job was created. The page's active form (live or closed); none: no
--- columns. A person's answer is found from their RSVP, then their order, at this
--- page, by the one person rule.
+-- an offering_guest_roster job, whose rank gate (brand_admin+, biz_export_brand_people
+-- in 20270326001858) already ran when the job was created. That roster RPC is not
+-- widened (C5): event managers export a page's answers through the answers-only
+-- feed, biz_brand_form_responses_export (event_manager+). The page's active form
+-- (live or closed); none: no columns. A person's answer is found from their RSVP,
+-- then their order, at this page, by the one person rule.
 CREATE FUNCTION public.brand_form_roster_export_answers(p_job_id uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$

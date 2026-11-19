@@ -39,6 +39,15 @@
 -- T-CODE    8    the address throttle counts form codes only; the per-phone limit applies.
 -- T-NOPAGE  6    a signed-in submit with no page carrying the form is refused.
 -- T-PUBVIS / T-MINE 10  page visibility on the public read; who gets a form's questions.
+-- Wave 3 fix wave ("Wave 3 review (conductor gate): NEEDS WORK" on #4514):
+-- T-FIX-RANK   1  an event manager runs the answers-only export; the roster export stays brand_admin.
+-- T-FIX-BEGIN  5  no code for a first answer inside recognition (the same refusal as an unknown
+--                 token); past recognition one starts; open links refused; per-link and
+--                 per-contact-per-day send limits (per-address and per-phone: T-CODE).
+-- T-FIX-EXPIRY / T-FIX-GRANT  an expired code settles nothing; the 30-minute grant ends.
+-- T-FIX-COUNT  8  the set-based unanswered count equals the per-guest rule on every pair.
+-- Fix-wave fails-on-revert: deleting the recognition check in brand_form_code_begin fails
+-- T-FIX-BEGIN-5 (code started for Ike).
 --
 -- MINGLA-INVARIANT: I-4514-ONE-PERSON-ONE-RESPONSE | issue #4514 | one person has one response per form across link, RSVP, order and sign-in, and a link edit of any existing answer needs the one-time code (T-PERSON here; helper in the migration).
 -- MINGLA-INVARIANT: I-4514-FORM-RESPONSES-BRAND-SCOPED | issue #4514 | a host of another brand, anon and a signed-in guest read no brand form responses through any RPC or table (T-GRANT, T-RESP here).
@@ -1226,6 +1235,10 @@ BEGIN
   v := public.brand_form_link_issue(v_p, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rr));
   v_tok_r := v->>'token';
   RESET ROLE;
+  -- Fix wave: a code is sent only for an existing answer or after recognition ends,
+  -- so these two unanswered people's links are past recognition.
+  UPDATE public.brand_form_links SET expires_at = now() - interval '1 minute'
+   WHERE id = v_link_u OR id = (v->>'linkId')::uuid;
   -- Ten add-contact challenges from the same address (another purpose) in the last 10 minutes.
   INSERT INTO public.contact_challenges (purpose, channel, user_id, target_value, code_hash, ip_hash)
   SELECT 'add_contact', 'email', v_g1, 'f4514-other' || g || '@example.test', repeat('d', 64), v_ip FROM generate_series(1, 10) g;
@@ -1552,6 +1565,149 @@ BEGIN
   v_r := pg_temp.f_err(format($$SELECT public.brand_form_roster_export_answers(%L)$$, v_job));
   RESET ROLE;
   PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-W3-EXPORT even the brand owner cannot call the export feed directly');
+END
+$t$;
+
+-- ═══ Wave 3 fix wave (conductor review on #4514) ═════════════════════════════
+-- T-FIX-RANK  1  C5: an event manager runs the answers-only export; the roster export
+--                 (biz_export_brand_people, brand_admin+) stays refused to them, so the
+--                 Responses Export never rides it; a marketing manager cannot export.
+DO $t$
+DECLARE
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v jsonb; v_r text;
+BEGIN
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_responses_export(v_w, v_e10);
+  v_r := pg_temp.f_err(format($$SELECT public.biz_export_brand_people('offering_guest_roster', %L)$$, v_e10));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(jsonb_array_length(v->'rows') = 1 AND jsonb_array_length(v->'columns') > 0,
+    'T-FIX-RANK an event manager runs the answers-only export (' || jsonb_array_length(v->'rows') || ' row)');
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:brand_people_export_forbidden%',
+    'T-FIX-RANK the roster export is still refused to an event manager, no roster RPC widened (' || v_r || ')');
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.f_err(format($$SELECT public.biz_brand_form_responses_export(%L, %L)$$, v_w, v_e10));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-FIX-RANK a marketing manager cannot export answers (' || v_r || ')');
+END
+$t$;
+
+-- T-FIX-BEGIN  5 + gaps: no code for a first answer inside recognition (same refusal as an
+--              unknown token, no challenge row); past recognition a code starts; an open link
+--              is refused; the per-link (3 per 10 minutes) and per-contact (20 per day) limits;
+--              an expired challenge settles nothing; the 30-minute grant ends.
+DO $t$
+DECLARE
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v_tok_w text := (SELECT val FROM f4514t WHERE k = 'tok_w');
+  v_link_w uuid := (SELECT l.id FROM public.brand_form_links l WHERE l.token_hash = public.brand_form_token_hash((SELECT val FROM f4514t WHERE k = 'tok_w')));
+  v jsonb; v_unknown jsonb; v_tok_i text; v_link_i uuid; v_tok_v text; v_link_v uuid; v_tok_open text := repeat('ab', 20);
+  v_n integer; i integer; v_old uuid := gen_random_uuid(); v_fresh uuid := gen_random_uuid(); v_exp uuid := gen_random_uuid();
+BEGIN
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_link_issue(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'ri')));
+  v_tok_i := v->>'token'; v_link_i := (v->>'linkId')::uuid;
+  v := public.brand_form_link_issue(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'rv')));
+  v_tok_v := v->>'token'; v_link_v := (v->>'linkId')::uuid;
+  SELECT count(*) INTO v_n FROM public.contact_challenges;
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_i, 'email', repeat('e', 64), repeat('1', 64));
+  v_unknown := public.brand_form_code_begin(gen_random_uuid(), repeat('0', 64), 'email', repeat('e', 64), repeat('1', 64));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v = v_unknown AND v = jsonb_build_object('outcome', 'invalid')
+      AND (SELECT count(*) FROM public.contact_challenges) = v_n,
+    'T-FIX-BEGIN-5 a first answer inside recognition gets no code, refused exactly like an unknown token (' || v::text || ')');
+  -- Past recognition the same person can get a code; then the per-link limit (3 per 10 minutes).
+  UPDATE public.brand_form_links SET expires_at = now() - interval '1 minute' WHERE id IN (v_link_i, v_link_v);
+  SET LOCAL ROLE service_role;
+  FOR i IN 1..3 LOOP
+    v := public.brand_form_code_begin(gen_random_uuid(), v_tok_i, 'email', repeat('e', 64), repeat(i::text, 64));
+    PERFORM pg_temp.f_assert(v->>'outcome' = 'started', 'T-FIX-BEGIN past recognition code ' || i || ' of 3 starts');
+  END LOOP;
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_i, 'email', repeat('e', 64), repeat('4', 64));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'rate_limited', 'T-FIX-BEGIN-LINK a 4th code for one link in 10 minutes is limited');
+  RESET ROLE;
+  -- Per contact per day: 19 older form codes to Val's address (outside the 10-minute windows).
+  INSERT INTO public.contact_challenges (purpose, channel, target_value, code_hash, ip_hash, brand_form_link_id, created_at)
+  SELECT 'brand_form_access', 'email', 'f4514-v@example.test', repeat('d', 64), NULL, v_link_v, now() - interval '2 hours'
+    FROM generate_series(1, 19);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_v, 'email', repeat('e', 64), repeat('5', 64));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'started', 'T-FIX-BEGIN-CONTACT the 20th code to one contact in a day starts');
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_v, 'email', repeat('e', 64), repeat('6', 64));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'rate_limited', 'T-FIX-BEGIN-CONTACT the 21st code to one contact in a day is limited');
+  RESET ROLE;
+  -- A link that is not for a person (kind 'open') never starts a code.
+  INSERT INTO public.brand_form_links (form_id, event_id, kind, token_hash, expires_at)
+  VALUES (v_w, v_e10, 'open', public.brand_form_token_hash(v_tok_open), now() - interval '1 day');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_begin(gen_random_uuid(), v_tok_open, 'email', repeat('e', 64), repeat('7', 64));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v = jsonb_build_object('outcome', 'invalid'), 'T-FIX-BEGIN-OPEN an open link is refused (' || v::text || ')');
+  -- Challenge expiry: a code past its 10 minutes settles nothing and opens nothing.
+  INSERT INTO public.contact_challenges (id, purpose, channel, target_value, code_hash, brand_form_link_id, created_at, expires_at)
+  VALUES (v_exp, 'brand_form_access', 'email', 'f4514-w@example.test', repeat('d', 64), v_link_w,
+          now() - interval '11 minutes', now() - interval '1 minute');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_code_settle(v_exp, v_tok_w, repeat('d', 64), false);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'expired' AND (SELECT consumed_at FROM public.contact_challenges WHERE id = v_exp) IS NULL,
+    'T-FIX-EXPIRY a code past 10 minutes is expired, even with the right code (' || v::text || ')');
+  -- The grant lasts 30 minutes from the settle.
+  INSERT INTO public.contact_challenges (id, purpose, channel, target_value, code_hash, brand_form_link_id, created_at, expires_at, consumed_at)
+  VALUES (v_old, 'brand_form_access', 'email', 'f4514-w@example.test', repeat('d', 64), v_link_w,
+          now() - interval '45 minutes', now() - interval '35 minutes', now() - interval '31 minutes'),
+         (v_fresh, 'brand_form_access', 'email', 'f4514-w@example.test', repeat('d', 64), v_link_w,
+          now() - interval '35 minutes', now() - interval '25 minutes', now() - interval '29 minutes');
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v := public.brand_form_my_response(v_w, NULL, v_tok_w, v_old);
+  PERFORM pg_temp.f_assert(v->>'state' = 'code_required' AND NOT (v ? 'response'),
+    'T-FIX-GRANT a grant settled 31 minutes ago shows nothing (' || (v->>'state') || ')');
+  v := public.brand_form_my_response(v_w, NULL, v_tok_w, v_fresh);
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered', 'T-FIX-GRANT a grant settled 29 minutes ago still opens the answer');
+  RESET ROLE;
+  SET LOCAL ROLE service_role;
+  v := to_jsonb(pg_temp.f_err(format($$SELECT public.brand_form_submit_core(%L::jsonb)$$, jsonb_build_object('formId', v_w,
+         'answers', jsonb_build_object('11111111-1111-4111-8111-111111111111', 'no'), 'expectedEditCount', 0,
+         'credential', jsonb_build_object('kind', 'link', 'token', v_tok_w, 'challengeId', v_old)))));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v #>> '{}' LIKE '42501:code_required%', 'T-FIX-GRANT an ended grant cannot change the answer (' || (v #>> '{}') || ')');
+END
+$t$;
+
+-- T-FIX-COUNT  8: the set-based unanswered count equals the old per-guest rule
+--              (brand_form_find_response per RSVP and order) for every form and page here.
+DO $t$
+DECLARE
+  v_pairs integer; v_bad integer; v_user_matches integer;
+BEGIN
+  WITH pairs AS (
+    SELECT f.id AS form_id, e.id AS event_id
+      FROM public.brand_forms f JOIN public.events e ON e.brand_id = f.brand_id
+     WHERE e.slug LIKE 'f4514-%'
+  ), old AS (
+    SELECT p.form_id, p.event_id,
+           (SELECT count(*) FROM public.event_rsvps x
+             WHERE x.event_id = p.event_id AND x.rsvp_status = 'going'
+               AND (public.brand_form_find_response(p.form_id, 'rsvp', x.id)).id IS NULL)::integer
+         + (SELECT count(*) FROM public.orders o
+             WHERE o.event_id = p.event_id AND o.payment_status IN ('paid', 'partial_refund')
+               AND (public.brand_form_find_response(p.form_id, 'order', o.id)).id IS NULL)::integer AS n
+      FROM pairs p
+  )
+  SELECT count(*), count(*) FILTER (WHERE public.brand_form_unanswered_count(o.form_id, o.event_id) <> o.n)
+    INTO v_pairs, v_bad FROM old o;
+  -- At least one guest here is matched through their signed-in user's row.
+  SELECT count(*) INTO v_user_matches
+    FROM public.event_rsvps x JOIN public.brand_form_responses r ON r.user_id = x.user_id AND r.rsvp_id IS NULL
+   WHERE x.user_id IS NOT NULL;
+  PERFORM pg_temp.f_assert(v_pairs > 10 AND v_bad = 0,
+    'T-FIX-COUNT the anti-join equals the per-guest rule on ' || v_pairs || ' form and page pairs (' || v_bad || ' differ)');
+  PERFORM pg_temp.f_assert(v_user_matches > 0, 'T-FIX-COUNT the pairs include a guest answered through their signed-in row');
 END
 $t$;
 
