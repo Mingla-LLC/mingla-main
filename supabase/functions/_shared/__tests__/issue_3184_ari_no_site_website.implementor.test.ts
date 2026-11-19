@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v39"); // #4453 PR 2 booking lock website rules on top of #4238 W5 v38
+    assertEquals(PROMPT_VERSION, "v40"); // #4453 Website workspace rules and tools on top of v39
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

@@ -200,6 +200,8 @@ import {
 } from "../invites/wizardInvitePublishGate";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
+import { unsavedWork } from "../../hooks/useUnsavedChangesGuard";
+import { saveTripWizardBeforeBrandSwitch } from "../../utils/tripWizardBrandSwitch";
 import type {
   WizardInvitePlan,
   WizardInviteQuote,
@@ -1958,6 +1960,33 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     waitForSaveInFlight,
     autosaveCurrentStep,
   ]);
+
+  // #4453 — the brand switcher asks this before it switches (see
+  // saveTripWizardBeforeBrandSwitch). Registered once; it always reads the
+  // latest drafts and save queue.
+  const brandSwitchFlushRef = useRef<() => Promise<boolean>>(async () => true);
+  brandSwitchFlushRef.current = (): Promise<boolean> =>
+    saveTripWizardBeforeBrandSwitch({
+      conflicted: () => saveQueue.isConflicted(),
+      busy: () => saveQueue.isBusy(),
+      waitForSave: waitForSaveInFlight,
+      // As Close reads it: only a new trip nobody has typed into has nothing
+      // to save. An existing draft is always saved (Close does the same), so
+      // a stale copy of the trip can never make typed text look "unchanged".
+      nothingToSave: () =>
+        isCreateMode &&
+        dirtyTierIdsRef.current.size === 0 &&
+        isTripWizardPristine(step1Draft, daysDraft, inclusionsDraft, step4Draft, step5Draft, trip),
+      save: autosaveCurrentStep,
+    });
+  useEffect(() => {
+    const flush = (): Promise<boolean> => brandSwitchFlushRef.current();
+    const flushers = (unsavedWork.flushers ??= new Set());
+    flushers.add(flush);
+    return (): void => {
+      flushers.delete(flush);
+    };
+  }, []);
 
   const handleCloseDiscardDialog = useCallback((): void => {
     if (isDiscarding) return;

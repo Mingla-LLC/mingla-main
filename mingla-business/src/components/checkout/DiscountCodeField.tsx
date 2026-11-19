@@ -15,7 +15,8 @@ import {
   type ThemePalette,
 } from "@mingla/offering-rendering/themePalette";
 
-import { radius, color, space } from "../../constants/designSystem";
+import { radius, space } from "../../constants/designSystem";
+import { checkoutStyles as themedStyles, color } from "./checkoutTheme";
 import { useCart, type TicketQuoteStatus } from "./CartContext";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 
@@ -366,10 +367,8 @@ export const CheckoutDiscountCodeField: React.FC<
 // #4304 — dark field for the dark checkout bar / summary (no hard-coded
 // white): raised surface, 10% white hairline, orange focus ring, green
 // applied chip.
-const SURFACE = color.card;
-const HAIRLINE = color.lineStrong;
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   wrap: {
     gap: space[2],
     paddingBottom: space[2] + space[1],
@@ -394,11 +393,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     borderWidth: 1,
-    borderColor: HAIRLINE,
+    borderColor: color.lineStrong,
     borderRadius: radius.sm + 2,
     paddingHorizontal: space[2] + space[1],
     color: color.text1,
-    backgroundColor: SURFACE,
+    backgroundColor: color.card,
     fontSize: 15,
     fontWeight: "600",
     letterSpacing: 1,
@@ -436,4 +435,4 @@ const styles = StyleSheet.create({
   removeText: { color: color.text2, fontWeight: "700" },
   errorText: { color: color.errorText, fontSize: 13 },
   noticeText: { color: color.warning, fontSize: 13 },
-});
+}));

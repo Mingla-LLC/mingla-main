@@ -289,9 +289,10 @@ export default function AccountTab(): React.ReactElement {
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
+        {/* #4453 — Account is above brand level (it lists every brand): no brand name at the
+            top. The brands sheet (create, continue setup, delete) opens from "Your brands". */}
         <TopBar
-          leftKind="brand"
-          onBrandTap={handleOpenSwitcher}
+          leftKind="none"
           extraRightSlot={
             // #4420 B5 — phone: Create is the centre BottomNav button, so the
             // tab-root trailing slot is only chat, bell and profile. Desktop
@@ -364,10 +365,19 @@ export default function AccountTab(): React.ReactElement {
               ) : brandList.status === "empty" ? (
                 <GlassCard variant="base" padding={space[4]}>
                   <Text style={styles.body}>
-                    Create your first brand from the brand switcher.
+                    You have no brands yet. Create your first one below.
                   </Text>
                 </GlassCard>
               ) : null}
+              <GlassCard variant="base" padding={0}>
+                <ListRow
+                  onPress={handleOpenSwitcher}
+                  accessibilityLabel="Add or manage brands"
+                  title="Add or manage brands"
+                  subtitle="Create a brand, continue setting one up, or delete one"
+                  testID="account-manage-brands"
+                />
+              </GlassCard>
             </View>
           }
           aside={

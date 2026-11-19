@@ -88,6 +88,20 @@ function websiteTarget(brandId: string, section: unknown): BusinessNavTarget {
     ? `/brand/${brandId}/website/${section}`
     : `/brand/${brandId}/website`;
 }
+/**
+ * #4453 — "your website change is ready" (business.website_request_ready):
+ * the Website workspace, open on that request. Only a well-formed ticket id
+ * is carried into the address; anything else opens the workspace itself.
+ */
+function websiteRequestQuery(ticketId: unknown): string {
+  let id = String(ticketId);
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    // A malformed value is not a ticket id: the check below drops it.
+  }
+  return UUID_RE.test(id) ? `?request=${id}` : "";
+}
 /** #4111 — the three team-side customer enquiry categories. */
 const BRAND_ENQUIRY_PUSH_TYPES = new Set([
   "business.brand_enquiry_new",
@@ -143,7 +157,13 @@ export function parseBusinessDeepLink(
       if (sub === "listing") return `/brand/${brandId}/listing`;
       // #2829 W9r — mingla-business://brand/{id}/website[/{section}]
       // (business.site_admin_requested). An unknown section opens Overview.
-      if (sub === "website") return websiteTarget(brandId, rest[2]?.split("?", 1)[0]);
+      // #4453 — mingla-business://brand/{id}/website?request={ticketId}
+      // (business.website_request_ready) keeps its request.
+      if (sub === "website") {
+        // Only the workspace itself (no section) carries a request.
+        const request = rest.length === 2 ? /(?:^|&)request=([^&]*)/.exec(query ?? "")?.[1] : undefined;
+        return websiteTarget(brandId, rest[2]?.split("?", 1)[0]) + websiteRequestQuery(request);
+      }
       if (sub === "discounts") {
         return `/brand/${brandId}/discounts${query ? `?${query}` : ""}`;
       }
@@ -325,6 +345,15 @@ export function resolveBusinessNavTarget(
     case "business.site_admin_requested":
     case "business.site_plan_reminder":
       return brandId ? websiteTarget(brandId, data.section) : ACCOUNT_FALLBACK;
+
+    // #4453 — the Mingla team finished a website change the owner asked for:
+    // the Website workspace, on that request (payload: ticket_id, brand_id).
+    case "business.website_request_ready": {
+      const requestBrandId = String(data.brand_id ?? brandId);
+      return UUID_RE.test(requestBrandId)
+        ? websiteTarget(requestBrandId, undefined) + websiteRequestQuery(data.ticketId || data.ticket_id || data.relatedId)
+        : ACCOUNT_FALLBACK;
+    }
 
     case "business.community_announcement": {
       const announcementId = (data.announcementId ?? data.announcement_id) as

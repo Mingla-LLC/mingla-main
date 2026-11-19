@@ -31,6 +31,7 @@ import {
 } from "../../src/utils/deckReadinessRoutes";
 import { formatLeaveChangedBody } from "../../src/components/venue/venueLeaveContract";
 import { useVenueSuiteStore } from "../../src/store/venueSuiteStore";
+import { useUnsavedChangesGuard } from "../../src/hooks/useUnsavedChangesGuard";
 
 /** Lazy ConfirmDialog — pulls reanimated; keep node/web suites green. */
 const LazyConfirmDialog = React.lazy(async () => {
@@ -120,6 +121,11 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
   const handleBack = useCallback((): void => {
     requestLeave(navigateBack);
   }, [navigateBack, requestLeave]);
+  // #4453 — unsaved deck changes hold a brand switch. The setup says when it
+  // has any (the leave handle is a ref, which this route cannot react to).
+  // Back, Android back and reload keep their own paths (beforeRemove below).
+  const [deckDirty, setDeckDirty] = useState(false);
+  useUnsavedChangesGuard({ dirty: deckDirty, onRequestLeave: handleBack, hardwareBack: false });
 
   useEffect(() => {
     const unsubscribe = navigation.addListener(
@@ -279,6 +285,7 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
         initialGallery={contextQuery.data.gallery_urls}
         onDone={handleSaved}
         leaveHandleRef={leaveHandleRef}
+        onDirtyChange={setDeckDirty}
       />
       {leaveOpen ? (
         <React.Suspense fallback={null}>

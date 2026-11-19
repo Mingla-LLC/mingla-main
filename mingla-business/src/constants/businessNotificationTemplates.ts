@@ -735,6 +735,9 @@ export interface NotificationVisual {
   readonly severity: NotificationSeverity;
 }
 
+/** #4453 — sent by issue_4453_website_request_ready ("Ready for review" on the Support desk). */
+export const WEBSITE_REQUEST_READY_TYPE = "business.website_request_ready";
+
 const STRIPE_RISK_TYPES = new Set<string>([
   "stripe.kyc_deadline_warning_7d",
   "stripe.kyc_deadline_warning_3d",
@@ -749,6 +752,13 @@ export function resolveNotificationVisual(type: string): NotificationVisual {
   if (isBusinessNotificationType(type)) {
     const t = BUSINESS_NOTIFICATION_TEMPLATES[type];
     return { family: t.family, icon: t.icon, severity: t.severity };
+  }
+  // #4453 — "your website change is ready" is a transactional notice from the
+  // Mingla team (no settings toggle, so it is not in the catalog above; its
+  // words are written by the server). In the bell it reads as a team message
+  // with good news, not the neutral Money fallback.
+  if (type === WEBSITE_REQUEST_READY_TYPE) {
+    return { family: "team", icon: "check", severity: "info" };
   }
   // stripe.reactivation_complete = positive Money-ish info.
   if (type === "stripe.reactivation_complete") {

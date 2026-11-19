@@ -82,6 +82,8 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   // #4453 milestone 7 — the design brief read asserts the same brand
   // authority inline (assertAgentReadBrand) before Core reauthorizes.
   "get_site_design_brief",
+  // #4453 Website workspace — the snapshot read asserts brand authority inline.
+  "get_site_workspace",
 ]);
 
 export interface AccessibleAgentBrand {

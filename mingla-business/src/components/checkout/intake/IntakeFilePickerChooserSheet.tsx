@@ -28,10 +28,10 @@ import * as DocumentPicker from "expo-document-picker";
 
 import {
   radius,
-  color,
   space,
   type,
 } from "../../../constants/designSystem";
+import { color, themedStyles } from "../../../theme/surfaceTokens";
 import { Icon } from "../../ui/Icon";
 import type { IconName } from "../../ui/Icon";
 import {
@@ -278,7 +278,7 @@ const ChooserRow: React.FC<ChooserRowProps> = ({ label, icon, onPress }) => (
   </Pressable>
 );
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     paddingTop: space[1],
     gap: space[2],
@@ -352,6 +352,6 @@ const styles = StyleSheet.create({
     color: color.danger,
     paddingHorizontal: space[2],
   },
-});
+}));
 
 export default IntakeFilePickerChooserSheet;

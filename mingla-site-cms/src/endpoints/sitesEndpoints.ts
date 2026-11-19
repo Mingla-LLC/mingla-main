@@ -67,6 +67,7 @@ import {
 } from "../lib/pageTree";
 import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
+import { buildPreviewSections, MAX_PREVIEW_SECTIONS_BYTES, previewSectionsKey } from "../contracts/generated/previewSections.ts";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
 import { actionScopeFromCore, coreSendsBookingIdentity, OutboundActionLinkError } from "../lib/bookingLock";
 import { BOOKING_LINK_UNVERIFIED_MESSAGE, OUTBOUND_ACTION_LINK_MESSAGE, UNREVIEWED_SECTIONS_MESSAGE } from "../contracts/generated/publishChecks.ts";
@@ -1474,6 +1475,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
           evidence: parseAriEvidence(body.evidence, brandId),
           designPass: parseSignedDesignPass(body.design_pass),
           addPage: body.add_page === true,
+          // #4453 website workspace — a repeated step (same operation id) answers with its first result.
+          operationId: typeof envelope.operation_id === "string" ? envelope.operation_id : null,
         });
         return json({ ok: true, data });
       } catch (error) {
@@ -1676,6 +1679,31 @@ function escapeHtml(value: unknown): string {
  */
 export const PREVIEW_PUBLICATION_PREFIX = "preview-";
 
+/**
+ * #4453 website workspace (build contract D) — the section list of a private
+ * preview: which Studio section drew each block, page by page, so the owner
+ * can click a section of the live draft. Stored BESIDE the preview artifact
+ * (never inside it, and only ever for a `preview-` artifact: a publish has no
+ * such object and its bytes do not change). It is advisory: when it cannot be
+ * written the preview still opens, just without clickable sections.
+ */
+export async function storePreviewSections(
+  built: { artifactKey: string; artifactDigest: string; sectionIds: ReadonlyArray<{ path: string; ids: readonly string[] }> },
+  write: typeof writeObject = writeObject,
+): Promise<boolean> {
+  const key = previewSectionsKey(built.artifactKey);
+  if (!key) return false;
+  try {
+    const body = JSON.stringify(buildPreviewSections(built.artifactDigest, built.sectionIds));
+    const bytes = new TextEncoder().encode(body);
+    if (bytes.byteLength > MAX_PREVIEW_SECTIONS_BYTES) return false;
+    await write(cmsConfig().artifactBucket, key, bytes, "application/json");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function previewDraft(req: PayloadRequest): Promise<Response> {
   try {
     const url = new URL(req.url || "http://local");
@@ -1791,6 +1819,7 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       // #4453 milestone 11 — the owner's preview keeps Draft-by-Ari pages (disabled, marked); share links drop them (N10).
       includeAriDrafts: true,
     });
+    await storePreviewSections(built);
     // #2829 W10 — this is now the site's newest preview (private share links show it).
     await reportPreviewBuilt(grant.site_id, built.artifactKey);
     // #2829 — a preview is shown on the site's OWN address (the runtime

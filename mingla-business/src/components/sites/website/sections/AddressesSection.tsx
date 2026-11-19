@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
+import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard";
 import { Banner, Card, CardTitle, CheckCircle, Chip, Hint, ListBox, MiniButton, Row, SectionHead, Segmented, Skeleton, Spinner, WButton, ui } from "../ui";
 import { ConfirmDialog } from "../../../ui/ConfirmDialog";
 import {
@@ -46,6 +47,12 @@ export function AddressesSection(): React.ReactElement {
   const primary = useSetPrimaryBrandSiteDomain(brandId, siteId);
   const detach = useDetachBrandSiteDomain(brandId, siteId);
   const [domain, setDomain] = useState("");
+  // #4453 — a domain typed and not yet added holds a brand switch.
+  useUnsavedChangesGuard({
+    dirty: domain.trim() !== "",
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const [www, setWww] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | { kind: "main" | "disconnect"; host: BrandSiteDomainHost }>(null);
   const canManage = domains.data?.can_manage === true;

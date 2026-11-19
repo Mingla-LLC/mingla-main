@@ -1,5 +1,6 @@
 import type { CollectionBeforeChangeHook, Field } from "payload";
 import {
+  REVIEW_STAMP_SOURCES,
   UNREVIEWED_SECTIONS,
   unreviewedPages,
   type BlockReviewStamp,
@@ -22,6 +23,16 @@ import { editorCoreUserId } from "../collections/SiteContent";
  *   - Any other signed Core write (Ari with the flag off): stamps are kept.
  *   - A person's own Studio write: a block they changed is reviewed by them
  *     (saving a section in Studio reviews it); an unchanged block keeps its stamp.
+ *
+ * #4453 website workspace (build contract A, C):
+ *   - `minglaOwnerEdit` (a signed owner edit from the Website workspace): a
+ *     Draft section the person changed is reviewed, source "person" (a person
+ *     changed it). A section the person ADDED starts Draft, source "person":
+ *     it holds starter words until they write their own.
+ *   - `minglaRestoreStamps` (undo / redo): each section takes the stamp it had
+ *     in the snapshot being written back, nothing is re-stamped.
+ *   - The source "team" (a section the Mingla team built) reads and keeps like
+ *     any other stamp; who sets it is the team-request work, not this hook.
  */
 
 type AnyDoc = Record<string, unknown>;
@@ -55,7 +66,7 @@ export function isReviewStamp(value: unknown): value is BlockReviewStamp {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const stamp = value as AnyDoc;
   return (stamp.state === "draft" || stamp.state === "reviewed") &&
-    (stamp.source === "ari" || stamp.source === "composer" || stamp.source === "person") &&
+    (REVIEW_STAMP_SOURCES as readonly unknown[]).includes(stamp.source) &&
     typeof stamp.at === "string" && (stamp.by === null || typeof stamp.by === "string");
 }
 
@@ -68,6 +79,10 @@ export type ReviewContext = {
   now: string;
   /** A signed Core write (Ari's path, Build, "Looks right"): never reviews by saving. */
   signed?: boolean;
+  /** #4453 workspace — a signed edit the owner made by hand in the Website workspace. */
+  ownerEdit?: boolean;
+  /** #4453 workspace — undo / redo: keep the stamps the snapshot carries. */
+  restore?: boolean;
 };
 
 /** The blocks to store, each with the stamp it is owed (pure; the hook below calls it). */
@@ -75,6 +90,7 @@ export function stampBlocks(next: readonly AnyDoc[], previous: readonly AnyDoc[]
   const before = new Map<string, AnyDoc>();
   for (const block of previous) if (typeof block.id === "string") before.set(block.id, block);
   return next.map((raw) => {
+    if (ctx.restore) return { ...raw, review: isReviewStamp(raw.review) ? raw.review : null };
     const { review: _ignored, ...block } = raw;
     const old = typeof block.id === "string" ? before.get(block.id) : undefined;
     const kept = old && isReviewStamp(old.review) ? old.review : null;
@@ -82,6 +98,12 @@ export function stampBlocks(next: readonly AnyDoc[], previous: readonly AnyDoc[]
     let stamp: BlockReviewStamp | null = kept;
     if (ctx.source && changed) {
       stamp = { state: "draft", source: ctx.source, at: ctx.now, by: null };
+    } else if (ctx.ownerEdit && !old) {
+      // The owner added this section: starter words, theirs to read before publishing.
+      stamp = { state: "draft", source: "person", at: ctx.now, by: null };
+    } else if (ctx.ownerEdit && changed && kept?.state === "draft") {
+      // The owner changed a Draft section by hand: a person changed it.
+      stamp = { state: "reviewed", source: "person", at: ctx.now, by: ctx.editor };
     } else if (!ctx.source && !ctx.signed && changed && kept?.state === "draft") {
       // A person saved this section in Studio: that reviews it.
       stamp = { state: "reviewed", source: kept.source, at: ctx.now, by: ctx.editor };
@@ -113,6 +135,8 @@ export const stampBlockReview: CollectionBeforeChangeHook = ({ data, originalDoc
       now: new Date().toISOString(),
       // #4453 — with the flag off Ari's write carries no source: it keeps the stamp, never reviews.
       signed,
+      ownerEdit: signed && !source && req.context?.minglaOwnerEdit === true,
+      restore: signed && req.context?.minglaRestoreStamps === true,
     }),
   };
 };

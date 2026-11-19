@@ -190,6 +190,9 @@ const BOUNDARY: Record<string, () => unknown> = {
     readTripRevision: async () => "revision-3801",
   }),
   // Issue #3801 — REAL: the one-save-at-a-time queue is pure.
+  // #4453 — the wizard registers its step save with the brand switcher: both real.
+  useUnsavedChangesGuard: () => jest.requireActual("../../../hooks/useUnsavedChangesGuard"),
+  tripWizardBrandSwitch: () => jest.requireActual("../../../utils/tripWizardBrandSwitch"),
   tripSaveQueue: () => jest.requireActual("../../../utils/tripSaveQueue"),
   businessEvents: () => ({ setEventGuestPrivacy: asyncNoop }),
   // issue #3827 going-box — the wizard's extras copy + error matcher (pure; real module).

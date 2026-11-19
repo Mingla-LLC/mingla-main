@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4453",
+  "suite": {
+    "id": "issue-4453-preview-sections-reader-policy",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "scripts/sites/bootstrap-sites-cms.sql",
+      "packages/site-contracts/src/previewSections.ts",
+      "scripts/sites/__tests__/issue_4453_preview_sections_reader_policy.test.mjs"
+    ],
+    "steps": [
+      {
+        "name": "Runtime storage reader may read a preview section list in the contract grammar and nothing near it",
+        "cwd": "scripts/sites",
+        "run": "node --test __tests__/issue_4453_preview_sections_reader_policy.test.mjs",
+        "commandId": "assert:issue-4453-preview-sections-reader-policy:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test __tests__/issue_4453_preview_sections_reader_policy.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4453",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "scripts/sites",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "scripts/sites/__tests__/issue_4453_preview_sections_reader_policy.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 2,
+      "p95": 5,
+      "evidence": "Local targeted run 2026-11-19"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell runs the reviewed node:test file directly; self-registering suite, no workflow edit.",
+    "timeoutSeconds": 60
+  }
+}

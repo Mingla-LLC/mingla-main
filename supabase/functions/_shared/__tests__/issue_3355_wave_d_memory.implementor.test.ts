@@ -406,7 +406,7 @@ Deno.test("D1: agent-chat reads memory as the caller into <user_data>, not into 
   const memory = read("supabase/functions/_shared/ariMemory.ts");
   assert(!/service_role|serviceClient|SERVICE_ROLE/.test(memory));
   // The prompt teaches the tool and the data's meaning (v31).
-  assertEquals(PROMPT_VERSION, "v39"); // #4453 booking lock on top of #4238 W5 v38
+  assertEquals(PROMPT_VERSION, "v40"); // #4453 Website workspace rules and tools on top of v39
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assertMatch(prompt, /11\. Memory: .*remember_note/);
   assertMatch(

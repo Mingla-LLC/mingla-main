@@ -27,6 +27,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -89,6 +90,12 @@ export const EventTicketCheckoutAccessCard: React.FC<
 > = ({ eventId, testID = "issue-2101-eligible-buyers-card", embedded = false }) => {
   const access = useEventTicketCheckoutAccess(eventId);
   const [username, setUsername] = useState<string>("");
+  // #4453 — a username typed and not yet added holds a brand switch.
+  useUnsavedChangesGuard({
+    dirty: username.trim() !== "",
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const [pendingRemoval, setPendingRemoval] = useState<string | null>(null);
   const [pendingMode, setPendingMode] = useState<
     "unrestricted" | "named_buyers" | null

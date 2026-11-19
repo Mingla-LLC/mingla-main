@@ -27,7 +27,7 @@ import { AccessibilityInfo, Platform, StyleSheet, useWindowDimensions, View } fr
 import type { StyleProp, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
 
-import { materials } from "../../constants/designSystem";
+import { materials } from "../../theme/surfaceTokens";
 import type { MaterialKind, MaterialRecipe } from "../../constants/designSystem";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
 

@@ -49,8 +49,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { space, materials } from "../../../src/constants/designSystem";
-import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
+import { space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
