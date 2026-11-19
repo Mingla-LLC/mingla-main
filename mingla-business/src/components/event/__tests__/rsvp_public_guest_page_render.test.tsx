@@ -404,12 +404,22 @@ describe("the momentum card", () => {
 // [#4508] plus-ones no longer have name / email / phone forms to mark: the
 // block is "Who's coming with you?" with one number field. Its copy is pinned
 // here instead.
+// [#4508 fix round 4/5, behaviour changed on purpose] adding a plus-one needs
+// a signed-in account: the number block is pinned for a signed-in viewer, and
+// a signed-out viewer gets the "Bring someone" card instead.
 describe("#4508 Who's coming with you?", () => {
   it("shows the number-first block with the host's limit and no plus-one forms", async () => {
-    const tree = await mount({});
+    const tree = await mount({ isLoggedIn: true });
     const texts = hostTexts(tree);
     expect(texts).toEqual(expect.arrayContaining(["Who's coming with you?"]));
     expect(texts).not.toContain("Add their name");
     expect(texts).not.toContain("Required");
+  });
+
+  it("shows a signed-out viewer the Bring someone card, not the number block", async () => {
+    const tree = await mount({});
+    const texts = hostTexts(tree);
+    expect(texts).toEqual(expect.arrayContaining(["Bring someone"]));
+    expect(texts).not.toContain("Who's coming with you?");
   });
 });
