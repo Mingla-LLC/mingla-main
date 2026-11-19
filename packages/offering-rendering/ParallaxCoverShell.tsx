@@ -511,19 +511,21 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   // docked action bar) stays above the strip instead of being clipped by it.
   const [deskScrollHeight, setDeskScrollHeight] = React.useState(0);
   const [deskColHeight, setDeskColHeight] = React.useState(0);
-  const [deskFlyerBox, setDeskFlyerBox] = React.useState({ width: 0, height: 0 });
+  const [deskColWidth, setDeskColWidth] = React.useState(0);
+  const [deskFlyerHeight, setDeskFlyerHeight] = React.useState(0);
   const flyerStickyTop = flyerColumnStickyTop(deskScrollHeight, deskColHeight);
   const flyerCap = flyerMaxHeight({
     scrollHeight: deskScrollHeight,
     columnHeight: deskColHeight,
-    flyerWidth: deskFlyerBox.width,
-    flyerHeight: deskFlyerBox.height,
+    flyerWidth: deskColWidth,
+    flyerHeight: deskFlyerHeight,
   });
+  // #4490 N121 — a short window narrows the whole 4:5 flyer (same aspect, centred)
+  // instead of cropping it, so whatever sits at its foot (the photo's own caption,
+  // the event title block) keeps its full padding and is never cut at the edge.
+  const flyerWidthCap = flyerCap !== null ? Math.round((flyerCap * 4) / 5) : null;
   const onDeskFlyerLayout = React.useCallback((event: LayoutChangeEvent): void => {
-    const { width, height } = event.nativeEvent.layout;
-    setDeskFlyerBox((prev) =>
-      prev.width === width && prev.height === height ? prev : { width, height },
-    );
+    setDeskFlyerHeight(event.nativeEvent.layout.height);
   }, []);
   const onDeskScrollLayout = React.useCallback(
     (event: LayoutChangeEvent): void => {
@@ -534,6 +536,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   );
   const onDeskColLayout = React.useCallback((event: LayoutChangeEvent): void => {
     setDeskColHeight(event.nativeEvent.layout.height);
+    setDeskColWidth(event.nativeEvent.layout.width);
   }, []);
   const headerHeight = safeAreaTop + PREMIUM_HEADER_ROW;
   const solidThreshold = isDesktop
@@ -853,7 +856,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
                   style={[
                     styles.premiumFlyer,
                     { borderColor: palette.panelBorder },
-                    flyerCap !== null ? { maxHeight: flyerCap } : null,
+                    flyerWidthCap !== null ? { width: flyerWidthCap, alignSelf: "center" } : null,
                     webStyle({ boxShadow: "0 34px 80px -28px rgba(0,0,0,0.85)" }),
                   ]}
                 >

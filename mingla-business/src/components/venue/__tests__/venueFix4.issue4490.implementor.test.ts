@@ -36,7 +36,9 @@ describe("N116 — the flyer column ends above the privacy strip", () => {
     const shell = src("../packages/offering-rendering/ParallaxCoverShell.tsx");
     expect(shell).toContain("flyerColumnStickyTop(deskScrollHeight, deskColHeight)");
     expect(shell).toContain("top: flyerStickyTop,");
-    expect(shell).toContain("flyerCap !== null ? { maxHeight: flyerCap } : null");
+    expect(shell).toContain("flyerWidthCap !== null ? { width: flyerWidthCap, alignSelf: \"center\" } : null");
+    // N121: narrowed (same 4:5), never cropped, so the foot caption keeps its padding
+    expect(shell).not.toContain("maxHeight: flyerCap");
   });
 });
 
