@@ -28,7 +28,7 @@
 -- grants (service_role only). If 20281119014508 has also run, roll that back
 -- first (its own note): it re-creates submit_event_rsvp on top of this one.
 --
--- MINGLA-INVARIANT lives beside its test:
+-- The invariant declaration lives beside its test:
 --   supabase/migrations/__tests__/issue_4508_guest_phone_match.implementor.pg17.test.sql
 
 BEGIN;

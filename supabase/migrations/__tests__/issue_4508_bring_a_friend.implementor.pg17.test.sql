@@ -5,6 +5,19 @@
 -- MINGLA-INVARIANT: I-4508-RELEASE-STOPS-TEXTS | issue #4508 | "This isn't me" (rsvp_guest_release) deletes the unclaimed guest row, frees the spot, closes queued deliveries, and the number can never be re-added to that event; a claimed guest cannot be released.
 -- MINGLA-INVARIANT: I-4508-ONE-REMINDER | issue #4508 | rsvp_enqueue_guest_reminders queues at most one reminder per guest, only for unclaimed guests whose invite text was delivered, 23-24 hours before the start.
 -- MINGLA-INVARIANT: I-4508-FRIEND-GOING-ONCE | issue #4508 | a close friend gets at most one "is going" notice per event, never when they turned friends_going off.
+-- MINGLA-INVARIANT: I-4508-SIGNED-OUT-LEARNS-VALID-ONLY | issue #4508 | rsvp_guest_lookup tells a signed-out caller only whether a number is valid; list and release state are answered only to a signed-in caller for an event they can RSVP to now.
+-- MINGLA-INVARIANT: I-4508-GUEST-TEXT-CAPS | issue #4508 | guest numbers are capped at 20 per inviter per 24 hours (signed-out inviters keyed by their network address, never the number they typed), 30 per event per 24 hours from signed-out inviters, and a number past 3 guest invites in 24 hours is added but never texted (sms_hold number_limit, willText false).
+-- MINGLA-INVARIANT: I-4508-BROUGHT-BY-AFTER-CLAIM | issue #4508 | peer_list_event_guests shows a plus-one as their own row (with broughtByName) only once claimed and while their own Show me as going is on; unclaimed plus-ones never appear and count as unclaimedGuestCount on the inviter's row; the seat total is unchanged.
+-- MINGLA-INVARIANT: I-4508-SIGNED-OUT-SUBMIT-NO-ORACLE | issue #4508 | a signed-out submit_event_rsvp refuses a number already on the event's list, a number released on it, and a number whose account is already listed with the one code rsvp_guest_unavailable, never says whether a guest number has an account (onMingla false, no name) or why a guest will not be texted (notTextedReason null), and every signed-out guest number is counted by rsvp_guest_signed_out_attempt before the submit, so a refused submit still uses the 20-per-address and 30-per-event daily allowance.
+-- MINGLA-INVARIANT: I-4508-FRIEND-NUMBER-NOT-OWNER-READABLE | issue #4508 | a party owner's direct read of event_rsvp_guests never returns a friend picked from the friends list (whose number the server resolved); the friend still reads their own row.
+-- MINGLA-INVARIANT: I-4508-SIGNED-OUT-TEXT-CEILING | issue #4508 | past 300 guests added by signed-out inviters in 24 hours across all events, a signed-out inviter's guest is added but never texted; signed-in inviters are not affected.
+-- MINGLA-INVARIANT: I-4508-NUMBER-LIMIT-SERIALIZED | issue #4508 | submit_event_rsvp and rsvp_guest_bring hold a transaction advisory lock on each guest number before counting its invites, so concurrent submits on different events cannot both pass the 3-per-day text limit.
+-- MINGLA-INVARIANT: I-4508-LOOKUP-DAILY-CEILING | issue #4508 | the signed-in guest lookup is capped at 200 per account per rolling 24 hours: the 201st call in the window answers allowed = false and writes nothing, another account is unaffected, a lookup older than 24 hours no longer counts, and the counter table is service-role only.
+-- MINGLA-INVARIANT: I-4508-GUEST-CHAT-AFTER-CLAIM | issue #4508 | a plus-one is a member of the brand Guest chat (#4459) only once the pass is claimed (rsvp_guest_claim or a proven-contact claim sweep): a number matched at submit, a friend picked from a list and any signed-out RSVP add nobody; claiming joins; leaving the party removes.
+-- MINGLA-INVARIANT: I-4508-HOST-LABEL-BEFORE-CLAIM | issue #4508 | host_list_rsvp_guests, biz_rsvp_scan, host_check_in_rsvp_guest and admin_list_event_rsvps name an unclaimed plus-one by the typed name or "<Inviter first name>'s guest" (rsvp_guest_host_label), never the matched account, and onMingla is false until the claim; after the claim the account name shows.
+-- MINGLA-INVARIANT: I-4508-CEILING-ATOMIC-ALERT | issue #4508 | a signed-out submit with guests holds one transaction lock (45084, 0) while the signed-out text ceiling is counted, and the first ceiling hold of a UTC day records one row for a single ops alert, marked only after the alert went out.
+-- MINGLA-INVARIANT: I-4508-CHECKIN-CLAIMED-REFUSED | issue #4508 | host_check_in_rsvp_guest answers result claimed for a guest who has claimed the pass and checks nobody in (the pass is scanned instead).
+-- MINGLA-INVARIANT: I-4508-LEGACY-MATCH-IS-CLAIMED | issue #4508 | on its first apply the bring-a-friend migration sets claimed_at = created_at on every guest row already matched to an account, keeping those accounts in the brand Guest chat; a later apply never backfills, and removes from the Guest chat an account whose only claim to it is an unclaimed match.
 \set ON_ERROR_STOP on
 \ir ../20281119004508_issue_4508_guest_phone_match.sql
 \ir ../20281119014508_issue_4508_bring_a_friend.sql
@@ -359,9 +372,6 @@ $test$;
 
 -- ===========================================================================
 -- Wave A rework (#4508): every review finding, contract gap and D-2.4.
--- MINGLA-INVARIANT: I-4508-SIGNED-OUT-LEARNS-VALID-ONLY | issue #4508 | rsvp_guest_lookup tells a signed-out caller only whether a number is valid; list and release state are answered only to a signed-in caller for an event they can RSVP to now.
--- MINGLA-INVARIANT: I-4508-GUEST-TEXT-CAPS | issue #4508 | guest numbers are capped at 20 per inviter per 24 hours (signed-out inviters keyed by their network address, never the number they typed), 30 per event per 24 hours from signed-out inviters, and a number past 3 guest invites in 24 hours is added but never texted (sms_hold number_limit, willText false).
--- MINGLA-INVARIANT: I-4508-BROUGHT-BY-AFTER-CLAIM | issue #4508 | peer_list_event_guests shows a plus-one as their own row (with broughtByName) only once claimed and while their own Show me as going is on; unclaimed plus-ones never appear and count as unclaimedGuestCount on the inviter's row; the seat total is unchanged.
 -- ===========================================================================
 DO $rework$
 DECLARE
@@ -823,10 +833,6 @@ $rework$;
 
 -- ===========================================================================
 -- Second rework (#4508): R-1 to R-14.
--- MINGLA-INVARIANT: I-4508-SIGNED-OUT-SUBMIT-NO-ORACLE | issue #4508 | a signed-out submit_event_rsvp refuses a number already on the event's list, a number released on it, and a number whose account is already listed with the one code rsvp_guest_unavailable, never says whether a guest number has an account (onMingla false, no name) or why a guest will not be texted (notTextedReason null), and every signed-out guest number is counted by rsvp_guest_signed_out_attempt before the submit, so a refused submit still uses the 20-per-address and 30-per-event daily allowance.
--- MINGLA-INVARIANT: I-4508-FRIEND-NUMBER-NOT-OWNER-READABLE | issue #4508 | a party owner's direct read of event_rsvp_guests never returns a friend picked from the friends list (whose number the server resolved); the friend still reads their own row.
--- MINGLA-INVARIANT: I-4508-SIGNED-OUT-TEXT-CEILING | issue #4508 | past 300 guests added by signed-out inviters in 24 hours across all events, a signed-out inviter's guest is added but never texted; signed-in inviters are not affected.
--- MINGLA-INVARIANT: I-4508-NUMBER-LIMIT-SERIALIZED | issue #4508 | submit_event_rsvp and rsvp_guest_bring hold a transaction advisory lock on each guest number before counting its invites, so concurrent submits on different events cannot both pass the 3-per-day text limit.
 -- ===========================================================================
 DO $rework2$
 DECLARE
@@ -1125,7 +1131,6 @@ BEGIN
 END
 $rework2$;
 
--- MINGLA-INVARIANT: I-4508-LOOKUP-DAILY-CEILING | issue #4508 | the signed-in guest lookup is capped at 200 per account per rolling 24 hours: the 201st call in the window answers allowed = false and writes nothing, another account is unaffected, a lookup older than 24 hours no longer counts, and the counter table is service-role only.
 -- FAILS-ON-REVERT: remove rsvp_guest_lookup_day_hit's count check (always allow) -> the 201st call is allowed and L-1 fails.
 DO $lookup_day$
 DECLARE
@@ -1162,10 +1167,6 @@ $lookup_day$;
 
 -- ===========================================================================
 -- Third rework (#4508): N-1, N-5, N-8, N-9 and claim sweeps.
--- MINGLA-INVARIANT: I-4508-GUEST-CHAT-AFTER-CLAIM | issue #4508 | a plus-one is a member of the brand Guest chat (#4459) only once the pass is claimed (rsvp_guest_claim or a proven-contact claim sweep): a number matched at submit, a friend picked from a list and any signed-out RSVP add nobody; claiming joins; leaving the party removes.
--- MINGLA-INVARIANT: I-4508-HOST-LABEL-BEFORE-CLAIM | issue #4508 | host_list_rsvp_guests, biz_rsvp_scan, host_check_in_rsvp_guest and admin_list_event_rsvps name an unclaimed plus-one by the typed name or "<Inviter first name>'s guest" (rsvp_guest_host_label), never the matched account, and onMingla is false until the claim; after the claim the account name shows.
--- MINGLA-INVARIANT: I-4508-CEILING-ATOMIC-ALERT | issue #4508 | a signed-out submit with guests holds one transaction lock (45084, 0) while the signed-out text ceiling is counted, and the first ceiling hold of a UTC day records one row for a single ops alert, marked only after the alert went out.
--- MINGLA-INVARIANT: I-4508-CHECKIN-CLAIMED-REFUSED | issue #4508 | host_check_in_rsvp_guest answers result claimed for a guest who has claimed the pass and checks nobody in (the pass is scanned instead).
 -- FAILS-ON-REVERT: drop "AND g.claimed_at IS NOT NULL" from the guest arm -> N-1 "not in the Guest chat" fails; use rsvp_guest_display_name in host_list_rsvp_guests -> N-5 fails; remove the rsvp_guest_lock_signed_out_ceiling call -> N-8 lock fails; remove the claimed branch of host_check_in_rsvp_guest -> N-9 fails.
 -- ===========================================================================
 DO $rework3$
@@ -1352,7 +1353,6 @@ ROLLBACK;
 -- re-apply never does, and re-syncs away a member who is there only through
 -- an unclaimed match. Needs committed rows and a re-run of the migration, so
 -- it runs after the transactional blocks (the suite owns its database).
--- MINGLA-INVARIANT: I-4508-LEGACY-MATCH-IS-CLAIMED | issue #4508 | on its first apply the bring-a-friend migration sets claimed_at = created_at on every guest row already matched to an account, keeping those accounts in the brand Guest chat; a later apply never backfills, and removes from the Guest chat an account whose only claim to it is an unclaimed match.
 -- FAILS-ON-REVERT: drop the N-6 backfill -> "N-6: a legacy matched guest reads as claimed" fails; drop the re-sync -> "N-6: an unclaimed-only member is removed" fails.
 -- ===========================================================================
 CREATE FUNCTION pg_temp.ok(p_ok boolean, p_message text) RETURNS void LANGUAGE plpgsql AS $fn$
