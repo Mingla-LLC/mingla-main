@@ -24,6 +24,7 @@ import React, {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -55,7 +56,7 @@ import {
 } from "../../hooks/useVenueReservationSettings";
 import type { BrandHourEntry } from "../../types/brand";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { hoursWeekIssue } from "../../utils/venueBrandHours";
+import { hoursWeekIssue, sameHoursWeek } from "../../utils/venueBrandHours";
 import {
   formatCurrency,
   majorFromMinor,
@@ -92,6 +93,10 @@ import { VenueDetailsEditor } from "./VenueDetailsEditor";
 const LazyVenueTypeAndFeaturesPanel = React.lazy(async () => {
   const mod = await import("./features/VenueTypeAndFeaturesPanel");
   return { default: mod.VenueTypeAndFeaturesPanel };
+});
+const LazyBookingTermsSection = React.lazy(async () => {
+  const mod = await import("./features/offers/BookingTermsSection");
+  return { default: mod.BookingTermsSection };
 });
 
 /** #4490 — Settings tabs (spec 02 §3 `set`). */
@@ -311,16 +316,25 @@ export const VenueSettingsModule = forwardRef<
   // Hydrate the local draft from server data; re-sync when server data changes
   // (and the user has no in-flight edits).
   const serverHours = hoursQuery.data ?? null;
+  // #4490 click-test E1 — the draft follows every server read until the host
+  // edits here. Before, it copied the FIRST read only: hours saved elsewhere
+  // (Availability & pricing, from its leave dialog) landed after Settings had
+  // mounted on the stale cache, and Settings then showed "1 unsaved change ·
+  // Opening hours" for hours that were already saved.
+  const hoursEditedRef = useRef(false);
   useEffect(() => {
-    if (serverHours !== null && hoursDraft === null) {
+    if (serverHours === null) return;
+    if (hoursDraft === null || (!hoursEditedRef.current && !sameHoursWeek(hoursDraft, serverHours))) {
       setHoursDraft(serverHours);
     }
   }, [serverHours, hoursDraft]);
 
   const hoursDirty = useMemo<boolean>(() => {
+    // In the feature layout hours are edited in Availability & pricing only.
+    if (hoursLiveInAvailability) return false;
     if (hoursDraft === null || serverHours === null) return false;
-    return JSON.stringify(hoursDraft) !== JSON.stringify(serverHours);
-  }, [hoursDraft, serverHours]);
+    return !sameHoursWeek(hoursDraft, serverHours);
+  }, [hoursDraft, hoursLiveInAvailability, serverHours]);
 
   const hoursInvalid = useMemo<boolean>(() => {
     if (hoursDraft === null) return false;
@@ -339,6 +353,7 @@ export const VenueSettingsModule = forwardRef<
   }, [hoursDraft]);
 
   const handleHoursChange = useCallback((next: BrandHourEntry[]): void => {
+    hoursEditedRef.current = true;
     setHoursDraft(next);
     setHoursSaved(false);
     setHoursError(false);
@@ -368,6 +383,7 @@ export const VenueSettingsModule = forwardRef<
         new Promise((resolve, reject) => {
           upsertHours.mutate(hoursDraft, {
             onSuccess: () => {
+              hoursEditedRef.current = false;
               setHoursDraft(null);
               resolve();
             },
@@ -435,6 +451,7 @@ export const VenueSettingsModule = forwardRef<
       isValid: () => settingsValid,
       save: handleSaveSettings,
       discard: () => {
+        hoursEditedRef.current = false;
         setHoursDraft(serverHours);
         setHoursError(false);
         if (feeAmountCents > 0) {
@@ -520,6 +537,13 @@ export const VenueSettingsModule = forwardRef<
       {tab === "type" ? (
         <React.Suspense fallback={<ActivityIndicator color={color.accent} />}>
           <LazyVenueTypeAndFeaturesPanel brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      ) : null}
+
+      {/* #4490 P2-4 — venue-level terms every offer uses (VAT, hold, horizon, pause). */}
+      {tab === "terms" ? (
+        <React.Suspense fallback={null}>
+          <LazyBookingTermsSection brandId={brandId} venueId={venueId} canEdit={canMutate} />
         </React.Suspense>
       ) : null}
 

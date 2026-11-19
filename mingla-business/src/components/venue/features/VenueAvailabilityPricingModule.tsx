@@ -31,6 +31,7 @@ import {
   useVenueSpecialDays,
 } from "../../../hooks/useVenueSpecialDays";
 import { VenueFeatureError, type VenueSpecialDay } from "../../../services/venueFeaturesService";
+import { DayLimitsSection } from "./offers/DayLimitsSection";
 import { useVenueSuiteStore } from "../../../store/venueSuiteStore";
 import type { BrandHourEntry } from "../../../types/brand";
 import {
@@ -387,6 +388,8 @@ export const VenueAvailabilityPricingModule = forwardRef<
       <Text style={styles.title} accessibilityRole="header">Availability & pricing</Text>
       {hoursSection}
       {specialSection}
+      {/* #4490 P2-4 — a different limit (or no entry) on one date. */}
+      <DayLimitsSection brandId={brandId} venueId={venueId} canEdit={canEditSpecial} today={today} />
       {showTableTimes ? (
         <View style={styles.tableTimes} testID="av-table-times">
           <Text style={styles.sectionLabel}>Table times</Text>

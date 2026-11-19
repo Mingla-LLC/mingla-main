@@ -36,7 +36,10 @@ export function moduleSelfScrolls(module: VenueModule): boolean {
     module === "reservations" ||
     // #3655 — Settings owns its ScrollView so the Save settings bar can sit
     // sticky outside the scroll content (shell-wrapped absolute bars scroll away).
-    module === "settings"
+    module === "settings" ||
+    // #4490 P2 — Offers owns its scroll so the Entry editor can pin its
+    // Back / Continue bar under its own scrolling form.
+    module === "offers"
   );
 }
 

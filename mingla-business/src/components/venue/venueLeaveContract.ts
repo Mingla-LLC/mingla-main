@@ -54,6 +54,8 @@ export function sectionLabelForModule(moduleId: string): string {
     // #4490
     case "spaces":
       return "Spaces";
+    case "offers":
+      return "offer";
     case "reservations":
       return "Reservations";
     case "waitlist":

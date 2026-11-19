@@ -141,15 +141,16 @@ describe("D5 — the wizard's hours step takes split days", () => {
 });
 
 describe("D9 — the wizard's Features step", () => {
-  it("a play venue starts with Menu and Events here, and can change any built switch", () => {
-    expect(typeStartingFeatures("play")).toEqual(["menu", "events_here"]);
+  it("a play venue starts with Entry, Menu and Events here, and can change any built switch", () => {
+    // TEST-MOD-APPROVED #4490 — P2 ships Entry, so it is in the play preset now.
+    expect(typeStartingFeatures("play")).toEqual(["entry", "menu", "events_here"]);
     const rows = wizardFeatureRows("play");
-    expect(rows.usual).toEqual(["menu", "events_here"]);
+    expect(rows.usual).toEqual(["entry", "menu", "events_here"]);
     expect(rows.more).toEqual(["table_reservations", "table_ordering", "waitlist"]);
     let on = chosenStartingFeatures("play", null);
     on = toggleStartingFeature(on, "menu", false);
     on = toggleStartingFeature(on, "waitlist", true);
-    expect(on).toEqual(["events_here", "waitlist"]);
+    expect(on).toEqual(["entry", "events_here", "waitlist"]);
   });
   it("Table ordering never starts on (it waits for approval)", () => {
     expect(typeStartingFeatures("cafe")).toEqual(["menu"]);
@@ -157,7 +158,8 @@ describe("D9 — the wizard's Features step", () => {
   });
   it("the step says what the type usually uses, in plain words", () => {
     expect(usualHeading("play")).toBe("Usual for play and games venues");
-    expect(typeStartingFeatures("coworking")).toEqual([]);
+    // TEST-MOD-APPROVED #4490 — coworking starts with Entry (day passes) now.
+    expect(typeStartingFeatures("coworking")).toEqual(["entry"]);
   });
 });
 

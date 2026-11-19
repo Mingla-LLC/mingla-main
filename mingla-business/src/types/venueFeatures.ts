@@ -76,6 +76,8 @@ export interface VenueFeatureState {
  * the Stay workspace and never switched here.
  */
 export const BUILT_FEATURES: ReadonlySet<VenueFeatureKey> = new Set<VenueFeatureKey>([
+  // P2: Entry (offers, passes, check-in, Today).
+  "entry",
   "table_reservations",
   "waitlist",
   "menu",
@@ -314,3 +316,11 @@ export function backfilledFeatureSet(input: {
     stays: input.isStay === true,
   });
 }
+
+/** #4490 E2 — "Entry · Menu · Events here" from the venue's switched-on, shipped features. */
+export function featureLine(enabled: ReadonlySet<string>): string | null {
+  const keys = VENUE_FEATURE_KEYS.filter((k) => enabled.has(k) && BUILT_FEATURES.has(k) && k !== "stays");
+  if (keys.length === 0) return null;
+  return keys.map(featureLabel).join(" · ");
+}
+

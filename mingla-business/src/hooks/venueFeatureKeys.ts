@@ -18,4 +18,17 @@ export const venueFeatureKeys = {
   specialDays: (brandId: string, venueId: string): readonly string[] =>
     ["venueSpecialDays", brandId, venueId] as const,
   eventVenue: (eventId: string): readonly string[] => ["eventVenueLink", eventId] as const,
+  // #4490 P2 — offers, day limits, the venue's day and the door list.
+  offers: (brandId: string, venueId: string): readonly string[] =>
+    ["venueOffers", brandId, venueId] as const,
+  capacityOverrides: (brandId: string, venueId: string): readonly string[] =>
+    ["venueCapacityOverrides", brandId, venueId] as const,
+  /** Prefix for every day of a venue (invalidate after a sale or a check-in). */
+  dayAll: (brandId: string, venueId: string): readonly string[] => ["venueDay", brandId, venueId] as const,
+  day: (brandId: string, venueId: string, localDate: string): readonly string[] =>
+    ["venueDay", brandId, venueId, localDate] as const,
+  checkInsAll: (brandId: string, venueId: string): readonly string[] =>
+    ["venueCheckIns", brandId, venueId] as const,
+  checkIns: (brandId: string, venueId: string, localDate: string): readonly string[] =>
+    ["venueCheckIns", brandId, venueId, localDate] as const,
 };

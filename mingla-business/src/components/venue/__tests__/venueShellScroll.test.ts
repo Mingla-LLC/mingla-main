@@ -42,13 +42,16 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
     expect(moduleSelfScrolls("insights")).toBe(true);
     expect(moduleSelfScrolls("reservations")).toBe(true);
     expect(moduleSelfScrolls("settings")).toBe(true);
+    // TEST-MOD-APPROVED #4490 — Offers owns its scroll (the Entry editor pins its Back/Continue bar).
+    expect(moduleSelfScrolls("offers")).toBe(true);
     for (
       const m of ALL_MODULES.filter(
         (x) =>
           x !== "overview" &&
           x !== "insights" &&
           x !== "reservations" &&
-          x !== "settings",
+          x !== "settings" &&
+          x !== "offers",
       )
     ) {
       expect(moduleSelfScrolls(m)).toBe(false);

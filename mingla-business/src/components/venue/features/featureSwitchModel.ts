@@ -25,7 +25,10 @@ export function featureSwitchConfirm(
   const bookings =
     key === "table_reservations" || cascade.includes("table_reservations")
       ? " Bookings already made stay valid; guests can't book new ones."
-      : "";
+      : // #4490 P2 — the server pauses live Entry offers when Entry goes off.
+        key === "entry"
+        ? " Your live Entry offers pause. Passes already bought stay valid; guests can't buy new ones."
+        : "";
   if (cascade.length === 0 && bookings.length === 0) return null;
   return {
     title: `Turn off ${label}?`,
