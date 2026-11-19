@@ -6,6 +6,11 @@
  * the left pane of the desktop Messages page.
  *
  * No pins: Brand groups have no pinning data, so none is shown.
+ *
+ * #4420 — ONE row per brand: the brand's Team chat (Brand group) and its Guest
+ * chat are joined in memory (buildBrandInboxRows). The preview says which side
+ * spoke last; a white count is team unread, a blue megaphone count is guests
+ * unread. The list ends with a quiet "All N brands" marker.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -21,12 +26,17 @@ import {
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { color, space } from "../../constants/designSystem";
 import type { BrandGroupSummary } from "../../services/brandGroupsService";
+import type { BrandGuestActivity, BrandGuestChatSummary } from "../../services/brandGuestChatList";
 import {
-  brandGroupInboxPreview,
   brandGroupInboxTime,
-  filterBrandGroups,
   type BrandGroupInboxFilter,
 } from "../../utils/brandGroupThreadModel";
+import {
+  brandInboxRowPreview,
+  buildBrandInboxRows,
+  filterBrandInboxRows,
+  type BrandInboxRow,
+} from "../../utils/brandMessagesInbox";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -35,25 +45,33 @@ import { BrandGroupTile } from "./BrandGroupTile";
 const TILE = 48;
 
 export function BrandGroupInboxRow({
-  group,
+  row,
   viewerId,
   selected,
   onPress,
   now,
 }: {
-  group: BrandGroupSummary;
+  row: BrandInboxRow;
   viewerId: string | null;
   selected?: boolean;
   onPress: () => void;
   now?: Date;
 }): React.ReactElement {
-  const unread = group.unread_count > 0;
-  const time = brandGroupInboxTime(group.last_message_at, now);
-  const preview = brandGroupInboxPreview(group, viewerId);
+  const unread = row.teamUnread + row.guestUnread > 0;
+  const time = brandGroupInboxTime(row.lastAt, now);
+  const preview = brandInboxRowPreview(row, viewerId);
+  const muted = row.group?.muted === true;
+  const label = [
+    row.brandName,
+    row.teamUnread > 0 ? `${row.teamUnread} unread in Team` : null,
+    row.guestUnread > 0 ? `${row.guestUnread} unread from guests` : null,
+    row.guestChat ? "has a Guests room" : null,
+    muted ? "muted" : null,
+  ].filter(Boolean).join(", ");
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${group.brand_name} Brand group${unread ? `, ${group.unread_count} unread` : ""}${group.muted ? ", muted" : ""}`}
+      accessibilityLabel={label}
       accessibilityState={{ selected: Boolean(selected) }}
       onPress={onPress}
       style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
@@ -61,24 +79,38 @@ export function BrandGroupInboxRow({
         (pressed || hovered) && styles.rowPressed,
         selected && styles.rowSelected,
       ]}
-      testID={`brand-group-row-${group.conversation_id}`}
+      // Team rows keep the Brand group row id (device flows key on it).
+      testID={row.group ? `brand-group-row-${row.group.conversation_id}` : `brand-inbox-row-${row.brandId}`}
     >
-      <BrandGroupTile name={group.brand_name} photoUrl={group.brand_photo_url} seed={group.brand_id} size={TILE} />
+      <BrandGroupTile name={row.brandName} photoUrl={row.photoUrl} seed={row.brandId} size={TILE} />
       <View style={styles.rowCopy}>
         <View style={styles.rowLine}>
-          <Text style={[styles.name, unread && styles.nameUnread]} numberOfLines={1}>{group.brand_name}</Text>
+          <Text style={[styles.name, unread && styles.nameUnread]} numberOfLines={1}>{row.brandName}</Text>
           {time ? <Text style={[styles.time, unread && styles.timeUnread]}>{time}</Text> : null}
         </View>
         <View style={styles.rowLine}>
-          <Text style={[styles.preview, unread && styles.previewUnread]} numberOfLines={1}>{preview}</Text>
-          {group.muted ? (
+          <Text style={[styles.preview, unread && styles.previewUnread]} numberOfLines={1}>
+            {preview.side ? (
+              <Text style={preview.side === "guests" ? styles.sideTagGuests : styles.sideTag}>
+                {preview.side === "guests" ? "Guests · " : "Team · "}
+              </Text>
+            ) : null}
+            {preview.text}
+          </Text>
+          {muted ? (
             <View accessibilityElementsHidden style={styles.muteIcon}>
               <Icon name="volumeOff" size={14} color={brandGroupChat.textMuted} />
             </View>
           ) : null}
-          {unread ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{group.unread_count > 99 ? "99+" : group.unread_count}</Text>
+          {row.teamUnread > 0 ? (
+            <View style={styles.badge} testID={`brand-inbox-team-unread-${row.brandId}`}>
+              <Text style={styles.badgeText}>{row.teamUnread > 99 ? "99+" : row.teamUnread}</Text>
+            </View>
+          ) : null}
+          {row.guestUnread > 0 ? (
+            <View style={styles.badgeGuests} testID={`brand-inbox-guest-unread-${row.brandId}`}>
+              <Icon name="megaphone" size={11} color={color.infoText} />
+              <Text style={styles.badgeGuestsText}>{row.guestUnread > 99 ? "99+" : row.guestUnread}</Text>
             </View>
           ) : null}
         </View>
@@ -125,50 +157,60 @@ const FILTERS: { key: BrandGroupInboxFilter; label: string; staffOnly?: boolean 
 
 export function BrandGroupInboxList({
   groups,
+  guestChats = [],
+  guestActivity,
   loading,
   error,
   onRetry,
   viewerId,
   isStaff,
-  selectedId,
+  selectedBrandId,
   onOpen,
   header,
   scrollable = true,
 }: {
   groups: BrandGroupSummary[];
+  /** #4420: the brand Guest chats I run, joined onto their brand's row. */
+  guestChats?: readonly BrandGuestChatSummary[];
+  guestActivity?: ReadonlyMap<string, BrandGuestActivity>;
   loading: boolean;
   error: string | null;
   onRetry: () => void;
   viewerId: string | null;
   isStaff: boolean;
-  selectedId?: string | null;
-  onOpen: (group: BrandGroupSummary) => void;
+  /** #4420: rows are brands, so the selection is a brand id. */
+  selectedBrandId?: string | null;
+  onOpen: (row: BrandInboxRow) => void;
   /** Support inbox row and customer enquiries, above the groups. */
   header?: React.ReactNode;
   scrollable?: boolean;
 }): React.ReactElement {
   const [filter, setFilter] = useState<BrandGroupInboxFilter>("all");
   const [query, setQuery] = useState("");
-  const visible = useMemo(() => filterBrandGroups(groups, filter, query), [filter, groups, query]);
-  const own = visible.filter((group) => group.access_kind === "brand");
-  const supporting = visible.filter((group) => group.access_kind === "support");
+  const rows = useMemo(
+    () => buildBrandInboxRows(groups, guestChats, guestActivity),
+    [groups, guestActivity, guestChats],
+  );
+  const visible = useMemo(() => filterBrandInboxRows(rows, filter, query, viewerId), [filter, query, rows, viewerId]);
+  const own = visible.filter((row) => row.accessKind === "brand");
+  const supporting = visible.filter((row) => row.accessKind === "support");
   const splitSections = isStaff && filter === "all";
   const filters = FILTERS.filter((item) => !item.staffOnly || isStaff);
 
-  const renderRows = (rows: BrandGroupSummary[]): React.ReactNode => rows.map((group, index) => (
-    <View key={group.conversation_id}>
+  const renderRows = (list: BrandInboxRow[]): React.ReactNode => list.map((row, index) => (
+    <View key={row.key}>
       <BrandGroupInboxRow
-        group={group}
+        row={row}
         viewerId={viewerId}
-        selected={selectedId === group.conversation_id}
-        onPress={() => onOpen(group)}
+        selected={selectedBrandId === row.brandId}
+        onPress={() => onOpen(row)}
       />
-      {index < rows.length - 1 ? <View style={styles.separator} /> : null}
+      {index < list.length - 1 ? <View style={styles.separator} /> : null}
     </View>
   ));
 
   const emptyText = query.trim()
-    ? `No Brand groups match “${query.trim()}”.`
+    ? `No brands match “${query.trim()}”.`
     : filter === "unread"
       ? "You’re all caught up."
       : filter === "supporting"
@@ -182,10 +224,10 @@ export function BrandGroupInboxList({
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search Brand groups"
+          placeholder="Search brands"
           placeholderTextColor={brandGroupChat.textMuted}
           style={styles.search}
-          accessibilityLabel="Search Brand groups"
+          accessibilityLabel="Search brands"
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
@@ -229,16 +271,23 @@ export function BrandGroupInboxList({
         <Text style={styles.emptyText}>{emptyText}</Text>
       ) : splitSections ? (
         <>
-          <Text style={styles.sectionTitle}>Your Brand groups</Text>
+          <Text style={styles.sectionTitle}>Your brands</Text>
           {own.length ? renderRows(own) : <Text style={styles.emptyText}>Your active brand teams will appear here automatically.</Text>}
           {supporting.length ? (
             <>
-              <Text style={styles.sectionTitle}>Brand groups you support</Text>
+              <Text style={styles.sectionTitle}>Brands you support</Text>
               {renderRows(supporting)}
             </>
           ) : null}
         </>
       ) : renderRows(visible)}
+      {!loading && !error && visible.length > 0 ? (
+        <View style={styles.listEnd} testID="brand-inbox-list-end">
+          <View style={styles.listEndRule} />
+          <Text style={styles.listEndText}>{`All ${rows.length} ${rows.length === 1 ? "brand" : "brands"}`}</Text>
+          <View style={styles.listEndRule} />
+        </View>
+      ) : null}
     </>
   );
 
@@ -261,12 +310,20 @@ const styles = StyleSheet.create({
   name: { flex: 1, minWidth: 0, color: brandGroupChat.textPrimary, fontSize: 16, fontWeight: "600" },
   nameUnread: { fontWeight: "800" },
   time: { color: brandGroupChat.textMuted, fontSize: 12, fontVariant: ["tabular-nums"] },
-  timeUnread: { color: brandGroupChat.accent, fontWeight: "700" },
+  timeUnread: { color: brandGroupChat.textPrimary, fontWeight: "700" },
   preview: { flex: 1, minWidth: 0, color: brandGroupChat.textSoft, fontSize: 14 },
   previewUnread: { color: brandGroupChat.textPrimary, fontWeight: "600" },
   muteIcon: { width: 16, alignItems: "center" },
-  badge: { minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: brandGroupChat.accent },
+  badge: { minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
   badgeText: { color: color.ink, fontSize: 11, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  // #4420: guests unread, the blue megaphone count.
+  badgeGuests: { minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, borderWidth: 1, borderColor: color.guestLine, backgroundColor: color.guestTint2 },
+  badgeGuestsText: { color: color.infoText, fontSize: 11, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  sideTag: { color: brandGroupChat.textSoft, fontWeight: "600" },
+  sideTagGuests: { color: color.infoText, fontWeight: "600" },
+  listEnd: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: space[4], paddingTop: space[6], paddingBottom: space[7] },
+  listEndRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: color.line },
+  listEndText: { color: brandGroupChat.textSoft, fontSize: 13 },
   separator: { height: StyleSheet.hairlineWidth, marginLeft: space[4] + TILE + 12, backgroundColor: brandGroupChat.hairline },
   searchWrap: { minHeight: 40, marginHorizontal: space[4], marginTop: space[2], flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: brandGroupChat.surfaceRaised },
   search: { flex: 1, minHeight: 40, color: brandGroupChat.textPrimary, fontSize: 15, paddingVertical: 0 },

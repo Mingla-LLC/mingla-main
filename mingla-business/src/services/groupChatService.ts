@@ -216,6 +216,26 @@ export async function listParticipants(
   };
 }
 
+/**
+ * #4420: the team member has seen the Guests side up to now. Moves only the
+ * caller's own read marker (conversation_participants.last_read_at, the
+ * "update their own participation" policy); the guests unread count
+ * (issue_4420_brand_guest_activity) counts guest messages after it.
+ */
+export async function markBrandGuestChatRead(
+  conversationId: string,
+): Promise<{ error: string | null }> {
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id ?? null;
+  if (userId === null) return { error: "Not signed in" };
+  const { error } = await supabase
+    .from("conversation_participants")
+    .update({ last_read_at: new Date().toISOString() })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId);
+  return { error: error ? error.message : null };
+}
+
 export async function setBroadcastOnly(
   conversationId: string,
   isBroadcastOnly: boolean,

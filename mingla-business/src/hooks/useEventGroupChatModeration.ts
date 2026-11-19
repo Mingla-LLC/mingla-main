@@ -12,6 +12,10 @@ import {
 export function useEventGroupChatModeration(conversationId: string | null): {
   participants: EventGroupParticipant[];
   loading: boolean;
+  /** #4420: the roster has loaded at least once for this chat. */
+  loaded: boolean;
+  /** #4420: the last roster read failed (the count is then unknown, never 0). */
+  error: string | null;
   refresh: () => Promise<void>;
   setBroadcastOnly: (value: boolean) => Promise<{ error: string | null }>;
   removeParticipant: (userId: string) => Promise<{ error: string | null }>;
@@ -21,10 +25,14 @@ export function useEventGroupChatModeration(conversationId: string | null): {
 } {
   const [participants, setParticipants] = useState<EventGroupParticipant[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (conversationId === null) {
       setParticipants([]);
+      setLoaded(false);
+      setError(null);
       return;
     }
     setLoading(true);
@@ -32,9 +40,12 @@ export function useEventGroupChatModeration(conversationId: string | null): {
       const result = await listParticipants(conversationId);
       if (result.error) throw new Error(result.error);
       setParticipants(result.participants);
+      setError(null);
+      setLoaded(true);
     } catch (err) {
+      // #4420: a failed roster is reported, not turned into an empty room.
       console.warn("[useEventGroupChatModeration] failed to load participants", err);
-      setParticipants([]);
+      setError(err instanceof Error ? err.message : "Couldn't load the guest list.");
     } finally {
       setLoading(false);
     }
@@ -79,6 +90,8 @@ export function useEventGroupChatModeration(conversationId: string | null): {
   return {
     participants,
     loading,
+    loaded,
+    error,
     refresh,
     setBroadcastOnly: updateBroadcastOnly,
     removeParticipant: remove,

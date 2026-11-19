@@ -44,12 +44,14 @@ describe("#4459 boot payload — GroupChatPanel loads on intent only", () => {
   test.each([
     ["app/event/[id]/group-chat.tsx"],
     ["app/brand/[id]/guest-chat.tsx"],
-    ["src/components/messages/BrandGroupInboxScreen.tsx"],
+    // #4420: the Guests side of the brand's one thread (the inbox no longer
+    // renders a Guest chat panel of its own).
+    ["app/messages/[conversationId].tsx"],
   ])("%s renders the panel through LazyGroupChatPanel", (file) => {
     const code = source(file);
     expect(staticImportsOf(code, "GroupChatPanel")).toBe(false);
     expect(staticImportsOf(code, "LazyGroupChatPanel")).toBe(true);
-    expect(code).toContain("<LazyGroupChatPanel ");
+    expect(code).toMatch(/<LazyGroupChatPanel\s/);
   });
 
   test("LazyGroupChatPanel reaches the panel only by dynamic import", () => {
@@ -62,8 +64,9 @@ describe("#4459 boot payload — GroupChatPanel loads on intent only", () => {
 describe("#4459 boot payload — the inbox never pulls groupChatService", () => {
   test.each([
     ["src/hooks/useBrandGuestChats.ts"],
-    ["src/components/messages/BrandGuestChatSection.tsx"],
     ["src/components/messages/BrandGroupInboxScreen.tsx"],
+    ["src/components/messages/BrandGroupInboxList.tsx"],
+    ["src/utils/brandMessagesInbox.ts"],
   ])("%s imports no groupChatService at runtime", (file) => {
     expect(staticImportsOf(source(file), "groupChatService")).toBe(false);
   });

@@ -38,6 +38,33 @@ export async function listMyBrandGuestChats(): Promise<BrandGuestChatSummary[]> 
   }));
 }
 
+/**
+ * #4420: the guest side's unread count and last line, per Guest chat I run
+ * (issue_4420_brand_guest_activity, team members only). Shown on the inbox
+ * row and the Guests tab of the switcher.
+ */
+export interface BrandGuestActivity {
+  conversation_id: string;
+  unread_count: number;
+  last_message_preview: string;
+  /** The last message was a brand post (a team member posting as the brand). */
+  last_message_from_brand: boolean;
+  last_message_at: string | null;
+}
+
+/** #4420: guest-side activity for the inbox. Throws on a failed read. */
+export async function listMyBrandGuestActivity(): Promise<BrandGuestActivity[]> {
+  const { data, error } = await supabase.rpc("issue_4420_brand_guest_activity");
+  if (error) throw new Error(error.message || "guest_activity_failed");
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    conversation_id: String(row.conversation_id),
+    unread_count: typeof row.unread_count === "number" && row.unread_count > 0 ? row.unread_count : 0,
+    last_message_preview: typeof row.last_message_preview === "string" ? row.last_message_preview : "",
+    last_message_from_brand: row.last_message_from_brand === true,
+    last_message_at: typeof row.last_message_at === "string" ? row.last_message_at : null,
+  }));
+}
+
 /** #4459: where a Guest chat opens in the Host app. */
 export function brandGuestChatHref(brandId: string): string {
   return `/brand/${brandId}/guest-chat`;

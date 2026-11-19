@@ -1,6 +1,6 @@
 /**
  * #4304 — the /messages inbox screen (support row, customer enquiries and the
- * Brand group list). The /messages route loads it on demand through the
+ * brand list, one row per brand since #4420). The /messages route loads it on demand through the
  * Brand-group thread route's module, so the inbox list, tiles, thread model
  * and chat tokens ship in ONE lazy web chunk instead of the eager __common
  * boot chunk (bundle-baseline-movement). Only app/messages/[conversationId].tsx
@@ -14,18 +14,13 @@ import { SafeScreen } from "../ui/SafeScreen";
 import { TopBar } from "../ui/TopBar";
 import { Icon } from "../ui/Icon";
 import { BrandGroupInboxList } from "./BrandGroupInboxList";
-import { BrandGuestChatSection } from "./BrandGuestChatSection";
-// #4459 — the Guest chat thread beside the inbox on wide desktop (design v2:
-// inbox 340, thread flexible), loaded on intent through the one shared chunk.
-import { LazyGroupChatPanel } from "../groupChat/LazyGroupChatPanel";
 import { useBrandGuestChats } from "../../hooks/useBrandGuestChats";
-import { brandGuestChatHref, type BrandGuestChatSummary } from "../../services/brandGuestChatList";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSupportStaff } from "../../hooks/useSupportStaff";
 import { brandEnquiryThreadRoute } from "../../utils/brandEnquiryWaiting";
-import { brandGroupThreadHref } from "../../utils/brandGroupThreadModel";
+import { brandInboxRowHref } from "../../utils/brandMessagesInbox";
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { color, space } from "../../constants/designSystem";
 
@@ -36,18 +31,9 @@ const LazyBrandEnquiryListSection = React.lazy(async () => ({
   default: (await import("./BrandEnquiryScreens")).BrandEnquiryListSection,
 }));
 
-/** Support inbox row + customer enquiries + Guest chats: everything above the groups. */
-function MessagesInboxHeader({
-  isStaff,
-  onOpenGuestChat,
-  selectedGuestChatId,
-}: {
-  isStaff: boolean;
-  onOpenGuestChat: (chat: BrandGuestChatSummary) => void;
-  selectedGuestChatId: string | null;
-}): React.ReactElement {
+/** Support inbox row + customer enquiries: everything above the brands. */
+function MessagesInboxHeader({ isStaff }: { isStaff: boolean }): React.ReactElement {
   const router = useRouter();
-  const guestChats = useBrandGuestChats();
   return (
     <View style={styles.header}>
       {isStaff ? (
@@ -65,55 +51,46 @@ function MessagesInboxHeader({
           <Icon name="chevR" size={16} color={brandGroupChat.textMuted} />
         </Pressable>
       ) : null}
-      {/* #4111 D4 — customer enquiries sit above the Brand groups. */}
+      {/* #4111 D4 — customer enquiries sit above the brands. */}
       {/* #4420: the enquiries sit on the same 16 gutter as the support row
-          and the group rows (they ran to the pane edge). */}
+          and the brand rows (they ran to the pane edge). */}
       <View style={styles.enquiries}>
         <React.Suspense fallback={null}>
           <LazyBrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
         </React.Suspense>
       </View>
-      {/* #4459 design v2 — Guests sits above "Your Brand groups". */}
-      <BrandGuestChatSection
-        chats={guestChats.chats}
-        loading={guestChats.loading}
-        error={guestChats.error}
-        onRetry={() => void guestChats.refresh()}
-        selectedConversationId={selectedGuestChatId}
-        onOpen={onOpenGuestChat}
-      />
     </View>
   );
 }
 
+/**
+ * #4420 — one row per brand. The GUESTS section is gone: a brand's Guest chat
+ * is the Guests side of its one thread (Team | Guests switcher), opened from
+ * the brand's row.
+ */
 export function BrandGroupInboxScreen(): React.ReactElement {
   const router = useRouter();
   const { user } = useAuth();
   const { groups, loading, error, refresh } = useBrandGroups();
+  const guestChats = useBrandGuestChats();
   const staff = useSupportStaff();
   const { isWideDesktop } = useResponsiveLayout();
-  const [openGuestChat, setOpenGuestChat] = React.useState<BrandGuestChatSummary | null>(null);
-  const handleOpenGuestChat = (chat: BrandGuestChatSummary): void => {
-    if (isWideDesktop) setOpenGuestChat(chat);
-    else router.push(brandGuestChatHref(chat.brand_id) as never);
-  };
 
   const list = (
     <BrandGroupInboxList
       groups={groups}
+      guestChats={guestChats.chats}
+      guestActivity={guestChats.activity}
       loading={loading}
       error={error}
-      onRetry={() => void refresh()}
+      onRetry={() => {
+        void refresh();
+        void guestChats.refresh();
+      }}
       viewerId={user?.id ?? null}
       isStaff={staff.isStaff}
-      onOpen={(group) => router.push(brandGroupThreadHref(group) as never)}
-      header={
-        <MessagesInboxHeader
-          isStaff={staff.isStaff}
-          onOpenGuestChat={handleOpenGuestChat}
-          selectedGuestChatId={isWideDesktop ? openGuestChat?.conversation_id ?? null : null}
-        />
-      }
+      onOpen={(row) => router.push(brandInboxRowHref(row) as never)}
+      header={<MessagesInboxHeader isStaff={staff.isStaff} />}
     />
   );
 
@@ -123,17 +100,11 @@ export function BrandGroupInboxScreen(): React.ReactElement {
       {isWideDesktop ? (
         <View style={styles.desktop}>
           <View style={styles.desktopList}>{list}</View>
-          {openGuestChat ? (
-            <View style={styles.desktopThread} testID="brand-guest-chat-desktop-thread">
-              <LazyGroupChatPanel key={openGuestChat.brand_id} brandId={openGuestChat.brand_id} embedded />
-            </View>
-          ) : (
           <ScrollView style={styles.desktopEmptyScroll} contentContainerStyle={styles.desktopEmpty}>
             <Icon name="chat" size={36} color={brandGroupChat.textMuted} />
             <Text style={styles.desktopEmptyTitle}>Your Mingla conversations</Text>
-            <Text style={styles.desktopEmptyText}>Pick a Brand group on the left. Brand groups are created automatically and stay in sync with each brand’s active team.</Text>
+            <Text style={styles.desktopEmptyText}>Pick a brand on the left. Each brand has one chat: Team, private to your team and Mingla, and Guests, everyone with a ticket or RSVP.</Text>
           </ScrollView>
-          )}
         </View>
       ) : list}
     </SafeScreen>
@@ -150,10 +121,9 @@ const styles = StyleSheet.create({
   supportTitle: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "700" },
   supportText: { color: brandGroupChat.textSoft, fontSize: 13 },
   desktop: { flex: 1, flexDirection: "row" },
-  desktopThread: { flex: 1, minWidth: 0 },
   enquiries: { marginHorizontal: space[4] },
-  // #4420 twopane template (T6): the list pane is 340.
-  desktopList: { width: 340, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
+  // #4420 one-thread design: the inbox column is 360.
+  desktopList: { width: 360, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
   desktopEmptyScroll: { flex: 1 },
   desktopEmpty: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: space[2], padding: space[7] },
   desktopEmptyTitle: { color: brandGroupChat.textPrimary, fontSize: 18, fontWeight: "700" },

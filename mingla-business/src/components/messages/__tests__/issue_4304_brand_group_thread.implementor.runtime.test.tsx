@@ -283,7 +283,7 @@ describe("#4304 inbox rows", () => {
     expect(texts()).toContain("Ada: Doors at 7?");
     expect(texts()).toContain("2");
     expect(texts()).toContain("3 people · Brand group");
-    expect(renderer.root.findAll((node) => typeof node.type !== "string" && node.props.accessibilityLabel === "Lagos Social Brand group, 2 unread, muted")).not.toHaveLength(0);
+    expect(renderer.root.findAll((node) => typeof node.type !== "string" && node.props.accessibilityLabel === "Lagos Social, 2 unread in Team, muted") /* #4420: rows are brands; the label names each side’s unread */).not.toHaveLength(0);
     // Staff-only chips are hidden for a non-staff host.
     expect(byTestId(renderer, "brand-group-filter-supporting")).toHaveLength(0);
 
@@ -296,7 +296,8 @@ describe("#4304 inbox rows", () => {
     await TestRenderer.act(async () => (search.props.onChangeText as (value: string) => void)("abuja"));
     expect(byTestId(renderer, "brand-group-row-g1")).toHaveLength(0);
     await TestRenderer.act(async () => (byTestId(renderer, "brand-group-row-g2")[0].props.onPress as () => void)());
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ conversation_id: "g2" }));
+    // #4420: rows are brands; the row carries its Brand group.
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ group: expect.objectContaining({ conversation_id: "g2" }) }));
     await TestRenderer.act(async () => renderer.unmount());
   });
 
