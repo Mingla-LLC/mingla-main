@@ -535,7 +535,9 @@ function BrandGroupThreadScreen({
   const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "plan" | "media">(
     requestedGallery === "1" ? "media" : "plan",
   );
-  const detailTab = desktopDetailTab === "plan" && !planBrandId ? "people" : desktopDetailTab;
+  // #4420 D4: Media is the Team chat's; the Guests side has no Media tab.
+  const mediaShown = side === "team";
+  const detailTab = (desktopDetailTab === "plan" && !planBrandId) || (desktopDetailTab === "media" && !mediaShown) ? "people" : desktopDetailTab;
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const autoFollowLatest = useRef(requestedFocusMessageId === null);
@@ -1024,7 +1026,7 @@ function BrandGroupThreadScreen({
     );
   }
 
-  if (!showRail && mediaPanelOpen && conversationId) {
+  if (!showRail && mediaPanelOpen && mediaShown && conversationId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
         <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={color.text2} /></View>}>
@@ -1137,6 +1139,7 @@ function BrandGroupThreadScreen({
             {compactHeaderButtons ? null : <Text style={styles.mediaButtonText}>{t("plan.pill")}</Text>}
           </Pressable>
         ) : null}
+        {mediaShown ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("chat.media_a11y")}
@@ -1148,6 +1151,7 @@ function BrandGroupThreadScreen({
           <Icon name="grid" size={16} color={brandGroupChat.textPrimary} />
           {compactHeaderButtons ? null : <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>}
         </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Brand group options"
@@ -1491,7 +1495,7 @@ function BrandGroupThreadScreen({
               ...(planBrandId
                 ? [{ key: "plan", label: t("plan.pill"), accessibilityLabel: t("plan.pill_a11y"), onPress: () => { setDesktopDetailTab("plan"); setMediaPanelOpen(false); }, testID: "brand-plan-rail-tab" }]
                 : []),
-              { key: "media", label: t("chat.media"), accessibilityLabel: "Show media", onPress: openMedia },
+              ...(mediaShown ? [{ key: "media", label: t("chat.media"), accessibilityLabel: "Show media", onPress: openMedia }] : []),
             ]}
           />
           {detailTab === "people" && side === "guests" && guestChat ? (
@@ -1566,10 +1570,12 @@ function BrandGroupThreadScreen({
                 <Icon name="users" size={18} color={brandGroupChat.textSecondary} />
                 <Text style={styles.optionText}>People</Text>
               </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="Show media" onPress={() => { setOptionsOpen(false); openMedia(); }} style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
-                <Icon name="grid" size={18} color={brandGroupChat.textSecondary} />
-                <Text style={styles.optionText}>{t("chat.media")}</Text>
-              </Pressable>
+              {mediaShown ? (
+                <Pressable accessibilityRole="button" accessibilityLabel="Show media" onPress={() => { setOptionsOpen(false); openMedia(); }} style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
+                  <Icon name="grid" size={18} color={brandGroupChat.textSecondary} />
+                  <Text style={styles.optionText}>{t("chat.media")}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={group?.muted ? "Unmute notifications" : "Mute notifications"}

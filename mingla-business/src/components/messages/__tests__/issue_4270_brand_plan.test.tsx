@@ -749,7 +749,8 @@ describe("source contracts", () => {
     expect(people).toBeLessThan(planTab);
     expect(planTab).toBeLessThan(media);
     expect(chat).toContain('requestedGallery === "1" ? "media" : "plan"');
-    expect(chat).toContain('desktopDetailTab === "plan" && !planBrandId ? "people"');
+    // #4420 D4: the rule also sends a Guests-side Media tab to People.
+    expect(chat).toContain('(desktopDetailTab === "plan" && !planBrandId) || (desktopDetailTab === "media" && !mediaShown) ? "people"');
   });
   it("#4304: the People pane has no inner People | Media tab row (one tab row in the rail)", () => {
     // Live check on #4270: wide web showed two tab rows on the People tab.

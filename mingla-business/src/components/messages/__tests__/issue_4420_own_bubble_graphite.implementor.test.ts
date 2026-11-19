@@ -57,3 +57,14 @@ describe("#4420 D3 sticky day marker", () => {
     expect(color.card2.startsWith("#")).toBe(true);
   });
 });
+
+describe("#4420 D4 Media is Team-only", () => {
+  test("the Guests side has no Media button, rail tab, menu row or full-screen panel", () => {
+    const route = source("app/messages/[conversationId].tsx");
+    expect(route).toContain('const mediaShown = side === "team";');
+    expect(route).toContain('(desktopDetailTab === "media" && !mediaShown) ? "people"');
+    expect(route).toContain("if (!showRail && mediaPanelOpen && mediaShown && conversationId) {");
+    expect(route).toContain('...(mediaShown ? [{ key: "media"');
+    expect((route.match(/\{mediaShown \? \(/g) ?? []).length).toBe(2);
+  });
+});
