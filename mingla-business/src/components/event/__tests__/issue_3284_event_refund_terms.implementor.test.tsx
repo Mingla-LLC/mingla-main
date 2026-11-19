@@ -101,6 +101,8 @@ jest.mock("../CreatorStep4Cover", () => ({ CreatorStep4Cover: (): null => null }
 jest.mock("../CreatorStep5Tickets", () => ({ CreatorStep5Tickets: (): null => null }));
 jest.mock("../LazyCreatorStep5Tickets", () => ({ CreatorStep5Tickets: (): null => null }));
 jest.mock("../EditAfterPublishBanner", () => ({ EditAfterPublishBanner: (): null => null }));
+// [TEST-MOD #4514] the lazy "Guest questions" row is not under test here.
+jest.mock("../../forms/GuestQuestionsRow", () => ({ GuestQuestionsRow: (): null => null }));
 jest.mock("../EventTicketCheckoutAccessCard", () => ({
   EventTicketCheckoutAccessCard: (): null => null,
 }));
