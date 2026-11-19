@@ -94,3 +94,12 @@ describe("the workspace draws without console errors on the web", () => {
     expect(icon).not.toMatch(/<Svg[^>]*accessibilityElementsHidden/);
   });
 });
+
+describe("switching brand never carries one website's editor into another", () => {
+  it("the workspace is rebuilt per website, and the one left behind flushes its unsaved typing first", () => {
+    const app = readFileSync(resolve(__dirname, "../../components/sites/website/WebsiteApp.tsx"), "utf8");
+    expect(app).toMatch(/<WorkspaceShell\s+\/\/[^\n]*\n\s+\/\/[^\n]*\n\s+key=\{siteId \?\? "none"\}/);
+    const workspace = readFileSync(resolve(__dirname, "../../components/sites/website/workspace/useWorkspace.ts"), "utf8");
+    expect(workspace).toContain("void current.flush().finally(() => {");
+  });
+});

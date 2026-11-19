@@ -447,6 +447,9 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
     const contentDetails = (["destinations", "stories", "reviews", "past"] as const).filter((key) => inNav.has(key));
     return (
       <WorkspaceShell
+        // One workspace per website: switching brand builds a new one. The one left behind sends
+        // any words still being typed to ITS website as it goes (its autosave is bound to that site).
+        key={siteId ?? "none"}
         base={value}
         route={shown}
         search={search}
