@@ -734,7 +734,8 @@ describe("source contracts", () => {
     expect(panel).not.toMatch(/\bKeyboard\b/);
   });
   it("the pill is only for the brand's own team on a phone, and the rail order is People, Plan, Media", () => {
-    expect(chat).toContain('const planBrandId = canBrand && group ? group.brand_id : null;');
+    // #4420 SC-12: support staff read the plan too (server keeps writes rank-based).
+    expect(chat).toContain('const planBrandId = group ? group.brand_id : null;');
     // #4304: the pill shows whenever the details rail does not (phones and
     // desktop windows too narrow for three panes).
     expect(chat).toContain("{!showRail && planBrandId ? (");
