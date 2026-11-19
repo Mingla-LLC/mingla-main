@@ -134,7 +134,9 @@ describe("#4453 M10 Studio plan preview", () => {
       expect(withoutSamples).toEqual(pageSequence(build));
       expect(preview.sampleGrids).toBeGreaterThan(0);
       expect(preview.samples).not.toBeNull();
-      expect(build.pages.some((page) => page.slug === "trips")).toBe(false);
+      // #4453 (19 Nov) — the ticked offering's page is kept, waiting with a sign-up.
+      const trips = build.pages.find((page) => page.slug === "trips");
+      expect(trips?.blocks.find((block) => block.blockType === "newsletter_signup")?.heading).toBe("Be the first to hear");
     }
   });
 
