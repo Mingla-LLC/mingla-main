@@ -25,10 +25,14 @@ import type {
 export type { RsvpGuestPayload, RsvpPartyGuest, RsvpSubmittedGuest };
 import {
   RSVP_GUEST_GETS_TEXT_AND_PASS,
-  RSVP_GUEST_LIMIT_REACHED,
-  RSVP_GUEST_OWN_NUMBER,
   isCompleteE164,
 } from "./rsvpGuestCopy.ts";
+
+// The two refusals the guest form shows inline. rsvpGuestErrors.ts repeats the
+// same words for the server's refusals (a separate on-demand chunk: a module
+// both imported would be hoisted into the boot payload); a test pins them equal.
+export const RSVP_GUEST_LIMIT_REACHED = "That's the most this host allows.";
+export const RSVP_GUEST_OWN_NUMBER = "That's you. Enter a friend's number";
 
 
 /** A friend the signed-in inviter can pick (from `get_user_circle`). */

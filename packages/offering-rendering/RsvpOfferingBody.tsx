@@ -50,6 +50,7 @@
  * bar never diverge. The decision LOGIC stays in RsvpMomentumDecision (single owner).
  */
 
+import type RsvpGuestPartyBlockType from "./RsvpGuestPartyBlock";
 import React, {
   Suspense,
   useCallback,
@@ -190,7 +191,25 @@ const RsvpChipInPanel = React.lazy(() => import("./RsvpChipInPanel"));
 const RsvpSuccessPopup = React.lazy(() => import("./RsvpSuccessPopup"));
 // issue #4508 — the "Who's coming with you?" block only mounts once the host allows
 // guests, so its code rides its own chunk instead of the eager boot payload.
-const RsvpGuestPartyBlock = React.lazy(() => import("./RsvpGuestPartyBlock"));
+// N-7: if that chunk fails to load (offline, a stale deploy) its slot reads
+// "Couldn't load the guest section. Try again" and the rest of the RSVP still
+// works; tapping it makes a fresh loader (`retry`).
+const loadGuestBlock = (retry: () => void) =>
+  React.lazy<typeof RsvpGuestPartyBlockType>(() =>
+    import("./RsvpGuestPartyBlock").catch(() => ({
+      default: (p: { palette: ThemePalette }) => (
+        <Pressable
+          style={[styles.guestSlot, offeringSurfaceStyles(p.palette).card]}
+          onPress={retry}
+          accessibilityRole="button"
+        >
+          <Text style={{ color: p.palette.secondaryText }}>
+            Couldn't load the guest section. Try again
+          </Text>
+        </Pressable>
+      ),
+    })),
+  );
 // Only a refused submit needs the guest error lines, so they load on demand.
 const guestErrorLine = (code: string): Promise<string | null> =>
   import("./rsvpGuestErrors").then(
@@ -278,6 +297,7 @@ export type ChipInResult = { kind: "paid" } | { kind: "redirecting" };
 import type {
   RsvpPhoneFieldRenderArgs,
   RsvpPhoneFieldRenderer,
+  RsvpPlainFieldProps,
 } from "./rsvpPhoneFieldTypes";
 export type { RsvpPhoneFieldRenderArgs, RsvpPhoneFieldRenderer };
 
@@ -664,6 +684,12 @@ export const useRsvpOfferingState = (
     | null
   >(null);
   const [guestLookupNonce, setGuestLookupNonce] = useState(0);
+  // N-7: bumped by "Try again" when the guest block's chunk failed to load.
+  const [guestBlockTry, setGuestBlockTry] = useState(0);
+  const RsvpGuestPartyBlock = useMemo(
+    () => loadGuestBlock(() => setGuestBlockTry((n: number) => n + 1)),
+    [guestBlockTry],
+  );
   const [friendQuery, setFriendQuery] = useState("");
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [primaryPhoneTouched, setPrimaryPhoneTouched] = useState(false);
@@ -1713,13 +1739,6 @@ export const useRsvpOfferingState = (
 
   // The inviter's own number(s): a guest number equal to one is refused
   // before any lookup (1.3, live-case item 17). The server re-checks.
-  const ownPhones = useMemo(
-    () =>
-      [guestPhone, props.initialGuestPhone ?? ""].filter(
-        (p: string) => p.trim().length > 0,
-      ),
-    [guestPhone, props.initialGuestPhone],
-  );
 
   // 1.2d — the lookup runs only on a complete valid number, debounced, and its
   // answer only ever applies to the number it was asked about.
@@ -1753,7 +1772,8 @@ export const useRsvpOfferingState = (
   // live in the lazily loaded guest block (RsvpGuestPartyBlock.tsx); this body
   // keeps only the state, the debounced lookup above and the submit payload.
   const guestForms = showGuestStepper ? (
-    <Suspense fallback={null}>
+    // N-7: the slot holds the section's height while the block loads.
+    <Suspense fallback={<View style={[styles.guestSlot, surface.card]} />}>
       <RsvpGuestPartyBlock
         palette={palette}
         boldFamily={boldFamily}
@@ -1771,7 +1791,7 @@ export const useRsvpOfferingState = (
         setLookupState={setGuestLookupState}
         lookupEnabled={guestLookup !== undefined}
         onRetryLookup={() => setGuestLookupNonce((n: number) => n + 1)}
-        ownPhones={ownPhones}
+        ownPhones={[guestPhone, props.initialGuestPhone ?? ""]}
         friendQuery={friendQuery}
         setFriendQuery={setFriendQuery}
         friendList={isLoggedIn ? props.guestFriends : undefined}
@@ -1779,23 +1799,7 @@ export const useRsvpOfferingState = (
         friendsError={props.guestFriendsError ?? null}
         onRetryFriends={props.onRetryGuestFriends ?? null}
         renderPhoneField={renderPhoneField}
-        renderPlainField={(plain) => (
-          <RsvpField
-            label={plain.label}
-            value={plain.value}
-            onChangeText={plain.onChangeText}
-            placeholder="+1 555 123 4567"
-            palette={palette}
-            invalid={plain.invalid}
-            invalidMsg={plain.invalidMsg}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            disableAutofill
-            onSubmitEditing={plain.onSubmitEditing}
-            testID="issue-4508-rsvp-guest-phone-plain"
-            disabled={plain.disabled}
-          />
-        )}
+        PlainField={RsvpField}
         testID="orch-1163-rsvp-guests"
       />
     </Suspense>
@@ -2737,22 +2741,7 @@ const Pill: React.FC<{
   </View>
 );
 
-interface RsvpFieldProps {
-  label: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  placeholder: string;
-  palette: ThemePalette;
-  invalid: boolean;
-  invalidMsg: string;
-  keyboardType?: "default" | "email-address" | "phone-pad";
-  autoCapitalize?: "none" | "words";
-  testID?: string;
-  disabled?: boolean;
-  /** issue #4508 1.6 — a guest's number never offers the device's own number. */
-  disableAutofill?: boolean;
-  onSubmitEditing?: () => void;
-}
+type RsvpFieldProps = RsvpPlainFieldProps;
 
 // forwardRef so a blocked decision tap can scroll to and focus this field.
 const RsvpField = React.forwardRef<TextInput, RsvpFieldProps>(
@@ -2920,6 +2909,8 @@ const styles = StyleSheet.create({
   },
   fieldError: { color: "#e5484d", fontSize: 12, marginTop: 4 },
   errorText: { color: "#e5484d", fontSize: 13, marginTop: 10 },
+  // #4508 N-7: the guest block's slot while it loads, or if it failed to.
+  guestSlot: { minHeight: 160, borderRadius: 18, marginBottom: 14, padding: 18 },
   // brand
   brandCard: {
     borderRadius: 16,

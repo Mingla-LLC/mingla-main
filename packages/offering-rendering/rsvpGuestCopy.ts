@@ -163,8 +163,8 @@ export const buildRsvpValidationHint = (
 // rsvpGuestParty.ts re-exports everything here, so its public names are unchanged.
 import type { RsvpGuestPayload, RsvpPartyGuest } from "./rsvpGuestTypes.ts";
 
-export const RSVP_GUEST_LIMIT_REACHED = "That's the most this host allows.";
-export const RSVP_GUEST_OWN_NUMBER = "That's you. Enter a friend's number";
+// (The limit and own-number refusals live with the guest model in
+// rsvpGuestPartyModel.ts: only on-demand code shows them.)
 export const RSVP_GUEST_GETS_TEXT_AND_PASS = "Gets a text and a pass";
 
 /** The primary button: "Going" alone, "RSVP for N" with guests (N counts you). */

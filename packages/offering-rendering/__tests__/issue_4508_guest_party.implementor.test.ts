@@ -12,6 +12,8 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
+  RSVP_GUEST_LIMIT_REACHED,
+  RSVP_GUEST_OWN_NUMBER,
   RSVP_PARTY_COPY,
   addPartyGuest,
   addableFromPreview,
@@ -30,6 +32,7 @@ import {
   buildGuestInviteMessage,
   buildGuestPayload,
   rsvpGoingButtonLabel,
+  submittedGuestLabel,
   submittedGuestStatus,
 } from "../rsvpGuestParty.ts";
 import { parseSubmittedGuests } from "../rsvpGuestParse.ts";
@@ -248,16 +251,30 @@ Deno.test("E-1 the server's guest refusals map to plain copy", () => {
   assertEquals(rsvpGuestErrorMessage("rsvp_full"), null);
 });
 
-Deno.test("I-1 submit response guests are parsed defensively and a missing link reads as not texted", () => {
+Deno.test("I-1 submit response guests are parsed defensively; willText alone decides \"couldn't text\"", () => {
   const parsed = parseSubmittedGuests([
     { guestId: "g1", phoneLast4: "4567", onMingla: false, displayName: null, claimed: false, inviteUrl: "https://usemingla.com/c/X", inviteCode: "X" },
-    { guestId: "g2", phoneLast4: "9999", onMingla: false, displayName: null, claimed: false, inviteUrl: null },
+    { guestId: "g2", phoneLast4: "9999", onMingla: false, displayName: null, claimed: false, inviteUrl: null, willText: false },
     "junk",
   ]);
   assertEquals(parsed.length, 2);
   assertEquals(submittedGuestStatus(parsed[0], "going"), "Text on its way");
   assertEquals(submittedGuestStatus(parsed[1], "going"), "We couldn't text this number");
   assertEquals(submittedGuestStatus(parsed[0], "pending"), "We'll text them once you're in");
+});
+
+Deno.test("R-1 (third rework) a signed-out guest has no id or link and still reads as texted", () => {
+  // What public-submit-rsvp sends a signed-out caller, for a new number and
+  // for one already on the list alike.
+  const parsed = parseSubmittedGuests([
+    { guestId: null, phoneLast4: "4567", onMingla: false, displayName: null, claimed: false, inviteUrl: null, inviteCode: null, addedFromFriend: false, willText: true, notTextedReason: null },
+  ]);
+  assertEquals(parsed[0].guestId, null);
+  assertEquals(parsed[0].inviteUrl, null);
+  assertEquals(submittedGuestStatus(parsed[0], "going"), "Text on its way");
+  assertEquals(submittedGuestLabel(parsed[0]), "Number ending 4567");
+  // No 409 code is left for those cases, so no line is kept for one.
+  assertEquals(rsvpGuestErrorMessage("rsvp_guest_unavailable"), null);
 });
 
 // ── contract v2 (#4508 wave A rework) ──
@@ -296,9 +313,38 @@ Deno.test("C3 status: a guest the server will not text reads \"We couldn't text 
   assertEquals(submittedGuestStatus(parsed[2], "going"), "Text on its way");
 });
 
-Deno.test("R-1 (second rework) a signed-out refusal that hides why still reads in plain words", () => {
-  const line = rsvpGuestErrorMessage("rsvp_guest_unavailable");
-  if (line !== "Someone you're bringing can't be added to this event. Remove them and try again.") {
-    throw new Error(`rsvp_guest_unavailable has a plain line: ${line}`);
-  }
+
+// N-7: the lazily loaded guest block holds its section's height while it
+// loads, and a failed chunk load shows "Couldn't load the guest section." with
+// "Try again" (a fresh loader) instead of breaking the RSVP page. A source
+// check: the body is a React Native component this Deno lane cannot mount.
+Deno.test("N-7 the guest block has a loading slot and a retry when its chunk fails", async () => {
+  const src = await Deno.readTextFile(new URL("../RsvpOfferingBody.tsx", import.meta.url));
+  const forms = src.slice(src.indexOf("const guestForms = showGuestStepper ?"));
+  const suspense = forms.slice(0, forms.indexOf("<RsvpGuestPartyBlock"));
+  assert(!suspense.includes("<Suspense fallback={null}>"), "the guest block no longer suspends to nothing");
+  assert(
+    suspense.includes("<Suspense fallback={<View style={[styles.guestSlot, surface.card]} />}>"),
+    "a loading slot that reserves the section's height",
+  );
+  assert(/guestSlot: \{ minHeight: 160,/.test(src), "the slot keeps the block's height");
+  assert(
+    /import\("\.\/RsvpGuestPartyBlock"\)\.catch\(\(\) => \(\{\s*default:/.test(src) &&
+      src.includes("Couldn't load the guest section. Try again") && /onPress=\{retry\}/.test(src),
+    "a failed chunk load resolves to a slot that retries, not to an error",
+  );
+  assert(
+    /loadGuestBlock\(\(\) => setGuestBlockTry\(\(n: number\) => n \+ 1\)\)/.test(src) &&
+      /\[guestBlockTry\],/.test(src),
+    "Try again makes a fresh loader",
+  );
+});
+
+// The server's limit and own-number refusals read exactly as the form's own
+// inline lines, though the two live in separate on-demand chunks.
+Deno.test("refusal copy: the server's and the form's limit and own-number lines are the same words", () => {
+  assertEquals(rsvpGuestErrorMessage("rsvp_plus_ones_exceeded"), RSVP_GUEST_LIMIT_REACHED);
+  assertEquals(rsvpGuestErrorMessage("rsvp_guest_own_number"), RSVP_GUEST_OWN_NUMBER);
+  assertEquals(RSVP_PARTY_COPY.limitReached, RSVP_GUEST_LIMIT_REACHED);
+  assertEquals(RSVP_PARTY_COPY.own, RSVP_GUEST_OWN_NUMBER);
 });

@@ -43,7 +43,7 @@ import {
   type RsvpNumberPreview,
   type RsvpPartyGuest,
 } from "./rsvpGuestPartyModel";
-import type { RsvpPhoneFieldRenderer } from "./rsvpPhoneFieldTypes";
+import type { RsvpPhoneFieldRenderer, RsvpPlainFieldProps } from "./rsvpPhoneFieldTypes";
 
 const DANGER = "#e5484d";
 
@@ -470,15 +470,7 @@ export interface RsvpGuestPartyPanelProps {
   onRetryFriends: (() => void) | null;
   renderPhoneField?: RsvpPhoneFieldRenderer;
   /** The body's plain text field, used when the surface injects no phone picker. */
-  renderPlainField: (plain: {
-    label: string;
-    value: string;
-    onChangeText: (value: string) => void;
-    invalid: boolean;
-    invalidMsg: string;
-    onSubmitEditing: () => void;
-    disabled: boolean;
-  }) => React.ReactNode;
+  PlainField: React.ComponentType<RsvpPlainFieldProps>;
   testID?: string;
 }
 
@@ -489,7 +481,7 @@ export interface RsvpGuestPartyPanelProps {
  * the add / remove handlers, the number field and the friends section.
  */
 export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
-  const { numberE164, numberCountry, lookupState, party, ownPhones, lookupEnabled } = p;
+  const { numberE164, numberCountry, lookupState, party, lookupEnabled } = p;
   const guestNumberPreview = useMemo(() => {
     const phone = numberE164.trim();
     const lookup = !lookupEnabled
@@ -517,10 +509,11 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
       phone,
       phoneCountryIso: numberCountry,
       party,
-      ownPhones,
+      // The body passes its phone fields as they are; empty ones are not numbers.
+      ownPhones: p.ownPhones.filter((own) => own.trim().length > 0),
       lookup,
     });
-  }, [numberE164, numberCountry, lookupEnabled, lookupState, party, ownPhones]);
+  }, [numberE164, numberCountry, lookupEnabled, lookupState, party, p.ownPhones]);
   const addableGuest = addableFromPreview(guestNumberPreview);
 
   const clearGuestNumber = (): void => {
@@ -581,24 +574,31 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
       onSubmitEditing: addGuestFromNumber,
     })
   ) : (
-    p.renderPlainField({
-      label: RSVP_PARTY_COPY.numberLabel,
-      value: p.numberRaw,
-      onChangeText: (value: string) => {
+    <p.PlainField
+      label={RSVP_PARTY_COPY.numberLabel}
+      value={p.numberRaw}
+      onChangeText={(value: string) => {
         // Digits, spaces, +, brackets and dashes only: never letters.
         const cleaned = value.replace(/[^0-9+()\-\s]/g, "");
         p.setNumberRaw(cleaned);
         const compact = cleaned.replace(/[\s()\-]/g, "");
         p.setNumberE164(/^\+[1-9][0-9]{7,14}$/.test(compact) ? compact : "");
-      },
-      invalid:
+      }}
+      placeholder="+1 555 123 4567"
+      palette={p.palette}
+      invalid={
         p.numberRaw.trim().length > 0 &&
         p.numberE164.length === 0 &&
-        p.numberRaw.replace(/\D/g, "").length >= 8,
-      invalidMsg: RSVP_PARTY_COPY.invalid,
-      onSubmitEditing: addGuestFromNumber,
-      disabled: p.disabled,
-    })
+        p.numberRaw.replace(/\D/g, "").length >= 8
+      }
+      invalidMsg={RSVP_PARTY_COPY.invalid}
+      keyboardType="phone-pad"
+      autoCapitalize="none"
+      disableAutofill
+      onSubmitEditing={addGuestFromNumber}
+      testID="issue-4508-rsvp-guest-phone-plain"
+      disabled={p.disabled}
+    />
   );
 
   const friendList = p.friendList;

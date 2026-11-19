@@ -3,15 +3,13 @@
  * server refuses a guest. It only runs after a failed submit, so the RSVP body
  * loads it on demand and it stays out of the boot payload. Pure, no react.
  */
-import {
-  RSVP_GUEST_LIMIT_REACHED,
-  RSVP_GUEST_OWN_NUMBER,
-} from "./rsvpGuestCopy.ts";
 
-/** Server refusals of a guest → the line shown beside the form. */
+/** Server refusals of a guest → the line shown beside the form. The first two
+ * read exactly as the form's own inline refusals (RSVP_GUEST_LIMIT_REACHED and
+ * RSVP_GUEST_OWN_NUMBER in rsvpGuestPartyModel.ts; a test pins them equal). */
 export const rsvpGuestErrorMessage = (code: string): string | null => {
-  if (code.includes("rsvp_plus_ones_exceeded")) return RSVP_GUEST_LIMIT_REACHED;
-  if (code.includes("rsvp_guest_own_number")) return RSVP_GUEST_OWN_NUMBER;
+  if (code.includes("rsvp_plus_ones_exceeded")) return "That's the most this host allows.";
+  if (code.includes("rsvp_guest_own_number")) return "That's you. Enter a friend's number";
   if (code.includes("rsvp_guest_duplicate")) return "You've added the same person twice. Remove one and try again.";
   if (code.includes("rsvp_guest_already_listed")) return "Someone you're bringing is already on the list. Remove them and try again.";
   if (code.includes("rsvp_guest_released")) return "Someone you're bringing can't be invited to this event. Remove them and try again.";

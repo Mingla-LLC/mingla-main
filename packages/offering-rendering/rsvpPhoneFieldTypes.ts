@@ -42,3 +42,22 @@ export interface RsvpPhoneFieldRenderArgs {
 export type RsvpPhoneFieldRenderer = (
   args: RsvpPhoneFieldRenderArgs,
 ) => React.ReactNode;
+
+/** The body's plain text field (ORCH-1150), handed to the lazily loaded guest
+ * block as a component so the field's guest props live in that chunk. */
+export interface RsvpPlainFieldProps {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder: string;
+  palette: ThemePalette;
+  invalid: boolean;
+  invalidMsg: string;
+  keyboardType?: "default" | "email-address" | "phone-pad";
+  autoCapitalize?: "none" | "words";
+  testID?: string;
+  disabled?: boolean;
+  /** issue #4508 1.6 — a guest's number never offers the device's own number. */
+  disableAutofill?: boolean;
+  onSubmitEditing?: () => void;
+}
