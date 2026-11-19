@@ -45,7 +45,7 @@ import {
 } from "../../lib/emailAudience";
 import { getLead } from "../../services/leadsService";
 import { PeopleAudiencePicker } from "./PeopleAudiencePicker";
-import { ACTIVATION_PLAYS, peopleFilterFromHash, recipientFromHash } from "../../lib/peopleFilter";
+import { ACTIVATION_PLAYS, peopleFilterFromHash, recipientFromHash, startingPoint } from "../../lib/peopleFilter";
 import {
   DRAFT_STATUS_LABELS,
   canEditDraft,
@@ -307,13 +307,30 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     setPlayId(null);
     setAudienceMode("people");
   }, []);
+  // The group's own name and message. What this button filled in for the
+  // previous group is replaced; what the person typed is kept.
+  const autoStarter = useRef({ subject: "", body: "" });
   const applyPlayMessage = useCallback((play) => {
-    if (!subject.trim()) setSubject(play.name);
-    setDocumentValue((current) => {
-      const empty = current.every((block) => block.type === "rich_text" && !String(block.html || "").replace(/<[^>]*>/g, "").trim());
-      return empty ? [{ id: blockId(), type: "rich_text", html: `<p>${escapeHtml(play.message)}</p>` }] : current;
+    const plainText = (block) => String(block.html || "").replace(/<[^>]*>/g, "").trim();
+    // "" = nothing written yet; the one text block's text; or a marker for
+    // anything richer (images, buttons, several blocks), which is never replaced.
+    const onlyText = documentValue.every((block) => block.type === "rich_text");
+    const bodyText = !onlyText ? "[custom body]" : documentValue.map(plainText).join("");
+    const next = startingPoint(play, {
+      subject,
+      bodyText,
+      lastAutoSubject: autoStarter.current.subject,
+      lastAutoBody: autoStarter.current.body,
     });
-  }, [subject]);
+    if (next.subject !== null) {
+      setSubject(next.subject);
+      autoStarter.current.subject = next.subject;
+    }
+    if (next.message !== null) {
+      setDocumentValue([{ id: blockId(), type: "rich_text", html: `<p>${escapeHtml(next.message)}</p>` }]);
+      autoStarter.current.body = next.message;
+    }
+  }, [documentValue, subject]);
 
   const setFilter = useCallback((key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -1002,7 +1019,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                       // #4226 Phase 2: plays open on a play, never on "everyone".
                       if (preset.id === "plays" && !playId) choosePeopleFilter(ACTIVATION_PLAYS[0].filter, ACTIVATION_PLAYS[0].id);
                     }}
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${active ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"}`}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold ${active ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"}`}
                   >
                     {preset.label}
                   </button>

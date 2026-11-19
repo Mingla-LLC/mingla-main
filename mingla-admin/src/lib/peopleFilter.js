@@ -270,6 +270,41 @@ export function tabFilter(tab, { strip = null, filters = {}, search = "" } = {})
   return cleanFilter(out);
 }
 
+/** Same filter (ignoring blanks and key order)? */
+export function sameFilter(a, b) {
+  const x = cleanFilter(a);
+  const y = cleanFilter(b);
+  const kx = Object.keys(x);
+  return kx.length === Object.keys(y).length && kx.every((k) => x[k] === y[k]);
+}
+
+/**
+ * The play (or saved group) the current filter is. The chosen id wins when its
+ * filter is still the current one; otherwise the first play with this exact
+ * filter; otherwise none. So the highlighted card, the suggested message and
+ * the starting point always belong to the audience that is really selected.
+ */
+export function playForFilter(plays, filter, playId = null) {
+  const list = Array.isArray(plays) ? plays : [];
+  const chosen = playId ? list.find((p) => p.id === playId) : null;
+  if (chosen && sameFilter(chosen.filter, filter)) return chosen;
+  return list.find((p) => sameFilter(p.filter, filter)) || null;
+}
+
+/**
+ * What "Use as a starting point" puts in the draft: the group's own name as the
+ * subject and its own message as the body. A subject or body the person wrote
+ * is kept; one this button filled in for a previous group is replaced.
+ */
+export function startingPoint(play, { subject = "", bodyText = "", lastAutoSubject = "", lastAutoBody = "" } = {}) {
+  const subjectFree = !String(subject).trim() || subject === lastAutoSubject;
+  const bodyFree = !String(bodyText).trim() || bodyText === lastAutoBody;
+  return {
+    subject: subjectFree ? play.name : null,
+    message: bodyFree && play.message ? play.message : null,
+  };
+}
+
 /** Strip buttons from facets, in the tab's order, zeros kept visible but inert. */
 export function stripOptions(tab, facets, counts) {
   if (!tab.strip) return [];
@@ -306,7 +341,7 @@ export function stageLabel(row) {
   if (row.person_kind === "no_account_contact") return "Host contact, never bought";
   if (row.explorer_stage === "signing_up") {
     return row.explorer_stopped_step === null || row.explorer_stopped_step === undefined
-      ? "Signing up · step not recorded"
+      ? "Step not recorded"
       : `Stopped at step ${row.explorer_stopped_step}`;
   }
   const parts = [];

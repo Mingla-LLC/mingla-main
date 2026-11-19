@@ -203,6 +203,7 @@ export function PeoplePage() {
   const [facetsError, setFacetsError] = useState(null);
   const [facetsVersion, setFacetsVersion] = useState(0);
   const [visible, setVisible] = useState({ total: null, search: "" });
+  const [emailReach, setEmailReach] = useState(null);
 
   useEffect(() => {
     const sync = () => setRoute(readHash());
@@ -220,6 +221,9 @@ export function PeoplePage() {
 
   const filter = useMemo(() => tabFilter(tab, { strip, filters }), [tab, strip, filters]);
   const filterKey = JSON.stringify(filter);
+  // The search box narrows the list, so it narrows the strip, the dropdown
+  // counts and the Email button too.
+  const countsFilterKey = JSON.stringify(tabFilter(tab, { strip, filters, search: visible.search }));
 
   const loadTabCounts = useCallback(async () => {
     setCountsError(null);
@@ -239,25 +243,34 @@ export function PeoplePage() {
   // Facets (and the strip) for the current tab and filters.
   useEffect(() => {
     let live = true;
-    const f = JSON.parse(filterKey);
+    const f = JSON.parse(countsFilterKey);
     const stripCountsRequest = tab.strip === "track"
       ? getPeopleFilterCounts(Object.fromEntries(tab.stripOrder.map((value) => [value, { ...f, track: value }])))
       : Promise.resolve(null);
     // For a track strip the facets cover the whole tab, whichever part is chosen.
-    Promise.all([getPeopleFacets(f), stripCountsRequest])
-      .then(([result, counts]) => {
+    // How many of this exact list a bulk email would reach (people marked
+    // "emails OK"); a person who chose "emails OK: no" is never reached.
+    const reachRequest = f.emails_ok === "no"
+      ? Promise.resolve({ reach: 0 })
+      : getPeopleFilterCounts({ reach: { ...f, emails_ok: "yes" } });
+    Promise.all([getPeopleFacets(f), stripCountsRequest, reachRequest])
+      .then(([result, counts, reach]) => {
         if (!live) return;
         setFacets(result.facets);
         setStripCounts(counts);
+        setEmailReach(Number.isFinite(Number(reach?.reach)) ? Number(reach.reach) : null);
         setFacetsError(null);
       })
       .catch((err) => {
         if (!live) return;
+        // Never keep numbers that belong to an earlier filter.
         setFacets(null);
+        setStripCounts(null);
+        setEmailReach(null);
         setFacetsError(err?.message || "Couldn't load the filter options.");
       });
     return () => { live = false; };
-  }, [filterKey, tab, facetsVersion, listVersion]);
+  }, [countsFilterKey, tab, facetsVersion, listVersion]);
 
   const fetchPage = useCallback(
     async (query) => {
@@ -315,7 +328,9 @@ export function PeoplePage() {
             data-email-these
           >
             <Mail className="h-4 w-4" aria-hidden="true" />
-            {emailCount === null ? "Email these people" : `Email these ${emailCount.toLocaleString()} ${emailCount === 1 ? "person" : "people"}`}
+            {emailCount === null
+              ? "Email these people"
+              : `Email these ${emailCount.toLocaleString()} ${emailCount === 1 ? "person" : "people"}${emailReach === null ? "" : ` · ${Math.min(emailReach, emailCount).toLocaleString()} can receive`}`}
           </a>
         }
       />

@@ -27,6 +27,7 @@ import {
   facetOptions,
   filterChips,
   peopleHrefFor,
+  playForFilter,
   readSavedGroups,
   saveGroup,
   withoutKey,
@@ -114,7 +115,9 @@ export function PeopleAudiencePicker({ mode, filter, playId, onChoose, onEditFil
 
   if (mode === "plays") {
     const groups = [...PLAY_GROUPS, ...(savedGroups.length ? ["Your saved groups"] : [])];
-    const current = plays.find((p) => p.id === playId) || null;
+    // The card, message and starting point follow the filter that is selected,
+    // never an id left over from an earlier choice.
+    const current = playForFilter(plays, clean, playId);
     return (
       <div className="flex flex-col gap-4" data-activation-plays>
         <p className="text-xs text-[var(--color-text-secondary)]">
@@ -126,7 +129,7 @@ export function PeopleAudiencePicker({ mode, filter, playId, onChoose, onEditFil
             <h4 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-tertiary)]">{group}</h4>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {plays.filter((p) => p.group === group).map((p) => {
-                const on = p.id === playId;
+                const on = current ? p.id === current.id : false;
                 const count = playCounts && Number.isFinite(Number(playCounts[p.id])) ? Number(playCounts[p.id]) : null;
                 return (
                   <button
@@ -156,9 +159,7 @@ export function PeopleAudiencePicker({ mode, filter, playId, onChoose, onEditFil
             <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">
               {current.message ? <>Suggested message: <em>{current.message}</em></> : "Write a message that fits this group."}
             </span>
-            {current.message && (
-              <Button variant="secondary" size="sm" onClick={() => onUseMessage(current)}>Use as a starting point</Button>
-            )}
+            <Button variant="secondary" size="sm" onClick={() => onUseMessage(current)}>Use as a starting point</Button>
             <Button variant="secondary" size="sm" onClick={() => onEditFilters(current.filter)}>Edit filters</Button>
             <a href={peopleHrefFor(current.filter)} className="text-xs font-semibold text-[var(--color-brand-700)] hover:underline">See these people in People</a>
           </div>

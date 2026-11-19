@@ -35,7 +35,9 @@ import {
   peopleAudience,
   peopleFilterFromHash,
   peopleHrefFor,
+  playForFilter,
   readSavedGroups,
+  startingPoint,
   recipientFromHash,
   recipientHrefFor,
   saveGroup,
@@ -110,7 +112,7 @@ describe("#4226 P2: the panel fits the person", () => {
 
   it("stage words: steps, team members and no-account kinds", () => {
     assert.equal(stageLabel({ explorer_stage: "signing_up", explorer_stopped_step: 3 }), "Stopped at step 3");
-    assert.equal(stageLabel({ explorer_stage: "signing_up", explorer_stopped_step: null }), "Signing up · step not recorded");
+    assert.equal(stageLabel({ explorer_stage: "signing_up", explorer_stopped_step: null }), "Step not recorded");
     assert.equal(stageLabel({ host_next_step: "team_member", host_checklist: { team_brands: [{ name: "Ctrl" }] } }), "Team member at Ctrl");
     assert.equal(stageLabel({ explorer_stage: "going", host_next_step: "publish" }), "Going · Next: publish");
     assert.equal(stageLabel({ person_kind: "no_account_contact" }), "Host contact, never bought");
@@ -263,3 +265,76 @@ describe("#4226 P2: saved groups, activity, one owner", () => {
     assert.match(modal, /\["host", "both"\]\.includes\(person\.app_status \|\| person\.segment\) \? "business" : "explorer"/);
   });
 });
+
+describe("#4226 rework: starting points, counts that follow the filter, Email button", () => {
+  const saved = { id: "saved-going", name: "Going, Lagos", who: "Going", filter: { track: "explorers", explorer_stage: "going", city: "Lagos" }, message: "" };
+  const plays = [...ACTIVATION_PLAYS, saved];
+
+  it("N3: the card, message and starting point follow the selected filter, not a stale id", () => {
+    // A stale id for the first play while the filter is the saved group's.
+    const current = playForFilter(plays, saved.filter, ACTIVATION_PLAYS[0].id);
+    assert.equal(current.id, "saved-going");
+    assert.equal(playForFilter(plays, ACTIVATION_PLAYS[1].filter, null).id, ACTIVATION_PLAYS[1].id);
+    assert.equal(playForFilter(plays, { track: "hosts", search: "nobody" }, null), null);
+    assert.equal(playForFilter(plays, ACTIVATION_PLAYS[0].filter, "saved-going").id, ACTIVATION_PLAYS[0].id, "an id whose filter is not the current one never wins");
+  });
+
+  it("N3: a saved group's starting point is its own name, never another play's subject", () => {
+    const first = startingPoint(ACTIVATION_PLAYS[0], { subject: "", bodyText: "" });
+    assert.equal(first.subject, ACTIVATION_PLAYS[0].name);
+    // The previous click filled the subject; the next group replaces it.
+    const next = startingPoint(saved, { subject: first.subject, bodyText: first.message || "", lastAutoSubject: first.subject, lastAutoBody: first.message || "" });
+    assert.equal(next.subject, "Going, Lagos");
+    assert.equal(next.message, null, "a saved group has no message of its own, so the body is left alone");
+    // A subject the person wrote is kept.
+    assert.equal(startingPoint(saved, { subject: "My own subject", lastAutoSubject: first.subject }).subject, null);
+    // A play with its own message replaces an auto-filled body but never a written one.
+    const withMsg = ACTIVATION_PLAYS.find((p) => p.message);
+    assert.equal(startingPoint(withMsg, { subject: "", bodyText: "Typed by hand", lastAutoBody: "x" }).message, null);
+    assert.equal(startingPoint(withMsg, { subject: "", bodyText: "x", lastAutoBody: "x" }).message, withMsg.message);
+  });
+
+  it("N3: the Email composer uses them, and the saved group gets a starting point button", () => {
+    const picker = fs.readFileSync(path.join(REPO, "mingla-admin/src/components/email/PeopleAudiencePicker.jsx"), "utf8");
+    const composer = fs.readFileSync(path.join(REPO, "mingla-admin/src/components/email/EmailComposer.jsx"), "utf8");
+    assert.match(picker, /playForFilter\(plays, clean, playId\)/);
+    assert.doesNotMatch(picker, /plays\.find\(\(p\) => p\.id === playId\)/, "no lookup by a possibly stale id");
+    assert.doesNotMatch(picker, /\{current\.message && \(/, "the starting point is offered for every group");
+    assert.match(composer, /startingPoint\(play,/);
+  });
+
+  it("N4/N5: the strip, dropdown counts and Email button follow the search and every filter, and never keep old numbers", () => {
+    const page = fs.readFileSync(path.join(REPO, "mingla-admin/src/pages/PeoplePage.jsx"), "utf8");
+    assert.match(page, /countsFilterKey = JSON\.stringify\(tabFilter\(tab, \{ strip, filters, search: visible\.search \}\)\)/);
+    assert.match(page, /JSON\.parse\(countsFilterKey\)/);
+    const catchBlock = page.slice(page.indexOf("// Never keep numbers that belong to an earlier filter."));
+    assert.match(catchBlock.slice(0, 300), /setFacets\(null\);\s*setStripCounts\(null\);\s*setEmailReach\(null\);/);
+    assert.match(page, /can receive/, "the button says how many can receive");
+    assert.match(page, /emails_ok: "yes"/);
+  });
+
+  it("N6: the audience pills do not animate their highlight", () => {
+    const composer = fs.readFileSync(path.join(REPO, "mingla-admin/src/components/email/EmailComposer.jsx"), "utf8");
+    const pill = composer.slice(composer.indexOf("aria-pressed={active}"), composer.indexOf("aria-pressed={active}") + 400);
+    assert.doesNotMatch(pill, /px-3 py-1\.5 text-xs font-semibold transition /);
+    assert.equal(presetIsActiveFor("people"), "people");
+  });
+
+  it("T-10: a sign-up with no recorded step reads Step not recorded, and the filter option says so", () => {
+    assert.equal(stageLabel({ explorer_stage: "signing_up", explorer_stopped_step: null }), "Step not recorded");
+    assert.equal(stageLabel({ explorer_stage: "signing_up", explorer_stopped_step: 0 }), "Stopped at step 0");
+    const opts = facetOptions("stopped_step", { stopped_step: [{ value: "none", label: "none", count: 3 }, { value: "2", label: "2", count: 1 }] });
+    assert.equal(opts[0].label, "Step not recorded (3)");
+  });
+
+  it("N7: Joined and Signed up come from the same auth sign-up in the migration", () => {
+    const sql = fs.readFileSync(path.join(REPO, "supabase/migrations/20281118024226_issue_4226_people_journey.sql"), "utf8");
+    assert.match(sql, /COALESCE\(st\.auth_created_at, st\.created_at/);
+    assert.match(sql, /SELECT u\.created_at AS at, 'signed_up'/);
+  });
+});
+
+function presetIsActiveFor(mode) {
+  // The pill is active exactly when the composer's audience mode is its id.
+  return AUDIENCE_PRESETS.find((p) => p.id === mode && presetIsActive(p, mode, {}))?.id;
+}
