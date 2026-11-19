@@ -34,8 +34,12 @@ import { Sheet } from "../ui/Sheet";
 // the screen-root VC while the sheet modal is up). Mirrors #1356 CoverPickerSheet.
 import { Toast } from "../ui/Toast";
 import {
+  canCheckInByHand,
   claimStatusLabel,
   invitedByLine,
+  manualCheckInLabel,
+  phoneLast4Line,
+  type RsvpPlusGuest,
 } from "../../utils/rsvpGuestDisplay";
 import type {
   RsvpApprovalValue,
@@ -171,7 +175,13 @@ export interface RsvpGuestDetailSheetProps {
   // below (this Sheet's own modal VC), which iOS stacks, instead of the
   // console-root sibling Toast, which iOS drops while the sheet modal is up.
   notice: string | null;
+  /** #4508 - "error" (default) or "success" for the in-sheet notice. */
+  noticeKind?: "error" | "success";
   onNoticeDismiss: () => void;
+  /** #4508 - admit an unclaimed plus-one by hand. */
+  onCheckInGuest?: (guest: RsvpPlusGuest) => void;
+  /** #4508 - the plus-one whose check-in call is in flight, if any. */
+  checkingInGuestId?: string | null;
   contributionId?: string | null;
   refund?: SourceRefundSummary | null;
   onRefundContribution?: (contributionId: string) => void;
@@ -187,7 +197,10 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
   onRemove,
   isActionPending,
   notice,
+  noticeKind = "error",
   onNoticeDismiss,
+  onCheckInGuest,
+  checkingInGuestId = null,
   contributionId = null,
   refund = null,
   onRefundContribution,
@@ -263,14 +276,22 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
               <SectionLabel>GUESTS</SectionLabel>
               {guest.plusCheckins.map((pg) => {
                 const invited = invitedByLine(pg.invitedByName);
+                // #4508 - only an unclaimed plus-one who is not in yet can be
+                // admitted by hand; a claimed guest scans their own pass.
+                const byHand =
+                  onCheckInGuest !== undefined && canCheckInByHand(pg);
+                const lastFour = byHand ? phoneLast4Line(pg.phoneLast4) : null;
+                const checkingIn = checkingInGuestId === pg.id;
                 return (
+                  <View key={pg.id} style={styles.plusGroup}>
                   <View
-                    key={pg.id}
                     style={styles.plusRow}
                     accessible
                     accessibilityLabel={`${pg.name}, ${claimStatusLabel(pg.claimed).toLowerCase()}${
                       invited !== null ? `. ${invited}` : ""
-                    }${pg.checkedInAt !== null ? ". Checked in" : ""}`}
+                    }${lastFour !== null ? `. ${lastFour}` : ""}${
+                      pg.checkedInAt !== null ? ". Checked in" : ""
+                    }`}
                     testID={`rsvp-plus-guest-${pg.id}`}
                   >
                     <View style={styles.plusRowText}>
@@ -280,6 +301,11 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                       {invited !== null ? (
                         <Text style={styles.meta} numberOfLines={1}>
                           {invited}
+                        </Text>
+                      ) : null}
+                      {lastFour !== null ? (
+                        <Text style={styles.meta} numberOfLines={1}>
+                          {lastFour}
                         </Text>
                       ) : null}
                     </View>
@@ -300,6 +326,20 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                         {claimStatusLabel(pg.claimed)}
                       </Text>
                     </View>
+                  </View>
+                  {byHand ? (
+                    <Button
+                      label={manualCheckInLabel(pg.invitedByName)}
+                      variant="secondary"
+                      size="md"
+                      fullWidth
+                      loading={checkingIn}
+                      disabled={checkingInGuestId !== null}
+                      onPress={() => onCheckInGuest?.(pg)}
+                      accessibilityLabel={`${manualCheckInLabel(pg.invitedByName)} to check in ${pg.name}`}
+                      testID={`rsvp-plus-checkin-${pg.id}`}
+                    />
+                  ) : null}
                   </View>
                 );
               })}
@@ -411,7 +451,7 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
           deferred. I-SUB-SHEET-INSIDE-PARENT. */}
       <Toast
         visible={notice !== null}
-        kind="error"
+        kind={noticeKind}
         message={notice ?? ""}
         onDismiss={onNoticeDismiss}
         testID="rsvp-guest-detail-notice"
@@ -469,6 +509,7 @@ const styles = StyleSheet.create({
     lineHeight: type.small.lineHeight,
     color: color.text2,
   },
+  plusGroup: { gap: space[2] },
   plusRow: {
     minHeight: 44,
     flexDirection: "row",

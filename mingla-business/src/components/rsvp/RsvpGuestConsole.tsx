@@ -45,14 +45,21 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
-import { rsvpRpcFailureCopy } from "../../services/rsvpRpcFailure";
+import { readRpcFailureMessage, rsvpRpcFailureCopy } from "../../services/rsvpRpcFailure";
 import {
   useBulkApproveRsvps,
+  useCheckInRsvpGuest,
   useRsvpGuestList,
   useSetRsvpStatus,
 } from "../../hooks/useRsvpApprovals";
 import type { RsvpGuest, RsvpSourceValue } from "../../services/rsvpApprovals";
 import { deferAfterDismiss } from "../../utils/deferAfterDismiss";
+import {
+  manualCheckInFailureCopy,
+  manualCheckInOutcome,
+  markPlusGuestCheckedIn,
+  type RsvpPlusGuest,
+} from "../../utils/rsvpGuestDisplay";
 import { RsvpGuestDetailSheet } from "./RsvpGuestDetailSheet";
 import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 import { useEventRsvpContributionRefunds } from "../../hooks/useRsvpContributionRefunds";
@@ -213,6 +220,13 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   // Sheet approve/deny failures route here (not the console-root sibling <Toast>,
   // which iOS New-Arch drops while the sheet modal is up).
   const [sheetNotice, setSheetNotice] = useState<string | null>(null);
+  // #4508 - the sheet notice is an error unless a hand check-in just worked.
+  const [sheetNoticeKind, setSheetNoticeKind] = useState<"error" | "success">("error");
+  const checkInGuest = useCheckInRsvpGuest(eventId);
+  const [checkingInGuestId, setCheckingInGuestId] = useState<string | null>(null);
+  // #4508 - plus-ones admitted by hand this session (id -> time), shown at once
+  // while the refreshed guest list is on its way.
+  const [handCheckedIn, setHandCheckedIn] = useState<Record<string, string>>({});
   // #1376 SC-1b — mirror the latest open-sheet guest so the DEFERRED remove-confirm
   // (handleSheetRemove) can bail if a new sheet re-opened within the ~340ms defer
   // window, never presenting a ConfirmDialog over a freshly re-opened sheet.
@@ -376,8 +390,58 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   // a prior approve/deny error never re-appears over a freshly opened sheet.
   const handleSelectGuest = useCallback((g: RsvpGuest): void => {
     setSheetNotice(null);
+    setSheetNoticeKind("error");
     setSelectedGuest(g);
   }, []);
+
+  // #4508 - admit an unclaimed plus-one by hand. Every answer is shown in the
+  // sheet's own Toast (I-SUB-SHEET-INSIDE-PARENT), truthfully: a refusal says
+  // why and the row stays as it was.
+  const handleCheckInGuest = useCallback(
+    (pg: RsvpPlusGuest): void => {
+      setSheetNotice(null);
+      setCheckingInGuestId(pg.id);
+      checkInGuest.mutate(
+        { guestId: pg.id },
+        {
+          onSuccess: (res) => {
+            const outcome = manualCheckInOutcome(res);
+            if (outcome.kind === "checked_in") {
+              setHandCheckedIn((prev) => ({
+                ...prev,
+                [pg.id]: outcome.checkedInAt ?? new Date().toISOString(),
+              }));
+              setSheetNoticeKind("success");
+            } else {
+              setSheetNoticeKind("error");
+            }
+            setSheetNotice(outcome.message);
+          },
+          onError: (error) => {
+            setSheetNoticeKind("error");
+            setSheetNotice(
+              manualCheckInFailureCopy(readRpcFailureMessage(error)) ??
+                rsvpRpcFailureCopy(error, `check in ${pg.name}`),
+            );
+          },
+          onSettled: () => setCheckingInGuestId(null),
+        },
+      );
+    },
+    [checkInGuest],
+  );
+
+  // The open sheet shows the freshest copy of its guest from the live list,
+  // with any hand check-in applied straight away.
+  const sheetGuest = useMemo<RsvpGuest | null>(() => {
+    if (selectedGuest === null) return null;
+    const live = guests.find((g) => g.id === selectedGuest.id) ?? selectedGuest;
+    let plusCheckins = live.plusCheckins;
+    for (const [id, at] of Object.entries(handCheckedIn)) {
+      plusCheckins = markPlusGuestCheckedIn(plusCheckins, id, at);
+    }
+    return plusCheckins === live.plusCheckins ? live : { ...live, plusCheckins };
+  }, [guests, handCheckedIn, selectedGuest]);
 
   const handleRefundContribution = useCallback(
     (contributionId: string): void => {
@@ -622,13 +686,16 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
 
       <RsvpGuestDetailSheet
         visible={selectedGuest !== null}
-        guest={selectedGuest}
+        guest={sheetGuest}
         onClose={() => setSelectedGuest(null)}
         onApprove={handleSheetApprove}
         onDeny={handleSheetDeny}
         onRemove={handleSheetRemove}
         isActionPending={setStatus.isPending}
         notice={sheetNotice}
+        noticeKind={sheetNoticeKind}
+        onCheckInGuest={handleCheckInGuest}
+        checkingInGuestId={checkingInGuestId}
         onNoticeDismiss={() => setSheetNotice(null)}
         contributionId={selectedGuest
           ? contributionByRsvp.get(selectedGuest.id)?.contributionId ?? null
