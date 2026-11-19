@@ -16,6 +16,7 @@ export interface RsvpPlusGuestInput {
   claimed?: boolean | null;
   onMingla?: boolean | null;
   broughtByGuestId?: string | null;
+  phoneLast4?: string | null;
 }
 
 export interface RsvpPlusGuest {
@@ -27,6 +28,8 @@ export interface RsvpPlusGuest {
   claimed: boolean;
   onMingla: boolean;
   broughtByGuestId: string | null;
+  /** #4508 C8 - last four digits of the number the plus-one was added with; never the full number. */
+  phoneLast4: string | null;
 }
 
 /** Trimmed text, or null when empty or a stringified-null artefact. */
@@ -93,7 +96,84 @@ export const normalisePlusGuests = (raw: unknown): RsvpPlusGuest[] => {
       claimed: g.claimed === true,
       onMingla: g.onMingla === true,
       broughtByGuestId: cleanText(g.broughtByGuestId),
+      phoneLast4: cleanPhoneLast4(g.phoneLast4),
     });
   });
   return out;
 };
+
+/**
+ * Exactly four digits, or null. Anything longer (a full number leaking through
+ * a wrong field) or malformed is dropped, so the client can never render more
+ * than the last four digits.
+ */
+export const cleanPhoneLast4 = (value: unknown): string | null => {
+  const t = cleanText(value);
+  return t !== null && /^\d{4}$/.test(t) ? t : null;
+};
+
+/** "Number ending 0199", or null when the server gave no usable digits. */
+export const phoneLast4Line = (value: unknown): string | null => {
+  const digits = cleanPhoneLast4(value);
+  return digits === null ? null : `Number ending ${digits}`;
+};
+
+/** A plus-one the host may admit by hand: has not claimed and is not in yet. */
+export const canCheckInByHand = (
+  guest: Pick<RsvpPlusGuest, "claimed" | "checkedInAt">,
+): boolean => guest.claimed !== true && cleanText(guest.checkedInAt) === null;
+
+/** "Check in with Ada" (first name of the inviter), or "Check in". */
+export const manualCheckInLabel = (invitedByName: unknown): string => {
+  const inviter = cleanText(invitedByName);
+  return inviter === null ? "Check in" : `Check in with ${firstWord(inviter)}`;
+};
+
+export type ManualCheckInOutcome =
+  | { kind: "checked_in"; message: string; checkedInAt: string | null }
+  | { kind: "refused"; message: string };
+
+/**
+ * Reads host_check_in_rsvp_guest's answer (same shape as a door scan) into one
+ * truthful outcome. success and duplicate both mean the guest IS checked in;
+ * every other answer is a refusal that says why, and an unknown answer is
+ * never shown as a success.
+ */
+export const manualCheckInOutcome = (
+  response: { result?: unknown; checkedInAt?: unknown } | null | undefined,
+): ManualCheckInOutcome => {
+  const result = response?.result;
+  const at = cleanText(response?.checkedInAt);
+  switch (result) {
+    case "success":
+      return { kind: "checked_in", message: "Checked in.", checkedInAt: at };
+    case "duplicate":
+      return { kind: "checked_in", message: "Already checked in.", checkedInAt: at };
+    case "not_eligible":
+      return { kind: "refused", message: "This guest's RSVP isn't approved, so they can't be checked in." };
+    case "revoked":
+      return { kind: "refused", message: "This RSVP was removed or the event was cancelled." };
+    case "not_yet_open":
+      return { kind: "refused", message: "Check-in isn't open yet for this event." };
+    case "event_ended":
+      return { kind: "refused", message: "This event has ended, so check-in is closed." };
+    default:
+      return { kind: "refused", message: "We couldn't check this guest in. Try again." };
+  }
+};
+
+/** Copy for a failed manual check-in call; null = use the generic RPC copy. */
+export const manualCheckInFailureCopy = (message: unknown): string | null =>
+  typeof message === "string" && message.includes("scanner_not_authorized")
+    ? "You don't have permission to check guests in for this event."
+    : null;
+
+/** Mark one plus-one checked in on a list without touching the others. */
+export const markPlusGuestCheckedIn = (
+  list: readonly RsvpPlusGuest[],
+  guestId: string,
+  checkedInAt: string,
+): RsvpPlusGuest[] =>
+  list.map((g) =>
+    g.id === guestId && g.checkedInAt === null ? { ...g, checkedInAt } : g,
+  );

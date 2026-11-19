@@ -10,8 +10,9 @@
  * Package-isolated (I-MOR-0827): ThemePalette only, no app imports.
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Platform,
   Pressable,
@@ -25,16 +26,24 @@ import { offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import { themeFontFace } from "./themeAccentStyle";
 import {
   RSVP_PARTY_COPY,
-  formatPartyPhone,
-  partyGuestLabel,
+  addPartyGuest,
+  addableFromPreview,
+  friendChips,
+  friendGuest,
+  numberPreview,
+  removePartyGuest,
   rsvpFriendLine,
   rsvpNoFriendMatch,
   rsvpOnMinglaLine,
   rsvpPartyHelper,
+  searchFriends,
   type RsvpFriendOption,
+  type RsvpGuestLookupResult,
   type RsvpNumberPreview,
   type RsvpPartyGuest,
-} from "./rsvpGuestParty";
+} from "./rsvpGuestPartyModel";
+import { formatPartyPhone, partyGuestLabel } from "./rsvpGuestCopy";
+import type { RsvpPhoneFieldRenderer } from "./RsvpOfferingBody";
 
 const DANGER = "#e5484d";
 
@@ -427,4 +436,203 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 14, fontWeight: "600" },
 });
 
-export default RsvpGuestPartyBlock;
+type RsvpGuestLookupState =
+  | { phone: string; state: "checking" }
+  | { phone: string; state: "done"; result: RsvpGuestLookupResult }
+  | { phone: string; state: "failed" }
+  | null;
+
+export interface RsvpGuestPartyPanelProps {
+  palette: ThemePalette;
+  boldFamily: string;
+  max: number;
+  party: RsvpPartyGuest[];
+  setParty: (update: (current: RsvpPartyGuest[]) => RsvpPartyGuest[]) => void;
+  disabled: boolean;
+  numberCountry: string | null;
+  setNumberCountry: (iso: string | null) => void;
+  numberRaw: string;
+  setNumberRaw: (raw: string) => void;
+  numberE164: string;
+  setNumberE164: (e164: string) => void;
+  lookupState: RsvpGuestLookupState;
+  setLookupState: (state: RsvpGuestLookupState) => void;
+  /** false ⇒ this surface has no lookup: a valid number is simply invited. */
+  lookupEnabled: boolean;
+  onRetryLookup: () => void;
+  ownPhones: ReadonlyArray<string>;
+  friendQuery: string;
+  setFriendQuery: (value: string) => void;
+  /** undefined ⇒ no friends section (signed out, or the surface offers none). */
+  friendList: ReadonlyArray<RsvpFriendOption> | undefined;
+  friendsLoading: boolean;
+  friendsError: string | null;
+  onRetryFriends: (() => void) | null;
+  renderPhoneField?: RsvpPhoneFieldRenderer;
+  /** The body's plain text field, used when the surface injects no phone picker. */
+  renderPlainField: (plain: {
+    label: string;
+    value: string;
+    onChangeText: (value: string) => void;
+    invalid: boolean;
+    invalidMsg: string;
+    onSubmitEditing: () => void;
+    disabled: boolean;
+  }) => React.ReactNode;
+  testID?: string;
+}
+
+/**
+ * The RSVP body's "Who's coming with you?" logic, kept next to its block so
+ * both ride the same on-demand chunk. The body owns the state (so the inline
+ * form and the details modal share one party); this derives the live preview,
+ * the add / remove handlers, the number field and the friends section.
+ */
+export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
+  const { numberE164, numberCountry, lookupState, party, ownPhones, lookupEnabled } = p;
+  const guestNumberPreview = useMemo(() => {
+    const phone = numberE164.trim();
+    const lookup = !lookupEnabled
+      ? {
+          // No lookup on this surface: a valid number is simply invited.
+          state: "done" as const,
+          result: {
+            valid: true,
+            onMingla: false,
+            userId: null,
+            displayName: null,
+            username: null,
+            avatarUrl: null,
+            isYou: false,
+            alreadyOnList: false,
+            released: false,
+          },
+        }
+      : lookupState === null || lookupState.phone !== phone
+        ? { state: "none" as const }
+        : lookupState.state === "done"
+          ? { state: "done" as const, result: lookupState.result }
+          : { state: lookupState.state };
+    return numberPreview({
+      phone,
+      phoneCountryIso: numberCountry,
+      party,
+      ownPhones,
+      lookup,
+    });
+  }, [numberE164, numberCountry, lookupEnabled, lookupState, party, ownPhones]);
+  const addableGuest = addableFromPreview(guestNumberPreview);
+
+  const clearGuestNumber = (): void => {
+    p.setNumberRaw("");
+    p.setNumberE164("");
+    p.setLookupState(null);
+  };
+  const addGuestFromNumber = (): void => {
+    if (p.disabled || addableGuest === null) return;
+    p.setParty((current: RsvpPartyGuest[]) => addPartyGuest(current, addableGuest, p.max));
+    clearGuestNumber();
+    if (Platform.OS !== "web") {
+      AccessibilityInfo.announceForAccessibility?.(`${partyGuestLabel(addableGuest)} added.`);
+    }
+  };
+  const addGuestFriend = (friend: RsvpFriendOption): void => {
+    if (p.disabled) return;
+    p.setParty((current: RsvpPartyGuest[]) => addPartyGuest(current, friendGuest(friend), p.max));
+    p.setFriendQuery("");
+    if (Platform.OS !== "web") {
+      AccessibilityInfo.announceForAccessibility?.(`${friend.displayName} added.`);
+    }
+  };
+  const removeGuest = (key: string): void => {
+    if (p.disabled) return;
+    p.setParty((current: RsvpPartyGuest[]) => removePartyGuest(current, key));
+  };
+
+  const guestNumberInvalid =
+    p.numberRaw.trim().length > 0 &&
+    p.numberE164.trim().length === 0 &&
+    p.numberRaw.replace(/\D/g, "").length >= 7;
+  const numberField: React.ReactNode = p.renderPhoneField ? (
+    p.renderPhoneField({
+      role: "plus_one",
+      guestId: null,
+      index: null,
+      label: RSVP_PARTY_COPY.numberLabel,
+      testID: "issue-4508-rsvp-guest-phone",
+      countryCode: p.numberCountry,
+      rawValue: p.numberRaw,
+      onChangeCountry: (isoCode, resolvedE164) => {
+        p.setNumberCountry(isoCode);
+        p.setNumberE164(resolvedE164 ?? "");
+      },
+      onChangeRawValue: (raw, resolvedE164) => {
+        p.setNumberRaw(raw);
+        p.setNumberE164(resolvedE164 ?? "");
+      },
+      invalid: guestNumberInvalid,
+      errorText: guestNumberInvalid ? RSVP_PARTY_COPY.invalid : null,
+      palette: p.palette,
+      disabled: p.disabled,
+      required: false,
+      emptyRequired: false,
+      onBlur: () => undefined,
+      disableAutofill: true,
+      onSubmitEditing: addGuestFromNumber,
+    })
+  ) : (
+    p.renderPlainField({
+      label: RSVP_PARTY_COPY.numberLabel,
+      value: p.numberRaw,
+      onChangeText: (value: string) => {
+        // Digits, spaces, +, brackets and dashes only: never letters.
+        const cleaned = value.replace(/[^0-9+()\-\s]/g, "");
+        p.setNumberRaw(cleaned);
+        const compact = cleaned.replace(/[\s()\-]/g, "");
+        p.setNumberE164(/^\+[1-9][0-9]{7,14}$/.test(compact) ? compact : "");
+      },
+      invalid:
+        p.numberRaw.trim().length > 0 &&
+        p.numberE164.length === 0 &&
+        p.numberRaw.replace(/\D/g, "").length >= 8,
+      invalidMsg: RSVP_PARTY_COPY.invalid,
+      onSubmitEditing: addGuestFromNumber,
+      disabled: p.disabled,
+    })
+  );
+
+  const friendList = p.friendList;
+  const friendsSection =
+    friendList !== undefined
+      ? {
+          query: p.friendQuery,
+          onQueryChange: p.setFriendQuery,
+          results: searchFriends(friendList, p.friendQuery, party),
+          chips: friendChips(friendList, party),
+          loading: p.friendsLoading,
+          error: p.friendsError,
+          onRetry: p.onRetryFriends,
+          onPick: addGuestFriend,
+        }
+      : null;
+
+  return (
+    <RsvpGuestPartyBlock
+      palette={p.palette}
+      boldFamily={p.boldFamily}
+      max={p.max}
+      party={party}
+      disabled={p.disabled}
+      numberField={numberField}
+      preview={guestNumberPreview}
+      canAddNumber={addableGuest !== null && !p.disabled}
+      onAddNumber={addGuestFromNumber}
+      onRetryLookup={lookupEnabled ? p.onRetryLookup : null}
+      onRemove={removeGuest}
+      friends={friendsSection}
+      testID={p.testID}
+    />
+  );
+};
+
+export default RsvpGuestPartyPanel;

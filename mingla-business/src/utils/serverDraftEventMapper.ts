@@ -92,6 +92,9 @@ export interface ServerDraftEventRow {
   theme_animation_override?: string | null;
   // issue #1023 wave 2 — "#first,#second", one unit with the colour column.
   theme_gradient_override?: string | null;
+  // #4508 — plus-ones may add their own guests. A real events column; absent on
+  // older rows and reads as off.
+  rsvp_guests_can_bring?: boolean | null;
 }
 
 export interface ServerDraftEventInsert {
@@ -260,6 +263,7 @@ export interface BusinessDraftPayload {
   rsvpCapacity: number | null;
   rsvpAllowPlusOnes: boolean;
   rsvpPlusOnesMax: number;
+  rsvpGuestsCanBring: boolean;
   rsvpWaitlistEnabled: boolean;
   rsvpApprovalMode: "auto" | "manual";
   rsvpDiscoverable: boolean;
@@ -485,6 +489,7 @@ const buildBusinessDraftPayload = (
   rsvpCapacity: draft.rsvpCapacity,
   rsvpAllowPlusOnes: draft.rsvpAllowPlusOnes,
   rsvpPlusOnesMax: draft.rsvpPlusOnesMax,
+  rsvpGuestsCanBring: draft.rsvpGuestsCanBring === true,
   rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled,
   rsvpApprovalMode: draft.rsvpApprovalMode,
   rsvpDiscoverable: draft.rsvpDiscoverable,
@@ -568,6 +573,8 @@ export interface RsvpUpdatePayload {
   rsvpCapacity: number | null;
   rsvpAllowPlusOnes: boolean;
   rsvpPlusOnesMax: number;
+  // #4508 — saved by business_update_rsvp_graph as events.rsvp_guests_can_bring.
+  rsvpGuestsCanBring: boolean;
   rsvpWaitlistEnabled: boolean;
   rsvpApprovalMode: "auto" | "manual";
   rsvpDiscoverable: boolean;
@@ -640,6 +647,7 @@ export const buildRsvpUpdatePayload = (
   rsvpCapacity: draft.rsvpCapacity,
   rsvpAllowPlusOnes: draft.rsvpAllowPlusOnes,
   rsvpPlusOnesMax: draft.rsvpPlusOnesMax,
+  rsvpGuestsCanBring: draft.rsvpGuestsCanBring === true,
   rsvpWaitlistEnabled: draft.rsvpWaitlistEnabled,
   rsvpApprovalMode: draft.rsvpApprovalMode,
   rsvpDiscoverable: draft.rsvpDiscoverable,
@@ -710,6 +718,9 @@ export const buildRsvpUpdatePayloadDiff = (
   }
   if ((original.rsvpPlusOnesMax ?? 0) !== edited.rsvpPlusOnesMax) {
     payload.rsvpPlusOnesMax = edited.rsvpPlusOnesMax;
+  }
+  if ((original.rsvpGuestsCanBring ?? false) !== (edited.rsvpGuestsCanBring === true)) {
+    payload.rsvpGuestsCanBring = edited.rsvpGuestsCanBring === true;
   }
   if ((original.rsvpWaitlistEnabled ?? false) !== edited.rsvpWaitlistEnabled) {
     payload.rsvpWaitlistEnabled = edited.rsvpWaitlistEnabled;
@@ -1114,6 +1125,12 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
         : null,
     rsvpAllowPlusOnes: asBoolean(businessDraft.rsvpAllowPlusOnes, false),
     rsvpPlusOnesMax: asNumber(businessDraft.rsvpPlusOnesMax, 0),
+    // #4508 — the events column is the truth (business_update_rsvp_graph writes
+    // it there); the draft copy is only a fallback for a row read without it.
+    rsvpGuestsCanBring:
+      typeof row.rsvp_guests_can_bring === "boolean"
+        ? row.rsvp_guests_can_bring
+        : asBoolean(businessDraft.rsvpGuestsCanBring, false),
     rsvpWaitlistEnabled: asBoolean(businessDraft.rsvpWaitlistEnabled, false),
     rsvpApprovalMode:
       businessDraft.rsvpApprovalMode === "manual" ? "manual" : "auto",

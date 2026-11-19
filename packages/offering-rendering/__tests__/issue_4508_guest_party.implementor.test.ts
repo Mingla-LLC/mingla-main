@@ -1,5 +1,5 @@
 // issue #4508 — "Bring a friend with just their number": the RSVP form's guest
-// model (spec 1.1-1.8 with amendments 1-4). Deno-runnable: rsvpGuestParty.ts is
+// model (spec 1.1-1.8 with amendments 1-4). Deno-runnable: rsvpGuestPartyModel.ts is
 // pure.
 //
 // FAILS-ON-REVERT: send name / email / phone guests again (the pre-#4508 shape)
@@ -15,23 +15,25 @@ import {
   RSVP_PARTY_COPY,
   addPartyGuest,
   addableFromPreview,
-  buildGuestInviteMessage,
-  buildGuestPayload,
   friendChips,
   friendGuest,
   numberPreview,
-  parseSubmittedGuests,
   rsvpAlreadyListed,
-  rsvpGoingButtonLabel,
-  rsvpGuestErrorMessage,
   rsvpNoFriendMatch,
   rsvpPartyHelper,
   searchFriends,
-  submittedGuestStatus,
   type RsvpFriendOption,
   type RsvpGuestLookupResult,
   type RsvpPartyGuest,
+} from "../rsvpGuestPartyModel.ts";
+import {
+  buildGuestInviteMessage,
+  buildGuestPayload,
+  parseSubmittedGuests,
+  rsvpGoingButtonLabel,
+  submittedGuestStatus,
 } from "../rsvpGuestParty.ts";
+import { rsvpGuestErrorMessage } from "../rsvpGuestErrors.ts";
 
 const NOT_ON: RsvpGuestLookupResult = {
   valid: true,

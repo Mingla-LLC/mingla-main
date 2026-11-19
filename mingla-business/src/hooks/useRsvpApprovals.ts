@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
+import { checkInRsvpGuestByHand, type RsvpScanResponse } from "../services/scanRsvpService";
 import {
   bulkApproveRsvps,
   listRsvpGuests,
@@ -59,6 +60,23 @@ export function useBulkApproveRsvps(eventId: string | null) {
     onSuccess: () => {
       if (eventId !== null && eventId.length > 0) {
         void queryClient.invalidateQueries({ queryKey: rsvpGuestKeys.list(eventId) });
+      }
+    },
+  });
+}
+
+/**
+ * #4508 - admit one plus-one by hand. Refreshes the same things a door scan
+ * does: the host guest list and the check-in summary on the scanner screen.
+ */
+export function useCheckInRsvpGuest(eventId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation<RsvpScanResponse, Error, { guestId: string }>({
+    mutationFn: ({ guestId }) => checkInRsvpGuestByHand(guestId),
+    onSuccess: () => {
+      if (eventId !== null && eventId.length > 0) {
+        void queryClient.invalidateQueries({ queryKey: rsvpGuestKeys.list(eventId) });
+        void queryClient.invalidateQueries({ queryKey: ["rsvpCheckinSummary", eventId] });
       }
     },
   });

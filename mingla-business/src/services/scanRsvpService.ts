@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { RsvpRpcError } from "./rsvpRpcFailure";
 
 export type RsvpScanResult = "success" | "duplicate" | "not_found" |
   "wrong_event" | "not_eligible" | "revoked" | "not_yet_open" | "event_ended";
@@ -42,4 +43,18 @@ export async function fetchRsvpCheckinSummary(eventId: string): Promise<{
   if (error) throw error;
   const value = (data ?? {}) as { going?: number; capacity?: number | null; checkedIn?: number };
   return { going: value.going ?? 0, capacity: value.capacity ?? null, checkedIn: value.checkedIn ?? 0 };
+}
+
+/**
+ * #4508 C7 - a host admits one plus-one by hand. Same people, rules and answer
+ * shape as a door scan. A refusal (not approved, not open yet, ended ...) comes
+ * back as a normal answer in `result`; a thrown RsvpRpcError means the call
+ * itself failed (for example `scanner_not_authorized`).
+ */
+export async function checkInRsvpGuestByHand(guestId: string): Promise<RsvpScanResponse> {
+  const { data, error } = await supabase.rpc("host_check_in_rsvp_guest", {
+    p_guest_id: guestId,
+  });
+  if (error !== null) throw new RsvpRpcError(error, "rsvp_guest_check_in_failed");
+  return (data ?? {}) as RsvpScanResponse;
 }

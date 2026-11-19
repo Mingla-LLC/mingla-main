@@ -155,3 +155,84 @@ export const buildRsvpValidationHint = (
     });
   return `Add ${joinList(parts)} above to RSVP.`;
 };
+
+// ── issue #4508 "Who's coming with you?": the pieces the eager RSVP body needs.
+// The rest of the guest-party model (live preview, friend search, invite text)
+// lives in rsvpGuestParty.ts, which only the lazily loaded guest block, the
+// success card and the Explorer app import, so it stays out of the boot payload.
+// rsvpGuestParty.ts re-exports everything here, so its public names are unchanged.
+import type {
+  RsvpGuestPayload,
+  RsvpPartyGuest,
+  RsvpSubmittedGuest,
+} from "./rsvpGuestPartyModel";
+
+export const RSVP_GUEST_LIMIT_REACHED = "That's the most this host allows.";
+export const RSVP_GUEST_OWN_NUMBER = "That's you. Enter a friend's number";
+export const RSVP_GUEST_GETS_TEXT_AND_PASS = "Gets a text and a pass";
+
+/** The primary button: "Going" alone, "RSVP for N" with guests (N counts you). */
+export const rsvpGoingButtonLabel = (guestCount: number): string =>
+  guestCount > 0 ? `RSVP for ${guestCount + 1}` : "Going";
+
+
+export const digitsOf = (phone: string): string => phone.replace(/\D/g, "");
+
+const E164_RE = /^\+[1-9][0-9]{7,14}$/;
+export const isCompleteE164 = (phone: string | null | undefined): phone is string =>
+  typeof phone === "string" && E164_RE.test(phone.trim());
+
+
+/** "+15551234567" → "+1 555 123 4567"-ish grouping for display only. */
+export const formatPartyPhone = (phone: string): string => {
+  const d = digitsOf(phone);
+  if (d.length <= 4) return phone;
+  const last4 = d.slice(-4);
+  const rest = d.slice(0, -4);
+  const groups: string[] = [];
+  for (let i = rest.length; i > 0; i -= 3) groups.unshift(rest.slice(Math.max(0, i - 3), i));
+  return `+${groups.join(" ")} ${last4}`;
+};
+
+
+/**
+ * Number guests send `{ phone, phoneCountryIso }` only (no name, no email:
+ * 1.1). A friend picked from the list sends `{ userId }` alone (contract v2,
+ * C1): the server checks the friendship and resolves their proven number,
+ * which this device never sees.
+ */
+export const buildGuestPayload = (party: ReadonlyArray<RsvpPartyGuest>): RsvpGuestPayload[] =>
+  party.map((g) =>
+    g.source !== "friend" && g.phone !== null
+      ? { phone: g.phone, phoneCountryIso: g.phoneCountryIso }
+      : { userId: g.userId as string },
+  );
+
+
+/** Confirm dialog row: name when known, else the number (1.7). */
+export const partyGuestLabel = (g: RsvpPartyGuest): string =>
+  g.displayName !== null && g.displayName.trim().length > 0
+    ? g.displayName.trim()
+    : g.phone !== null
+      ? formatPartyPhone(g.phone)
+      : "Guest";
+
+
+/** Parse the submit response's `guests[]` defensively. */
+export const parseSubmittedGuests = (value: unknown): RsvpSubmittedGuest[] => {
+  if (!Array.isArray(value)) return [];
+  const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  return value
+    .filter((v): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v))
+    .map((v) => ({
+      guestId: str(v.guestId),
+      phoneLast4: str(v.phoneLast4),
+      onMingla: v.onMingla === true,
+      displayName: str(v.displayName),
+      claimed: v.claimed === true,
+      inviteUrl: str(v.inviteUrl),
+      inviteCode: str(v.inviteCode),
+      // Older servers send no willText; their guests were all texted.
+      willText: v.willText !== false,
+    }));
+};
