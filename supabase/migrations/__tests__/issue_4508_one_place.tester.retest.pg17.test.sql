@@ -26,7 +26,8 @@
 --   issue_4508_sweep_guest_yields leaves it green, so C is a regression net,
 --   not a single-line proof.)
 --   drop trigger issue_4508_guests_bring_needs_plus_ones  -> "E: published event"
--- Invariants exercised: I-4508-SIGNED-OUT-SUBMIT-NO-ORACLE, I-4508-ONE-PLACE.
+-- Invariants exercised: I-4508-SIGNED-OUT-SUBMIT-NO-ORACLE, I-4508-ONE-PLACE-PER-PERSON,
+-- I-4508-ONE-PLACE-ON-CLAIM-PATHS, I-4508-GUEST-ACCOUNT-COLUMNS-CLOSED, I-4508-HOST-SETTING-QUIET.
 \set ON_ERROR_STOP on
 \ir ../20281119004508_issue_4508_guest_phone_match.sql
 \ir ../20281119014508_issue_4508_bring_a_friend.sql
