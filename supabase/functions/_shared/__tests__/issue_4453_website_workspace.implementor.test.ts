@@ -37,9 +37,11 @@ import {
   SITE_AGENT_WRITES,
 } from "../agentSiteTools.ts";
 import {
+  attachSiteRefusal,
   boundSiteWorkspace,
   parseSiteFocus,
   plainWordsProblem,
+  readableLookStep,
   runSiteChangeSet,
   SITE_CHANGE_SET_BUDGET,
   SITE_STEP_OPS,
@@ -48,8 +50,10 @@ import {
   siteChangeSetFocusProblem,
   siteChangeSetProblem,
   type SiteStepActivity,
+  siteStepFailureReason,
   siteStepOperationId,
   siteStepProblem,
+  siteStepWritesWords,
   siteTeamRequestProblem,
   siteWorkspaceContextText,
   siteWorkspaceFollowupText,
@@ -407,7 +411,7 @@ Deno.test("#4453 a step outside the list, or with the wrong shape, is refused by
     [
       "media no slot",
       { ...VALID_STEPS.set_section_media, slot: "" },
-      /slot is required/,
+      /must be a photo spot/,
     ],
     ["look empty", { op: "set_look" }, /needs at least one of/],
     ["look bad colour", {
@@ -430,7 +434,7 @@ Deno.test("#4453 a step outside the list, or with the wrong shape, is refused by
     [
       "look bad design",
       { op: "set_look", design: "vaporwave" },
-      /not a design Mingla draws/,
+      /must be one of atelier, voyage/,
     ],
     ["menu empty", { op: "set_menu", items: [] }, /must list the menu/],
     ["menu long label", {
@@ -1581,4 +1585,366 @@ Deno.test("#4453 the proposal card reads as the plan: one row per step, what is 
       value: "The website cannot sell gift cards yet.",
     },
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// Studio as built (STUDIO-AS-BUILT.md; mingla-site-cms siteWorkspace.ts)
+// ---------------------------------------------------------------------------
+
+Deno.test("#4453 as built: a source is required only for steps that write words", () => {
+  const bare = (step: Record<string, unknown>) => ({
+    label: "Do it",
+    why: "The owner asked.",
+    step,
+  });
+  // Words a visitor reads: edits and menu labels.
+  for (
+    const step of [EDIT, VALID_STEPS.set_menu, {
+      ...VALID_STEPS.add_section,
+      edits: [{ key: "heading", value: "A night here" }],
+    }]
+  ) {
+    assert(siteStepWritesWords(step), JSON.stringify(step));
+    assertMatch(
+      siteChangeSetProblem(changeSet([bare(step)]))!,
+      /cites needs at least one citation/,
+    );
+  }
+  // A move, a removal, a photo, a layout, a look change, a page switch, an
+  // empty new section: no source needed.
+  for (
+    const step of [
+      MOVE,
+      VALID_STEPS.remove_section,
+      VALID_STEPS.set_section_media,
+      VALID_STEPS.edit_layout,
+      VALID_STEPS.set_look,
+      VALID_STEPS.set_page_enabled,
+      VALID_STEPS.add_section,
+    ]
+  ) {
+    assert(!siteStepWritesWords(step));
+    assertEquals(siteChangeSetProblem(changeSet([bare(step)])), null);
+    assertSiteToolArgs("propose_site_change_set", changeSet([bare(step)]));
+  }
+  // A source that is given is still checked.
+  assertMatch(
+    siteChangeSetProblem(
+      changeSet([{ ...bare(MOVE), cites: [{ kind: "web", quote: "x" }] }]),
+    )!,
+    /cites\[0\]\.kind/,
+  );
+  const tool = rawSiteTool("propose_site_change_set").parameters as any;
+  assertEquals(tool.properties.steps.items.required, ["label", "why", "step"]);
+});
+
+Deno.test("#4453 as built: uncited steps are sent without cites; Studio's extra answer fields are accepted", async () => {
+  const h = harness((call) =>
+    call.action === "run_site_design_checks" ? CHECKS_PASS : {
+      ok: true,
+      group_id: WS_PENDING_ID,
+      draft_only: true,
+      ...(call.args.step.op === "set_menu"
+        ? { menu_revision: "2026-11-19T10:00:00.000Z", touched: {} }
+        : call.args.step.op === "set_look"
+        ? {
+          look_revision: "2026-11-19T10:00:00.000Z",
+          warnings: ["Quiet text is a little faint on the page."],
+          touched: {},
+        }
+        : { page_revision: "7", touched: { page_id: "pg_home" } }),
+    }
+  );
+  const result = await h.run(changeSet([
+    { label: "Move reviews up", why: "Asked.", step: MOVE },
+    entry("Reorder the menu", VALID_STEPS.set_menu),
+    { label: "Soften the corners", why: "Asked.", step: VALID_STEPS.set_look },
+    {
+      label: "Remove questions",
+      why: "Asked.",
+      step: VALID_STEPS.remove_section,
+    },
+  ]));
+  assertEquals(result.status, "applied");
+  const applies = h.calls.filter((call) => call.action === "apply_site_change");
+  assertEquals(applies.map((call) => "cites" in call.args), [
+    false,
+    true,
+    false,
+    false,
+  ]);
+  assertEquals(result.applied.map((item) => [item.page_id, item.section_id]), [
+    ["pg_home", "sec_reviews"],
+    [null, null],
+    [null, null],
+    ["pg_home", "sec_faq"],
+  ]);
+  // The look's own readability notes ride on the step that changed it.
+  assertEquals(result.applied[2].warnings, [
+    "Quiet text is a little faint on the page.",
+  ]);
+});
+
+Deno.test("#4453 as built: a new section may carry a photo; one that needs a photo, or a type that cannot be added, is sent back", () => {
+  const gallery = { ...VALID_STEPS.add_section, media_id: WS_MEDIA_TERRACE };
+  assertEquals(siteStepProblem(gallery), null);
+  assertMatch(
+    siteStepProblem({ ...VALID_STEPS.add_section, media_id: "photo-1" })!,
+    /media_id must be an approved photo/,
+  );
+  const issue = (step: Record<string, unknown>) =>
+    siteWorkspaceProposalIssue({
+      toolName: "propose_site_change_set",
+      args: changeSet([{ label: "Add it", why: "Asked.", step }]),
+      workspace: true,
+      focus: null,
+      brandId: WS_BRAND_ID,
+      snapshot: { ...WORKSPACE_SNAPSHOT, site_id: WS_SITE_ID },
+    } as any);
+  assertEquals(issue(gallery), null);
+  assertEquals(issue(VALID_STEPS.add_section)?.code, "MEDIA_REQUIRED");
+  assertEquals(
+    issue({ op: "add_section", page_id: "pg_home", type: "faq" }),
+    null,
+  );
+  const unknown = issue({
+    op: "add_section",
+    page_id: "pg_home",
+    type: "live_chat",
+  });
+  assertEquals(unknown?.code, "SECTION_TYPE_NOT_AVAILABLE");
+  assertStringIncludes(unknown!.message, "gallery, faq, cta");
+});
+
+Deno.test("#4453 as built: a photo spot is cleared with media_id null, said outright; slots are Studio's names", () => {
+  const base = {
+    op: "set_section_media",
+    page_id: "pg_home",
+    section_id: "sec_hero",
+  };
+  for (const slot of ["media", "video", "poster", "images.0", "members.12"]) {
+    assertEquals(
+      siteStepProblem({ ...base, slot, media_id: WS_MEDIA_TERRACE }),
+      null,
+      slot,
+    );
+  }
+  assertEquals(
+    siteStepProblem({ ...base, slot: "media", media_id: null }),
+    null,
+  );
+  assertMatch(siteStepProblem({ ...base, slot: "media" })!, /or null to clear/);
+  for (const slot of ["", "images[0]", "Hero Photo", "images.", "a.b.c"]) {
+    assertMatch(
+      siteStepProblem({ ...base, slot, media_id: null })!,
+      /photo spot/,
+      slot,
+    );
+  }
+  const schema = (rawSiteTool("propose_site_change_set").parameters as any)
+    .properties.steps.items.properties.step.properties;
+  assertEquals(schema.media_id.nullable, true);
+});
+
+Deno.test("#4453 as built: Ari's set_look names only atelier or voyage", () => {
+  for (const design of ["atelier", "voyage"]) {
+    assertEquals(siteStepProblem({ op: "set_look", design }), null);
+  }
+  const schema = (rawSiteTool("propose_site_change_set").parameters as any)
+    .properties.steps.items.properties.step.properties;
+  assertEquals(schema.design.enum, ["atelier", "voyage"]);
+  assertMatch(
+    siteStepProblem({ op: "set_look", design: "lumen" }) ?? "",
+    /must be one of atelier, voyage/,
+  );
+});
+
+const unreadable = (foreground = "#fff3a6", nearest = "#8a7400") =>
+  attachSiteRefusal(
+    new ToolError(
+      "VALIDATION_FAILED",
+      "Those colours would make some words hard to read. Your button words would be hard to read on that colour.",
+    ),
+    {
+      code: "UNREADABLE_COLOURS",
+      suggestions: [{ foreground, nearest_readable: nearest }],
+    },
+  );
+const LOOK = changeSet([{
+  label: "Change the main colour",
+  why: "Asked.",
+  step: {
+    op: "set_look",
+    tokens: {
+      colors: {
+        action: "#FFF3A6",
+        accent: { seed: "#fff3a6", steps: { "600": "#112233" } },
+      },
+    },
+  },
+}]);
+
+Deno.test("#4453 as built: UNREADABLE_COLOURS is retried once with the nearest readable shade, and the result says so", async () => {
+  let refused = 0;
+  const h = harness((call) => {
+    if (call.action === "run_site_design_checks") return CHECKS_PASS;
+    if (refused++ === 0) throw unreadable();
+    return { ok: true, look_revision: "r", warnings: [], touched: {} };
+  });
+  const result = await h.run(LOOK);
+  const applies = h.calls.filter((call) => call.action === "apply_site_change");
+  assertEquals(applies.length, 2);
+  assertEquals(applies[0].args.step.tokens.colors.action, "#FFF3A6");
+  // Every place the step sent that colour gets the readable shade; nothing else moves.
+  assertEquals(applies[1].args.step.tokens.colors, {
+    action: "#8a7400",
+    accent: { seed: "#8a7400", steps: { "600": "#112233" } },
+  });
+  assertEquals(applies[0].operationId, applies[1].operationId);
+  assertEquals(result.status, "applied");
+  assertEquals(result.applied[0].adjusted_colours, [
+    { from: "#fff3a6", to: "#8a7400" },
+  ]);
+  assertStringIncludes(
+    siteWorkspaceFollowupText("propose_site_change_set", result)!,
+    "I used the nearest shade that stays readable for one colour.",
+  );
+});
+
+Deno.test("#4453 as built: still unreadable after the one retry is reported in Core's words; a clash with a colour the step did not send is never 'fixed'", async () => {
+  const always = harness(() => {
+    throw unreadable();
+  });
+  const failed = await always.run(LOOK);
+  assertEquals(always.calls.map((call) => call.action), [
+    "apply_site_change",
+    "apply_site_change",
+  ]);
+  assertEquals(failed.status, "rolled_back");
+  assertEquals(
+    failed.failed?.reason,
+    "Those colours would make some words hard to read. Your button words would be hard to read on that colour.",
+  );
+  // The unreadable colour is one already on the site, not one in the step.
+  const other = harness(() => {
+    throw unreadable("#000000", "#222222");
+  });
+  const untouched = await other.run(LOOK);
+  assertEquals(other.calls.length, 1);
+  assertEquals(untouched.status, "rolled_back");
+  assertEquals(readableLookStep(EDIT, unreadable()), null);
+  assertEquals(
+    readableLookStep({ op: "set_look", radius: "soft" }, unreadable()),
+    null,
+  );
+  assertEquals(
+    readableLookStep(
+      { op: "set_look", tokens: { colors: { action: "#fff3a6" } } },
+      new ToolError("VALIDATION_FAILED", "no detail"),
+    ),
+    null,
+  );
+});
+
+Deno.test("#4453 as built: an undo that had nothing to undo is a clean rollback (unknown group is a no-op)", async () => {
+  const h = harness((call) => {
+    if (call.action === "undo_site_change_group") {
+      return {
+        group_id: WS_PENDING_ID,
+        pages: [],
+        look: false,
+        menu: false,
+        undone: false,
+        draft_only: true,
+      };
+    }
+    throw new ToolError("SITE_SERVICE_UNAVAILABLE", "down");
+  });
+  const result = await h.run(PLAN);
+  assertEquals(h.calls.map((call) => call.action), [
+    "apply_site_change",
+    "undo_site_change_group",
+  ]);
+  assertEquals(result.status, "rolled_back");
+  assertEquals(result.applied, []);
+});
+
+Deno.test("#4453 as built: every Core refusal reaches the owner as Core's plain sentence, with nothing written for the model", async () => {
+  const { WORKSPACE_MESSAGES, WORKSPACE_CONTENT_MEDIA_MESSAGES } = {
+    // brand-site-control/siteWorkspace.ts (branch 4453-ws-studio), word for word.
+    WORKSPACE_MESSAGES: {
+      SECTION_NOT_FOUND: "That section isn't on this page any more.",
+      FIELD_NOT_EDITABLE: "That part of the section can't be changed here.",
+      FIELD_REQUIRED: "This can't be left empty.",
+      VALUE_TOO_LONG:
+        "That's too long for this spot. Shorten it and try again.",
+      LAYOUT_NOT_IN_DESIGN:
+        "Your style doesn't have that layout. Choose one of the layouts shown.",
+      SECTION_TYPE_NOT_AVAILABLE: "That kind of section can't be added here.",
+      SECTION_LIMIT_REACHED:
+        "This page is full. Remove a section before adding another.",
+      SECTION_CANNOT_BE_REMOVED:
+        "Your home page keeps its top picture. You can change the picture instead.",
+      HOME_ALWAYS_ON: "Your home page is always on.",
+      MEDIA_REQUIRED: "Choose a photo for this section first.",
+      CHANGED_SINCE:
+        "This has been changed since, so that step can't be undone or redone from here.",
+      NOTHING_TO_UNDO: "There's nothing to undo.",
+      NOTHING_TO_REDO: "There's nothing to redo.",
+      UNREADABLE_COLOURS: "Those colours would make some words hard to read.",
+    },
+    WORKSPACE_CONTENT_MEDIA_MESSAGES: {
+      MEDIA_NOT_FOUND: "That photo or video isn't in your library.",
+      MEDIA_WRONG_KIND: "That spot needs a different kind of file.",
+    },
+  };
+  const detail: Record<string, Record<string, unknown>> = {
+    VALUE_TOO_LONG: { key: "items.2.question", max: 120 },
+    LAYOUT_NOT_IN_DESIGN: { layouts: ["text_left", "text_right"] },
+  };
+  const tool = rawSiteTool("propose_site_change_set");
+  const args = changeSet([entry("Shorten the welcome heading", EDIT)]);
+  for (
+    const [code, message] of Object.entries({
+      ...WORKSPACE_MESSAGES,
+      ...WORKSPACE_CONTENT_MEDIA_MESSAGES,
+    })
+  ) {
+    const core = new FakeCore({
+      fail: { index: 0, code, message, detail: detail[code] },
+    });
+    const result = await tool.executor(args, core.client(), WS_USER_ID, {
+      operationId: WS_PENDING_ID,
+    }) as any;
+    assertEquals(result.status, "rolled_back", code);
+    assertEquals(
+      result.failed.reason,
+      code === "VALUE_TOO_LONG"
+        ? `${message} The limit is 120 characters.`
+        : message,
+      code,
+    );
+    assert(
+      !/[A-Z]{3,}_[A-Z]{3,}|text_left|items\.2/.test(result.failed.reason),
+      code,
+    );
+  }
+  // A processing photo is one of the Sites service's own safe codes.
+  const processing = new FakeCore({
+    fail: { index: 0, code: "MEDIA_PROCESSING" },
+  });
+  const waiting = await tool.executor(args, processing.client(), WS_USER_ID, {
+    operationId: WS_PENDING_ID,
+  }) as any;
+  assertEquals(waiting.failed.reason, "That image is still being prepared.");
+  // Model-facing detail is dropped from the owner's reason, never the sentence.
+  assertEquals(
+    siteStepFailureReason(
+      new ToolError(
+        "VALIDATION_FAILED",
+        "Your style doesn't have that layout. Choose one of the layouts shown. Layouts on offer: text_left, text_right. Latest revision: 7.",
+      ),
+    ),
+    "Your style doesn't have that layout. Choose one of the layouts shown.",
+  );
 });

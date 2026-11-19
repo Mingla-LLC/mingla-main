@@ -36,7 +36,14 @@ export const WS_TICKET_ID = "33333333-3333-4333-8333-333333333333";
 
 export interface CoreScript {
   /** This step (0-based) is refused with Core's named code and sentence. */
-  fail?: { index: number; code: string; message?: string };
+  fail?: {
+    index: number;
+    code: string;
+    message?: string;
+    detail?: Record<string, unknown>;
+  };
+  /** A set_look step is refused this many times as hard to read, with the nearest shade. */
+  unreadable?: { times: number; foreground: string; nearest_readable: string };
   /** This step answers REVISION_CONFLICT once, then applies. */
   stale_once?: number;
   /** From this step on Core does not answer (the undo does not either). */
@@ -62,6 +69,7 @@ export class FakeCore {
   rpcCalls: Array<{ fn: string; args: Record<string, any> }> = [];
   private appliedSteps = 0;
   private staleSpent = false;
+  private unreadableSpent = 0;
 
   constructor(readonly script: CoreScript = {}) {}
 
@@ -73,9 +81,16 @@ export class FakeCore {
     return { data: { ok: true, data }, error: null };
   }
 
-  private refused(code: string, message?: string) {
+  private refused(
+    code: string,
+    message?: string,
+    detail: Record<string, unknown> = {},
+  ) {
     return {
-      data: { ok: false, error: { code, ...(message ? { message } : {}) } },
+      data: {
+        ok: false,
+        error: { code, ...(message ? { message } : {}), ...detail },
+      },
       error: null,
     };
   }
@@ -97,7 +112,33 @@ export class FakeCore {
         return this.down();
       }
       if (script.fail?.index === index) {
-        return this.refused(script.fail.code, script.fail.message);
+        return this.refused(
+          script.fail.code,
+          script.fail.message,
+          script.fail.detail,
+        );
+      }
+      if (
+        script.unreadable && args.step?.op === "set_look" &&
+        this.unreadableSpent < script.unreadable.times
+      ) {
+        this.unreadableSpent += 1;
+        const sentence =
+          "Your button words would be hard to read on that colour.";
+        // Core's sentence and bounded detail (brand-site-control/siteWorkspace.ts).
+        return this.refused(
+          "UNREADABLE_COLOURS",
+          "Those colours would make some words hard to read.",
+          {
+            problems: [sentence],
+            suggestions: [{
+              sentence,
+              foreground: script.unreadable.foreground,
+              background: "#ffffff",
+              nearest_readable: script.unreadable.nearest_readable,
+            }],
+          },
+        );
       }
       if (script.stale_once === index && !this.staleSpent) {
         this.staleSpent = true;
@@ -105,11 +146,17 @@ export class FakeCore {
       }
       this.appliedSteps += 1;
       const step = args.step ?? {};
+      // Studio's answer (applySiteChange): the group, the revision of what
+      // changed, and that only the draft changed.
       return this.ok({
         ok: true,
+        group_id: args.group_id,
+        draft_only: true,
         ...(step.op === "set_look"
-          ? { look_revision: `look-${index + 1}` }
-          : { page_revision: `page-${index + 1}` }),
+          ? { look_revision: "2026-11-19T10:00:00.000Z", warnings: [] }
+          : step.op === "set_menu"
+          ? { menu_revision: "2026-11-19T10:00:00.000Z" }
+          : { page_revision: String(index + 7) }),
         touched: {
           ...(step.page_id ? { page_id: step.page_id } : {}),
           ...(step.op === "add_section"
@@ -125,16 +172,20 @@ export class FakeCore {
       if (script.undo === "refused") {
         return this.refused(
           "CHANGED_SINCE",
-          "Something changed on the draft after this, so it cannot be undone in one go.",
+          "This has been changed since, so that step can't be undone or redone from here.",
         );
       }
+      // An unknown or already-undone group is a no-op, not a refusal.
+      const undone = this.appliedSteps > 0;
       this.appliedSteps = 0;
       return this.ok({
         group_id: args.group_id,
         label: "undone",
-        pages: [],
+        pages: undone ? ["pg_home"] : [],
         look: false,
         menu: false,
+        undone,
+        draft_only: true,
       });
     }
     if (action === "run_site_design_checks") {
@@ -521,6 +572,30 @@ export function gradeWorkspaceTurn(
   }
   if (expect.warnings !== undefined) {
     add("warnings", expect.warnings, (result.checks?.warnings ?? []).length);
+  }
+  if (expect.sent_colour) {
+    add(
+      "the colour finally sent",
+      expect.sent_colour,
+      applies.at(-1)?.args.step?.tokens?.colors?.action ?? null,
+    );
+  }
+  if (expect.adjusted !== undefined) {
+    add(
+      "colours moved to a readable shade",
+      expect.adjusted,
+      (result.applied ?? []).reduce(
+        (sum: number, item: any) => sum + (item.adjusted_colours ?? []).length,
+        0,
+      ),
+    );
+  }
+  if (expect.uncited_steps !== undefined) {
+    add(
+      "steps sent without a source",
+      expect.uncited_steps,
+      applies.filter((call) => !("cites" in call.args)).length,
+    );
   }
   if (expect.couldnt !== undefined) {
     add("could not do", expect.couldnt, (result.couldnt ?? []).length);

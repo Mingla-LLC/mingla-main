@@ -27,14 +27,10 @@ export const WS_MEDIA_TERRACE = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 export const WS_MEDIA_KITCHEN = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 export const WS_RECORD_BRAND = WS_BRAND_ID;
 
-const layouts = (...keys) => keys.map((key) => ({ key, label: key }));
-const field = (key, label, value, kind = "text") => ({
-  key,
-  label,
-  kind,
-  value,
-  max: null,
-});
+// Studio's snapshot (mingla-site-cms/src/lib/siteWorkspace.ts): layouts are
+// keys, a field is its key and current words, media lists the filled spots.
+const layouts = (...keys) => keys;
+const field = (key, _label, value) => ({ key, value });
 
 /** The draft Core's get_site_workspace returns in every replay. */
 export const WORKSPACE_SNAPSHOT = {
@@ -60,8 +56,7 @@ export const WORKSPACE_SNAPSHOT = {
             field("heading", "Heading", "Welcome to Harmattan Kitchen, where the coals never go out"),
             field("body", "Text", "West African fire cooking in a small room.", "multiline"),
           ],
-          media: [{ slot: "image", label: "Photo", media_id: WS_MEDIA_KITCHEN }],
-          can_remove: false,
+          media: [{ slot: "media", media_id: WS_MEDIA_KITCHEN }],
         },
         {
           id: "sec_story",
@@ -76,8 +71,6 @@ export const WORKSPACE_SNAPSHOT = {
             field("heading", "Heading", "Our story"),
             field("body", "Text", "We started with one grill and a borrowed table.", "multiline"),
           ],
-          media: [{ slot: "image", label: "Photo", media_id: null }],
-          can_remove: true,
         },
         {
           id: "sec_reviews",
@@ -89,8 +82,6 @@ export const WORKSPACE_SNAPSHOT = {
           review: { state: "reviewed", source: "person" },
           feed: false,
           fields: [field("heading", "Heading", "What guests say")],
-          media: [],
-          can_remove: true,
         },
         {
           id: "sec_faq",
@@ -110,8 +101,6 @@ export const WORKSPACE_SNAPSHOT = {
             field("items.2.question", "Question 3", "Can I bring a cake?"),
             field("items.2.answer", "Answer 3", "Yes, tell us when you book.", "multiline"),
           ],
-          media: [],
-          can_remove: true,
         },
       ],
     },
@@ -132,8 +121,6 @@ export const WORKSPACE_SNAPSHOT = {
           review: { state: "reviewed", source: "person" },
           feed: false,
           fields: [field("heading", "Heading", "About us")],
-          media: [],
-          can_remove: false,
         },
       ],
     },
@@ -154,8 +141,6 @@ export const WORKSPACE_SNAPSHOT = {
           review: null,
           feed: true,
           fields: [field("heading", "Heading", "Upcoming events")],
-          media: [],
-          can_remove: true,
         },
       ],
     },
@@ -164,23 +149,27 @@ export const WORKSPACE_SNAPSHOT = {
     design: "atelier",
     tokens: { colors: { action: "#b4451f", canvas: "#fbf7f1" } },
     fonts: { display: { family: "Fraunces" }, body: { family: "Inter" } },
-    warnings: [],
+    readability_warnings: [],
   },
   menu: [
     { page_id: "pg_home", label: "Home" },
     { page_id: "pg_about", label: "About" },
     { page_id: "pg_events", label: "Events" },
   ],
-  addable_section_types: [
-    { type: "gallery", label: "Photo gallery", description: "A grid of photos" },
-    { type: "faq", label: "Questions", description: "Questions and answers" },
-    { type: "cta", label: "Call to action", description: "One line and a button" },
+  truncated_at: 280,
+  addable_sections: [
+    { type: "gallery", label: "Photo gallery", needs_photo: true },
+    { type: "faq", label: "Questions", needs_photo: false },
+    { type: "cta", label: "Call to action", needs_photo: false },
   ],
   media: [
-    { id: WS_MEDIA_TERRACE, caption: "The terrace at dusk" },
-    { id: WS_MEDIA_KITCHEN, caption: "The grill in the open kitchen" },
+    { id: WS_MEDIA_TERRACE, kind: "photo", caption: "terrace-at-dusk.jpg" },
+    { id: WS_MEDIA_KITCHEN, kind: "photo", caption: "open-kitchen-grill.jpg" },
   ],
-  facts: { brand_name: "Harmattan Kitchen", city: "Lagos", offerings: [] },
+  facts: {
+    brand: { id: WS_BRAND_ID, name: "Harmattan Kitchen", city: "Lagos", description: null },
+    offerings: [],
+  },
 };
 
 export const FOCUS_HERO = {
@@ -210,10 +199,16 @@ function plan(say, summary, steps, couldnt) {
         site_id: WS_SITE_ID,
         request: say,
         summary,
+        // Studio asks for a source only where a step writes words a visitor
+        // reads (edits, menu labels); the other steps go without.
         steps: steps.map(([label, step, cites]) => ({
           label,
           why: "The owner asked for this.",
-          cites: cites ?? words(say),
+          ...(cites
+            ? { cites }
+            : step.op === "set_menu" || (step.edits ?? []).length > 0
+            ? { cites: words(say) }
+            : {}),
           step,
         })),
         ...(couldnt ? { couldnt } : {}),
@@ -335,6 +330,7 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
         page_id: "pg_home",
         type: "gallery",
         after_section_id: "sec_story",
+        media_id: WS_MEDIA_TERRACE,
         edits: [{ key: "heading", value: "A night at Harmattan" }],
       }]],
     )],
@@ -358,7 +354,7 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
         op: "set_section_media",
         page_id: "pg_home",
         section_id: "sec_story",
-        slot: "image",
+        slot: "media",
         media_id: WS_MEDIA_TERRACE,
       }, [{ kind: "owner_material", media_id: WS_MEDIA_TERRACE }]]],
     )],
@@ -449,11 +445,12 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
           op: "set_section_media",
           page_id: "pg_home",
           section_id: "sec_story",
-          slot: "image",
+          slot: "media",
           media_id: WS_MEDIA_TERRACE,
         }],
       ],
-      { workspace: { one_group: true, events: 6 } },
+      // The move and the photo carry no source; only the reworded heading does.
+      { workspace: { one_group: true, events: 6, uncited_steps: 2 } },
     )],
   },
   {
@@ -724,18 +721,31 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
           ],
         )],
         core: {
+          // Core's own sentence and detail (brand-site-control/siteWorkspace.ts).
           fail: {
             index: 1,
-            code: "VARIANT_NOT_IN_DESIGN",
-            message: "This design does not draw that layout for this section.",
+            code: "LAYOUT_NOT_IN_DESIGN",
+            message: "Your style doesn't have that layout. Choose one of the layouts shown.",
+            detail: { layouts: ["text_left", "text_right"] },
           },
         },
       },
       confirm: true,
       expect: {
         route: "proposal:propose_site_change_set",
-        reply_must: ["Step 2 of 3", "Use the stacked layout for Our story", "Nothing was changed"],
-        reply_must_not: ["on your draft, ready", ...NEVER_OVERCLAIMS, "VARIANT_NOT_IN_DESIGN"],
+        reply_must: [
+          "Step 2 of 3",
+          "Use the stacked layout for Our story",
+          "Your style doesn't have that layout",
+          "Nothing was changed",
+        ],
+        reply_must_not: [
+          "on your draft, ready",
+          ...NEVER_OVERCLAIMS,
+          "LAYOUT_NOT_IN_DESIGN",
+          "text_left",
+          "Layouts on offer",
+        ],
         workspace: {
           model_calls: 1,
           status: "rolled_back",
@@ -766,14 +776,14 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
           fail: {
             index: 0,
             code: "SECTION_CANNOT_BE_REMOVED",
-            message: "Every home page keeps its top section.",
+            message: "Your home page keeps its top picture. You can change the picture instead.",
           },
         },
       },
       confirm: true,
       expect: {
         route: "proposal:propose_site_change_set",
-        reply_must: ["Step 1 of 1", "Every home page keeps its top section", "Nothing was changed"],
+        reply_must: ["Step 1 of 1", "Your home page keeps its top picture", "Nothing was changed"],
         workspace: { status: "rolled_back", applied: 0, failed_index: 0, undo_called: false },
       },
     }],
@@ -1020,5 +1030,132 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
         workspace: { model_calls: 2, bounced: ["INVALID_ARGS"], status: "applied", applied: 8, couldnt: 1 },
       },
     }],
+  },
+  // --- Studio as built: photos for new sections, readable colours ----------
+  {
+    id: "ws_repair_gallery_needs_photo",
+    source: "A section type that starts with a photo is sent back until the plan names one of the owner's photos.",
+    turns: [{
+      say: "Add a photo gallery under our story with the terrace photo",
+      focus: null,
+      stub: {
+        model: [
+          plan("Add a photo gallery under our story with the terrace photo", "Add a photo gallery under Our story", [
+            ["Add a photo gallery", {
+              op: "add_section",
+              page_id: "pg_home",
+              type: "gallery",
+              after_section_id: "sec_story",
+            }],
+          ]),
+          plan("Add a photo gallery under our story with the terrace photo", "Add a photo gallery under Our story", [
+            ["Add a photo gallery", {
+              op: "add_section",
+              page_id: "pg_home",
+              type: "gallery",
+              after_section_id: "sec_story",
+              media_id: WS_MEDIA_TERRACE,
+            }],
+          ]),
+        ],
+        core: {},
+      },
+      confirm: true,
+      expect: {
+        route: "proposal:propose_site_change_set",
+        reply_must: ["on your draft"],
+        workspace: { model_calls: 2, bounced: ["MEDIA_REQUIRED"], status: "applied", applied: 1 },
+      },
+    }],
+  },
+  {
+    id: "ws_repair_section_type_not_addable",
+    source: "A section type this website cannot add is sent back; Ari offers the team request instead.",
+    turns: [{
+      say: "Add a live chat widget to the home page",
+      focus: null,
+      stub: {
+        model: [
+          plan("Add a live chat widget to the home page", "Add a live chat section", [
+            ["Add a live chat section", { op: "add_section", page_id: "pg_home", type: "live_chat" }],
+          ]),
+          {
+            call: {
+              tool: "propose_website_team_request",
+              args: {
+                brand_id: WS_BRAND_ID,
+                site_id: WS_SITE_ID,
+                what: "A live chat on the home page.",
+                where: { page_path: "" },
+                why: "Add a live chat widget to the home page",
+                missing_capability: "The website has no live chat section yet.",
+              },
+            },
+          },
+        ],
+        core: {},
+      },
+      confirm: true,
+      expect: {
+        route: "proposal:propose_website_team_request",
+        reply_must: ["Mingla team"],
+        workspace: { model_calls: 2, bounced: ["SECTION_TYPE_NOT_AVAILABLE"], team_request: true, core_writes: 0 },
+      },
+    }],
+  },
+  {
+    id: "ws_unreadable_colour_nearest_shade",
+    source: "A colour that would be hard to read: the step is asked once more with the nearest shade Core named, and Ari says so.",
+    turns: [applied(
+      "Make the main colour pale yellow, #fff3a6",
+      "Change the main colour to pale yellow",
+      [["Change the main colour", { op: "set_look", tokens: { colors: { action: "#fff3a6" } } }]],
+      {
+        core: { unreadable: { times: 1, foreground: "#fff3a6", nearest_readable: "#8a7400" } },
+        reply_must: ["on your draft", "nearest shade that stays readable for one colour"],
+        workspace: {
+          apply_calls: 2,
+          ops: ["set_look", "set_look"],
+          sent_colour: "#8a7400",
+          adjusted: 1,
+        },
+      },
+    )],
+  },
+  {
+    id: "ws_unreadable_colour_reported",
+    source: "Still hard to read after the one retry: nothing is changed and the reply says why in Core's words.",
+    turns: [{
+      say: "Make the main colour pale yellow, #fff3a6",
+      focus: null,
+      stub: {
+        model: [plan("Make the main colour pale yellow, #fff3a6", "Change the main colour to pale yellow", [
+          ["Change the main colour", { op: "set_look", tokens: { colors: { action: "#fff3a6" } } }],
+        ])],
+        core: { unreadable: { times: 2, foreground: "#fff3a6", nearest_readable: "#8a7400" } },
+      },
+      confirm: true,
+      expect: {
+        route: "proposal:propose_site_change_set",
+        reply_must: ["Step 1 of 1", "hard to read", "Nothing was changed"],
+        reply_must_not: ["on your draft, ready", "UNREADABLE"],
+        workspace: { status: "rolled_back", applied: 0, failed_index: 0, apply_calls: 2, undo_called: false },
+      },
+    }],
+  },
+  {
+    id: "ws_clear_photo",
+    source: "Clearing a photo spot is media_id null, said outright (never a missing id).",
+    turns: [applied(
+      "Take the photo off the top of the home page",
+      "Remove the top photo",
+      [["Remove the top photo", {
+        op: "set_section_media",
+        page_id: "pg_home",
+        section_id: "sec_hero",
+        slot: "media",
+        media_id: null,
+      }]],
+    )],
   },
 ];

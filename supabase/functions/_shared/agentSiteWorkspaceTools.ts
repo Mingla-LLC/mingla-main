@@ -31,7 +31,7 @@ import {
   workLogCitesProblem,
   workLogCitesSchema,
 } from "./siteContracts/ariToolSchemas.ts";
-import { STYLE_KEYS } from "./siteContracts/formats.ts";
+import { ARI_DESIGN_KEYS } from "./siteContracts/designs.ts";
 import { MAX_NAV_ITEMS, MAX_NAV_LABEL_LENGTH } from "./siteContracts/limits.ts";
 import {
   BUTTON_SHAPES,
@@ -100,6 +100,7 @@ const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const PAGE_PATH_PATTERN =
   /^(?:[a-z0-9]+(?:-[a-z0-9]+)*)(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 const TYPE_PATTERN = /^[a-z][a-z0-9_-]{0,59}$/;
+const SLOT_PATTERN = /^[a-z][a-z_]{0,39}(?:\.\d{1,3})?$/;
 const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*$/;
 // Letters, digits, spaces and everyday punctuation: a label is shown to the
 // model as data, so it may not carry markup, braces or line breaks.
@@ -182,9 +183,12 @@ export const SITE_WORKSPACE_PROMPT_RULES =
 - One request becomes ONE plan: call propose_site_change_set once, with one to eight steps in the order they should happen. Never send several separate website proposals for one request, and never use the older propose_site_* tools here.
 - Change only what was asked. Do not tidy, rewrite or restyle anything the owner did not mention.
 - When the context names a selected section, "this", "here" and "this section" mean that section, and every step must change that section only. If the owner asks for something outside it, say so in one sentence and offer to do it from the main Ari panel.
-- Each step has a label of at most 80 characters in plain words the owner will read ("Shorten the welcome heading"), a short why, and cites: the owner's own words, a Mingla record, or an approved photo. Never write "block", "variant", "token" or "revision" in a label, a summary or a reply; say "section", "layout" and "colour".
+- Each step has a label of at most 80 characters in plain words the owner will read ("Shorten the welcome heading"), and a short why. A step that writes words a visitor reads (edits, menu labels) also carries cites: the owner's own words, a Mingla record, or an approved photo. Never write "block", "variant", "token" or "revision" in a label, a summary or a reply; say "section", "layout" and "colour".
 - When a fact about the venue is missing (a price, a date, opening hours, an address, a name, a review), do not guess and do not call a write tool. Ask ONE question, then end the reply with a last line that starts "Choices:" and lists two to four short answers separated by " | ".
 - Never say a change was made unless its result says it was applied. A plan that has not been applied is "ready", not "done". If a step failed, say which one and that nothing was changed.
+- A new section must be one of addable_sections; one marked needs_photo takes a media_id from the workspace's media list (ask which photo when the owner did not say). A photo spot is named by its slot exactly as the workspace lists it.
+- For the look, send only the colours that change. You may set the style to atelier or voyage only; any other style is the owner's pick in Design. If a colour would be hard to read you will be told the nearest shade that reads: say which shade was used, never hide it.
+- You cannot add or remove rows inside a list (a new question, a new team member): that is a team request.
 - When part of the request cannot be done with these steps, do the part you can and list the rest in couldnt (what, and why in plain words).
 - When nothing here can do what the owner asked, say so plainly in one sentence and call propose_website_team_request so the Mingla team can build it. Never pretend, and never offer a workaround that links bookings off Mingla.
 - You never publish from here. Publishing is the owner's Publish button. Never invent facts, prices, dates or reviews.
@@ -266,7 +270,7 @@ const STEP = {
   type: "object",
   additionalProperties: false,
   description:
-    "One typed change. edit_section: page_id, section_id, and edits and/or layout. move_section: page_id, section_id, to_index. remove_section: page_id, section_id. add_section: page_id, type, after_section_id (leave out to add at the top), optional edits. set_section_media: page_id, section_id, slot, media_id. set_look: at least one of design, tokens, fonts, radius, button_shape, motion. set_menu: items. set_page_enabled: page_id, enabled.",
+    "One typed change. edit_section: page_id, section_id, and edits and/or layout. move_section: page_id, section_id, to_index. remove_section: page_id, section_id. add_section: page_id, type, after_section_id (leave out to add at the top), optional edits, and media_id when the type needs a photo. set_section_media: page_id, section_id, slot, media_id. set_look: at least one of design, tokens (only the colours that change), fonts, radius, button_shape, motion. set_menu: items. set_page_enabled: page_id, enabled.",
   properties: {
     op: { type: "string", enum: [...SITE_STEP_OPS] },
     page_id: ID,
@@ -293,12 +297,24 @@ const STEP = {
       description:
         "The section the new one goes after; leave out to put it at the top",
     },
-    slot: { type: "string", maxLength: 60 },
+    slot: {
+      type: "string",
+      maxLength: 60,
+      description:
+        "The photo spot as the workspace names it: media, video, poster, images.0, members.2",
+    },
     media_id: {
       ...UUID,
-      description: "An approved photo or video id from the workspace",
+      nullable: true,
+      description:
+        "An approved photo or video id from the workspace. On set_section_media, null clears the spot. add_section needs one when the section type says needs_photo.",
     },
-    design: { type: "string", enum: [...STYLE_KEYS] },
+    design: {
+      type: "string",
+      enum: [...ARI_DESIGN_KEYS],
+      description:
+        "Only these two; any other style is the owner's pick in Design",
+    },
     tokens: tokenOverridesSchema(),
     fonts: fontChoicesSchema(),
     radius: { type: "string", enum: [...RADIUS_PRESETS] },
@@ -366,10 +382,14 @@ const CHANGE_SET_PROPERTIES = {
           maxLength: MAX_WORK_LOG_DECISION,
           description: "Why this step, in one plain sentence",
         },
-        cites: workLogCitesSchema(),
+        cites: {
+          ...workLogCitesSchema(),
+          description:
+            "Required when the step writes words a visitor reads (edits, or the menu's labels): the owner's own words, a Mingla record, or an approved photo. A move, a removal, a photo, a layout or a look change may leave it out.",
+        },
         step: STEP,
       },
-      required: ["label", "why", "cites", "step"],
+      required: ["label", "why", "step"],
     },
   },
   couldnt: {
@@ -490,7 +510,7 @@ const STEP_FIELDS: Record<SiteStepOp, readonly string[]> = {
   edit_section: ["page_id", "section_id", "edits", "layout"],
   move_section: ["page_id", "section_id", "to_index"],
   remove_section: ["page_id", "section_id"],
-  add_section: ["page_id", "type", "after_section_id", "edits"],
+  add_section: ["page_id", "type", "after_section_id", "edits", "media_id"],
   set_section_media: ["page_id", "section_id", "slot", "media_id"],
   set_look: ["design", "tokens", "fonts", "radius", "button_shape", "motion"],
   set_menu: ["items"],
@@ -561,11 +581,24 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
         const problem = editsProblem(step.edits, at("edits"));
         if (problem) return problem;
       }
+      if (
+        step.media_id !== undefined && step.media_id !== null &&
+        !isUuid(step.media_id)
+      ) return `${at("media_id")} must be an approved photo or video id`;
       return idProblem(step.page_id, at("page_id"));
     case "set_section_media":
-      if (!shortText(step.slot, 60)) return `${at("slot")} is required`;
-      if (!isUuid(step.media_id)) {
-        return `${at("media_id")} must be an approved photo or video id`;
+      if (
+        typeof step.slot !== "string" || !SLOT_PATTERN.test(step.slot)
+      ) {
+        return `${
+          at("slot")
+        } must be a photo spot the workspace names (media, video, poster, images.0, members.2)`;
+      }
+      // null clears the spot; leaving it out is never read as "clear".
+      if (step.media_id !== null && !isUuid(step.media_id)) {
+        return `${
+          at("media_id")
+        } must be an approved photo or video id, or null to clear the spot`;
       }
       return idProblem(step.page_id, at("page_id")) ??
         idProblem(step.section_id, at("section_id"));
@@ -578,8 +611,12 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
       }
       if (
         step.design !== undefined &&
-        !(STYLE_KEYS as readonly string[]).includes(step.design as string)
-      ) return `${at("design")} is not a design Mingla draws`;
+        !(ARI_DESIGN_KEYS as readonly string[]).includes(step.design as string)
+      ) {
+        return `${at("design")} must be one of ${
+          ARI_DESIGN_KEYS.join(", ")
+        }; any other style is the owner's pick in Design`;
+      }
       if (step.tokens !== undefined) {
         const problems = schemaProblems(
           step.tokens,
@@ -643,6 +680,13 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
   }
 }
 
+/** Does this step write words a visitor reads? (Studio's own rule.) */
+export function siteStepWritesWords(step: Record<string, unknown>): boolean {
+  if (step.op === "set_menu") return true;
+  return (step.op === "edit_section" || step.op === "add_section") &&
+    Array.isArray(step.edits) && step.edits.length > 0;
+}
+
 /** The first problem with a whole change set, or null. */
 export function siteChangeSetProblem(
   args: Record<string, unknown>,
@@ -674,12 +718,19 @@ export function siteChangeSetProblem(
     if (!shortText(raw.why, MAX_WORK_LOG_DECISION)) {
       return `${path}.why is required (at most ${MAX_WORK_LOG_DECISION} characters)`;
     }
-    const cites = workLogCitesProblem(raw.cites);
-    if (cites) {
-      return `${path}.${cites} (every website change says what it is based on)`;
-    }
     const step = siteStepProblem(raw.step, `${path}.step`);
     if (step) return step;
+    // Words a visitor reads say what they are based on; a move, a removal,
+    // a photo, a layout or a look change may go without.
+    const cited = Array.isArray(raw.cites) && raw.cites.length > 0;
+    if (cited || siteStepWritesWords(raw.step as Record<string, unknown>)) {
+      const cites = workLogCitesProblem(raw.cites);
+      if (cites) {
+        return `${path}.${cites} (a step that writes words says what they are based on)`;
+      }
+    } else if (raw.cites !== undefined && !Array.isArray(raw.cites)) {
+      return `${path}.cites must be a list`;
+    }
   }
   if (args.couldnt !== undefined) {
     if (
@@ -806,7 +857,7 @@ export function siteWorkspaceIds(snapshot: unknown): Set<string> {
 function ungroundedId(
   args: Record<string, unknown>,
   ids: Set<string>,
-  truncated: boolean,
+  complete: { sections: boolean; media: boolean },
 ): string | null {
   if (ids.size === 0) return null;
   const steps = Array.isArray(args.steps) ? args.steps : [];
@@ -814,10 +865,17 @@ function ungroundedId(
     const step = isRecord(raw) && isRecord(raw.step) ? raw.step : {};
     const named: Array<[string, unknown]> = [
       ["page_id", step.page_id],
-      ["section_id", step.section_id],
-      ["after_section_id", step.after_section_id],
-      // A snapshot cut to fit may have dropped the photo list.
-      ...(truncated ? [] : [["media_id", step.media_id] as [string, unknown]]),
+      // A snapshot cut to fit lists some pages without their sections, and
+      // only the first photos of a large library: Core checks those ids.
+      ...(complete.sections
+        ? [
+          ["section_id", step.section_id] as [string, unknown],
+          ["after_section_id", step.after_section_id] as [string, unknown],
+        ]
+        : []),
+      ...(complete.media
+        ? [["media_id", step.media_id] as [string, unknown]]
+        : []),
       ...(Array.isArray(step.items)
         ? step.items.map((item, n): [string, unknown] => [
           `items[${n}].page_id`,
@@ -829,6 +887,42 @@ function ungroundedId(
       if (typeof value === "string" && !ids.has(value)) {
         return `steps[${index}].step.${name}`;
       }
+    }
+  }
+  return null;
+}
+
+/** A new section must be a type this draft may add, with a photo when it needs one. */
+function siteAddableSectionProblem(
+  args: Record<string, unknown>,
+  snapshot: Record<string, unknown>,
+): { code: string; message: string } | null {
+  const catalog = Array.isArray(snapshot.addable_sections)
+    ? snapshot.addable_sections.filter(isRecord)
+    : [];
+  if (catalog.length === 0) return null;
+  const steps = Array.isArray(args.steps) ? args.steps : [];
+  for (const [index, raw] of steps.entries()) {
+    const step = isRecord(raw) && isRecord(raw.step) ? raw.step : {};
+    if (step.op !== "add_section") continue;
+    const entry = catalog.find((item) => item.type === step.type);
+    if (!entry) {
+      return {
+        code: "SECTION_TYPE_NOT_AVAILABLE",
+        message: `steps[${index}].step.type "${
+          String(step.type)
+        }" cannot be added to this website. The section types that can be added are: ${
+          catalog.map((item) => String(item.type)).join(", ")
+        }. If none fits what the owner asked, say so and propose the team request.`,
+      };
+    }
+    if (entry.needs_photo === true && !isUuid(step.media_id)) {
+      return {
+        code: "MEDIA_REQUIRED",
+        message: `steps[${index}].step needs media_id: a "${
+          String(step.type)
+        }" section starts with one of the owner's approved photos (the workspace's media list). If the owner did not say which photo and there is more than one, ask which; if there is none, say they need to add a photo first.`,
+      };
     }
   }
   return null;
@@ -873,11 +967,15 @@ export function siteWorkspaceProposalIssue(input: {
   const scope = siteChangeSetFocusProblem(input.args, input.focus);
   if (scope) return { code: "OUTSIDE_SELECTED_SECTION", message: scope };
   if (input.workspace && snapshot) {
-    const stray = ungroundedId(
-      input.args,
-      siteWorkspaceIds(snapshot),
-      snapshot.truncated === true,
-    );
+    const pages = Array.isArray(snapshot.pages) ? snapshot.pages : [];
+    const media = Array.isArray(snapshot.media) ? snapshot.media : null;
+    const stray = ungroundedId(input.args, siteWorkspaceIds(snapshot), {
+      sections: snapshot.truncated !== true &&
+        !pages.some((page) => isRecord(page) && page.sections_omitted === true),
+      // Studio lists at most 60 photos (20 when compacted).
+      media: snapshot.truncated !== true && snapshot.compacted !== true &&
+        media !== null && media.length < 60,
+    });
     if (stray) {
       return {
         code: "UNKNOWN_SITE_ID",
@@ -885,6 +983,8 @@ export function siteWorkspaceProposalIssue(input: {
           `${stray} is not an id in the draft that get_site_workspace returned. Use the ids exactly as it lists them; never invent one. If the thing the owner means is not on the draft, ask one question.`,
       };
     }
+    const addable = siteAddableSectionProblem(input.args, snapshot);
+    if (addable) return addable;
   }
   return null;
 }
@@ -921,6 +1021,10 @@ export interface SiteChangeSetApplied {
   op: SiteStepOp;
   page_id: string | null;
   section_id: string | null;
+  /** set_look: colours changed to the nearest shade that stays readable. */
+  adjusted_colours?: Array<{ from: string; to: string }>;
+  /** set_look: readability notes already on the look, in plain words. */
+  warnings?: string[];
 }
 
 export interface SiteChangeSetResult {
@@ -980,6 +1084,80 @@ export interface SiteChangeSetDeps {
 
 const TIMEOUT_CODE = "SITE_STEP_TIMEOUT";
 
+/** Core's own refusal code and the bounded detail a caller can act on. */
+export interface SiteRefusalDetail {
+  code: string;
+  /** UNREADABLE_COLOURS: the colour that fails, and the nearest shade that reads. */
+  suggestions?: Array<{ foreground: string; nearest_readable: string }>;
+}
+
+const SITE_REFUSAL = Symbol("siteRefusal");
+
+export function attachSiteRefusal(
+  error: ToolError,
+  detail: SiteRefusalDetail,
+): ToolError {
+  (error as unknown as Record<symbol, unknown>)[SITE_REFUSAL] = detail;
+  return error;
+}
+
+export function siteRefusalOf(error: unknown): SiteRefusalDetail | null {
+  const detail = error instanceof ToolError
+    ? (error as unknown as Record<symbol, unknown>)[SITE_REFUSAL]
+    : null;
+  return isRecord(detail) ? detail as unknown as SiteRefusalDetail : null;
+}
+
+/**
+ * Core refused a look change because a colour would be hard to read, and
+ * named the nearest shade that reads. The same step with those shades in
+ * place of the colours it sent, or null when the step did not send them
+ * (the clash is then with a colour already on the site: the owner decides).
+ */
+export function readableLookStep(
+  step: Record<string, unknown>,
+  error: unknown,
+): {
+  step: Record<string, unknown>;
+  adjusted: Array<{ from: string; to: string }>;
+} | null {
+  const refusal = siteRefusalOf(error);
+  if (
+    step.op !== "set_look" || refusal?.code !== "UNREADABLE_COLOURS" ||
+    !refusal.suggestions?.length || !isRecord(step.tokens) ||
+    !isRecord(step.tokens.colors)
+  ) return null;
+  const swap = new Map(
+    refusal.suggestions.map((item) => [
+      item.foreground.toLowerCase(),
+      item.nearest_readable.toLowerCase(),
+    ]),
+  );
+  const adjusted = new Map<string, string>();
+  const fix = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      const next = swap.get(value.toLowerCase());
+      if (next && next !== value.toLowerCase()) {
+        adjusted.set(value.toLowerCase(), next);
+        return next;
+      }
+      return value;
+    }
+    if (isRecord(value)) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, child]) => [key, fix(child)]),
+      );
+    }
+    return value;
+  };
+  const colors = fix(step.tokens.colors);
+  if (adjusted.size === 0) return null;
+  return {
+    step: { ...step, tokens: { ...step.tokens, colors } },
+    adjusted: [...adjusted].map(([from, to]) => ({ from, to })),
+  };
+}
+
 async function within<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -1025,10 +1203,17 @@ export function siteStepFailureReason(error: unknown): string {
     if (error.code === "SITE_SERVICE_UNAVAILABLE") {
       return "The website service did not answer.";
     }
-    const cleaned = error.message
-      .replace(/\s*Latest revision:[^.]*\./gi, "")
-      .replace(/\s+/g, " ").trim();
-    if (cleaned && !CODEISH.test(cleaned)) return cleaned.slice(0, 300);
+    // Core's own plain sentence, less anything written for the model
+    // (draft versions, layout keys, field keys).
+    const cleaned = error.message.replace(/\s+/g, " ").trim()
+      .split(/(?<=[.?!])\s+/)
+      .filter((sentence) =>
+        sentence &&
+        !/^(?:Latest revision|Layouts on offer|This design draws):/i.test(
+          sentence,
+        ) && !CODEISH.test(sentence)
+      ).join(" ");
+    if (cleaned) return cleaned.slice(0, 300);
     if (error.code === "REVISION_CONFLICT" || error.code === "CONFLICT") {
       return "The draft changed while this was being applied.";
     }
@@ -1131,32 +1316,46 @@ export async function runSiteChangeSet(input: {
       failure = new ToolError(TIMEOUT_CODE, "It took too long.");
     } else {
       const operationId = await siteStepOperationId(groupId, `step:${index}`);
-      const apply = () =>
+      const cites = Array.isArray(entry.cites) ? entry.cites : [];
+      const apply = (sent: Record<string, unknown>) =>
         within(
           deps.call("apply_site_change", {
             ...base,
             group_id: groupId,
             group_label: groupLabel,
-            step,
+            step: sent,
             why: entry.why,
-            cites: entry.cites,
+            ...(cites.length ? { cites } : {}),
           }, operationId),
           Math.min(budget.stepMs, remaining() - budget.rollbackReserveMs),
         );
       try {
         let outcome: unknown;
+        let adjusted: Array<{ from: string; to: string }> = [];
         try {
-          outcome = await apply();
+          outcome = await apply(step);
         } catch (error) {
-          // The draft moved under this step (the owner typed, a teammate
-          // saved). Nothing was written, so asking once more is safe.
+          // One more ask, never two, and only after a clean "no" (nothing
+          // was written): the draft moved under this step, or a colour
+          // would be hard to read and Core named the nearest shade that
+          // reads.
+          const room = remaining() - budget.rollbackReserveMs > 2_000;
+          const readable = readableLookStep(step, error);
           if (
-            error instanceof ToolError && error.code === "REVISION_CONFLICT" &&
-            remaining() - budget.rollbackReserveMs > 2_000
+            room && error instanceof ToolError &&
+            error.code === "REVISION_CONFLICT"
           ) {
-            outcome = await apply();
+            outcome = await apply(step);
+          } else if (room && readable) {
+            outcome = await apply(readable.step);
+            adjusted = readable.adjusted;
           } else throw error;
         }
+        const warnings = isRecord(outcome) && Array.isArray(outcome.warnings)
+          ? outcome.warnings.filter((item): item is string =>
+            typeof item === "string"
+          ).slice(0, 8).map((item) => item.slice(0, 300))
+          : [];
         const touched = isRecord(outcome) && isRecord(outcome.touched)
           ? outcome.touched
           : {};
@@ -1172,6 +1371,8 @@ export async function runSiteChangeSet(input: {
           op: step.op as SiteStepOp,
           page_id: idOf(touched.page_id, step.page_id),
           section_id: idOf(touched.section_id, step.section_id),
+          ...(adjusted.length ? { adjusted_colours: adjusted } : {}),
+          ...(warnings.length ? { warnings } : {}),
         });
         await emit({ type: "site_step_done", detail });
         continue;
@@ -1290,6 +1491,23 @@ export function siteWorkspaceFollowupText(
       count === 1 ? "That change is" : `All ${count} changes are`
     } on your draft, ready for you to read. Nothing is published.`,
   ];
+  const shades = Array.isArray(result.applied)
+    ? result.applied.reduce(
+      (sum: number, item: unknown) =>
+        sum +
+        (isRecord(item) && Array.isArray(item.adjusted_colours)
+          ? item.adjusted_colours.length
+          : 0),
+      0,
+    )
+    : 0;
+  if (shades > 0) {
+    parts.push(
+      `I used the nearest shade that stays readable for ${
+        shades === 1 ? "one colour" : `${shades} colours`
+      }.`,
+    );
+  }
   if (warnings > 0) {
     parts.push(
       `The design checks found ${warnings} thing${

@@ -65,6 +65,8 @@ import {
 } from "./siteContracts/limits.ts";
 import {
   assertSiteWorkspaceToolArgs,
+  attachSiteRefusal,
+  type SiteRefusalDetail,
   siteWorkspaceToolParts,
 } from "./agentSiteWorkspaceTools.ts";
 
@@ -145,7 +147,13 @@ function requiredIds(args: Record<string, unknown>): {
 
 type SitesControlOutcome =
   | { kind: "ok"; data: unknown }
-  | { kind: "refused"; code: string; status: number; message: string }
+  | {
+    kind: "refused";
+    code: string;
+    status: number;
+    message: string;
+    site?: SiteRefusalDetail;
+  }
   | {
     kind: "unavailable";
     reason:
@@ -240,22 +248,31 @@ const SITES_NAMED_CODES: Readonly<Record<string, string>> = {
   ARI_PAGE_DUPLICATE: "CONFLICT",
   QUESTION_NOT_FOUND: "VALIDATION_FAILED",
   PAGE_NOT_ARI_DRAFT: "VALIDATION_FAILED",
-  // #4453 Website workspace — Core's named refusals for a change-set step or
-  // its undo. Each carries Core's plain sentence to the owner.
-  CHANGED_SINCE: "CONFLICT",
+  // #4453 Website workspace — Core's named refusals for a section action, a
+  // change-set step or its undo (brand-site-control/siteWorkspace.ts). Each
+  // carries Core's plain sentence to the owner.
   SECTION_NOT_FOUND: "VALIDATION_FAILED",
-  FIELD_NOT_FOUND: "VALIDATION_FAILED",
-  SECTION_TYPE_NOT_ALLOWED: "VALIDATION_FAILED",
+  FIELD_NOT_EDITABLE: "VALIDATION_FAILED",
+  FIELD_REQUIRED: "VALIDATION_FAILED",
+  VALUE_TOO_LONG: "VALIDATION_FAILED",
+  LAYOUT_NOT_IN_DESIGN: "VALIDATION_FAILED",
+  SECTION_TYPE_NOT_AVAILABLE: "VALIDATION_FAILED",
+  SECTION_LIMIT_REACHED: "DOMAIN_ACTION_REFUSED",
   SECTION_CANNOT_BE_REMOVED: "DOMAIN_ACTION_REFUSED",
-  UNREADABLE_COLOURS: "VALIDATION_FAILED",
-  MEDIA_NOT_READY: "VALIDATION_FAILED",
+  HOME_ALWAYS_ON: "DOMAIN_ACTION_REFUSED",
+  MEDIA_REQUIRED: "VALIDATION_FAILED",
+  CHANGED_SINCE: "CONFLICT",
   NOTHING_TO_UNDO: "CONFLICT",
+  NOTHING_TO_REDO: "CONFLICT",
+  UNREADABLE_COLOURS: "VALIDATION_FAILED",
 };
 
 const SITE_SERVICE_UNAVAILABLE_MESSAGE =
   "Ari could not reach Website tools right now.";
 
-function safeRefusal(body: unknown): { code: string; message: string } | null {
+function safeRefusal(
+  body: unknown,
+): { code: string; message: string; site?: SiteRefusalDetail } | null {
   if (!body || typeof body !== "object") return null;
   const candidate = body as {
     ok?: unknown;
@@ -267,6 +284,9 @@ function safeRefusal(body: unknown): { code: string; message: string } | null {
       problem?: unknown;
       variants?: unknown;
       latest_revision?: unknown;
+      max?: unknown;
+      layouts?: unknown;
+      suggestions?: unknown;
     };
   };
   const code = candidate.error?.code;
@@ -287,9 +307,32 @@ function safeRefusal(body: unknown): { code: string; message: string } | null {
       message: `${candidate.error.message.slice(0, 300)}${
         refusalDetail(candidate.error)
       }`,
+      site: siteRefusalDetailOf(code, candidate.error),
     };
   }
   return null;
+}
+
+function siteRefusalDetailOf(
+  code: string,
+  error: Record<string, unknown>,
+): SiteRefusalDetail {
+  const hex = (value: unknown) =>
+    typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
+      ? value.toLowerCase()
+      : null;
+  const suggestions = Array.isArray(error.suggestions)
+    ? error.suggestions.slice(0, 8).flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const item = row as Record<string, unknown>;
+      const foreground = hex(item.foreground);
+      const nearest = hex(item.nearest_readable);
+      return foreground && nearest
+        ? [{ foreground, nearest_readable: nearest }]
+        : [];
+    })
+    : [];
+  return { code, ...(suggestions.length ? { suggestions } : {}) };
 }
 
 /** Bounded detail Core passed (claims, fields, layouts, latest revision) for Ari to act on. */
@@ -309,6 +352,12 @@ function refusalDetail(error: Record<string, unknown> | undefined): string {
   ];
   const variants = list(error.variants, 20);
   if (variants.length) parts.push(`This design draws: ${variants.join(", ")}.`);
+  // #4453 Website workspace — how long a field may be, which layouts exist.
+  if (typeof error.max === "number" && Number.isFinite(error.max)) {
+    parts.push(`The limit is ${Math.floor(error.max)} characters.`);
+  }
+  const layouts = list(error.layouts, 20);
+  if (layouts.length) parts.push(`Layouts on offer: ${layouts.join(", ")}.`);
   if (typeof error.latest_revision === "string" && error.latest_revision) {
     parts.push(`Latest revision: ${error.latest_revision.slice(0, 200)}.`);
   }
@@ -364,6 +413,7 @@ async function readControl(
             code: refusal.code,
             message: refusal.message,
             status,
+            ...(refusal.site ? { site: refusal.site } : {}),
           };
         } else {
           outcome = {
@@ -394,6 +444,7 @@ async function readControl(
           code: refusal.code,
           message: refusal.message,
           status: 200,
+          ...(refusal.site ? { site: refusal.site } : {}),
         }
         : { kind: "unavailable", reason: "body_unrecognized", status: null };
     }
@@ -416,7 +467,11 @@ async function readControl(
 function settleControl(outcome: SitesControlOutcome): unknown {
   if (outcome.kind === "ok") return outcome.data;
   if (outcome.kind === "refused") {
-    throw new ToolError(outcome.code, outcome.message);
+    const error = new ToolError(outcome.code, outcome.message);
+    // #4453: Core's own code and bounded detail ride along for the caller
+    // that can act on them (the change-set executor); never shown as is.
+    if (outcome.site) attachSiteRefusal(error, outcome.site);
+    throw error;
   }
   throw new ToolError(
     "SITE_SERVICE_UNAVAILABLE",
