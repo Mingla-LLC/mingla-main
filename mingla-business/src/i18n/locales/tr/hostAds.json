@@ -400,7 +400,9 @@
         "label": "Reklamları filtrele",
         "all": "Tümü",
         "running": "Yayında",
-        "ended": "Bitti"
+        "ended": "Bitti",
+        "review": "İncelemede",
+        "drafts": "Taslaklar"
       },
       "credit": {
         "label": "Reklam kredisi",
@@ -461,7 +463,18 @@
         "colResults": "Sonuçlar",
         "colEach": "Tanesi",
         "open": "{{name}} aç",
-        "draftLine": "Taslak kaydedildi · kaldığın yerden devam et"
+        "draftLine": "Taslak kaydedildi · kaldığın yerden devam et",
+        "reviewLine": "Her uygulama önce reklamını inceler. Gösterilene kadar hiçbir şey harcanmaz.",
+        "appShowing": "{{app}}: gösteriliyor",
+        "appChecking": "{{app}}: inceleniyor",
+        "appNotApproved": "{{app}}: onaylanmadı",
+        "deleteDraftA11y": "{{name}} taslağını sil",
+        "deleteTitle": "Bu taslak silinsin mi?",
+        "deleteBody": "“{{name}}” kalıcı olarak silinecek. Ücret alınmaz ve reklam kredin aynı kalır.",
+        "deleteConfirm": "Taslağı sil",
+        "deleteKeep": "Kalsın",
+        "draftDeleted": "Taslak silindi",
+        "deleteFailed": "Taslak silinemedi. Yenilemek için aşağı çek ve tekrar dene."
       },
       "unit": {
         "sales": "bilet",
@@ -482,7 +495,8 @@
         "partRejected": "Yayında · {{count}} onaylanmadı",
         "draft": "Taslak",
         "attention": "Bakılması gerek",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Yayında · {{apps}} incelemede"
       },
       "reason": {
         "soldOut": "Tükendi",

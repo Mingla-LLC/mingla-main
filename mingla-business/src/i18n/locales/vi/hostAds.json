@@ -400,7 +400,9 @@
         "label": "Lọc quảng cáo",
         "all": "Tất cả",
         "running": "Đang chạy",
-        "ended": "Đã kết thúc"
+        "ended": "Đã kết thúc",
+        "review": "Đang xét duyệt",
+        "drafts": "Bản nháp"
       },
       "credit": {
         "label": "Tín dụng quảng cáo",
@@ -461,7 +463,18 @@
         "colResults": "Kết quả",
         "colEach": "Mỗi cái",
         "open": "Mở {{name}}",
-        "draftLine": "Đã lưu bản nháp · tiếp tục từ chỗ bạn dừng"
+        "draftLine": "Đã lưu bản nháp · tiếp tục từ chỗ bạn dừng",
+        "reviewLine": "Mỗi ứng dụng sẽ xét duyệt quảng cáo của bạn trước. Không tốn tiền cho đến khi quảng cáo hiển thị.",
+        "appShowing": "{{app}}: đang hiển thị",
+        "appChecking": "{{app}}: đang kiểm tra",
+        "appNotApproved": "{{app}}: không được duyệt",
+        "deleteDraftA11y": "Xóa bản nháp {{name}}",
+        "deleteTitle": "Xóa bản nháp này?",
+        "deleteBody": "“{{name}}” sẽ bị xóa vĩnh viễn. Không tính phí và tín dụng quảng cáo của bạn giữ nguyên.",
+        "deleteConfirm": "Xóa bản nháp",
+        "deleteKeep": "Giữ lại",
+        "draftDeleted": "Đã xóa bản nháp",
+        "deleteFailed": "Không thể xóa bản nháp. Kéo xuống để làm mới rồi thử lại."
       },
       "unit": {
         "sales": "vé",
@@ -482,7 +495,8 @@
         "partRejected": "Đang chạy · {{count}} không được duyệt",
         "draft": "Bản nháp",
         "attention": "Cần xem lại",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Đang chạy · {{apps}} đang xét duyệt"
       },
       "reason": {
         "soldOut": "Hết vé",

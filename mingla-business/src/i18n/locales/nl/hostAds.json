@@ -400,7 +400,9 @@
         "label": "Advertenties filteren",
         "all": "Alle",
         "running": "Lopend",
-        "ended": "Afgelopen"
+        "ended": "Afgelopen",
+        "review": "In beoordeling",
+        "drafts": "Concepten"
       },
       "credit": {
         "label": "Advertentietegoed",
@@ -461,7 +463,18 @@
         "colResults": "Resultaten",
         "colEach": "Per stuk",
         "open": "{{name}} openen",
-        "draftLine": "Concept opgeslagen · ga verder waar je was"
+        "draftLine": "Concept opgeslagen · ga verder waar je was",
+        "reviewLine": "Elke app controleert je advertentie eerst. Er wordt niets uitgegeven tot hij wordt getoond.",
+        "appShowing": "{{app}}: wordt getoond",
+        "appChecking": "{{app}}: wordt gecontroleerd",
+        "appNotApproved": "{{app}}: niet goedgekeurd",
+        "deleteDraftA11y": "Concept {{name}} verwijderen",
+        "deleteTitle": "Dit concept verwijderen?",
+        "deleteBody": "‘{{name}}’ wordt definitief verwijderd. Er wordt niets in rekening gebracht en je advertentietegoed blijft gelijk.",
+        "deleteConfirm": "Concept verwijderen",
+        "deleteKeep": "Bewaren",
+        "draftDeleted": "Concept verwijderd",
+        "deleteFailed": "Kon dit concept niet verwijderen. Trek omlaag om te vernieuwen en probeer het opnieuw."
       },
       "unit": {
         "sales": "tickets",
@@ -482,7 +495,8 @@
         "partRejected": "Loopt · {{count}} niet goedgekeurd",
         "draft": "Concept",
         "attention": "Even kijken",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Actief · {{apps}} in beoordeling"
       },
       "reason": {
         "soldOut": "Uitverkocht",

@@ -400,7 +400,9 @@
         "label": "Filtra annunci",
         "all": "Tutti",
         "running": "Attivi",
-        "ended": "Terminati"
+        "ended": "Terminati",
+        "review": "In revisione",
+        "drafts": "Bozze"
       },
       "credit": {
         "label": "Credito annunci",
@@ -461,7 +463,18 @@
         "colResults": "Risultati",
         "colEach": "Ciascuno",
         "open": "Apri {{name}}",
-        "draftLine": "Bozza salvata · riprendi da dove eri rimasto"
+        "draftLine": "Bozza salvata · riprendi da dove eri rimasto",
+        "reviewLine": "Ogni app controlla prima il tuo annuncio. Non si spende nulla finché non viene mostrato.",
+        "appShowing": "{{app}}: mostrato",
+        "appChecking": "{{app}}: in controllo",
+        "appNotApproved": "{{app}}: non approvato",
+        "deleteDraftA11y": "Elimina bozza {{name}}",
+        "deleteTitle": "Eliminare questa bozza?",
+        "deleteBody": "“{{name}}” verrà eliminata per sempre. Non viene addebitato nulla e il tuo credito annunci resta invariato.",
+        "deleteConfirm": "Elimina bozza",
+        "deleteKeep": "Tienila",
+        "draftDeleted": "Bozza eliminata",
+        "deleteFailed": "Impossibile eliminare la bozza. Trascina verso il basso per aggiornare e riprova."
       },
       "unit": {
         "sales": "biglietti",
@@ -482,7 +495,8 @@
         "partRejected": "Attivo · {{count}} non approvati",
         "draft": "Bozza",
         "attention": "Da controllare",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Attivo · {{apps}} in revisione"
       },
       "reason": {
         "soldOut": "Esaurito",

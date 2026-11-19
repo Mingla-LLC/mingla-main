@@ -400,7 +400,9 @@
         "label": "Họn ẹkpẹti",
         "all": "Hia",
         "running": "Ọ ye rre",
-        "ended": "Ọ wa fo"
+        "ended": "Ọ wa fo",
+        "review": "A ye ghe ẹre",
+        "drafts": "Ẹmwẹ ne a mu ye ẹgbẹ"
       },
       "credit": {
         "label": "Igho ẹkpẹti",
@@ -461,7 +463,18 @@
         "colResults": "Emwi ne ọ re",
         "colEach": "Ọkpa ọkpa",
         "open": "Rhie {{name}} nuẹ",
-        "draftLine": "A mu ẹre ye ẹgbẹ · tobọ ẹre vbe ehe ne u ya kpa"
+        "draftLine": "A mu ẹre ye ẹgbẹ · tobọ ẹre vbe ehe ne u ya kpa",
+        "reviewLine": "Each app checks your ad first. Nothing is spent until it shows.",
+        "appShowing": "{{app}}: showing",
+        "appChecking": "{{app}}: checking",
+        "appNotApproved": "{{app}}: not approved",
+        "deleteDraftA11y": "Delete draft {{name}}",
+        "deleteTitle": "Delete this draft?",
+        "deleteBody": "“{{name}}” goes away for good. Nothing is charged and your Ads credit stays as it is.",
+        "deleteConfirm": "Delete draft",
+        "deleteKeep": "Keep it",
+        "draftDeleted": "Draft deleted",
+        "deleteFailed": "Couldn't delete this draft. Pull down to refresh and try again."
       },
       "unit": {
         "sales": "tiketi",
@@ -482,7 +495,8 @@
         "partRejected": "Ọ ye rre · {{count}} a i rhie",
         "draft": "Ẹmwẹ ne a mu ye ẹgbẹ",
         "attention": "Ọ gualọ ughe",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Ọ ye rre · {{apps}} a ye ghe ẹre"
       },
       "reason": {
         "soldOut": "A khiẹn ẹre fo",
