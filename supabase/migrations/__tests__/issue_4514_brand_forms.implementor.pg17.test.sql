@@ -49,6 +49,11 @@
 -- dropping the link.form_id check in brand_form_submit_core fails T-LINK-1; dropping the
 -- show_if visibility in brand_form_check_answers fails T-SUB-3; dropping the brand rank check in
 -- biz_brand_form_responses fails T-RESP-3; dropping the versions trigger fails T-IMM.
+-- Review fixes (each tried, each red, then restored): the subject-only existing-answer lookup
+-- fails T-PERSON-1; live-only door line fails T-CLOSE-1; to_date in the date check fails T-HOSTILE
+-- (22008); dropping the current-guest check fails T-CLOSE-4; dropping the per-actor lock fails
+-- T-DOORX-5; dropping the no-page check fails T-NOPAGE; dropping the truncate trigger fails T-VERS;
+-- dropping the purpose filter fails T-CODE-8; dropping the page-visibility check fails T-PUBVIS-10.
 
 CREATE OR REPLACE FUNCTION pg_temp.f_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $a$
