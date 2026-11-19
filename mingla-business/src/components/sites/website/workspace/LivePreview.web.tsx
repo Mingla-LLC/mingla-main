@@ -115,7 +115,10 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
             height: frame.height,
             style: {
               position: "absolute", top: 0, left: 0, border: 0, width: `${frame.width}px`, height: `${frame.height}px`, background: color.paper,
-              opacity: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none",
+              // The next draft loads UNDER the page on screen, fully drawn: a frame that is not painted
+              // (opacity 0) holds its entrance motion back and would play it in front of the owner
+              // when it takes over.
+              zIndex: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none",
             },
             referrerPolicy: "no-referrer",
             sandbox: "allow-scripts allow-same-origin allow-forms",

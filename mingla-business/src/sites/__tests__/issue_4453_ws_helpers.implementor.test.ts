@@ -341,7 +341,7 @@ describe("autosave", () => {
   it("says where saving stands", () => {
     expect(saveStateLine("saving", false)).toBe("Website · saving…");
     expect(saveStateLine("saved", false)).toBe("Website · saved");
-    expect(saveStateLine("error", false)).toBe("Website · not saved");
+    expect(saveStateLine("error", false)).toBe("Website · last change not saved");
     expect(saveStateLine("saved", true)).toBe("Website · view only");
   });
 });

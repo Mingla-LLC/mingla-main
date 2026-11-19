@@ -186,7 +186,7 @@ export function saveStateLine(state: SaveState, readOnly: boolean): string {
   switch (state) {
     case "waiting":
     case "saving": return "Website · saving…";
-    case "error": return "Website · not saved";
+    case "error": return "Website · last change not saved";
     case "saved":
     case "idle": return "Website · saved";
   }
